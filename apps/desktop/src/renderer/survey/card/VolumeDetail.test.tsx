@@ -283,7 +283,8 @@ describe('VolumeDetail', () => {
       }),
     );
     const text = host.textContent;
-    expect(text).toContain('No survey data');
+    // the area with no data names its reason
+    expect(text).toContain('Not measured on this date');
     expect(text).toContain('Ignore changes smaller than');
     expect(text).toContain('High precision');
     expect(text).toContain(`Grid ${formatQuantity(0.25, 'distance', settings().units, 3)}`);
@@ -410,7 +411,7 @@ describe('VolumeDetail', () => {
     expect(byTestId('survey-cmp-status')[0]?.textContent).toBe('No survey data');
     const rows = [...host.querySelectorAll('[data-testid="vol-time-table"] tbody tr')];
     expect(rows).toHaveLength(2);
-    expect(rows[1]?.querySelector('td')?.textContent).toBe('No survey data');
+    expect(rows[1]?.querySelector('td')?.textContent).toBe('Not measured on this date');
   });
 
   it('the heat map run on focus is not an edit: absent stays absent, current stays up to date', () => {

@@ -1,7 +1,10 @@
 import type { HeightTiles } from '@aio/schema';
 import { encodeTile, lineMetrics, polygonAreas, TILE } from '@aio/survey';
 import { describe, expect, it } from 'vitest';
-import { heightAt, pointHistory, withSurface, type FetchTile } from './pointHistory';
+import type { SurfaceState } from '../surfaceStates';
+import { emptyReason, heightAt, pointHistory, withSurface, type FetchTile } from './pointHistory';
+
+const READY: SurfaceState = { kind: 'ready' };
 
 /** A plane z = 10 + 0.5 E + 0.25 N on one 256 x 256 tile of 1 m cells (posts at cell centres). */
 const plane = (e: number, n: number) => 10 + 0.5 * e + 0.25 * n;
@@ -65,8 +68,8 @@ describe('pointHistory', () => {
     const b = tiles('sb', 'b');
     const rows = await pointHistory(
       [
-        { capture: 'b', label: 'June', date: '2026-06-01', tiles: b },
-        { capture: 'a', label: 'January', date: '2026-01-01', tiles: a },
+        { capture: 'b', label: 'June', date: '2026-06-01', state: READY, tiles: b },
+        { capture: 'a', label: 'January', date: '2026-01-01', state: READY, tiles: a },
       ],
       100,
       40,
@@ -75,6 +78,33 @@ describe('pointHistory', () => {
     expect(rows.map((r) => r.capture)).toEqual(['a', 'b']);
     expect(rows[0]?.z).toBeCloseTo(plane(100, 40), 6);
     expect(rows[1]?.z).toBeNull();
+  });
+});
+
+describe('emptyReason', () => {
+  it('names a surface still to come, no elevation, else not measured', () => {
+    expect(emptyReason([READY, { kind: 'preparing', pct: 62 }])).toBe('mcard.surfacePreparing');
+    expect(emptyReason([{ kind: 'missing' }])).toBe('mcard.surfacePreparing');
+    expect(emptyReason([{ kind: 'none' }, { kind: 'none' }])).toBe('mcard.noElevation');
+    expect(emptyReason([READY, { kind: 'none' }])).toBe('mcard.notMeasured');
+  });
+
+  it('a date with no surface yet reads null, never a height', async () => {
+    const rows = await pointHistory(
+      [
+        {
+          capture: 'a',
+          label: 'January',
+          date: '2026-01-01',
+          state: { kind: 'missing' },
+          tiles: null,
+        },
+      ],
+      0,
+      0,
+      () => () => Promise.resolve(null),
+    );
+    expect(rows.map((r) => r.z)).toEqual([null]);
   });
 });
 

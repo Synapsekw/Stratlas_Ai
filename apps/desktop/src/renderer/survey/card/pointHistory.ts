@@ -7,6 +7,7 @@
  */
 import type { HeightTiles } from '@aio/schema';
 import { bilinear, TileSurface, type HeightSampler } from '@aio/survey';
+import type { SurfaceState } from '../surfaceStates';
 import { presample, type SampleMany } from './terrain';
 
 export type FetchTile = (col: number, row: number) => Promise<Uint8Array | null>;
@@ -76,12 +77,27 @@ export function tilesSampler(
     );
 }
 
-/** A survey date with its prepared surface. */
+/** A survey date, its surface state and its prepared surface (null until it is ready). */
 export interface DatedSurface {
   capture: string;
   label: string;
   date: string;
-  tiles: HeightTiles;
+  state: SurfaceState;
+  tiles: HeightTiles | null;
+}
+
+/** The reason in place of "No survey data" (spec section 2), by the i18n key that says it. */
+export type EmptyReason = 'mcard.surfacePreparing' | 'mcard.noElevation' | 'mcard.notMeasured';
+
+/**
+ * Why there is no height to show for these dates: a surface still to come (preparing, or
+ * waiting for Prepare), no elevation at all, else nothing measured there on the dates that have one.
+ */
+export function emptyReason(states: readonly SurfaceState[]): EmptyReason {
+  if (states.some((s) => s.kind === 'preparing' || s.kind === 'missing'))
+    return 'mcard.surfacePreparing';
+  if (states.every((s) => s.kind === 'none')) return 'mcard.noElevation';
+  return 'mcard.notMeasured';
 }
 
 /** One row of a point's elevation over time (the `TimeChart` elevation rows). */
@@ -92,7 +108,7 @@ export interface PointHistoryRow {
   z: number | null;
 }
 
-/** A point's height on every dated surface, oldest first; null where a date has no data. */
+/** A point's height on every date, oldest first; null where a date has no data or no surface yet. */
 export async function pointHistory(
   dated: readonly DatedSurface[],
   e: number,
@@ -105,7 +121,7 @@ export async function pointHistory(
       capture: d.capture,
       label: d.label,
       date: d.date,
-      z: await heightAt(d.tiles, e, n, fetchFor(d.tiles)),
+      z: d.tiles ? await heightAt(d.tiles, e, n, fetchFor(d.tiles)) : null,
     })),
   );
 }

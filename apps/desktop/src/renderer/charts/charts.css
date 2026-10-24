@@ -72,6 +72,46 @@
   outline: 2px solid var(--acc);
   outline-offset: -2px;
 }
+/* a survey date's surface state (volumetrics redesign, section 2): preparing and none are dimmed
+   and cannot be toggled; missing offers Prepare */
+.pc-chip[data-state='preparing'],
+.pc-chip[data-state='missing'],
+.pc-chip[data-state='none'] {
+  border-style: dashed;
+  background: transparent;
+  color: var(--fg-3);
+}
+.pc-chip[data-state='preparing'] .pc-swatch,
+.pc-chip[data-state='missing'] .pc-swatch,
+.pc-chip[data-state='none'] .pc-swatch {
+  opacity: 0.4;
+}
+.pc-chip-main[aria-disabled='true'] {
+  cursor: default;
+}
+.pc-chip-state {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
+}
+.pc-chip-main:has(+ .pc-chip-prepare) {
+  padding-inline-end: var(--sp-2);
+}
+.pc-chip-prepare {
+  block-size: 20px;
+  margin-inline-end: var(--sp-1);
+  padding-inline: var(--sp-3);
+  border-radius: var(--r-4);
+  font-size: var(--t-12);
+  color: var(--acc);
+  white-space: nowrap;
+}
+.pc-chip-prepare:hover {
+  background: var(--bg-3);
+}
+.pc-chip-prepare:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
 .pc-chip-label {
   max-inline-size: 18ch;
   overflow: hidden;

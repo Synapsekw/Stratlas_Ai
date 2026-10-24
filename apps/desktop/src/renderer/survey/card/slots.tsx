@@ -20,8 +20,11 @@
  * two is the difference. A line's "base" is the line as drawn (its own vertex heights). The
  * cross-section's pins stay in the section view (Task 12); its card offers "Open in section view".
  *
- * Heights come from each date's or design's prepared surface (`pointHistory.ts`). The slots are
- * the detail card's: the live card shows no chips or chart, and the report draws its own charts.
+ * Heights come from each date's or design's prepared surface (`pointHistory.ts`). Every survey date
+ * is listed with its surface state (`useSurveyDates`): a date still preparing, waiting for Prepare
+ * or without elevation shows as such on its chip, and an empty chart or table names that reason,
+ * never "No survey data" (volumetrics redesign, section 2). The slots are the detail card's: the
+ * live card shows no chips or chart, and the report draws its own charts.
  */
 import { useAnnotateReadOnly } from '@aio/annotate';
 import { formatQuantity, localeOf } from '@aio/geo';
@@ -62,15 +65,18 @@ import { SurfaceChips, type ChipOption } from '../../charts/SurfaceChips';
 import { TimeChart, type TimeReference } from '../../charts/TimeChart';
 import { Calculators } from '../Calculators';
 import { Comparisons } from '../Comparison';
+import { prepareDates } from '../compareStore';
 import { drawnShifts, onDrawnPoints } from '../dateReadout';
 import { drawnPoints } from '../measureDates';
 import { measureStore, updateMeasurement, useMeasure } from '../measureStore';
 import { useFocusCapture } from '../qaHelpers';
 import { surfaceOfCapture, useQa } from '../qaStore';
 import { openSection, setWindow } from '../sectionStore';
+import { useSurfaceStates, type SurfaceState } from '../surfaceStates';
 import { measurementHasChart } from './chartRule';
 import type { CardSlots, CardVariant } from './MeasureCard';
 import {
+  emptyReason,
   heightAt,
   pointHistory,
   surfaceTiles,
@@ -273,18 +279,49 @@ export interface SurfaceOption {
   tiles?: HeightTiles;
 }
 
-/** Every survey date with a prepared surface, oldest first. */
-function useDatedSurfaces(): DatedSurface[] {
+const READY: SurfaceState = { kind: 'ready' };
+const NONE: SurfaceState = { kind: 'none' };
+
+/**
+ * Every dated survey, oldest first, with its surface state and its prepared surface once the
+ * cards can read it. A date the job has prepared but the cards' store has not read yet is still
+ * preparing (at 100 %): it has no tiles to draw.
+ */
+export function useSurveyDates(): DatedSurface[] {
   const captures = useWorkspace((s) => s.project?.manifest.captures);
   const surfaces = useQa((s) => s.surfaces);
+  const states = useSurfaceStates();
   return useMemo(() => {
     const out: DatedSurface[] = [];
     for (const c of captures ?? []) {
-      const tiles = surfaceOfCapture(surfaces, c.id);
-      if (tiles) out.push({ capture: c.id, label: c.label, date: c.date, tiles });
+      if (!c.date) continue;
+      const tiles = surfaceOfCapture(surfaces, c.id) ?? null;
+      const known = states.get(c.id) ?? NONE;
+      const state: SurfaceState = tiles
+        ? READY
+        : known.kind === 'ready'
+          ? { kind: 'preparing', pct: 100 }
+          : known;
+      out.push({ capture: c.id, label: c.label, date: c.date, state, tiles });
     }
     return out.sort((a, b) => a.date.localeCompare(b.date));
-  }, [captures, surfaces]);
+  }, [captures, surfaces, states]);
+}
+
+type ReadyDate = DatedSurface & { tiles: HeightTiles };
+const isReady = (d: DatedSurface): d is ReadyDate => d.tiles !== null;
+
+/** The survey dates whose prepared surface the cards can read, oldest first. */
+function useDatedSurfaces(): ReadyDate[] {
+  const dates = useSurveyDates();
+  return useMemo(() => dates.filter(isReady), [dates]);
+}
+
+/** Whether this card may start preparing a surface (a writable project, not look-only). */
+function useCanPrepare(): boolean {
+  const readOnly = useMeasure((s) => s.readOnly);
+  const lookOnly = useAnnotateReadOnly();
+  return !readOnly && !lookOnly;
 }
 
 /** The prepared design surfaces, by name. */
@@ -306,7 +343,7 @@ const fromDated = (d: DatedSurface): SurfaceOption => ({
   group: 'survey',
   capture: d.capture,
   date: d.date,
-  tiles: d.tiles,
+  ...(d.tiles ? { tiles: d.tiles } : {}),
 });
 
 /** Where the measurement is drawn (its date's line-up added), as the panel reads it. */
@@ -335,12 +372,12 @@ function Note({ text, testId }: { text: string; testId: string }) {
   );
 }
 
-/** The note for a load that has no value to show, or null when it has one. */
-function useLoadNote(l: Loaded<unknown>, testId: string): ReactElement | null {
+/** The note for a load that has no value to show, or null when it has one; `idle` says why. */
+function useLoadNote(l: Loaded<unknown>, testId: string, idle: string): ReactElement | null {
   const t = useT();
   if (l.status === 'loading') return <Note text={t('mcard.computing')} testId={`${testId}-busy`} />;
   if (l.status === 'error') return <Note text={t('mcard.loadFailed')} testId={`${testId}-error`} />;
-  if (l.status === 'idle') return <Note text={t('mcard.noData')} testId={`${testId}-none`} />;
+  if (l.status === 'idle') return <Note text={idle} testId={`${testId}-none`} />;
   return null;
 }
 
@@ -521,7 +558,7 @@ export function usePointVsText(m: SurveyMeasurement): string | null {
   if (surfaceZ.status === 'error')
     return t('mcard.vs', { name: option.label, value: t('mcard.loadFailed') });
   if (surfaceZ.status !== 'ready') return null;
-  const value = surfaceZ.value === null ? t('mcard.noData') : signed(z - surfaceZ.value);
+  const value = surfaceZ.value === null ? t('mcard.notMeasured') : signed(z - surfaceZ.value);
   return t('mcard.vs', { name: option.label, value });
 }
 
@@ -563,22 +600,26 @@ function PointChips({ m }: { m: SurveyMeasurement }): ReactElement | null {
 function ElevationOverTime({ m }: { m: SurveyMeasurement }): ReactElement {
   const t = useT();
   const project = useWorkspace((s) => s.project?.id ?? null);
-  const dated = useDatedSurfaces();
+  const dated = useSurveyDates();
   const point = useDrawn(m)[0];
   const { settings, units, locale } = useFormat(m);
   const { option, surfaceZ } = usePointVs(m);
   const e = point?.[0];
   const n = point?.[1];
   const rows = useLoaded<PointHistoryRow[]>(
-    project && e !== undefined && n !== undefined && dated.length > 0
+    project && e !== undefined && n !== undefined && dated.some(isReady)
       ? `history|${project}|${String(e)},${String(n)}|${surfacesKey(dated.map(fromDated))}`
       : null,
     () => pointHistory(dated, e ?? 0, n ?? 0, (s) => surfaceTiles(project ?? '', s)),
   );
-  const note = useLoadNote(rows, 'elevation-time');
+  const reason = t(emptyReason(dated.map((d) => d.state)));
+  const note = useLoadNote(rows, 'elevation-time', reason);
   if (note) return note;
   if (rows.status !== 'ready' || !rows.value.some((r) => r.z !== null))
-    return <Note text={t('mcard.noData')} testId="elevation-time-none" />;
+    return <Note text={reason} testId="elevation-time-none" />;
+  // a date with no height says why: its surface still to come, no elevation, or not measured here
+  const stateOf = new Map(dated.map((d) => [d.capture, d.state]));
+  const gapReason = (capture: string) => t(emptyReason([stateOf.get(capture) ?? NONE]));
   const references: TimeReference[] = [];
   if (option?.group === 'design' && surfaceZ.status === 'ready' && surfaceZ.value !== null)
     references.push({ key: option.key, label: option.label, z: surfaceZ.value, kind: 'design' });
@@ -591,6 +632,7 @@ function ElevationOverTime({ m }: { m: SurveyMeasurement }): ReactElement {
       units={units}
       precision={settings.precision}
       locale={locale}
+      gapReason={gapReason}
       testId="elevation-time"
     />
   );
@@ -615,6 +657,7 @@ export function lineOptions(
       kind: d.capture === current ? 'current' : 'earlier',
       group: 'survey',
       date: d.date,
+      state: d.state,
     })),
     ...designs.map((d): ChipOption => ({
       key: d.key,
@@ -640,14 +683,15 @@ function baseSeries(pts: readonly SitePoint[]): { chainage: number[]; z: number[
 }
 
 /**
- * A line's surfaces: those chosen, else the date in focus (or the latest) and the one before; the
- * sampled profile of each one chosen, read once for the card's chips, chart and detail.
+ * A line's surfaces: those chosen, else the date in focus (or the latest) and the one before,
+ * whatever their surface state; the sampled profile of each one chosen that has a surface (a date
+ * still preparing joins when it is ready), read once for the card's chips, chart and detail.
  */
 function useLine(m: SurveyMeasurement) {
   const t = useT();
   const project = useWorkspace((s) => s.project?.id ?? null);
   const pts = useDrawn(m);
-  const dated = useDatedSurfaces();
+  const dated = useSurveyDates();
   const designs = useDesignSurfaces();
   const focus = useFocusCapture();
   const view = useStore(cardViews, (s) => s[m.id]) ?? EMPTY_VIEW;
@@ -661,7 +705,13 @@ function useLine(m: SurveyMeasurement) {
   const shown = (view.shown ?? fallback).filter((k) => known.has(k));
   const tilesOf = (key: string): HeightTiles | undefined =>
     dated.find((d) => d.capture === key)?.tiles ?? designs.find((d) => d.key === key)?.tiles;
-  const picked = options.filter((o) => shown.includes(o.key));
+  // a survey date draws only once its surface is ready (the base is the line itself)
+  const picked = options.filter(
+    (o) => shown.includes(o.key) && (o.group !== 'survey' || tilesOf(o.key) !== undefined),
+  );
+  // why a chart or a length has nothing to show: the shown dates' states, else every date's
+  const shownStates = dated.filter((d) => shown.includes(d.capture)).map((d) => d.state);
+  const reason = t(emptyReason(shownStates.length > 0 ? shownStates : dated.map((d) => d.state)));
   const series = useLoaded<ChartSeries[]>(
     project && pts.length >= 2 && picked.length > 0
       ? `line|${project}|${JSON.stringify(pts)}|${surfacesKey(picked.map((o) => ({ key: `${o.key}/${o.kind}`, tiles: tilesOf(o.key) })))}`
@@ -704,6 +754,7 @@ function useLine(m: SurveyMeasurement) {
     view,
     series,
     visible,
+    reason,
     any: dated.length + designs.length > 0,
   };
 }
@@ -711,6 +762,7 @@ function useLine(m: SurveyMeasurement) {
 /** The surfaces on the line's profile, as the chart's chips (surveys, designs, the base). */
 function LineChips({ m }: { m: SurveyMeasurement }): ReactElement | null {
   const { options, shown, off, view, any } = useLine(m);
+  const canPrepare = useCanPrepare();
   if (!any) return null;
   return (
     <SurfaceChips
@@ -733,6 +785,13 @@ function LineChips({ m }: { m: SurveyMeasurement }): ReactElement | null {
           shadeVs: view.shadeVs === key ? null : view.shadeVs,
         });
       }}
+      {...(canPrepare
+        ? {
+            onPrepare: (key: string) => {
+              void prepareDates([key]);
+            },
+          }
+        : {})}
       testId="line-chips"
     />
   );
@@ -792,13 +851,13 @@ export function bermPins(pts: readonly SitePoint[], series: ChartSeries, berm: B
 /** The line's profile on each chosen surface (`ProfileChart`); a berm check marks its berm. */
 function LineProfile({ m }: { m: SurveyMeasurement }): ReactElement | null {
   const t = useT();
-  const { pts, series, visible, view, shown, any } = useLine(m);
+  const { pts, series, visible, view, shown, any, reason } = useLine(m);
   const { settings, units, angles, locale } = useFormat(m);
-  const note = useLoadNote(series, 'line-profile');
-  if (!any) return <Note text={t('mcard.noData')} testId="line-profile-none" />;
+  const note = useLoadNote(series, 'line-profile', reason);
+  if (!any) return <Note text={reason} testId="line-profile-none" />;
   if (note) return note;
   if (!visible.some((s) => s.z.some((z) => z !== null)))
-    return <Note text={t('mcard.noData')} testId="line-profile-none" />;
+    return <Note text={reason} testId="line-profile-none" />;
   const targets = visible
     .filter((s) => s.kind !== 'current')
     .map((s) => ({ key: s.key, label: s.label }));
@@ -858,7 +917,7 @@ function TerrainLengths({ m }: { m: SurveyMeasurement }): ReactElement | null {
           return (
             <tr key={s.key} data-surface={s.key}>
               <th scope="row">{s.label}</th>
-              <td className="mono">{len === null ? t('mcard.noData') : d(len)}</td>
+              <td className="mono">{len === null ? t('mcard.notMeasured') : d(len)}</td>
             </tr>
           );
         })}
@@ -950,13 +1009,18 @@ function OpenSection({ m }: { m: SurveyMeasurement }): ReactElement | null {
 
 // ---------------------------------------------------------------- area: terrain area per date
 
-/** The polygon's terrain area on each survey date, as chips; the date in focus is on. */
+/**
+ * The polygon's terrain area on each survey date, as chips; the date in focus is on. A date
+ * without a surface yet shows its state instead (preparing, Prepare, no elevation).
+ */
 function AreaDates({ m }: { m: SurveyMeasurement }): ReactElement | null {
   const t = useT();
   const project = useWorkspace((s) => s.project?.id ?? null);
   const ring = useDrawn(m);
-  const dated = useDatedSurfaces();
+  const all = useSurveyDates();
+  const dated = useMemo(() => all.filter(isReady), [all]);
   const focus = useFocusCapture();
+  const canPrepare = useCanPrepare();
   const { settings, units, locale } = useFormat(m);
   const areas = useLoaded<Record<string, number | null>>(
     project && ring.length >= 3 && dated.length > 0
@@ -978,31 +1042,47 @@ function AreaDates({ m }: { m: SurveyMeasurement }): ReactElement | null {
       return Object.fromEntries(r);
     },
   );
-  if (dated.length === 0) return null;
+  if (all.length === 0) return null;
+  const valueOf = (d: DatedSurface): ReactElement | string => {
+    const st = d.state;
+    if (st.kind === 'preparing') return t('surface.state.preparing', { pct: String(st.pct) });
+    if (st.kind === 'none') return t('surface.state.none');
+    if (st.kind === 'missing')
+      return canPrepare ? (
+        <button
+          type="button"
+          className="pc-chip-prepare"
+          data-testid="chip-prepare"
+          onClick={() => {
+            void prepareDates([d.capture]);
+          }}
+        >
+          {t('surface.state.prepare')}
+        </button>
+      ) : (
+        t(emptyReason([st]))
+      );
+    const a = areas.status === 'ready' ? areas.value[d.capture] : undefined;
+    if (areas.status === 'error') return t('mcard.loadFailed');
+    if (areas.status !== 'ready') return t('mcard.computing');
+    return a === null || a === undefined
+      ? t('mcard.notMeasured')
+      : formatQuantity(a, 'area', units, settings.precision, locale);
+  };
   return (
     <ul className="pc-chips mc-dates" data-testid="area-dates" aria-label={t('chart.date')}>
-      {dated.map((d) => {
-        const a = areas.status === 'ready' ? areas.value[d.capture] : undefined;
-        const text =
-          areas.status === 'error'
-            ? t('mcard.loadFailed')
-            : areas.status !== 'ready'
-              ? t('mcard.computing')
-              : a === null || a === undefined
-                ? t('mcard.noData')
-                : formatQuantity(a, 'area', units, settings.precision, locale);
-        return (
-          <li
-            key={d.capture}
-            className="pc-chip mc-date"
-            data-on={d.capture === focus ? '' : undefined}
-            data-capture={d.capture}
-          >
-            <span className="pc-chip-label">{d.label}</span>
-            <span className="mc-date-value">{text}</span>
-          </li>
-        );
-      })}
+      {all.map((d) => (
+        <li
+          key={d.capture}
+          className="pc-chip mc-date"
+          data-on={d.capture === focus ? '' : undefined}
+          data-capture={d.capture}
+          data-state={d.state.kind}
+        >
+          <span className="pc-chip-label">{d.label}</span>
+          <span className="mc-date-value">{valueOf(d)}</span>
+        </li>
+      ))}
     </ul>
   );
 }

@@ -45,7 +45,10 @@ afterEach(() => {
   host.remove();
 });
 
-function render(data: TimeChartData, p: { units?: SurveyUnits; interactive?: boolean } = {}) {
+function render(
+  data: TimeChartData,
+  p: { units?: SurveyUnits; interactive?: boolean; gapReason?: (capture: string) => string } = {},
+) {
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
@@ -58,6 +61,7 @@ function render(data: TimeChartData, p: { units?: SurveyUnits; interactive?: boo
         width={600}
         height={220}
         {...(p.interactive === undefined ? {} : { interactive: p.interactive })}
+        {...(p.gapReason ? { gapReason: p.gapReason } : {})}
       />,
     ),
   );
@@ -116,6 +120,23 @@ describe('TimeChart', () => {
     });
     expect(dot(h, 'b')).toBeNull();
     expect(h.querySelector('[data-gap="b"]')?.textContent).toContain('No survey data');
+  });
+
+  it('TimeChart gap tip uses gapReason', () => {
+    const h = render(
+      {
+        kind: 'elevation',
+        rows: [
+          { capture: 'a', label: 'a', date: '2026-09-01', z: 10 },
+          { capture: 'b', label: 'b', date: '2026-09-15', z: null },
+          { capture: 'c', label: 'c', date: '2026-10-01', z: 11 },
+        ],
+      },
+      { gapReason: (c) => (c === 'b' ? 'Surface preparing' : 'Not measured on this date') },
+    );
+    const gap = h.querySelector('[data-gap="b"]')?.textContent ?? '';
+    expect(gap).toContain('Surface preparing');
+    expect(gap).not.toContain('No survey data');
   });
 
   it('stale date is a hollow dot with the stale tip', () => {

@@ -173,6 +173,68 @@ describe('SurfaceChips', () => {
     expect(document.querySelector('[role="menu"]')).toBeNull();
   });
 
+  it('a survey chip carries its surface state: ready, preparing 62 % and Prepare', () => {
+    const onToggle = vi.fn();
+    const onPrepare = vi.fn();
+    const h = mount(
+      <SurfaceChips
+        shown={[
+          { ...CURRENT, state: { kind: 'ready' } },
+          { ...EARLIER, state: { kind: 'preparing', pct: 62 } },
+          { ...OLDER, state: { kind: 'missing' } },
+        ]}
+        off={new Set()}
+        addable={[]}
+        onToggle={onToggle}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+        onPrepare={onPrepare}
+      />,
+    );
+    const at = (k: string) => h.querySelector<HTMLElement>(`[data-chip="${k}"]`);
+    expect(at('cap-2')?.getAttribute('data-state')).toBe('ready');
+    expect(at('cap-1')?.getAttribute('data-state')).toBe('preparing');
+    expect(at('cap-1')?.textContent).toContain('preparing 62 %');
+    // a preparing chip is not toggleable
+    const main = at('cap-1')?.querySelector<HTMLButtonElement>('.pc-chip-main');
+    expect(main?.getAttribute('aria-disabled')).toBe('true');
+    click(main);
+    expect(onToggle).not.toHaveBeenCalled();
+    // a missing one offers Prepare
+    expect(at('cap-0')?.getAttribute('data-state')).toBe('missing');
+    const prepare = at('cap-0')?.querySelector<HTMLButtonElement>('[data-testid="chip-prepare"]');
+    expect(prepare?.textContent).toBe('Prepare');
+    click(prepare);
+    expect(onPrepare).toHaveBeenCalledWith('cap-0');
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it('a date without elevation is a disabled chip with "No elevation for this date"', () => {
+    const onToggle = vi.fn();
+    const h = mount(
+      <SurfaceChips
+        shown={[{ ...EARLIER, state: { kind: 'none' } }]}
+        off={new Set()}
+        addable={[]}
+        onToggle={onToggle}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    const el = h.querySelector<HTMLElement>('[data-chip="cap-1"]');
+    expect(el?.getAttribute('data-state')).toBe('none');
+    const main = el?.querySelector<HTMLButtonElement>('.pc-chip-main');
+    expect(main?.getAttribute('aria-disabled')).toBe('true');
+    const described = (main?.getAttribute('aria-describedby') ?? '')
+      .split(' ')
+      .map((id) => document.getElementById(id)?.textContent)
+      .join(' ');
+    expect(described).toContain('No elevation for this date');
+    click(main);
+    expect(onToggle).not.toHaveBeenCalled();
+    expect(el?.querySelector('[data-testid="chip-prepare"]')).toBeNull();
+  });
+
   it('one surface: no Shade vs control', () => {
     let h = mount(<ShadeVs targets={[]} value={null} onChange={() => undefined} />);
     expect(h.innerHTML).toBe('');

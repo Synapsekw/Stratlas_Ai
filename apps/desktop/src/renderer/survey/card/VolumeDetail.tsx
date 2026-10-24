@@ -745,7 +745,7 @@ function Figures({
           {row('total', t('vol.card.total'), result.totalM3, a(result.areaM2))}
           {result.uncoveredM2 > 0 && (
             <tr data-key="uncovered">
-              <th scope="row">{t('mcard.noData')}</th>
+              <th scope="row">{t('mcard.notMeasured')}</th>
               <td className="vd-num" colSpan={carried ? 1 : 2}>
                 {a(result.uncoveredM2)}
               </td>
@@ -887,7 +887,7 @@ function OverTime({
               aria-current={r.latest ? 'date' : undefined}
             >
               <th scope="row">{r.label}</th>
-              <td>{r.valueM3 !== null ? v(r.valueM3) : t('mcard.noData')}</td>
+              <td>{r.valueM3 !== null ? v(r.valueM3) : t('mcard.notMeasured')}</td>
               <td>{r.changeM3 !== null ? signed(r.changeM3) : ''}</td>
               {tonnage && <td>{r.tonnes !== null ? mass(r.tonnes) : ''}</td>}
             </tr>

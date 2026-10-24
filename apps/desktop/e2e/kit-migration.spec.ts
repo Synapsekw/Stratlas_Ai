@@ -246,7 +246,7 @@ test('an old stockpile project opens with its kit figures labelled and no unsave
   const rows = south.getByTestId('vol-time-table').locator('tbody tr');
   await expect(rows).toHaveCount(2);
   expect(figure(await rows.nth(0).locator('td').first().innerText())).toBeCloseTo(SOUTH_E1, 2);
-  await expect(rows.nth(1).locator('td').first()).toHaveText('No survey data');
+  await expect(rows.nth(1).locator('td').first()).toHaveText('Not measured on this date');
   await expect(saved).toContainText('All saved');
 
   // written once, as converted measurements; the kit's own files are left as they were

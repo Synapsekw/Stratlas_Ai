@@ -28,6 +28,20 @@ vi.mock('./pointHistory', async (orig) => ({
   heightAt: (tiles: { id: string }, e: number, n: number) =>
     Promise.resolve(ground.at[tiles.id]?.(e, n) ?? null),
 }));
+/** Each date's surface state, as `useSurfaceStates` gives it (A5). */
+const states = vi.hoisted((): { map: Map<string, unknown> } => ({ map: new Map() }));
+vi.mock('../surfaceStates', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  useSurfaceStates: () => states.map,
+}));
+const prepared = vi.hoisted(() => ({ dates: [] as (readonly string[])[] }));
+vi.mock('../compareStore', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  prepareDates: (captures: readonly string[]) => {
+    prepared.dates.push(captures);
+    return Promise.resolve(null);
+  },
+}));
 const section = vi.hoisted(() => ({ opened: [] as unknown[], window: false }));
 vi.mock('../sectionStore', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -207,8 +221,20 @@ describe('the card slots by tool', () => {
 
   it('offers a line the survey dates, the designs and the base', () => {
     const dated = [
-      { capture: 'jan', label: 'January', date: '2026-01-01', tiles: tiles('sjan', 'jan') },
-      { capture: 'jun', label: 'June', date: '2026-06-01', tiles: tiles('sjun', 'jun') },
+      {
+        capture: 'jan',
+        label: 'January',
+        date: '2026-01-01',
+        state: { kind: 'ready' as const },
+        tiles: tiles('sjan', 'jan'),
+      },
+      {
+        capture: 'jun',
+        label: 'June',
+        date: '2026-06-01',
+        state: { kind: 'ready' as const },
+        tiles: tiles('sjun', 'jun'),
+      },
     ];
     const designs = [
       { key: 'design:d1', label: 'Design pad FG', group: 'design' as const, tiles: tiles('d1') },
@@ -261,6 +287,8 @@ afterEach(() => {
   cardViews.setState({}, true);
   workspace.getState().closeProject();
   ground.at = {};
+  states.map = new Map();
+  prepared.dates = [];
 });
 
 describe('lines on the card', () => {
@@ -378,6 +406,141 @@ describe('an area on the card', () => {
       add?.click();
     });
     expect(measureStore.getState().file.measurements[0]?.items).toHaveLength(1);
+  });
+});
+
+describe('every survey date with its surface state', () => {
+  /** Three dates: January prepared, June preparing, September waiting for Prepare. */
+  const threeDates = () => {
+    workspace.getState().openProject({
+      id: 'slots',
+      root: 'E:/p',
+      manifest: {
+        ...manifest,
+        captures: [
+          { id: 'jan', label: 'January', date: '2026-01-01' },
+          { id: 'jun', label: 'June', date: '2026-06-01' },
+          { id: 'sep', label: 'September', date: '2026-09-01' },
+          { id: 'dec', label: 'December', date: '2026-12-01' },
+        ],
+      },
+    });
+    qaStore.setState({ surfaces: [tiles('sjan', 'jan')] });
+    states.map = new Map<string, unknown>([
+      ['jan', { kind: 'ready' }],
+      ['jun', { kind: 'preparing', pct: 62 }],
+      ['sep', { kind: 'missing' }],
+      ['dec', { kind: 'none' }],
+    ]);
+  };
+  const line = () =>
+    of('distance', [
+      [0, 0, 0],
+      [10, 0, 0],
+    ]);
+  const chipAt = (key: string) =>
+    host.querySelector<HTMLElement>(`[data-testid="line-chips"] [data-chip="${key}"]`);
+
+  it('a line card lists every survey date as a chip, ready, preparing 62 % and Prepare', async () => {
+    threeDates();
+    ground.at = { sjan: () => 0 };
+    act(() => {
+      cardViews.setState({
+        distance: { shown: ['jan', 'jun', 'sep', 'dec'], off: [], shadeVs: null, vs: null },
+      });
+    });
+    await render(slotsFor(line(), 'detail').chips);
+    expect(chipAt('jan')?.getAttribute('data-state')).toBe('ready');
+    expect(chipAt('jun')?.getAttribute('data-state')).toBe('preparing');
+    expect(chipAt('jun')?.textContent).toContain('preparing 62 %');
+    expect(chipAt('sep')?.querySelector('[data-testid="chip-prepare"]')?.textContent).toBe(
+      'Prepare',
+    );
+  });
+
+  it('by default the chips are the latest date and the one before, whatever their state', async () => {
+    threeDates();
+    await render(slotsFor(line(), 'detail').chips);
+    const keys = [...host.querySelectorAll('[data-testid="line-chips"] [data-chip]')].map((c) =>
+      c.getAttribute('data-chip'),
+    );
+    expect(keys).toEqual(['dec', 'sep']);
+  });
+
+  it('Prepare on a chip starts prepareDates for that date', async () => {
+    threeDates();
+    act(() => {
+      cardViews.setState({
+        distance: { shown: ['jan', 'sep'], off: [], shadeVs: null, vs: null },
+      });
+    });
+    await render(slotsFor(line(), 'detail').chips);
+    act(() => {
+      chipAt('sep')?.querySelector<HTMLButtonElement>('[data-testid="chip-prepare"]')?.click();
+    });
+    expect(prepared.dates).toEqual([['sep']]);
+  });
+
+  it('a date without elevation is a disabled chip with "No elevation for this date"', async () => {
+    threeDates();
+    act(() => {
+      cardViews.setState({ distance: { shown: ['dec'], off: [], shadeVs: null, vs: null } });
+    });
+    await render(slotsFor(line(), 'detail').chips);
+    const main = chipAt('dec')?.querySelector<HTMLButtonElement>('.pc-chip-main');
+    expect(chipAt('dec')?.getAttribute('data-state')).toBe('none');
+    expect(main?.getAttribute('aria-disabled')).toBe('true');
+    expect(host.textContent).toContain('No elevation for this date');
+  });
+
+  it('no card shows "No survey data"', async () => {
+    threeDates();
+    // nothing prepared yet: June preparing, September missing, December without elevation
+    qaStore.setState({ surfaces: [] });
+    states.map.set('jan', { kind: 'preparing', pct: 10 });
+    const texts: string[] = [];
+    for (const m of [
+      line(),
+      of('elevation', [[5, 5, 3]]),
+      of('elevation-difference', [[5, 5, 3]]),
+      of('area'),
+    ]) {
+      const s = slotsFor(m, 'detail');
+      await render(
+        <>
+          {s.chips}
+          {s.chart}
+          {s.detail}
+        </>,
+      );
+      texts.push(host.textContent);
+    }
+    for (const text of texts) expect(text).not.toContain('No survey data');
+    // the line's profile and the point's chart name the reason
+    expect(texts[0]).toContain('Surface preparing');
+    expect(texts[1]).toContain('Surface preparing');
+    // the area names each date's state
+    expect(texts[3]).toContain('preparing 62 %');
+    expect(texts[3]).toContain('No elevation for this date');
+  });
+
+  it('a date with elevation where the line has none reads "Not measured on this date"', async () => {
+    threeDates();
+    states.map = new Map([['jan', { kind: 'ready' }]]);
+    act(() => {
+      cardViews.setState({ distance: { shown: ['jan'], off: [], shadeVs: null, vs: null } });
+    });
+    // the surface has no height under the line (a line of its own: loads are shared by inputs)
+    ground.at = { sjan: () => null };
+    const s = slotsFor(
+      of('distance', [
+        [100, 0, 0],
+        [110, 0, 0],
+      ]),
+      'detail',
+    );
+    await render(s.chart);
+    expect(host.textContent).toContain('Not measured on this date');
   });
 });
 

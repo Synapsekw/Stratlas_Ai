@@ -2,10 +2,15 @@
  * The surfaces on a chart, as chips: press one to hide or show its line, × takes it off, and
  * "+ Add survey or design" offers the rest grouped as surveys, designs and the base. Each chip's
  * swatch is drawn in its line's style, so the chips double as the legend.
+ *
+ * A survey date's chip carries its surface state (spec section 2): ready as above; preparing shows
+ * its percentage, dimmed and not toggleable; missing offers "Prepare"; none is disabled, its reason
+ * ("No elevation for this date") its accessible description and its tip.
  */
 import { seriesStyle, type ChartSeries, type SeriesKind } from '@aio/survey';
-import { arrowFocus, Icon, Popover, useT } from '@aio/ui';
-import { useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
+import { arrowFocus, Icon, Popover, Tip, useT } from '@aio/ui';
+import { useId, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
+import type { SurfaceState } from '../survey/surfaceStates';
 import './charts.css';
 
 export interface ChipOption {
@@ -15,6 +20,8 @@ export interface ChipOption {
   group: 'survey' | 'design' | 'base';
   /** The survey date (ISO), so earlier dates shade by age on the chips as on the lines. */
   date?: string;
+  /** A survey date's surface state; absent: ready. */
+  state?: SurfaceState;
 }
 
 const GROUPS: readonly ChipOption['group'][] = ['survey', 'design', 'base'];
@@ -46,6 +53,89 @@ function Swatch({ option, peers }: { option: ChipOption; peers: readonly ChartSe
   );
 }
 
+/** One chip: its swatch and label (press to hide or show), its state, and × to take it off. */
+function Chip(p: {
+  option: ChipOption;
+  on: boolean;
+  peers: readonly ChartSeries[];
+  onToggle: (key: string) => void;
+  onRemove: (key: string) => void;
+  onPrepare?: (key: string) => void;
+}): ReactElement {
+  const t = useT();
+  const reasonId = useId();
+  const o = p.option;
+  const state = o.state ?? { kind: 'ready' };
+  // only a ready surface has a line to hide or show
+  const inert = state.kind !== 'ready';
+  const none = state.kind === 'none';
+  const main = (
+    <button
+      type="button"
+      className="pc-chip-main"
+      aria-pressed={p.on}
+      aria-disabled={inert || undefined}
+      aria-describedby={none ? reasonId : undefined}
+      onClick={() => {
+        if (!inert) p.onToggle(o.key);
+      }}
+    >
+      <Swatch option={o} peers={p.peers} />
+      <span className="pc-chip-label">{o.label}</span>
+      {state.kind === 'preparing' && (
+        <span className="pc-chip-state">
+          {t('surface.state.preparing', { pct: String(state.pct) })}
+        </span>
+      )}
+    </button>
+  );
+  return (
+    <span
+      className="pc-chip"
+      data-chip={o.key}
+      data-on={p.on ? '' : undefined}
+      data-state={o.state ? state.kind : undefined}
+    >
+      {none ? (
+        <>
+          <Tip content={t('surface.state.none')} placement="top" repeatsName>
+            {main}
+          </Tip>
+          <span id={reasonId} className="sr-only">
+            {t('surface.state.none')}
+          </span>
+        </>
+      ) : (
+        main
+      )}
+      {state.kind === 'missing' && p.onPrepare && (
+        <button
+          type="button"
+          className="pc-chip-prepare"
+          data-testid="chip-prepare"
+          onClick={() => {
+            p.onPrepare?.(o.key);
+          }}
+        >
+          {t('surface.state.prepare')}
+        </button>
+      )}
+      {o.kind !== 'current' && (
+        <button
+          type="button"
+          className="pc-chip-x"
+          aria-label={t('review.remove', { name: o.label })}
+          onClick={() => {
+            p.onRemove(o.key);
+          }}
+        >
+          <Icon name="x" size={12} />
+        </button>
+      )}
+    </span>
+  );
+}
+
 export function SurfaceChips(p: {
   shown: readonly ChipOption[];
   off: ReadonlySet<string>;
@@ -53,6 +143,8 @@ export function SurfaceChips(p: {
   onToggle(key: string): void;
   onAdd(key: string): void;
   onRemove(key: string): void;
+  /** Start preparing a survey date's surface (a chip whose surface is missing). */
+  onPrepare?: (key: string) => void;
   testId?: string;
 }): ReactElement {
   const t = useT();
@@ -71,36 +163,21 @@ export function SurfaceChips(p: {
   };
   return (
     <div className="pc-chips" data-testid={testId}>
-      {p.shown.map((o) => {
-        const on = !p.off.has(o.key);
-        return (
-          <span key={o.key} className="pc-chip" data-chip={o.key} data-on={on ? '' : undefined}>
-            <button
-              type="button"
-              className="pc-chip-main"
-              aria-pressed={on}
-              onClick={() => {
-                p.onToggle(o.key);
-              }}
-            >
-              <Swatch option={o} peers={peers} />
-              <span className="pc-chip-label">{o.label}</span>
-            </button>
-            {o.kind !== 'current' && (
-              <button
-                type="button"
-                className="pc-chip-x"
-                aria-label={t('review.remove', { name: o.label })}
-                onClick={() => {
-                  p.onRemove(o.key);
-                }}
-              >
-                <Icon name="x" size={12} />
-              </button>
-            )}
-          </span>
-        );
-      })}
+      {p.shown.map((o) => (
+        <Chip
+          key={o.key}
+          option={o}
+          on={!p.off.has(o.key)}
+          peers={peers}
+          onToggle={(key) => {
+            p.onToggle(key);
+          }}
+          onRemove={(key) => {
+            p.onRemove(key);
+          }}
+          {...(p.onPrepare ? { onPrepare: p.onPrepare } : {})}
+        />
+      ))}
       {p.addable.length > 0 && (
         <>
           <button

@@ -59,6 +59,8 @@ export interface TimeChartProps {
   width?: number; // width given → no ResizeObserver (static render for the report)
   height?: number;
   interactive?: boolean; // false: no crosshair, no tips (report)
+  /** Why a date has no value (its gap's tip and the readout); absent: "No survey data". */
+  gapReason?: (capture: string) => string;
   testId?: string;
 }
 
@@ -268,6 +270,7 @@ export function TimeChart(p: TimeChartProps): ReactElement {
   const [at, setAt] = useState<number | null>(null);
   const hovering = useRef(false);
   const live = interactive && at !== null ? (cols[at] ?? null) : null;
+  const gapOf = (capture: string): string => p.gapReason?.(capture) ?? t('mcard.noData');
   const nearest = (clientX: number, svg: SVGSVGElement) => {
     const px = clientX - svg.getBoundingClientRect().left;
     let best = -1;
@@ -460,7 +463,7 @@ export function TimeChart(p: TimeChartProps): ReactElement {
           {columnsOf.map(({ c, cx: px }) => {
             const colour = c.latest ? 'var(--chart-current)' : 'var(--chart-earlier)';
             if (c.value === null) {
-              const note = t('mcard.noData');
+              const note = gapOf(c.capture);
               const mark = (
                 <g className="tc-gap" data-gap={c.capture}>
                   <desc>{note}</desc>
@@ -583,7 +586,7 @@ export function TimeChart(p: TimeChartProps): ReactElement {
                 : null}
               <div className={liveRow ? 'pc-ro-row pc-ro-sep' : 'pc-ro-row'}>
                 <dt>{t(isElev ? 'chart.elevation' : 'chart.volume')}</dt>
-                <dd>{live.value === null ? t('mcard.noData') : fmt(live.value)}</dd>
+                <dd>{live.value === null ? gapOf(live.capture) : fmt(live.value)}</dd>
               </div>
               <div className="pc-ro-row">
                 <dt>{t('vol.change')}</dt>
@@ -596,7 +599,7 @@ export function TimeChart(p: TimeChartProps): ReactElement {
         {interactive && (
           <p className="sr-only" aria-live="polite" data-testid="time-live">
             {live
-              ? `${live.label}, ${live.value === null ? t('mcard.noData') : fmt(live.value)}, ${t('vol.change')} ${changeText(live)}${liveNote !== '' ? `. ${liveNote}` : ''}`
+              ? `${live.label}, ${live.value === null ? gapOf(live.capture) : fmt(live.value)}, ${t('vol.change')} ${changeText(live)}${liveNote !== '' ? `. ${liveNote}` : ''}`
               : ''}
           </p>
         )}
