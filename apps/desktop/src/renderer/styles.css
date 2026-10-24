@@ -2819,10 +2819,12 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
 
 /* timeline area */
 .tl-wrap {
-  --tl-switch-w: 132px;
+  --tl-switch-w: 168px;
   position: relative;
   grid-area: tl;
   min-width: 0;
+  /* the switch reads the bar's width (below) */
+  container: tl-wrap / inline-size;
 }
 /* Video and two or more survey dates: the "Dates | Footage" switch sits at the left of whichever
    bar shows (the dates strip's 30 px bar, the footage timeline's 38 px one), and the bar makes
@@ -2838,6 +2840,26 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
 .tl-switch button {
   flex: 1;
   justify-content: center;
+  min-inline-size: 0;
+}
+.tl-switch-label {
+  white-space: nowrap;
+}
+/* a narrow bar (the CI window with both sidebars open leaves about 380 px): the switch keeps its
+   icons, named and with their tips, and Compare, Fit and Collapse keep their room in the bar */
+@container tl-wrap (max-width: 759px) {
+  .tl-switch {
+    --tl-switch-w: 60px;
+  }
+  .tl-switch button {
+    padding-inline: 0;
+  }
+  .tl-switch-label {
+    display: none;
+  }
+  .tl-wrap[data-switch] .tl-h {
+    --tl-switch-w: 60px;
+  }
 }
 .tl-wrap[data-bottom='dates'] > .tl-switch {
   inset-block-start: 3px;

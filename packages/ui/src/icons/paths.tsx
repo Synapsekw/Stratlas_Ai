@@ -552,6 +552,13 @@ export const ICONS = {
       <path d="M2.5 5.5a1 1 0 011-1h4l1.5 2h7.5a1 1 0 011 1v7.5a1 1 0 01-1 1h-13a1 1 0 01-1-1z" />
     </>
   ),
+  calendar: (
+    <>
+      <rect x="3" y="4.5" width="14" height="12.5" rx="1.5" />
+      <path d="M7 3v3M13 3v3M3 8h14" />
+      <path d="M6.5 11h2M11.5 11h2M6.5 14h2" />
+    </>
+  ),
   'calendar-plus': (
     <>
       <rect x="3" y="4.5" width="14" height="12.5" rx="1.5" />

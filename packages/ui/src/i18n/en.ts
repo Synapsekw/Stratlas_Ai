@@ -6452,6 +6452,8 @@ export const en = {
   'strip.switch.dates': 'Dates',
   'strip.switch.footage': 'Footage',
   'strip.switch.aria': 'Bottom timeline',
+  'strip.switch.datesTip': 'Survey dates chart',
+  'strip.switch.footageTip': 'Video footage timeline',
   'timelapse.playing': 'Playing · {date}',
   'timelapse.blend': '{from} and {to} blend {percent} %',
   'timelapse.between': 'Between surveys',

@@ -1,6 +1,6 @@
 import { formatDate, neighbourClip, Timeline, type TimelineModel, useT } from '@aio/ui';
 import { clock, useWorkspace, workspace } from '@aio/workspace';
-import { useCallback, type ReactElement } from 'react';
+import { useCallback } from 'react';
 import { useStore } from 'zustand';
 import { useMeasure } from '../survey/measureStore';
 import { PANEL_ID, PanelHandle } from '../shell/PanelHandle';
@@ -16,13 +16,13 @@ import { Stage } from './Stage';
 import { useTimeline } from './timeline';
 import { timelineActions, useTimelineBinding } from './timelineBinding';
 import { DatesStrip } from './dates/DatesStrip';
+import { BottomSwitch } from './BottomSwitch';
 import {
   bottomPref,
   bottomSlot,
   datedCount,
   offersSwitch,
   useTimelineShown,
-  type BottomPref,
   type BottomSlot,
 } from './timelinePref';
 import { LaneFocusFollow, WorkspaceLanes } from './WorkspaceLanes';
@@ -103,32 +103,6 @@ function useBottomSlot(): { slot: BottomSlot; switchable: boolean } {
     shown,
   };
   return { slot: bottomSlot(x), switchable: shown && offersSwitch(x) };
-}
-
-/** "Dates | Footage" at the left of the bottom bar, remembered per project. */
-function BottomSwitch({ slot }: { slot: BottomSlot }): ReactElement {
-  const t = useT();
-  const choose = (pref: BottomPref) => {
-    const id = workspace.getState().project?.id;
-    if (id) bottomPref.getState().set(id, pref);
-  };
-  return (
-    <div className="seg tl-switch" role="group" aria-label={t('strip.switch.aria')}>
-      {(['dates', 'footage'] as const).map((k) => (
-        <button
-          key={k}
-          type="button"
-          aria-pressed={slot === k}
-          data-testid={`bottom-switch-${k}`}
-          onClick={() => {
-            choose(k);
-          }}
-        >
-          {t(k === 'dates' ? 'strip.switch.dates' : 'strip.switch.footage')}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 export function WorkspaceScreen() {
