@@ -1233,6 +1233,7 @@ Test it with a project with photos on two survey dates (the change demo works), 
 ### Walks
 
 - [ ] With a placed walk, open **Other dates** from the walk player: the walk frames of other dates near you open turned the same way.
+- [ ] Compare two walks: right-click a placed walk, **Compare with walk**, pick another placed walk. The Split shows both; the distance chip is neutral under 5 m and amber past it; **Swap lead** and **Link look** work. The end to end spec `apps/desktop/e2e/walk-compare.spec.ts` runs the same steps on a synthetic project, and the 3D track and the Beam view cone are checked there too.
 
 ## Stage Point cloud cleanup: clip box, selections and noise
 
