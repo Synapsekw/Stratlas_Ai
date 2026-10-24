@@ -23,6 +23,7 @@ import {
   patchSettings,
   patchStudy,
   reassignOrphanEntry,
+  removeAntennasFromPlan,
   removeOrphanEntry,
   renameSector,
   resetRf,
@@ -587,6 +588,50 @@ describe('mirrored job defaults', () => {
     const r = row('ant-a');
     expect(r.carriers.map((c) => [c.carrierId, c.powerDbm, c.etiltDeg])).toEqual([['c1', 40, 4]]);
     expect(r.warnings).toEqual([{ code: 'power-missing', carrierId: 'c2' }]);
+  });
+});
+
+describe('removeAntennasFromPlan', () => {
+  it('removes a deleted antenna from a saved plan and saves', async () => {
+    site();
+    await loadRf('p1');
+    await removeAntennasFromPlan(['ant-b']);
+    expect(s().dirty).toBe(false);
+    expect(h.sectors?.antennas.map((a) => a.antennaId)).toEqual(['ant-a', 'ant-c']);
+    expect(h.sectors?.sectors.flatMap((x) => x.antennaIds)).toEqual(['ant-a', 'ant-c']);
+  });
+
+  it('removes it from a dirty plan without saving', async () => {
+    site();
+    await loadRf('p1');
+    patchStudy({ radiusM: 5000 });
+    h.calls = [];
+    await removeAntennasFromPlan(['ant-b']);
+    expect(s().dirty).toBe(true);
+    expect(s().sectors.study.radiusM).toBe(5000);
+    expect(s().sectors.antennas.map((a) => a.antennaId)).toEqual(['ant-a', 'ant-c']);
+    expect(h.calls.some(([c]) => c === 'rf:writeSectors')).toBe(false);
+  });
+
+  it('a sector left empty by the removal goes, as removeOrphan does', async () => {
+    site();
+    await loadRf('p1');
+    await removeAntennasFromPlan(['ant-a']);
+    expect(s().sectors.sectors.map((x) => x.id)).toEqual(['sec-s2', 'sec-s3']);
+  });
+
+  it('does nothing without a plan file, read-only, or when no id is in the plan', async () => {
+    site();
+    h.sectors = null;
+    await loadRf('p1');
+    h.calls = [];
+    await removeAntennasFromPlan(['ant-a']);
+    expect(s().dirty).toBe(false);
+    expect(h.calls).toEqual([]);
+    site();
+    await loadRf('p1');
+    await removeAntennasFromPlan(['ant-zzz']);
+    expect(h.calls.some(([c]) => c === 'rf:writeSectors')).toBe(false);
   });
 });
 

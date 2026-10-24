@@ -5,6 +5,7 @@ import { workspace, type OpenProject } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { antennaDeleteStore } from './antennaDelete';
 import {
   ANTENNA_CARD_SELECTOR,
   AntennaCard,
@@ -720,8 +721,9 @@ describe('AntennaCard editing', () => {
     expect(q('antenna-card-delete')).not.toBeNull();
     click('antenna-card-delete');
     await settle();
-    expect(antennaStore.getState().file!.units.map((u) => u.id)).toEqual(['a1']);
-    expect(antennaStore.getState().selected).toBeNull();
+    // the card only asks; the dialog's yes deletes
+    expect(antennaDeleteStore.getState().ask).toMatchObject({ ids: ['f1'] });
+    expect(antennaStore.getState().file!.units.map((u) => u.id)).toEqual(['a1', 'f1']);
   });
 
   it('Redraw outline starts the tool for this unit', () => {

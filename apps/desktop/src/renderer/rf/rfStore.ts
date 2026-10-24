@@ -591,6 +591,26 @@ export function removeOrphanEntry(antennaId: string): void {
   edit((f) => removeOrphan(f, antennaId));
 }
 
+/**
+ * Antennas were deleted from the inventory: take their settings and sector places out of the
+ * plan. A saved plan with no edits is changed and saved; a plan with unsaved edits gets the
+ * removal in its working copy only (it stays dirty, the person saves it), so nothing typed in
+ * Coverage is written behind their back. No plan file, a read-only project, or none of the ids
+ * in the plan: nothing happens.
+ */
+export async function removeAntennasFromPlan(ids: readonly string[]): Promise<void> {
+  const { hasFile, readOnly, dirty, sectors } = get();
+  if (!hasFile || readOnly) return;
+  const held = ids.filter(
+    (id) =>
+      sectors.antennas.some((a) => a.antennaId === id) ||
+      sectors.sectors.some((s) => s.antennaIds.includes(id)),
+  );
+  if (held.length === 0) return;
+  for (const id of held) removeOrphanEntry(id);
+  if (!dirty) await saveRf();
+}
+
 export type ReassignResult = null | 'read-only' | 'target-has-settings' | 'failed';
 
 /** The person's Reassign: an orphan's settings and place move to another unit. Answers null or why not. */

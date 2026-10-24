@@ -26,10 +26,10 @@ import { AntennaUserFields } from './AntennaUserFields';
 import { TONE, formatDeg, qualityTip, trueAzimuth } from './antennaFormat';
 import { KIND_COLOURS } from './antennaScene';
 import { isNotMeasured } from './antennaTyped';
+import { askDeleteAntennas } from './antennaDelete';
 import {
   beginFlag,
   decideAntenna,
-  deleteFlaggedUnit,
   filteredUnits,
   patchUnitUser,
   selectAntenna,
@@ -935,7 +935,7 @@ function CardBody(props: BodyProps): ReactElement {
               data-testid="antenna-card-delete"
               {...reason}
               onClick={() => {
-                void deleteFlaggedUnit(unit.id);
+                askDeleteAntennas([unit.id]);
               }}
             >
               {t('telecom.antennas.card.delete')}

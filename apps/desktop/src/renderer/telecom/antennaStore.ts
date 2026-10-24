@@ -60,6 +60,10 @@ export interface AntennaState {
   flagJob: { id: string; unit: string } | null;
   /** A `telecom.flag` start waiting for its job id: detection and a second flag are refused. */
   flagStarting: boolean;
+  /** The rows ticked for a bulk action in the project list. */
+  ticked: Record<string, true>;
+  /** A request to fly the camera to these units (the 3D view answers it); `seq` tells repeats. */
+  flyRequest: { ids: string[]; seq: number } | null;
 }
 
 export interface AiPreview {
@@ -91,6 +95,8 @@ const initial = (): AntennaState => ({
   flagging: null,
   flagJob: null,
   flagStarting: false,
+  ticked: {},
+  flyRequest: null,
 });
 
 export const antennaStore = createStore<AntennaState>()(initial);
@@ -487,19 +493,59 @@ export function setUnitKind(id: string, kind: AntennaKind): Promise<void> {
   });
 }
 
-/** Delete a unit a person flagged; a detected unit is only ever rejected. */
-export async function deleteFlaggedUnit(id: string): Promise<void> {
-  await change((file) =>
-    file.units.some((u) => u.id === id && u.origin === 'flagged')
-      ? { ...file, units: file.units.filter((u) => u.id !== id) }
-      : null,
-  );
-  const { file, selected, hidden } = get();
-  if (file?.units.some((u) => u.id === id)) return;
-  set({
-    selected: selected === id ? null : selected,
-    hidden: Object.fromEntries(Object.entries(hidden).filter(([k]) => k !== id)),
+/**
+ * Delete units, detected or flagged, through one `telecom:deleteAntennas` call (main writes the
+ * deletion record, the file and drops the crops). Queued behind pending writes. On success the
+ * file is the one main answers with, and the ids leave the selection, hiding and ticks; a refusal
+ * keeps everything as it was and answers why.
+ */
+export function deleteUnits(
+  ids: readonly string[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  let result: { ok: true } | { ok: false; error: string } = { ok: false, error: '' };
+  const next = queue.then(async () => {
+    const { file, projectId, root, readOnly } = get();
+    if (!file || !projectId || !root || readOnly || ids.length === 0) return;
+    const r = await bridge.call('telecom:deleteAntennas', { projectId, ids: [...ids] });
+    if (get().projectId !== projectId) return;
+    if (r.ok && r.value.ok) {
+      // a read that started before this write would bring back the file it replaced
+      loadSeq++;
+      const gone = new Set(ids);
+      const drop = <V>(m: Record<string, V>): Record<string, V> =>
+        Object.fromEntries(Object.entries(m).filter(([k]) => !gone.has(k)));
+      const { selected, hidden, ticked } = get();
+      set({
+        file: r.value.file,
+        message: null,
+        selected: selected !== null && gone.has(selected) ? null : selected,
+        hidden: drop(hidden),
+        ticked: drop(ticked),
+      });
+      result = { ok: true };
+      return;
+    }
+    result = { ok: false, error: !r.ok ? r.error : r.value.ok ? '' : r.value.error };
   });
+  queue = next.catch(() => undefined);
+  return next.then(() => result);
+}
+
+/** Tick or untick a row for a bulk action. */
+export function toggleTicked(id: string): void {
+  const { ticked } = get();
+  if (ticked[id])
+    set({ ticked: Object.fromEntries(Object.entries(ticked).filter(([k]) => k !== id)) });
+  else set({ ticked: { ...ticked, [id]: true } });
+}
+
+export function clearTicked(): void {
+  set({ ticked: {} });
+}
+
+/** Ask the 3D view to fly to these units. */
+export function requestFly(ids: readonly string[]): void {
+  set({ flyRequest: { ids: [...ids], seq: (get().flyRequest?.seq ?? 0) + 1 } });
 }
 
 export function selectAntenna(id: string | null): void {

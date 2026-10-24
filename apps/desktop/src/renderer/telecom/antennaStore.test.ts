@@ -16,7 +16,8 @@ import {
   applyAiLabels,
   beginFlag,
   cancelHint,
-  deleteFlaggedUnit,
+  deleteUnits,
+  toggleTicked,
   endFlag,
   resetTypedValue,
   setTypedValue,
@@ -50,6 +51,7 @@ const h = vi.hoisted(() => ({
   disk: { file: null as AntennasFile | null, readOnly: false },
   calls: [] as Call[],
   refuseWrite: false,
+  refuseDelete: null as string | null,
   starts: 0,
   delayRead: null as null | Promise<void>,
 }));
@@ -74,6 +76,16 @@ vi.mock('../shell', async () => {
           if (h.refuseWrite) return { ok: true, value: { ok: false, error: 'Newer on disk.' } };
           h.disk.file = structuredClone(req.file) as AntennasFile;
           return { ok: true, value: { ok: true } };
+        }
+        if (channel === 'telecom:deleteAntennas') {
+          if (h.refuseDelete) return { ok: true, value: { ok: false, error: h.refuseDelete } };
+          const gone = new Set(req.ids as string[]);
+          const left = need(h.disk.file);
+          h.disk.file = { ...left, units: left.units.filter((u) => !gone.has(u.id)) };
+          return {
+            ok: true,
+            value: { ok: true, deleted: [...gone], file: structuredClone(h.disk.file) },
+          };
         }
         if (channel === 'ai:antennaLabelPreview')
           return {
@@ -156,6 +168,7 @@ beforeEach(() => {
   h.disk = { file: null, readOnly: false };
   h.calls = [];
   h.refuseWrite = false;
+  h.refuseDelete = null;
   h.starts = 0;
   h.delayRead = null;
   bridgeCall.mockClear();
@@ -182,6 +195,8 @@ beforeEach(() => {
     flagging: null,
     flagJob: null,
     flagStarting: false,
+    ticked: {},
+    flyRequest: null,
   });
   localStorage.clear();
 });
@@ -1182,23 +1197,57 @@ describe('typed values and kinds', () => {
     expect(Object.keys(unit(0))).not.toContain('ai');
   });
 
-  it('deleteFlaggedUnit leaves a detected unit alone', async () => {
-    const id = unit(0).id;
-    await deleteFlaggedUnit(id);
+  it('deletes detected and flagged units through one IPC call', async () => {
+    h.disk.file = withFlagged('ant-f-x');
+    await loadAntennas('p1', '/p');
+    const ids = [unit(0).id, 'ant-f-x'];
+    expect(await deleteUnits(ids)).toEqual({ ok: true });
+    const calls = h.calls.filter(([c]) => c === 'telecom:deleteAntennas');
+    expect(calls).toEqual([['telecom:deleteAntennas', { projectId: 'p1', ids }]]);
+    expect(file().units.map((u) => u.id)).toEqual([unit(0).id, unit(1).id]);
     expect(writes()).toHaveLength(0);
-    expect(file().units).toHaveLength(3);
   });
 
-  it('deleteFlaggedUnit removes a flagged unit and forgets its selection and hiding', async () => {
+  it('drops deleted ids from selected, hidden and ticked', async () => {
     h.disk.file = withFlagged('ant-f-x');
     await loadAntennas('p1', '/p');
     selectAntenna('ant-f-x');
     toggleAntennaHidden('ant-f-x');
     toggleAntennaHidden(unit(0).id);
-    await deleteFlaggedUnit('ant-f-x');
-    expect(file().units.map((u) => u.id)).not.toContain('ant-f-x');
-    expect(need(h.disk.file).units).toHaveLength(3);
+    toggleTicked('ant-f-x');
+    toggleTicked(unit(1).id);
+    await deleteUnits(['ant-f-x']);
     expect(state().selected).toBeNull();
     expect(state().hidden).toEqual({ [unit(0).id]: true });
+    expect(state().ticked).toEqual({ [unit(1).id]: true });
+  });
+
+  it('runs after a pending review write', async () => {
+    await loadAntennas('p1', '/p');
+    const id = unit(0).id;
+    void setUnitStatus(id, 'accepted');
+    await deleteUnits([unit(1).id]);
+    const order = h.calls
+      .map(([c]) => c)
+      .filter((c) => c === 'telecom:writeAntennas' || c === 'telecom:deleteAntennas');
+    expect(order).toEqual(['telecom:writeAntennas', 'telecom:deleteAntennas']);
+  });
+
+  it('keeps the file and reports the error on a refusal', async () => {
+    await loadAntennas('p1', '/p');
+    selectAntenna(unit(0).id);
+    h.refuseDelete = 'Newer on disk.';
+    expect(await deleteUnits([unit(0).id])).toEqual({ ok: false, error: 'Newer on disk.' });
+    expect(file().units).toHaveLength(3);
+    expect(state().selected).toBe(unit(0).id);
+  });
+
+  it('does nothing read-only', async () => {
+    h.disk.readOnly = true;
+    await loadAntennas('p1', '/p');
+    const r = await deleteUnits([unit(0).id]);
+    expect(r.ok).toBe(false);
+    expect(h.calls.some(([c]) => c === 'telecom:deleteAntennas')).toBe(false);
+    expect(file().units).toHaveLength(3);
   });
 });
