@@ -38,6 +38,7 @@ import { startLineUpSession } from './lineup/lineUpStart';
 import { refreshSurfaces } from './survey/compareStore';
 import { preparedSurfaces } from './survey/surfaceStates';
 import { connectSurfacesWatch } from './survey/surfacesWatch';
+import { connectKitReady } from './survey/kitAccept';
 import { MediaScreen } from './screens/Media';
 import { DetectionsScreen } from './screens/Detections';
 import { ProjectsScreen } from './screens/Projects';
@@ -456,6 +457,37 @@ export function App() {
       start: (req) => jobs.getState().startQuiet(req),
       refresh: refreshSurfaces,
     });
+    // converted kit piles take the standard-base figure once their dates' surfaces are ready
+    // (ADR 0013 point 4): heights repaired, then accepted once per pile, in writable projects
+    const stopKitReady = connectKitReady({
+      onProjectOpen: (cb) => {
+        let fired: string | null = null;
+        const look = () => {
+          const ms = measureStore.getState();
+          const cs = compareStore.getState();
+          if (ms.status !== 'ready' || !ms.projectId) {
+            fired = null;
+            return;
+          }
+          if (cs.status !== 'ready' || cs.projectId !== ms.projectId || fired === ms.projectId)
+            return;
+          fired = ms.projectId;
+          cb(ms.projectId);
+        };
+        const offMeasures = measureStore.subscribe(look);
+        const offCompare = compareStore.subscribe(look);
+        return () => {
+          offMeasures();
+          offCompare();
+        };
+      },
+      // the surfaces are read again after each prepare job ends (refreshSurfaces)
+      onJobEnded: (cb) =>
+        compareStore.subscribe((s, prev) => {
+          if (s.projectId && s.status === 'ready' && s.surfaces !== prev.surfaces) cb(s.projectId);
+        }),
+      writable: () => shell.getState().pkg === null && !measureStore.getState().readOnly,
+    });
     const stopJobReload = jobs.subscribe((s, prev) => {
       const project = workspace.getState().project;
       if (!project || !finishedManifestJob(prev.jobs, s.jobs, project.root)) return;
@@ -607,6 +639,7 @@ export function App() {
       stopFarWatch();
       stopLineUp();
       stopSurfaces();
+      stopKitReady();
       stopChangeReload();
       stopIssueReload();
       stopPassReload();
