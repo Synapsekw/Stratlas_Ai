@@ -1,4 +1,10 @@
-import type { BoundaryEditsFile, MeasurementsFile, VolumesFile } from '@aio/schema';
+import type {
+  BoundaryEditsFile,
+  MeasurementsFile,
+  SitePoint,
+  SurveyMeasurement,
+  VolumesFile,
+} from '@aio/schema';
 import { MeasurementsFile as MeasurementsFileSchema } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
@@ -9,7 +15,12 @@ import {
   kitDensity,
   pileMaterial,
   convertKitPiles,
+  drapeZ,
+  kitConversion,
+  kitEpochOf,
   kitToSite,
+  needsHeightRepair,
+  repairKitHeights,
   openWithKitPiles,
   overlapShare,
   withKitConversion,
@@ -313,8 +324,9 @@ describe('openWithKitPiles: the file as the app, the report and the assistant op
   };
   const empty = (): MeasurementsFile => ({ schema: 'aio.measurements/1', measurements: [] });
 
-  it('places kit points through the origin: x east, z south, Z 0', () => {
+  it('places kit points through the origin: x east, z south, Z as given (0 without one)', () => {
     expect(kitToSite([1000, 2000, 50], [4, 3])).toEqual([1004, 1997, 0]);
+    expect(kitToSite([1000, 2000, 50], [4, 3], 52.5)).toEqual([1004, 1997, 52.5]);
   });
 
   it("carries an old project's kit figures, with materials by name", () => {
@@ -583,5 +595,173 @@ describe('a rebuild that renumbers piles (piles match by outline, not by id)', (
         o(() => 'x'),
       ),
     ).toBe(relinked);
+  });
+});
+
+describe('kit pile heights: drape at conversion, one-time repair', () => {
+  const origin = [1000, 2000, 51];
+  const openOpts = (heightAt?: (epoch: string, e: number, n: number) => number | null) => {
+    let n = 0;
+    return {
+      origin,
+      materials: [],
+      now: NOW,
+      newId: () => `id-${String(++n)}`,
+      ...(heightAt ? { heightAt } : {}),
+    };
+  };
+
+  it('conversion drapes the outline on the kit DSM', () => {
+    const asked = new Set<string>();
+    const c = kitConversion(
+      empty(),
+      volumes(),
+      null,
+      true,
+      openOpts((epoch, e) => {
+        asked.add(epoch);
+        return 100 + e * 0.01;
+      }),
+    );
+    expect(c.added).toHaveLength(2);
+    for (const m of c.added)
+      for (const p of m.points) expect(p[2]).toBeCloseTo(100 + p[0] * 0.01, 9);
+    // each outline is draped with the epoch whose toe line it is (both piles' latest: e2)
+    expect([...asked]).toEqual(['e2']);
+  });
+
+  it('conversion drapes an edited outline with the epoch of the edit', () => {
+    const v = volumes();
+    v.piles = [{ ...at(v.piles, 0), epochs: { e1: ep('c1', 100) } }];
+    const asked = new Set<string>();
+    const heightAt = (epoch: string) => {
+      asked.add(epoch);
+      return 7;
+    };
+    const plain = kitConversion(empty(), v, null, true, openOpts(heightAt));
+    expect([...asked]).toEqual(['e1']);
+    expect(at(plain.added, 0).points.every((p) => p[2] === 7)).toBe(true);
+    asked.clear();
+    kitConversion(empty(), v, edits, true, openOpts(heightAt));
+    expect([...asked]).toEqual(['e2']);
+  });
+
+  it('conversion without heightAt keeps Z 0', () => {
+    const c = kitConversion(empty(), volumes(), null, true, openOpts());
+    for (const m of c.added) for (const p of m.points) expect(p[2]).toBe(0);
+  });
+
+  it('conversion keeps Z 0 when the DSM has no height under the outline', () => {
+    const c = kitConversion(
+      empty(),
+      volumes(),
+      null,
+      true,
+      openOpts(() => null),
+    );
+    for (const m of c.added) for (const p of m.points) expect(p[2]).toBe(0);
+  });
+
+  it('drapeZ fills holes from the previous vertex and leading holes from the first found', () => {
+    const pts: [number, number, number][] = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [2, 0, 0],
+      [3, 0, 0],
+      [4, 0, 0],
+    ];
+    const h = new Map([
+      [2, 12],
+      [4, 14],
+    ]);
+    expect(drapeZ(pts, (e) => h.get(e) ?? null)).toEqual([12, 12, 12, 12, 14]);
+  });
+
+  it('drapeZ returns null when nothing has a height', () => {
+    expect(drapeZ([[0, 0, 0]], () => null)).toBeNull();
+    expect(drapeZ([], () => 1)).toBeNull();
+    // a non-finite height counts as none
+    expect(drapeZ([[0, 0, 0]], () => Number.NaN)).toBeNull();
+  });
+
+  const converted = (): MeasurementsFile =>
+    withKitConversion(empty(), kitConversion(empty(), volumes(), null, true, openOpts()));
+
+  it('kitEpochOf reads the headline, else the latest carried date in the series', () => {
+    const [p1, p2] = converted().measurements;
+    const m1 = must(p1);
+    const m2 = must(p2);
+    expect(kitEpochOf(m1)).toBe('e2');
+    expect(kitEpochOf({ ...m1, results: [] })).toBe('e2');
+    expect(kitEpochOf({ ...m1, results: [], series: (m1.series ?? []).slice(0, 1) })).toBe('e1');
+    expect(kitEpochOf({ ...m2, results: [] })).toBe('e2');
+    expect(kitEpochOf({ ...m2, results: [], series: [] })).toBeNull();
+    const plain = { ...m2, results: [] };
+    delete plain.series;
+    expect(kitEpochOf(plain)).toBeNull();
+  });
+
+  it('needsHeightRepair: an all-zero kit pile in a project with a real origin height', () => {
+    const file = converted();
+    const m = must(file.measurements[0]);
+    expect(needsHeightRepair(m, file, 51)).toBe(true);
+    // a pile a person already edited (one vertex moved) is never re-heighted
+    const moved: SurveyMeasurement = {
+      ...m,
+      points: m.points.map((p, i): SitePoint => (i === 1 ? [p[0], p[1], 52] : p)),
+    };
+    expect(needsHeightRepair(moved, file, 51)).toBe(false);
+    expect(needsHeightRepair(m, file, 0)).toBe(false);
+    expect(needsHeightRepair(m, { ...file, kitHeightsRepaired: [m.id] }, 51)).toBe(false);
+    const own = { ...m };
+    delete own.origin;
+    expect(needsHeightRepair(own, file, 51)).toBe(false);
+  });
+
+  it('repairKitHeights sets Z, lists the id, and keeps updatedAt, pickedOn, results, series, previousResults', () => {
+    const base = converted();
+    const m0 = must(base.measurements[0]);
+    const m: SurveyMeasurement = {
+      ...m0,
+      updatedAt: '2026-10-21T00:00:00.000Z',
+      pickedOn: m0.points.map(() => 'ground' as const),
+      previousResults: [{ netM3: 1, totalM3: 2, label: 'was', replacedAt: NOW }],
+    };
+    const file: MeasurementsFile = { ...base, measurements: [m, ...base.measurements.slice(1)] };
+    const z = m.points.map((_, i) => 50 + i);
+    const out = repairKitHeights(file, new Map([[m.id, z]]));
+    expect(out.repaired).toEqual([m.id]);
+    expect(out.file.kitHeightsRepaired).toEqual([m.id]);
+    const r = must(out.file.measurements[0]);
+    expect(r.points.map((p) => p[2])).toEqual(z);
+    expect(r.points.map((p) => [p[0], p[1]])).toEqual(m.points.map((p) => [p[0], p[1]]));
+    expect(r.updatedAt).toBe(m.updatedAt);
+    expect(r.pickedOn).toEqual(m.pickedOn);
+    expect(r.results).toEqual(m.results);
+    expect(r.series).toEqual(m.series);
+    expect(r.previousResults).toEqual(m.previousResults);
+    // the other pile is untouched, the same object
+    expect(out.file.measurements[1]).toBe(file.measurements[1]);
+    expect(MeasurementsFileSchema.safeParse(out.file).success).toBe(true);
+  });
+
+  it('repairKitHeights skips an id whose heights do not match the point count', () => {
+    const file = converted();
+    const m = must(file.measurements[0]);
+    const short = repairKitHeights(file, new Map([[m.id, [50]]]));
+    expect(short.repaired).toEqual([]);
+    expect(short.file).toBe(file);
+    const bad = repairKitHeights(file, new Map([[m.id, m.points.map(() => Number.NaN)]]));
+    expect(bad.repaired).toEqual([]);
+    expect(repairKitHeights(file, new Map([['nope', [1, 2, 3]]])).repaired).toEqual([]);
+  });
+
+  it('running repairKitHeights twice lists each id once', () => {
+    const file = converted();
+    const m = must(file.measurements[0]);
+    const z = m.points.map(() => 50);
+    const once = repairKitHeights(file, new Map([[m.id, z]]));
+    const twice = repairKitHeights(once.file, new Map([[m.id, z]]));
+    expect(twice.file.kitHeightsRepaired).toEqual([m.id]);
   });
 });

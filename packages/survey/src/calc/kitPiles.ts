@@ -208,6 +208,12 @@ export interface KitConversionOptions {
   /** The site material id for a kit material name, if one exists. */
   materialId: (name: string) => SurveyId | undefined;
   /**
+   * The ground height at a site point on a kit date (the kit's DSM): a new pile's outline is
+   * draped on the date whose toe line it is (`drapeZ`). Without it, or with no height under the
+   * outline, its Z stays 0.
+   */
+  heightAt?: KitHeightAt;
+  /**
    * Right after a volumetric build (Detect piles): a pile already converted comes back unless an
    * existing kit-pile measurement overlaps it, and a measurement whose pile is gone loses its link.
    * Without it (opening a project), a converted pile stays converted and every link is kept, so
@@ -247,12 +253,13 @@ export function convertKitPiles(
       const ep = pile.epochs[c.epoch];
       return ep ? [{ capture: c, ep }] : [];
     });
-    let outline: PileEpoch['ring'] | undefined;
-    for (const { ep } of dates) if (ep.ring.length > 0) outline = ep.ring;
+    let outline: { ring: PileEpoch['ring']; epoch: string } | undefined;
+    for (const { capture, ep } of dates)
+      if (ep.ring.length > 0) outline = { ring: ep.ring, epoch: capture.epoch };
     if (!outline) return [];
-    const site = outline.map((xz) => opts.toSite(xz));
-    const ring: Ring2 = site.map((p) => [p[0], p[1]] as const);
-    return [{ pile, dates, site, ring, id: pile.id }];
+    const flat = outline.ring.map((xz) => opts.toSite(xz));
+    const ring: Ring2 = flat.map((p) => [p[0], p[1]] as const);
+    return [{ pile, dates, flat, epoch: outline.epoch, ring, id: pile.id }];
   });
 
   // The kit-pile measurements already made, matched to this build's piles by outline (C1).
@@ -280,7 +287,7 @@ export function convertKitPiles(
     : [];
   for (const l of links) if (detached.includes(l.m.id)) freed.add(l.pile);
 
-  for (const { pile, dates, site, ring } of piles) {
+  for (const { pile, dates, flat, epoch, ring } of piles) {
     if (match.has(pile.id)) {
       if (!done.has(pile.id)) converted.push(pile.id);
       done.add(pile.id);
@@ -294,6 +301,9 @@ export function convertKitPiles(
       if (links.some((l) => overlapShare(ring, l.ring) >= SAME_PILE_SHARE)) continue;
     }
 
+    const heightAt = opts.heightAt;
+    const z = heightAt ? drapeZ(flat, (e, n) => heightAt(epoch, e, n)) : null;
+    const site: SitePoint[] = z ? flat.map((p, i): SitePoint => [p[0], p[1], z[i] ?? p[2]]) : flat;
     const itemId = opts.newId();
     const series: ComparisonResult[] = opts.carry
       ? dates.map(({ capture, ep }) => {
@@ -354,11 +364,98 @@ export function convertKitPiles(
 
 /**
  * A kit local-frame point (`[x, z]`: x east, z south of the project origin) in the project CRS,
- * as `@aio/volumetric`'s `localToEN` places it. Z is 0: the kit keeps no toe heights per vertex
- * (the 3D draping is display only).
+ * as `@aio/volumetric`'s `localToEN` places it. The kit keeps no toe heights per vertex, so Z is
+ * the caller's (a height sampled from the kit's DSM, `drapeZ`), else 0.
  */
-export function kitToSite(origin: readonly number[], xz: readonly [number, number]): SitePoint {
-  return [xz[0] + (origin[0] ?? 0), (origin[1] ?? 0) - xz[1], 0];
+export function kitToSite(
+  origin: readonly number[],
+  xz: readonly [number, number],
+  z = 0,
+): SitePoint {
+  return [xz[0] + (origin[0] ?? 0), (origin[1] ?? 0) - xz[1], z];
+}
+
+/** The ground height at a site point (E, N) on a kit date (by epoch), or null where there is none. */
+export type KitHeightAt = (epoch: string, e: number, n: number) => number | null;
+
+/**
+ * Heights for an outline's vertices from a surface: a vertex with no height takes the previous
+ * vertex's, leading misses take the first one found. Null when no vertex has a height (a
+ * non-finite height counts as none).
+ */
+export function drapeZ(
+  points: readonly SitePoint[],
+  at: (e: number, n: number) => number | null,
+): number[] | null {
+  const raw = points.map((p) => {
+    const h = at(p[0], p[1]);
+    return h !== null && Number.isFinite(h) ? h : null;
+  });
+  const first = raw.find((h): h is number => h !== null);
+  if (first === undefined) return null;
+  let prev = first;
+  return raw.map((h) => (prev = h ?? prev));
+}
+
+/**
+ * The kit date (epoch) a converted pile's figures are from: its headline's, else the latest
+ * carried date in its series. Null when it carries none.
+ */
+export function kitEpochOf(m: SurveyMeasurement): string | null {
+  const head = m.results[0]?.carried?.epoch;
+  if (head !== undefined) return head;
+  const series = m.series ?? [];
+  for (let i = series.length - 1; i >= 0; i--) {
+    const epoch = series[i]?.carried?.epoch;
+    if (epoch !== undefined) return epoch;
+  }
+  return null;
+}
+
+/**
+ * Whether a converted kit pile still lies at height 0 from a conversion made before heights
+ * (every vertex Z exactly 0) in a project whose origin is not at 0, and has not been repaired
+ * yet. A pile with any vertex off 0 was edited by a person and is never re-heighted.
+ */
+export function needsHeightRepair(
+  m: SurveyMeasurement,
+  file: MeasurementsFile,
+  originH: number,
+): boolean {
+  if (m.origin?.kind !== 'kit-pile') return false;
+  if (originH === 0) return false;
+  if (!m.points.every((p) => p[2] === 0)) return false;
+  return !(file.kitHeightsRepaired ?? []).includes(m.id);
+}
+
+/**
+ * `file` with the Z of the measurements given set (by id; heights per vertex, in order) and their
+ * ids added to `kitHeightsRepaired` once. An id whose heights do not match its points in number,
+ * or are not all finite, is skipped. Nothing else changes: not `updatedAt`, `pickedOn`, `results`,
+ * `series` or `previousResults` (a repair is not an edit). The same file when nothing is repaired.
+ */
+export function repairKitHeights(
+  file: MeasurementsFile,
+  heights: ReadonlyMap<string, readonly number[]>,
+): { file: MeasurementsFile; repaired: string[] } {
+  const repaired: string[] = [];
+  const measurements = file.measurements.map((m) => {
+    const z = heights.get(m.id);
+    if (z?.length !== m.points.length || !z.every((h) => Number.isFinite(h))) return m;
+    repaired.push(m.id);
+    return { ...m, points: m.points.map((p, i): SitePoint => [p[0], p[1], z[i] ?? p[2]]) };
+  });
+  if (repaired.length === 0) return { file, repaired };
+  const listed = file.kitHeightsRepaired ?? [];
+  const known = new Set(listed);
+  return {
+    file: {
+      ...file,
+      measurements,
+      kitHeightsRepaired: [...listed, ...repaired.filter((id) => !known.has(id))],
+    },
+    repaired,
+  };
 }
 
 export interface KitOpenOptions {
@@ -370,6 +467,8 @@ export interface KitOpenOptions {
   newId: () => string;
   /** Right after a volumetric build (`KitConversionOptions.rebuilt`). */
   rebuilt?: boolean;
+  /** The kit's DSM heights: converted outlines are draped on them (`KitConversionOptions`). */
+  heightAt?: KitHeightAt;
 }
 
 // ---------------------------------------------------------------- the kit's density
@@ -417,7 +516,10 @@ export function pileMaterial(
   };
 }
 
-/** Kit piles as volume measurements (`convertKitPiles`), placed through the project origin. */
+/**
+ * Kit piles as volume measurements (`convertKitPiles`), placed through the project origin and,
+ * with `heightAt`, draped on the kit DSM of the date whose outline each one is.
+ */
 export function kitConversion(
   file: MeasurementsFile,
   volumes: VolumesFile,
@@ -433,6 +535,7 @@ export function kitConversion(
     toSite: (xz) => kitToSite(opts.origin, xz),
     materialId: (name) => byName.get(name.trim().toLowerCase()),
     ...(opts.rebuilt ? { rebuilt: true } : {}),
+    ...(opts.heightAt ? { heightAt: opts.heightAt } : {}),
   });
 }
 
