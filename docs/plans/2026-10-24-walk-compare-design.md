@@ -13,7 +13,7 @@ The founder walks roughly the same route with a 360 camera on different survey d
 - A walk has no GPS height; its height came from the placement pins, and a walk placed on the map stored ground 0 while the ortho quad sits at another height (DSM median minus origin). So the line floated.
 - The 3D line is draped at draw time: for each sample (about every 1 m) the ground is the DSM straight down, else the visible ortho / mesh / cloud under it, else the stored pin height. Resampled when layers load or the date changes.
 - The line is depth tested (things in front hide it), 3 px with a dark halo.
-- The same ground feeds the pose heights (`packages/geo/src/walk/pose.ts`) and the spot history track (`workspace/spot/spotWalk.ts`), which carried the same error.
+- The same ground feeds the spot history track (`workspace/spot/spotWalk.ts`), which carried the same error. The pose heights (`packages/geo/src/walk/pose.ts`) come from the pins, which now record the 3D ground when a walk is placed on the map; walks placed before this keep their old heights until they are placed again.
 - Large models: sampling has a budget so draping never stalls the frame (my call: cap and spread the work over frames, fall back to the pin height for the rest).
 
 ### 2. The marker shows where you look (founder picked design A, "Beam")

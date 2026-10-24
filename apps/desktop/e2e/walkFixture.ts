@@ -397,7 +397,7 @@ export async function orthoPng(april = false): Promise<Buffer> {
  * The walk project with a second date (walk-compare.spec.ts): the first walk on 5 March, a second
  * walk on 16 April that goes the same L (placed 2 m off it, later and faster, with a detour), both
  * at `ORTHO_Y` under them. A UTM frame, so the map works; the placed drawing only with `drawing`.
- * at `ORTHO_Y` under them. A UTM frame, so the map works; no drawing. Answers the project folder.
+ * Answers the project folder.
  */
 export async function createWalkCompareProject(
   root: string,

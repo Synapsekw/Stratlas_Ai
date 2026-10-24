@@ -7,12 +7,12 @@ import type { BoundsDeps } from '../shell/layerBounds';
 /*
  * The ground a placed walk stands on (design "The track sits on the ground in 3D"): a walk has no
  * GPS height, and its pins' heights can disagree with what the 3D view draws (a walk placed on the
- * map stores ground 0 while the ortho sits at the DSM's height). So the 3D line, the pose heights
- * and the spot history track all ask one sampler: the DSM straight down first, then the ground
+ * map before its pins took the 3D ground stored ground 0 while the ortho sits at the DSM's height).
+ * So the 3D line, the Beam and the spot history track all ask one sampler: the DSM straight down first, then the ground
  * imagery (ortho, street map drape), then the top of the visible models and clouds; where nothing
  * is drawn the caller keeps the stored pin height (`fit.ts` groundAt). Only what the 3D view shows
  * counts (`raycastRay` skips hidden layers), so it is asked again when layers load, the date on
- * screen changes or a layer is switched on or off (`resampleWalkGround`).
+ * screen changes or a layer is switched on or off (`walkGround.resample`).
  */
 
 /** Scene x/z to the ground's y there, null where nothing is drawn. */
