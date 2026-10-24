@@ -40,9 +40,16 @@ async function shot(win: Page, info: TestInfo, name: string): Promise<void> {
   await win.screenshot({ path: dir ? join(dir, name) : info.outputPath(name) });
 }
 
-/** The tank farm with both survey dates on screen and its clip floating over the stage. */
+/**
+ * The tank farm with both survey dates on screen and its clip floating over the stage, the footage
+ * timeline at the foot: with piles and two dates the bottom bar opens on the dates strip, which is
+ * taller; these overlays are measured over the stage the footage leaves (the strip's own layout
+ * is dates-strip.spec.ts's).
+ */
 async function openTankFarm(win: Page): Promise<void> {
   await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
+  await win.getByTestId('bottom-switch-footage').click();
+  await expect(win.getByRole('region', { name: 'Survey dates chart' })).toHaveCount(0);
   await win.evaluate(() => {
     (window as unknown as Hooks).__stratlas.workspace.setState({ hidden: {} });
   });

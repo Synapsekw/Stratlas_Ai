@@ -324,7 +324,8 @@ test('an old stockpile project opens with its kit figures labelled and no unsave
   const rows = south.getByTestId('vol-time-table').locator('tbody tr');
   await expect(rows).toHaveCount(2);
   expect(figure(await rows.nth(0).locator('td').first().innerText())).toBeCloseTo(SOUTH_E1, 2);
-  await expect(rows.nth(1).locator('td').first()).toHaveText('Not measured on this date');
+  // the volume over time names the date's surface state: not prepared here (preparing is off)
+  await expect(rows.nth(1).locator('td').first()).toHaveText('Not prepared yet');
   await expect(saved).toContainText('All saved');
 
   // written once, as converted measurements; the kit's own files are left as they were
@@ -347,6 +348,29 @@ test('an old stockpile project opens with its kit figures labelled and no unsave
   for (const d of offDsm('Pile North', north?.points ?? [])) expect(d).toBeLessThan(0.05);
   expect(file.measurements[1]?.results).toEqual([]);
   expect(await readFile(join(dir, 'volumes.json'))).toEqual(kitBefore);
+});
+
+test('the Stockpiles group and its pile rows follow the date in focus', async ({ win }) => {
+  await openTiny(win);
+  await stockpileTree(win);
+  const head = win.getByTestId('tree-group-stockpiles').locator('.gcount');
+  const north = measureRow(win, 'Pile North').locator('.tm');
+  const south = measureRow(win, 'Pile South').locator('.tm');
+  // the latest survey: the hand-corrected north figure; the south pile is gone by then
+  await expect(head).toHaveText('2 · 1 Feb 2026');
+  await expect.poll(async () => figure(await north.innerText())).toBeCloseTo(NORTH_E2_EDITED, 1);
+  await expect(south).not.toContainText('m³');
+  // the first survey, from its marker in the dates strip: both piles with their January figures
+  const strip = win.getByRole('region', { name: 'Survey dates chart' });
+  await strip.locator('[data-survey="capture-1"]').click();
+  await expect(head).toHaveText('2 · 1 Jan 2026');
+  await expect.poll(async () => figure(await north.innerText())).toBeCloseTo(NORTH_E1, 1);
+  await expect.poll(async () => figure(await south.innerText())).toBeCloseTo(SOUTH_E1, 1);
+  // and back with Alt+Right, the next survey
+  await win.locator('[data-scene-view] canvas').first().focus();
+  await win.keyboard.press('Alt+ArrowRight');
+  await expect(head).toHaveText('2 · 1 Feb 2026');
+  await expect.poll(async () => figure(await north.innerText())).toBeCloseTo(NORTH_E2_EDITED, 1);
 });
 
 test('converted piles sit on the kit DSM: every vertex within 0.05 m', async ({

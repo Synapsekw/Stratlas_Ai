@@ -4,8 +4,8 @@
  * (`autoPrepareSurfaces`), three piles of three materials and the pit. Under the stage, labelled
  * "Survey dates chart" (never "Timeline", the footage's): a marker per survey, the site's volume
  * stacked by material, Volume | Tonnes | Cut & fill; a marker click or a playhead drag moves the
- * date in focus, and the notch, the sidebar's Stockpiles group, the pile labels in 3D and the
- * Volumes tab follow it; Compare draws the band with its change and brackets that move it; Fit
+ * date in focus, and the notch, the pile labels in 3D and the Volumes tab follow it (the
+ * sidebar's Stockpiles group is kit-migration.spec.ts's: the quarry's piles are filed under a date); Compare draws the band with its change and brackets that move it; Fit
  * zooms to the band; collapse is remembered per project. Play steps through every survey, the
  * notch reading "Playing · …" and the floats standing in the bottom corners, Esc stops it, loop
  * wraps. A selected pile draws its own line, and its chip clears it. In a project with video the
@@ -22,7 +22,7 @@ import {
   test,
   VENV_PYTHON,
 } from './fixtures';
-import { islandDate, stockpileTree, volumesView } from './island';
+import { islandDate, volumesView } from './island';
 import { openDemo } from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
 
@@ -33,7 +33,6 @@ test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`
 const DATES = ['m1', 'm2', 'm3'] as const;
 const LABEL = { m1: '31 Jan 2026', m2: '28 Feb 2026', m3: '31 Mar 2026' } as const;
 const SP1_ID = 'm-sp1';
-const SP3 = 'Stockpile SP3';
 
 const stripOf = (win: Page): Locator => win.getByRole('region', { name: 'Survey dates chart' });
 
@@ -69,6 +68,28 @@ async function markerX(strip: Locator, capture: string): Promise<number> {
   const box = await strip.locator(`[data-survey="${capture}"] .ds-mk-dot`).boundingBox();
   if (!box) throw new Error(`no marker for ${capture}`);
   return box.x + box.width / 2;
+}
+
+/**
+ * With the right panel folded for the while: the strip's bar has room for the speed and Loop
+ * (between the sidebars, at the CI window, it keeps only play, the modes, Compare, Fit and fold).
+ */
+async function widened(win: Page, run: () => Promise<void>): Promise<void> {
+  const ws = win.locator('.ws');
+  await win.keyboard.press('Control+Alt+B');
+  await expect(ws).toHaveClass(/right-off/);
+  await run();
+  await win.keyboard.press('Control+Alt+B');
+  await expect(ws).not.toHaveClass(/right-off/);
+}
+
+/** Step the player's speed (1, 2, 4, 0.5 and round) until it reads `want`. */
+async function speedTo(win: Page, strip: Locator, want: string): Promise<void> {
+  await widened(win, async () => {
+    const speed = strip.getByRole('button', { name: /^Playback speed/ });
+    for (let i = 0; i < 4 && (await speed.innerText()) !== want; i += 1) await speed.click();
+    await expect(speed).toHaveText(want);
+  });
 }
 
 /** A label's text in the 3D view (the pile's name and its figure on the date in focus). */
@@ -148,7 +169,7 @@ test('two or more dates show the strip; its markers match the survey dates; Volu
   await expect(stripOf(win)).not.toHaveAttribute('data-collapsed', '');
 });
 
-test('a marker click and a playhead drag move the date in focus: the notch, the sidebar Stockpiles, the pile labels and the Volumes tab follow', async ({
+test('a marker click and a playhead drag move the date in focus: the notch, the scene and the Volumes tab follow', async ({
   quarryProject,
   win,
 }) => {
@@ -156,15 +177,10 @@ test('a marker click and a playhead drag move the date in focus: the notch, the 
   const strip = await opened(win, quarryProject);
   const view = await volumesView(win);
   const header = view.getByTestId('volumes-header');
-  const group = await stockpileTree(win);
-  const head = win.getByTestId('tree-group-stockpiles').locator('.gcount');
-  const sp3 = group.getByTestId('measure-row').filter({ hasText: SP3 }).locator('.tm');
 
   // on the latest survey
   await expect(islandDate(win)).toContainText('31 Mar');
-  await expect(head).toContainText(LABEL.m3);
   await expect(header.getByTestId('volumes-date')).toContainText('31 Mar');
-  await expect(sp3).toContainText('m³');
   const label = label3d(win, SP1_ID);
   await expect(label).toBeVisible({ timeout: 60_000 });
   const on = {
@@ -175,13 +191,10 @@ test('a marker click and a playhead drag move the date in focus: the notch, the 
   // a click on the first marker: everything reads 31 January
   await focusOn(strip, 'm1');
   await expect(islandDate(win)).toContainText('31 Jan');
-  await expect(head).toContainText(LABEL.m1);
   await expect(header.getByTestId('volumes-date')).toContainText('31 Jan');
   await expect(header.getByTestId('volumes-kpi-volume')).not.toHaveText(on.kpi);
-  // the third pile was first measured in March: no figure on this date
-  await expect(sp3).not.toContainText('m³');
-  // the first pile's label reads its January figure
-  await expect(label).not.toHaveText(on.label);
+  // the piles were drawn on the last survey (filed under its date): their labels go with it
+  await expect(label).toHaveCount(0);
 
   // drag the playhead from January to February: the readout follows, the focus lands on February
   const playhead = strip.getByTestId('strip-playhead');
@@ -199,7 +212,6 @@ test('a marker click and a playhead drag move the date in focus: the notch, the 
   await expect(strip.locator('[data-survey="m2"]')).toHaveAttribute('aria-current', 'date');
   await expect(playhead).toHaveAttribute('aria-valuetext', LABEL.m2);
   await expect(islandDate(win)).toContainText('28 Feb');
-  await expect(head).toContainText(LABEL.m2);
   await expect(header.getByTestId('volumes-date')).toContainText('28 Feb');
 
   // the arrow keys step the playhead too
@@ -208,6 +220,7 @@ test('a marker click and a playhead drag move the date in focus: the notch, the 
   await expect(strip.locator('[data-survey="m3"]')).toHaveAttribute('aria-current', 'date');
   await expect(islandDate(win)).toContainText('31 Mar');
   await expect(header.getByTestId('volumes-kpi-volume')).toHaveText(on.kpi);
+  await expect(label).toHaveText(on.label);
 });
 
 test('Compare shows the band with its change; the brackets move it; Fit zooms to it and back', async ({
@@ -276,9 +289,7 @@ test('play steps through every date and stops at the end; the notch says Playing
   const view = await volumesView(win);
   await focusOn(strip, 'm1');
   // half speed: four seconds a gap, time to see each survey
-  const speed = strip.getByRole('button', { name: /^Playback speed/ });
-  for (let i = 0; i < 3; i += 1) await speed.click();
-  await expect(speed).toHaveText('0.5×');
+  await speedTo(win, strip, '0.5×');
 
   const play = strip.getByTestId('strip-play');
   const blend = win.getByTestId('timelapse-blend');
@@ -309,12 +320,12 @@ test('play steps through every date and stops at the end; the notch says Playing
   expect(await focused(strip)).toBe('m3');
 
   // loop: from the last it starts again at the first and carries on past the end
-  const loop = strip.getByRole('button', { name: 'Loop', exact: true });
-  await loop.click();
-  await expect(loop).toHaveAttribute('aria-pressed', 'true');
-  await speed.click();
-  await speed.click();
-  await expect(speed).toHaveText('2×');
+  await widened(win, async () => {
+    const loop = strip.getByRole('button', { name: 'Loop', exact: true });
+    await loop.click();
+    await expect(loop).toHaveAttribute('aria-pressed', 'true');
+  });
+  await speedTo(win, strip, '2×');
   await play.click();
   const seen: string[] = [];
   await expect
@@ -360,7 +371,7 @@ test('a selected pile shows its line over the site total, faded, and the Pile ch
   // the chip's ×: back to the site, the pile closed
   await strip.getByTestId('strip-clear-pile').click();
   await expect(line).toHaveCount(0);
-  await expect(strip.getByTestId('strip-legend')).toBeVisible();
+  await expect(strip.getByTestId('strip-legend')).toHaveCount(1);
   await expect(view.getByTestId('pile-panel')).toHaveCount(0);
   await expect(view.getByTestId('volumes-inventory')).toBeVisible();
 });
@@ -375,9 +386,7 @@ test.describe('the smallest window, 1100 x 700', () => {
     test.setTimeout(600_000);
     const strip = await opened(win, quarryProject);
     await focusOn(strip, 'm1');
-    const speed = strip.getByRole('button', { name: /^Playback speed/ });
-    for (let i = 0; i < 3; i += 1) await speed.click();
-    await expect(speed).toHaveText('0.5×');
+    await speedTo(win, strip, '0.5×');
     await strip.getByTestId('strip-play').click();
     const blend = win.getByTestId('timelapse-blend');
     const totals = win.getByTestId('timelapse-totals');
@@ -450,12 +459,12 @@ test.describe('a project with video', () => {
     await expect(win.getByRole('group', { name: 'Bottom timeline' })).toBeVisible();
     await expect(dates).toHaveAttribute('aria-pressed', 'true');
     await expect(stripOf(win)).toBeVisible();
-    await expect(win.locator('.ws-tl')).toHaveCount(0);
+    await expect(win.getByRole('group', { name: 'Timeline zoom' })).toHaveCount(0);
 
     await footage.click();
     await expect(footage).toHaveAttribute('aria-pressed', 'true');
     await expect(stripOf(win)).toHaveCount(0);
-    await expect(win.locator('.ws-tl')).toBeVisible();
+    await expect(win.getByRole('group', { name: 'Timeline zoom' })).toBeVisible();
 
     // remembered for this project across a reload
     await win.reload();
@@ -465,11 +474,11 @@ test.describe('a project with video', () => {
     if (await win.getByTestId('project-card').first().isVisible())
       await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
     await expect(win.getByTestId('bottom-switch-footage')).toHaveAttribute('aria-pressed', 'true');
-    await expect(win.locator('.ws-tl')).toBeVisible();
+    await expect(win.getByRole('group', { name: 'Timeline zoom' })).toBeVisible();
     await expect(stripOf(win)).toHaveCount(0);
 
     await win.getByTestId('bottom-switch-dates').click();
     await expect(stripOf(win)).toBeVisible();
-    await expect(win.locator('.ws-tl')).toHaveCount(0);
+    await expect(win.getByRole('group', { name: 'Timeline zoom' })).toHaveCount(0);
   });
 });

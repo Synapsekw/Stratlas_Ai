@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
-import { measureControl, measureSaved, stockpileTree } from './island';
+import { measureControl, measureSaved, measureTree } from './island';
 import { focusMeasure, volumeSettled } from './measureCard';
 import { setAutoPrepare } from './surveyJobs';
 
@@ -75,7 +75,18 @@ test('site materials from CSV, a material on a measurement, and the weight calcu
     .toBe(2);
   const settings = await readJson<SurveySettings>(settingsFile);
   expect(settings.materials).toEqual([
-    { id: 'msw', name: 'Municipal solid waste', code: 'MSW', densityTPerM3: 0.95 },
+    // a density read from the CSV applies from the date in focus (the latest survey); the demo's
+    // own density is kept for the dates before
+    {
+      id: 'msw',
+      name: 'Municipal solid waste',
+      code: 'MSW',
+      densityTPerM3: 0.95,
+      densityHistory: [
+        { fromCapture: 'l1', tPerM3: 0.9 },
+        { fromCapture: 'l3', tPerM3: 0.95 },
+      ],
+    },
     {
       id: 'cover',
       name: 'Daily cover soil',
@@ -86,7 +97,7 @@ test('site materials from CSV, a material on a measurement, and the weight calcu
   ]);
 
   // the lift: prepare the surveys, then compute previous to current
-  await stockpileTree(win);
+  await measureTree(win);
   // a pile: its full volume card is the Measure tab's (focusMeasure brings it forward)
   const panel = await focusMeasure(win, 'Cell 1');
   await panel.getByTestId('survey-prepare').click();

@@ -1,6 +1,7 @@
 /**
  * A stockpile project (volumes over two surveys) reopens on the survey it was left on, not on
- * the volumes' last survey, and showing the timeline does not forget that date. A minimal
+ * the volumes' last survey, and showing or folding the dates strip (two dates, no video) does not
+ * forget that date. A minimal
  * synthetic project: two dated terrains, a volumes file, no height grids (the volumes reach
  * `ready` without them; the grids are only fetched for a pile profile). Its volumes file lists no
  * pile, so opening it converts none to a volume measurement (volumetric parity W3) and only marks
@@ -143,23 +144,41 @@ test.describe('stockpile survey date', () => {
     await expect.poll(async () => (await volumes(win)).epoch).toBe('e1');
   });
 
-  test('showing the timeline does not forget the date', async ({ stockpile, win }) => {
+  test('showing and folding the dates strip does not forget the date', async ({
+    stockpile,
+    win,
+  }) => {
     await openStockpile(win, stockpile.id);
     await win.getByTestId('date-name-d1').click();
     await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/4 Sep 2024/);
-    // a project without video starts with the timeline folded: the island's View tile shows it
-    const timeline = win.locator('.tl-wrap [aria-label="Timeline"]');
-    await expect(timeline).toHaveCount(0);
-    const toggle = await timelineToggle(win);
+    // two dated surveys and no video: the dates strip shows under the stage from the start, on
+    // the date in focus, and the island's View tile reads it as shown
+    const strip = win.getByRole('region', { name: 'Survey dates chart' });
+    await expect(strip).toBeVisible();
+    await expect(strip.locator('[data-survey]')).toHaveCount(2);
+    await expect(strip.locator('[data-survey="d1"]')).toHaveAttribute('aria-current', 'date');
+    // never the footage timeline: there is no footage
+    await expect(win.locator('.tl-wrap [aria-label="Timeline"]')).toHaveCount(0);
+    let toggle = await timelineToggle(win);
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await closeIslandTools(win);
+    await expect(strip).toHaveCount(0);
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/4 Sep 2024/);
+    // folded stays folded on reopening, and the date is the one left on
+    await reopen(win, stockpile.id);
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/4 Sep 2024/);
+    await expect.poll(async () => (await volumes(win)).epoch).toBe('e1');
+    await expect(strip).toHaveCount(0);
+    toggle = await timelineToggle(win);
     await expect(toggle).toHaveAttribute('aria-pressed', 'false');
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
     await closeIslandTools(win);
-    await expect(timeline).toBeVisible();
-    await reopen(win, stockpile.id);
+    await expect(strip).toBeVisible();
+    await expect(strip.locator('[data-survey="d1"]')).toHaveAttribute('aria-current', 'date');
     await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/4 Sep 2024/);
     await expect.poll(async () => (await volumes(win)).epoch).toBe('e1');
-    await expect(timeline).toBeVisible();
-    await expect(await timelineToggle(win)).toHaveAttribute('aria-pressed', 'true');
   });
 });
