@@ -1,7 +1,7 @@
 /**
  * The agent shows things (scripted test model, no network) on the tank farm demo: the worst
- * finding with its photo beside the 3D view, Media with the highest severity level set, a scope
- * chip the person clears, Undo, a finding shown from Media, the folding agent column, the Issues
+ * finding with its photo beside the 3D view, Inspect with the highest severity level set, a scope
+ * chip the person clears, Undo, a finding shown from Inspect, the folding agent column, the Issues
  * list filtered, a change of project, and the column in the smallest window.
  *
  * The requests carry `#tool <name> <json>` lines for the scripted model. The tests of the first
@@ -26,6 +26,7 @@ import {
   test,
   type DataRoot,
 } from './fixtures';
+import { openFindings } from './inspect';
 import { openDemo } from './surveyJobs';
 
 test.setTimeout(180_000);
@@ -213,7 +214,16 @@ const dock = (win: Page) => win.locator('#agent-dock');
 const toggle = (win: Page) => win.getByTestId('agent-toggle');
 const replies = (win: Page) => agent(win).getByText(/^Tool \w+ returned/);
 const requests = (win: Page) => agent(win).locator('.ag-msg.user');
-const photoCards = (win: Page) => win.locator('.media-main .m-card.sq[data-photo]');
+const photoCards = (win: Page) =>
+  win.getByTestId('inspect-photos').locator('button.m-card.sq[data-photo]');
+/** The list of photo tiles in Inspect's photo column: what scrolls. */
+const PHOTO_LIST = '.insp-photos-list';
+/** The order and level filters sit in a popover of the photo column: open it. */
+async function openFilter(win: Page) {
+  const toggleFilter = win.getByTestId('inspect-filter');
+  if ((await toggleFilter.getAttribute('aria-expanded')) !== 'true') await toggleFilter.click();
+  await expect(win.getByTestId('media-order')).toBeVisible();
+}
 const issueRows = (win: Page) => win.locator('.issues-screen [data-issue-list] .ann-row');
 const onScreen = (win: Page, screen: string) =>
   expect(win.locator(`.app[data-screen="${screen}"]`)).toBeVisible();
@@ -255,7 +265,7 @@ async function ask(win: Page, text: string): Promise<string> {
 
 const shownIn = (reply: string) => Number(/"shown":(\d+)/.exec(reply)?.[1] ?? NaN);
 
-async function goTo(win: Page, name: 'Scene' | 'Issues' | 'Media' | 'Detections' | 'Reports') {
+async function goTo(win: Page, name: 'Scene' | 'Issues' | 'Inspect' | 'Reports') {
   await win.locator('.sb-nav .nav-item', { hasText: name }).first().click();
   await onScreen(win, name.toLowerCase());
 }
@@ -290,13 +300,13 @@ async function pressKeys(win: Page, keys: string) {
 }
 
 /**
- * What sticks out of the Media list sideways: the parts of it that end right of its own edge.
+ * What sticks out of the Inspect photo list sideways: the parts of it that end right of its own edge.
  * Nothing, when the list fits the room it has.
  */
 const mediaOverflow = (win: Page) =>
   win.evaluate(() => {
-    const main = document.querySelector('.media-main');
-    if (!main) throw new Error('Media is not showing');
+    const main = document.querySelector('.insp-photos-list');
+    if (!main) throw new Error('Inspect is not showing');
     const edge = main.getBoundingClientRect().left + main.clientLeft + main.clientWidth;
     const out: string[] = [];
     for (const el of main.querySelectorAll('*')) {
@@ -352,13 +362,13 @@ const sidewaysScrollers = (win: Page) =>
   });
 
 /**
- * How far the first photo card shown lies outside the visible part of the Media list, in px: 0
+ * How far the first photo card shown lies outside the visible part of the Inspect photo list, in px: 0
  * when the whole card is in view, -1 when no photo card is shown.
  */
 const firstPhotoOutside = (win: Page) =>
   win.evaluate(() => {
-    const main = document.querySelector('.media-main');
-    const card = main?.querySelector('.m-card.sq[data-photo]');
+    const main = document.querySelector('.insp-photos-list');
+    const card = main?.querySelector('button.m-card.sq[data-photo]');
     if (!main || !card) return -1;
     const m = main.getBoundingClientRect();
     const c = card.getBoundingClientRect();
@@ -373,16 +383,16 @@ const firstPhotoOutside = (win: Page) =>
     );
   });
 
-const mediaScrollTop = (win: Page) => win.locator('.media-main').evaluate((el) => el.scrollTop);
+const mediaScrollTop = (win: Page) => win.locator(PHOTO_LIST).evaluate((el) => el.scrollTop);
 
 /**
- * How far the first photo card shown would lie below the visible part of the Media list with the
+ * How far the first photo card shown would lie below the visible part of the Inspect photo list with the
  * list at its top, in px: 0 when it is in view without a scroll, -1 when no photo card is shown.
  */
 const firstPhotoBelowAtTop = (win: Page) =>
   win.evaluate(() => {
-    const main = document.querySelector('.media-main');
-    const card = main?.querySelector('.m-card.sq[data-photo]');
+    const main = document.querySelector('.insp-photos-list');
+    const card = main?.querySelector('button.m-card.sq[data-photo]');
     if (!main || !card) return -1;
     const top = main.getBoundingClientRect().top + main.clientTop;
     const bottom = card.getBoundingClientRect().bottom - top + main.scrollTop;
@@ -491,7 +501,7 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
   const AREA = 'Tank T-101';
   let run: Run;
   let win: Page;
-  /** How the Media chip is drawn, to compare the Issues chip with. */
+  /** How the Inspect chip is drawn, to compare the Issues chip with. */
   let mediaChip: Awaited<ReturnType<typeof chipLook>>['look'] | null = null;
 
   test.beforeAll(async () => {
@@ -550,16 +560,17 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     await shot(win, 'agent-show-01-worst-finding');
   });
 
-  test('open the images with the highest severity: Media, the level set, the column with the conversation', async () => {
+  test('open the images with the highest severity: Inspect, the level set, the column with the conversation', async () => {
     const reply = await ask(
       win,
       'open up images with the highest level of severity #tool show_photos {"severity":"highest"}',
     );
-    await onScreen(win, 'media');
+    await onScreen(win, 'inspect');
     expect(farm.worstOnPhotos).toBe(3);
+    await openFilter(win);
     await expect(win.getByTestId('media-severity')).toHaveValue('3');
     await expect(win.getByTestId('media-severity').locator('option:checked')).toHaveText('Severe');
-    await expect(win.getByTestId('media-only-findings')).toHaveAttribute('aria-pressed', 'true');
+    await expect(win.getByTestId('inspect-chip-findings')).toHaveAttribute('aria-pressed', 'true');
     await expect(win.getByTestId('media-order')).toHaveValue('severity');
 
     // the photos shown are the ones the answer counts, and each carries a finding
@@ -570,7 +581,8 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     const cards = await photoCards(win).evaluateAll((els) =>
       els.map((el) => ({
         photo: el.getAttribute('data-photo'),
-        findings: Number(el.getAttribute('data-findings') ?? 0),
+        findings:
+          Number(el.getAttribute('data-ai') ?? 0) + Number(el.getAttribute('data-confirmed') ?? 0),
       })),
     );
     expect(cards.map((c) => c.photo).sort()).toEqual([...farm.photosOfWorst].sort());
@@ -584,37 +596,40 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     await expect(requests(win).nth(1)).toContainText('open up images with the highest level');
     await expect(agent(win).locator('.ag-bind')).toContainText('Photos');
 
-    // the finding of the first request is still selected, so its card is open beside the photos:
-    // with the column that is three panes, and the list of photos still fits its own
-    await expect(win.locator('.media.with-viewer')).toBeVisible();
+    // the finding of the first request is still selected, so Inspect has its photo open beside the
+    // photo column: with the column that is three panes, and the list of photos still fits its own
+    await expect(win.locator('.screen.inspect')).toBeVisible();
     const list = await mediaOverflow(win);
-    expect(list.out, `the Media list is ${String(list.width)} px wide`).toEqual([]);
+    expect(list.out, `the photo list is ${String(list.width)} px wide`).toEqual([]);
     expect(await sidewaysScrollers(win)).toEqual([]);
     // what was asked for is in view without a scroll: the list brought the first photo shown into
     // view when the agent set the filter, and scrolled only when it lay below the videos
     await expect.poll(() => firstPhotoOutside(win)).toBe(0);
     if ((await firstPhotoBelowAtTop(win)) > 0) expect(await mediaScrollTop(win)).toBeGreaterThan(0);
     else expect(await mediaScrollTop(win)).toBe(0);
-    expect((await photoCards(win).first().boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(120);
+    // Inspect's photo column is the narrowest of the three panes: its tiles are smaller than the
+    // old Media tiles were
+    expect((await photoCards(win).first().boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(80);
     expect(
       await win.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
-    await shot(win, 'agent-show-02-media-highest');
+    await shot(win, 'agent-show-02-inspect-highest');
   });
 
   test('the person clears the level; an area shows as a chip that its x clears', async () => {
-    await onScreen(win, 'media');
+    await onScreen(win, 'inspect');
     // the person scrolls back to the top and works the controls: the list stays where they put it
-    await win.locator('.media-main').evaluate((el) => {
+    await win.locator(PHOTO_LIST).evaluate((el) => {
       el.scrollTop = 0;
     });
-    // the person's own change stands: Any brings back every photo with a finding (Only with
-    // findings is still pressed, as the agent left it), and that switch brings back the rest
+    // the person's own change stands: Any brings back every photo with a finding (the With
+    // findings chip is still pressed, as the agent left it), and the All chip brings back the rest
+    await openFilter(win);
     await win.getByTestId('media-severity').selectOption('');
     await expect(photoCards(win)).toHaveCount(farm.photosWithFindings.length);
     expect(await mediaScrollTop(win)).toBe(0);
-    await expect(win.getByTestId('media-only-findings')).toHaveAttribute('aria-pressed', 'true');
-    await win.getByTestId('media-only-findings').click();
+    await expect(win.getByTestId('inspect-chip-findings')).toHaveAttribute('aria-pressed', 'true');
+    await win.getByTestId('inspect-chip-all').click();
     await expect(photoCards(win)).toHaveCount(farm.photos);
     expect((await appState(win)).media).toMatchObject({ severity: null, onlyFindings: false });
 
@@ -629,12 +644,12 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     await expect(photoCards(win)).toHaveCount(0);
     expect(await mediaScrollTop(win)).toBe(0);
 
-    // asked on Media, where there is no 3D view: the bounds of the assets are remembered
+    // asked on Inspect, where there is no 3D view: the bounds of the assets are remembered
     const reply = await ask(win, `photos of the tank #tool show_photos {"where":"${AREA}"}`);
-    await onScreen(win, 'media');
+    await onScreen(win, 'inspect');
     const chip = win.getByTestId('media-scope-chip');
     await expect(chip).toHaveText(`On ${AREA}`);
-    // and the photos it shows come into view, this time with Media already showing
+    // and the photos it shows come into view, this time with Inspect already showing
     await expect.poll(() => firstPhotoOutside(win)).toBe(0);
     expect(reply).toContain(`"scope":"On ${AREA}"`);
     const shown = shownIn(reply);
@@ -650,16 +665,17 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     const look = await chipLook(chip);
     expectUsable(look);
     mediaChip = look.look;
-    await shot(win, 'agent-show-03-media-chip');
+    await shot(win, 'agent-show-03-inspect-chip');
     await chip.getByRole('button', { name: `Clear the filter On ${AREA}` }).click();
     await expect(chip).toHaveCount(0);
     expect((await appState(win)).media.scope).toBeNull();
     await expect(photoCards(win)).toHaveCount(farm.photosWithFindings.length);
   });
 
-  test('Undo puts Media back as it was before the step', async () => {
-    await onScreen(win, 'media');
+  test('Undo puts Inspect back as it was before the step', async () => {
+    await onScreen(win, 'inspect');
     // the person's own filter first, so "as it was" is not the default
+    await openFilter(win);
     await win.getByTestId('media-severity').selectOption('2');
     await win.getByTestId('media-order').selectOption('count');
     const before = await appState(win);
@@ -668,11 +684,13 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
 
     await ask(win, `photos of the tank again #tool show_photos {"where":"${AREA}"}`);
     await expect(win.getByTestId('media-scope-chip')).toHaveText(`On ${AREA}`);
+    await openFilter(win);
     await expect(win.getByTestId('media-severity')).toHaveValue('');
 
     await agent(win).getByRole('button', { name: 'Undo' }).last().click();
     await expect(win.getByTestId('media-scope-chip')).toHaveCount(0);
-    await onScreen(win, 'media');
+    await onScreen(win, 'inspect');
+    await openFilter(win);
     await expect(win.getByTestId('media-severity')).toHaveValue('2');
     await expect(win.getByTestId('media-order')).toHaveValue('count');
     await expect(photoCards(win)).toHaveCount(cardsBefore);
@@ -682,8 +700,8 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     await expect(agent(win).locator('.step.undone').last()).toContainText('show_photos');
   });
 
-  test('from Media back to 3D: a finding is shown, the camera ends on it, the conversation is intact', async () => {
-    await onScreen(win, 'media');
+  test('from Inspect back to 3D: a finding is shown, the camera ends on it, the conversation is intact', async () => {
+    await onScreen(win, 'inspect');
     const asked = await requests(win).count();
     const f01 = farm.byCode('F01');
 
@@ -712,17 +730,18 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     await expect(requests(win)).toHaveCount(asked + 1);
     await expect(requests(win).first()).toContainText('take me to the most severe point');
     await expect(requests(win).last()).toContainText('show me F01');
-    await shot(win, 'agent-show-05-finding-from-media');
+    await shot(win, 'agent-show-05-finding-from-inspect');
   });
 
-  test('Undo of a finding shown from Media goes back to Media, its filter and the column as they were', async () => {
+  test('Undo of a finding shown from Inspect goes back to Inspect, its filter and the column as they were', async () => {
     // the person closes the photo beside the 3D view, so the step starts without one
     await onScreen(win, 'scene');
     await win.getByTestId('evidence-close').click();
     await expect(win.getByTestId('evidence-photo')).toHaveCount(0);
-    // on Media with a filter of the person's and the column open
-    await goTo(win, 'Media');
+    // on Inspect with a filter of the person's and the column open
+    await goTo(win, 'Inspect');
     await unfold(win);
+    await openFilter(win);
     await win.getByTestId('media-severity').selectOption('1');
     const before = await appState(win);
     expect(before.media.severity).toBe(1);
@@ -736,8 +755,9 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     await expect(win.getByTestId('evidence-photo')).toBeVisible();
 
     await agent(win).getByRole('button', { name: 'Undo' }).last().click();
-    await onScreen(win, 'media');
+    await onScreen(win, 'inspect');
     await expect(dock(win)).toBeVisible();
+    await openFilter(win);
     await expect(win.getByTestId('media-severity')).toHaveValue('1');
     await expect(photoCards(win)).toHaveCount(cardsBefore);
     const after = await appState(win);
@@ -750,6 +770,17 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     await goTo(win, 'Scene');
     await expect(win.getByTestId('evidence-photo')).toHaveCount(0);
     await expect(win.locator('.stage')).toHaveAttribute('data-mode', before.stageMode);
+  });
+
+  test('the old media name opens Inspect', async () => {
+    for (const old of ['media', 'detections']) {
+      await goTo(win, 'Scene');
+      const reply = await ask(win, `open ${old} #tool open_screen {"screen":"${old}"}`);
+      expect(reply).toContain('"screen":"inspect"');
+      await onScreen(win, 'inspect');
+      await expect(win.locator('section[aria-label="Inspect"]')).toBeVisible();
+      await expect(win.getByTestId('inspect-photos')).toBeVisible();
+    }
   });
 
   test('the column folds: the title bar button, Ctrl Alt B, and the choice is remembered', async () => {
@@ -767,8 +798,8 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     await pressKeys(win, 'Control+Alt+b');
     await expect(dock(win)).toBeHidden();
     await expect(toggle(win)).toHaveAttribute('aria-expanded', 'false');
-    // folded survives a visit to Media
-    await goTo(win, 'Media');
+    // folded survives a visit to Inspect
+    await goTo(win, 'Inspect');
     await expect(dock(win)).toBeHidden();
     await goTo(win, 'Issues');
     await expect(dock(win)).toBeHidden();
@@ -776,7 +807,7 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     await pressKeys(win, 'Control+Alt+b');
     await expect(dock(win)).toBeVisible();
     // and so does unfolded
-    await goTo(win, 'Media');
+    await goTo(win, 'Inspect');
     await expect(dock(win)).toBeVisible();
     await goTo(win, 'Issues');
     await expect(dock(win)).toBeVisible();
@@ -818,7 +849,7 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     await expect(win.locator('.issues-screen .ic-body')).toBeVisible();
     expect(await sidewaysScrollers(win)).toEqual([]);
 
-    // the chip is the Media chip: same look, an x to hit, inside its row
+    // the chip is the Inspect chip: same look, an x to hit, inside its row
     const look = await chipLook(chip);
     expectUsable(look);
     expect(look.look).toEqual(mediaChip);
@@ -852,11 +883,11 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
   });
 
   test('another project: an empty conversation, no chip, and its own assets', async () => {
-    // both chips on, the column open on Media
+    // both chips on, the column open on Inspect
     await ask(win, `findings of the tank #tool show_issues {"where":"${AREA}"}`);
     await expect(win.getByTestId('issue-scope-chip')).toHaveText(`On ${AREA}`);
     await ask(win, `photos of the tank #tool show_photos {"where":"${AREA}"}`);
-    await onScreen(win, 'media');
+    await onScreen(win, 'inspect');
     await expect(win.getByTestId('media-scope-chip')).toHaveText(`On ${AREA}`);
     await expect(dock(win)).toBeVisible();
     const before = await appState(win);
@@ -887,7 +918,7 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     expect(assets).toBeLessThan(new Set(farm.tags).size);
     await expect.poll(() => boundsRemembered(win), { timeout: 120_000 }).toBe(assets);
 
-    await goTo(win, 'Media');
+    await goTo(win, 'Inspect');
     await expect(win.getByTestId('media-scope-chip')).toHaveCount(0);
     await expect(dock(win)).toBeVisible();
     await expect(agent(win).locator('.ag-msg')).toHaveCount(0);
@@ -903,7 +934,7 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     for (const gone of [AREA, 'Tank T-102', 'Pipe rack', 'Bund'])
       expect(areas).not.toContain(`"name":"${gone}"`);
 
-    // an asset of this project, asked on Media: its own findings
+    // an asset of this project, asked on Inspect: its own findings
     const reply = await ask(win, 'findings on T-201 #tool show_issues {"where":"T-201"}');
     await onScreen(win, 'issues');
     await expect(win.getByTestId('issue-scope-chip')).toHaveText('On T-201');
@@ -1082,7 +1113,7 @@ test.describe('the agent column in the smallest window', () => {
     }
   }
 
-  test('Media, Issues, Detections and Reports stay usable beside the open column, and the title bar fits', async () => {
+  test('Inspect, Issues and Reports stay usable beside the open column, and the title bar fits', async () => {
     run = await start({ QUADRION_WINDOW_SIZE: '1100x700' });
     const { win } = run;
     // the window is the smallest one (within a pixel or two: display scaling rounds)
@@ -1090,34 +1121,37 @@ test.describe('the agent column in the smallest window', () => {
     expect(Math.abs(w - 1100), `window width ${String(w)}`).toBeLessThanOrEqual(2);
     expect(Math.abs(h - 700), `window height ${String(h)}`).toBeLessThanOrEqual(2);
 
-    // Media: folded first (nothing moves for people who do not use the agent), then open
-    await goTo(win, 'Media');
+    // Inspect: folded first (nothing moves for people who do not use the agent), then open
+    await goTo(win, 'Inspect');
     await expect(dock(win)).toBeHidden();
     await expect(photoCards(win).first()).toBeVisible();
-    await expectTitleBarFits(win, 'Media');
+    await expectTitleBarFits(win, 'Inspect');
     await unfold(win);
-    await expectTitleBarFits(win, 'Media');
+    await expectTitleBarFits(win, 'Inspect');
     await expectRoom(win);
     expect(await sidewaysScrollers(win)).toEqual([]);
     const card = await photoCards(win).first().boundingBox();
-    expect(card?.width ?? 0).toBeGreaterThanOrEqual(120);
+    expect(card?.width ?? 0).toBeGreaterThanOrEqual(80);
     await expectInside(
       win,
-      { 'the first photo': '.media-main .m-card.sq[data-photo]', 'the filters': '.m-tools' },
-      120,
+      {
+        'the first photo': '.insp-photos-list button.m-card.sq[data-photo]',
+        'the chips': '.insp-chips',
+      },
+      80,
     );
-    await shot(win, 'agent-show-08-small-media');
+    await shot(win, 'agent-show-08-small-inspect');
 
     // with a photo open in the viewer beside the list: three panes
     await photoCards(win).first().click();
-    await expect(win.locator('.media.with-viewer')).toBeVisible();
+    await expect(win.getByTestId('photo-viewer')).toBeVisible();
     await expectRoom(win);
-    await expectTitleBarFits(win, 'Media');
+    await expectTitleBarFits(win, 'Inspect');
     const list = await mediaOverflow(win);
-    expect(list.out, `the Media list is ${String(list.width)} px wide`).toEqual([]);
+    expect(list.out, `the photo list is ${String(list.width)} px wide`).toEqual([]);
     expect(await sidewaysScrollers(win)).toEqual([]);
-    expect((await photoCards(win).first().boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(120);
-    await shot(win, 'agent-show-08-small-media-viewer');
+    expect((await photoCards(win).first().boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(80);
+    await shot(win, 'agent-show-08-small-inspect-viewer');
 
     // Issues: the list, then the card of a finding beside it
     await goTo(win, 'Issues');
@@ -1139,20 +1173,18 @@ test.describe('the agent column in the smallest window', () => {
     await expectRoom(win);
     await shot(win, 'agent-show-08-small-issues-card');
 
-    // Media with that finding's card in the viewer, as after "show the photos" on a finding
-    await goTo(win, 'Media');
-    await expect(win.locator('.media.with-viewer .ic-body')).toBeVisible();
+    // Inspect again, with the findings drawer over the viewer (the narrow layout): the column
+    // beside it, and the photo list and the screen fit
+    await goTo(win, 'Inspect');
+    await expect(dock(win)).toBeVisible();
+    await expect(win.getByTestId('photo-viewer')).toBeVisible();
+    await openFindings(win);
+    await expectRoom(win);
+    await expectTitleBarFits(win, 'Inspect');
+    await expectInside(win, { 'the inspect screen': '.insp-body' }, 400);
     expect(await sidewaysScrollers(win)).toEqual([]);
     expect((await mediaOverflow(win)).out).toEqual([]);
-
-    // Detections
-    await goTo(win, 'Detections');
-    await expect(dock(win)).toBeVisible();
-    await expectRoom(win);
-    await expectTitleBarFits(win, 'Detections');
-    await expectInside(win, { 'the detections screen': '.det-body' }, 400);
-    expect(await sidewaysScrollers(win)).toEqual([]);
-    await shot(win, 'agent-show-08-small-detections');
+    await shot(win, 'agent-show-08-small-inspect-findings');
 
     // Reports: the controls keep their width, the preview has what is left
     await goTo(win, 'Reports');

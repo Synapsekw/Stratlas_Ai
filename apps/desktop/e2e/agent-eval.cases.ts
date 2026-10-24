@@ -16,11 +16,11 @@ export type EvalLevel = number | 'uncertain';
 
 /** The app after a reply: read from `window.__stratlas` and the steps of the agent panel. */
 export interface EvalState {
-  /** The screen that shows: scene, issues, media, detections, reports. */
+  /** The screen that shows: scene, issues, inspect, reports. */
   screen: string;
   /** What is selected; `code` is the finding's code when a finding is selected. */
   selection: { kind: string; id: string; code: string | null } | null;
-  /** The Media filter. `shown` is the photos Media lists, in order; null on another screen. */
+  /** The Inspect photo filter. `shown` is the photos Inspect lists, in order; null on another screen. */
   media: {
     onlyFindings: boolean;
     order: string;
@@ -53,7 +53,7 @@ export interface EvalCase {
   /** The tag of an asset that is selected when the request is typed. */
   select?: string;
   /** The screen the request is typed on; Scene when left out. */
-  from?: 'media' | 'issues';
+  from?: 'inspect' | 'issues';
   /** Null when the app did what was asked, else the reason it did not, in a few words. */
   expect: (state: EvalState) => string | null;
   /** A remark for the table whatever the verdict, such as whether the photo opened. */
@@ -159,7 +159,7 @@ const photosOf = (findings: readonly DemoFinding[]): string[] => [
 ];
 
 /**
- * The highest level on the photos and the photos that carry it. Media counts every finding marked
+ * The highest level on the photos and the photos that carry it. Inspect counts every finding marked
  * on a photo, closed ones too, so this does as well.
  */
 function worstOnPhotos(demo: DemoFacts): { level: EvalLevel | null; photos: string[] } {
@@ -283,15 +283,15 @@ export function evalCases(demo: DemoFacts): EvalCase[] {
     note: photoOpened,
   });
 
-  /** Show photos: Media lists exactly these, however the model named them. */
+  /** Show photos: Inspect lists exactly these, however the model named them. */
   const showsPhotos =
     (photos: readonly string[], level?: EvalLevel | null) =>
     (s: EvalState): string | null => {
-      if (s.screen !== 'media') return `the screen is ${s.screen}, not media`;
+      if (s.screen !== 'inspect') return `the screen is ${s.screen}, not inspect`;
       const shown = s.media.shown ?? [];
-      if (!sameSet(shown, photos)) return `Media lists ${list(shown)}, not ${list(photos)}`;
+      if (!sameSet(shown, photos)) return `Inspect lists ${list(shown)}, not ${list(photos)}`;
       if (level !== undefined && s.media.severity !== level)
-        return `the Severity filter of Media is ${String(s.media.severity)}, not ${String(level)}`;
+        return `the Severity filter of Inspect is ${String(s.media.severity)}, not ${String(level)}`;
       if (!s.toolCalls.includes('show_photos')) return 'show_photos did not run';
       return null;
     };
@@ -320,7 +320,7 @@ export function evalCases(demo: DemoFacts): EvalCase[] {
       ask: `Show me the photos of ${PLACES.area.name}`,
       expect: (s) =>
         showsPhotos(areaPhotos)(s) ??
-        (s.media.scope ? null : 'Media has no chip that names the area'),
+        (s.media.scope ? null : 'Inspect has no chip that names the area'),
     },
 
     // A question: answered from a read, and the screen stays.
@@ -391,7 +391,7 @@ export function evalCases(demo: DemoFacts): EvalCase[] {
     // Back from another screen.
     {
       ask: 'Go back to the 3D view',
-      from: 'media',
+      from: 'inspect',
       expect: (s) => (s.screen === 'scene' ? null : `the screen is ${s.screen}, not scene`),
     },
 
@@ -400,8 +400,8 @@ export function evalCases(demo: DemoFacts): EvalCase[] {
       ask: `Show me the photos of the findings on ${PLACES.bare.said}`,
       expect: (s) => {
         const shown = s.media.shown ?? [];
-        if (s.screen === 'media' && shown.length > 0)
-          return `Media lists ${list(shown)} for an asset without findings`;
+        if (s.screen === 'inspect' && shown.length > 0)
+          return `Inspect lists ${list(shown)} for an asset without findings`;
         if (s.toolCalls.length === 0) return 'no tool ran to the end: the answer was not looked up';
         if (!SAYS_NOTHING.test(s.reply)) return 'the reply does not say that nothing matched';
         return null;

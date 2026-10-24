@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 import { expectAccessible, expectFocusMeaningful, focusInfo } from './a11y';
 import { captionArea } from './caption';
+import { openFindings, openPhotoInInspect } from './inspect';
 import {
   closeProcessing,
   expect,
@@ -78,6 +79,7 @@ async function richProject(data: DataRoot): Promise<void> {
   await mkdir(join(dir, 'models'), { recursive: true });
   await mkdir(join(dir, 'clouds'), { recursive: true });
   await mkdir(join(dir, 'photos'), { recursive: true });
+  await mkdir(join(dir, 'detections'), { recursive: true });
   for (const f of ['site', 'model-jan', 'model-jun'])
     await writeFile(join(dir, 'models', `${f}.glb`), tinyGlb());
   await copyFile(COPC, join(dir, 'clouds', 'synthetic.copc.laz'));
@@ -160,6 +162,29 @@ async function richProject(data: DataRoot): Promise<void> {
   await writeFile(
     join(dir, 'issues.json'),
     JSON.stringify({ schema: 'aio.issues/1', issues: [issue] }),
+  );
+  // one AI suggestion waiting on the photo, so Inspect shows its queue
+  await writeFile(
+    join(dir, 'detections', 'ai-a11y.json'),
+    JSON.stringify({
+      schema: 'aio.detections/1',
+      source: 'model',
+      producer: 'e2e-ai',
+      createdAt: '2026-10-03T10:00:00+03:00',
+      detections: [
+        {
+          id: 'd1',
+          photo: 'p1',
+          class: 'coating',
+          confidence: 0.9,
+          status: 'draft',
+          space: 'source',
+          width: 640,
+          height: 480,
+          bbox: [40, 40, 160, 120],
+        },
+      ],
+    }),
   );
 }
 
@@ -436,11 +461,27 @@ test.describe('a synthetic project', () => {
     await closeIslandTools(win);
     await stageMode(win, '3D');
 
-    for (const screen of ['Issues', 'Media', 'Detections', 'Reports']) {
+    for (const screen of ['Issues', 'Inspect', 'Reports']) {
       await nav(win, screen);
       await expect(win.locator('.nav-item[aria-current="page"] .lbl')).toHaveText(screen);
       await expectAccessible(win, screen);
     }
+
+    // Inspect with a photo open: the Ask AI checks menu, the findings drawer and the review queue
+    await nav(win, 'Inspect');
+    await openPhotoInInspect(win, 'p1');
+    await expectAccessible(win, 'Inspect, photo open');
+    await win.getByTestId('ask-ai-checks').click();
+    await expect(win.getByRole('menu', { name: 'Look for' })).toBeVisible();
+    await expectAccessible(win, 'Inspect, Ask AI checks menu');
+    await win.keyboard.press('Escape');
+    await openFindings(win);
+    await expectAccessible(win, 'Inspect, findings drawer');
+    await win.getByTestId('inspect-review').click();
+    await expect(win.getByTestId('inspect-queue')).toBeVisible();
+    await expectAccessible(win, 'Inspect, review queue');
+    await win.keyboard.press('Escape');
+    await expect(win.getByTestId('inspect-queue')).toBeHidden();
 
     // the open project's processing: the chip and the drawer over the screen
     const processingDrawer = await openProcessing(win);

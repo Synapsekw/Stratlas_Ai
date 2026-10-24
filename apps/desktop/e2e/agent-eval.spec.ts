@@ -126,8 +126,14 @@ const TEST_VAULT_FILE = 'TEST-ONLY-vault.json';
 /** The agent panel, wherever it is: the Scene's right panel or the column of the other screens. */
 const PANEL = 'section.aio-agent';
 
-/** The Media and Issues filters as a project starts (DEFAULT_MEDIA_VIEW, DEFAULT_ISSUE_VIEW). */
-const NO_MEDIA_FILTER = { onlyFindings: false, order: 'file', severity: null, scope: null };
+/** The Inspect photo and Issues filters as a project starts (DEFAULT_MEDIA_VIEW, DEFAULT_ISSUE_VIEW). */
+const NO_MEDIA_FILTER = {
+  onlyFindings: false,
+  order: 'file',
+  severity: null,
+  scope: null,
+  toReview: false,
+};
 const NO_ISSUE_FILTER = {
   text: '',
   sev: null,
@@ -347,10 +353,12 @@ const appState = (win: Page) =>
           ? { label: media.scope.label, photos: media.scope.ids.map(photo) }
           : null,
         shown:
-          screen === 'media'
-            ? [...document.querySelectorAll('.media-main .m-card.sq[data-photo]')].map(
-                (el) => el.getAttribute('data-photo') ?? '',
-              )
+          screen === 'inspect'
+            ? [
+                ...document.querySelectorAll(
+                  '[data-testid="inspect-photos"] button.m-card.sq[data-photo]',
+                ),
+              ].map((el) => el.getAttribute('data-photo') ?? '')
             : null,
       },
       issues: {
@@ -379,7 +387,7 @@ interface Home {
 
 /**
  * A known start for a request: a new conversation, Scene (or the screen the case is typed on),
- * the photo beside the 3D view closed, no filter in Media or Issues, and nothing selected unless
+ * the photo beside the 3D view closed, no filter in Inspect or Issues, and nothing selected unless
  * the case selects an asset. Whatever the request before left behind is gone.
  */
 async function knownState(win: Page, c: EvalCase, home: Home, selection: Picked | null) {
