@@ -59,6 +59,11 @@ export const PROJECT_TYPES: { id: ProjectPurpose; label: string; hint: string }[
     hint: 'A large site with many sensors: any mix of data in one scene',
   },
   { id: 'road', label: 'Road', hint: 'Corridor orthomosaic, distress mapping, PCI' },
+  {
+    id: 'telecom',
+    label: 'Telecom towers',
+    hint: 'Antennas on a tower: inventory, azimuths and RF coverage',
+  },
 ];
 
 /**
@@ -130,6 +135,11 @@ const STARTERS: Record<ProjectKind, readonly string[]> = {
     'The corridor orthomosaic (GeoTIFF)',
     'Photos along the road, if there are any (JPG with GPS)',
     'The defect polygons are picked later, in Run the road builder',
+  ],
+  telecom: [
+    'Photos of the tower (JPG with GPS and gimbal angles)',
+    'The 3D model of the tower (GLB or OBJ)',
+    'Flight video with its DJI SRT log beside it (MP4 or MOV)',
   ],
   inspection: ASSET_STARTER,
   twin: SITE_STARTER,

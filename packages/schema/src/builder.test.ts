@@ -80,6 +80,11 @@ describe('project purpose', () => {
     }
   });
 
+  it('reads telecom, and an older build reads its manifest by the type', () => {
+    expect(projectPurpose(parse('telecom'))).toBe('telecom');
+    expect(parse('telecom').type).toBe('inspection');
+  });
+
   it('maps every purpose to one of the five existing types', () => {
     expect(PURPOSE_TYPE).toEqual({
       survey: 'volumetric',
@@ -88,6 +93,7 @@ describe('project purpose', () => {
       'confined-space': 'inspection',
       'data-fusion': 'fusion',
       road: 'road',
+      telecom: 'inspection',
     });
     expect(Object.keys(PURPOSE_TYPE).sort()).toEqual([...ProjectPurpose.options].sort());
     for (const type of Object.values(PURPOSE_TYPE)) expect(ProjectType.options).toContain(type);

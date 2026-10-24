@@ -21,6 +21,7 @@ export const ProjectPurpose = z.enum([
   'confined-space',
   'data-fusion',
   'road',
+  'telecom',
 ]);
 
 /** The `type` a project of a purpose is written with, so older builds and every default follow. */
@@ -31,6 +32,7 @@ export const PURPOSE_TYPE = {
   'confined-space': 'inspection',
   'data-fusion': 'fusion',
   road: 'road',
+  telecom: 'inspection',
 } as const satisfies Record<z.infer<typeof ProjectPurpose>, z.infer<typeof ProjectType>>;
 
 /** A severity model (with its classes) offered by the new project wizard. */

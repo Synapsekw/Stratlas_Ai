@@ -28,6 +28,7 @@ describe('cover', () => {
       'confined-space',
       'data-fusion',
       'road',
+      'telecom',
     ] as const;
     expect(new Set(purposes.map((p) => coverPalette(p).accent)).size).toBe(purposes.length);
   });

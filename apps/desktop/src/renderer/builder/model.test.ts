@@ -42,7 +42,7 @@ describe('defaultTemplateFor', () => {
 });
 
 describe('the project type cards', () => {
-  it('are the six the wizard offers, in order, each with one plain line', () => {
+  it('are the seven the wizard offers, in order, each with one plain line', () => {
     expect(PROJECT_TYPES.map((c) => [c.id, c.label])).toEqual([
       ['survey', 'Survey'],
       ['construction', 'Construction'],
@@ -50,6 +50,7 @@ describe('the project type cards', () => {
       ['confined-space', 'Confined space inspection'],
       ['data-fusion', 'Data fusion'],
       ['road', 'Road'],
+      ['telecom', 'Telecom towers'],
     ]);
     for (const card of PROJECT_TYPES) {
       expect(card.hint.length, card.label).toBeGreaterThan(20);
@@ -60,7 +61,14 @@ describe('the project type cards', () => {
 
   it('can each be picked by the start of their name (the end to end specs do)', () => {
     const names = PROJECT_TYPES.map((c) => `${c.label} ${c.hint}`);
-    const starts = [/^Survey/, /^Construction/, /^Vertical asset/, /^Confined space/, /^Data/];
+    const starts = [
+      /^Survey/,
+      /^Construction/,
+      /^Vertical asset/,
+      /^Confined space/,
+      /^Data/,
+      /^Telecom/,
+    ];
     for (const start of [...starts, /^Road/])
       expect(
         names.filter((n) => start.test(n)),
@@ -74,6 +82,8 @@ describe('projectKind', () => {
     for (const card of PROJECT_TYPES)
       expect(projectKind({ type: PURPOSE_TYPE[card.id], purpose: card.id })).toBe(card.id);
     expect(kindLabel('confined-space')).toBe('Confined space inspection');
+    expect(projectKind({ type: 'inspection', purpose: 'telecom' })).toBe('telecom');
+    expect(kindLabel('telecom')).toBe('Telecom towers');
   });
 
   it('comes from the older type for a project without a purpose', () => {

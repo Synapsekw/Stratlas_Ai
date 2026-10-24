@@ -29,6 +29,7 @@ const TYPE_ICON: Record<WizardForm['purpose'], IconName> = {
   'confined-space': 'tank',
   'data-fusion': 'layers',
   road: 'road',
+  telecom: 'telemetry',
 };
 
 const STEPS = ['Project', 'Place', 'Standards', 'Review'] as const;

@@ -37,6 +37,7 @@ const TONE: Record<ProjectPurpose, { h: number; c: number }> = {
   'confined-space': { h: 300, c: 1 }, // violet
   'data-fusion': { h: 150, c: 1 }, // green
   road: { h: 240, c: 0.45 }, // slate
+  telecom: { h: 20, c: 1 }, // coral
 };
 const NEUTRAL = { h: 250, c: 0.1 };
 
