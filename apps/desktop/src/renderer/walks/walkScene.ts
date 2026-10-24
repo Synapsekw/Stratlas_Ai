@@ -35,7 +35,9 @@ import {
  * on the ground at the clicked heights, the shape that follows the pointer, and the Start and
  * End handles, drawn over the model (no depth test, raised render order). Hover through
  * `stage.raycast`, clicks through `stage.claimClicks`, a handle drag with the orbit controls off.
- * Placed walks are drawn faintly. The session behind it is wired in `WalkSceneMount.tsx`.
+ * Placed walks lie on the ground the view draws (draped by `walkGround.ts`), 3 px over a dark
+ * halo and depth tested, so the ground and models in front hide them. The session behind it is
+ * wired in `WalkSceneMount.tsx`.
  */
 
 export const WALK_SCENE_GROUP = 'aio-walks';
@@ -76,7 +78,7 @@ export interface WalkSceneMarker {
   dim?: boolean;
 }
 export interface WalkSceneView {
-  /** Placed walks drawn faintly (not the one being placed). */
+  /** Placed walks, draped on the ground (not the one being placed). */
   setPlaced(walks: readonly WalkSceneWalk[]): void;
   setPlacing(p: WalkScenePlacing | null, input: WalkSceneInput | null): void;
   /** SPIKE: the markers of the walks the 360 panes show. */
@@ -85,10 +87,13 @@ export interface WalkSceneView {
 }
 /** Lines sit this far above the ground, metres, so the ground does not hide them. */
 const LIFT_M = 0.1;
-/** SPIKE: placed walks are draped on the ground and depth tested, lifted this much. */
+/** Placed walks are draped on the ground and depth tested, lifted this much, metres. */
 export const DRAPE_LIFT_M = 0.15;
 /** SPIKE: the marker's stem, metres, with its dot on top. */
 const STEM_M = 1.8;
+/** A placed walk's line, screen px, over a dark halo 3 px wider. */
+export const PLACED_PX = 3;
+const HALO = '#0b0f14';
 /** A press this close to a handle (screen px) grabs it. */
 const HANDLE_PX = 10;
 const GHOST = 0.45;
@@ -197,8 +202,9 @@ export function attachWalkScene(stage: EngineStage): WalkSceneView {
   };
   const size = new Vector2();
   /**
-   * SPIKE: a line a few pixels wide that the ground and models in front hide (depth tested,
-   * pulled a little towards the camera so the surface it lies on does not cover it).
+   * A line `width` pixels wide that the ground and models in front hide (depth tested unless
+   * `depth` is false, pulled a little towards the camera so the surface it lies on does not
+   * cover it).
    */
   const fatLine = (
     pts: readonly (readonly [number, number, number])[],
@@ -253,11 +259,11 @@ export function attachWalkScene(stage: EngineStage): WalkSceneView {
   const drawWalk = (g: Group, w: WalkSceneWalk, opacity: number) => {
     for (const r of w.runs) g.add(line(r.pts, w.colour, opacity, r.dashed));
   };
-  /** SPIKE: a placed walk draped on the ground: a dark halo under its date colour, depth tested. */
+  /** A placed walk on the ground: its date colour over a dark halo, depth tested. */
   const drawDraped = (g: Group, w: WalkSceneWalk) => {
     for (const r of w.runs) {
-      g.add(fatLine(r.pts, '#0b0f14', 0.45, 6, { dashed: r.dashed }));
-      g.add(fatLine(r.pts, w.colour, 0.95, 3, { dashed: r.dashed, order: 46 }));
+      g.add(fatLine(r.pts, HALO, 0.45, PLACED_PX + 3, { dashed: r.dashed }));
+      g.add(fatLine(r.pts, w.colour, 0.95, PLACED_PX, { dashed: r.dashed, order: 46 }));
     }
   };
 
@@ -573,7 +579,6 @@ export function attachWalkScene(stage: EngineStage): WalkSceneView {
   return {
     setPlaced: (walks) => {
       clear(placedGroup);
-      // SPIKE: draped and depth tested (was: faint 1 px lines over everything)
       for (const w of walks) drawDraped(placedGroup, w);
       stage.requestRender();
     },

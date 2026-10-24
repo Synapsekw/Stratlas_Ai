@@ -45,4 +45,26 @@ describe('walkTrack', () => {
     const s = walkTrack(fakeFit(4), 10, 1.7, () => null);
     expect(s.map((x) => x.t)).toEqual([0, 1, 2, 3, 4]);
   });
+
+  it('stands on the ground it is given, else on the fitted ground', () => {
+    // the drawn ground rises along x and stops at x = 5
+    const s = walkTrack(
+      fakeFit(),
+      10,
+      1.7,
+      () => null,
+      (x) => (x <= 5 ? 10 + x : null),
+    );
+    for (const x of s) {
+      const ground = x.t <= 5 ? 10 + x.t : 2;
+      expect(x.groundY).toBeCloseTo(ground, 9);
+      expect(x.pos[1]).toBeCloseTo(ground + 1.7, 9);
+    }
+  });
+
+  it('steps at the given step', () => {
+    expect(walkTrack(fakeFit(), 4, 1.7, () => null, undefined, 2).map((x) => x.t)).toEqual([
+      0, 2, 4,
+    ]);
+  });
 });

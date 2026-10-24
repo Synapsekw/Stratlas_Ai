@@ -5,6 +5,7 @@ import { PerspectiveCamera, Scene, Vector3 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import {
   attachWalkScene,
+  PLACED_PX,
   previewPoints,
   sceneRuns,
   WALK_PREVIEW_NAME,
@@ -285,5 +286,59 @@ describe('walk in the 3D view', () => {
     expect(stage.scene.getObjectByName(WALK_PREVIEW_NAME)?.visible ?? false).toBe(false);
     view.dispose();
     expect(stage.scene.getObjectByName(WALK_SCENE_GROUP)).toBeUndefined();
+  });
+
+  it('draws a placed walk on the ground: its colour over a dark halo, depth tested', () => {
+    const { stage } = fakeStage(null);
+    const view = attachWalkScene(stage);
+    view.setPlaced([
+      {
+        id: 'walk-b',
+        colour: '#ff0000',
+        runs: [
+          {
+            pts: [
+              [0, 3, 0],
+              [4, 3, 0],
+            ],
+            dashed: false,
+          },
+          {
+            pts: [
+              [4, 3, 0],
+              [8, 3, 0],
+            ],
+            dashed: true,
+          },
+        ],
+      },
+    ]);
+    interface Fat {
+      isLine2?: boolean;
+      material: {
+        linewidth: number;
+        depthTest: boolean;
+        dashed: boolean;
+        color: { getHexString(): string };
+      };
+    }
+    const lines: Fat[] = [];
+    stage.scene
+      .getObjectByName(WALK_SCENE_GROUP)
+      ?.traverse((o) => (o as unknown as Fat).isLine2 && lines.push(o as unknown as Fat));
+    expect(lines).toHaveLength(4);
+    expect(lines.every((l) => l.material.depthTest)).toBe(true);
+    const colour = lines.filter((l) => l.material.color.getHexString() === 'ff0000');
+    expect(colour.map((l) => l.material.linewidth)).toEqual([PLACED_PX, PLACED_PX]);
+    expect(colour.map((l) => l.material.dashed)).toEqual([false, true]);
+    const halo = lines.filter((l) => l.material.color.getHexString() !== 'ff0000');
+    expect(halo.every((l) => l.material.linewidth > PLACED_PX)).toBe(true);
+    view.setPlaced([]);
+    const left: unknown[] = [];
+    stage.scene
+      .getObjectByName(WALK_SCENE_GROUP)
+      ?.traverse((o) => (o as unknown as Fat).isLine2 && left.push(o));
+    expect(left).toEqual([]);
+    view.dispose();
   });
 });

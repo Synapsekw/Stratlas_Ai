@@ -58,6 +58,22 @@ describe('walkPoseSamples', () => {
     }
   });
 
+  it('stands on the ground it is given, else on the fit', () => {
+    const c = cal();
+    const fit = fitFor(c);
+    const base = walkPoseSamples(fit, raw, rows, c, end);
+    // the ground under the walk rises with x; off x < 0 nothing is drawn there
+    const groundAt = (x: number) => (x >= 0 ? 10 + x : null);
+    const draped = walkPoseSamples(fit, raw, rows, c, end, groundAt);
+    expect(draped).toHaveLength(base.length);
+    draped.forEach((s, i) => {
+      const b = base[i];
+      if (!b) throw new Error('no sample');
+      expect([s.pos[0], s.pos[2], s.q]).toEqual([b.pos[0], b.pos[2], b.q]);
+      expect(s.pos[1]).toBeCloseTo(s.pos[0] >= 0 ? 10 + s.pos[0] + 1.7 : b.pos[1], 9);
+    });
+  });
+
   it('heads like the fit, turned by the yaw offset', () => {
     for (const [o, r] of [
       [0, rows],

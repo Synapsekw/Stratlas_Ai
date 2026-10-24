@@ -124,12 +124,24 @@ export function walkHeadingAt(
   return oriented(d, orient && orient.length > 0 ? orient : null, t).heading;
 }
 
+/** The ground `groundAt` gives under `xz`, else (null, not finite, none given) `fallback`. */
+function drawnGround(
+  groundAt: ((x: number, z: number) => number | null) | undefined,
+  xz: readonly [number, number],
+  fallback: number,
+): number {
+  const g = groundAt?.(xz[0], xz[1]);
+  return typeof g === 'number' && Number.isFinite(g) ? g : fallback;
+}
+
 /**
  * The walk's pose samples for its `aio.flight/1` file: 30 per second with orientation rows
  * (`readWalkOrientationData`), else 10 per second from the stills; `t` in milliseconds from 0;
  * position through the fit at the camera height; `q = Ry(heading + yawOffset)` composed with the
  * raw camera pitch and roll. Empty while the walk is not placed. The raw path itself is read
  * through the fit (its stills anchor the orientation rows); `_raw` stays in the signature.
+ * `groundAt`, when given, is the ground drawn under a point of the walk's frame (the renderer's
+ * walk ground: DSM, imagery, models); where it answers null the fit's ground (the pins) stays.
  */
 export function walkPoseSamples(
   fit: WalkFit,
@@ -137,6 +149,7 @@ export function walkPoseSamples(
   orient: readonly Float64Array[] | null,
   cal: WalkCalibration,
   durationS: number,
+  groundAt?: (x: number, z: number) => number | null,
 ): PoseSample[] {
   const rows = orient && orient.length > 0 ? orient : null;
   const hz = rows ? WALK_POSE_HZ_ORIENTED : WALK_POSE_HZ_STILLS;
@@ -154,7 +167,7 @@ export function walkPoseSamples(
     const ypr = rawQ ? yawPitchRoll(rawQ) : { yaw: 0, pitch: 0, roll: 0 };
     out.push({
       t: (k * 1000) / hz,
-      pos: [d.xz[0], d.groundY + heightM, d.xz[1]],
+      pos: [d.xz[0], drawnGround(groundAt, d.xz, d.groundY) + heightM, d.xz[1]],
       q: quatFromYawPitchRoll(heading + yawOffset, ypr.pitch, ypr.roll),
     });
   }

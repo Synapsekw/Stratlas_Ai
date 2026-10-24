@@ -1,9 +1,11 @@
 import { clipKeys, photoCorrection, type WalkFit } from '@aio/geo';
-import { WALK_HEIGHT_M, type WalkLayer } from '@aio/schema';
+import { shiftLocal, WALK_HEIGHT_M, type DateShift, type WalkLayer } from '@aio/schema';
 import { loadFlight, type Flight, type VideoLayer } from '@aio/video';
 import { dateShiftOf, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useState } from 'react';
+import { useStore } from 'zustand';
 import { inputsKey, placedWalks, usePlacedWalkFits, viewHeading } from '../../walks/placeWalk';
+import { walkGround } from '../../walks/walkGround';
 import { useCaptureIndex } from '../compare';
 import { safeAssetUrl } from './safeAssetUrl';
 import { sampleVideo, spotEntries, type DirectionKeys } from './spotEntries';
@@ -37,22 +39,39 @@ export function cachedSamples(
   return samples;
 }
 
-/** Tracks of placed walks, per walk inputs and live fit (a moved drawing makes a new fit). */
-const tracked = new Map<string, { fit: WalkFit; samples: readonly TrackSample[] }>();
+/**
+ * Tracks of placed walks, per walk inputs, live fit (a moved drawing makes a new fit) and walk
+ * ground version (the 3D view's ground asked again). The track stands on the ground the 3D view
+ * draws under the walk where it is drawn (on its date's shift), as the 3D line does.
+ */
+const tracked = new Map<
+  string,
+  { fit: WalkFit; ground: number; shift: string; samples: readonly TrackSample[] }
+>();
 function cachedTrack(
   projectId: string,
   layer: WalkLayer,
   fit: WalkFit,
   orientation: readonly Float64Array[] | null,
+  shift: DateShift | null,
+  ground: number,
 ): readonly TrackSample[] {
   const key = inputsKey(projectId, layer);
   const hit = tracked.get(key);
-  if (hit?.fit === fit) return hit.samples;
+  const shiftKey = JSON.stringify(shift);
+  if (hit?.fit === fit && hit.ground === ground && hit.shift === shiftKey) return hit.samples;
   const yaw = layer.place?.yawOffsetDeg ?? 0;
-  const samples = walkTrack(fit, layer.durationS, layer.place?.heightM ?? WALK_HEIGHT_M, (t) =>
-    viewHeading(fit, orientation, yaw, t),
+  const samples = walkTrack(
+    fit,
+    layer.durationS,
+    layer.place?.heightM ?? WALK_HEIGHT_M,
+    (t) => viewHeading(fit, orientation, yaw, t),
+    (x, z) => {
+      const p = shiftLocal([x, 0, z], shift);
+      return walkGround.ground(p[0], p[2]);
+    },
   );
-  tracked.set(key, { fit, samples });
+  tracked.set(key, { fit, ground, shift: shiftKey, samples });
   return samples;
 }
 
@@ -102,6 +121,7 @@ export function useSpotEntries(active: boolean): { entries: SpotEntry[]; reading
     [project],
   );
   const walksReading = [...placed].some((id) => !inputsOf(id));
+  const groundVersion = useStore(walkGround.store, (s) => s.version);
   const entries = useMemo(() => {
     // the viewer is mounted all session long: nothing is computed until it (or a strip) opens
     if (!active || !project || !index) return [];
@@ -120,9 +140,11 @@ export function useSpotEntries(active: boolean): { entries: SpotEntry[]; reading
         const inputs = inputsOf(l.id);
         if (!inputs) return undefined;
         const fit = fits.find((w) => w.layer.id === l.id);
-        return fit ? cachedTrack(project.id, l, fit.fit, inputs.orientation) : null;
+        if (!fit) return null;
+        const shift = dateShiftOf(project.manifest, l.id);
+        return cachedTrack(project.id, l, fit.fit, inputs.orientation, shift, groundVersion);
       },
     });
-  }, [active, project, index, layers, orientation, map, placed, inputsOf, fits]);
+  }, [active, project, index, layers, orientation, map, placed, inputsOf, fits, groundVersion]);
   return { entries, reading: active && ((clips.length > 0 && !map) || walksReading) };
 }

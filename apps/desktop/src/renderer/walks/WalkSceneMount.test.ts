@@ -15,7 +15,9 @@ vi.mock('../builder/state', () => ({
   builder: { getState: () => ({ saveLayers: vi.fn() }), subscribe: () => () => undefined },
 }));
 
-const { placedReach, scenePlacedWalks, scenePlacing, walkReach } = await import('./WalkSceneMount');
+const { drapePlaced, placedReach, scenePlacedWalks, scenePlacing, walkReach } =
+  await import('./WalkSceneMount');
+const { DRAPE_LIFT_M } = await import('./walkScene');
 
 describe('scenePlacing', () => {
   const pins: WalkPin[] = [
@@ -106,6 +108,11 @@ describe('scenePlacedWalks', () => {
     expect(shifted?.[2]).toBeCloseTo((still?.[2] ?? NaN) + 1, 9);
   });
 
+  it('points sit at the stored ground, unlifted (the drape lifts them)', () => {
+    const out = scenePlacedWalks([walk('walk-a')], new Set(), null, () => '#fff');
+    expect(out[0]?.runs.flatMap((r) => r.pts).every((p) => p[1] === 0)).toBe(true);
+  });
+
   it('nothing edited: every visible walk', () => {
     expect(scenePlacedWalks(fits, new Set(), null, () => '#fff').map((w) => w.id)).toEqual([
       'walk-a',
@@ -157,5 +164,61 @@ describe('placedReach', () => {
   it('the placed walks widen the reach only while a walk is placed on the 3D view', () => {
     expect(placedReach(placed, false)).toBeNull();
     expect(placedReach(placed, true)?.max.toArray()).toEqual([400, 1, 300]);
+  });
+});
+
+describe('drapePlaced', () => {
+  const pts = (y: number): [number, number, number][] => [
+    [0, y, 0],
+    [1, y, 0],
+    [2, y, 0],
+  ];
+  const placed = [
+    { id: 'walk-a', colour: '#f00', runs: [{ pts: pts(0), dashed: false }] },
+    {
+      id: 'walk-b',
+      colour: '#0f0',
+      runs: [
+        { pts: pts(5), dashed: false },
+        { pts: pts(5), dashed: true },
+      ],
+    },
+  ];
+
+  it('every walk on the drawn ground, lifted, its runs and colours kept', () => {
+    const done = vi.fn();
+    drapePlaced(placed, () => 7, done);
+    const out = done.mock.calls[0]?.[0] as typeof placed;
+    expect(out.map((w) => [w.id, w.colour, w.runs.length])).toEqual([
+      ['walk-a', '#f00', 1],
+      ['walk-b', '#0f0', 2],
+    ]);
+    expect(out[1]?.runs[1]?.dashed).toBe(true);
+    for (const p of out.flatMap((w) => w.runs.flatMap((r) => r.pts)))
+      expect(p[1]).toBeCloseTo(7 + DRAPE_LIFT_M, 9);
+  });
+
+  it('off the drawn ground a walk keeps its stored height', () => {
+    const done = vi.fn();
+    drapePlaced(placed, (x) => (x < 1 ? 7 : null), done, { stepM: 1 });
+    const out = done.mock.calls[0]?.[0] as typeof placed;
+    expect(out[1]?.runs[0]?.pts.map((p) => p[1] - DRAPE_LIFT_M)).toEqual(
+      [7, 5, 5].map((y): unknown => expect.closeTo(y, 9)),
+    );
+  });
+
+  it('a long walk is draped over frames, and can be called off', () => {
+    const queue: (() => void)[] = [];
+    const scheduler = {
+      request: (cb: () => void) => queue.push(cb),
+      cancel: vi.fn(),
+    };
+    const done = vi.fn();
+    const ground = vi.fn(() => 1);
+    const cancel = drapePlaced(placed, ground, done, { budget: 4, scheduler });
+    expect(ground).toHaveBeenCalledTimes(4);
+    expect(done).not.toHaveBeenCalled();
+    cancel();
+    expect(scheduler.cancel).toHaveBeenCalled();
   });
 });
