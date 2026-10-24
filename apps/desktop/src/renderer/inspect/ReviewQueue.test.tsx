@@ -209,6 +209,17 @@ async function filterTo(label: string) {
 }
 
 describe('ReviewQueue', () => {
+  // first in the file: React warns about a missing key only once per component
+  it('keys every severity button', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      await mount();
+      expect(errors.mock.calls.flat().join(' ')).not.toContain('unique "key"');
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
   it('shows where you are in the queue and steps on accept', async () => {
     await mount();
     expect(byId('queue-progress')).not.toBeNull();
@@ -387,9 +398,20 @@ describe('ReviewQueue', () => {
       'queue-not-fault',
       'det-accept-all',
       'det-reject-all',
-    ])
-      expect((byId(id) as HTMLButtonElement).disabled).toBe(true);
-    expect(tipOf(byId('queue-accept'))).toBe('This package is read only.');
+      'queue-reject-reason',
+    ]) {
+      // aria-disabled, not disabled: a disabled button takes no hover or focus, so no tip
+      expect((byId(id) as HTMLButtonElement).disabled, id).toBe(false);
+      expect(byId(id)?.getAttribute('aria-disabled'), id).toBe('true');
+      expect(tipOf(byId(id)), id).toBe('This package is read only.');
+    }
+    await click('queue-accept');
+    await click('queue-not-fault');
+    await click('det-accept-all');
+    await click('queue-reject-reason');
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(byId('det-batch-confirm')).toBeNull();
+    expect(find('d1')?.status).toBe('draft');
     expect(queueCommand('accept')).toBe(true);
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));

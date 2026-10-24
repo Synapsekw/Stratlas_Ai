@@ -128,8 +128,11 @@ export function ChangePicker({
                     type="button"
                     className="ann-btn ghost"
                     data-testid="det-create-class"
-                    disabled={disabledReason !== null || creating}
+                    // with a reason, aria-disabled keeps the tip reachable on hover and focus
+                    disabled={disabledReason === null && creating}
+                    aria-disabled={disabledReason !== null ? true : undefined}
                     onClick={() => {
+                      if (disabledReason !== null) return;
                       setCreating(true);
                       setError(null);
                       void createClassFromLabel(word).then((e) => {

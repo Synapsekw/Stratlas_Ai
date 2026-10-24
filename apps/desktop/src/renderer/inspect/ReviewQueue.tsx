@@ -20,7 +20,7 @@ import {
 } from '@aio/annotate/detections';
 import type { ProjectManifest } from '@aio/schema';
 import { formatCount, Icon, shortcutHint, Tip, useT } from '@aio/ui';
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { cloneElement, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { BatchConfirm } from '../detections/BatchConfirm';
 import { RejectReasonMenu } from '../detections/detectors/RejectReasonMenu';
 import {
@@ -75,9 +75,20 @@ detections.subscribe((s, prev) => {
 
 const isScored = (d: Detection) => !d.unscored && d.confidence !== undefined;
 
-/** A tip carrying the reason a control is greyed out; the control alone when there is none. */
-function WithReason(p: { reason: string | undefined; children: ReactElement }): ReactElement {
-  return p.reason ? <Tip content={p.reason}>{p.children}</Tip> : p.children;
+/**
+ * A tip carrying the reason a control is greyed out; the control alone when there is none. A
+ * disabled button takes no hover or focus, so the tip could never show: with a reason, the
+ * control is aria-disabled instead (still focusable) and its click does nothing.
+ */
+function WithReason(p: {
+  reason: string | undefined;
+  children: ReactElement<{ disabled?: boolean; 'aria-disabled'?: boolean; onClick?: unknown }>;
+}): ReactElement {
+  if (!p.reason) return p.children;
+  const child = p.children.props.disabled
+    ? cloneElement(p.children, { disabled: false, 'aria-disabled': true, onClick: undefined })
+    : p.children;
+  return <Tip content={p.reason}>{child}</Tip>;
 }
 
 export function ReviewQueue(p: {
@@ -518,10 +529,10 @@ export function ReviewQueue(p: {
             <div className="det-sevs" role="group" aria-label={t('det.severity')}>
               {(model?.levels ?? []).map((l) => (
                 <Tip
+                  key={l.value}
                   content={`${String(l.value)} ${l.label}${l.criteria ? `: ${l.criteria}` : ''}`}
                 >
                   <button
-                    key={l.value}
                     type="button"
                     className="det-sev"
                     data-testid={`queue-sev-${String(l.value)}`}
@@ -593,8 +604,11 @@ export function ReviewQueue(p: {
                   aria-label={t('detect.preset.reject.title')}
                   aria-haspopup="menu"
                   aria-expanded={reasonOpen}
-                  disabled={!canDismiss || pendingState}
+                  // with a reason (read only), aria-disabled keeps the tip reachable
+                  disabled={(!canDismiss || pendingState) && reason === undefined}
+                  aria-disabled={reason !== undefined ? true : undefined}
                   onClick={() => {
+                    if (reason !== undefined) return;
                     setReasonOpen((o) => !o);
                   }}
                 >

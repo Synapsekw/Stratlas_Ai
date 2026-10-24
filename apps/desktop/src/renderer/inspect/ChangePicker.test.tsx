@@ -14,11 +14,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
   confirmWith: ['rust', 2] as [string, number | 'uncertain'],
+  newClassReason: null as string | null,
 }));
 
 vi.mock('@aio/annotate', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
-  useNewClass: () => ({ create: () => Promise.resolve({}), disabledReason: null }),
+  useNewClass: () => ({ create: () => Promise.resolve({}), disabledReason: h.newClassReason }),
   ClassSeverityForm: (p: {
     initialClassId: string | null;
     initialSeverity: number | 'uncertain' | null;
@@ -97,6 +98,7 @@ beforeEach(() => {
   document.body.append(host);
   root = createRoot(host);
   vi.clearAllMocks();
+  h.newClassReason = null;
 });
 afterEach(() => {
   act(() => {
@@ -213,6 +215,15 @@ describe('ChangePicker', () => {
     expect(byId('det-create-class')?.textContent).toBe('Add "Spalling" as a class');
     await click(byId('det-create-class'));
     expect(createClassFromLabel).toHaveBeenCalledWith('Spalling');
+  });
+  it('keeps a class it cannot create focusable, with why in its tip, and creates nothing', async () => {
+    h.newClassReason = 'This package is read only.';
+    await render({ detection: det({ classId: '', label: 'Spalling', suggestedNew: true }) });
+    const btn = byId('det-create-class') as HTMLButtonElement | null;
+    expect(btn?.disabled).toBe(false);
+    expect(btn?.getAttribute('aria-disabled')).toBe('true');
+    await click(btn);
+    expect(createClassFromLabel).not.toHaveBeenCalled();
   });
   it('shows why creating the class failed and keeps the form', async () => {
     vi.mocked(createClassFromLabel).mockResolvedValueOnce('Classes not saved: disk full');
