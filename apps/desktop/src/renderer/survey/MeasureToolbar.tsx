@@ -18,6 +18,7 @@ import { useMeasureFollow } from '../workspace/workbench/measureFollow';
 import { CompareLayer } from './Comparison';
 import { DesignRolePrompt } from './DesignRolePrompt';
 import { ExportDialogMount } from './ExportDialog';
+import { attachHover3d, attachHoverFly, attachHoverMap } from './hoverScene';
 import { useMagicController } from './MagicPolygon';
 import { MeasureMenu } from './MeasureMenu';
 import { attachMeasurePick3d, attachMeasurePickMap, type MeasureMenuAt } from './measurePick';
@@ -87,13 +88,25 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
     setSurface({ heightAt: clamp });
     // the main view's own dates: the date its side shows while the split shows dates
     const detach = attach3d(stage, frame, { dates: primaryScene });
+    // the chart's point on its line, and the line driving the chart (spec section 4); before the
+    // pick, so a click on a line whose chart is open pins its point rather than picking the line
+    const detachHover = attachHover3d(stage, frame);
     const detachPick = attachMeasurePick3d(stage, frame, setMenuAt);
     return () => {
+      detachHover();
       detachPick();
       detach();
       setSurface(null);
     };
   }, [stage, frame]);
+
+  // a double-click on a profile chart or its line flies the camera and the map there, once
+  // however many views show the line
+  useEffect(() => {
+    if (!frame) return;
+    const z = manifest?.origin[2] ?? 0;
+    return attachHoverFly(frame, () => z);
+  }, [frame, manifest]);
 
   // where the stage has nothing under a map pick, the focused date's prepared surface gives the
   // height (tiles around the map's view, loaded ahead), so a map point never falls to 0
@@ -143,6 +156,7 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
       attachSectionMap(map, frame.epsg),
       attachOverlaysMap(map, frame.epsg),
       attachMeasurePickMap(map, frame, setMenuAt),
+      attachHoverMap(map, frame),
     ];
     return () => {
       for (const d of detach) d();

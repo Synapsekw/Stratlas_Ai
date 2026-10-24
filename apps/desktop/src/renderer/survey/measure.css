@@ -55,6 +55,58 @@
   outline: 1px solid #fff;
 }
 
+/* the linked hover's tag and pin over the 3D view and the map (hoverScene.ts): above the
+   measurement labels, never catching the pointer */
+.link-labels {
+  z-index: 4;
+}
+.link-labels-map {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.link-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: var(--sp-1) var(--sp-3);
+  margin: -32px 0 0 10px;
+  border-radius: var(--r-4);
+  background: oklch(0.16 0.01 250 / 0.88);
+  box-shadow: var(--el-1);
+  color: #fff;
+  font: 500 12px/1.3 var(--f-mono);
+  white-space: nowrap;
+}
+.link-tag.cut {
+  color: var(--cut);
+}
+.link-tag.fill {
+  color: var(--fill);
+}
+.link-tag.pinned {
+  outline: 1px solid var(--acc);
+}
+.link-pin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  margin: -34px 0 0 -6px;
+  color: var(--acc);
+  line-height: 0;
+}
+.link-pin svg {
+  fill: currentColor;
+}
+.link-pin circle {
+  fill: oklch(0.16 0.01 250);
+}
+.link-tag[hidden],
+.link-pin[hidden] {
+  display: none;
+}
+
 /* The drawing bar: one row in the middle of the window, as long as that keeps it on the stage.
    Its two insets are the same, the wider of what lies left and right of the stage (the sidebar,
    the panel on the right) plus 8px, so the middle of the room between them is the middle of the
