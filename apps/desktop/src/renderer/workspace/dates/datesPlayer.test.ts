@@ -101,6 +101,31 @@ describe('datesPlayer store', () => {
     expect(p.getState().t).toBe(60 * DAY);
   });
 
+  it('with loop, stays on the last survey for a gap, then goes round from the first', () => {
+    const p = createDatesPlayer();
+    p.getState().toggleLoop();
+    p.getState().play(dates);
+    p.getState().tick(3000, dates);
+    expect(p.getState().frame?.passed).toBe(10 * DAY);
+    // past the end: on the last survey, still playing
+    p.getState().tick(1500, dates);
+    expect(p.getState().frame).toEqual({
+      t: 60 * DAY,
+      passed: 60 * DAY,
+      next: null,
+      f: 0,
+      ended: false,
+    });
+    expect(p.getState().playing).toBe(true);
+    p.getState().tick(1500, dates);
+    expect(p.getState().frame?.passed).toBe(60 * DAY);
+    // the hold over, half a gap left: back on the first survey, a quarter into its gap
+    p.getState().tick(1000, dates);
+    expect(p.getState().frame?.passed).toBe(0);
+    expect(p.getState().frame?.f).toBeCloseTo(0.25, 9);
+    expect(p.getState().playing).toBe(true);
+  });
+
   it('restarts from the first survey when played at the end', () => {
     const p = createDatesPlayer();
     p.getState().seek(60 * DAY);

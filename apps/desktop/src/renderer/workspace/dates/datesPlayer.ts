@@ -108,11 +108,17 @@ export interface DatesPlayerState {
   toggleLoop(): void;
   seek(t: number): void;
   setBetween(mode: BetweenMode): void;
-  /** Moves a playing playhead by `dtMs`; it pauses itself at the end without loop. */
+  /**
+   * Moves a playing playhead by `dtMs`; it pauses itself at the end without loop. With loop it
+   * stays on the last survey for a gap's time before it starts again from the first, so every
+   * survey comes into focus, the last one too.
+   */
   tick(dtMs: number, dates: readonly number[]): void;
 }
 
 export function createDatesPlayer(): StoreApi<DatesPlayerState> {
+  /** Looping: the time at 1x still to stay on the last survey before going round again. */
+  let holdMs = 0;
   return createStore<DatesPlayerState>((set, get) => ({
     playing: false,
     speed: 1,
@@ -127,9 +133,11 @@ export function createDatesPlayer(): StoreApi<DatesPlayerState> {
       const { t } = get();
       const restart =
         first !== undefined && last !== undefined && (t === null || t >= last || t < first);
+      holdMs = 0;
       set(restart ? { playing: true, t: first, frame: null } : { playing: true });
     },
     pause() {
+      holdMs = 0;
       set({ playing: false });
     },
     setSpeed(speed) {
@@ -139,6 +147,7 @@ export function createDatesPlayer(): StoreApi<DatesPlayerState> {
       set({ loop: !get().loop });
     },
     seek(t) {
+      holdMs = 0;
       set({ t, frame: null });
     },
     setBetween(between) {
@@ -152,8 +161,36 @@ export function createDatesPlayer(): StoreApi<DatesPlayerState> {
         set({ playing: false });
         return;
       }
-      const frame = advance(start, dates, dtMs, s.speed, s.loop);
-      set({ t: frame.t, frame, playing: !frame.ended });
+      const ds = sorted(dates);
+      const first = ds[0];
+      const last = ds[ds.length - 1];
+      if (!s.loop || ds.length < 2 || first === undefined || last === undefined) {
+        const frame = advance(start, dates, dtMs, s.speed, s.loop);
+        set({ t: frame.t, frame, playing: !frame.ended });
+        return;
+      }
+      const onLast: PlayerFrame = { t: last, passed: last, next: null, f: 0, ended: false };
+      if (holdMs > 0) {
+        holdMs -= Math.max(0, dtMs * s.speed);
+        if (holdMs > 0) {
+          set({ t: last, frame: onLast });
+          return;
+        }
+        // round again from the first survey with what is left of this tick
+        const rest = -holdMs / Math.max(s.speed, 1e-9);
+        holdMs = 0;
+        const frame = advance(first, ds, rest, s.speed, true);
+        set({ t: frame.t, frame });
+        return;
+      }
+      const frame = advance(start, ds, dtMs, s.speed, false);
+      if (frame.ended) {
+        // the last survey reached: it stays in focus for a gap before the loop goes round
+        holdMs = GAP_MS_AT_1X;
+        set({ t: last, frame: onLast });
+        return;
+      }
+      set({ t: frame.t, frame });
     },
   }));
 }
