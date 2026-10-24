@@ -18,6 +18,7 @@ import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fi
 import type { SurveyDemoProject } from './surveyFixtures';
 import { markMeasure, measureControl, measureSaved, measureTree } from './island';
 import { focusMeasure, pickBase, volumeSettled } from './measureCard';
+import { setAutoPrepare } from './surveyJobs';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -108,6 +109,9 @@ test.describe('volumes and comparisons', () => {
       if (!t) throw new Error(`no truth for ${m} ${from} ${to}`);
       return t;
     };
+    // the surfaces are prepared below through Prepare: none quietly on open, which would keep
+    // Prepare busy under the click or make them first
+    await setAutoPrepare(win, false);
     await open(win, earthworksProject);
     await openList(win);
     let panel = await focus(win, 'Borrow pit');
@@ -251,6 +255,9 @@ test.describe('volumes and comparisons', () => {
     test.skip(!hasPipelinePython(), 'needs the development pipeline Python (uv sync in python/)');
     test.setTimeout(420_000);
     const dir = earthworksProject.dir;
+    // the surfaces are prepared below through Prepare: none quietly on open, which would keep
+    // Prepare busy under the click or make them first
+    await setAutoPrepare(win, false);
     await open(win, earthworksProject);
     await openList(win);
     const panel = await focus(win, 'Borrow pit');

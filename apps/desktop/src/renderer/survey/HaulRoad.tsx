@@ -42,6 +42,7 @@ import {
   watchHaulJobs,
 } from './haulRoadStore';
 import { frameOf } from './measureScene';
+import { usePrepareRunning } from './surfaceStates';
 import { useMeasure } from './measureStore';
 import './haulRoad.css';
 import { EmptyState, t } from '@aio/ui';
@@ -197,6 +198,9 @@ function RunResults({ run }: { run: HaulRun }) {
 /** The run form; keyed by the site defaults, so it starts from them whenever they load. */
 function HaulRoadForm({ defaults }: { defaults: HaulSiteDefaults }) {
   const surfaces = useHaul((s) => s.surfaces);
+  // a prepare job at work on the project, the background one included: Prepare waits for it, and
+  // the surfaces already prepared stay to pick from meanwhile
+  const preparing = usePrepareRunning();
   const options = useCentrelines();
   const [surface, setSurface] = useState('');
   const [centreline, setCentreline] = useState('');
@@ -282,6 +286,8 @@ function HaulRoadForm({ defaults }: { defaults: HaulSiteDefaults }) {
           action={
             <button
               type="button"
+              disabled={preparing}
+              aria-busy={preparing}
               onClick={() => {
                 setNote('Preparing the surfaces. They show here when the job is done.');
                 void prepareDsms().then((e) => {
@@ -289,7 +295,7 @@ function HaulRoadForm({ defaults }: { defaults: HaulSiteDefaults }) {
                 });
               }}
             >
-              Prepare the DSMs
+              {preparing ? 'Preparing the DSMs' : 'Prepare the DSMs'}
             </button>
           }
         />

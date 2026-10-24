@@ -10,6 +10,7 @@ import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { bridge, jobs } from '../shell';
 import { haulDefaults, piecesOf, type HaulPiece, type HaulSiteDefaults } from './haulRoadModel';
+import { prepareRunningOn } from './surfaceStates';
 
 export interface HaulState {
   projectId: string | null;
@@ -109,11 +110,16 @@ export async function startHaulRun(params: HaulAnalyseParams): Promise<string | 
 
 /**
  * Prepare the project's DSMs as survey surfaces (`survey.prepare`), one per DSM raster, for a site
- * that has none yet; answers an error sentence or null.
+ * that has none yet; answers an error sentence or null. A prepare job already at work on the
+ * project (the one started in the background when it opened, or one asked for before) is preparing
+ * them: none is started beside it, which would write the surfaces twice at once. The panel reads
+ * the surfaces again when that job ends (`watchHaulJobs`).
  */
 export async function prepareDsms(): Promise<string | null> {
   const project = workspace.getState().project;
   if (!project) return 'No project is open.';
+  watchHaulJobs();
+  if (prepareRunningOn(jobs.getState().jobs, project.root)) return null;
   const dsms = project.manifest.layers.flatMap((l) =>
     l.kind === 'raster' && l.role === 'dsm' ? [l] : [],
   );
@@ -124,7 +130,6 @@ export async function prepareDsms(): Promise<string | null> {
     source: { kind: 'dsm' as const, layer: l.id },
     ...(l.capture ? { capture: l.capture } : {}),
   }));
-  watchHaulJobs();
   return jobs.getState().start({
     pipeline: 'survey.prepare',
     project: project.root,

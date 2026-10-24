@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
 import { siteDataButton } from './island';
+import { setAutoPrepare } from './surveyJobs';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.setTimeout(300_000);
@@ -38,6 +39,9 @@ test('the planted steep stretch and low berm of the quarry road show red', async
 }) => {
   test.skip(!hasPipelinePython(), 'no development pipeline Python (python/.venv)');
   const truth = (quarryProject.truth as { haulRoad: { limits: Record<string, number> } }).haulRoad;
+  // the DSMs are prepared below through the panel's Prepare: none quietly on open, which would
+  // prepare them under other names and ids, or keep Prepare busy under the click
+  await setAutoPrepare(win, false);
   await open(win, quarryProject);
   await openHaulRoad(win);
   const panel = win.getByTestId('haul-panel');

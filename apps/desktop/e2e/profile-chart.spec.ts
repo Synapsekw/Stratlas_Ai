@@ -17,7 +17,7 @@ import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
 import { measureTree, selectMeasure } from './island';
 import { focusMeasure } from './measureCard';
-import { openDemo, runJob } from './surveyJobs';
+import { openDemo, runJob, setAutoPrepare } from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
 
 test.use({ appEnv: PIPELINE_ENV });
@@ -91,6 +91,8 @@ async function prepared(win: Page, p: SurveyDemoProject): Promise<void> {
     { ...across, id: 'sec-pad', tool: 'section', label: 'Section across the pad' },
   );
   await writeFile(mfile, JSON.stringify(MeasurementsFile.parse(m), null, 1));
+  // the spec's surfaces are those it prepared: the third survey is not prepared quietly on open
+  await setAutoPrepare(win, false);
   await openDemo(win, p.name, p.id);
   await measureTree(win, 'd2');
 }

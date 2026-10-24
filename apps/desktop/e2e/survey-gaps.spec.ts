@@ -24,7 +24,7 @@ import {
   VENV_PYTHON,
   type DataRoot,
 } from './fixtures';
-import { prepareSurveys } from './surveyJobs';
+import { prepareSurveys, setAutoPrepare } from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
 import {
   measureBench,
@@ -209,6 +209,9 @@ test('a package of a survey project shows its measurements read only, drawn, wit
   dataRoot,
 }) => {
   test.setTimeout(600_000);
+  // the surveys are prepared below, after the project opens: none quietly on open beside that job,
+  // which would write the same surfaces at once
+  await setAutoPrepare(win, false);
   await openDemo(win, surveyProject);
   await prepareSurveys(win, surveyProject.dir);
 

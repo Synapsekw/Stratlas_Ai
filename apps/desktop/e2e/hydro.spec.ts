@@ -10,6 +10,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import { siteDataButton } from './island';
+import { setAutoPrepare } from './surveyJobs';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.setTimeout(300_000);
@@ -48,6 +49,9 @@ test('flood the quarry pit to a typed level, download its outline and show a cat
   win,
 }) => {
   test.skip(!hasPipelinePython(), 'no development pipeline Python (python/.venv)');
+  // the surfaces are prepared below through Prepare: none quietly on open, which would keep
+  // Prepare busy under the click or make them first under other ids
+  await setAutoPrepare(win, false);
   await win.locator('.sb-nav .nav-item', { hasText: 'Projects' }).first().click();
   await win.getByTestId('project-card').filter({ hasText: quarryProject.name }).first().click();
   await expect

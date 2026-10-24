@@ -29,6 +29,7 @@ import {
   watchHydroJobs,
   type HydroTab,
 } from './hydroStore';
+import { usePrepareRunning } from './surfaceStates';
 import { EmptyState, t } from '@aio/ui';
 
 const TABS: { id: HydroTab; label: string; pipeline: HydroPipeline; mode?: string }[] = [
@@ -197,6 +198,8 @@ export function HydroPanel({ map }: { map: boolean }) {
   const error = useHydro((s) => s.error);
   const selected = useHydro(selectedRun);
   const readOnly = useAnnotateReadOnly();
+  // a prepare job at work on the project, the background one included: Prepare waits for it
+  const preparing = usePrepareRunning();
   const [surfaceDraft, setSurface] = useDraft('surface', '');
   const [note, setNote] = useState<string | null>(null);
   const surface = surfaces.some((s) => s.id === surfaceDraft)
@@ -219,14 +222,15 @@ export function HydroPanel({ map }: { map: boolean }) {
           action={
             <button
               type="button"
-              disabled={readOnly}
+              disabled={readOnly || preparing}
+              aria-busy={preparing}
               onClick={() => {
                 void prepareSurfaces().then((e) => {
                   setNote(e ?? 'Preparing the surfaces. The tools open when the job is done.');
                 });
               }}
             >
-              Prepare surfaces
+              {preparing ? 'Preparing surfaces' : 'Prepare surfaces'}
             </button>
           }
         />

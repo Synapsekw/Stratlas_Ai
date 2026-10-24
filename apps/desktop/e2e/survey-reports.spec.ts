@@ -12,7 +12,7 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, PIPELINE_ENV, test } from './fixtures';
 import { pdfText } from './pdf';
-import { openDemo } from './surveyJobs';
+import { openDemo, setAutoPrepare } from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
 import { measureTree } from './island';
 import { focusMeasure, volumeSettled } from './measureCard';
@@ -129,6 +129,9 @@ test('quarry: the stockpile report PDF and inventory CSV match the panel', async
   const out = join(dataRoot.base, 'out');
   await mkdir(out, { recursive: true });
   await answerSaveDialogs(app, out);
+  // the surfaces are prepared below through Prepare: none quietly on open, which would keep
+  // Prepare busy under the click or make them first under other ids
+  await setAutoPrepare(win, false);
   await openDemo(win, p.name, p.id);
   await prepare(win, PILES[0]?.label ?? '');
 
@@ -210,6 +213,9 @@ test('landfill: the survey report shows airspace remaining and compaction per li
   const out = join(dataRoot.base, 'out');
   await mkdir(out, { recursive: true });
   await answerSaveDialogs(app, out);
+  // the surfaces are prepared below through Prepare: none quietly on open, which would keep
+  // Prepare busy under the click or make them first under other ids
+  await setAutoPrepare(win, false);
   await openDemo(win, p.name, p.id);
   await prepare(win, 'Cell 1');
 

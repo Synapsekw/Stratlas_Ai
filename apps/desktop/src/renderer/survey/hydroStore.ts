@@ -18,6 +18,7 @@ import { assetUrl, workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { bridge, jobs } from '../shell';
+import { prepareRunningOn } from './surfaceStates';
 
 export type HydroTab = 'flood' | 'runoff' | 'catchment' | 'rainfall';
 export type PickKind = 'level' | 'seed' | 'drop' | 'outlet';
@@ -244,13 +245,18 @@ export function prepareParams(manifest: ProjectManifest): SurveyPrepareParams | 
   return surfaces.length ? { surfaces: surfaces.slice(0, 50) } : null;
 }
 
-/** Prepare the project's DSMs so the hydrology tools can read them. */
+/**
+ * Prepare the project's DSMs so the hydrology tools can read them. A prepare job already at work on
+ * the project (the background one included) is preparing them: none is started beside it, and the
+ * panel reads the surfaces again when it ends (`watchHydroJobs`).
+ */
 export async function prepareSurfaces(): Promise<string | null> {
   const project = workspace.getState().project;
   if (!project) return 'No project is open.';
+  watchHydroJobs();
+  if (prepareRunningOn(jobs.getState().jobs, project.root)) return null;
   const params = prepareParams(project.manifest);
   if (!params) return 'This project has no DSM to prepare.';
-  watchHydroJobs();
   return jobs.getState().start({ pipeline: 'survey.prepare', project: project.root, params });
 }
 

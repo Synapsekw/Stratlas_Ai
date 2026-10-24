@@ -10,7 +10,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
-import { openDemo, prepareSurveys } from './surveyJobs';
+import { openDemo, prepareSurveys, setAutoPrepare } from './surveyJobs';
 import { measureControl, stageMode } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
@@ -46,6 +46,8 @@ test('contours and a gradient in degrees are made, listed and shown on the map',
   test.setTimeout(420_000);
   const root = earthworksProject.dir;
   await prepareSurveys(win, root);
+  // the spec's surfaces are the two it prepared: the third survey is not prepared quietly on open
+  await setAutoPrepare(win, false);
   await openDemo(win, earthworksProject.name, earthworksProject.id);
 
   await (await measureControl(win, 'survey-overlays-open')).click();

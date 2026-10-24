@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const runs: HydroRun[] = [];
 const started: { pipeline: string; project: string; params: Record<string, unknown> }[] = [];
+const jobList: { pipeline: string; project: string; status: string }[] = [];
 vi.mock('../shell', () => ({
   bridge: {
     call: (channel: string) =>
@@ -15,6 +16,7 @@ vi.mock('../shell', () => ({
   },
   jobs: {
     getState: () => ({
+      jobs: jobList,
       start: (req: (typeof started)[number]) => {
         started.push(req);
         return Promise.resolve(null);
@@ -30,6 +32,7 @@ const {
   loadHydro,
   newRunId,
   prepareParams,
+  prepareSurfaces,
   regionNeed,
   runCells,
   startHydro,
@@ -94,6 +97,25 @@ describe('hydrology in the renderer (G10)', () => {
       ],
     });
     expect(prepareParams({ layers: [] } as unknown as ProjectManifest)).toBeNull();
+  });
+
+  it('starts no prepare job beside one at work on the project (the background one)', async () => {
+    const manifest = {
+      layers: [{ id: 'dsm-1', kind: 'raster', role: 'dsm', capture: 'm1', name: 'DSM January' }],
+    } as unknown as ProjectManifest;
+    workspace.setState({
+      project: { id: 'p', root: 'C:/projects/p', manifest },
+    } as unknown as Parameters<typeof workspace.setState>[0]);
+    started.length = 0;
+    jobList.length = 0;
+    jobList.push({ pipeline: 'survey.prepare', project: 'C:/projects/p', status: 'running' });
+    expect(await prepareSurfaces()).toBeNull();
+    expect(started).toEqual([]);
+    jobList[0] = { pipeline: 'survey.prepare', project: 'C:/projects/p', status: 'done' };
+    expect(await prepareSurfaces()).toBeNull();
+    expect(started).toHaveLength(1);
+    expect(started[0]).toMatchObject({ pipeline: 'survey.prepare', project: 'C:/projects/p' });
+    jobList.length = 0;
   });
 
   it('shows a run started from the panel once it is listed', async () => {

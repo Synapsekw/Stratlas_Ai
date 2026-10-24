@@ -19,6 +19,7 @@ import {
 } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
 import { siteDataButton } from './island';
+import { setAutoPrepare } from './surveyJobs';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -80,6 +81,9 @@ test('check against points shows the RMSE, Strict holds the planted survey, rele
   const truth = earthworksProject.truth as {
     checkpoints: { points: { name: string; dz: Record<string, number> }[] };
   };
+  // the survey's surface is prepared by the panel (dsm-<date>): none quietly on open beside it,
+  // which would write the same surface at once or make it before Prepare is clicked
+  await setAutoPrepare(win, false);
   await open(win, earthworksProject);
 
   await openQaMenu(win);
@@ -142,6 +146,9 @@ test('a cleanup around the parked excavator makes a cleaned surface; the origina
   test.skip(!hasPipelinePython(), `no pipeline Python at ${VENV_PYTHON} (uv sync in python/)`);
   test.setTimeout(300_000);
   const root = earthworksProject.dir;
+  // the survey's surface is prepared by the panel (dsm-<date>): none quietly on open beside it,
+  // which would write the same surface at once or make it before Prepare is clicked
+  await setAutoPrepare(win, false);
   await open(win, earthworksProject);
 
   // the survey picker: by year and month; the excavator is on the survey of 6 April 2026
