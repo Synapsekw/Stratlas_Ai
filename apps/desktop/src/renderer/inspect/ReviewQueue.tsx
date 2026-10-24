@@ -111,9 +111,16 @@ export function ReviewQueue(p: {
   }, [storeProject, p.projectId]);
 
   const queueAll = useMemo(() => queueOf(review), [review]);
+  // a draft relabelled in the queue stays on the chip while it is current, so relabel then
+  // accept works (it leaves once decided, or once the reviewer steps away)
+  const [kept, setKept] = useState<{ id: string; cls: string } | null>(null);
+  const keptId = kept?.id === review.currentId && kept.cls === queueClass ? kept.id : null;
   const list = useMemo(
-    () => (queueClass === null ? queueAll : queueAll.filter((d) => d.classId === queueClass)),
-    [queueAll, queueClass],
+    () =>
+      queueClass === null
+        ? queueAll
+        : queueAll.filter((d) => d.classId === queueClass || d.id === keptId),
+    [queueAll, queueClass, keptId],
   );
   const at = list.findIndex((d) => d.id === review.currentId);
   const current = at >= 0 ? (list[at] ?? null) : null;
@@ -239,6 +246,7 @@ export function ReviewQueue(p: {
   };
 
   const step = (dir: 1 | -1) => {
+    setKept(null);
     if (list.length === 0) return;
     const i = at < 0 ? 0 : (at + dir + list.length) % list.length;
     const d = list[i];
@@ -365,6 +373,7 @@ export function ReviewQueue(p: {
             data-testid="queue-class-all"
             aria-pressed={queueClass === null}
             onClick={() => {
+              setKept(null);
               openQueue(null);
             }}
           >
@@ -378,6 +387,7 @@ export function ReviewQueue(p: {
               data-testid={`queue-class-${c.id}`}
               aria-pressed={queueClass === c.id}
               onClick={() => {
+                setKept(null);
                 openQueue(c.id);
               }}
             >
@@ -480,6 +490,7 @@ export function ReviewQueue(p: {
               disabled={locked || pendingState}
               data-testid="det-class"
               onChange={(e) => {
+                if (queueClass !== null) setKept({ id: current.id, cls: queueClass });
                 dispatch({
                   type: 'edit',
                   id: current.id,

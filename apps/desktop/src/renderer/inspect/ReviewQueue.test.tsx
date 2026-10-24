@@ -123,6 +123,7 @@ beforeEach(() => {
   load(FIXTURE);
   openQueue(null);
   onFix.mockReset();
+  toasts.getState().dismiss('inspect-queue-done');
   onNeedsPicker.mockReset();
   host = document.createElement('div');
   document.body.appendChild(host);
@@ -312,6 +313,28 @@ describe('ReviewQueue', () => {
     await click('queue-accept');
     expect(onNeedsPicker).toHaveBeenCalledWith('d9');
     expect(find('d9')?.status).toBe('draft');
+  });
+
+  it('keeps a draft relabelled under a class chip open until it is decided', async () => {
+    await mount();
+    await click('queue-class-crack');
+    const select = byId('det-class') as HTMLSelectElement;
+    await act(async () => {
+      const desc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const setter = desc?.set;
+      setter?.call(select, 'corrosion');
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(find('d2')?.classId).toBe('corrosion');
+    expect(inspectUi.getState().panel).toBe('queue');
+    expect(detections.getState().review.currentId).toBe('d2');
+    expect(text('queue-progress')).toBe('1 of 1');
+    expect(toasts.getState().toasts.some((x) => x.id === 'inspect-queue-done')).toBe(false);
+    await click('queue-accept');
+    expect(find('d2')?.status).toBe('accepted');
+    expect(inspectUi.getState().panel).toBe('photo');
   });
 
   it('Fix hands the draft to the screen', async () => {
