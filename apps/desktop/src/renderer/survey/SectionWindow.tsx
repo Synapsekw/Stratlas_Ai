@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom';
 import { linkedHover } from './linkedHover';
 import { SectionBody } from './SectionBody';
 import { setWindow, useSection } from './sectionStore';
+import { taken as escapeTaken } from './stageEscape';
 
 export function SectionWindow() {
   const t = useT();
@@ -21,8 +22,9 @@ export function SectionWindow() {
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // a dialog, a menu or the chart that took the Esc keeps it
-      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      // a field, a dialog, a menu, a drawing or the chart that took the Esc keeps it (the
+      // stage's own rules)
+      if (e.key !== 'Escape' || escapeTaken(e)) return;
       // taken here: the stage's Esc (a pin elsewhere, the open pile) waits for the next one
       e.preventDefault();
       const h = linkedHover.getState();

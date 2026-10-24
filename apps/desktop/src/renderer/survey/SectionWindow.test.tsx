@@ -76,6 +76,25 @@ describe('the larger section window', () => {
     expect(sectionStore.getState().window).toBe(true);
   });
 
+  it('an Esc in a field (search, rename, density) stays with the field', () => {
+    const input = document.createElement('input');
+    document.body.append(input);
+    const e = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => {
+      input.dispatchEvent(e);
+    });
+    expect(e.defaultPrevented).toBe(false);
+    expect(sectionStore.getState().window).toBe(true);
+  });
+
+  it('an Esc while a menu is open closes the menu, not the window', () => {
+    const menu = document.createElement('div');
+    menu.setAttribute('role', 'menu');
+    document.body.append(menu);
+    expect(esc().defaultPrevented).toBe(false);
+    expect(sectionStore.getState().window).toBe(true);
+  });
+
   it('its close button returns the section to the dock', () => {
     const close = host.querySelector<HTMLButtonElement>('[data-testid="section-window-close"]');
     expect(close?.getAttribute('aria-label')).toBe('Close the section');

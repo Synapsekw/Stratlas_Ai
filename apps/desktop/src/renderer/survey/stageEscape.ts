@@ -35,8 +35,8 @@ export function escapeStage(pile: () => boolean = closeStagePile): boolean {
   return pile();
 }
 
-/** Something else that answers Esc is open or has the key. */
-function taken(e: KeyboardEvent): boolean {
+/** Something else that answers Esc is open or has the key (the section window asks it too). */
+export function taken(e: KeyboardEvent): boolean {
   if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return true;
   if (isTyping(e.target)) return true;
   const el = e.target instanceof Element ? e.target : null;
