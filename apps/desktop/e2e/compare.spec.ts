@@ -537,6 +537,9 @@ fixtures(
     // two 3D views, then two maps, on a software renderer in CI: more than the default minute
     fixtures.setTimeout(180_000);
     await writeTwoDates(dataRoot.root);
+    // the library was read as the window loaded, which can be before the project above was
+    // written: read it again the way the app does when its window comes back
+    await win.evaluate(() => window.dispatchEvent(new Event('focus')));
     await win.getByTestId('project-card').filter({ hasText: 'E2E two dates' }).first().click();
     await expect(win.locator('[data-scene-view=""] canvas')).toBeVisible({ timeout: 30_000 });
     // one 3D view: the site's measurement and the one of the survey on screen (the latest)
