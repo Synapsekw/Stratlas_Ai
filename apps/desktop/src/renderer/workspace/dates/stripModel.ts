@@ -66,6 +66,11 @@ export function monthTicks(t0: number, t1: number): { t: number; label: string }
   let y = start.getUTCFullYear();
   let m = start.getUTCMonth();
   if (Date.UTC(y, m, 1) < t0) m += 1;
+  // a range starting after the 1st of December begins in January of the next year
+  if (m > 11) {
+    m = 0;
+    y += 1;
+  }
   const out: { t: number; label: string }[] = [];
   // a strip never spans centuries; the cap keeps a bad range from hanging the renderer
   for (let i = 0; i < 2400; i += 1) {

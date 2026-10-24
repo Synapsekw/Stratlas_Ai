@@ -230,11 +230,9 @@ export function DatesStripView(p: DatesStripViewProps): ReactElement {
   // month gridlines, thinned to every 2, 3, 6 or 12 months when they would crowd
   const perMonth = (plotW * 30.4 * DAY_MS) / Math.max(1, sc.t1 - sc.t0);
   const every = [1, 2, 3, 6, 12, 24].find((k) => k * perMonth >= MIN_MONTH_PX) ?? 24;
-  // (each month once: `monthTicks` repeats January when the range starts after the 1st of December)
-  const months = monthTicks(sc.t0, sc.t1).filter((m, i, list) => {
+  const months = monthTicks(sc.t0, sc.t1).filter((m) => {
     const d = new Date(m.t);
-    const first = list.findIndex((x) => x.t === m.t) === i;
-    return first && (d.getUTCFullYear() * 12 + d.getUTCMonth()) % every === 0;
+    return (d.getUTCFullYear() * 12 + d.getUTCMonth()) % every === 0;
   });
 
   // ---------------------------------------------------------------- the y scale and the marks

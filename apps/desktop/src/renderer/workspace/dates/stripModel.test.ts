@@ -62,6 +62,12 @@ describe('monthTicks', () => {
     expect(monthTicks(d('2021-01-01'), d('2021-01-20')).map((x) => x.label)).toEqual(['Jan 2021']);
   });
 
+  it('ticks January once when the range starts after the 1st of December', () => {
+    const ticks = monthTicks(d('2020-12-15'), d('2021-03-10'));
+    expect(ticks.map((x) => x.label)).toEqual(['Jan 2021', 'Feb 2021', 'Mar 2021']);
+    expect(ticks[0]?.t).toBe(d('2021-01-01'));
+  });
+
   it('is empty for a reversed or NaN range', () => {
     expect(monthTicks(d('2021-02-01'), d('2021-01-01'))).toEqual([]);
     expect(monthTicks(Number.NaN, 0)).toEqual([]);
