@@ -110,7 +110,7 @@ export function VolumesHeader({ model, piles }: VolumesHeaderProps): ReactElemen
   const partial = model?.partial ?? [];
 
   return (
-    <header className="vh" data-testid="volumes-header">
+    <header className="vh-head" data-testid="volumes-header">
       <div className="vh-top">
         <div className="vh-titles">
           <h3 className="vh-cap">{t('volumes.title')}</h3>
