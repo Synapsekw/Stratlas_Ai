@@ -6,7 +6,7 @@
  * `connectTimelapse` (timelapse.ts), which the dates strip mounts.
  */
 import { localeOf } from '@aio/geo';
-import { getActiveMap } from '@aio/maps';
+import { getActiveMap, onActiveMap } from '@aio/maps';
 import { effectiveUnits } from '@aio/survey';
 import { useT, type MessageKey } from '@aio/ui';
 import { useVolumetric, volumetric } from '@aio/volumetric';
@@ -55,6 +55,7 @@ export function useTimelapseConnection(): void {
         },
         captureAt: (t) => dayAt(timelapseStore.getState().days, t)?.capture ?? null,
         map: getActiveMap,
+        onMap: (cb) => onActiveMap(cb),
         blendFor: (passed, next, f) => {
           const index = timeline.getState().index;
           const w = workspace.getState();
@@ -63,15 +64,24 @@ export function useTimelapseConnection(): void {
         },
         kitSwipe: {
           available: kitSwipeAvailable,
-          set: (x) => {
+          get: () => {
             const v = volumetric.getState();
-            if (x === null) {
+            return { on: v.swipe, x: v.swipeX };
+          },
+          set: (x) => {
+            // a survey passed turns the kit's swipe off (setEpoch): turned on again here
+            if (!volumetric.getState().swipe) volumetric.getState().setSwipe(true);
+            volumetric.getState().setSwipeX(x);
+          },
+          restore: (saved) => {
+            const v = volumetric.getState();
+            if (!saved.on) {
               if (v.swipe) v.setSwipe(false);
               return;
             }
-            // a survey passed turns the kit's swipe off (setEpoch): turned on again here
+            // turning the swipe on centres it: the divider goes back after
             if (!v.swipe) v.setSwipe(true);
-            volumetric.getState().setSwipeX(x);
+            volumetric.getState().setSwipeX(saved.x);
           },
         },
         onPileClick: (cb) =>
@@ -111,8 +121,12 @@ export function TimelapseBlendView(p: TimelapseBlendViewProps): ReactElement {
   const blends = p.next !== null && p.between !== 'hold';
   return (
     <div className="tlx overlay-box" data-testid="timelapse-blend">
+      {/* read out when a survey is passed; the percent below moves every frame and stays silent */}
+      <span className="sr-only" role="status">
+        {t('timelapse.lastPassed', { date: p.passed.label })}
+      </span>
       {blends && p.next && (
-        <div className="tlx-blend" role="status">
+        <div className="tlx-blend" aria-hidden="true">
           <span>
             {t('timelapse.blend', { from: p.passed.short, to: p.next.short, percent: pct })}
           </span>

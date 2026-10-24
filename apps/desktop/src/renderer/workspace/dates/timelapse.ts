@@ -122,6 +122,15 @@ export function dayAt(days: readonly TimelapseDay[], t: number | null): Timelaps
   return t === null ? null : (days.find((d) => d.t === t) ?? null);
 }
 
+/** The kit's swipe as the timelapse found it at play start: given back on stop. */
+export interface KitSwipeState {
+  on: boolean;
+  /** The divider, 0 left to 1 right. */
+  x: number;
+}
+
+type BlendTarget = Pick<MapController, 'setRasterBlend'>;
+
 export interface TimelapseDeps {
   player: StoreApi<DatesPlayerState>;
   /** The date in focus (the timeline's). */
@@ -129,11 +138,21 @@ export interface TimelapseDeps {
   /** The capture of a survey time. */
   captureAt(t: number): string | null;
   /** The Map on screen, when there is one. */
-  map(): Pick<MapController, 'setRasterBlend'> | null;
+  map(): BlendTarget | null;
+  /** Calls `cb` when the Map on screen changes (shown, hidden, another); returns the unsubscribe. */
+  onMap?(cb: () => void): () => void;
   /** The Map's crossfade between two captures (`rasterBlend` over the open project). */
   blendFor(passed: string, next: string, f: number): RasterBlend;
-  /** The kit's swipe: whether this project has it, and drive it (null: let it go). */
-  kitSwipe: { available(): boolean; set(x: number | null): void };
+  /**
+   * The kit's swipe: whether this project has it, its state now, drive its divider (turning it
+   * on), and give back a state read with `get`.
+   */
+  kitSwipe: {
+    available(): boolean;
+    get(): KitSwipeState;
+    set(x: number): void;
+    restore(state: KitSwipeState): void;
+  };
   /** Calls `cb` when a pile is clicked (opened); returns the unsubscribe. */
   onPileClick(cb: () => void): () => void;
   /** Where Esc is heard. */
@@ -144,17 +163,30 @@ export interface TimelapseDeps {
  * Drives the views from the player while it plays, and stops it on a manual date change, a pile
  * click or Esc; on pause (or the end) the Map's blend, the 3D view's date and the kit's swipe go
  * back to normal. Returns the disconnect, which also restores them.
+ *
+ * The blend is cleared on the controller it was drawn on: a hidden MapView keeps its controller
+ * but stops publishing it, so asking for the Map on screen at stop would miss it and the Map
+ * would still show the blend when it comes back. The kit's swipe is read at play start (a survey
+ * passed turns it off, and the Swipe choice drives it) and given back as it was on stop.
  */
 export function connectTimelapse(deps: TimelapseDeps): () => void {
   const { player } = deps;
-  let blending = false;
+  let blendedOn: BlendTarget | null = null;
   let swiping = false;
+  let savedSwipe: KitSwipeState | null = null;
+
+  const clearBlend = () => {
+    const m = blendedOn;
+    blendedOn = null;
+    m?.setRasterBlend(null);
+  };
 
   const restore = () => {
-    if (blending) deps.map()?.setRasterBlend(null);
-    blending = false;
-    if (swiping) deps.kitSwipe.set(null);
+    clearBlend();
+    const saved = savedSwipe;
+    savedSwipe = null;
     swiping = false;
+    if (saved) deps.kitSwipe.restore(saved);
     if (timelapseStore.getState().scene !== null) timelapseStore.setState({ scene: null });
   };
 
@@ -164,22 +196,26 @@ export function connectTimelapse(deps: TimelapseDeps): () => void {
       restore();
       return;
     }
+    if (!savedSwipe && deps.kitSwipe.available()) savedSwipe = deps.kitSwipe.get();
     const passed = deps.captureAt(frame.passed);
     const next = frame.next === null ? null : deps.captureAt(frame.next);
     const view = passed && next ? timelapseView(frame, s.between, deps.kitSwipe.available()) : NONE;
     if (view.blend !== null && passed && next) {
-      deps.map()?.setRasterBlend(deps.blendFor(passed, next, view.blend));
-      blending = true;
-    } else if (blending) {
-      deps.map()?.setRasterBlend(null);
-      blending = false;
+      const m = deps.map();
+      if (m !== blendedOn) clearBlend();
+      if (m) {
+        m.setRasterBlend(deps.blendFor(passed, next, view.blend));
+        blendedOn = m;
+      }
+    } else {
+      clearBlend();
     }
     if (view.swipeX !== null) {
       deps.kitSwipe.set(view.swipeX);
       swiping = true;
     } else if (swiping) {
-      deps.kitSwipe.set(null);
       swiping = false;
+      if (savedSwipe) deps.kitSwipe.restore(savedSwipe);
     }
     const scene = view.scene === 'next' ? next : null;
     if (timelapseStore.getState().scene !== scene) timelapseStore.setState({ scene });
@@ -190,6 +226,12 @@ export function connectTimelapse(deps: TimelapseDeps): () => void {
   };
 
   const offPlayer = player.subscribe(apply);
+  // another Map on screen (or none): the blend leaves the old one now, the next frame draws it on
+  // the new one
+  const offMap =
+    deps.onMap?.(() => {
+      if (blendedOn && deps.map() !== blendedOn) clearBlend();
+    }) ?? (() => undefined);
   // only a change of the date itself counts: the timeline also updates while it saves its prefs
   let lastFocus = deps.focus.get();
   const offFocus = deps.focus.subscribe(() => {
@@ -211,6 +253,7 @@ export function connectTimelapse(deps: TimelapseDeps): () => void {
 
   return () => {
     offPlayer();
+    offMap();
     offFocus();
     offPile();
     deps.keys?.removeEventListener('keydown', onKey, true);

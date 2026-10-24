@@ -73,6 +73,28 @@ describe('TimelapseBlendView', () => {
     expect(onBetween).toHaveBeenCalledWith('hold');
   });
 
+  it('announces only a survey passed, never the blend percent of each frame', () => {
+    const el = render(<TimelapseBlendView {...props} />);
+    const live = el.querySelector('[role="status"]');
+    expect(live?.textContent).toBe('31 Dec 2020 · last survey passed');
+    const percent = [...el.querySelectorAll('span')].find((s) =>
+      s.textContent.includes('blend 55 %'),
+    );
+    expect(percent?.closest('[aria-hidden="true"]')).not.toBeNull();
+    expect(percent?.closest('[aria-live], [role="status"]')).toBeNull();
+    act(() => {
+      root?.render(<TimelapseBlendView {...props} f={0.7} />);
+    });
+    expect(el.querySelector('[role="status"]')).toBe(live);
+    expect(live?.textContent).toBe('31 Dec 2020 · last survey passed');
+    act(() => {
+      root?.render(<TimelapseBlendView {...props} passed={B} next={null} f={0} />);
+    });
+    expect(el.querySelector('[role="status"]')?.textContent).toBe(
+      '10 Jan 2021 · last survey passed',
+    );
+  });
+
   it('hold shows no blend', () => {
     const el = render(<TimelapseBlendView {...props} between="hold" />);
     expect(el.textContent).not.toContain('blend');

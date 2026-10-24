@@ -140,12 +140,24 @@ describe('connectTimelapse', () => {
     timelapseStore.setState({ scene: null });
   });
 
-  function setup(kit = false) {
+  function setup(kit = false, saved = { on: false, x: 0.5 }) {
     const player = createDatesPlayer();
     const focus = createStore<{ focus: string | null }>(() => ({ focus: 'a' }));
     const pile = createStore<{ focus: string | null }>(() => ({ focus: null }));
     const map = { setRasterBlend: vi.fn() };
+    const other = { setRasterBlend: vi.fn() };
+    let shown: typeof map | null = map;
+    const mapListeners = new Set<() => void>();
+    const showMap = (m: typeof map | null) => {
+      shown = m;
+      for (const l of mapListeners) l();
+    };
+    // the map leaves the screen without telling (what getActiveMap does when a MapView hides)
+    const hideQuietly = () => {
+      shown = null;
+    };
     const swipe = vi.fn();
+    const restoreSwipe = vi.fn();
     const keys = new EventTarget();
     const deps: TimelapseDeps = {
       player,
@@ -154,12 +166,16 @@ describe('connectTimelapse', () => {
         subscribe: (cb) => focus.subscribe(cb),
       },
       captureAt: (t) => (t === T0 ? 'a' : t === T1 ? 'b' : null),
-      map: () => map,
+      map: () => shown,
+      onMap: (cb) => {
+        mapListeners.add(cb);
+        return () => mapListeners.delete(cb);
+      },
       blendFor: (from, to, f) => [
         { layerId: `ortho-${from}`, opacity: 1 - f },
         { layerId: `ortho-${to}`, opacity: f },
       ],
-      kitSwipe: { available: () => kit, set: swipe },
+      kitSwipe: { available: () => kit, get: () => saved, set: swipe, restore: restoreSwipe },
       onPileClick: (cb) =>
         pile.subscribe((s, p) => {
           if (s.focus !== p.focus && s.focus !== null) cb();
@@ -170,7 +186,19 @@ describe('connectTimelapse', () => {
     const playTo = (f: number) => {
       player.setState({ playing: true, frame: frame(f), t: frame(f).t });
     };
-    return { player, focus, pile, map, swipe, keys, playTo };
+    return {
+      player,
+      focus,
+      pile,
+      map,
+      other,
+      showMap,
+      hideQuietly,
+      swipe,
+      restoreSwipe,
+      keys,
+      playTo,
+    };
   }
 
   it('blends the map and swaps the 3D view at the middle while playing', () => {
@@ -220,12 +248,65 @@ describe('connectTimelapse', () => {
     expect(timelapseStore.getState().scene).toBeNull();
   });
 
-  it('swipe drives the kit swipe and turns it off on pause', () => {
-    const s = setup(true);
+  it('swipe drives the kit swipe and gives back the one from before play on pause', () => {
+    const s = setup(true, { on: true, x: 0.3 });
     s.player.getState().setBetween('swipe');
     s.playTo(0.25);
     expect(s.swipe).toHaveBeenLastCalledWith(0.75);
+    expect(s.restoreSwipe).not.toHaveBeenCalled();
     s.player.getState().pause();
-    expect(s.swipe).toHaveBeenLastCalledWith(null);
+    expect(s.restoreSwipe).toHaveBeenCalledTimes(1);
+    expect(s.restoreSwipe).toHaveBeenLastCalledWith({ on: true, x: 0.3 });
+  });
+
+  it('the swipe on before a crossfade play is given back on stop', () => {
+    const s = setup(true, { on: true, x: 0.4 });
+    s.playTo(0.25);
+    s.playTo(0.3);
+    expect(s.swipe).not.toHaveBeenCalled();
+    s.keys.dispatchEvent(Object.assign(new Event('keydown'), { key: 'Escape' }));
+    expect(s.restoreSwipe).toHaveBeenCalledTimes(1);
+    expect(s.restoreSwipe).toHaveBeenLastCalledWith({ on: true, x: 0.4 });
+  });
+
+  it('clears the blend on the map it was drawn on after a switch to 3D', () => {
+    const s = setup();
+    s.playTo(0.3);
+    s.map.setRasterBlend.mockClear();
+    s.showMap(null);
+    // cleared at once: back on the Map it must not still draw the blend
+    expect(s.map.setRasterBlend).toHaveBeenLastCalledWith(null);
+    s.playTo(0.4);
+    s.player.getState().pause();
+    expect(s.map.setRasterBlend).toHaveBeenCalledTimes(1);
+  });
+
+  it('a new map on screen takes the blend; the old one is cleared', () => {
+    const s = setup();
+    s.playTo(0.3);
+    s.showMap(s.other);
+    expect(s.map.setRasterBlend).toHaveBeenLastCalledWith(null);
+    s.playTo(0.4);
+    expect(s.other.setRasterBlend).toHaveBeenLastCalledWith([
+      { layerId: 'ortho-a', opacity: 0.6 },
+      { layerId: 'ortho-b', opacity: 0.4 },
+    ]);
+    s.player.getState().pause();
+    expect(s.other.setRasterBlend).toHaveBeenLastCalledWith(null);
+  });
+
+  it('stop and the disconnect clear the map the blend was drawn on, not the one asked now', () => {
+    const s = setup();
+    s.playTo(0.3);
+    s.hideQuietly();
+    s.player.getState().pause();
+    expect(s.map.setRasterBlend).toHaveBeenLastCalledWith(null);
+    s.showMap(s.map);
+    s.playTo(0.3);
+    s.hideQuietly();
+    s.map.setRasterBlend.mockClear();
+    stop?.();
+    stop = null;
+    expect(s.map.setRasterBlend).toHaveBeenCalledWith(null);
   });
 });
