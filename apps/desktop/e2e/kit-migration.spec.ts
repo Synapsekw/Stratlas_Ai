@@ -6,11 +6,17 @@
  * version (kit, Triangulated)", with nothing marked unsaved; the conversion is written once and
  * never again, so a pile deleted afterwards stays deleted; a package of it shows the same figures
  * and writes nothing. No pipeline Python: nothing is computed. Off-screen, zero network.
+ *
+ * Heights (volumetrics redesign A3): the project's origin is 51 m up and the kit left a DSM per
+ * survey (`legacy/data/dsm_<epoch>.js`, a tilted plane, the second survey 0.5 m higher), so a
+ * converted pile's outline lies on the DSM of the survey it was drawn on. A project converted
+ * before heights existed (every vertex at 0) is repaired once; a package is repaired in memory.
  */
 import { BoundaryEditsFile, MeasurementsFile, ProjectManifest, VolumesFile } from '@aio/schema';
 import type { Locator, Page } from '@playwright/test';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { deflateSync } from 'node:zlib';
 import {
   expect,
   launchApp,
@@ -131,17 +137,69 @@ const EDITS = BoundaryEditsFile.parse({
   ],
 });
 
+/** The site's origin: 51 m up, so a pile left at height 0 would sit 51 m under the ground. */
+const ORIGIN: [number, number, number] = [500000, 3200000, 51];
+
+/**
+ * The kit's DSMs (`data/dsm_<epoch>.js`): 10 cm cells from 0.5 m west and 1.5 m north of the
+ * origin, heights in cm above `zoff` rising 4 cm per cell east and 2 cm per cell south, the second
+ * survey 0.5 m higher. A plane, so the bilinear sample of any point is exact.
+ */
+const DSM = { w: 30, h: 30, res: 0.1, x0: ORIGIN[0] - 0.5, y1: ORIGIN[1] + 1.5, zoff: 51.5 };
+const DSM_BASE_CM: Record<string, number> = { e1: 100, e2: 150 };
+
+/** The height the kit's DSM of `epoch` gives at (e, n). */
+const dsmZ = (epoch: string, e: number, n: number): number => {
+  const fx = (e - DSM.x0) / DSM.res - 0.5;
+  const fy = (DSM.y1 - n) / DSM.res - 0.5;
+  return DSM.zoff + ((DSM_BASE_CM[epoch] ?? 0) + 4 * fx + 2 * fy) / 100;
+};
+
+/** One kit DSM script, encoded as the kit's `package.py` writes it (row deltas, zlib, base64). */
+function dsmScript(epoch: string): string {
+  const { w, h } = DSM;
+  const deltas = new Int16Array(w * h);
+  for (let j = 0; j < h; j++)
+    for (let i = 0; i < w; i++) deltas[j * w + i] = i === 0 ? (DSM_BASE_CM[epoch] ?? 0) + 2 * j : 4;
+  const b64 = (bytes: Uint8Array) => deflateSync(bytes).toString('base64');
+  const body = {
+    ...DSM,
+    z: b64(new Uint8Array(deltas.buffer)),
+    valid: b64(new Uint8Array(Math.ceil((w * h) / 8)).fill(0xff)),
+  };
+  return `window.VS_DSM=window.VS_DSM||{};window.VS_DSM["${epoch}"]=${JSON.stringify(body)};`;
+}
+
+/** The kit's DSM of each survey, where the kit's viewer left them. */
+async function writeKitDsms(dir: string): Promise<void> {
+  await mkdir(join(dir, 'legacy', 'data'), { recursive: true });
+  for (const epoch of Object.keys(DSM_BASE_CM))
+    await writeFile(join(dir, 'legacy', 'data', `dsm_${epoch}.js`), dsmScript(epoch));
+}
+
+/** A project converted before heights existed: no kit DSMs on disk at its first open. */
+const withoutDsms = (dir: string) => rm(join(dir, 'legacy'), { recursive: true, force: true });
+
+/** The survey (kit epoch) each pile's converted outline was drawn on: its latest toe line. */
+const PILE_EPOCH: Record<string, string> = { 'Pile North': 'e2', 'Pile South': 'e1' };
+
+/** How far each vertex of a pile lies from the kit DSM of its survey, m. */
+const offDsm = (label: string, points: readonly (readonly number[])[]): number[] =>
+  points.map((p) => Math.abs((p[2] ?? 0) - dsmZ(PILE_EPOCH[label] ?? '', p[0] ?? 0, p[1] ?? 0)));
+
 /** Write the old project's kit files and a second survey date into a tiny project folder. */
 async function writeOldProject(dir: string): Promise<void> {
   const base = tinyManifest();
   const manifest = ProjectManifest.parse({
     ...base,
+    origin: ORIGIN,
     captures: [...base.captures, { id: 'capture-2', label: 'Second capture', date: '2026-02-01' }],
   });
   await writeFile(join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2));
   await writeFile(join(dir, 'volumes.json'), JSON.stringify(VOLUMES, null, 1));
   await mkdir(join(dir, 'edits'), { recursive: true });
   await writeFile(join(dir, 'edits', 'boundaries.json'), JSON.stringify(EDITS, null, 1));
+  await writeKitDsms(dir);
   // no measurements.json yet: a project from before the measurements existed
 }
 
@@ -241,7 +299,9 @@ test('an old stockpile project opens with its kit figures labelled and no unsave
 
   // the south pile is gone by the last date: no figure on it, its first date kept
   const south = await focusMeasure(win, 'Pile South');
-  await expect(south.getByTestId('survey-cmp-status').first()).toHaveText('No survey data');
+  await expect(south.getByTestId('survey-cmp-status').first()).toHaveText(
+    'Not measured on this date',
+  );
   await expect(south.getByTestId('survey-cmp-result')).toHaveCount(0);
   const rows = south.getByTestId('vol-time-table').locator('tbody tr');
   await expect(rows).toHaveCount(2);
@@ -265,8 +325,73 @@ test('an old stockpile project opens with its kit figures labelled and no unsave
   expect(north?.points.map((p) => [p[0], p[1]])).toEqual(
     NORTH_RING_EDITED.map(([x, z]) => [500000 + x, 3200000 - z]),
   );
+  // on the ground of its survey, not at height 0
+  for (const d of offDsm('Pile North', north?.points ?? [])) expect(d).toBeLessThan(0.05);
   expect(file.measurements[1]?.results).toEqual([]);
   expect(await readFile(join(dir, 'volumes.json'))).toEqual(kitBefore);
+});
+
+test('converted piles sit on the kit DSM: every vertex within 0.05 m', async ({
+  win,
+  dataRoot,
+}) => {
+  const dir = dataRoot.projectDir;
+  await openTiny(win);
+  await measureTree(win);
+  await expect
+    .poll(async () => (await readMeasurements(dir).catch(() => null))?.kitPilesConverted ?? null)
+    .toEqual(['p01', 'p02']);
+  const file = await readMeasurements(dir);
+  expect(file.measurements.map((m) => m.label)).toEqual(['Pile North', 'Pile South']);
+  for (const m of file.measurements) {
+    expect(m.points.length).toBeGreaterThan(2);
+    for (const d of offDsm(m.label, m.points)) expect(d).toBeLessThan(0.05);
+  }
+  // draped as they were converted: nothing to repair
+  expect(file.kitHeightsRepaired ?? []).toEqual([]);
+});
+
+test('an earlier conversion with Z 0 is repaired once: kitHeightsRepaired lists the piles and a second open leaves the file byte-identical', async ({
+  win,
+  dataRoot,
+}) => {
+  const dir = dataRoot.projectDir;
+  // converted by a build without heights: no DSM to read, every vertex left at 0
+  await withoutDsms(dir);
+  await openTiny(win);
+  await measureTree(win);
+  await expect
+    .poll(async () => (await readMeasurements(dir).catch(() => null))?.kitPilesConverted ?? null)
+    .toEqual(['p01', 'p02']);
+  const flat = await readMeasurements(dir);
+  expect(flat.measurements.flatMap((m) => m.points.map((p) => p[2]))).toEqual(
+    flat.measurements.flatMap((m) => m.points.map(() => 0)),
+  );
+  expect(flat.kitHeightsRepaired ?? []).toEqual([]);
+
+  // the kit's DSMs are there now: the next open repairs both piles once, quietly
+  await writeKitDsms(dir);
+  await reopen(win);
+  await measureTree(win);
+  await expect
+    .poll(async () => [...((await readMeasurements(dir)).kitHeightsRepaired ?? [])].sort())
+    .toEqual(flat.measurements.map((m) => m.id).sort());
+  const repaired = await readMeasurements(dir);
+  for (const m of repaired.measurements)
+    for (const d of offDsm(m.label, m.points)) expect(d).toBeLessThan(0.05);
+  // a migration, not an edit: the figures and the dates stay as they were
+  expect(repaired.measurements.map((m) => [m.id, m.results, m.updatedAt])).toEqual(
+    flat.measurements.map((m) => [m.id, m.results, m.updatedAt]),
+  );
+  await expect(await measureSaved(win)).toContainText('All saved');
+  const once = await readFile(join(dir, 'survey', 'measurements.json'));
+
+  // opened again: nothing left to repair, the file untouched
+  await reopen(win);
+  await measureTree(win);
+  await expect(win.getByTestId('measure-row')).toHaveCount(2);
+  await expect(await measureSaved(win)).toContainText('All saved');
+  expect(await readFile(join(dir, 'survey', 'measurements.json'))).toEqual(once);
 });
 
 test('reopening adds nothing; a deleted pile stays deleted', async ({ win, dataRoot }) => {
@@ -307,11 +432,24 @@ test('reopening adds nothing; a deleted pile stays deleted', async ({ win, dataR
   await expectNorthCarried(win);
 });
 
-test('in a package the figures show and nothing is written', async ({ app, win, dataRoot }) => {
+test('in a package the figures show, the heights are repaired in memory and nothing is written', async ({
+  app,
+  win,
+  dataRoot,
+}) => {
   test.setTimeout(240_000);
+  // converted at Z 0 before the kit's DSMs were found; they travel in the package
+  await withoutDsms(dataRoot.projectDir);
   await openTiny(win);
   await measureTree(win);
   await expect(win.getByTestId('measure-row')).toHaveCount(2);
+  await expect
+    .poll(
+      async () =>
+        (await readMeasurements(dataRoot.projectDir).catch(() => null))?.kitPilesConverted ?? null,
+    )
+    .toEqual(['p01', 'p02']);
+  await writeKitDsms(dataRoot.projectDir);
 
   // export the package
   const pkg = join(dataRoot.base, 'old-stockpiles.aio');
@@ -354,6 +492,31 @@ test('in a package the figures show and nothing is written', async ({ app, win, 
     // the same old figures, labelled; no Recompute, no error
     await expectNorthCarried(pw, true);
     await expect(pw.getByTestId('survey-panel').getByRole('alert')).toHaveCount(0);
+
+    // the piles sit on the kit's DSMs in memory; the package keeps its file as it was
+    const held = () =>
+      pw.evaluate(() => {
+        const file = (
+          window as unknown as {
+            __stratlas: {
+              measurements(): {
+                measurements: { label?: string; points: number[][] }[];
+                kitHeightsRepaired?: string[];
+              } | null;
+            };
+          }
+        ).__stratlas.measurements();
+        return file
+          ? {
+              piles: file.measurements.map((m) => ({ label: m.label ?? '', points: m.points })),
+              repaired: file.kitHeightsRepaired?.length ?? 0,
+            }
+          : null;
+      });
+    await expect.poll(async () => (await held())?.repaired ?? 0).toBe(2);
+    for (const p of (await held())?.piles ?? [])
+      for (const d of offDsm(p.label, p.points)) expect(d).toBeLessThan(0.05);
+    await expect(saved.getByTestId('survey-list-readonly')).toBeVisible();
     expect(await network.outbound()).toEqual([]);
   } finally {
     await player.close();

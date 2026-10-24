@@ -44,6 +44,7 @@ import { tilesDebug } from './workspace/siteTiles';
 import { registerCorrectedPhotos } from './builder/photoPoses';
 import { workbench } from './workspace/workbench/workbenchStore';
 import { antennaStore } from './telecom/antennaStore';
+import { measureStore } from './survey/measureStore';
 
 let started = false;
 
@@ -136,6 +137,8 @@ export function bootstrap(): void {
       /** The antenna inventory's store (e2e: the AI send preview without a provider). */
       antennas: antennaStore,
       volumetric,
+      /** The open project's measurements as held in memory (e2e: heights repaired in a package). */
+      measurements: () => measureStore.getState().file,
       graphics,
       /** Tier, detection facts and memory now (diagnostics, the performance tests). */
       memory: graphicsReport,

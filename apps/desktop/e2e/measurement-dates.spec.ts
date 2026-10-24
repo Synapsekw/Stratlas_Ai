@@ -14,7 +14,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
 import { measureControl, measureSaved, measureTree, stageMode } from './island';
-import { openDemo, prepareSurveys } from './surveyJobs';
+import { openDemo, prepareSurveys, setAutoPrepare } from './surveyJobs';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
@@ -174,6 +174,8 @@ test('measurements file under their dates, move between dates and follow their l
   const file = join(root, 'survey', 'measurements.json');
   await writeFile(file, JSON.stringify(SEED, null, 1));
   await prepareSurveys(win, root);
+  // the third survey stays unprepared: nothing prepares it on its own when the project opens
+  await setAutoPrepare(win, false);
   await openDemo(win, earthworksProject.name, earthworksProject.id);
   await stageMode(win, '3D');
   const canvas = win.locator('[data-scene-view] canvas').first();

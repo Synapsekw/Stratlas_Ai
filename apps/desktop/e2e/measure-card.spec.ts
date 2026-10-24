@@ -11,7 +11,7 @@
 import { HeightTiles, MeasurementsFile, ProjectManifest } from '@aio/schema';
 import { encodeTile, TILE } from '@aio/survey';
 import type { Locator, Page } from '@playwright/test';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, openProject, test, tinyManifest } from './fixtures';
@@ -310,6 +310,65 @@ test('switching units to imperial changes the card, the tree value and the map l
   await expect(card.getByTestId('card-secondary')).not.toContainText(' m ');
   await expect(measureRow(win, 'Line B')).toContainText(imperial);
   await expect.poll(() => mapLabel(win, 'line-b'), { timeout: 30_000 }).toContain(imperial);
+});
+
+test('a date without a surface shows as a chip, not "No survey data"', async ({
+  win,
+  dataRoot,
+}) => {
+  // an earlier survey date with neither a DSM nor a cloud: nothing to prepare it from
+  const dir = dataRoot.projectDir;
+  const manifest = ProjectManifest.parse(
+    JSON.parse(await readFile(join(dir, 'manifest.json'), 'utf8')),
+  );
+  await writeFile(
+    join(dir, 'manifest.json'),
+    JSON.stringify(
+      {
+        ...manifest,
+        captures: [
+          { id: 'capture-0', label: 'Earlier capture', date: '2025-12-01' },
+          ...manifest.captures,
+        ],
+      },
+      null,
+      2,
+    ),
+  );
+  await openTiny(win);
+  await measureTree(win, 'capture-2');
+  const card = await focusMeasure(win, 'Line B');
+
+  // the latest date and the one before are chips; the earlier one joins from the add menu, and
+  // without elevation it is a disabled chip that says why
+  const chips = card.getByTestId('line-chips');
+  await expect(chips.locator('[data-chip]')).toHaveCount(2, { timeout: 30_000 });
+  await chips.getByTestId('line-chips-add').click();
+  const menu = win.getByRole('menu', { name: '+ Add survey or design' });
+  await expect(menu).toBeVisible();
+  await menu
+    .getByRole('group', { name: 'Surveys' })
+    .getByRole('menuitem', { name: 'Earlier capture' })
+    .click();
+  await expect(menu).toHaveCount(0);
+  await expect(chips.locator('[data-chip]')).toHaveCount(3);
+  const none = chips.locator('[data-chip="capture-0"]');
+  await expect(none).toHaveAttribute('data-state', 'none');
+  const main = none.locator('.pc-chip-main');
+  await expect(main).toHaveAttribute('aria-disabled', 'true');
+  await expect(main).toHaveAccessibleDescription('No elevation for this date');
+  await expect(chips.locator('[data-chip="capture-1"]')).toHaveAttribute('data-state', 'ready');
+  // there is no line to show for it
+  await expect(card.getByTestId('line-profile').locator('[data-series="capture-0"]')).toHaveCount(
+    0,
+  );
+  await expect(card).not.toContainText('No survey data');
+
+  // the point card charts the dates it has and names no "No survey data" either
+  const spot = await focusMeasure(win, 'Spot C');
+  await expect(spot.getByTestId('elevation-time')).toBeVisible({ timeout: 30_000 });
+  await expect(spot.getByTestId('elevation-time').locator('circle[data-dot]')).toHaveCount(2);
+  await expect(spot).not.toContainText('No survey data');
 });
 
 test('stored fill opacity is drawn on the map', async ({ win }) => {

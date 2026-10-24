@@ -69,6 +69,22 @@ export async function prepareSurveys(win: Page, root: string): Promise<void> {
   });
 }
 
+/**
+ * Settings, Processing tools: switch "Prepare survey surfaces when a project opens" (on by
+ * default). A spec about a date left unprepared turns it off before opening the project.
+ */
+export async function setAutoPrepare(win: Page, on: boolean): Promise<void> {
+  await win.locator('.nav-item', { hasText: 'Settings' }).first().click();
+  await win
+    .getByRole('navigation', { name: 'Settings sections' })
+    .getByRole('button', { name: 'Processing tools' })
+    .click();
+  const sw = win.getByTestId('auto-prepare');
+  await expect(sw).toBeVisible();
+  if ((await sw.getAttribute('aria-checked')) !== String(on)) await sw.click();
+  await expect(sw).toHaveAttribute('aria-checked', String(on));
+}
+
 export async function openDemo(win: Page, name: string, id: string): Promise<void> {
   await win.locator('.sb-nav .nav-item', { hasText: 'Projects' }).first().click();
   await win.getByTestId('project-card').filter({ hasText: name }).first().click();

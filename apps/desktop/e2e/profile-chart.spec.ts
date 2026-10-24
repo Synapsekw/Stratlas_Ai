@@ -9,7 +9,7 @@
  * earthworks demo is used rather than the change demo: it has prepared-surface truth and a design.
  * Off-screen, zero network, pipeline Python needed.
  */
-import { MeasurementsFile } from '@aio/schema';
+import { MeasurementsFile, ProjectManifest } from '@aio/schema';
 import type { Locator, Page } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -35,6 +35,22 @@ const DESIGN = 'Pad design';
  * cross-section across the pad (E 551140 to 551260 at N 2331400) in the measurements.
  */
 async function prepared(win: Page, p: SurveyDemoProject): Promise<void> {
+  // two surveys only: a card lists every survey date and starts on the latest, so the demo's third
+  // survey is left out of this copy (its files stay, unlisted)
+  const mpath = join(p.dir, 'manifest.json');
+  const manifest = ProjectManifest.parse(JSON.parse(await readFile(mpath, 'utf8')));
+  await writeFile(
+    mpath,
+    JSON.stringify(
+      ProjectManifest.parse({
+        ...manifest,
+        captures: manifest.captures.filter((c) => c.id !== 'd3'),
+        layers: manifest.layers.filter((l) => l.capture !== 'd3'),
+      }),
+      null,
+      2,
+    ),
+  );
   await runJob(win, 'survey.prepare', p.dir, {
     surfaces: [
       {
