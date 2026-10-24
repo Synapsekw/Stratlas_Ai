@@ -284,7 +284,7 @@ import { createMaskAssist, loadOnnxRuntime } from './maskAssist';
 import { resolveInside } from './protocol/paths';
 import { writeCentreline } from './centreline';
 import { createAioHandler } from './protocol/handler';
-import { APP_CSP, cspForUrl } from './csp';
+import { APP_CSP, cspForUrl, devAppCsp } from './csp';
 import { isAppSender, rendererUrlAllowed } from './rendererUrl';
 import { checkDataRootChange, createPickedFolders, dataRootError } from './dataRoot';
 import { saveFile } from './saveFile';
@@ -2570,8 +2570,8 @@ function hardenSession(): void {
   const ses = session.defaultSession;
   ses.webRequest.onHeadersReceived((details, callback) => {
     // Dev (http) and any response that has headers; built pages under file:// carry the same
-    // policy as a <meta> tag instead (csp.ts).
-    const csp = cspForUrl(details.url, APP_CSP);
+    // policy as a <meta> tag instead (csp.ts). Dev adds Vite's preamble and hot-reload socket.
+    const csp = cspForUrl(details.url, devUrl ? devAppCsp(devUrl) : APP_CSP);
     if (csp === null) {
       callback({});
       return;

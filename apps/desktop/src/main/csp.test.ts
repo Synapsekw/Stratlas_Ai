@@ -7,6 +7,7 @@ import {
   APP_CSP_DIRECTIVES,
   cspForUrl,
   cspMetaTag,
+  devAppCsp,
   HEADER_ONLY_DIRECTIVES,
   inlineScripts,
   metaPolicy,
@@ -51,6 +52,30 @@ describe('app CSP', () => {
     expect(APP_CSP).toContain("default-src 'self' aio:");
     expect(APP_CSP).toContain("connect-src 'self' aio: data: blob:");
     expect(APP_CSP).toContain("worker-src 'self' blob:");
+  });
+});
+
+describe('devAppCsp', () => {
+  const dev = devAppCsp('http://localhost:5173/');
+  const directive = (name: string) => dev.split('; ').find((d) => d.startsWith(`${name} `));
+
+  it("lets in Vite's inline React preamble and its hot-reload socket, nothing else", () => {
+    expect(directive('script-src')).toBe("script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'");
+    expect(directive('connect-src')).toBe(
+      "connect-src 'self' aio: data: blob: ws://localhost:5173",
+    );
+  });
+
+  it('keeps every other directive of the app policy', () => {
+    const changed = ['script-src', 'connect-src'];
+    const rest = (p: string) =>
+      p.split('; ').filter((d) => !changed.some((c) => d.startsWith(`${c} `)));
+    expect(rest(dev)).toEqual(rest(APP_CSP));
+  });
+
+  it('is the app policy when there is no dev server', () => {
+    expect(devAppCsp(undefined)).toBe(APP_CSP);
+    expect(devAppCsp('not a url')).toBe(APP_CSP);
   });
 });
 

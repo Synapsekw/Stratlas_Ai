@@ -22,6 +22,14 @@ describe('rendererUrlAllowed', () => {
     expect(rendererUrlAllowed('file://192.168.1.4/c$/a.png')).toBe(false);
   });
 
+  it("allows the dev server's hot-reload socket only when one is set", () => {
+    const dev = 'http://localhost:5173';
+    expect(rendererUrlAllowed('ws://localhost:5173/?token=abc', dev)).toBe(true);
+    expect(rendererUrlAllowed('ws://localhost:5174/?token=abc', dev)).toBe(false);
+    expect(rendererUrlAllowed('ws://localhost:5173.evil.test/', dev)).toBe(false);
+    expect(rendererUrlAllowed('ws://localhost:5173/?token=abc')).toBe(false);
+  });
+
   it('allows the dev server only when one is set', () => {
     expect(rendererUrlAllowed('http://localhost:5173/src/main.tsx', 'http://localhost:5173')).toBe(
       true,

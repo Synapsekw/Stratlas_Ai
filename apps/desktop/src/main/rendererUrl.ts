@@ -18,12 +18,15 @@ function originOf(devUrl: string | undefined): string | undefined {
 
 /**
  * Offline by construction: the renderer may reach only the app (file:// on this computer),
- * aio:// and, in dev, the dev server. A `file:` URL with a host (`file://server/share/...`) would
+ * aio:// and, in dev, the dev server (and its hot-reload socket). A `file:` URL with a host (`file://server/share/...`) would
  * reach another computer over SMB, so it is refused like http.
  */
 export function rendererUrlAllowed(url: string, devUrl?: string): boolean {
   const dev = originOf(devUrl);
   if (dev && (url === dev || url.startsWith(`${dev}/`))) return true;
+  // Vite's hot-reload socket on the same host and port
+  const devSocket = dev?.replace(/^http/, 'ws');
+  if (devSocket && (url === devSocket || url.startsWith(`${devSocket}/`))) return true;
   const proto = url.slice(0, url.indexOf(':') + 1).toLowerCase();
   if (['http:', 'https:', 'ws:', 'wss:', 'ftp:'].includes(proto)) return false;
   if (proto === 'file:') {

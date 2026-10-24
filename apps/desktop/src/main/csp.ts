@@ -40,6 +40,27 @@ export const APP_CSP_DIRECTIVES: readonly string[] = [
 /** The app policy as a header value (dev, and any response main can add a header to). */
 export const APP_CSP = APP_CSP_DIRECTIVES.join('; ');
 
+/**
+ * The app policy for pages served by the Vite dev server (`pnpm dev`): React Fast Refresh needs
+ * Vite's inline preamble script, and hot reload needs a WebSocket back to the dev server. Only
+ * those two are added; every built or packaged page keeps `APP_CSP`. With no valid dev URL it is
+ * `APP_CSP`.
+ */
+export function devAppCsp(devUrl: string | undefined): string {
+  let host: string;
+  try {
+    host = new URL(devUrl ?? '').host;
+  } catch {
+    return APP_CSP;
+  }
+  return APP_CSP_DIRECTIVES.map((d) => {
+    const name = directiveName(d);
+    if (name === 'script-src') return `${d} 'unsafe-inline'`;
+    if (name === 'connect-src') return `${d} ws://${host}`;
+    return d;
+  }).join('; ');
+}
+
 const directiveName = (d: string) => d.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
 
 /**
