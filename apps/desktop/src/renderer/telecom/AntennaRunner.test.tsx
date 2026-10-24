@@ -33,8 +33,9 @@ const h = vi.hoisted(
     getState: null | (() => AntennaSceneState);
     labels: number;
     onPick: null | ((id: string) => void);
+    onMenu: null | ((m: { x: number; y: number; id: string }) => void);
     frames: Set<() => void>;
-  } => ({ getState: null, labels: 0, onPick: null, frames: new Set() }),
+  } => ({ getState: null, labels: 0, onPick: null, onMenu: null, frames: new Set() }),
 );
 
 vi.mock('../shell', async (importOriginal) => {
@@ -77,11 +78,15 @@ vi.mock('./antennaScene', async (importOriginal) => ({
   attachAntennaLayer: (
     _stage: unknown,
     _frame: unknown,
-    opts: { getState(): AntennaSceneState },
+    opts: { getState(): AntennaSceneState; onMenu(m: { x: number; y: number; id: string }): void },
   ) => {
     h.getState = () => opts.getState();
+    h.onMenu = (m) => {
+      opts.onMenu(m);
+    };
     return () => {
       h.getState = null;
+      h.onMenu = null;
     };
   },
 }));
@@ -270,5 +275,18 @@ describe('AntennaRunner', () => {
     });
     expect(antennaStore.getState().reveal).toBe(reveal + 1);
     expect(flyTo).toHaveBeenCalledTimes(1);
+  });
+
+  it('a right-click on a box in 3D opens the antenna menu, which closes with Esc', () => {
+    act(() => {
+      h.onMenu?.({ x: 10, y: 20, id: 'ant-a3' });
+    });
+    expect(document.querySelector('[data-testid="antenna-menu"]')).not.toBeNull();
+    act(() => {
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
+    expect(document.querySelector('[data-testid="antenna-menu"]')).toBeNull();
   });
 });

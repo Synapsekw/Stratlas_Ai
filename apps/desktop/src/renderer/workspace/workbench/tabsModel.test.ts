@@ -7,6 +7,7 @@ import {
   overflowOrderFor,
   orderTabs,
   paneWidth,
+  toolInFront,
   type Tab,
   type TabId,
 } from './tabsModel';
@@ -259,7 +260,11 @@ describe('the Project tab (id measure)', () => {
     };
     const started = onToolStart(state, 'measure');
     expect(ids(started.tabs)[0]).toBe('measure');
-    const stopped = onToolStop({ ...state, tabs: started.tabs }, 'measure', { openedByTool: true });
+    // the store never passes openedByTool for measure: the fixed tab stays, in front
+    const stopped = onToolStop({ ...state, tabs: started.tabs }, 'measure', {
+      openedByTool: false,
+    });
+    expect(stopped.front).toBe('measure');
     expect(ids(stopped.tabs)).toContain('measure');
     expect(ids(stopped.tabs).indexOf('measure')).toBe(ids(stopped.tabs).indexOf('selection') - 1);
   });
@@ -299,5 +304,31 @@ describe('onToolStop attention', () => {
       { openedByTool: true },
     );
     expect(own.attention).toBeNull();
+  });
+});
+
+describe('toolInFront', () => {
+  const state = (front: TabId, over: Partial<Tab> = {}, issueEditing = false) => ({
+    tabs: [
+      ...[tab('measure', { fixed: true }), ...fixedTabs()].filter((t) => t.id !== front),
+      tab(front, over),
+    ],
+    front,
+    issueEditing,
+  });
+  it('is true for the Coverage, Thermal and Jobs tabs', () => {
+    expect(toolInFront(state('rf'))).toBe(true);
+    expect(toolInFront(state('thermal'))).toBe(true);
+    expect(toolInFront(state('jobs'))).toBe(true);
+  });
+  it('is false for Selection and for Project at rest', () => {
+    expect(toolInFront(state('selection', { fixed: true }))).toBe(false);
+    expect(toolInFront(state('measure', { fixed: true }))).toBe(false);
+  });
+  it('is true while an issue is edited', () => {
+    expect(toolInFront(state('selection', { fixed: true }, true))).toBe(true);
+  });
+  it('is true when the front tab is live', () => {
+    expect(toolInFront(state('measure', { fixed: true, live: true }))).toBe(true);
   });
 });

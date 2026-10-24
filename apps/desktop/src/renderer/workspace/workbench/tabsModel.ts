@@ -75,6 +75,16 @@ export function personToolLive(tabs: readonly Tab[]): boolean {
 }
 
 /**
+ * A tool is in front of the person: the front tab is live, or is Coverage, Thermal or Jobs, or an
+ * issue is being edited. Something that follows a pick in the 3D view leaves the front alone then.
+ */
+export function toolInFront(state: Pick<TabsState, 'tabs' | 'front' | 'issueEditing'>): boolean {
+  if (state.issueEditing) return true;
+  if (state.front === 'rf' || state.front === 'thermal' || state.front === 'jobs') return true;
+  return state.tabs.some((t) => t.id === state.front && t.live);
+}
+
+/**
  * Fixed tabs sit at the end of the row in this order (D11); Project (id `measure`, the Measure
  * bench under an "In this project" list) is the first of them.
  */

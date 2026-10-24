@@ -21,6 +21,7 @@ import { measureStore, startTool, stopTool } from '../survey/measureStore';
 import { MeasureBench } from '../workspace/workbench/benches/MeasureBench';
 import { AntennaRunner } from './AntennaRunner';
 import { sectionStore } from '../workspace/workbench/sectionState';
+import { workbench } from '../workspace/workbench/workbenchStore';
 import {
   antennaStore,
   filteredUnits,
@@ -198,6 +199,7 @@ beforeEach(() => {
   h.replies = {};
   h.layerPick = null;
   localStorage.clear();
+  workbench.getState().reset();
   sectionStore.setState({ byBench: {} });
   shell.setState({ pkg: null, stageMode: '3d' });
   jobs.setState({ jobs: [] });
@@ -353,6 +355,30 @@ describe('the antenna inventory in the Measure workbench', () => {
   });
 });
 
+describe('the antenna menu on a row', () => {
+  it('opens on a right-click and Edit azimuth focuses that row’s azimuth field', async () => {
+    await mount();
+    const row = section()!.querySelector<HTMLElement>('[data-row-id="ant-d1"] .antenna-row')!;
+    act(() => {
+      row.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 30,
+          clientY: 40,
+        }),
+      );
+    });
+    expect(document.querySelector('[data-testid="antenna-menu"]')).not.toBeNull();
+    act(() => {
+      document.querySelector<HTMLElement>('[data-testid="ctx-item-antenna.editAzimuth"]')!.click();
+    });
+    await flush();
+    expect(document.activeElement).toBe(row.querySelector('[data-testid="antenna-row-az"]'));
+    expect(document.querySelector('[data-testid="antenna-menu"]')).toBeNull();
+  });
+});
+
 describe('openAntennaReview (another tool asks for the review)', () => {
   it('selects the first draft under To review, its details under its row', async () => {
     await mount();
@@ -365,6 +391,48 @@ describe('openAntennaReview (another tool asks for the review)', () => {
     expect(q('[data-testid="antenna-filter-draft"]')?.getAttribute('aria-selected')).toBe('true');
     const item = section()!.querySelector(`[data-row-id="${first}"]`)!;
     expect(item.contains(q('[data-testid="antenna-details"]'))).toBe(true);
+  });
+
+  it('holds a folded group open and scrolls the first draft into view in the list', async () => {
+    await mount();
+    act(() => {
+      head()!.click();
+    });
+    expect(head()?.getAttribute('aria-expanded')).toBe('false');
+    const first = filteredUnits(antennaStore.getState().file, 'draft')[0]!.id;
+    // the group's scroller shows 0-100; the row sits at 150-176, below it
+    const rows = section()!.querySelector<HTMLElement>('.pl-rows')!;
+    rows.getBoundingClientRect = () => ({ top: 0, bottom: 100 }) as DOMRect;
+    const row = section()!.querySelector<HTMLElement>(`[data-row-id="${first}"]`)!;
+    row.getBoundingClientRect = () =>
+      ({ top: 150 - rows.scrollTop, bottom: 176 - rows.scrollTop }) as DOMRect;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    act(() => {
+      openAntennaReview();
+    });
+    // the list holds the group open without changing the person's fold, then scrolls the row
+    expect(head()?.getAttribute('aria-expanded')).toBe('true');
+    expect(rows.scrollTop).toBe(0);
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(rows.scrollTop).toBe(76);
+    expect(scrollSpy).not.toHaveBeenCalled();
+  });
+
+  it('brings the Project tab forward unless a tool is in front', async () => {
+    await mount();
+    workbench.getState().open('rf');
+    workbench.getState().show('rf');
+    act(() => {
+      openAntennaReview();
+    });
+    expect(workbench.getState().front).toBe('rf');
+    workbench.getState().show('selection');
+    act(() => {
+      openAntennaReview();
+    });
+    expect(workbench.getState().front).toBe('measure');
   });
 });
 

@@ -12,6 +12,7 @@ import {
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { describe, expect, it, vi } from 'vitest';
+import { claimEvent } from '../builder/droneHits';
 import { frameOf } from '../survey/measureScene';
 import { antennaMeasure, nameAnchor } from './antennaMeasure';
 import {
@@ -454,5 +455,91 @@ describe('armTowerPick', () => {
     off();
     expect(claims).toBe(0);
     expect(canvas.style.cursor).toBe('');
+  });
+});
+
+describe('the antenna layer right-click', () => {
+  function setup() {
+    const canvas = document.createElement('canvas');
+    document.body.append(canvas);
+    canvas.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100 }) as DOMRect;
+    const camera = new PerspectiveCamera(50, 1, 0.1, 100);
+    // the first unit sits at local (3, 10, -4): look at it down -z from in front
+    camera.position.set(3, 10, 8);
+    camera.lookAt(3, 10, -4);
+    camera.updateMatrixWorld(true);
+    const stage = {
+      scene: new Scene(),
+      camera,
+      renderer: { domElement: canvas },
+      requestRender: () => undefined,
+      onFrame: () => () => undefined,
+    } as never;
+    const onMenu = vi.fn();
+    const detach = attachAntennaLayer(stage, frame, {
+      getState: () => state(),
+      subscribe: () => () => undefined,
+      onPick: () => undefined,
+      onMenu,
+    });
+    const press = (x: number, y: number, target: Element = canvas) =>
+      target.dispatchEvent(
+        new MouseEvent('pointerdown', { button: 2, clientX: x, clientY: y, bubbles: true }),
+      );
+    const context = (x: number, y: number) => {
+      const e = new MouseEvent('contextmenu', {
+        clientX: x,
+        clientY: y,
+        bubbles: true,
+        cancelable: true,
+      });
+      canvas.dispatchEvent(e);
+      return e;
+    };
+    return {
+      canvas,
+      onMenu,
+      press,
+      context,
+      detach: () => {
+        detach();
+        canvas.remove();
+      },
+    };
+  }
+
+  it('opens the menu for the box under a barely moved right press and release', () => {
+    const t = setup();
+    t.press(50, 50);
+    const e = t.context(51, 50);
+    expect(t.onMenu).toHaveBeenCalledWith({ x: 51, y: 50, id: 'ant-acc' });
+    expect(e.defaultPrevented).toBe(true);
+    t.detach();
+  });
+
+  it('ignores a drag, an empty spot and a claimed event', () => {
+    const t = setup();
+    t.press(50, 50);
+    t.context(70, 50);
+    t.press(95, 95);
+    t.context(95, 95);
+    expect(t.onMenu).not.toHaveBeenCalled();
+    // another menu took the event first (they listen before the window does)
+    t.canvas.addEventListener('contextmenu', claimEvent);
+    t.press(50, 50);
+    t.context(50, 50);
+    expect(t.onMenu).not.toHaveBeenCalled();
+    t.detach();
+  });
+
+  it('stops listening when detached', () => {
+    const t = setup();
+    t.detach();
+    document.body.append(t.canvas);
+    t.press(50, 50);
+    t.context(50, 50);
+    expect(t.onMenu).not.toHaveBeenCalled();
+    t.canvas.remove();
   });
 });

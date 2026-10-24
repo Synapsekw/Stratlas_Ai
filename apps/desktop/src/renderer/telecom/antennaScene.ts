@@ -18,6 +18,7 @@ import {
   type Vec3,
 } from '@aio/schema';
 import { t } from '@aio/ui';
+import { claimEvent, isClaimed } from '../builder/droneHits';
 import { captureShift, dateShiftOf } from '@aio/workspace';
 import {
   BoxGeometry,
@@ -414,6 +415,8 @@ export function attachAntennaLayer(
     getState(): AntennaSceneState;
     subscribe(cb: () => void): () => void;
     onPick(id: string): void;
+    /** A right press and release that barely moved over a box, not claimed by another menu. */
+    onMenu?(m: { x: number; y: number; id: string }): void;
   },
 ): () => void {
   const canvas = stage.renderer.domElement;
@@ -467,6 +470,30 @@ export function attachAntennaLayer(
   };
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointerup', onUp);
+
+  // the right-click, as the measurement menu's: pins, photos and drone menus listen on the pane
+  // before the window does and claim their event first
+  let rightDown: { x: number; y: number } | null = null;
+  const onRightDown = (e: PointerEvent) => {
+    if (e.button === 2) rightDown = e.target === canvas ? { x: e.clientX, y: e.clientY } : null;
+  };
+  const onContext = (e: MouseEvent) => {
+    const d = rightDown;
+    rightDown = null;
+    if (!opts.onMenu || e.target !== canvas || isClaimed(e)) return;
+    if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_SLOP_PX) return;
+    const r = canvas.getBoundingClientRect();
+    const id = pickAntennaAt(group, stage.camera, [
+      ((e.clientX - r.left) / r.width) * 2 - 1,
+      -((e.clientY - r.top) / r.height) * 2 + 1,
+    ]);
+    if (!id) return;
+    e.preventDefault();
+    claimEvent(e);
+    opts.onMenu({ x: e.clientX, y: e.clientY, id });
+  };
+  window.addEventListener('pointerdown', onRightDown, true);
+  window.addEventListener('contextmenu', onContext);
   stage.requestRender();
 
   return () => {
@@ -474,6 +501,8 @@ export function attachAntennaLayer(
     offFrame();
     canvas.removeEventListener('pointerdown', onDown);
     canvas.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointerdown', onRightDown, true);
+    window.removeEventListener('contextmenu', onContext);
     stage.scene.remove(group);
     disposeGroup(group);
     stage.requestRender();

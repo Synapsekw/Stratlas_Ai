@@ -7,7 +7,15 @@
  */
 import type { AntennaUnit } from '@aio/schema';
 import { Chip, IconButton, t } from '@aio/ui';
-import type { CSSProperties, MouseEvent, ReactElement, ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
+import { openAntennaMenu, useAntennas } from './antennaStore';
 import { askDeleteAntennas } from './antennaDelete';
 import { DASH } from './AntennaDetails';
 import { TONE } from './antennaFormat';
@@ -44,6 +52,9 @@ export interface AntennaRowProps {
   children?: ReactNode;
 }
 
+/** The focus requests a row has answered (any instance), so a remount does not repeat one. */
+const answered = new WeakSet<object>();
+
 const DIM: CSSProperties = { opacity: 0.45 };
 
 /** A click or key on a control in the row is the control's, not the row's. */
@@ -55,10 +66,24 @@ export function AntennaRow(props: AntennaRowProps): ReactElement {
   const { unit, selected, ticked, readOnly, north } = props;
   const name = unit.name;
   const dish = unit.kind === 'dish';
+  const ref = useRef<HTMLDivElement>(null);
+  const want = useAntennas((a) => (a.focusField?.id === unit.id ? a.focusField : null));
+  // the menu's Edit azimuth / Edit downtilt: the field's text is focused and selected, once
+  useEffect(() => {
+    if (!want || answered.has(want)) return;
+    const field = ref.current?.querySelector<HTMLInputElement>(
+      `input[data-testid="${want.key === 'azimuthGridDeg' ? 'antenna-row-az' : 'antenna-row-tilt'}"]`,
+    );
+    if (!field) return;
+    answered.add(want);
+    field.focus();
+    field.select();
+  }, [want]);
   const height = (unit.centreHeightM?.value ?? unit.box.centre[2]).toFixed(1);
   return (
     <li className="antenna-item" data-row-id={unit.id} role="none">
       <div
+        ref={ref}
         className="row antenna-row"
         data-kind="tree"
         role="treeitem"
@@ -80,14 +105,12 @@ export function AntennaRow(props: AntennaRowProps): ReactElement {
             props.onSelect(unit.id);
           }
         }}
-        onContextMenu={
-          props.onContextMenu
-            ? (e) => {
-                e.preventDefault();
-                props.onContextMenu?.(e, unit.id);
-              }
-            : undefined
-        }
+        onContextMenu={(e) => {
+          e.preventDefault();
+          // the same menu as a box in 3D; a parent may take the click instead
+          if (props.onContextMenu) props.onContextMenu(e, unit.id);
+          else openAntennaMenu({ x: e.clientX, y: e.clientY, id: unit.id });
+        }}
       >
         <input
           type="checkbox"

@@ -20,6 +20,12 @@ import type { PointSelection } from '@aio/engine';
 import { t } from '@aio/ui';
 import { createStore, useStore } from 'zustand';
 import { bridge, jobs } from '../shell';
+import { isIssueEditing } from '../issueCard/state';
+import { revealInList } from '../workspace/workbench/project/projectListStore';
+import { toolInFront } from '../workspace/workbench/tabsModel';
+import { workbench, type WorkbenchState } from '../workspace/workbench/workbenchStore';
+import type { StoreApi } from 'zustand/vanilla';
+import type { AntennaMenuAt } from './AntennaMenu';
 import { flagParams, newFlagId } from './antennaFlag';
 import { boxWithValues, canReset, withTyped, withoutTyped, type TypedKey } from './antennaTyped';
 import { isAntennaDrawn, type AntennaFilter, type AntennaLabelMode } from './antennaVisibility';
@@ -66,6 +72,8 @@ export interface AntennaState {
   flyRequest: { ids: string[]; seq: number } | null;
   /** A request to focus a typed field of a unit's row (the menu's Edit azimuth); `seq` tells repeats. */
   focusField: { id: string; key: 'azimuthGridDeg' | 'downtiltDeg'; seq: number } | null;
+  /** The right-click menu open on a unit (its row or its box in 3D); the runner shows it. */
+  menu: AntennaMenuAt | null;
 }
 
 export interface AiPreview {
@@ -100,6 +108,7 @@ const initial = (): AntennaState => ({
   ticked: {},
   flyRequest: null,
   focusField: null,
+  menu: null,
 });
 
 export const antennaStore = createStore<AntennaState>()(initial);
@@ -560,13 +569,35 @@ export function requestFocusField(id: string, key: 'azimuthGridDeg' | 'downtiltD
   });
 }
 
+/** Open the antenna menu on a unit (a right-click on its row or its box in the 3D view). */
+export function openAntennaMenu(at: { x: number; y: number; id: string }): void {
+  const projectId = get().projectId;
+  if (projectId) set({ menu: { ...at, projectId } });
+}
+
+export function closeAntennaMenu(): void {
+  if (get().menu) set({ menu: null });
+}
+
 export function selectAntenna(id: string | null): void {
   set({ selected: id, note: null });
 }
 
-/** A unit picked in the 3D view: selected, and its row revealed in the inventory. */
-export function revealAntenna(id: string): void {
+/**
+ * A unit picked in the 3D view, or shown by another tool: selected, and its row revealed in the
+ * Project list, which comes to the front unless a tool is in front (a pick never takes Coverage
+ * or a live measuring tool away; the list updates behind it). `show` alone never pops the drawer
+ * of a folded sidebar, as the focus-follow rule has it.
+ */
+export function revealAntenna(
+  id: string | null,
+  bench: StoreApi<WorkbenchState> = workbench,
+): void {
   set({ selected: id, reveal: get().reveal + 1 });
+  revealInList('antennas', id);
+  const { tabs, front } = bench.getState();
+  if (!toolInFront({ tabs, front, issueEditing: isIssueEditing() }))
+    bench.getState().show('measure');
 }
 
 export function toggleAntennaHidden(id: string): void {
@@ -603,11 +634,10 @@ export function setAntennaFilter(f: AntennaFilter): void {
  * unit in the panel's order selected and revealed (the section opens, the row scrolls into view,
  * the camera frames it and the card shows). With no draft, the inventory section only opens.
  */
-export function openAntennaReview(): void {
+export function openAntennaReview(bench: StoreApi<WorkbenchState> = workbench): void {
   const first = filteredUnits(get().file, 'draft')[0];
   set({ filter: 'draft', note: null });
-  if (first) revealAntenna(first.id);
-  else set({ selected: null, reveal: get().reveal + 1 });
+  revealAntenna(first?.id ?? null, bench);
 }
 
 /** The group eye: hide the whole kind when any of it shows, else show it all. */

@@ -1,7 +1,7 @@
 /**
  * What the antenna inventory keeps going whatever the workbench shows: the project's inventory
  * read in, its boxes and labels in the 3D view (where their survey date is drawn; a pick selects
- * the unit and reveals its row), the camera framing a newly selected unit or a fly request (the
+ * the unit and shows its row in the Project tab, a right-click opens the antenna menu), the camera framing a newly selected unit or a fly request (the
  * list's Fly to), the review keys while a unit is selected, the delete confirmation, and the AI
  * send preview, a modal dialog under <body> so no column, drawer or folded section can clip it or
  * make it inert. The unit's details live in the Project list, not on the stage. The stage mounts
@@ -23,6 +23,7 @@ import { frameOf } from '../survey/measureScene';
 import '../survey/telecom.css';
 import { flyToLocalBox } from '../workspace/flyToBox';
 import { AntennaDeleteDialog } from './AntennaDeleteDialog';
+import { AntennaMenu } from './AntennaMenu';
 import { AntennaLabelsControl } from './AntennaLabelsControl';
 import { AntennaSendPreview } from './AntennaSendPreview';
 import { attachAntennaLabels } from './antennaLabels';
@@ -36,11 +37,13 @@ import {
 import {
   antennaStore,
   cancelAiLabels,
+  closeAntennaMenu,
   loadAntennas,
-  revealAntenna,
+  openAntennaMenu,
   sendAiLabels,
   useAntennas,
 } from './antennaStore';
+import { followAntennaPick } from '../workspace/workbench/project/antennaFollow';
 import { useAntennaKeys } from './useAntennaKeys';
 
 /** The point cloud layers of the open project, none in a package (read only, no pipelines). */
@@ -76,6 +79,7 @@ export function AntennaRunner(): ReactElement | null {
   // the 3D view is on screen: the scene screen, in a stage mode that shows it
   const onScene = useShell((s) => s.screen === 'scene' && s.stageMode !== 'map');
   const preview = useAntennas((a) => a.aiPreview);
+  const menu = useAntennas((a) => a.menu);
   const hasCloud = useAntennaClouds().length > 0;
   const projectId = project?.id ?? null;
   const root = project?.root ?? null;
@@ -109,14 +113,15 @@ export function AntennaRunner(): ReactElement | null {
     const offLayer = attachAntennaLayer(stage, frame, {
       getState: sceneState,
       subscribe: (cb) => antennaStore.subscribe(cb),
-      onPick: revealAntenna,
+      onPick: followAntennaPick,
+      onMenu: openAntennaMenu,
     });
     // a pin picks its unit as a box pick does; the selected unit's own pin (none drawn) is a no-op
     const offLabels = attachAntennaLabels(
       stage,
       () => spotsOf(sceneState()),
       (id) => {
-        if (antennaStore.getState().selected !== id) revealAntenna(id);
+        if (antennaStore.getState().selected !== id) followAntennaPick(id);
       },
     );
     let last = antennaStore.getState().selected;
@@ -185,6 +190,7 @@ export function AntennaRunner(): ReactElement | null {
     <>
       {layerHost && <AntennaLabelsControl host={layerHost} />}
       <AntennaDeleteDialog />
+      <AntennaMenu at={menu} onClose={closeAntennaMenu} />
       {shown && (
         <PortalRoot opener={null} className="antenna-send-layer">
           <AntennaSendPreview
