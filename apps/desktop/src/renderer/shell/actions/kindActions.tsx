@@ -353,7 +353,7 @@ const actions: readonly Action[] = [
       if (l) openWalk(l.id);
     },
   }),
-  // SPIKE (walk compare): the two walks side by side in the two 360 panes, this one leading
+  // the two walks side by side in the two 360 panes, this one leading (walks/walkCompare.ts)
   defineAction({
     id: 'walk.compareWith',
     label: 'actions.walk.compareWith',

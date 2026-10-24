@@ -23,8 +23,7 @@ type T = typeof translate;
 /** The two dates of a twin split, left first; null when the split is not two panes of one kind. */
 export function twinDates(split: SplitModel): [string, string] | null {
   const { sides, dates } = split;
-  if (sides.left !== sides.right || sides.left === 'walk360' || !twinAllowed(sides.left, dates))
-    return null;
+  if (sides.left !== sides.right || !twinAllowed(sides.left, dates)) return null;
   const left = sideCapture(sides, 'left', dates);
   const right = sideCapture(sides, 'right', dates);
   return left && right && left !== right ? [left, right] : null;

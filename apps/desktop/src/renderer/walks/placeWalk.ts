@@ -69,7 +69,7 @@ import {
   type WalkDrawing,
   type WalkNow,
 } from './walkOverlay';
-import { walkCompare } from './walkCompare';
+import { comparedWalks, walkCompare } from './walkCompare';
 import type { WalkPlaybackState } from './walkPlayback';
 import { walkMarkerStyle, walkViews } from './walkView';
 import { jobForWalk, splitWithWalk } from './walkModel';
@@ -1034,8 +1034,7 @@ export function placedNowMapOverlay(
 
 /**
  * SPIKE: a marker with its view cone for every shown placed walk a 360 pane shows now (both
- * walks while comparing), in the design `stratlas.walkMarkerStyle` picks; the follower dims
- * while it is far from the lead's spot.
+ * walks while comparing), in the design `stratlas.walkMarkerStyle` picks.
  */
 export function placedMarkerOverlays(
   m: ProjectManifest,
@@ -1046,7 +1045,6 @@ export function placedMarkerOverlays(
   const toLonLat = localToLonLat(m);
   if (!toLonLat) return [];
   const style = walkMarkerStyle.getState().style;
-  const far = walkCompare.getState().far;
   const out: MapOverlay[] = [];
   for (const [id, view] of Object.entries(walkViews.getState())) {
     if (id === except) continue;
@@ -1058,7 +1056,6 @@ export function placedMarkerOverlays(
       resolveCssColour(walkColour(m, walk.layer)),
       view,
       style,
-      { dim: far === id },
     );
     if (ov) out.push(ov);
   }
@@ -1085,10 +1082,17 @@ export function placedNowOnSheet(
   return walkNowOnSheet(p.walk, frame, (l) => walkColour(m, l), p.t, opts.size);
 }
 
-/** The workspace's switched-off layers as a set (stable while they do not change). */
+/**
+ * The workspace's switched-off layers as a set (stable while they do not change), but for the two
+ * walks a running compare shows: they draw whatever their visibility, which stays as it is.
+ */
 export function useHiddenLayers(): ReadonlySet<string> {
   const hidden = useWorkspace((s) => s.hidden);
-  return useMemo(() => new Set(Object.keys(hidden)), [hidden]);
+  const comparedKey = useStore(walkCompare, (s) => comparedWalks(s).join('\n'));
+  return useMemo(() => {
+    const shown = new Set(comparedKey ? comparedKey.split('\n') : []);
+    return new Set(Object.keys(hidden).filter((id) => !shown.has(id)));
+  }, [hidden, comparedKey]);
 }
 
 /**

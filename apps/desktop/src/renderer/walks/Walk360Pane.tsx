@@ -26,16 +26,25 @@ import {
 } from './placeWalk';
 import { PlaceWalkHere } from './PlaceWalkStrip';
 import {
+  APART_M,
+  detourBands,
   endWalkCompare,
-  FAR_M,
-  markFar,
+  ensureWalkCompare,
+  followStep,
+  inBand,
+  leadClock,
+  leadTimeAt,
+  linkedYawDeg,
   otherSide,
   pairFollower,
-  swapLead,
+  placeRate,
+  speedAt,
   trackOf,
   useWalkCompare,
   walkCompare,
+  type Band,
   type CompareMode,
+  type TrackPt,
 } from './walkCompare';
 import './walkCompare.css';
 import {
@@ -70,18 +79,30 @@ const CLICK_PX = 4;
 /** Frame steps before main has listed the walk's record (its real rate comes with it). */
 const DEFAULT_FPS = 30;
 
-/** SPIKE: what a player does in a two-walk compare. */
+/** How often (ms) the follower checks its pace against the lead's clock. */
+const FOLLOW_MS = 100;
+
+const NO_BANDS: readonly Band[] = [];
+
+/** What a player does in a two-walk compare. */
 interface CompareRole {
   side: Side;
   role: 'lead' | 'follow';
   /** The other pane's walk. */
   other: WalkLayer;
-  /** The survey date of the other walk, as the chip names it. */
+  /** The survey date of the other walk, as the bar names it. */
   otherDate: string;
   mode: CompareMode;
   linkLook: boolean;
-  /** This pane's look leads while linked (the last one dragged). */
+  /** This pane's look leads while linked (the pane under the pointer). */
   driver: boolean;
+  /** This walk was seeked into a detour and plays on its own. */
+  solo: boolean;
+  /** This walk's track and the other's, in the scene (empty while not placed). */
+  own: readonly TrackPt[];
+  otherTrack: readonly TrackPt[];
+  /** The stretches of this walk where the other has no frame near (shaded on the scrubber). */
+  bands: readonly Band[];
 }
 
 /**
@@ -98,7 +119,7 @@ function WalkPlayer({
   level,
   compare,
 }: {
-  /** SPIKE: set while the split compares two walks. */
+  /** Set while the split compares two walks. */
   compare?: CompareRole | undefined;
   projectId: string;
   walk: WalkLayer;
@@ -135,11 +156,16 @@ function WalkPlayer({
   const headingAt = useWalkViewHeadingAt(walk);
   const heading = headingAt(time);
   const audio = record?.video.audio ?? false;
-  // SPIKE: a seek asked while the video still seeks waits for it (the follower seeks a lot)
+  // a seek asked while the video still seeks waits for it (a follower may seek again)
   const pendingSeek = useRef<number | null>(null);
-  // SPIKE: a drag or zoom here leads the linked look from now on
+  // play or pause, for the lead's answer to the follower's play button (set every render)
+  const toggleRef = useRef<(play: boolean) => void>(() => undefined);
+  // the pane under the pointer (or the one dragged, zoomed) leads the linked look
   const userLook = useRef<() => void>(() => undefined);
+  // the lead tells the follower where it is on every change of its video's clock
+  const isLead = useRef(false);
   useEffect(() => {
+    isLead.current = compare?.role === 'lead';
     userLook.current = () => {
       if (compare?.linkLook && !compare.driver) walkCompare.setState({ driver: compare.side });
     };
@@ -205,8 +231,21 @@ function WalkPlayer({
       }
       if (Number.isFinite(v.duration) && v.duration > 0) setDuration(v.duration);
     };
+    const publishClock = () => {
+      if (!isLead.current) return;
+      leadClock.setState({
+        now: {
+          walk: walk.id,
+          t: v.currentTime,
+          atMs: performance.now(),
+          playing: !v.paused && !v.ended && !v.seeking,
+          rate: v.playbackRate,
+        },
+      });
+    };
     const onTime = () => {
       setTime(v.currentTime);
+      publishClock();
       const place = placeSession.getState();
       if (place.layerId === walk.id) place.setTime(v.currentTime);
     };
@@ -217,17 +256,20 @@ function WalkPlayer({
     };
     const onPlay = () => {
       setPlaying(!v.paused && !v.ended);
+      publishClock();
     };
     const onError = () => {
       setStatus((s) => (s === 'no-graphics' ? s : 'error'));
     };
     const onRate = () => {
       setRate(v.playbackRate);
+      publishClock();
     };
     v.addEventListener('loadeddata', onReady);
     v.addEventListener('durationchange', onReady);
     v.addEventListener('timeupdate', onTime);
     v.addEventListener('seeked', onTime);
+    v.addEventListener('seeking', onTime);
     v.addEventListener('seeked', onSeeked);
     v.addEventListener('play', onPlay);
     v.addEventListener('pause', onPlay);
@@ -263,6 +305,7 @@ function WalkPlayer({
       v.removeEventListener('durationchange', onReady);
       v.removeEventListener('timeupdate', onTime);
       v.removeEventListener('seeked', onTime);
+      v.removeEventListener('seeking', onTime);
       v.removeEventListener('seeked', onSeeked);
       v.removeEventListener('play', onPlay);
       v.removeEventListener('pause', onPlay);
@@ -280,8 +323,8 @@ function WalkPlayer({
     };
   }, [url, walk.id]);
 
-  // SPIKE: where this walk is and where it looks, for the markers on the map and in 3D (once a
-  // frame at most while it is dragged)
+  // where this walk is and where it looks, for the markers on the map and in 3D (once a frame
+  // at most while it is dragged)
   const lookDeg = heading === null ? null : wrapDeg(bearingFromHeadingRad(heading) + shown.yawDeg);
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
@@ -300,47 +343,101 @@ function WalkPlayer({
   useEffect(
     () => () => {
       clearWalkView(walk.id);
-      if (walkCompare.getState().far === walk.id) walkCompare.setState({ far: null });
     },
     [walk.id],
   );
 
-  // SPIKE: the following walk goes where the lead is: the moment nearest its spot, or its time
+  // the lead: its clock for the follower, from the moment it leads
   const role = compare?.role;
-  const leadView = useWalkView(role === 'follow' && compare ? compare.other.id : null);
-  const me = usePlacedWalk(walk.id);
-  const leadPlaced = usePlacedWalk(role === 'follow' && compare ? compare.other.id : null);
-  const track = useMemo(
-    () => (me ? trackOf(me.fit, me.layer.durationS, me.shift ?? null) : []),
-    [me],
-  );
-  const lastPair = useRef<number | null>(null);
-  const [pairState, setPair] = useState<{ dist: number } | null>(null);
-  const mode = compare?.mode;
-  const leadT = leadView?.t;
   useEffect(() => {
     const v = video.current;
-    if (role !== 'follow' || leadT === undefined || status !== 'ready' || !v) return;
-    const p = pairFollower(leadPlaced, me, track, leadT, mode ?? 'place', lastPair.current);
-    lastPair.current = p.t;
-    if (!v.paused) v.pause();
-    const end = Number.isFinite(v.duration) ? v.duration : duration;
-    const target = Math.max(0, Math.min(end, p.t));
-    if (Math.abs(v.currentTime - target) > 0.04) {
-      if (v.seeking) pendingSeek.current = target;
-      else v.currentTime = target;
-    }
-    setPair(p.dist === null ? null : { dist: p.dist });
-    markFar(walk.id, p.dist);
-  }, [role, mode, leadT, status, track, leadPlaced, me, walk.id, duration]);
+    if (role !== 'lead' || status !== 'ready' || !v) return;
+    leadClock.setState({
+      now: {
+        walk: walk.id,
+        t: v.currentTime,
+        atMs: performance.now(),
+        playing: !v.paused && !v.ended,
+        rate: v.playbackRate,
+      },
+    });
+  }, [role, status, walk.id]);
+  // the follower's play button plays and pauses the lead
+  const leadPlay = useWalkCompare((s) => (role === 'lead' ? s.leadPlay : null));
+  useEffect(() => {
+    if (!leadPlay) return;
+    // answered once: a lead that comes later (Swap lead) must not act on it again
+    walkCompare.setState({ leadPlay: null });
+    toggleRef.current(leadPlay.play);
+  }, [leadPlay]);
 
-  // SPIKE: Link look: the other pane looks where the leading look does, turned by this walk's
-  // own heading at its own moment
+  // the follower keeps pace with the lead: the moment nearest the lead's spot (or its second),
+  // reached by playing at a matched rate; it seeks only when it drifts too far, and pauses and
+  // seeks with the lead
+  const following = role === 'follow' && compare !== undefined && !compare.solo;
+  const own = compare?.own;
+  const otherTrack = compare?.otherTrack;
+  const otherId = compare?.other.id;
+  const mode = compare?.mode ?? 'place';
+  const [dist, setDist] = useState<number | null>(null);
+  useEffect(() => {
+    const v = video.current;
+    if (!following || status !== 'ready' || !v || !own || !otherTrack) return;
+    let prevT: number | null = null;
+    const tick = () => {
+      const c = leadClock.getState().now;
+      if (!c || c.walk !== otherId) return;
+      const leadT = leadTimeAt(c, performance.now());
+      const p = pairFollower(otherTrack, own, leadT, mode, prevT);
+      prevT = p.t;
+      const end = Number.isFinite(v.duration) ? v.duration : duration;
+      const target = Math.max(0, Math.min(end, p.t));
+      const desiredRate =
+        mode === 'place' && p.dist !== null
+          ? placeRate(c.rate, speedAt(otherTrack, leadT), speedAt(own, p.t))
+          : c.rate;
+      const step = followStep({
+        targetT: target,
+        currentT: v.currentTime,
+        desiredRate,
+        leadPlaying: c.playing,
+      });
+      if (step.seekTo !== null) {
+        if (v.seeking) pendingSeek.current = step.seekTo;
+        else v.currentTime = step.seekTo;
+      }
+      if (step.rate !== null && Math.abs(v.playbackRate - step.rate) > 0.01)
+        v.playbackRate = step.rate;
+      if (step.play && v.paused && !v.ended) v.play().catch(() => undefined);
+      else if (!step.play && !v.paused) v.pause();
+      // the chip moves in tenths of a metre: no render for less
+      const shownDist = p.dist === null ? null : Math.round(p.dist * 10) / 10;
+      setDist((d) => (d === shownDist ? d : shownDist));
+    };
+    tick();
+    const timer = window.setInterval(tick, FOLLOW_MS);
+    return () => {
+      window.clearInterval(timer);
+      v.pause();
+      v.playbackRate = 1;
+    };
+  }, [following, status, own, otherTrack, otherId, mode, duration]);
+
+  // a walk playing on its own in a detour joins the compare again where the routes meet
+  const solo = compare?.solo === true;
+  const bands = compare?.bands;
+  const soloSide = compare?.side;
+  useEffect(() => {
+    if (!solo || !bands || !soloSide || inBand(bands, time)) return;
+    walkCompare.getState().rejoin(soloSide, playing);
+  }, [solo, bands, soloSide, time, playing]);
+
+  // Link look: this pane looks where the steering pane does, turned by this walk's own heading
   const driverView = useWalkView(compare?.linkLook && !compare.driver ? compare.other.id : null);
   const driverLook = driverView?.lookDeg ?? null;
   useEffect(() => {
     if (driverView === undefined || driverLook === null || heading === null) return;
-    const yaw = wrapDeg(driverLook - bearingFromHeadingRad(heading));
+    const yaw = linkedYawDeg(driverLook, bearingFromHeadingRad(heading));
     const cur = look.current;
     const dy = Math.abs(wrapDeg(yaw - cur.yawDeg + 180) - 180);
     if (
@@ -351,8 +448,14 @@ function WalkPlayer({
       return;
     setLook({ yawDeg: yaw, pitchDeg: driverView.pitchDeg, fovDeg: driverView.fovDeg });
   }, [driverView, driverLook, heading]);
-  const pair = role === 'follow' ? pairState : null;
-  const far = pair !== null && pair.dist > FAR_M;
+  const pairDist = following ? dist : null;
+  const apart = pairDist !== null && pairDist >= APART_M;
+  // a following walk's play button shows (and works) the lead's playback
+  const leadPlaying = useStore(
+    leadClock,
+    (s) => s.now !== null && s.now.walk === otherId && s.now.playing,
+  );
+  const playShown = following ? leadPlaying : playing;
 
   // the review's detections, read once per project (the review screen reads them again)
   useEffect(() => {
@@ -373,7 +476,18 @@ function WalkPlayer({
     if (play) {
       if (v.ended) v.currentTime = 0;
       v.play().catch(() => undefined);
+      // the lead plays: a walk playing on its own in a detour follows again
+      if (compare?.role === 'lead') walkCompare.getState().leadPlays();
     } else v.pause();
+  };
+  useEffect(() => {
+    toggleRef.current = toggle;
+  });
+
+  /** Play or pause as asked: a following walk passes it on to the lead. */
+  const userToggle = (play: boolean) => {
+    if (following) walkCompare.getState().requestLeadPlay(play);
+    else toggle(play);
   };
 
   const seek = (seconds: number) => {
@@ -382,6 +496,10 @@ function WalkPlayer({
     const end = Number.isFinite(v.duration) ? v.duration : duration;
     v.currentTime = Math.max(0, Math.min(end, seconds));
     setTime(v.currentTime);
+    // a following walk seeked into a detour plays on its own there; out of it, it follows again
+    if (compare?.role !== 'follow') return;
+    if (inBand(compare.bands, v.currentTime)) walkCompare.getState().goSolo(compare.side);
+    else if (compare.solo) walkCompare.getState().rejoin(compare.side, !v.paused);
   };
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -398,8 +516,9 @@ function WalkPlayer({
     // a key the player took goes no further: window listeners that do not look at
     // defaultPrevented (K adds a keyframe in the video annotator) must not act on it too
     e.stopPropagation();
-    if (a.rate !== undefined) v.playbackRate = a.rate;
-    if (a.play !== undefined) toggle(a.play);
+    // a following walk's rate is the lead's pace: the rate keys work on the lead
+    if (a.rate !== undefined && !following) v.playbackRate = a.rate;
+    if (a.play !== undefined) userToggle(a.play);
     if (a.seekBy !== undefined) seek(v.currentTime + a.seekBy);
   };
 
@@ -453,9 +572,10 @@ function WalkPlayer({
     <>
       <div
         ref={host}
-        className={`fill-col walk-view${dragging ? ' dragging' : ''}${aiming ? ' aiming' : ''}${far ? ' walk-far' : ''}`}
+        className={`fill-col walk-view${dragging ? ' dragging' : ''}${aiming ? ' aiming' : ''}`}
         data-compare-role={role}
-        data-pair-dist={pair ? pair.dist.toFixed(2) : undefined}
+        data-compare-solo={solo ? 'true' : undefined}
+        data-pair-dist={pairDist === null ? undefined : pairDist.toFixed(1)}
         tabIndex={0}
         role="application"
         aria-label={t('walk.view', { name: walk.name })}
@@ -476,6 +596,9 @@ function WalkPlayer({
         data-pitch={shown.pitchDeg.toFixed(1)}
         data-fov={shown.fovDeg.toFixed(1)}
         onKeyDown={onKey}
+        onPointerEnter={() => {
+          userLook.current();
+        }}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
@@ -509,20 +632,26 @@ function WalkPlayer({
             {message}
           </div>
         )}
-        {compare && role === 'follow' && pair && status === 'ready' && (
+        {pairDist !== null && status === 'ready' && (
           <div
-            className={far ? 'walk-far-note' : 'walk-dist-chip'}
+            className={apart ? 'walk-dist-chip apart' : 'walk-dist-chip'}
             role="status"
             data-testid="walk-compare-dist"
+            data-apart={apart ? 'true' : undefined}
           >
-            {t(far ? 'walk.compare.far' : 'walk.compare.near', {
-              m: pair.dist.toFixed(1),
-              date: compare.otherDate,
-            })}
+            {apart && <span className="walk-dist-dot" aria-hidden="true" />}
+            {apart
+              ? t('walk.compare.apart', { m: pairDist.toFixed(0) })
+              : t('walk.compare.near', { m: pairDist.toFixed(1) })}
           </div>
         )}
         {compare && role === 'lead' && status === 'ready' && (
-          <CompareInset a={walk} b={compare.other} />
+          <CompareInset
+            a={walk}
+            b={compare.other}
+            aTrack={compare.own}
+            bTrack={compare.otherTrack}
+          />
         )}
       </div>
       <div className="pane-bar walk-bar" data-testid="walk-bar" data-time={time.toFixed(2)}>
@@ -530,36 +659,57 @@ function WalkPlayer({
           type="button"
           className="btn icon sm ghost"
           data-testid="walk-play"
-          aria-label={t(playing ? 'walk.pause' : 'walk.play')}
-          title={`${t(playing ? 'walk.pause' : 'walk.play')} (Space)`}
+          aria-label={t(playShown ? 'walk.pause' : 'walk.play')}
+          title={`${t(playShown ? 'walk.pause' : 'walk.play')} (Space)`}
           disabled={status !== 'ready'}
           onClick={() => {
-            toggle(!playing);
+            userToggle(!playShown);
           }}
         >
-          <Icon name={playing ? 'pause' : 'play'} size={14} />
+          <Icon name={playShown ? 'pause' : 'play'} size={14} />
         </button>
         <span className="mono" data-testid="walk-time">
           {t('walk.time', { now: formatWalkTime(time), total: formatWalkTime(duration) })}
         </span>
-        <input
-          type="range"
-          min={0}
-          max={Math.max(0.01, duration)}
-          step={0.01}
-          value={Math.min(time, duration)}
-          aria-label={t('walk.scrub')}
-          aria-valuetext={t('walk.time.spoken', {
-            now: formatWalkTime(time),
-            total: formatWalkTime(duration),
-          })}
-          data-testid="walk-scrub"
-          disabled={status !== 'ready'}
-          onChange={(e) => {
-            seek(Number(e.target.value));
-          }}
-        />
-        {rate !== 1 && (
+        <span className="walk-scrub">
+          {compare && compare.bands.length > 0 && duration > 0 && (
+            <span className="walk-detours" aria-hidden="true" data-testid="walk-compare-detours">
+              {compare.bands.map((b) => (
+                <span
+                  key={b.fromT}
+                  className="walk-detour"
+                  style={{
+                    left: `${String(Math.min(100, (b.fromT / duration) * 100))}%`,
+                    width: `${String(Math.max(0.6, ((b.toT - b.fromT) / duration) * 100))}%`,
+                  }}
+                />
+              ))}
+            </span>
+          )}
+          <input
+            type="range"
+            min={0}
+            max={Math.max(0.01, duration)}
+            step={0.01}
+            value={Math.min(time, duration)}
+            aria-label={t('walk.scrub')}
+            aria-valuetext={t('walk.time.spoken', {
+              now: formatWalkTime(time),
+              total: formatWalkTime(duration),
+            })}
+            aria-description={
+              compare && compare.bands.length > 0
+                ? t('walk.compare.detours', { date: compare.otherDate })
+                : undefined
+            }
+            data-testid="walk-scrub"
+            disabled={status !== 'ready'}
+            onChange={(e) => {
+              seek(Number(e.target.value));
+            }}
+          />
+        </span>
+        {rate !== 1 && !following && (
           <span className="mono faint" data-testid="walk-rate">
             {String(rate)}x
           </span>
@@ -634,7 +784,7 @@ function WalkPlayer({
   );
 }
 
-/** SPIKE: the walks the two 360 panes show while both sides of the split show 360 video. */
+/** The walks the two 360 panes show while both sides of the split show 360 video. */
 function compareWalks(
   list: readonly WalkLayer[],
   selected: string | null,
@@ -646,42 +796,76 @@ function compareWalks(
   return { left, right };
 }
 
+/** A placed walk's track in the scene (empty while it is not placed), one sample every 0.25 s. */
+function useTrack(layerId: string | null): readonly TrackPt[] {
+  const placed = usePlacedWalk(layerId);
+  return useMemo(
+    () => (placed ? trackOf(placed.fit, placed.layer.durationS, placed.shift ?? null) : []),
+    [placed],
+  );
+}
+
 /**
- * SPIKE: a corner map in the lead pane: both walks' tracks in their date colours, each with its
- * spot and view cone, north up.
+ * A corner map in the lead pane: both walks' tracks in their date colours, each with its spot and
+ * view cone, north up.
  */
-function CompareInset({ a, b }: { a: WalkLayer; b: WalkLayer }) {
+function CompareInset({
+  a,
+  b,
+  aTrack,
+  bTrack,
+}: {
+  a: WalkLayer;
+  b: WalkLayer;
+  aTrack: readonly TrackPt[];
+  bTrack: readonly TrackPt[];
+}) {
   const manifest = useWorkspace((s) => s.project?.manifest);
   const pa = usePlacedWalk(a.id);
   const pb = usePlacedWalk(b.id);
   const va = useWalkView(a.id);
   const vb = useWalkView(b.id);
-  const tracks = useMemo(
-    () => [pa, pb].map((w) => (w ? trackOf(w.fit, w.layer.durationS, w.shift ?? null, 0.5) : [])),
-    [pa, pb],
-  );
-  const all = tracks.flat();
-  if (!manifest || all.length < 2) return null;
-  const xs = all.map((p) => p.x);
-  const zs = all.map((p) => p.z);
-  const [x0, x1, z0, z1] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
-  const span = Math.max(x1 - x0, z1 - z0, 10);
-  const pad = span * 0.18;
-  const cx = (x0 + x1) / 2;
-  const cz = (z0 + z1) / 2;
-  const box = `${String(cx - span / 2 - pad)} ${String(cz - span / 2 - pad)} ${String(span + 2 * pad)} ${String(span + 2 * pad)}`;
+  const frame = useMemo(() => {
+    const tracks = [aTrack, bTrack];
+    const all = [...aTrack, ...bTrack];
+    if (all.length < 2) return null;
+    let [x0, x1, z0, z1] = [Infinity, -Infinity, Infinity, -Infinity];
+    for (const p of all) {
+      x0 = Math.min(x0, p.x);
+      x1 = Math.max(x1, p.x);
+      z0 = Math.min(z0, p.z);
+      z1 = Math.max(z1, p.z);
+    }
+    const span = Math.max(x1 - x0, z1 - z0, 10);
+    const pad = span * 0.18;
+    const cx = (x0 + x1) / 2;
+    const cz = (z0 + z1) / 2;
+    const lines = tracks.map((tr) =>
+      tr
+        .filter((_, i) => i % 2 === 0)
+        .map((p) => `${p.x.toFixed(2)},${p.z.toFixed(2)}`)
+        .join(' '),
+    );
+    return {
+      box: `${String(cx - span / 2 - pad)} ${String(cz - span / 2 - pad)} ${String(span + 2 * pad)} ${String(span + 2 * pad)}`,
+      span,
+      lines,
+    };
+  }, [aTrack, bTrack]);
+  if (!manifest || !frame) return null;
+  const { span, box, lines } = frame;
   const px = span / 120; // about one screen pixel in metres at the inset's size
   const items = [
-    { w: pa, v: va, track: tracks[0] ?? [] },
-    { w: pb, v: vb, track: tracks[1] ?? [] },
+    { w: pa, v: va, line: lines[0] ?? '' },
+    { w: pb, v: vb, line: lines[1] ?? '' },
   ];
   return (
     <svg className="walk-inset" viewBox={box} aria-hidden="true" data-testid="walk-compare-inset">
-      {items.map(({ w, track }) =>
+      {items.map(({ w, line }) =>
         w ? (
           <polyline
             key={`t-${w.layer.id}`}
-            points={track.map((p) => `${p.x.toFixed(2)},${p.z.toFixed(2)}`).join(' ')}
+            points={line}
             fill="none"
             stroke={walkColour(manifest, w.layer)}
             strokeWidth={px * 2}
@@ -728,22 +912,25 @@ function CompareInset({ a, b }: { a: WalkLayer; b: WalkLayer }) {
   );
 }
 
-/** SPIKE: the compare row under a 360 pane's header: its role, and the lead's controls. */
+/** The compare row under a 360 pane's header: its role, and the lead's controls. */
 function CompareBar({
   side,
   walk,
   date,
-  solo,
+  otherDate,
+  ghost,
 }: {
   side: Side;
   walk: WalkLayer;
   date: string;
-  /** Only this pane shows a walk of the pair: the other one's date (it follows on the map). */
-  solo?: string | undefined;
+  otherDate: string;
+  /** Only this pane shows a walk of the pair: the other one follows on the map and in 3D. */
+  ghost?: boolean;
 }) {
   const t = useT();
   const manifest = useWorkspace((s) => s.project?.manifest);
-  const lead = useWalkCompare((s) => s.lead === side) || solo !== undefined;
+  const lead = useWalkCompare((s) => s.lead === side) || ghost === true;
+  const solo = useWalkCompare((s) => s.solo === side) && !lead;
   const mode = useWalkCompare((s) => s.mode);
   const linkLook = useWalkCompare((s) => s.linkLook);
   return (
@@ -756,14 +943,20 @@ function CompareBar({
         />
         {date}
       </span>
-      <span className={lead ? 'walk-role lead' : 'walk-role'} data-testid="walk-compare-role">
+      <span
+        className={lead ? 'walk-role lead' : 'walk-role'}
+        data-testid="walk-compare-role"
+        title={solo ? t('walk.compare.soloTip', { date: otherDate }) : undefined}
+      >
         {lead
           ? t('walk.compare.lead')
-          : t(mode === 'place' ? 'walk.compare.followsPlace' : 'walk.compare.followsTime')}
+          : solo
+            ? t('walk.compare.solo')
+            : t(mode === 'place' ? 'walk.compare.followsPlace' : 'walk.compare.followsTime')}
       </span>
-      {solo !== undefined && (
+      {ghost && (
         <span className="walk-role" data-testid="walk-compare-solo">
-          {t('walk.compare.onMap', { date: solo })}
+          {t('walk.compare.onMap', { date: otherDate })}
         </span>
       )}
       <span className="grow" />
@@ -790,7 +983,7 @@ function CompareBar({
             className="btn sm ghost"
             aria-pressed={linkLook}
             data-testid="walk-compare-link"
-            aria-description={t('walk.compare.linkTip')}
+            title={t('walk.compare.linkTip')}
             onClick={() => {
               walkCompare.setState({ linkLook: !linkLook, driver: side });
             }}
@@ -798,13 +991,15 @@ function CompareBar({
             <Icon name="link" size={14} />
             {t('walk.compare.link')}
           </button>
-          {solo === undefined && (
+          {!ghost && (
             <button
               type="button"
               className="btn sm ghost"
               data-testid="walk-compare-swap"
-              aria-description={t('walk.compare.swapTip')}
-              onClick={swapLead}
+              title={t('walk.compare.swapTip')}
+              onClick={() => {
+                walkCompare.getState().swapLead();
+              }}
             >
               <Icon name="loop" size={14} />
               {t('walk.compare.swap')}
@@ -815,6 +1010,7 @@ function CompareBar({
             className="btn icon sm ghost"
             data-testid="walk-compare-end"
             aria-label={t('walk.compare.end')}
+            title={t('walk.compare.end')}
             onClick={endWalkCompare}
           >
             <Icon name="x" size={14} />
@@ -826,24 +1022,20 @@ function CompareBar({
 }
 
 /**
- * SPIKE: the walk of the pair no pane shows still follows the one that plays, unseen, so the map
- * and the 3D view show both spots and both cones (the split shows the map beside one 360 pane).
+ * The walk of the pair no pane shows still follows the one that plays, unseen, so the map and the
+ * 3D view show both spots and both cones (the split shows the map beside one 360 pane).
  */
 function GhostFollower({ lead, follow }: { lead: WalkLayer; follow: WalkLayer }) {
   const leadView = useWalkView(lead.id);
-  const lp = usePlacedWalk(lead.id);
-  const fp = usePlacedWalk(follow.id);
+  const leadTrack = useTrack(lead.id);
+  const followTrack = useTrack(follow.id);
   const mode = useWalkCompare((s) => s.mode);
   const linkLook = useWalkCompare((s) => s.linkLook);
   const headingAt = useWalkViewHeadingAt(follow);
-  const track = useMemo(
-    () => (fp ? trackOf(fp.fit, fp.layer.durationS, fp.shift ?? null) : []),
-    [fp],
-  );
   const prev = useRef<number | null>(null);
   useEffect(() => {
     if (!leadView) return;
-    const p = pairFollower(lp, fp, track, leadView.t, mode, prev.current);
+    const p = pairFollower(leadTrack, followTrack, leadView.t, mode, prev.current);
     prev.current = p.t;
     const h = headingAt(p.t);
     setWalkView(follow.id, {
@@ -853,12 +1045,10 @@ function GhostFollower({ lead, follow }: { lead: WalkLayer; follow: WalkLayer })
       fovDeg: leadView.fovDeg,
       hfovDeg: leadView.hfovDeg,
     });
-    markFar(follow.id, p.dist);
-  }, [leadView, lp, fp, track, mode, linkLook, headingAt, follow.id]);
+  }, [leadView, leadTrack, followTrack, mode, linkLook, headingAt, follow.id]);
   useEffect(
     () => () => {
       clearWalkView(follow.id);
-      markFar(follow.id, null);
     },
     [follow.id],
   );
@@ -872,7 +1062,7 @@ export function Walk360Pane({ side, split }: { side?: Side; split?: SplitModel }
   const list = useWalks((s) => s.walks);
   const selected = useWalks((s) => s.selected);
   const records = useWalks((s) => s.records);
-  // SPIKE: both sides on 360 video compare two walks
+  // both sides on 360 video compare two walks
   const comparing =
     side !== undefined && split?.sides.left === 'walk360' && split.sides.right === 'walk360';
   const cmpLeft = useWalkCompare((s) => s.left);
@@ -881,11 +1071,23 @@ export function Walk360Pane({ side, split }: { side?: Side; split?: SplitModel }
   const mode = useWalkCompare((s) => s.mode);
   const linkLook = useWalkCompare((s) => s.linkLook);
   const driver = useWalkCompare((s) => s.driver);
+  const solo = useWalkCompare((s) => s.solo);
   const active = useWalkCompare((s) => s.active);
   const index = useCaptureIndex();
   const pair = comparing ? compareWalks(list, selected, { left: cmpLeft, right: cmpRight }) : null;
   const walk = pair && side ? pair[side] : pickWalk(list, selected);
   const other = pair && side ? pair[otherSide(side)] : undefined;
+  const otherId = other && other.id !== walk?.id ? other.id : null;
+  // the two panes show two walks: that is a compare (both show on the map and in 3D)
+  const leftId = pair?.left?.id;
+  const rightId = pair?.right?.id;
+  useEffect(() => {
+    if (side === 'left' && leftId && rightId && leftId !== rightId)
+      ensureWalkCompare(leftId, rightId);
+  }, [side, leftId, rightId]);
+  const own = useTrack(otherId === null ? null : (walk?.id ?? null));
+  const otherTrack = useTrack(otherId);
+  const bands = otherId === null ? NO_BANDS : detourBands(own, otherTrack);
   const processed = useWalks((s) => (walk ? s.processed[walkFolderId(walk)] : undefined));
   const level = useWalks((s) => (walk ? levelOn(s.level, walk.id) : true));
   if (!projectId || !walk) return <p className="pane-empty">{t('walk.none')}</p>;
@@ -893,7 +1095,7 @@ export function Walk360Pane({ side, split }: { side?: Side; split?: SplitModel }
   const levelled = processed?.stabilized !== undefined;
   const dateOf = (w: WalkLayer) => (index ? captureLabel(index, index.of[w.id]) || w.name : w.name);
   const compare: CompareRole | undefined =
-    comparing && other && other.id !== walk.id
+    comparing && other && otherId !== null
       ? {
           side,
           role: lead === side ? 'lead' : 'follow',
@@ -902,9 +1104,13 @@ export function Walk360Pane({ side, split }: { side?: Side; split?: SplitModel }
           mode,
           linkLook,
           driver: driver === side,
+          solo: solo === side && lead !== side,
+          own,
+          otherTrack,
+          bands,
         }
       : undefined;
-  // SPIKE: one pane shows a walk of a running compare: the other follows it unseen (map, 3D)
+  // one pane shows a walk of a running compare: the other follows it unseen (map, 3D)
   const ghostId =
     !comparing && active && (cmpLeft === walk.id || cmpRight === walk.id)
       ? cmpLeft === walk.id
@@ -929,7 +1135,7 @@ export function Walk360Pane({ side, split }: { side?: Side; split?: SplitModel }
             data-testid="walk-which"
             value={walk.id}
             onChange={(e) => {
-              if (comparing) walkCompare.setState({ [side]: e.target.value });
+              if (comparing) walkCompare.setState({ [side]: e.target.value, solo: null });
               else walks.getState().select(e.target.value);
             }}
           >
@@ -949,10 +1155,18 @@ export function Walk360Pane({ side, split }: { side?: Side; split?: SplitModel }
           </span>
         )}
       </div>
-      {compare && side && <CompareBar side={side} walk={walk} date={dateOf(walk)} />}
+      {compare && side && (
+        <CompareBar side={side} walk={walk} date={dateOf(walk)} otherDate={compare.otherDate} />
+      )}
       {ghost && (
         <>
-          <CompareBar side={side ?? 'right'} walk={walk} date={dateOf(walk)} solo={dateOf(ghost)} />
+          <CompareBar
+            side={side ?? 'right'}
+            walk={walk}
+            date={dateOf(walk)}
+            otherDate={dateOf(ghost)}
+            ghost
+          />
           <GhostFollower lead={walk} follow={ghost} />
         </>
       )}

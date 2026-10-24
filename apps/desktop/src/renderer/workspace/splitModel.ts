@@ -38,10 +38,16 @@ export interface SplitDates {
 
 /** Whether both sides may show `kind`, one survey date each. */
 export function twinAllowed(kind: PaneKind, dates: SplitDates | undefined): boolean {
-  // SPIKE (walk compare): two 360 panes, one walk each (walks/walkCompare.ts picks them)
-  if (kind === 'walk360') return true;
   if (!dates || dates.captures.length < 2 || !PER_CAPTURE.includes(kind)) return false;
   return kind !== '3d' || dates.twin3d !== false;
+}
+
+/**
+ * Whether both sides may show `kind`: two survey dates of one view (`twinAllowed`), or two walks
+ * in the two 360 panes (walks/walkCompare.ts), which is not a date compare.
+ */
+export function twiceAllowed(kind: PaneKind, dates: SplitDates | undefined): boolean {
+  return kind === 'walk360' || twinAllowed(kind, dates);
 }
 
 const captureKey = (side: Side) => (side === 'left' ? 'leftCapture' : 'rightCapture');
@@ -149,7 +155,7 @@ export function sidesOf(pref: SplitPref, kind: PaneKind): Side[] {
 /** The pane the other side shows when this side may not pick it too, else null. */
 export function blockedFor(pref: SplitPref, side: Side, dates?: SplitDates): PaneKind | null {
   const other = takenBy(pref, side);
-  return twinAllowed(other, dates) ? null : other;
+  return twiceAllowed(other, dates) ? null : other;
 }
 
 export const PANE_KINDS: readonly PaneKind[] = [
@@ -205,7 +211,7 @@ export function paneOptions(
 /**
  * The sides to draw: the remembered choice where the project still offers it, else the default.
  * The two sides show the same pane only to compare two survey dates (3D, map or ortho, one date
- * each; `dates`); otherwise a clash keeps the left and gives the right the first other option
+ * each; `dates`) or two walks (360 video); otherwise a clash keeps the left and gives the right the first other option
  * (one video player, and the 3D view at most once per date).
  */
 export function resolveSplit(
@@ -217,7 +223,8 @@ export function resolveSplit(
   const pick = (k: PaneKind, fallback: PaneKind) => (options.includes(k) ? k : fallback);
   const left = pick(want.left, DEFAULT_SPLIT.left);
   let right = pick(want.right, DEFAULT_SPLIT.right);
-  if (right === left && !twinAllowed(left, dates)) right = options.find((o) => o !== left) ?? right;
+  if (right === left && !twiceAllowed(left, dates))
+    right = options.find((o) => o !== left) ?? right;
   return withCaptures({ ...want, left, right }, dates);
 }
 
@@ -232,7 +239,7 @@ export function chooseSide(
   dates?: SplitDates,
 ): SplitPref {
   const other = side === 'left' ? pref.right : pref.left;
-  if (kind === other && !twinAllowed(kind, dates)) return pref;
+  if (kind === other && !twiceAllowed(kind, dates)) return pref;
   return withCaptures({ ...pref, [side]: kind }, dates);
 }
 
@@ -350,7 +357,7 @@ export function parseSplitPref(v: unknown): SplitPref | null {
   const kind = (k: unknown): k is PaneKind =>
     typeof k === 'string' && PANE_KINDS.includes(k as PaneKind);
   if (!kind(left) || !kind(right)) return null;
-  // the same pane twice only for two different survey dates
+  // the same pane twice only for two different survey dates, or two walks
   if (
     left === right &&
     left !== 'walk360' &&

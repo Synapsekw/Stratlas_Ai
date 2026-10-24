@@ -1,4 +1,4 @@
-/* SPIKE: two walks compared in the two 360 panes (walks/walkCompare.ts) */
+/* two walks compared in the two 360 panes (walks/walkCompare.ts) */
 .pane-bar.walk-compare-bar {
   gap: 8px;
   flex-wrap: wrap;
@@ -27,7 +27,7 @@
 .walk-seg {
   display: inline-flex;
   border: 1px solid var(--line);
-  border-radius: var(--r-2, 6px);
+  border-radius: var(--r-6);
   overflow: hidden;
 }
 .walk-seg > .btn {
@@ -38,36 +38,65 @@
   background: var(--bg-3);
   color: var(--fg-0);
 }
-/* the follower far from the lead's spot: dimmed, with a note in the middle */
-.walk-view.walk-far > canvas {
-  opacity: 0.35;
-  filter: grayscale(0.6);
-  transition: opacity 0.2s ease;
-}
-.walk-dist-chip,
-.walk-far-note {
-  position: absolute;
-  pointer-events: none;
-  color: var(--fg-0);
-  background: color-mix(in oklch, var(--bg-0) 78%, transparent);
-  border: 1px solid var(--line);
-  font-size: var(--t-12);
-  white-space: nowrap;
-}
+
+/* how far the follower's frame is from the lead's spot: a quiet chip on the picture that never
+   covers it, amber once the routes have parted */
 .walk-dist-chip {
+  position: absolute;
   top: 10px;
   left: 10px;
-  padding: 3px 8px;
-  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  pointer-events: none;
+  color: var(--ov);
+  background: var(--scrim);
+  font-size: var(--t-12);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.walk-far-note {
+.walk-dist-chip.apart {
+  box-shadow: inset 0 0 0 1px var(--warn-line);
+}
+.walk-dist-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--s3);
+}
+
+/* the scrubber with the detours shaded: stretches where the other walk took another way. The
+   bands sit behind the track, inset by half the thumb so they line up with its travel */
+.walk-scrub {
+  order: -1;
+  flex: 1 0 100%;
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+.walk-bar .walk-scrub > input[type='range'] {
+  order: 0;
+  flex: 1 1 auto;
+  position: relative;
+}
+.walk-detours {
+  position: absolute;
+  inset-block: 0;
+  inset-inline: 8px;
+  pointer-events: none;
+}
+.walk-detour {
+  position: absolute;
   top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  padding: 8px 14px;
-  border-radius: 8px;
-  font-size: var(--t-13, 13px);
+  height: 10px;
+  transform: translateY(-50%);
+  border-radius: var(--r-2);
+  background: var(--s3-a);
+  box-shadow: inset 0 0 0 1px var(--warn-line);
 }
+
 /* the corner map of the lead pane: both tracks and both cones */
 .walk-inset {
   position: absolute;
@@ -78,5 +107,5 @@
   pointer-events: none;
   background: color-mix(in oklch, var(--bg-0) 72%, transparent);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--r-6);
 }

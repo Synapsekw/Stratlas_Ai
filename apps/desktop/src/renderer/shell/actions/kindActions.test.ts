@@ -18,6 +18,9 @@ vi.mock('../../builder/dropSession', () => ({
   dropToGround: { getState: () => ({ drop }) },
 }));
 
+const { startCompare } = vi.hoisted(() => ({ startCompare: vi.fn() }));
+vi.mock('../../walks/walkCompare', () => ({ startWalkCompare: startCompare }));
+
 const { alignTargets, registerKindActions } = await import('./kindActions');
 const { pinDisplay } = await import('@aio/annotate');
 const { jobs } = await import('../../shell');
@@ -255,6 +258,33 @@ describe('actions per kind', () => {
     expect(ids(on('cloud', 'cloud'))).toContain('cloud.colourBy');
     expect(ids(on('panos', 'mesh'))).not.toContain('pano.stitch');
     expect(ids(on('clip', 'mesh'))).not.toContain('video.flightPath');
+  });
+
+  it('Compare with walk lists the other walks under their dates and starts the compare', () => {
+    const two = {
+      ...manifest,
+      layers: [
+        ...manifest.layers,
+        L({ kind: 'walk', id: 'walk2', name: 'Walk 2', capture: 'c2', record: { path: 'w2' } }),
+        L({ kind: 'walk', id: 'walk3', name: 'Walk 3', record: { path: 'w3' } }),
+      ],
+    } as unknown as ProjectManifest;
+    const c = makeActionCtx({ manifest: two });
+    const a = item(on('walk'), 'walk.compareWith', c);
+    expect(a?.disabled).toBe(false);
+    expect(a?.present).toBe('submenu');
+    expect(a?.sub.map((s) => [s.id, s.group])).toEqual([
+      ['walk2', `${formatDate('2026-10-01')} · After rain`],
+      ['walk3', 'No date'],
+    ]);
+    a?.run('walk2');
+    expect(startCompare).toHaveBeenCalledWith('walk', 'walk2');
+  });
+
+  it('Compare with walk is greyed when there is no other walk', () => {
+    expect(item(on('walk'), 'walk.compareWith')?.disabled).toBe(
+      'There is no other walk to compare with',
+    );
   });
 
   it('Remove placement asks the surface', () => {

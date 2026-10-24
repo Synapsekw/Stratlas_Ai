@@ -10,6 +10,7 @@ import {
   followsFocus,
   sideCapture,
   sidesOf,
+  twiceAllowed,
   twinAllowed,
   levelFor,
   paneGroups,
@@ -89,6 +90,27 @@ describe('what each side of the split shows', () => {
     });
     expect(parseSplitPref({ left: 'video', right: 'tv' })).toBeNull();
     expect(parseSplitPref('3d')).toBeNull();
+  });
+});
+
+describe('two walks in the two 360 panes', () => {
+  const walkSplit = { left: 'walk360', right: 'walk360' } as const;
+  const options = paneOptions([{ kind: 'mesh' }], 0, 0, { walks: 2 });
+  const dates = { captures: ['d1', 'd2'] };
+
+  it('allows 360 video on both sides, which is not a date compare', () => {
+    expect(twiceAllowed('walk360', undefined)).toBe(true);
+    expect(twiceAllowed('walk360', dates)).toBe(true);
+    expect(twinAllowed('walk360', dates)).toBe(false);
+    expect(twiceAllowed('video', dates)).toBe(false);
+    expect(twiceAllowed('3d', dates)).toBe(true);
+  });
+
+  it('keeps both 360 panes when resolving, choosing and reading the remembered split', () => {
+    expect(resolveSplit(walkSplit, options)).toEqual(walkSplit);
+    expect(chooseSide({ left: 'walk360', right: 'map' }, 'right', 'walk360')).toEqual(walkSplit);
+    expect(blockedFor({ left: 'walk360', right: 'map' }, 'right')).toBeNull();
+    expect(parseSplitPref(walkSplit)).toEqual(walkSplit);
   });
 });
 
