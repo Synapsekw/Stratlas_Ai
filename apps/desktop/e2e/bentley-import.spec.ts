@@ -12,6 +12,7 @@ import {
   tinyManifest,
   VENV_PYTHON,
 } from './fixtures';
+import { openInspect, openPhotoInInspect } from './inspect';
 
 /**
  * Bentley import through Add data against the development pipeline runtime: a synthetic
@@ -19,7 +20,7 @@ import {
  * client data) come into the tiny project. Add data asks for the cloud's survey day, prefilled
  * from the tiles' LAS header (the export day); the cloud becomes one COPC layer filed under the
  * day picked, the photos one layer of three posed cameras under the same date, and a photo opens
- * from Media. The project has a photo altitude correction
+ * from Inspect. The project has a photo altitude correction
  * (`verticalDatum.absAltOffsetM`) and neither the synthetic .zpc nor the block's SRS names a
  * height datum, so the cloud takes that correction as its `heightOffsetM` and the photo poses
  * take it in their heights: photos and cloud agree.
@@ -155,12 +156,10 @@ test.describe('Bentley import', () => {
     // three cameras drawn in 3D
     await expect.poll(() => frustums(win, photos.id), { timeout: 60_000 }).toBe(3);
 
-    // a photo opens from Media
-    await win.locator('.nav-item', { hasText: 'Media' }).first().click();
+    // a photo opens from Inspect
+    await openInspect(win);
     const first = photos.items[0]?.id ?? '';
-    const tile = win.locator(`.media [data-photo="${first}"]`);
-    await tile.scrollIntoViewIfNeeded();
-    await tile.click();
+    await openPhotoInInspect(win, first);
     const viewer = win.getByTestId('photo-viewer').first();
     await expect(viewer).toBeVisible();
     await expect

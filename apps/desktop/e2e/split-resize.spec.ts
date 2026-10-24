@@ -1,8 +1,8 @@
 /**
- * The data screens' areas are resizable so the data gets the room (founder, Media as the example):
- * in Media the library and the opened photo split by a handle the person drags, the size is kept
- * after a reload, a double-click puts it back and the arrow keys move it; the Issues card and the
- * agent column drag the same way, and the screen beside the column gives way.
+ * The data screens' areas are resizable so the data gets the room (founder): the Issues card and
+ * the agent column drag wider, and the screen beside the column gives way. Inspect has no
+ * draggable split: its opened photo keeps its width while the photo column scrolls and after a
+ * reload (the old Media handle, its double-click reset and arrow keys no longer exist by design).
  *
  * On the tank farm demo (`pnpm demo:build --quick`), opened as a working copy.
  */
@@ -10,6 +10,7 @@ import type { Locator, Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEMO_FOLDER, expect, test } from './fixtures';
+import { photoTiles } from './inspect';
 import { openDemo } from './surveyJobs';
 
 const TANK_FARM = { id: 'demo-tank-farm', name: 'Demo tank farm' };
@@ -20,16 +21,12 @@ test.skip(
 test.use({ appEnv: { QUADRION_DEMO: DEMO_FOLDER } });
 test.setTimeout(120_000);
 
-/** One arrow key press on a handle, in px (split/model.ts SPLIT_STEP). */
-const STEP = 16;
-
-async function goTo(win: Page, name: 'Issues' | 'Media') {
+async function goTo(win: Page, name: 'Issues' | 'Inspect') {
   await win.locator('.sb-nav .nav-item', { hasText: name }).first().click();
   await expect(win.locator(`.app[data-screen="${name.toLowerCase()}"]`)).toBeVisible();
 }
 
 const width = async (l: Locator) => (await l.boundingBox())?.width ?? -1;
-const valueNow = async (l: Locator) => Number(await l.getAttribute('aria-valuenow'));
 
 /** Drag a handle `dx` px sideways (negative: to the left), in small moves as a hand does. */
 async function drag(win: Page, handle: Locator, dx: number) {
@@ -49,54 +46,46 @@ function grown(from: number, grow: number, container: number, max: number, other
 }
 
 async function openPhoto(win: Page) {
-  await goTo(win, 'Media');
-  await win.locator('.media-main .m-card.sq[data-photo]').first().click();
-  await expect(win.locator('.media.with-viewer .media-viewer')).toBeVisible();
+  await goTo(win, 'Inspect');
+  await photoTiles(win).first().click();
+  await expect(inspectViewer(win)).toBeVisible();
 }
 
-test('the Media viewer is dragged wider, kept after a reload, reset and moved by keys', async ({
+const inspectViewer = (win: Page) =>
+  win.locator('[aria-label="Inspect"] [data-testid="photo-viewer"]').first();
+
+test('the Inspect viewer keeps its width when the photo column scrolls and after a reload', async ({
   win,
 }) => {
   await openDemo(win, TANK_FARM.name, TANK_FARM.id);
-  await goTo(win, 'Media');
-  const handle = win.getByRole('separator', { name: 'Resize the library' });
-  // no photo open: the library alone, no handle
-  await expect(win.locator('.media-main .m-card.sq[data-photo]').first()).toBeVisible();
-  await expect(handle).toHaveCount(0);
+  await goTo(win, 'Inspect');
+  // Inspect has no draggable split (the column widths are fixed by the layout): no handle at all
+  await expect(photoTiles(win).first()).toBeVisible();
+  await expect(win.getByRole('separator', { name: 'Resize the library' })).toHaveCount(0);
 
   await openPhoto(win);
-  const viewer = win.locator('.media-viewer');
-  const split = win.locator('.media-split');
-  const room = await width(split);
+  const viewer = inspectViewer(win);
   const before = await width(viewer);
-  // at rest the viewer has 54% of the screen
-  expect(Math.abs(before - room * 0.54)).toBeLessThanOrEqual(2);
+  expect(before).toBeGreaterThan(300);
 
-  // 200 px toward the gallery: the viewer grows (up to 80%, the gallery keeps 200 px)
-  await drag(win, handle, -200);
-  const expected = grown(before, 200, room, room * 0.8, 200);
-  await expect.poll(() => width(viewer)).toBeGreaterThan(before + 100);
-  const after = await width(viewer);
-  expect(Math.abs(after - expected)).toBeLessThanOrEqual(2);
-  expect(Math.abs((await valueNow(handle)) - after)).toBeLessThanOrEqual(1);
+  // the photo column scrolls to its end: the viewer neither moves nor changes size
+  const list = win.getByTestId('inspect-photos').locator('.insp-photos-list');
+  await list.evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  await expect.poll(() => width(viewer)).toBeCloseTo(before, 0);
+  await list.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  await expect.poll(() => width(viewer)).toBeCloseTo(before, 0);
 
-  // a reload keeps the size
+  // a reload gives the same width back
   await win.reload();
   await openDemo(win, TANK_FARM.name, TANK_FARM.id);
   await openPhoto(win);
-  await expect.poll(async () => Math.abs((await width(viewer)) - after)).toBeLessThanOrEqual(2);
-
-  // a double-click puts the default back
-  await handle.dblclick();
   await expect
-    .poll(async () => Math.abs((await width(viewer)) - (await width(split)) * 0.54))
+    .poll(async () => Math.abs((await width(inspectViewer(win))) - before))
     .toBeLessThanOrEqual(2);
-
-  // three arrow presses to the left: the viewer grows by three steps
-  const start = await valueNow(handle);
-  await handle.focus();
-  for (let i = 0; i < 3; i++) await win.keyboard.press('ArrowLeft');
-  await expect.poll(() => valueNow(handle)).toBe(start + 3 * STEP);
 });
 
 test('the Issues card and the agent column are dragged wider', async ({ win }) => {

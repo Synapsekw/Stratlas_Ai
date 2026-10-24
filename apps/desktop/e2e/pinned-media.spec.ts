@@ -1,6 +1,6 @@
 /**
  * Pinned media (pinned media design): a 360 and a photo that have no GPS show "Not placed" in
- * Media; Place on site from a tile's right-click (or a click on an unplaced 360's tile) opens the
+ * Inspect; Place on site from a tile's right-click (or a click on an unplaced 360's tile) opens the
  * placing strip bottom-centre over the stage, clear of the middle of the view; a click on the
  * site pins the 360 at eye height, two landmark pairs line it up, its marker enters it facing the
  * saved heading, and Remove pin makes it "Not placed" again. On the map, a GPS photo is a marker plate that previews on hover and
@@ -17,7 +17,7 @@ import {
   itemOf,
   lonLatOf,
   notPlaced,
-  openMedia,
+  openInspect,
   openPinProject,
   PANO_LAYER,
   PH3_POS,
@@ -229,12 +229,12 @@ async function evidence(win: Page, name: string): Promise<void> {
 }
 
 /**
- * Open the project, see the unplaced items in Media, Place on site on `p1`: from its right-click
+ * Open the project, see the unplaced items in Inspect, Place on site on `p1`: from its right-click
  * menu, or (`click`) by a plain click on its tile, which places an unplaced 360.
  */
 async function placeP1(win: Page, via: 'menu' | 'click' = 'menu'): Promise<void> {
   await openPinProject(win);
-  await openMedia(win);
+  await openInspect(win);
   await expect(notPlaced(win, 'p1')).toBeVisible({ timeout: 30_000 });
   await expect(notPlaced(win, 'ph1')).toBeVisible();
   // ph2 (the 2:1 photo) has no place either; ph3 has GPS
@@ -335,7 +335,7 @@ test.describe('pinned media in the 3D view', () => {
       })
       .toBeLessThanOrEqual(2);
 
-    // back out; right-click the pin's eye: Remove pin, and Media says Not placed again
+    // back out; right-click the pin's eye: Remove pin, and Inspect says Not placed again
     await win.getByTestId('pano-back').click();
     await expect(win.getByTestId('pano-back')).toBeHidden();
     await lookDown(win);
@@ -345,7 +345,7 @@ test.describe('pinned media in the 3D view', () => {
     await expect
       .poll(async () => (await itemOf(dir, PANO_LAYER, 'p1'))?.pos, { timeout: 30_000 })
       .toBeUndefined();
-    await openMedia(win);
+    await openInspect(win);
     await expect(notPlaced(win, 'p1')).toBeVisible({ timeout: 30_000 });
   });
 });
@@ -403,7 +403,7 @@ test.describe('pinned media on the map', () => {
     await expect.poll(() => selected(win)).toMatchObject({ kind: 'photo', id: 'ph3' });
 
     // a photo with no GPS, pinned on the map off the model: its height is unknown
-    await openMedia(win);
+    await openInspect(win);
     await expect(notPlaced(win, 'ph1')).toBeVisible({ timeout: 30_000 });
     await tileAction(win, { photo: 'ph1' }, 'Place on site');
     await expect(win.getByTestId('pin-strip')).toBeVisible({ timeout: 30_000 });
@@ -436,7 +436,7 @@ test.describe('pinned media on the map', () => {
     await expect(map).toBeVisible();
 
     // a 360 pinned on the map is a round plate there; a click enters it, the 3D view beside
-    await openMedia(win);
+    await openInspect(win);
     await tileAction(win, { pano: 'p1' }, 'Place on site');
     await expect(win.getByTestId('pin-strip')).toBeVisible({ timeout: 30_000 });
     await expect(map).toBeVisible({ timeout: 30_000 });

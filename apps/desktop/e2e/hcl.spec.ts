@@ -9,6 +9,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { expect, realDataTest } from './fixtures';
+import { openInspect } from './inspect';
 import { closeIslandTools, islandCutOff, islandGroup, islandRow } from './island';
 import { hasRealProject, missingRealProject, realProjectDir } from './realData';
 
@@ -336,7 +337,7 @@ const tankMaterials = (win: Page) =>
       .map((m) => ({ transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite }));
   });
 
-test('@realdata the tank is cut or made transparent only by hand; photos and flights reach Media', async ({
+test('@realdata the tank is cut or made transparent only by hand; photos and flights reach Inspect', async ({
   app,
   win,
 }) => {
@@ -421,9 +422,9 @@ test('@realdata the tank is cut or made transparent only by hand; photos and fli
   await expect.poll(cloudsHidden).toBe(false);
   expect(await section()).toBe(false);
 
-  // Media lists the 10 flights, one continuous clip each: the flight card is the clip, so no
+  // Inspect lists the 10 flights, one continuous clip each: the flight card is the clip, so no
   // second list of clips repeats it.
-  await win.locator('.nav-item', { hasText: 'Media' }).first().click();
+  await openInspect(win);
   await expect(win.locator('.m-flight')).toHaveCount(10);
   await expect(win.locator('.m-flight .m-meta .mono').filter({ hasText: /· 1 clip$/ })).toHaveCount(
     10,

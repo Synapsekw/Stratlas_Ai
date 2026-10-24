@@ -2,7 +2,7 @@
  * The issue card and photo findings on the real HCl and DAMAC projects: picking an issue in the
  * 3D view opens its card in the right panel with its photo (marks drawn), the photo opens full
  * size and Esc closes it; picking it in 3D also opens its photo beside the 3D view (split), and
- * Esc puts the layout back; Media marks the photos with findings and filters to them.
+ * Esc puts the layout back; Inspect marks the photos with findings and filters to them.
  *
  * Runs only where the real data holds the projects (realData.ts); skipped elsewhere. Each test
  * runs on a temporary copy of its project (@realdata). Screenshots go to QUADRION_SHOTS when it
@@ -12,6 +12,7 @@ import type { Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, realDataTest } from './fixtures';
+import { openInspect, photoTiles } from './inspect';
 import { hasRealProject, missingRealProject, realProjectDir } from './realData';
 
 const SHOTS = process.env.QUADRION_SHOTS;
@@ -220,6 +221,8 @@ for (const p of [
       await expect(lightbox.locator('img.ann-img').first()).toBeVisible({ timeout: 20_000 });
       await win.waitForTimeout(800);
       await shot(win, `issue-card-${p.id}-lightbox`);
+      // the way on to the same photo in Inspect
+      await expect(lightbox.getByRole('button', { name: 'Open in Inspect' })).toBeVisible();
       // markings off and on
       await lightbox.getByTestId('lightbox-marks').click();
       await expect(lightbox.getByTestId('lightbox-marks')).toHaveAttribute('aria-pressed', 'false');
@@ -252,39 +255,42 @@ for (const p of [
       await win.waitForTimeout(500);
       expect(await stageMode(win)).toBe('3d');
 
-      // Media: photos with findings are marked, and the filter keeps only them
+      // Inspect: photos with findings are marked, and the "With findings" chip keeps only them
       await win.evaluate(() => {
         (window as unknown as Inspect).__stratlas.workspace.getState().select(null);
       });
-      await win.locator('.nav-item', { hasText: 'Media' }).first().click();
-      const withF = win.locator('.media .m-card.has-f');
+      await openInspect(win);
+      const withF = photoTiles(win).and(win.locator('[data-confirmed]'));
       await withF.first().scrollIntoViewIfNeeded({ timeout: 30_000 });
       await expect(withF.first()).toBeVisible({ timeout: 30_000 });
-      await expect(withF.first().locator('.m-fbadge')).toBeVisible();
-      await expect(win.getByTestId('media-findings-count')).toContainText('with findings');
-      await expect(withF.first().locator('.m-marks').first()).toBeAttached({ timeout: 30_000 });
+      await expect(withF.first().locator('.insp-b.ok')).toBeVisible();
+      await expect(win.getByTestId('inspect-chip-findings-count')).toHaveText(/[1-9]/);
       await win.waitForTimeout(1_000);
-      await shot(win, `media-findings-${p.id}`);
-      const all = await win.locator('.media .m-card.sq').count();
-      await win.getByTestId('media-only-findings').click();
-      await expect(win.getByTestId('media-only-findings')).toHaveAttribute('aria-pressed', 'true');
+      await shot(win, `inspect-findings-${p.id}`);
+      const all = await photoTiles(win).count();
+      await win.getByTestId('inspect-chip-findings').click();
+      await expect(win.getByTestId('inspect-chip-findings')).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
       await expect
         .poll(async () => {
-          const shown = await win.locator('.media .m-card.sq').count();
-          const marked = await win.locator('.media .m-card.sq.has-f').count();
+          const shown = await photoTiles(win).count();
+          const marked = await withF.count();
           return shown > 0 && shown === marked;
         })
         .toBe(true);
-      if (p.id === 'hcl') expect(await win.locator('.media .m-card.sq').count()).toBeLessThan(all);
+      if (p.id === 'hcl') expect(await photoTiles(win).count()).toBeLessThan(all);
+      await win.getByTestId('inspect-filter').click();
       await win.getByTestId('media-order').selectOption('severity');
       await withF.first().scrollIntoViewIfNeeded();
       await win.waitForTimeout(1_500);
-      await shot(win, `media-findings-${p.id}-filtered`);
+      await shot(win, `inspect-findings-${p.id}-filtered`);
       // a tile opens its photo with the issues drawn; a box in it opens that issue's card
       await withF.first().click();
       await expect(win.getByTestId('photo-viewer')).toBeVisible();
       await win.waitForTimeout(1_000);
-      await shot(win, `media-findings-${p.id}-photo`);
+      await shot(win, `inspect-findings-${p.id}-photo`);
 
       expect(errors).toEqual([]);
     });

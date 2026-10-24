@@ -1,5 +1,5 @@
 /**
- * Edit position of photos (photo position edit, 21 Oct 2026). In Media, Edit position on one GPS
+ * Edit position of photos (photo position edit, 21 Oct 2026). In Inspect, Edit position on one GPS
  * photo shows its X, Y, Z; a new Z is saved as an `offsetM` correction in `orientation.json`, the
  * manifest untouched, and the tile shows "Edited". Two picked photos take a shift together, Undo
  * and Redo in the notice are exact. On the map, Reset to original drops the correction and the
@@ -15,6 +15,7 @@ import type { Locator, Page } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from './fixtures';
+import { openInspect, photoTiles } from './inspect';
 import { stageMode } from './island';
 import {
   correctionOf,
@@ -40,16 +41,15 @@ interface MapEl extends Element {
   };
 }
 
-const tile = (win: Page, id: string) => win.locator(`[data-photo="${id}"]`).first();
+const tile = (win: Page, id: string) =>
+  photoTiles(win)
+    .and(win.locator(`[data-photo="${id}"]`))
+    .first();
 const edited = (win: Page, id: string) =>
   win.locator(`[data-testid="media-tile-edited"][data-item="${id}"]`);
 const panel = (win: Page) => win.getByTestId('position-panel');
 
-async function openMedia(win: Page): Promise<void> {
-  await win.locator('.nav-item', { hasText: 'Media' }).first().click();
-}
-
-/** Right-click a Media tile and open its Edit position panel. */
+/** Right-click an Inspect tile and open its Edit position panel. */
 async function editFromTile(win: Page, id: string): Promise<void> {
   const el = tile(win, id);
   await el.scrollIntoViewIfNeeded();
@@ -126,7 +126,7 @@ test('edit one photo, shift two, undo and redo, reset on the map, pinned greyed'
   const manifestBefore = await readFile(join(dir, 'manifest.json'), 'utf8');
 
   // (a) one photo: its X, Y, Z; a new Z is an offset, the manifest unchanged, the tile Edited
-  await openMedia(win);
+  await openInspect(win);
   await expect(tile(win, 'g1')).toBeVisible({ timeout: 30_000 });
   await editFromTile(win, 'g1');
   await expect(panel(win)).toContainText('Position');
@@ -292,7 +292,7 @@ test('a thermal photo without metadata is placed at its visual twin; Reset takes
   const placed = th.pos.map((v, i) => v + (off[i] ?? 0));
   expect(near(placed, vi.pos)).toBe(true);
 
-  await openMedia(win);
+  await openInspect(win);
   await expect(edited(win, th.id)).toBeVisible({ timeout: 30_000 });
   await expect(edited(win, vi.id)).toHaveCount(0);
   const el = tile(win, th.id);

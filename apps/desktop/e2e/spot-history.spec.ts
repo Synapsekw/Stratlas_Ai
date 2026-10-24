@@ -20,7 +20,7 @@ interface Hook {
   };
 }
 
-async function goTo(win: Page, name: 'Scene' | 'Media') {
+async function goTo(win: Page, name: 'Scene' | 'Inspect') {
   await win.locator('.sb-nav .nav-item', { hasText: name }).first().click();
 }
 const select = (win: Page, s: { kind: string; id: string; layer: string }) =>
@@ -69,10 +69,10 @@ test('a photo shows its spot on both dates, steps with the keys and compares', a
 }) => {
   test.setTimeout(120_000);
   const { win } = demoProject;
-  // a photo picked on Scene opens in Media (Stage.tsx); read the main view with it selected
+  // a photo picked on Scene opens in Inspect (the selection follows); read the main view with it selected
   await select(win, { kind: 'photo', id: 'p05', layer: 'photos-d1' });
   const before = await mainView(win);
-  await goTo(win, 'Media');
+  await goTo(win, 'Inspect');
   const inline = win.getByTestId('spot-inline');
   await expect(inline.getByTestId('spot-slot-d1')).toHaveAttribute('data-empty', 'false');
   await expect(inline.getByTestId('spot-slot-d2')).toHaveAttribute('data-empty', 'false');
@@ -100,7 +100,7 @@ test('a photo shows its spot on both dates, steps with the keys and compares', a
   await expect(dialog).toHaveCount(0);
   expect(await mainView(win)).toEqual(before);
 
-  await goTo(win, 'Media');
+  await goTo(win, 'Inspect');
   await win.getByTestId('spot-history-open').first().click();
   await expect(head(win)).toHaveAttribute('data-capture', 'd1');
   await win.keyboard.press('ArrowRight');
@@ -143,7 +143,7 @@ test('a photo shows its spot on both dates, steps with the keys and compares', a
 test('a drone photo finds the drone photo of the other date', async ({ demoProject }) => {
   const { win } = demoProject;
   await select(win, { kind: 'photo', id: 'p01', layer: 'photos-d1' });
-  await goTo(win, 'Media');
+  await goTo(win, 'Inspect');
   await win.getByTestId('spot-history-open').first().click();
   await win.keyboard.press('ArrowRight');
   await expect(head(win)).toHaveAttribute('data-capture', 'd2');

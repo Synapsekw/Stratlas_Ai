@@ -218,16 +218,17 @@ export async function openPinProject(win: Page): Promise<void> {
     .toBe(PIN_PROJECT.id);
 }
 
-/** Go to the Media screen. */
-export async function openMedia(win: Page): Promise<void> {
-  await win.locator('.nav-item', { hasText: 'Media' }).first().click();
+/** Go to the Inspect screen (its photo column holds the tiles Media used to show). */
+export async function openInspect(win: Page): Promise<void> {
+  await win.locator('.sb-nav .nav-item', { hasText: 'Inspect' }).first().click();
+  await expect(win.locator('section[aria-label="Inspect"]')).toBeVisible();
 }
 
-/** The "Not placed" chip of item `id` on its Media tile. */
+/** The "Not placed" chip of item `id` on its Inspect tile. */
 export const notPlaced = (win: Page, id: string) =>
   win.locator(`[data-testid="media-not-placed"][data-item="${id}"]`);
 
-/** Right-click a Media tile (a photo's or a 360's) and choose `item` from its menu. */
+/** Right-click an Inspect tile (a photo's or a 360's) and choose `item` from its menu. */
 export async function tileAction(
   win: Page,
   tile: { photo: string } | { pano: string },

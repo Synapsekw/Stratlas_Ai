@@ -2,7 +2,7 @@
  * Importing 360s that have no GPS (pinned media design): Add data with a 2:1 JPEG without EXIF,
  * the same picture as an Insta360 `.insp` still (a JPEG with the camera's trailer after it) and an
  * unstitched `.insp` (two fisheye circles on black). The offer says the two 360s import as not
- * placed and why the fisheye still is left out; after the import the 360s have no place and Media
+ * placed and why the fisheye still is left out; after the import the 360s have no place and Inspect
  * says "Not placed". Then Treat as 360 moves a 2:1 photo into its date's panoramas layer and Treat
  * as photo moves it back. Synthetic files only (pinFixture.ts), off-screen, zero network.
  */
@@ -14,7 +14,7 @@ import {
   createPinProject,
   nextOpenDialog,
   notPlaced,
-  openMedia,
+  openInspect,
   openPinProject,
   PANO_LAYER,
   PHOTO_LAYER,
@@ -98,8 +98,8 @@ test('360s without GPS import as not placed; a 2:1 photo becomes a 360 and back'
     .flatMap((l) => l.items ?? []);
   expect(panos).toHaveLength(3);
 
-  // Media: p1, ph1, ph2 and the two new 360s are not placed
-  await openMedia(win);
+  // Inspect: p1, ph1, ph2 and the two new 360s are not placed
+  await openInspect(win);
   await expect(win.getByTestId('media-not-placed')).toHaveCount(5, { timeout: 30_000 });
 
   // ph2 is 2:1: it looks like a 360; Treat as 360 moves it into the date's panoramas layer
@@ -154,6 +154,6 @@ test('a project with a site grid (no EPSG code) takes a 360 with no GPS, not pla
       .flatMap((l) => l.items ?? [])
       .filter((i) => i.pos === undefined).length;
   await expect.poll(unplaced, { timeout: 60_000 }).toBe(2);
-  await openMedia(win);
+  await openInspect(win);
   await expect(win.getByTestId('media-not-placed')).toHaveCount(4, { timeout: 30_000 });
 });

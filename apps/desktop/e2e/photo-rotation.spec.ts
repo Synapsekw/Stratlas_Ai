@@ -4,6 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { expect, test as base, tinyManifest, type DataRoot } from './fixtures';
+import { openInspect, openPhotoInInspect } from './inspect';
 
 const rgb = Buffer.from([255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 0, 255, 0, 255, 0, 255, 255]);
 const test = base.extend<{ dataRoot: DataRoot }>({
@@ -73,10 +74,8 @@ test('Rotate turns native pixels clockwise and keeps the displayed and saved mar
   dataRoot,
 }) => {
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
-  await win.locator('.nav-item', { hasText: 'Media' }).first().click();
-  const tile = win.locator('.media [data-photo="p1"]');
-  await tile.scrollIntoViewIfNeeded();
-  await tile.click();
+  await openInspect(win);
+  await openPhotoInInspect(win, 'p1');
   const viewer = win.getByTestId('photo-viewer').first();
   const image = viewer.locator('img.ann-img').first();
   await expect

@@ -13,6 +13,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import sharp from 'sharp';
 import { expect, realDataTest } from './fixtures';
+import { openInspect, photoTiles } from './inspect';
 import {
   grayOf,
   loadKitClouds,
@@ -75,12 +76,15 @@ function pitchDeg([x, y, z, w]: Quat): number {
   return (Math.asin(Math.max(-1, Math.min(1, fy))) * 180) / Math.PI;
 }
 
-async function openMedia(win: Page) {
+async function openPhotos(win: Page) {
   await win.getByTestId('project-card').filter({ hasText: 'HCl' }).first().click();
-  const media = win.locator('.nav-item', { hasText: 'Media' }).first();
-  await expect(media).toBeVisible({ timeout: 30_000 });
-  await media.click();
+  const nav = win.locator('.sb-nav .nav-item', { hasText: 'Inspect' }).first();
+  await expect(nav).toBeVisible({ timeout: 30_000 });
+  await openInspect(win);
 }
+
+const VIEWER = '[aria-label="Inspect"] [data-testid="photo-viewer"]';
+const tileOf = (win: Page, id: string) => photoTiles(win).and(win.locator(`[data-photo="${id}"]`));
 
 /** Bytes of the image an <img> shows, read the way the page reads them. */
 async function imageBytes(win: Page, selector: string): Promise<Buffer> {
@@ -99,7 +103,7 @@ async function shot(win: Page, name: string) {
   if (SHOTS) await win.screenshot({ path: join(SHOTS, `${name}.png`) });
 }
 
-test('@realdata a photo looking straight down shows the right way up in Media and the viewer', async ({
+test('@realdata a photo looking straight down shows the right way up in Inspect and the viewer', async ({
   projectDir,
   win,
 }) => {
@@ -112,8 +116,8 @@ test('@realdata a photo looking straight down shows the right way up in Media an
   const file = await orientationScores(readFileSync(join(projectDir, item.src.path)), depth);
   expect(file.asShown, JSON.stringify(file)).toBeGreaterThan(file.turned + 0.05);
 
-  await openMedia(win);
-  const tile = win.locator(`.media [data-photo="${NADIR}"]`);
+  await openPhotos(win);
+  const tile = tileOf(win, NADIR);
   await tile.scrollIntoViewIfNeeded();
   const tileImg = tile.locator('img');
   await expect
@@ -123,16 +127,16 @@ test('@realdata a photo looking straight down shows the right way up in Media an
     .toBe(true);
   // the grid thumbnail: its pixels, and nothing turns it on the way to the screen
   const thumb = await orientationScores(
-    await imageBytes(win, `.media [data-photo="${NADIR}"] img`),
+    await imageBytes(win, `[data-testid="inspect-photos"] [data-photo="${NADIR}"] img`),
     depth,
   );
   expect(thumb.asShown, JSON.stringify(thumb)).toBeGreaterThan(thumb.turned + 0.05);
   expect(await tileImg.evaluate((i) => getComputedStyle(i).transform)).toBe('none');
-  await shot(win, 'hcl-nadir-media');
+  await shot(win, 'hcl-nadir-inspect');
 
   // the viewer, as drawn on screen
   await tile.click();
-  const viewerImg = win.locator('.media-viewer img.ann-img').first();
+  const viewerImg = win.locator(`${VIEWER} img.ann-img`).first();
   await expect(viewerImg).toBeVisible();
   await expect
     .poll(() => viewerImg.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth > 0))
@@ -184,22 +188,22 @@ test('@realdata an issue box drawn on a photo covers the same defect as on the c
   const { photo, geom: box } = found.s;
   const original = origs.get(photo.toLowerCase()) ?? '';
 
-  await openMedia(win);
-  const tile = win.locator(`.media [data-photo="${photo}"]`);
+  await openPhotos(win);
+  const tile = tileOf(win, photo);
   await tile.scrollIntoViewIfNeeded();
   await tile.click();
-  const viewerImg = win.locator('.media-viewer img.ann-img').first();
+  const viewerImg = win.locator(`${VIEWER} img.ann-img`).first();
   await expect
     .poll(() => viewerImg.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth > 0))
     .toBe(true);
-  const shape = win.locator('.media-viewer polygon.shape').first();
+  const shape = win.locator(`${VIEWER} polygon.shape:not(.ai)`).first();
   await expect(shape).toBeVisible();
   await win.waitForTimeout(500);
 
   // where the viewer draws the box, in photo pixels
-  const drawn = await win.evaluate(() => {
-    const img = document.querySelector<HTMLImageElement>('.media-viewer img.ann-img');
-    const poly = document.querySelector<SVGPolygonElement>('.media-viewer polygon.shape');
+  const drawn = await win.evaluate((v) => {
+    const img = document.querySelector<HTMLImageElement>(`${v} img.ann-img`);
+    const poly = document.querySelector<SVGPolygonElement>(`${v} polygon.shape:not(.ai)`);
     if (!img || !poly) throw new Error('no viewer image or shape');
     const ir = img.getBoundingClientRect();
     const pr = poly.getBoundingClientRect();
@@ -212,7 +216,7 @@ test('@realdata an issue box drawn on a photo covers the same defect as on the c
       nw: img.naturalWidth,
       nh: img.naturalHeight,
     };
-  });
+  }, VIEWER);
   const tol = 3;
   expect(Math.abs(drawn.x - box.x)).toBeLessThan(tol);
   expect(Math.abs(drawn.y - box.y)).toBeLessThan(tol);

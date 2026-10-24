@@ -1,5 +1,5 @@
 /**
- * The Media screen on the real EBSM flare project (299 photos of 2560 px). Runs only where the
+ * The Inspect screen (its photo column) on the real EBSM flare project (299 photos of 2560 px). Runs only where the
  * real data holds projects/ebsm (realData.ts); skipped elsewhere. Each test runs on a temporary
  * copy of the project (@realdata); generated thumbnails go to the throwaway profile.
  */
@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, launchApp, NetworkGuard, realDataTest } from './fixtures';
+import { photoTiles } from './inspect';
 import {
   copyRealProjects,
   hasRealProject,
@@ -17,7 +18,7 @@ import {
 } from './realData';
 
 const EBSM = realProjectDir('ebsm');
-/** Media must answer input within this many ms of opening (first run, cold thumbnail cache). */
+/** Inspect must answer input within this many ms of opening (first run, cold thumbnail cache). */
 const BUDGET_MS = Number(process.env.QUADRION_MEDIA_BUDGET_MS ?? 3_000);
 
 const test = realDataTest(['ebsm'], { size: [1440, 900] });
@@ -37,7 +38,7 @@ interface Probe {
 }
 
 /**
- * Long tasks, frame gaps and Media timings measured inside the renderer from now on, so the
+ * Long tasks, frame gaps and Inspect timings measured inside the renderer from now on, so the
  * numbers do not include Playwright's own round trips.
  */
 async function startProbe(win: Page): Promise<void> {
@@ -59,10 +60,14 @@ async function startProbe(win: Page): Promise<void> {
       p.gaps.push(t - last);
       last = t;
       if (p.clickAt !== undefined && p.gridAt === undefined) {
-        if (document.querySelector('.media .m-card.sq')) p.gridAt = t;
+        if (document.querySelector('[data-testid="inspect-photos"] .m-card.sq')) p.gridAt = t;
       }
       if (p.gridAt !== undefined && p.thumbsAt === undefined) {
-        const imgs = [...document.querySelectorAll<HTMLImageElement>('.media .m-grid img')];
+        const imgs = [
+          ...document.querySelectorAll<HTMLImageElement>(
+            '[data-testid="inspect-photos"] .m-grid img',
+          ),
+        ];
         if (imgs.length >= 8 && imgs.slice(0, 8).every((i) => i.complete && i.naturalWidth > 0))
           p.thumbsAt = t;
       }
@@ -97,7 +102,9 @@ async function readProbe(win: Page) {
   return win.evaluate(() => {
     const p = (window as unknown as { __probe: Probe }).__probe;
     p.stop = true;
-    const imgs = [...document.querySelectorAll<HTMLImageElement>('.media .m-grid img')];
+    const imgs = [
+      ...document.querySelectorAll<HTMLImageElement>('[data-testid="inspect-photos"] .m-grid img'),
+    ];
     const loaded = imgs.filter((i) => i.complete && i.naturalWidth > 0);
     return {
       longTasks: p.longTasks.length,
@@ -141,24 +148,24 @@ async function inputLatency(win: Page): Promise<number> {
   return Date.now() - t0;
 }
 
-test('@realdata EBSM Media opens fast, shows small thumbnails and stays responsive', async ({
+test('@realdata EBSM Inspect opens fast, shows small thumbnails and stays responsive', async ({
   app,
   win,
 }) => {
   await win.getByTestId('project-card').filter({ hasText: 'EBSM' }).first().click();
-  await expect(win.locator('.nav-item', { hasText: 'Media' }).first()).toBeVisible();
-  // Let the project (3D scene) settle before measuring the Media screen itself.
+  await expect(win.locator('.sb-nav .nav-item', { hasText: 'Inspect' }).first()).toBeVisible();
+  // Let the project (3D scene) settle before measuring the Inspect screen itself.
   await win.waitForTimeout(4_000);
   const memBefore = await memoryMB(app);
   await startProbe(win);
 
-  await win.locator('.nav-item', { hasText: 'Media' }).first().click();
+  await win.locator('.sb-nav .nav-item', { hasText: 'Inspect' }).first().click();
   // Interactive: the first tiles have drawn and input is answered promptly.
   const { gridMs, tilesMs } = await waitForTiles(win);
   const latency = await inputLatency(win);
 
   // Scroll through the whole grid, then let it settle.
-  const scroller = win.locator('.media-main');
+  const scroller = win.locator('.insp-photos-list');
   for (let i = 0; i < 12; i++) {
     await scroller.evaluate((el) => {
       el.scrollBy(0, 700);
@@ -171,8 +178,10 @@ test('@realdata EBSM Media opens fast, shows small thumbnails and stays responsi
   const memAfter = await memoryMB(app);
 
   // Opening a photo still works.
-  await win.locator('.media .m-card.sq').first().click();
-  await expect(win.locator('.media-viewer')).toBeVisible();
+  await photoTiles(win).first().click();
+  await expect(
+    win.locator('[aria-label="Inspect"] [data-testid="photo-viewer"]').first(),
+  ).toBeVisible();
 
   const report = {
     gridMs,
@@ -183,7 +192,7 @@ test('@realdata EBSM Media opens fast, shows small thumbnails and stays responsi
     memBefore,
     memAfter,
   };
-  console.warn(`EBSM Media: ${JSON.stringify(report)}`);
+  console.warn(`EBSM Inspect: ${JSON.stringify(report)}`);
 
   expect(tilesMs).toBeLessThan(BUDGET_MS);
   expect(probe.worstLongTaskMs).toBeLessThan(200);
@@ -232,16 +241,20 @@ test('@realdata photos without thumbnails get small ones made off the main threa
     await win.waitForLoadState('domcontentloaded');
     await win.getByTestId('project-card').filter({ hasText: 'EBSM cold' }).first().click();
     // Let the project (3D scene) settle first, as above: on a software GPU its first frames are
-    // long tasks of their own, and the probe measures the Media screen.
-    await expect(win.locator('.nav-item', { hasText: 'Media' }).first()).toBeVisible();
+    // long tasks of their own, and the probe measures the Inspect screen.
+    await expect(win.locator('.sb-nav .nav-item', { hasText: 'Inspect' }).first()).toBeVisible();
     await win.waitForTimeout(4_000);
     await startProbe(win);
-    await win.locator('.nav-item', { hasText: 'Media' }).first().click();
+    await win.locator('.sb-nav .nav-item', { hasText: 'Inspect' }).first().click();
     const ms = (await waitForTiles(win)).tilesMs;
     await win.waitForTimeout(1_500);
     const probe = await readProbe(win);
     const srcs = await win.evaluate(() =>
-      [...document.querySelectorAll<HTMLImageElement>('.media .m-grid img')].map((i) => i.src),
+      [
+        ...document.querySelectorAll<HTMLImageElement>(
+          '[data-testid="inspect-photos"] .m-grid img',
+        ),
+      ].map((i) => i.src),
     );
     expect(await network.outbound()).toEqual([]);
     await app.close();
@@ -250,7 +263,9 @@ test('@realdata photos without thumbnails get small ones made off the main threa
 
   try {
     const cold = await open();
-    console.warn(`EBSM Media, cold thumbnails: ${JSON.stringify({ ms: cold.ms, ...cold.probe })}`);
+    console.warn(
+      `EBSM Inspect, cold thumbnails: ${JSON.stringify({ ms: cold.ms, ...cold.probe })}`,
+    );
     expect(cold.ms).toBeLessThan(BUDGET_MS * 2);
     expect(cold.probe.maxNaturalWidth).toBeLessThanOrEqual(320);
     expect(cold.probe.worstLongTaskMs).toBeLessThan(200);
@@ -262,7 +277,7 @@ test('@realdata photos without thumbnails get small ones made off the main threa
     // Next time they come from the cache, made by nobody.
     const warm = await open();
     console.warn(
-      `EBSM Media, cached thumbnails: ${JSON.stringify({ ms: warm.ms, ...warm.probe })}`,
+      `EBSM Inspect, cached thumbnails: ${JSON.stringify({ ms: warm.ms, ...warm.probe })}`,
     );
     expect(warm.srcs.slice(0, 8).every((s) => s.startsWith('aio://thumb/'))).toBe(true);
     expect(warm.probe.maxNaturalWidth).toBeLessThanOrEqual(320);
