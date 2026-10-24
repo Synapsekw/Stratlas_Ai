@@ -642,6 +642,64 @@ export async function repairKitHeightsNow(projectId: string): Promise<string[]> 
   return current.repaired;
 }
 
+/** A converted pile still holding a carried kit figure (headline or over time). */
+const holdsCarried = (m: SurveyMeasurement): boolean =>
+  m.results.some((r) => r.carried !== undefined) ||
+  (m.series ?? []).some((r) => r.carried !== undefined);
+
+/** `m` with the accepted pile's figures: results, was and dates (no edit, `updatedAt` stays). */
+function withAccepted(m: SurveyMeasurement, a: SurveyMeasurement): SurveyMeasurement {
+  const next: SurveyMeasurement = { ...m, results: a.results };
+  if (a.previousResults) next.previousResults = a.previousResults;
+  if (a.series) next.series = a.series;
+  else delete next.series;
+  return next;
+}
+
+/**
+ * Converted piles the app accepted with the standard base on its own once their surfaces were
+ * ready (`acceptCarriedQuietly`, ADR 0013 point 4): a migration like the conversion, not an edit.
+ * The figures (with the kit's as was) go on the file and on the baseline as last saved, written
+ * quietly with the baseline (a person's unsaved edits stay unsaved and unwritten), never an undo
+ * step and never shown as unsaved. Only piles still carried in the file are taken. Nothing in a
+ * read-only project. Returns the ids taken.
+ */
+export async function acceptKitQuietly(
+  projectId: string,
+  accepted: readonly SurveyMeasurement[],
+): Promise<string[]> {
+  if (accepted.length === 0) return [];
+  const epoch = loadEpoch;
+  // a save in flight lands first, and the acceptance goes on the baseline it leaves
+  if (!(await writesSettled(projectId))) return [];
+  const s = get();
+  if (loadEpoch !== epoch || s.projectId !== projectId || s.status !== 'ready' || s.readOnly)
+    return [];
+  const byId = new Map(accepted.map((m) => [m.id, m]));
+  const taken: string[] = [];
+  const file: MeasurementsFile = {
+    ...s.file,
+    measurements: s.file.measurements.map((m) => {
+      const a = byId.get(m.id);
+      if (!a || !holdsCarried(m)) return m;
+      taken.push(m.id);
+      return withAccepted(m, a);
+    }),
+  };
+  if (taken.length === 0) return [];
+  const saved = JSON.parse(s.savedText) as MeasurementsFile;
+  const baseline: MeasurementsFile = {
+    ...saved,
+    measurements: saved.measurements.map((m) => {
+      const a = byId.get(m.id);
+      return a && taken.includes(m.id) && holdsCarried(m) ? withAccepted(m, a) : m;
+    }),
+  };
+  set({ file, savedText: text(baseline), resultsUnwritten: true });
+  await writeConversion(projectId, baseline, epoch);
+  return taken;
+}
+
 /** Write the file, chained after the project's writes in flight (a load waits for them). */
 function writeFile(projectId: string, file: MeasurementsFile) {
   const write = bridge.call('survey:writeMeasurements', { projectId, file });

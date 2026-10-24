@@ -4,8 +4,9 @@
  * `survey.prepare` job ends, the piles still lying at Z 0 are given their heights again
  * (`repairKitHeightsNow`, which can now ask the prepared surfaces), then each converted pile whose
  * carried figure's dates all have a ready surface is accepted with the standard base
- * (`recomputeCarried`, the same path as the person's "Recompute with the standard base"): the kit
- * figure stays in `previousResults` and shows as was in the pile's History.
+ * (`acceptCarriedQuietly`, computed as the person's "Recompute with the standard base"): the kit
+ * figure stays in `previousResults` and shows as was in the pile's History. A migration, not an
+ * edit: written on the saved baseline, never shown as unsaved, no undo step.
  *
  * Once per pile per open, and only in a writable project: a read-only project or package keeps its
  * carried figures (its height repair stays in memory).
@@ -14,7 +15,7 @@ import type { MeasurementsFile } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { sameFolder } from '../jobs';
 import { bridge, jobs } from '../shell';
-import { compareStore, recomputeCarried } from './compareStore';
+import { acceptCarriedQuietly, compareStore } from './compareStore';
 import { captureOfEpoch as epochCapture } from './kitHeights';
 import { measureStore, repairKitHeightsNow } from './measureStore';
 import { surfaceStates, type SurfaceState } from './surfaceStates';
@@ -64,7 +65,7 @@ export interface KitReadyDeps {
   repair?: (projectId: string) => Promise<string[]>;
   /** What to accept from, or null while the project or engine is not ready. */
   look?: (projectId: string) => Promise<KitLook | null>;
-  /** `recomputeCarried`: the reasons any could not be done. */
+  /** `acceptCarriedQuietly`: the ids accepted. */
   accept?: (ids: readonly string[]) => Promise<string[]>;
 }
 
@@ -91,7 +92,7 @@ async function lookNow(projectId: string): Promise<KitLook | null> {
 export function connectKitReady(deps: KitReadyDeps): () => void {
   const repair = deps.repair ?? repairKitHeightsNow;
   const look = deps.look ?? lookNow;
-  const accept = deps.accept ?? recomputeCarried;
+  const accept = deps.accept ?? acceptCarriedQuietly;
   let stopped = false;
   /** The project last opened and the piles already tried in it. */
   let open: { id: string; tried: Set<string> } | null = null;

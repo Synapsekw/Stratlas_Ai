@@ -13,7 +13,7 @@ vi.mock('./measureStore', () => ({
 }));
 vi.mock('./compareStore', () => ({
   compareStore: { getState: () => ({}) },
-  recomputeCarried: vi.fn(() => Promise.resolve([])),
+  acceptCarriedQuietly: vi.fn(() => Promise.resolve([])),
 }));
 
 const { connectKitReady, kitPilesToAccept } = await import('./kitAccept');
@@ -179,10 +179,10 @@ describe('connectKitReady', () => {
     expect(k.accept).toHaveBeenCalledTimes(2);
   });
 
-  it('acceptance keeps the kit figure as was: it goes through recomputeCarried', async () => {
-    // recomputeCarried keeps the carried figure in previousResults ("was"): compareStore.test.ts,
-    // "recomputeCarried accepts the standard base for each carried pile, keeping was"
-    const { recomputeCarried } = await import('./compareStore');
+  it('acceptance keeps the kit figure as was: it goes through acceptCarriedQuietly', async () => {
+    // acceptCarriedQuietly keeps the carried figure in previousResults ("was") and writes it on
+    // the saved file, not as an edit: compareStore.test.ts, "acceptCarriedQuietly writes ..."
+    const { acceptCarriedQuietly } = await import('./compareStore');
     const opens: ((id: string) => void)[] = [];
     connectKitReady({
       onProjectOpen: (cb) => {
@@ -203,7 +203,7 @@ describe('connectKitReady', () => {
       cb('proj');
     });
     await flush();
-    expect(recomputeCarried).toHaveBeenCalledWith(['p1']);
+    expect(acceptCarriedQuietly).toHaveBeenCalledWith(['p1']);
   });
 
   it('nothing runs after stop', async () => {

@@ -34,6 +34,7 @@ const {
   hasCarried,
   isStale,
   keepsCarried,
+  acceptCarriedQuietly,
   recomputeCarried,
   recomputeStandard,
   scheduleCheck,
@@ -781,6 +782,60 @@ describe('results over time and the spread across bases', () => {
     expect(m?.previousResults).toBeUndefined();
     // nothing the person changed
     expect(m?.updatedAt).toBe(UPDATED);
+  });
+
+  /** The file last written to disk. */
+  const lastWritten = () =>
+    (
+      call.mock.calls.filter(([c]) => c === 'survey:writeMeasurements').at(-1) as unknown as
+        [string, { file: MeasurementsFile }] | undefined
+    )?.[1].file;
+  /** A carried kit headline on m1, as last saved. */
+  const carriedSaved = async () => {
+    const r = await compute('m1', { live: true });
+    put({ results: [kit(must(r?.results[0]), 'e2')] });
+    const s = measureStore.getState();
+    measureStore.setState({ savedText: JSON.stringify(s.file), resultsUnwritten: false });
+    call.mockClear();
+  };
+
+  it('acceptCarriedQuietly writes the standard base on the saved file, keeping was, not an edit', async () => {
+    await carriedSaved();
+    expect(await acceptCarriedQuietly(['m1'])).toEqual(['m1']);
+    const s = measureStore.getState();
+    expect(isDirty(s)).toBe(false);
+    expect(s.resultsUnwritten).toBe(false);
+    expect(s.undoChange).toBeNull();
+    expect(stored()?.updatedAt).toBe(UPDATED);
+    expect(stored()?.results[0]?.carried).toBeUndefined();
+    const disk = must(lastWritten()).measurements.find((m) => m.id === 'm1');
+    expect(disk?.results[0]?.carried).toBeUndefined();
+    expect(disk?.results[0]?.fingerprint).toBe(stored()?.results[0]?.fingerprint);
+    expect(disk?.previousResults).toEqual([
+      expect.objectContaining({ netM3: 60, totalM3: 64, label: 'kit, Best-fit plane' }),
+    ]);
+    expect(carriedIds(['m1'])).toEqual([]);
+  });
+
+  it('acceptCarriedQuietly leaves a person edit unsaved and unwritten', async () => {
+    await carriedSaved();
+    measureStore.setState({ autosave: false });
+    patchMeasurement('m1', { label: 'Pit north' });
+    expect(await acceptCarriedQuietly(['m1'])).toEqual(['m1']);
+    expect(isDirty(measureStore.getState())).toBe(true);
+    expect(stored()?.label).toBe('Pit north');
+    const disk = must(lastWritten()).measurements.find((m) => m.id === 'm1');
+    expect(disk?.label).toBe('Pit');
+    expect(disk?.results[0]?.carried).toBeUndefined();
+    expect(disk?.previousResults).toHaveLength(1);
+  });
+
+  it('acceptCarriedQuietly in a read-only project accepts nothing', async () => {
+    await carriedSaved();
+    measureStore.setState({ readOnly: true });
+    expect(await acceptCarriedQuietly(['m1'])).toEqual([]);
+    expect(stored()?.results[0]?.carried).toBeDefined();
+    expect(writes()).toBe(0);
   });
 
   it('recomputeCarried accepts the standard base for each carried pile, keeping was', async () => {

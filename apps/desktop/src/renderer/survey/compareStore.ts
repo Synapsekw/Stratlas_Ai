@@ -37,6 +37,7 @@ import { storedPoints } from './measureDates';
 import { refreshQa, sourceOfCapture } from './qaStore';
 import { carriedItem, datesToRun, lineUps, seriesDate, seriesKeyOf } from './seriesRule';
 import {
+  acceptKitQuietly,
   measureStore,
   replaceWithStandard,
   setComputedResults,
@@ -345,6 +346,8 @@ export function compute(
     heatOnly?: boolean;
     keepCarried?: boolean;
     points?: readonly SitePoint[];
+    /** The accepted measurement goes here instead of being stored as an edit (`acceptCarriedQuietly`). */
+    onAccepted?: (m: SurveyMeasurement) => void;
   } = {},
 ): Promise<RunReply | null> {
   const run = computeNow(id, opts);
@@ -374,6 +377,8 @@ async function computeNow(
     heatOnly?: boolean;
     keepCarried?: boolean;
     points?: readonly SitePoint[];
+    /** The accepted measurement goes here instead of being stored as an edit (`acceptCarriedQuietly`). */
+    onAccepted?: (m: SurveyMeasurement) => void;
   },
 ): Promise<RunReply | null> {
   const m = measureStore.getState().file.measurements.find((x) => x.id === id);
@@ -449,7 +454,11 @@ async function computeNow(
         });
       if (!accepting) setComputedResults(id, (x) => merged(x, true));
       else if (opts.auto && !hasCarried(now)) setComputedResults(id, (x) => merged(x, false));
-      else
+      else if (opts.onAccepted) {
+        // accepted by the app once the surfaces exist: handed back, stored as a migration
+        const next = acceptStandard(now, r.results);
+        opts.onAccepted({ ...next, results: merged(next, false) });
+      } else
         updateMeasurement(id, (x) => {
           // accepted: the carried kit figures are replaced and kept as "was"
           const next = acceptStandard(x, r.results);
@@ -593,6 +602,27 @@ export async function recomputeCarried(ids: readonly string[]): Promise<string[]
     if (r) why.push(r);
   }
   return why;
+}
+
+/**
+ * The app's own acceptance of the standard base for the given converted piles once their surfaces
+ * are ready (ADR 0013 point 4): computed as `recomputeCarried` does, kept with the kit figure as
+ * was, but stored as a migration (`acceptKitQuietly`): written on the saved baseline, no edit, no
+ * undo step. Nothing in a read-only project or before the engine is ready. The ids accepted.
+ */
+export async function acceptCarriedQuietly(ids: readonly string[]): Promise<string[]> {
+  const ms = measureStore.getState();
+  const projectId = ms.projectId;
+  if (!projectId || ms.readOnly || ms.status !== 'ready' || get().status !== 'ready') return [];
+  const done: SurveyMeasurement[] = [];
+  for (const id of carriedIds(ids)) {
+    await compute(id, {
+      onAccepted: (m) => {
+        done.push(m);
+      },
+    });
+  }
+  return acceptKitQuietly(projectId, done);
 }
 
 // ---------------------------------------------------------------- results over time (W4)
