@@ -15,7 +15,7 @@ import { antennasFile, unit } from '../rf/__fixtures__/rfData';
 import { shell } from '../shell';
 import { antennaStore } from '../telecom/antennaStore';
 import { compareNotice } from './compare';
-import { readoutCorner, useStageCorners, type StageCornersInput } from './Stage';
+import { basemapCorners, readoutCorner, useStageCorners, type StageCornersInput } from './Stage';
 import { stagePrefs } from './stagePrefs';
 import { timeline } from './timeline';
 
@@ -633,5 +633,21 @@ describe('readoutCorner', () => {
     expect(readoutCorner(true, undefined, true)).toBe('bl');
     expect(readoutCorner(true, 'left', true)).toBe('br');
     expect(readoutCorner(false, 'left', false)).toBeNull();
+  });
+});
+
+describe('basemapCorners', () => {
+  it('keeps the Map menu chip over the pane whose view it serves, never over a 360 pane', () => {
+    // no split: the end of the stage
+    expect(basemapCorners('map', undefined, undefined, false, false)).toEqual(['tr', 'br']);
+    // the map on the left of a split (a 360 pane on the right)
+    expect(basemapCorners('map', 'left', undefined, true, false)).toEqual(['tl', 'bl']);
+    // the 3D view on the left, a 360 pane on the right: the scene's chip goes left too
+    expect(basemapCorners('scene', undefined, 'left', true, false)).toEqual(['tl', 'bl']);
+    expect(basemapCorners('scene', undefined, 'right', true, false)).toEqual(['tr', 'br']);
+    // right to left the corners are logical; the panes keep left to right
+    expect(basemapCorners('scene', undefined, 'left', true, true)).toEqual(['tr', 'br']);
+    // 3D left, map right: the chip is the map's
+    expect(basemapCorners('map', 'right', 'left', true, false)).toEqual(['tr', 'br']);
   });
 });

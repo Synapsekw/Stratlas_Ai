@@ -1900,6 +1900,11 @@ button.chip-status:hover {
   visibility: hidden;
   pointer-events: none;
 }
+/* MapLibre shows an open credit with visibility: visible, which a hidden map pane would not hide:
+   its credits stood over the panes shown in its place (a 360 walk beside the 3D view) */
+.pane.is-hidden .maplibregl-control-container {
+  display: none;
+}
 .pane-map {
   background: var(--map-bg);
 }

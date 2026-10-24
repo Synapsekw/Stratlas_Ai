@@ -141,6 +141,19 @@ test.describe('comparing two walks', () => {
       )
       .toBeGreaterThan(turned - 3);
 
+    // the 3D view on the left: its Map menu chip stands over it, and the hidden map's credits do
+    // not stand over the 360 pane
+    await win.getByRole('combobox', { name: 'Left side shows' }).selectOption({ label: '3D view' });
+    const sceneChip = win.getByTestId('scene-map-button');
+    await expect(sceneChip).toBeVisible();
+    const chipBox = await sceneChip.boundingBox();
+    const viewBox = await one.boundingBox();
+    expect(chipBox && viewBox ? chipBox.x + chipBox.width : Infinity).toBeLessThanOrEqual(
+      viewBox?.x ?? 0,
+    );
+    const credits = win.locator('.maplibregl-ctrl-attrib:visible');
+    await expect(credits).toHaveCount(0);
+
     // Compare with walk, from the first walk's right-click menu: it leads, the April walk follows
     const row = await walkRow(win, WALK_LAYER);
     await row.click({ button: 'right' });
@@ -157,6 +170,11 @@ test.describe('comparing two walks', () => {
     await expect(lead).toHaveCount(1);
     await expect(follow).toHaveCount(1);
     await expect(lead).toHaveAttribute('data-walk', 'w1');
+    // two 360 panes: no map or 3D chrome over them
+    await expect(credits).toHaveCount(0);
+    await expect(
+      win.locator('[data-testid="scene-map-button"], [data-testid="basemap-button"]'),
+    ).toHaveCount(0);
 
     // the follower goes to where the lead is, not to the same second: the April walk started 8 s
     // later. Pairing keeps to the pass it is on, so it may stop up to a few metres short of the

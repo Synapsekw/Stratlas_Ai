@@ -310,6 +310,23 @@ export interface StageCornersInput {
 }
 
 const END: readonly Corner[] = ['tr', 'br'];
+const START: readonly Corner[] = ['tl', 'bl'];
+
+/**
+ * The corners the stage's Map menu chip wants: in a split, the side of the pane whose view it
+ * serves (the map's, else the 3D view's; the panes keep left to right), so it never stands over
+ * the other pane, a 360 walk say; else the stage's end.
+ */
+export function basemapCorners(
+  view: 'map' | 'scene' | null,
+  sideMap: Side | undefined,
+  side3d: Side | undefined,
+  splitting: boolean,
+  rtl: boolean,
+): readonly Corner[] {
+  const side = !splitting ? undefined : view === 'map' ? sideMap : side3d;
+  return side !== undefined && (side === 'left') !== rtl ? START : END;
+}
 
 /** The corners the volumes hint wants, given the readout's corner. */
 function hintCorners(cursor: Corner | null, splitting: boolean): Corner[] {
@@ -453,8 +470,6 @@ export function useStageCorners(o: StageCornersInput): {
 }
 
 /* ----------------------------------------------------------------------- stage */
-
-const START: readonly Corner[] = ['tl', 'bl'];
 
 /** A right-to-left UI (the corners are named by the reading direction). */
 const rtlUi = () => typeof document !== 'undefined' && document.documentElement.dir === 'rtl';
@@ -731,12 +746,11 @@ export function Stage() {
   // the 3D view on the left of a split has its readout beside the divider, clear of the hint
   // at the corner, unless its pane is narrow
   const pane3dWide = usePaneWide(panesRef, splitting && side3d === 'left');
-  // the Map menu chip stands at the map's side of a split (physical sides: the panes are
-  // left to right)
-  const mapAtStart = splitting && sideMap !== undefined && (sideMap === 'left') !== rtlUi();
   // the 3D view's readout is at the views' bottom end (the panes keep left-to-right geometry),
   // a stage corner unless the split shows the 3D view on the left
   const rtl = rtlUi();
+  // the Map menu chip stands at the side of the pane it serves (the map's, else the 3D view's)
+  const basemapAt = basemapCorners(showMap ? 'map' : 'scene', sideMap, side3d, splitting, rtl);
   // --- RF coverage legend (rf-ui) ---
   const rfLegend = useCoverageLegendShown();
   // --- end RF coverage legend ---
@@ -749,7 +763,7 @@ export function Stage() {
     video: showVideo && !docked ? videoCorners : NO_CORNERS,
     cursor: readoutCorner(show3d, splitting ? side3d : undefined, rtl),
     readoutClear: splitting && side3d === 'left' && pane3dWide,
-    basemapAt: mapAtStart ? START : END,
+    basemapAt,
     topTaken: islandReach.taken,
     // --- RF coverage legend (rf-ui) ---
     rfLegend,
