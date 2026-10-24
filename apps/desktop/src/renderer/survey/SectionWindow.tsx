@@ -23,6 +23,8 @@ export function SectionWindow() {
     const onKey = (e: KeyboardEvent) => {
       // a dialog, a menu or the chart that took the Esc keeps it
       if (e.key !== 'Escape' || e.defaultPrevented) return;
+      // taken here: the stage's Esc (a pin elsewhere, the open pile) waits for the next one
+      e.preventDefault();
       const h = linkedHover.getState();
       if (h.pin?.key === 'section') h.setPin(null);
       else setWindow(false);

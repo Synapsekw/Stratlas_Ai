@@ -9,6 +9,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SurfaceState } from '../surfaceStates';
+import { linkedHover } from '../linkedHover';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -52,6 +53,7 @@ vi.mock('../card/BasePicker', () => ({
   DEFAULT_BASE: { kind: 'smart' },
 }));
 // the tabs other than Overview have their own tests
+vi.mock('./pileAxisScene', () => ({ stagePile: () => null }));
 vi.mock('./PileProfile', () => ({ PileProfile: () => <div data-testid="pile-profile" /> }));
 vi.mock('./PileHistory', () => ({ PileHistory: () => <div data-testid="pile-history" /> }));
 vi.mock('../Calculators', () => ({
@@ -262,6 +264,29 @@ describe('PilePanel', () => {
       panel?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
     expect(calls.select).toHaveBeenLastCalledWith([], null);
+  });
+
+  it('Esc in the panel clears a pinned point first, then returns to the inventory', () => {
+    render();
+    linkedHover.setState({
+      lines: new Map([['pile:02', { key: 'pile:02', polyline: [], series: [] }]]),
+      pin: { key: 'pile:02', chainageM: 4, source: 'chart' },
+    });
+    calls.select.mockClear();
+    const panel = q('[data-testid="pile-panel"]');
+    const esc = () => {
+      const e = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+      act(() => {
+        panel?.dispatchEvent(e);
+      });
+      return e;
+    };
+    expect(esc().defaultPrevented).toBe(true);
+    expect(linkedHover.getState().pin).toBeNull();
+    expect(calls.select).not.toHaveBeenCalled();
+    expect(esc().defaultPrevented).toBe(true);
+    expect(calls.select).toHaveBeenLastCalledWith([], null);
+    linkedHover.setState({ lines: new Map(), pin: null });
   });
 
   it('More holds heat map, swell and weighed tonnage', () => {

@@ -30,6 +30,7 @@ import { volumeStatusLine, type StatusLine } from '../card/VolumeDetail';
 import { useSurveyDates } from '../card/slots';
 import { isStale, seriesStale, useCompare } from '../compareStore';
 import { select, useMeasure } from '../measureStore';
+import { escapeStage } from '../stageEscape';
 import { pickInVolumesView } from '../volumesPick';
 import { PileHeader } from './PileHeader';
 import { PileHistory } from './PileHistory';
@@ -141,8 +142,14 @@ export function PilePanel({
 
   const onKey = (e: KeyboardEvent<HTMLElement>) => {
     if (e.key !== 'Escape' || e.defaultPrevented) return;
-    e.preventDefault();
-    back();
+    // the stage's order: a pinned point first, then the pile
+    if (
+      escapeStage(() => {
+        back();
+        return true;
+      })
+    )
+      e.preventDefault();
   };
   const tabs: { id: PileTab; label: string; testId: string }[] = [
     { id: 'overview', label: t('pile.tab.overview'), testId: 'pile-tab-overview' },

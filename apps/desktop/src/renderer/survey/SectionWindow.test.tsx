@@ -35,9 +35,11 @@ afterEach(() => {
 });
 
 const esc = () => {
+  const e = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
   act(() => {
-    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.body.dispatchEvent(e);
   });
+  return e;
 };
 
 describe('the larger section window', () => {
@@ -57,7 +59,8 @@ describe('the larger section window', () => {
     act(() => {
       linkedHover.getState().setPin({ key: 'section', chainageM: 4, source: 'chart' });
     });
-    esc();
+    // taken here, so the stage's own Esc (the open pile) waits for the next one
+    expect(esc().defaultPrevented).toBe(true);
     expect(linkedHover.getState().pin).toBeNull();
     expect(sectionStore.getState().window).toBe(true);
     esc();

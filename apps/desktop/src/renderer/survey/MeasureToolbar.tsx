@@ -33,6 +33,7 @@ import { TemplateEditor } from './TemplateEditor';
 import { useOverlaysLoad } from './Overlays';
 import { attachOverlaysMap } from './overlaysMap';
 import { SectionDock } from './SectionDock';
+import { attachStageEscape } from './stageEscape';
 import { attachSectionMap } from './sectionMap';
 import { UnitsDialog } from './UnitsDialog';
 import './measure.css';
@@ -82,6 +83,9 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
   useEffect(() => {
     void loadMeasurements(projectId);
   }, [projectId]);
+
+  // Esc anywhere on the stage: a pinned point first, then the open pile
+  useEffect(() => attachStageEscape(), []);
 
   useEffect(() => {
     if (!stage || !frame) return;
