@@ -378,3 +378,69 @@ describe('the thermal bench strings', () => {
     expect(t('thermal.decoding', { count: 4 })).toBe('Reading temperatures of 4 photos');
   });
 });
+
+describe('pile panel and linked hover strings', () => {
+  const expected: Record<string, string[]> = {
+    'pile.back': [],
+    'pile.position': ['n', 'total'],
+    'pile.prev': [],
+    'pile.next': [],
+    'pile.density': [],
+    'pile.densityAria': [],
+    'pile.noMaterial': [],
+    'pile.pickMaterial': [],
+    'pile.volume': [],
+    'pile.tonnes': [],
+    'pile.vs': ['date'],
+    'pile.atDensity': ['density'],
+    'pile.first': [],
+    'pile.footprint': [],
+    'pile.maxHeight': [],
+    'pile.base': [],
+    'pile.tab.overview': [],
+    'pile.tab.profile': [],
+    'pile.tab.history': [],
+    'pile.more': [],
+    'pile.shadeVs': [],
+    'pile.lineAxis': ['length'],
+    'pile.addDate': [],
+    'pile.cutWhole': [],
+    'pile.fill': [],
+    'pile.largestDrop': ['chainage', 'value'],
+    'pile.lineHint': [],
+    'pile.escHint': [],
+    'pile.history.title': [],
+    'pile.history.both': [],
+    'pile.history.first': [],
+    'pile.history.was': ['value'],
+    'pile.history.note': ['date', 'density', 'material'],
+    'hover.following': [],
+    'hover.legend': ['date', 'earlier'],
+    'hover.snapped': ['chainage'],
+    'hover.follows': ['dates'],
+    'hover.footer': [],
+    'hover.pinned': ['chainage'],
+    'hover.pinnedHint': [],
+    'hover.split': [],
+    'chart.chainageAt': ['value'],
+    'chart.deltaCut': ['value'],
+    'chart.deltaFill': ['value'],
+    'section.close': [],
+    'section.addPinHere': [],
+  };
+
+  it('has every key with its placeholders and no em or en dashes', () => {
+    for (const [k, ph] of Object.entries(expected)) {
+      const v = (en as Record<string, string>)[k];
+      expect(v, k).toBeTruthy();
+      expect(v, k).not.toMatch(/[–—]/);
+      expect([...placeholders(v)].sort(), k).toEqual(ph);
+    }
+  });
+
+  it('fills the chart readout and pin strings', () => {
+    expect(t('chart.chainageAt', { value: '42.3 m' })).toBe('Chainage 42.3 m');
+    expect(t('hover.pinned', { chainage: '71.0 m' })).toBe('71.0 m · pinned');
+    expect(t('pile.position', { n: 2, total: 19 })).toBe('Pile 2 of 19');
+  });
+});
