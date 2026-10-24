@@ -236,10 +236,20 @@ describe('survey measurements in the journal', () => {
 
     const a = measurement('m1', 'Kerb');
     const b = measurement('m2', 'Pad edge');
-    for (const f of [file(a, b), file({ ...a, label: 'Kerb line' }, b), file(b)]) {
-      expect(await ipc.call('survey:writeMeasurements', { projectId: 'p', file: f })).toEqual({
-        ok: true,
-      });
+    // the second write is labelled, as the app's migrations of kit piles are
+    const migration = [{ label: 'Heights of converted kit piles repaired', ids: ['m1'] }];
+    for (const [f, commands] of [
+      [file(a, b), undefined],
+      [file({ ...a, label: 'Kerb line' }, b), migration],
+      [file(b), undefined],
+    ] as const) {
+      expect(
+        await ipc.call('survey:writeMeasurements', {
+          projectId: 'p',
+          file: f,
+          ...(commands ? { commands } : {}),
+        }),
+      ).toEqual({ ok: true });
     }
     const h = await journal.history({
       projectId: 'p',
@@ -252,6 +262,11 @@ describe('survey measurements in the journal', () => {
       'measurement.create',
     ]);
     expect(h.entries[1]?.changes).toEqual([{ field: 'label', before: 'Kerb', after: 'Kerb line' }]);
+    expect(h.entries.map((e) => e.label)).toEqual([
+      undefined,
+      'Heights of converted kit piles repaired',
+      undefined,
+    ]);
     const v = await journal.verify('p');
     if (!v.ok) throw new Error(v.error);
     expect(v.report.problems).toEqual([]);

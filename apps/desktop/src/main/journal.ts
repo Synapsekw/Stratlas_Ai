@@ -218,11 +218,13 @@ const WRITERS: Partial<
     rel: 'orientation.json',
     after: r.file,
   }),
-  // M11 survey measurements: measurement.create, .patch and .delete per measurement id
+  // M11 survey measurements: measurement.create, .patch and .delete per measurement id, labelled
+  // by the app's migrations of old kit piles
   'survey:writeMeasurements': (r: IpcRequest<'survey:writeMeasurements'>) => ({
     projectId: r.projectId,
     rel: 'survey/measurements.json',
     after: r.file,
+    ...(r.commands ? { commands: r.commands } : {}),
   }),
   // telecom antenna inventory: one record.external op per save
   'telecom:writeAntennas': (r: IpcRequest<'telecom:writeAntennas'>) => ({

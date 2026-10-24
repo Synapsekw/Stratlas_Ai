@@ -2516,6 +2516,11 @@ export const en = {
   'audit.kind.measurement.create': 'Measurement added',
   'audit.kind.measurement.patch': 'Measurement edited',
   'audit.kind.measurement.delete': 'Measurement deleted',
+  // the journal labels of the app's own migrations of old stockpile kit piles (not a person's edit)
+  'audit.migration.kitConverted': 'Stockpile kit piles converted to volume measurements',
+  'audit.migration.kitBuilt': 'Piles from the stockpile build added as volume measurements',
+  'audit.migration.kitHeights': 'Heights of converted kit piles repaired',
+  'audit.migration.kitAccepted': 'Earlier-version piles given the standard base on their own',
   'audit.kind.design.add': 'Design added',
   'audit.kind.design.patch': 'Design edited',
   'audit.kind.design.archive': 'Design archived',

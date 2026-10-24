@@ -216,6 +216,7 @@ test('the first edit in this build starts the journal, signed by this device', a
   interface Op {
     kind: string;
     sig?: string;
+    label?: string;
     payload?: unknown;
   }
   const readOps = async (): Promise<Op[]> =>
@@ -235,11 +236,22 @@ test('the first edit in this build starts the journal, signed by this device', a
     )
     .toBe(true);
   const ops = await readOps();
-  // before the edit, only the conversion: one measurement per kit pile
-  expect(ops.filter((o) => o.kind !== 'issue.patch').map((o) => o.kind)).toEqual([
-    'measurement.create',
-    'measurement.create',
+  // before the edit, only the app's migrations of the kit piles, each named as such in History
+  // (never "Measurement edited"): first the conversion, one measurement per kit pile; then, as
+  // the kit's DSM surfaces are made in the background, the piles' heights repaired and the kit
+  // figures accepted with the standard base, which every copy records as it does the conversion
+  const migrations = ops.filter((o) => o.kind !== 'issue.patch');
+  expect(migrations.slice(0, 2).map((o) => [o.kind, o.label])).toEqual([
+    ['measurement.create', 'Stockpile kit piles converted to volume measurements'],
+    ['measurement.create', 'Stockpile kit piles converted to volume measurements'],
   ]);
+  for (const o of migrations.slice(2)) {
+    expect(o.kind).toBe('measurement.patch');
+    expect([
+      'Heights of converted kit piles repaired',
+      'Earlier-version piles given the standard base on their own',
+    ]).toContain(o.label);
+  }
   expect(ops.every((o) => typeof o.sig === 'string')).toBe(true);
   // this device's public record is beside the chain; its key stayed in the test vault
   const device = chain.split('.')[0] ?? '';

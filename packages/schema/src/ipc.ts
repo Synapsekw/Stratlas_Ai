@@ -3581,7 +3581,18 @@ export const ipc = {
   },
   /** Write `survey/measurements.json` atomically (`.bak`, journaled `measurement.*`); refused for packages. */
   'survey:writeMeasurements': {
-    request: z.object({ projectId: ProjectId, file: MeasurementsFile }).strict(),
+    request: z
+      .object({
+        projectId: ProjectId,
+        file: MeasurementsFile,
+        /**
+         * Labelled commands for the journal's records of this write (History shows the label):
+         * the app's own migrations of old kit piles (conversion, height repair, acceptance of the
+         * standard base) name themselves, a person's save carries none.
+         */
+        commands: z.array(EditCommand).max(1000).optional(),
+      })
+      .strict(),
     response: OkOrFailure,
   },
   /** The project's templates (`survey/templates.json`) and the user library (userData). */

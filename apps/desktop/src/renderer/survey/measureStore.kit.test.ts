@@ -39,6 +39,8 @@ const io = vi.hoisted(() => {
   return {
     saved,
     writes: 0,
+    /** The labels the last write named its journal records with, by measurement id. */
+    labels: new Map<string, string>(),
     readOnly: false,
     volumes: null as VolumesFile | null,
     /** While set, a write waits for it. */
@@ -91,11 +93,15 @@ const dsmFetch = vi.fn((url: string) => {
   );
 });
 
-function answer(channel: string, payload: { file?: unknown }): unknown {
+function answer(
+  channel: string,
+  payload: { file?: unknown; commands?: { label: string; ids: string[] }[] },
+): unknown {
   if (channel === 'survey:writeMeasurements') {
     if (io.writeFails) return { ok: true, value: { ok: false, error: 'Disk full' } };
     io.saved = MeasurementsFile.parse(JSON.parse(JSON.stringify(payload.file)) as unknown);
     io.writes++;
+    io.labels = new Map((payload.commands ?? []).flatMap((c) => c.ids.map((id) => [id, c.label])));
     return { ok: true, value: { ok: true } };
   }
   if (channel === 'survey:readMeasurements')
@@ -107,7 +113,10 @@ function answer(channel: string, payload: { file?: unknown }): unknown {
 
 vi.mock('../shell', () => ({
   bridge: {
-    call: async (channel: string, payload: { file?: unknown }) => {
+    call: async (
+      channel: string,
+      payload: { file?: unknown; commands?: { label: string; ids: string[] }[] },
+    ) => {
       if (channel === 'survey:writeMeasurements' && io.gate) await io.gate;
       return answer(channel, payload);
     },
@@ -202,6 +211,7 @@ const kitMeasurements = () =>
 beforeEach(() => {
   io.saved = { schema: 'aio.measurements/1', measurements: [] };
   io.writes = 0;
+  io.labels = new Map();
   io.readOnly = false;
   io.volumes = null;
   io.gate = null;
@@ -237,6 +247,8 @@ describe('kit piles on load', () => {
     expect(io.saved.kitPilesConverted).toEqual(['P01']);
     expect(io.saved.measurements.map((x) => x.id)).toContain(m?.id);
     expect(io.saved.measurements.map((x) => x.id)).toContain('mine');
+    // the journal names it as the app's migration, not a person's edit
+    expect(io.labels.get(m?.id ?? '')).toBe('Stockpile kit piles converted to volume measurements');
     // the pile names no material and the site has none: the kit's density stays, so the card,
     // the Volumes view and its CSV still show tonnes
     // worked out at read time: no material id is stored, the site's materials are untouched
@@ -392,6 +404,7 @@ describe('kit pile heights', () => {
     expect(zs(after)).toEqual([52, 52, 52]);
     expect(io.writes).toBe(2);
     expect(io.saved.kitHeightsRepaired).toEqual([before?.id]);
+    expect(io.labels.get(before?.id ?? '')).toBe('Heights of converted kit piles repaired');
     expect(zs(io.saved.measurements.find((x) => x.id === before?.id))).toEqual([52, 52, 52]);
     // a migration, not an edit: the figures and their dates stay as they were
     expect(after?.results).toEqual(before?.results);
@@ -574,6 +587,24 @@ describe('the app accepting a converted pile on its own', () => {
     }),
   });
 
+  it('the figures go on the file and the baseline, written once and named as a migration', async () => {
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    const pile = kitMeasurements()[0];
+    if (!pile) throw new Error('no pile');
+    const writes = io.writes;
+    expect(
+      await acceptKitQuietly('p1', [{ m: acceptedOf(pile), key: measureInputsKey(pile) }]),
+    ).toEqual([pile.id]);
+    expect(io.writes).toBe(writes + 1);
+    expect(io.saved.measurements[0]?.results[0]?.netM3).toBe(99);
+    expect(isDirty(measureStore.getState())).toBe(false);
+    // History names it: never "Measurement edited"
+    expect(io.labels.get(pile.id)).toBe(
+      'Earlier-version piles given the standard base on their own',
+    );
+  });
+
   it('a vertex moved and not saved: the figures for it go on the file only', async () => {
     io.volumes = volumes();
     await open({ schema: 'aio.measurements/1', measurements: [] });
@@ -631,6 +662,9 @@ describe('after a volumetric job', () => {
     expect(kitMeasurements()).toHaveLength(2);
     expect(measureStore.getState().file.kitPilesConverted).toEqual(['P01', 'P03']);
     expect(io.writes).toBe(2);
+    expect(io.labels.get(added?.id ?? '')).toBe(
+      'Piles from the stockpile build added as volume measurements',
+    );
     expect(isDirty(measureStore.getState())).toBe(false);
   });
 

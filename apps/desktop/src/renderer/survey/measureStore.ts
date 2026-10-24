@@ -68,6 +68,7 @@ import {
   type SnapSettings,
   type SnapSource,
 } from '@aio/survey';
+import { t } from '@aio/ui';
 import { shiftKey, workspace } from '@aio/workspace';
 import { createStore, useStore } from 'zustand';
 import { authorName } from '../author';
@@ -446,7 +447,13 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
   patch.kitDensity = kitDensity(read?.volumes ?? null);
   set(patch);
   // a writable project keeps the conversion on disk at once; a package keeps it in memory only
-  if (write) await writeConversion(projectId, file, epoch);
+  if (write)
+    await writeConversion(
+      projectId,
+      file,
+      epoch,
+      converted && kitRead ? 'audit.migration.kitConverted' : 'audit.migration.kitHeights',
+    );
 }
 
 const folderKey = (root: string) => root.replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase();
@@ -543,9 +550,10 @@ async function writeConversion(
   projectId: string,
   file: MeasurementsFile,
   epoch: number,
+  label: MigrationLabel,
 ): Promise<void> {
   set({ saving: true });
-  const r = await writeFile(projectId, file);
+  const r = await writeFile(projectId, file, migrationCommands(file, label));
   if (r.ok && r.value.ok && file.kitPilesConverted !== undefined) markUnwritten.delete(projectId);
   if (loadEpoch !== epoch || get().projectId !== projectId) return;
   const ok = r.ok && r.value.ok;
@@ -608,7 +616,7 @@ export async function convertAfterJob(projectId: string): Promise<void> {
     resultsUnwritten: true,
     kitDensity: kitDensity(r.value.volumes),
   });
-  await writeConversion(projectId, baseline, epoch);
+  await writeConversion(projectId, baseline, epoch, 'audit.migration.kitBuilt');
 }
 
 /**
@@ -720,7 +728,7 @@ export async function repairKitHeightsNow(projectId: string): Promise<string[]> 
     ...repairedInUndo(s, current.file, current.repaired),
   });
   if (!s.readOnly && baseline.repaired.length > 0)
-    await writeConversion(projectId, baseline.file, epoch);
+    await writeConversion(projectId, baseline.file, epoch, 'audit.migration.kitHeights');
   return current.repaired;
 }
 
@@ -809,13 +817,48 @@ export async function acceptKitQuietly(
     return taken;
   }
   set({ file, savedText: text(baseline), resultsUnwritten: true });
-  await writeConversion(projectId, baseline, epoch);
+  await writeConversion(projectId, baseline, epoch, 'audit.migration.kitAccepted');
   return taken;
 }
 
+/** The journal label of each of the app's own migrations of old kit piles. */
+type MigrationLabel =
+  | 'audit.migration.kitConverted'
+  | 'audit.migration.kitBuilt'
+  | 'audit.migration.kitHeights'
+  | 'audit.migration.kitAccepted';
+
+/** An `EditCommand` id list holds at most this many ids (`@aio/schema`). */
+const COMMAND_IDS_MAX = 10_000;
+
+/**
+ * The labelled commands of a migration's write: it is written on the file as last saved, so every
+ * record the write changes is the migration's, and History names it rather than "Measurement
+ * edited" (a migration, not a person's edit).
+ */
+export function migrationCommands(
+  file: MeasurementsFile,
+  key: MigrationLabel,
+): { label: string; ids: string[] }[] {
+  const label = t(key);
+  const ids = file.measurements.map((m) => m.id);
+  const out: { label: string; ids: string[] }[] = [];
+  for (let i = 0; i < ids.length; i += COMMAND_IDS_MAX)
+    out.push({ label, ids: ids.slice(i, i + COMMAND_IDS_MAX) });
+  return out;
+}
+
 /** Write the file, chained after the project's writes in flight (a load waits for them). */
-function writeFile(projectId: string, file: MeasurementsFile) {
-  const write = bridge.call('survey:writeMeasurements', { projectId, file });
+function writeFile(
+  projectId: string,
+  file: MeasurementsFile,
+  commands?: { label: string; ids: string[] }[],
+) {
+  const write = bridge.call('survey:writeMeasurements', {
+    projectId,
+    file,
+    ...(commands?.length ? { commands } : {}),
+  });
   const chain = Promise.allSettled([writing.get(projectId), write]);
   writing.set(projectId, chain);
   void chain.then(() => {
