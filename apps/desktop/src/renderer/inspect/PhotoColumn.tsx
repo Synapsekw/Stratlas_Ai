@@ -382,7 +382,7 @@ export function PhotoColumn(p: {
                             className="insp-b ok mono"
                             role="img"
                             aria-label={okText}
-                            style={{ ['--c' as string]: f.color }}
+                            style={{ ['--c' as string]: f.confirmedColor }}
                           >
                             <i />
                             {confirmed}

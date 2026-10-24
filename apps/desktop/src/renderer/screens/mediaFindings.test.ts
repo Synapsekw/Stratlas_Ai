@@ -207,3 +207,22 @@ describe('photo order', () => {
     expect(orderPhotos(items, 'thermal', index, true, 'file')).toEqual([]);
   });
 });
+
+describe('the colour of the confirmed findings', () => {
+  it('takes only issues, so a worse waiting draft does not recolour it', () => {
+    const index = findingsIndex(
+      manifest,
+      [issue('1', 1, [{ on: 'image', layer: 'photos', photo: 'p9', geom: box }])],
+      [det({ id: 'w', severity: 3, source: { kind: 'photo', layer: 'photos', photo: 'p9' } })],
+    );
+    expect(index.get('photos/p9')).toMatchObject({
+      color: '#ee3f4b',
+      confirmedColor: '#fad34b',
+    });
+  });
+
+  it('is neutral when the photo has only drafts', () => {
+    const index = findingsIndex(manifest, [], [det({ id: 'w', severity: 3 })]);
+    expect(index.get('photos/p3')?.confirmedColor).toBe('#8a94a6');
+  });
+});

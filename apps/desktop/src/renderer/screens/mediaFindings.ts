@@ -33,6 +33,8 @@ export interface PhotoFindings {
   levels: number[];
   /** Colour of the worst finding. */
   color: string;
+  /** Colour of the worst confirmed issue (drafts left out); neutral when there is none. */
+  confirmedColor: string;
   /** Severity label of the worst finding (empty when not graded). */
   label: string;
   /** Issue ids on the photo, worst first. */
@@ -81,6 +83,7 @@ export function findingsIndex(
         count: 0,
         rank: -1,
         color: NEUTRAL,
+        confirmedColor: NEUTRAL,
         label: '',
         issueIds: [],
         shapes: [],
@@ -105,6 +108,7 @@ export function findingsIndex(
   };
   /** Photos each issue is on, so a detection already made into that issue is not counted twice. */
   const onPhoto = new Set<string>();
+  const confirmedRank = new Map<string, number>();
 
   for (const issue of issues) {
     const lv = levelOf(models.get(issue.severityModelId), issue.severity);
@@ -120,6 +124,10 @@ export function findingsIndex(
         e.issues += 1;
         e.ranked.push({ id: issue.id, rank: rankOfSeverity(issue.severity) });
         worse(e, rankOfSeverity(issue.severity), lv, color);
+        if (rankOfSeverity(issue.severity) > (confirmedRank.get(key) ?? -1)) {
+          confirmedRank.set(key, rankOfSeverity(issue.severity));
+          e.confirmedColor = color;
+        }
       }
       if (s.geom.type !== 'mask')
         e.shapes.push({ geom: s.geom, grid: null, color, draft: issue.status === 'draft' });

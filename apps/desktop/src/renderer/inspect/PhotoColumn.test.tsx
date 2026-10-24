@@ -24,6 +24,7 @@ vi.mock('../thumbs/photoSize', () => ({ photoSize }));
 vi.mock('../thumbs/Thumb', () => ({ MediaThumb: () => null }));
 
 const SEVERE_COLOR = '#c0392b';
+const LOW_COLOR = '#2e9e5b';
 
 const item = (id: string, extra: object = {}) => ({
   id,
@@ -91,6 +92,7 @@ const found = (o: Partial<PhotoFindings>): PhotoFindings => ({
   rank: 3,
   levels: [3],
   color: SEVERE_COLOR,
+  confirmedColor: SEVERE_COLOR,
   label: 'High',
   issueIds: [],
   shapes: [],
@@ -99,7 +101,8 @@ const found = (o: Partial<PhotoFindings>): PhotoFindings => ({
 
 // p2: one confirmed issue and one waiting draft; p3: one confirmed issue
 const index = new Map<string, PhotoFindings>([
-  ['set/p2', found({ issues: 1, detections: 1, drafts: 1, count: 2 })],
+  // a worse draft than the confirmed issue: the confirmed badge keeps the issue's colour
+  ['set/p2', found({ issues: 1, detections: 1, drafts: 1, count: 2, confirmedColor: LOW_COLOR })],
   ['set/p3', found({ issues: 1, count: 1 })],
 ]);
 
@@ -203,7 +206,8 @@ describe('the photo column', () => {
       '1 AI suggestion waiting',
     );
     expect(t.querySelector('.insp-b.ok')?.getAttribute('aria-label')).toBe('1 confirmed finding');
-    expect(t.querySelector('.insp-b.ok')?.getAttribute('style')).toContain(SEVERE_COLOR);
+    expect(t.querySelector('.insp-b.ok')?.getAttribute('style')).toContain(LOW_COLOR);
+    expect(tile('p3').querySelector('.insp-b.ok')?.getAttribute('style')).toContain(SEVERE_COLOR);
     expect(tile('p3').querySelector('.insp-b.ai')).toBeNull();
     expect(tile('p1').querySelector('.insp-b')).toBeNull();
   });
