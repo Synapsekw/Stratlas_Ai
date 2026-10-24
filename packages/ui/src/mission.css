@@ -1187,7 +1187,7 @@ select.input option {
 /* the date's survey surface preparing or ready (volumetrics redesign, board 7) */
 .dstatus {
   flex: none;
-  font-size: 11px;
+  font-size: var(--t-11);
   font-variant-numeric: tabular-nums;
   color: var(--fg-2);
   white-space: nowrap;

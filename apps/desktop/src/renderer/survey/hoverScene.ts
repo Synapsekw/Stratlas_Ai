@@ -309,6 +309,7 @@ function pointerInput(
 function overlay(host: HTMLElement, className: string) {
   const root = document.createElement('div');
   root.className = className;
+  root.dataset.surface = 'dark';
   root.setAttribute('aria-hidden', 'true');
   const tag = document.createElement('span');
   tag.className = 'link-tag';
