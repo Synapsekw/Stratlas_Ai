@@ -1,0 +1,154 @@
+/* The Inspect screen: the photo column, the open photo and the findings or the review queue.
+   Under 1000 px (findings.ts, DRAWER_BELOW) the right panel is a drawer over the viewer. */
+.screen.inspect {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-0);
+  outline: none;
+}
+.insp-zone {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.insp-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr) 300px;
+}
+.screen.inspect.narrow .insp-body {
+  grid-template-columns: 208px minmax(0, 1fr);
+}
+.insp-left,
+.insp-right {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--bg-1);
+}
+.insp-left {
+  border-inline-end: 1px solid var(--line-soft);
+}
+.insp-right {
+  border-inline-start: 1px solid var(--line-soft);
+  overflow: auto;
+}
+/* the drawer: under the viewer's header, over its right edge, never wider than most of it */
+.insp-right.drawer {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  z-index: 15;
+  width: min(300px, 70%);
+  box-shadow: -8px 0 24px var(--shadow);
+}
+.insp-review {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.insp-center {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.insp-center-h {
+  display: grid;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--bg-1);
+}
+.insp-center-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.insp-center-row .grow {
+  flex: 1;
+}
+.insp-center-h h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--t-13);
+  font-weight: 500;
+}
+.insp-center-h .insp-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.insp-main {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.insp-view {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.insp-view > .side-empty {
+  margin: auto;
+}
+.insp-hint {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: var(--t-11);
+  border-top: 1px solid var(--line-soft);
+}
+
+/* the chip under a dashed AI box: class, confidence, Accept and Dismiss */
+.insp-inline {
+  position: absolute;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--bg-2) 92%, transparent);
+  border: 1px dashed var(--warn);
+  font-size: var(--t-11);
+  white-space: nowrap;
+}
+.insp-inline.on {
+  border-style: solid;
+}
+.insp-inline button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--fg-1);
+}
+.insp-inline button:hover {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.insp-inline .insp-inline-name b {
+  color: var(--warn);
+  font-weight: 600;
+}
+.insp-inline button.ok {
+  color: var(--warn);
+}
