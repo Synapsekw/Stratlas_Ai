@@ -54,6 +54,7 @@ import { watchPanoStitches } from '../panos/panoJobs';
 import { pickAndScanPanos } from '../panos/panos';
 import { PanoSphereRows } from '../panos/PanoSphereRows';
 import { shell, useShell } from '../shell';
+import { useSurfacePrepareStatus } from '../survey/PreparingCard';
 import { filterTerms } from '../survey/measureFilter';
 import { prepareSurfaces } from '../survey/compareStore';
 import { moveMeasurementsToDate } from '../survey/measureMoveRun';
@@ -305,6 +306,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const index = useCaptureIndex();
   const focus = useTimeline((s) => s.focus);
   const datesOn = !collapsed && index !== null && index.captures.length > 0;
+  // each date a prepare job worked on since the project opened: "preparing 62 %", then "ready"
+  const prepStatus = useSurfacePrepareStatus();
   const tags = useMemo(() => (index ? dateTags(index.captures) : {}), [index]);
   // survey dates on: each date folder holds its own Measurements group (Every date none), and the
   // measurements of no date (the legacy whole site, or a date since deleted) show once below the
@@ -357,6 +360,19 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       measureQuery,
       filteringMeasures,
     ],
+  );
+  const statusFolders = useMemo(
+    () =>
+      prepStatus.size === 0
+        ? folders
+        : folders.map((f) => {
+            const st = f.capture ? prepStatus.get(f.capture.id) : undefined;
+            if (st?.kind === 'ready') return { ...f, status: t('surface.state.ready') };
+            if (st?.kind === 'preparing')
+              return { ...f, status: t('surface.state.preparing', { pct: st.pct }) };
+            return f;
+          }),
+    [folders, prepStatus, t],
   );
   const after = useMemo(() => {
     if (!datesOn) return [];
@@ -1088,7 +1104,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       />
       {datesOn ? (
         <DateTree
-          folders={folders}
+          folders={statusFolders}
           tags={tags}
           focus={focus}
           onFocus={(id) => {

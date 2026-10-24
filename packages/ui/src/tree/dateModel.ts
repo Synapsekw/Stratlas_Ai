@@ -64,6 +64,8 @@ export interface DateFolder {
   sub?: string;
   /** Said in the folder's tooltip when the date is lined up with another (`lineUp.folder`). */
   lineUp?: string;
+  /** A short status after the date's name (its survey surface preparing or ready); absent: none. */
+  status?: string;
   groups: TreeGroup[];
   layerIds: string[];
 }

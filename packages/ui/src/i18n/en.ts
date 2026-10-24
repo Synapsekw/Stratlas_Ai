@@ -5820,6 +5820,7 @@ export const en = {
   'surface.state.none': 'No elevation for this date',
   'surface.preparing.title': 'Preparing survey surfaces',
   'surface.preparing.count': 'Preparing {done} of {total}',
+  'surface.preparing.pct': '{pct} %',
   'surface.preparing.onOpen': 'Started on its own when the project opened. You can keep working.',
   'settings.autoPrepare.label': 'Prepare survey surfaces when a project opens',
   'settings.autoPrepare.hint': 'Runs in the background and shows in Jobs. You can cancel it.',

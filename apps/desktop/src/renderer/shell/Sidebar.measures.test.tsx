@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import {
   emptyMeasurements,
+  type HeightTiles,
+  type JobRecord,
   ProjectManifest,
   type RemoveTarget,
   type SitePoint,
@@ -25,7 +27,8 @@ vi.mock('@aio/annotate', async (orig) => ({
   isAnnotateReadOnly: () => lookOnly.on,
 }));
 
-import { shell } from '../shell';
+import { jobs, shell } from '../shell';
+import { preparedSurfaces } from '../survey/surfaceStates';
 import {
   askNewFolder,
   deleteMeasurements,
@@ -926,5 +929,50 @@ describe('Datasets: measurements under survey dates', () => {
       revealMeasurement(null);
     });
     expect(head()?.getAttribute('aria-expanded')).toBe('false');
+  });
+});
+
+describe('Datasets: survey date surface status', () => {
+  const status = (id: string) => q(`[data-testid="date-status-${id}"]`)?.textContent ?? null;
+  const prepJob = (status: JobRecord['status'], progress: number): JobRecord => ({
+    id: 'jp',
+    pipeline: 'survey.prepare',
+    project: 'C:/p',
+    params: {
+      surfaces: [{ id: 's2', name: 'x', source: { kind: 'cloud', layer: 'pc2' }, capture: 'c2' }],
+    },
+    status,
+    progress,
+    steps: [],
+    artifacts: [],
+    createdAt: '',
+    updatedAt: '',
+  });
+  afterEach(() => {
+    jobs.setState({ jobs: [] });
+    preparedSurfaces.setState({ projectId: null, surfaces: [] });
+  });
+
+  it('a sidebar date row reads "preparing 62 %" while its job runs and "ready" after, nothing when no job ran', () => {
+    render(dated);
+    expect(status('c1')).toBeNull();
+    expect(status('c2')).toBeNull();
+    act(() => {
+      jobs.setState({ jobs: [prepJob('running', 0.62)] });
+    });
+    expect(status('c2')).toBe('preparing 62 %');
+    // a date no job prepared says nothing
+    expect(status('c1')).toBeNull();
+    act(() => {
+      jobs.setState({ jobs: [prepJob('done', 1)] });
+      preparedSurfaces.setState({
+        projectId: 'p',
+        surfaces: [
+          { id: 's2', capture: 'c2', source: { kind: 'cloud', layer: 'pc2' } },
+        ] as unknown as HeightTiles[],
+      });
+    });
+    expect(status('c2')).toBe('ready');
+    expect(status('c1')).toBeNull();
   });
 });

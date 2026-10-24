@@ -501,3 +501,83 @@ fieldset:disabled .sv-pick {
 .mc .sv-sub select.sv-input {
   min-width: 96px;
 }
+
+/* Survey surfaces preparing (PreparingCard.tsx, board 7): a card in a stage foot corner while a
+   prepare job runs, one row per date with "ready" or its percentage and a thin bar. */
+.prep-card {
+  display: grid;
+  gap: var(--sp-3);
+  inline-size: 330px;
+  max-inline-size: 100%;
+  padding-block: var(--sp-3);
+  padding-inline: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  background: var(--scrim);
+  box-shadow: var(--el-2);
+  color: var(--fg-1);
+  font-size: var(--t-12);
+}
+.prep-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+.prep-title {
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.prep-count {
+  margin-inline-start: auto;
+  color: var(--fg-2);
+  font-size: var(--t-11);
+  white-space: nowrap;
+}
+.prep-rows {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.prep-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  row-gap: var(--sp-1);
+  column-gap: var(--sp-3);
+  align-items: baseline;
+}
+.prep-status {
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.prep-row[data-state='ready'] .prep-status {
+  color: var(--ok);
+}
+.prep-bar {
+  grid-column: 1 / -1;
+  block-size: 2px;
+  border-radius: var(--r-2);
+  background: var(--bg-3);
+  overflow: hidden;
+}
+.prep-fill {
+  display: block;
+  block-size: 100%;
+  background: var(--acc);
+  transition: inline-size 240ms ease-out;
+}
+.prep-row[data-state='ready'] .prep-fill {
+  background: var(--ok);
+}
+.prep-note {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: var(--t-11);
+}
+@media (prefers-reduced-motion: reduce) {
+  .prep-fill {
+    transition: none;
+  }
+}

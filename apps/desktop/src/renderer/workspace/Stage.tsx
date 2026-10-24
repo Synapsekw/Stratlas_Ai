@@ -44,6 +44,7 @@ import { StageClassLegend, StageElevationLegend } from './StageLegends';
 import { VolumeSection } from './VolumeSection';
 import { CleanupHost } from '../pointcloud/CleanupHost';
 import { DesignsMount } from '../survey/Designs';
+import { PreparingCardView, usePreparingCard } from '../survey/PreparingCard';
 import { HaulRoadMount } from '../survey/HaulRoad';
 import { HydroMount } from '../survey/Hydro';
 import './m8Mounts';
@@ -347,6 +348,9 @@ export function useStageCorners(o: StageCornersInput): {
   const basemap = useStageBasemap(o.show3d, o.showMap);
   const dates = useDatesShown() && !o.splitting;
   const volHint = useVolumeHint() && o.show3d;
+  // survey surfaces preparing (board 7): the foot of the stage, the corner away from the readout
+  const preparing = usePreparingCard();
+  const prepShown = preparing !== null;
   const status = o.roadMeasure || cutaway || notice !== null;
   const basemapAt = o.basemapAt ?? END;
   const topTaken = o.topTaken ?? NO_CORNERS;
@@ -357,6 +361,10 @@ export function useStageCorners(o: StageCornersInput): {
       ...topTaken.map((c) => ({ id: `island-${c}`, want: [c] })),
       { id: 'status', want: status ? ['tl', 'bl'] : [] },
       { id: 'basemap', want: basemap ? basemapAt : [] },
+      {
+        id: 'preparing',
+        want: prepShown ? (o.cursor === 'bl' ? ['br', 'bl'] : ['bl', 'br']) : [],
+      },
       // the volumes hint at the foot, the corner away from the readout first (I-R51); in a split
       // the 3D pane's own foot, the readout giving way while it shows (the other pane's foot is
       // another view's: the map's scale and credits)
@@ -375,6 +383,7 @@ export function useStageCorners(o: StageCornersInput): {
     status,
     basemap,
     basemapAt,
+    prepShown,
     volHint,
     dates,
     topTaken,
@@ -426,6 +435,7 @@ export function useStageCorners(o: StageCornersInput): {
           </div>,
         )}
         {basemap && at('basemap', <StageBasemapChip view={basemap} />)}
+        {preparing && at('preparing', <PreparingCardView model={preparing} />)}
         {at('volHint', <VolumeHint />)}
         {/* // --- RF coverage legend (rf-ui) --- */}
         {at('rfLegend', <StageCoverageLegend />)}

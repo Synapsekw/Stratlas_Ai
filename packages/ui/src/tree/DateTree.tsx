@@ -353,6 +353,11 @@ export function DateTree(props: DateTreeProps) {
                   {f.sub && <span className="dsub">{f.sub}</span>}
                 </button>
               )}
+              {f.status && (
+                <span className="dstatus" data-testid={`date-status-${f.id}`}>
+                  {f.status}
+                </span>
+              )}
               {on > 0 && (
                 <span className="don" data-testid={`date-on-${f.id}`}>
                   {t('tree.dates.on', { count: on })}

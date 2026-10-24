@@ -1184,6 +1184,14 @@ select.input option {
   color: var(--fg-2);
   font-style: italic;
 }
+/* the date's survey surface preparing or ready (volumetrics redesign, board 7) */
+.dstatus {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
 .don {
   font-size: 11px;
   color: var(--fg-2);
