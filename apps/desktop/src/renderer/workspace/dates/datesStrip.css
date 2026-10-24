@@ -140,6 +140,21 @@
   .ds-pile .pc-chip-x {
     flex: none;
   }
+  /* with the Dates | Footage switch at its left (a video project) the bar keeps about 300 px:
+     the modes, Fit and fold tighten further, and an empty key gives its gap back */
+  .tl-wrap[data-switch] .ds-bar.tl-h {
+    padding-inline-start: calc(var(--tl-switch-w) + var(--sp-3));
+  }
+  .tl-wrap[data-switch] .ds-bar .seg button {
+    padding-inline: var(--sp-2);
+    font-size: var(--t-11);
+  }
+  .tl-wrap[data-switch] .ds-bar .tool {
+    inline-size: 22px;
+  }
+  .tl-wrap[data-switch] .ds-bar > .ds-key:not(:has(.ds-pile, .ds-preview)) {
+    display: none;
+  }
 }
 
 /* ---------- the chart: 130 px ---------- */
