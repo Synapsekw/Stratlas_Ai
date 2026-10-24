@@ -5,15 +5,21 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const h = vi.hoisted(() => ({ models: [] as unknown[] }));
+const h = vi.hoisted(() => ({ models: [] as unknown[], answers: new Map<unknown, unknown>() }));
 
 vi.mock('../../shell', () => ({
-  useCall: () => ({
-    ok: true,
-    value: { runtime: { available: true, provider: 'cpu', version: '1' }, models: h.models },
-  }),
+  // as the real one: the list is read again only when the key changes
+  useCall: (_channel: string, _req: unknown, key: unknown) => {
+    if (!h.answers.has(key))
+      h.answers.set(key, {
+        ok: true,
+        value: { runtime: { available: true, provider: 'cpu', version: '1' }, models: h.models },
+      });
+    return h.answers.get(key);
+  },
 }));
 
+import { modelsChanged } from '../../inspect/askAi/modelsRevision';
 import { askAiPrefs, setAskAiPrefs } from '../../inspect/askAi/prefs';
 import { AskAiSettings } from './AskAiSettings';
 
@@ -76,6 +82,7 @@ function pick(id: string, value: string) {
 beforeEach(() => {
   localStorage.clear();
   h.models = [model];
+  h.answers.clear();
   setAskAiPrefs({
     backend: 'auto',
     localModel: null,
@@ -96,6 +103,18 @@ afterEach(() => {
 });
 
 describe('AskAiSettings', () => {
+  it('lists a model imported while the panel is open', () => {
+    mount();
+    const options = () =>
+      [...(byId('ask-ai-model')?.querySelectorAll('option') ?? [])].map((o) => o.textContent);
+    expect(options()).toEqual(['Site model']);
+    h.models = [model, { ...model, id: 'm2', card: { ...model.card, name: 'New model' } }];
+    act(() => {
+      modelsChanged();
+    });
+    expect(options()).toEqual(['Site model', 'New model']);
+  });
+
   it('saves the backend choice', () => {
     mount();
     act(() => {

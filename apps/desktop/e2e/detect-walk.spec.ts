@@ -212,7 +212,7 @@ test.describe('local detection on 360 video', () => {
     await expect(win.getByTestId('cloud-confirm-line')).toHaveCount(0);
     const progress = win.getByTestId('ask-ai-run');
     await expect(progress).toContainText(
-      `AI checked 3 photos and found ${String(EXPECTED.length)}.`,
+      `AI checked 3 frames and found ${String(EXPECTED.length)}.`,
       {
         timeout: 120_000,
       },

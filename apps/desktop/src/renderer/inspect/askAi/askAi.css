@@ -217,3 +217,11 @@
     transition: none;
   }
 }
+
+/* detector runs waiting for the graphics card, under the run strip */
+.ask-queue {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--bg-1);
+}

@@ -2,12 +2,15 @@
  * The Ask AI run strip: what the AI is checking and how far it got, Stop while it runs, and when
  * it ended what happened, "Try the n left again" (it sends only the items not looked at, on the
  * same backend and without a new confirm), "Review n suggestions" (the review queue) and Close.
+ * Stop says "Stopping" until the run has ended. Under it, the detector runs waiting for the
+ * graphics card, each with Cancel, whether or not an Ask AI run shows.
  */
 import { useAnnotateReadOnly } from '@aio/annotate';
 import { Tip, useT } from '@aio/ui';
 import { useState, type ReactElement } from 'react';
 import { openQueue } from '../inspectUi';
 import { clearAskRun, retryAskRun, stopAskRun, useAskAiRun, type AskRun } from './runs';
+import { WaitingRuns } from './WaitingRuns';
 import './askAi.css';
 
 function line(t: ReturnType<typeof useT>, run: AskRun): string {
@@ -21,7 +24,12 @@ function line(t: ReturnType<typeof useT>, run: AskRun): string {
         done: run.done,
       });
     case 'done':
-      return t('askAi.run.done', { count: run.total, found: run.found });
+      return t(run.frames ? 'askAi.run.doneFrames' : 'askAi.run.done', {
+        count: run.total,
+        found: run.found,
+      });
+    case 'stopping':
+      return t('askAi.run.stopping', { done: run.done, count: run.total });
     case 'stopped':
       return t('askAi.run.stopped', { done: run.done, count: run.total });
     case 'failed':
@@ -29,7 +37,16 @@ function line(t: ReturnType<typeof useT>, run: AskRun): string {
   }
 }
 
-export function RunStrip(): ReactElement | null {
+export function RunStrip(): ReactElement {
+  return (
+    <>
+      <RunLine />
+      <WaitingRuns />
+    </>
+  );
+}
+
+function RunLine(): ReactElement | null {
   const t = useT();
   const readOnly = useAnnotateReadOnly();
   const run = useAskAiRun((s) => s.run);
@@ -37,14 +54,17 @@ export function RunStrip(): ReactElement | null {
   const [error, setError] = useState<string | null>(null);
   if (!run) return null;
   const busy = run.phase === 'running' || run.phase === 'queued';
+  const stopping = run.phase === 'stopping';
   const pct = run.total > 0 ? Math.min(100, (run.done / run.total) * 100) : 0;
   const retry = (
     <button
       type="button"
       className="btn sm"
       data-testid="ask-ai-retry"
-      disabled={readOnly}
+      // aria-disabled, not disabled: the read-only tip must still show on hover and focus
+      aria-disabled={readOnly ? true : undefined}
       onClick={() => {
+        if (readOnly) return;
         setError(null);
         retryAskRun().catch((e: unknown) => {
           setError(e instanceof Error ? e.message : String(e));
@@ -73,7 +93,7 @@ export function RunStrip(): ReactElement | null {
           >
             {t('askAi.run.stop')}
           </button>
-        ) : (
+        ) : stopping ? null : (
           <>
             {run.remaining.length > 0 &&
               (readOnly ? <Tip content={t('inspect.readOnly')}>{retry}</Tip> : retry)}

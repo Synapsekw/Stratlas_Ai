@@ -96,9 +96,11 @@ describe('CloudConfirm', () => {
     expect(q('cloud-confirm-line')?.textContent).toBe('Send 1 photo to Anthropic, about $0.01?');
   });
 
-  it('counts video frames too', () => {
+  it('calls video frames frames', () => {
     show(info({ photos: 0, frames: 3 }));
-    expect(q('cloud-confirm-line')?.textContent).toContain('Send 3 photos to Anthropic');
+    expect(q('cloud-confirm-line')?.textContent).toContain('Send 3 frames to Anthropic');
+    show(info({ photos: 0, frames: 1 }));
+    expect(q('cloud-confirm-line')?.textContent).toContain('Send 1 frame to Anthropic');
   });
 
   it('shows the first 12 images and the text exactly as sent, one click away', () => {

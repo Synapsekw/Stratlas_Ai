@@ -3,7 +3,8 @@
  * code underneath: the cloud runner (`ai:detect` in batches), the local model (`inference:run`)
  * or the local detectors (`detect.vlm` jobs, one per photo layer). Whatever arrives stays: a run
  * that fails or is stopped keeps its suggestions and lists the items left, which Try again sends
- * on the same backend. Stop ends the strip at once (never left "checking"). A run belongs to its
+ * on the same backend. Stop says "Stopping" until the run has ended (its pass written), then
+ * "Stopped", never left "checking". A run belongs to its
  * project: opening another project stops and clears it, and nothing that arrives late from it is
  * added to the review. A cloud run never starts without the person's yes (`confirmed`, or the
  * project's "Don't ask again").
@@ -43,7 +44,8 @@ export interface AskRun {
   total: number;
   done: number;
   found: number;
-  phase: 'queued' | 'running' | 'done' | 'stopped' | 'failed';
+  /** `stopping`: Stop was pressed and the run is winding down; `stopped` once it has. */
+  phase: 'queued' | 'running' | 'stopping' | 'done' | 'stopped' | 'failed';
   error?: string;
   /** Items not looked at (after a stop or a failure); Try again sends them. */
   remaining: DetectItem[];
@@ -83,7 +85,10 @@ let active: Active | null = null;
 let seq = 0;
 
 const isLive = (token: number) => active?.token === token;
-const busy = (r: AskRun | null) => r?.phase === 'running' || r?.phase === 'queued';
+/** Stop applies to a run that is going. */
+const going = (r: AskRun | null) => r?.phase === 'running' || r?.phase === 'queued';
+/** No other run starts until this one has ended. */
+const busy = (r: AskRun | null) => going(r) || r?.phase === 'stopping';
 
 /** Change the run, unless it is no longer the one in hand. */
 function patch(token: number, f: (r: AskRun) => Partial<AskRun>): void {
@@ -193,15 +198,15 @@ async function runCloud(token: number, i: AskRunInput): Promise<void> {
       },
       progress: (p) => {
         patch(token, (r) => {
-          // stopped stays stopped while the batch in flight still answers
-          const held = r.phase === 'stopped' && p.phase === 'running';
+          // stopping stays stopping while the batch in flight still answers
+          const held = r.phase === 'stopping' && p.phase === 'running';
           return {
             done: p.imagesDone,
             total: p.images,
             found: p.found,
-            phase: held ? 'stopped' : p.phase,
+            phase: held ? 'stopping' : p.phase,
             ...(p.error !== undefined ? { error: p.error } : {}),
-            remaining: held ? items.slice(p.imagesDone) : p.phase === 'running' ? [] : p.remaining,
+            remaining: p.phase === 'running' ? [] : p.remaining,
           };
         });
       },
@@ -211,9 +216,13 @@ async function runCloud(token: number, i: AskRunInput): Promise<void> {
   if (active?.token === token)
     active.stop = () => {
       runner.stop();
-      patch(token, (r) => ({ phase: 'stopped', remaining: items.slice(r.done) }));
+      patch(token, () => ({ phase: 'stopping' }));
     };
   await runner.done;
+  // the runner ends with its own phase; a run still winding down ends here
+  patch(token, (r) =>
+    r.phase === 'stopping' ? { phase: 'stopped', remaining: items.slice(r.done) } : {},
+  );
 }
 
 async function runLocal(
@@ -245,7 +254,7 @@ async function runLocal(
   if (active?.token === token)
     active.stop = () => {
       void bridge.call('inference:cancel', { runId });
-      patch(token, (r) => ({ phase: 'stopped', remaining: rest(r, false) }));
+      patch(token, () => ({ phase: 'stopping' }));
     };
   let res: Awaited<ReturnType<typeof bridge.call<'inference:run'>>>;
   try {
@@ -271,7 +280,7 @@ async function runLocal(
     if (error !== null) return { phase: 'failed', error, remaining: rest(r, true) };
     const ok = res.ok && res.value.ok ? res.value : null;
     skipped = ok?.skipped ?? skipped;
-    const stopped = r.phase === 'stopped' || r.done < r.total;
+    const stopped = r.phase === 'stopping' || r.done < r.total;
     return {
       phase: stopped ? 'stopped' : 'done',
       found: ok?.count ?? r.found,
@@ -303,29 +312,55 @@ async function runDetectors(token: number, i: AskRunInput, chosen: Chosen[]): Pr
   const refused = new Map<number, string>();
   const jobOf = (id: string) =>
     jobs.getState().jobs.find((j) => j.pipeline === 'detect.vlm' && j.params.run === id);
-  if (active?.token === token)
-    active.stop = () => {
-      stopped = true;
-      unsub?.();
-      ids.forEach((id, k) => {
-        const job = jobOf(id);
-        if (job && isActive(job)) void jobs.getState().cancel(job.id);
-        // a run the gate still holds leaves the queue
-        else if (!job && !refused.has(k)) void bridge.call('detect:queueCancel', { run: id });
-      });
+  /** Cancel what still runs or waits. */
+  const cancelAll = () => {
+    ids.forEach((id, k) => {
+      const job = jobOf(id);
+      if (job && isActive(job)) void jobs.getState().cancel(job.id);
+      // a run the gate still holds leaves the queue
+      else if (!job && !refused.has(k)) void bridge.call('detect:queueCancel', { run: id });
+    });
+  };
+  /** Stopping until no job of this run is active any more; then stopped, with what is left. */
+  let settled = false;
+  const settleStop = () => {
+    if (settled) return;
+    if (isLive(token) && ids.some((id) => isActive(jobOf(id) ?? { status: 'done' }))) return;
+    settled = true;
+    unsub?.();
+    unsub = null;
+    if (!isLive(token)) return;
+    void loadDetections(i.projectId, true).then(() => {
+      const passes = new Set(ids.map(vlmPassName));
       patch(token, () => ({
         phase: 'stopped',
+        found: detections.getState().review.detections.filter((d) => passes.has(d.pass)).length,
         remaining: plan.runs.flatMap((r, k) => {
           const id = ids[k];
           return id !== undefined && jobOf(id)?.status === 'done' ? [] : photosOf(r);
         }),
       }));
+    });
+  };
+  if (active?.token === token)
+    active.stop = () => {
+      stopped = true;
+      cancelAll();
+      patch(token, () => ({ phase: 'stopping' }));
+      unsub?.();
+      unsub = jobs.subscribe(settleStop);
+      settleStop();
     };
 
   for (const [k, run] of plan.runs.entries()) {
     const id = ids[k];
     if (id === undefined || isStopped() || !isLive(token)) break;
     const error = await jobs.getState().start(runRequest(i.projectRoot, id, run));
+    // a run that started while Stop was pressed is cancelled too
+    if (isStopped()) {
+      cancelAll();
+      break;
+    }
     if (error === null) continue;
     // the gate answers a run it queued with an error: the queue says whether it waits
     const q = await bridge.call('detect:queue', {});
@@ -403,7 +438,7 @@ async function runDetectors(token: number, i: AskRunInput, chosen: Chosen[]): Pr
 }
 
 export function stopAskRun(): void {
-  if (busy(askAiRun.getState().run)) active?.stop();
+  if (going(askAiRun.getState().run)) active?.stop();
 }
 
 /** Try again: the same backend on the items left (a local run continues under its own id). */

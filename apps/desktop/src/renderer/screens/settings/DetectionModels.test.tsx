@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({
   models: [] as unknown[],
   answers: new Map<string, (req: unknown) => unknown>(),
+  changed: vi.fn(),
 }));
 
 vi.mock('../../shell', () => ({
@@ -25,6 +26,8 @@ vi.mock('../../shell', () => ({
   shell: { getState: () => ({ updateSettings: vi.fn() }) },
   useShell: (sel: (s: object) => unknown) => sel({ settings: { inference: {} } }),
 }));
+
+vi.mock('../../inspect/askAi/modelsRevision', () => ({ modelsChanged: h.changed }));
 
 import { TIP_DELAY_MS } from '@aio/ui';
 import { DetectionModels } from './DetectionModels';
@@ -59,6 +62,7 @@ let root: Root | undefined;
 beforeEach(() => {
   h.models = [];
   h.answers.clear();
+  h.changed.mockReset();
   host = document.createElement('div');
   document.body.append(host);
 });
@@ -157,5 +161,7 @@ describe('Settings, Detection models', () => {
       await Promise.resolve();
     });
     expect(q('infer-import-done')?.textContent).toBe('Imported Markers.');
+    // the Ask AI settings and bar read the list again
+    expect(h.changed).toHaveBeenCalledTimes(1);
   });
 });

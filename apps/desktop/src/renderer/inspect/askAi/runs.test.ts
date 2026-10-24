@@ -224,11 +224,11 @@ describe('Ask AI runs', () => {
     expect(askAiRun.getState().run).toMatchObject({ total: 2, phase: 'running' });
   });
 
-  it('stops a cloud run at once and keeps a late batch', async () => {
+  it('says stopping until a stopped cloud run ends, and keeps a late batch', async () => {
     void cloud(photos(4));
     await flush();
     stopAskRun();
-    expect(askAiRun.getState().run?.phase).toBe('stopped');
+    expect(askAiRun.getState().run?.phase).toBe('stopping');
     expect(h.calls.some((c) => c.channel === 'ai:cancel')).toBe(true);
     answerOk(0);
     await flush();
@@ -236,7 +236,7 @@ describe('Ask AI runs', () => {
     expect(askAiRun.getState().run?.remaining).toHaveLength(2);
   });
 
-  it('stops a local run and ends as stopped, not running', async () => {
+  it('stops a local run: stopping until the run answers, then stopped, not running', async () => {
     window.localStorage.setItem(
       'stratlas.detect.classMap.p.yolo',
       JSON.stringify({ rust: 'corrosion' }),
@@ -280,7 +280,8 @@ describe('Ask AI runs', () => {
     expect(askAiRun.getState().run).toMatchObject({ backend: 'local', done: 1, found: 2 });
     stopAskRun();
     expect(h.calls.some((c) => c.channel === 'inference:cancel')).toBe(true);
-    expect(askAiRun.getState().run?.phase).toBe('stopped');
+    // the run still writes its pass: not stopped before it answers
+    expect(askAiRun.getState().run?.phase).toBe('stopping');
     h.inference?.resolve({ ok: true, value: { ok: true, file: 'model-x.json', count: 2 } });
     await flush();
     expect(askAiRun.getState().run).toMatchObject({ phase: 'stopped', done: 1, found: 2 });
@@ -294,6 +295,23 @@ describe('Ask AI runs', () => {
       ?.req as IpcRequest<'inference:run'>;
     expect(again.runId).toBe(req.runId);
     expect(again.items).toHaveLength(3);
+  });
+
+  it('starts one run when asked twice at once', async () => {
+    void cloud(photos(2));
+    void cloud(photos(2));
+    await flush();
+    expect(h.detect).toHaveLength(1);
+  });
+
+  it('does not start another run while one is stopping', async () => {
+    void cloud(photos(4));
+    await flush();
+    stopAskRun();
+    void cloud(photos(2));
+    await flush();
+    expect(h.detect).toHaveLength(1);
+    expect(askAiRun.getState().run).toMatchObject({ phase: 'stopping', total: 4 });
   });
 
   it('drops a run when the project changes', async () => {
@@ -351,6 +369,43 @@ describe('Ask AI runs', () => {
     shell.jobs.setState({ jobs: [job(0, 'done', 1), job(1, 'done', 1)] });
     await flush();
     expect(askAiRun.getState().run).toMatchObject({ done: 3, phase: 'done' });
+  });
+
+  it('stops detector runs: stopping until their jobs end, then stopped', async () => {
+    const detector = { id: 'rust-v1', name: 'Rust', classId: 'corrosion', threshold: 0.9 };
+    void startAskRun({
+      projectId: 'p',
+      projectRoot: '/projects/p',
+      manifest: MANIFEST,
+      items: photos(2),
+      check: { kind: 'everything' },
+      what: 'All photos',
+      backend: {
+        kind: 'detectors',
+        chosen: [
+          { where: 'library', detector: detector as unknown as VlmDetector, threshold: 0.7 },
+        ],
+      },
+      prefs: readPrefs(),
+    });
+    await flush();
+    const id = askAiRun.getState().run?.runIds[0];
+    const job = (status: JobRecord['status']) =>
+      ({
+        id: 'j0',
+        pipeline: 'detect.vlm',
+        project: '/projects/p',
+        params: { run: id },
+        status,
+        progress: 0.5,
+      }) as unknown as JobRecord;
+    shell.jobs.setState({ jobs: [job('running')] });
+    stopAskRun();
+    expect(askAiRun.getState().run?.phase).toBe('stopping');
+    shell.jobs.setState({ jobs: [job('cancelled')] });
+    await flush();
+    expect(askAiRun.getState().run).toMatchObject({ phase: 'stopped' });
+    expect(askAiRun.getState().run?.remaining).toHaveLength(2);
   });
 
   it('says a detector run waits while the queue holds it', async () => {

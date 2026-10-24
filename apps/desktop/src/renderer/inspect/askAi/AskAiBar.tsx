@@ -3,20 +3,24 @@
  * scope in view (this photo, the picks, all photos, or frames of a clip or walk). Which AI looks
  * is not asked here: the Settings default and what is installed decide (`resolveBackend`). A run
  * on this computer starts at once; a cloud run first shows the one-line confirm under the bar,
- * built from the same check and scope Send then starts. When nothing can look, the button is off
- * with the reason and a way to Settings.
+ * built from the same check and scope Send then starts. When nothing can look (or the detectors
+ * cannot run: no Analytics pack, a Mac, a graphics card refused), the button is off with the
+ * reason, in its tip and on the line under the bar, with a way to Settings. What can look follows
+ * the AI settings and the models installed while the screen is open.
  */
 import { useAnnotateReadOnly } from '@aio/annotate';
 import type { Layer, ProjectManifest } from '@aio/schema';
 import { Icon, Tip, useT, type PhotoPick } from '@aio/ui';
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { analyticsPack, useAnalyticsPack } from '../../analyticsPack';
 import type { DetectItem } from '../../detections/convert';
-import { shell, useCall } from '../../shell';
+import { shell, useCall, useShell } from '../../shell';
+import { useModelsRevision } from './modelsRevision';
 import { cloudConfirm, reasonKey, resolveBackend, type Availability } from './backend';
 import { checkOptions, sameCheck, type AskCheck } from './checks';
 import { classMapFor } from './classMap';
 import { CloudConfirm } from './CloudConfirm';
-import { clipItems, walkItems, WALK_EVERY } from './frames';
+import { clipItems, frameCap, walkItems, WALK_EVERY } from './frames';
 import { cloudConfirmSkipped, lastCheck, useAskAiPrefs } from './prefs';
 import { startAskRun, useAskAiRun } from './runs';
 import './askAi.css';
@@ -74,10 +78,24 @@ export function AskAiBar({
   const t = useT();
   const readOnly = useAnnotateReadOnly();
   const prefs = useAskAiPrefs((p) => p);
-  const running = useAskAiRun((s) => s.run?.phase === 'running' || s.run?.phase === 'queued');
-  const models = useCall('inference:models', {}, projectId);
+  // off until a run has ended, a stopping one included
+  const running = useAskAiRun(
+    (s) => s.run?.phase === 'running' || s.run?.phase === 'queued' || s.run?.phase === 'stopping',
+  );
+  // what can look is read again when the AI settings or the local models change
+  const aiKey = useShell((s) =>
+    JSON.stringify([
+      s.settings.cloudAi,
+      s.settings.offlineOnly === true,
+      s.settings.routes,
+      s.settings.localModel,
+      s.settings.inference?.provider,
+    ]),
+  );
+  const modelsRev = useModelsRevision();
+  const models = useCall('inference:models', {}, `${projectId}|${String(modelsRev)}|${aiKey}`);
   const dets = useCall('detectors:list', { projectId }, projectId);
-  const status = useCall('ai:status', { projectId, task: 'vision' }, projectId);
+  const status = useCall('ai:status', { projectId, task: 'vision' }, `${projectId}|${aiKey}`);
 
   const layers = manifest.layers;
   const classes = useMemo(
@@ -187,6 +205,35 @@ export function AskAiBar({
       ? [t(reasonKey(backend.reason)), backend.message].filter(Boolean).join(' ')
       : null;
 
+  // the detectors run in the Analytics pack, on an NVIDIA card: checked once some are listed
+  const hasDetectors = (avail?.detectors.length ?? 0) > 0;
+  useEffect(() => {
+    if (hasDetectors) void analyticsPack.getState().load();
+  }, [hasDetectors]);
+  const pack = useAnalyticsPack((s) => s.status);
+  const packError = useAnalyticsPack((s) => s.error);
+  const hardware = useAnalyticsPack((s) => s.hardware);
+  const hardwareError = useAnalyticsPack((s) => s.hardwareError);
+  const refused = hardware && !hardware.ok ? hardware : null;
+  const tooBusy = refused?.code === 'tooBusy' ? refused.reason : null;
+  /** Why the chosen detectors cannot run; `checking` while the pack and the card are read. */
+  const detectorBlock: { reason: string; checking?: true } | null =
+    backend?.kind !== 'detectors'
+      ? null
+      : pack === null || (hardware === null && hardwareError === null)
+        ? packError !== null
+          ? { reason: packError }
+          : { reason: t('askAi.detectors.checking'), checking: true }
+        : refused?.code === 'mac'
+          ? { reason: refused.reason }
+          : !pack.installed
+            ? { reason: pack.unusable[0]?.reason ?? t('detect.preset.pack.missing') }
+            : hardwareError !== null
+              ? { reason: t('detect.preset.settings.hw.failed') }
+              : refused && tooBusy === null
+                ? { reason: refused.reason }
+                : null;
+
   // the cloud confirm, rebuilt from whatever is in view while it is open
   const [asking, setAsking] = useState(false);
   const cloudProvider = backend?.kind === 'cloud' ? backend.provider : null;
@@ -208,10 +255,19 @@ export function AskAiBar({
   if (asking && avail && cloudProvider === null) setAsking(false);
 
   const [error, setError] = useState<string | null>(null);
-  const off = readOnly || running || !backend || backend.kind === 'none' || items.length === 0;
+  const off =
+    readOnly ||
+    running ||
+    !backend ||
+    backend.kind === 'none' ||
+    detectorBlock !== null ||
+    items.length === 0;
 
+  /** Set at once on Ask AI and Send, so a second click before the run shows starts nothing. */
+  const starting = useRef(false);
   const start = async (confirmed: boolean) => {
-    if (!backend || backend.kind === 'none') return;
+    if (!backend || backend.kind === 'none' || starting.current) return;
+    starting.current = true;
     setError(null);
     try {
       await startAskRun({
@@ -227,6 +283,9 @@ export function AskAiBar({
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      // the run has ended (or did not start): the bar's state takes over again
+      starting.current = false;
     }
   };
   const ask = () => {
@@ -280,13 +339,17 @@ export function AskAiBar({
     </button>
   );
 
-  const title = readOnly ? t('inspect.readOnly') : (why ?? undefined);
+  // a frames run that stops short of the end says so
+  const cap = scope === 'frames' && source ? frameCap(source, everyS) : null;
+  const title = readOnly ? t('inspect.readOnly') : (why ?? detectorBlock?.reason);
+  // off with a reason: aria-disabled, so the button still takes hover and focus for its tip
   const askButton = (
     <button
       type="button"
       className="btn sm ask-btn"
       data-testid="ask-ai"
-      disabled={off}
+      disabled={off && !title}
+      aria-disabled={off && title ? true : undefined}
       onClick={ask}
     >
       <Icon name="agent" size={14} className="ask-spark" />
@@ -403,23 +466,48 @@ export function AskAiBar({
         <p className="ask-note ann-faint" data-testid="ask-ai-readonly">
           {t('inspect.readOnly')}
         </p>
+      ) : backend?.kind === 'none' && backend.reason !== 'nothing' ? (
+        <p className="ask-note" data-testid="ask-ai-blocked">
+          <span>{t('askAi.none', { reason: why ?? '' })}</span>
+          <button
+            type="button"
+            className="btn link sm"
+            data-testid="ask-ai-settings"
+            onClick={() => {
+              shell.getState().openSettingsPage('ai');
+            }}
+          >
+            {t('askAi.openSettings')}
+          </button>
+        </p>
+      ) : detectorBlock && !detectorBlock.checking ? (
+        // the pack and the card live in Settings, Processing tools
+        <p className="ask-note" data-testid="ask-ai-blocked">
+          <span>{detectorBlock.reason}</span>
+          <button
+            type="button"
+            className="btn link sm"
+            data-testid="ask-ai-settings"
+            onClick={() => {
+              shell.getState().openSettingsPage('tools');
+            }}
+          >
+            {t('askAi.openTools')}
+          </button>
+        </p>
       ) : (
-        backend?.kind === 'none' &&
-        backend.reason !== 'nothing' && (
-          <p className="ask-note" data-testid="ask-ai-blocked">
-            <span>{t('askAi.none', { reason: why ?? '' })}</span>
-            <button
-              type="button"
-              className="btn link sm"
-              data-testid="ask-ai-settings"
-              onClick={() => {
-                shell.getState().openSettingsPage('ai');
-              }}
-            >
-              {t('askAi.openSettings')}
-            </button>
+        backend?.kind === 'detectors' &&
+        tooBusy !== null && (
+          // the gate queues the run until the card is free: said, not blocked
+          <p className="ask-note" data-testid="ask-ai-busy">
+            {tooBusy}
           </p>
         )
+      )}
+      {cap !== null && (
+        <p className="ask-note" data-testid="ask-ai-frames-capped">
+          {t('askAi.frames.capped', { max: cap })}
+        </p>
       )}
       {error !== null && (
         <p className="ask-note err" role="alert" data-testid="ask-ai-error">

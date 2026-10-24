@@ -4,19 +4,53 @@ import { TIP_DELAY_MS, type PhotoPick } from '@aio/ui';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { StoreApi } from 'zustand/vanilla';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const h = vi.hoisted(() => {
   const answers: Record<string, unknown> = {};
   const run: unknown = null;
-  return { answers, start: vi.fn(), openSettingsPage: vi.fn(), readOnly: false, run };
+  return {
+    answers,
+    start: vi.fn(),
+    openSettingsPage: vi.fn(),
+    loadPack: vi.fn(),
+    readOnly: false,
+    run,
+  };
 });
 
-vi.mock('../../shell', () => ({
-  useCall: (channel: string) => h.answers[channel] ?? null,
-  shell: { getState: () => ({ openSettingsPage: h.openSettingsPage }) },
-}));
+vi.mock('../../shell', async () => {
+  const { createStore } = await import('zustand/vanilla');
+  const { useStore } = await import('zustand');
+  const settings = createStore(() => ({ settings: { cloudAi: false } }));
+  return {
+    // an answer may depend on the key, as main's answer depends on what the key names
+    useCall: (channel: string, _req: unknown, key: unknown) => {
+      const a = h.answers[channel];
+      return (typeof a === 'function' ? (a as (k: unknown) => unknown)(key) : a) ?? null;
+    },
+    useShell: <T,>(sel: (s: { settings: Record<string, unknown> }) => T) => useStore(settings, sel),
+    shell: { getState: () => ({ openSettingsPage: h.openSettingsPage }) },
+    settingsStore: settings,
+  };
+});
+vi.mock('../../analyticsPack', async () => {
+  const { createStore } = await import('zustand/vanilla');
+  const { useStore } = await import('zustand');
+  const analyticsPack = createStore(() => ({
+    status: null,
+    hardware: null,
+    hardwareError: null as string | null,
+    error: null as string | null,
+    load: h.loadPack,
+  }));
+  return {
+    analyticsPack,
+    useAnalyticsPack: <T,>(sel: (s: object) => T) => useStore(analyticsPack, sel),
+  };
+});
 vi.mock('@aio/annotate', () => ({ useAnnotateReadOnly: () => h.readOnly }));
 vi.mock('../../thumbs/Thumb', () => ({ MediaThumb: () => <i data-testid="thumb" /> }));
 vi.mock('./runs', () => ({
@@ -26,12 +60,19 @@ vi.mock('./runs', () => ({
 
 const { AskAiBar } = await import('./AskAiBar');
 const { setAskAiPrefs, rememberCheck, cloudConfirmSkipped } = await import('./prefs');
+const { settingsStore } = (await import('../../shell')) as unknown as {
+  settingsStore: StoreApi<{ settings: Record<string, unknown> }>;
+};
+const { analyticsPack } = (await import('../../analyticsPack')) as unknown as {
+  analyticsPack: StoreApi<Record<string, unknown>>;
+};
 
 const manifest = {
   layers: [
     { kind: 'photos', id: 'photos', name: 'Photos', items: [{ id: 'p1' }, { id: 'p2' }] },
     { kind: 'video', id: 'clip', name: 'Clip', src: { path: 'clip.mp4' } },
     { kind: 'walk', id: 'walk', name: 'Walk', durationS: 10, src: { path: 'w.mp4' } },
+    { kind: 'walk', id: 'long', name: 'Long walk', durationS: 4000, src: { path: 'l.mp4' } },
   ],
   classCatalogues: [
     { id: 'cat', assetType: 'asset', classes: [{ id: 'corr', label: 'Corrosion' }] },
@@ -65,6 +106,25 @@ const CLOUD_ON = {
   },
 };
 const CLOUD_OFF = { ok: true, value: { ready: false, cloud: true, reason: 'no-key' } };
+const DETECTORS = {
+  ok: true,
+  value: {
+    items: [
+      {
+        where: 'library',
+        detector: {
+          id: 'rust-v1',
+          name: 'Rust',
+          classId: 'corr',
+          threshold: 0.8,
+          assetTypes: ['asset'],
+        },
+      },
+    ],
+  },
+};
+const PACK = { installed: { version: '1.0.0', dir: 'D:/pack' }, offer: null, unusable: [] };
+const CARD = { ok: true, name: 'RTX', vramMb: 16000, freeMb: 12000 };
 
 let host: HTMLDivElement;
 let root: Root;
@@ -77,6 +137,9 @@ beforeEach(() => {
   h.start.mockReset();
   h.start.mockResolvedValue(undefined);
   h.openSettingsPage.mockReset();
+  h.loadPack.mockReset();
+  settingsStore.setState({ settings: { cloudAi: false } });
+  analyticsPack.setState({ status: PACK, hardware: CARD, hardwareError: null, error: null });
   h.readOnly = false;
   h.run = null;
   h.answers = {
@@ -93,6 +156,9 @@ afterEach(() => {
 });
 
 const q = (id: string) => host.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`);
+/** Off, whether natively or (to keep its tip reachable) through aria-disabled. */
+const isOff = (id: string) =>
+  q(id)?.disabled === true || q(id)?.getAttribute('aria-disabled') === 'true';
 
 /** Hovers a control and returns the text of the tip it opens. */
 function tipOf(el: HTMLElement | null): string | undefined {
@@ -258,8 +324,12 @@ describe('AskAiBar', () => {
   it('says why nothing can run and links to Settings', async () => {
     h.answers['inference:models'] = MODELS_OFF;
     bar({ current: P1 });
-    expect(q('ask-ai')?.disabled).toBe(true);
+    // focusable, so the reason can show on hover and on keyboard focus
+    expect(q('ask-ai')?.disabled).toBe(false);
+    expect(q('ask-ai')?.getAttribute('aria-disabled')).toBe('true');
     expect(tipOf(q('ask-ai'))).toContain('Install a local model or detector in Settings');
+    await click('ask-ai');
+    expect(h.start).not.toHaveBeenCalled();
     expect(q('ask-ai-blocked')?.textContent).toContain('No AI can look at this.');
     await click('ask-ai-settings');
     expect(h.openSettingsPage).toHaveBeenCalledWith('ai');
@@ -278,17 +348,164 @@ describe('AskAiBar', () => {
   it('is off while a run is going', () => {
     h.run = { phase: 'running' };
     bar({ current: P1 });
-    expect(q('ask-ai')?.disabled).toBe(true);
+    expect(isOff('ask-ai')).toBe(true);
+    h.run = { phase: 'stopping' };
+    bar({ current: P1 });
+    expect(isOff('ask-ai')).toBe(true);
   });
 
   it('is off in a read-only package', async () => {
     h.readOnly = true;
     bar({ current: P1, selected: [P1] });
-    expect(q('ask-ai')?.disabled).toBe(true);
+    expect(q('ask-ai')?.getAttribute('aria-disabled')).toBe('true');
+    expect(tipOf(q('ask-ai'))).toBe('This package is read only.');
     expect(q('ask-ai-checks')?.disabled).toBe(true);
     expect(q('ask-ai-scope-all')?.disabled).toBe(true);
     expect(q('ask-ai-readonly')?.textContent).toBe('This package is read only.');
     await click('ask-ai');
     expect(h.start).not.toHaveBeenCalled();
+  });
+
+  it('says when a frames run is capped, and at how many frames', async () => {
+    bar({ current: P1 });
+    await click('ask-ai-scope-frames');
+    const source = host.querySelector<HTMLSelectElement>('[data-testid="ask-ai-frames-source"]');
+    act(() => {
+      if (source) {
+        source.value = 'long';
+        source.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+    await click('ask-ai-frames-every-1');
+    expect(q('ask-ai-frames-count')?.textContent).toBe('2000 frames');
+    expect(q('ask-ai-frames-capped')?.textContent).toBe(
+      'At most 2000 frames per run. Pick a longer interval to cover the whole video.',
+    );
+    await click('ask-ai-frames-every-2');
+    expect(q('ask-ai-frames-capped')).toBeNull();
+    // not for photos
+    await click('ask-ai-frames-every-1');
+    await click('ask-ai-scope-photo');
+    expect(q('ask-ai-frames-capped')).toBeNull();
+  });
+
+  it('starts one run on a double click', async () => {
+    h.start.mockReturnValue(new Promise(() => undefined));
+    bar({ current: P1 });
+    await act(async () => {
+      q('ask-ai')?.click();
+      q('ask-ai')?.click();
+      await Promise.resolve();
+    });
+    expect(h.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends once on a double click of Send', async () => {
+    h.start.mockReturnValue(new Promise(() => undefined));
+    h.answers['inference:models'] = MODELS_OFF;
+    h.answers['ai:status'] = CLOUD_ON;
+    bar({ current: P1 });
+    await click('ask-ai');
+    await act(async () => {
+      const send = q('cloud-confirm-send');
+      send?.click();
+      send?.click();
+      await Promise.resolve();
+    });
+    expect(h.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('follows the cloud setting while open', () => {
+    h.answers['inference:models'] = MODELS_OFF;
+    h.answers['ai:status'] = (key: unknown) =>
+      JSON.stringify(key).includes('true') ? CLOUD_ON : CLOUD_OFF;
+    bar({ current: P1 });
+    expect(isOff('ask-ai')).toBe(true);
+    act(() => {
+      settingsStore.setState({ settings: { cloudAi: true } });
+    });
+    expect(isOff('ask-ai')).toBe(false);
+    expect(q('ask-ai-blocked')).toBeNull();
+  });
+
+  describe('local detectors', () => {
+    beforeEach(() => {
+      h.answers['detectors:list'] = DETECTORS;
+    });
+
+    it('checks the Analytics pack and runs the detector when it can', async () => {
+      bar({ current: P1 });
+      expect(h.loadPack).toHaveBeenCalled();
+      await click('ask-ai');
+      expect(startedWith().backend).toMatchObject({ kind: 'detectors' });
+    });
+
+    it('says the pack is missing, next to Ask AI, and starts nothing', async () => {
+      analyticsPack.setState({ status: { ...PACK, installed: null } });
+      bar({ current: P1 });
+      const why = 'Install the Analytics pack in Settings to run detectors.';
+      expect(q('ask-ai')?.getAttribute('aria-disabled')).toBe('true');
+      expect(q('ask-ai-blocked')?.textContent).toContain(why);
+      expect(tipOf(q('ask-ai'))).toBe(why);
+      await click('ask-ai');
+      expect(h.start).not.toHaveBeenCalled();
+      await click('ask-ai-settings');
+      expect(h.openSettingsPage).toHaveBeenCalledWith('tools');
+    });
+
+    it('names why an installed pack cannot be used', () => {
+      analyticsPack.setState({
+        status: {
+          ...PACK,
+          installed: null,
+          unusable: [{ version: '0.9.0', reason: 'Analytics pack 0.9.0 does not work here.' }],
+        },
+      });
+      bar({ current: P1 });
+      expect(q('ask-ai-blocked')?.textContent).toContain(
+        'Analytics pack 0.9.0 does not work here.',
+      );
+    });
+
+    it('on a Mac the Mac refusal is the reason, not the missing pack', () => {
+      const reason = 'Detectors run on Windows with an NVIDIA card.';
+      analyticsPack.setState({
+        status: { ...PACK, installed: null },
+        hardware: { ok: false, code: 'mac', reason },
+      });
+      bar({ current: P1 });
+      expect(q('ask-ai-blocked')?.textContent).toContain(reason);
+      expect(q('ask-ai-blocked')?.textContent).not.toContain('Install the Analytics pack');
+    });
+
+    it('a hardware refusal blocks the run; too busy only says so, the gate queues it', async () => {
+      analyticsPack.setState({ hardware: { ok: false, code: 'noGpu', reason: 'No NVIDIA card.' } });
+      bar({ current: P1 });
+      expect(isOff('ask-ai')).toBe(true);
+      expect(q('ask-ai-blocked')?.textContent).toContain('No NVIDIA card.');
+
+      const busy = 'Only 3.1 GB of graphics memory is free; detectors need about 6.5 GB.';
+      act(() => {
+        analyticsPack.setState({ hardware: { ok: false, code: 'tooBusy', reason: busy } });
+      });
+      expect(isOff('ask-ai')).toBe(false);
+      expect(q('ask-ai-blocked')).toBeNull();
+      expect(q('ask-ai-busy')?.textContent).toBe(busy);
+      await click('ask-ai');
+      expect(h.start).toHaveBeenCalledTimes(1);
+    });
+
+    it('a failed graphics card check says so', () => {
+      analyticsPack.setState({ hardware: null, hardwareError: 'no answer' });
+      bar({ current: P1 });
+      expect(q('ask-ai-blocked')?.textContent).toContain('Could not check the graphics card.');
+    });
+
+    it('is off while the pack is checked, saying so in its tip', () => {
+      analyticsPack.setState({ status: null, hardware: null });
+      bar({ current: P1 });
+      expect(isOff('ask-ai')).toBe(true);
+      expect(tipOf(q('ask-ai'))).toBe('Checking the Analytics pack and the graphics card.');
+    });
   });
 });

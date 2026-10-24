@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   retry: vi.fn(),
   clear: vi.fn(),
   readOnly: false,
+  queue: [] as unknown[],
 }));
 
 vi.mock('@aio/annotate', () => ({ useAnnotateReadOnly: () => h.readOnly }));
@@ -26,6 +27,13 @@ vi.mock('./runs', async () => {
     clearAskRun: h.clear,
   };
 });
+
+vi.mock('../../shell', () => ({
+  bridge: {
+    call: (channel: string) =>
+      Promise.resolve({ ok: true, value: channel === 'detect:queue' ? { items: h.queue } : {} }),
+  },
+}));
 
 const { RunStrip } = await import('./RunStrip');
 const { askAiRun } = await import('./runs');
@@ -56,6 +64,7 @@ beforeEach(() => {
   h.retry.mockResolvedValue(undefined);
   h.clear.mockReset();
   h.readOnly = false;
+  h.queue = [];
   askAiRun.setState({ run: null });
 });
 afterEach(() => {
@@ -176,6 +185,44 @@ describe('RunStrip', () => {
       root.render(<RunStrip />);
     });
     set(run({ phase: 'failed', remaining: [{ kind: 'photo', layer: 'photos', photo: 'p9' }] }));
-    expect(q('ask-ai-retry')?.disabled).toBe(true);
+    const retry = q('ask-ai-retry');
+    // focusable, so its tip can say why
+    expect(retry?.disabled).toBe(false);
+    expect(retry?.getAttribute('aria-disabled')).toBe('true');
+    click('ask-ai-retry');
+    expect(h.retry).not.toHaveBeenCalled();
+  });
+
+  it('says stopping, not stopped, until a stopped run has ended', () => {
+    act(() => {
+      root.render(<RunStrip />);
+    });
+    set(run({ phase: 'stopping' }));
+    expect(q('ask-ai-run')?.textContent).toContain('Stopping after 4 of 10.');
+    expect(q('ask-ai-run')?.textContent).not.toContain('Stopped');
+    expect(q('ask-ai-stop')).toBeNull();
+    expect(q('ask-ai-run-close')).toBeNull();
+  });
+
+  it('counts frames, not photos, when a frame run is done', () => {
+    act(() => {
+      root.render(<RunStrip />);
+    });
+    set(run({ frames: true, phase: 'done', done: 3, total: 3, found: 2 }));
+    expect(q('ask-ai-run')?.textContent).toContain('AI checked 3 frames and found 2.');
+  });
+
+  it('lists the detector runs waiting for the graphics card, without an Ask AI run', async () => {
+    h.queue = [
+      { run: 'run-a', layer: 'l', photos: 3, detectors: ['Rust'], queuedAt: '2026-10-24T09:00Z' },
+    ];
+    await act(async () => {
+      root.render(<RunStrip />);
+      await Promise.resolve();
+    });
+    expect(q('ask-ai-run')).toBeNull();
+    expect(q('ask-ai-queued')?.textContent).toContain(
+      'Waiting for the graphics card: Rust, 3 photos',
+    );
   });
 });

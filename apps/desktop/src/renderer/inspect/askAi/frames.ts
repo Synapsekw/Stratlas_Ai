@@ -27,6 +27,21 @@ export function walkItems(
   return times.map((t) => ({ kind: 'frame', layer: walk.id, t }));
 }
 
+/**
+ * The cap a walk (`durationS` long) or a clip (`durationMs`) hits at one frame every `everyS`
+ * seconds, so the person can be told the end is not covered; null when every frame fits.
+ */
+export function frameCap(
+  source: { kind: 'walk'; durationS: number } | { kind: 'clip'; durationMs: number },
+  everyS: number,
+): number | null {
+  const [durationS, max] =
+    source.kind === 'walk'
+      ? [source.durationS, MAX_WALK_FRAMES]
+      : [source.durationMs / 1000, MAX_CLIP_FRAMES];
+  return sampleTimes(durationS, everyS, max + 1).length > max ? max : null;
+}
+
 /** Frames of a video clip (`durationMs` long) to check: one every `everyS` seconds. */
 export function clipItems(clipId: string, durationMs: number, everyS: number): DetectItem[] {
   return sampleTimes(durationMs / 1000, everyS, MAX_CLIP_FRAMES).map((t) => ({

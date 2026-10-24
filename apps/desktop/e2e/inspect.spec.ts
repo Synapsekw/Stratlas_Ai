@@ -309,11 +309,20 @@ test('the review queue: progress, slider, Accept all above, Esc', async ({ win, 
 });
 
 test('Ask AI on this photo asks before sending to the cloud', async ({ win }) => {
-  await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: true }));
   await openProject(win);
   await openInspect(win);
   await openPhotoInInspect(win, 'p1');
-  await expect(win.getByTestId('ask-ai')).toBeEnabled();
+  // cloud AI off and no local model: Ask AI is off, and hovering it says why
+  const ask = win.getByTestId('ask-ai');
+  await expect(ask).toBeDisabled();
+  await ask.hover();
+  await expect(win.getByRole('tooltip')).toContainText('Install a local model or detector');
+  // cloud AI turned on while Inspect is open: Ask AI follows without reopening the screen
+  await win.keyboard.press('Control+K');
+  const palette = win.getByRole('dialog', { name: 'Command search' });
+  await palette.getByRole('combobox').fill('cloud AI');
+  await palette.getByRole('option', { name: /Turn cloud AI on/ }).click();
+  await expect(ask).toBeEnabled({ timeout: 15_000 });
   await askAi(win, 'photo');
   const line = win.getByTestId('cloud-confirm-line');
   await expect(line).toContainText('Send 1 photo to');

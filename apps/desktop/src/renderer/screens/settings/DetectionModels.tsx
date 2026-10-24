@@ -9,6 +9,7 @@ import { brand } from '@aio/brand';
 import type { DetectorModelInfo, InferenceRuntime } from '@aio/schema';
 import { Icon, t, Tip } from '@aio/ui';
 import { useState } from 'react';
+import { modelsChanged } from '../../inspect/askAi/modelsRevision';
 import { bridge, shell, useCall, useShell } from '../../shell';
 import './detectionModels.css';
 
@@ -110,6 +111,8 @@ export function DetectionModels() {
           : t('infer.import.done', { name: card.name }),
       );
       setRefresh((n) => n + 1);
+      // the Ask AI settings and bar list the models too
+      modelsChanged();
     }
   };
 
@@ -120,6 +123,7 @@ export function DetectionModels() {
     if (!r.ok) setError(r.error);
     else if (!r.value.ok) setError(r.value.error);
     setRefresh((n) => n + 1);
+    modelsChanged();
   };
 
   return (

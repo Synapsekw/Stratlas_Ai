@@ -282,8 +282,8 @@ test('local detection: stop keeps the photos done, then the rest runs', async ({
   const rest = win.getByTestId('ask-ai-retry');
   await expect(rest).toBeVisible();
 
-  // the photos done are kept, with exactly their markers (the pass lands as the run winds down,
-  // after the strip says Stopped)
+  // the photos done are kept, with exactly their markers (the strip says Stopped once the run has
+  // wound down and its pass is written)
   const countDone = async () =>
     Object.values(await passes(root)).reduce((n, p) => n + (p.assessed?.length ?? 0), 0);
   await expect.poll(countDone, { timeout: 30_000 }).toBeGreaterThan(0);

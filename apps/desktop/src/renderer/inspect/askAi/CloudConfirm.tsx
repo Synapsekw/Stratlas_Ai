@@ -92,7 +92,11 @@ export function CloudConfirm({
     <div className="ask-confirm" data-testid="cloud-confirm" role="group">
       <div className="ask-confirm-row">
         <span className="ask-confirm-line" data-testid="cloud-confirm-line">
-          {t('askAi.cloud.confirm', { count, provider: confirm.providerLabel, cost })}
+          {t(confirm.photos === 0 ? 'askAi.cloud.confirmFrames' : 'askAi.cloud.confirm', {
+            count,
+            provider: confirm.providerLabel,
+            cost,
+          })}
         </span>
         <button
           type="button"

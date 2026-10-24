@@ -11,6 +11,7 @@ import { t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { classMapFor, writeClassMap } from '../../inspect/askAi/classMap';
+import { useModelsRevision } from '../../inspect/askAi/modelsRevision';
 import { type AskBackendPref, setAskAiPrefs, useAskAiPrefs } from '../../inspect/askAi/prefs';
 import { useCall } from '../../shell';
 import './askAiSettings.css';
@@ -83,7 +84,9 @@ export function AskAiSettings(): ReactElement {
     () => (project?.manifest.classCatalogues ?? []).flatMap((c) => c.classes),
     [project],
   );
-  const res = useCall('inference:models', {}, projectId);
+  // read again when a model is imported or removed while the page is open
+  const modelsRev = useModelsRevision();
+  const res = useCall('inference:models', {}, `${projectId ?? ''}|${String(modelsRev)}`);
   const models = useMemo<DetectorModelInfo[]>(() => (res?.ok ? res.value.models : []), [res]);
   const model = models.find((m) => m.id === prefs.localModel) ?? models[0];
   const [saved, setSaved] = useState(0);
