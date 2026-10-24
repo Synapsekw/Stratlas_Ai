@@ -26,7 +26,7 @@ import {
   test,
   type DataRoot,
 } from './fixtures';
-import { openFindings } from './inspect';
+import { findingRows, openFindings } from './inspect';
 import { openDemo } from './surveyJobs';
 
 test.setTimeout(180_000);
@@ -609,7 +609,7 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     else expect(await mediaScrollTop(win)).toBe(0);
     // Inspect's photo column is the narrowest of the three panes: its tiles are smaller than the
     // old Media tiles were
-    expect((await photoCards(win).first().boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(80);
+    expect((await photoCards(win).first().boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(87);
     expect(
       await win.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
@@ -1131,14 +1131,14 @@ test.describe('the agent column in the smallest window', () => {
     await expectRoom(win);
     expect(await sidewaysScrollers(win)).toEqual([]);
     const card = await photoCards(win).first().boundingBox();
-    expect(card?.width ?? 0).toBeGreaterThanOrEqual(80);
+    expect(card?.width ?? 0).toBeGreaterThanOrEqual(82);
     await expectInside(
       win,
       {
         'the first photo': '.insp-photos-list button.m-card.sq[data-photo]',
         'the chips': '.insp-chips',
       },
-      80,
+      82,
     );
     await shot(win, 'agent-show-08-small-inspect');
 
@@ -1150,7 +1150,7 @@ test.describe('the agent column in the smallest window', () => {
     const list = await mediaOverflow(win);
     expect(list.out, `the photo list is ${String(list.width)} px wide`).toEqual([]);
     expect(await sidewaysScrollers(win)).toEqual([]);
-    expect((await photoCards(win).first().boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(80);
+    expect((await photoCards(win).first().boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(82);
     await shot(win, 'agent-show-08-small-inspect-viewer');
 
     // Issues: the list, then the card of a finding beside it
@@ -1178,7 +1178,19 @@ test.describe('the agent column in the smallest window', () => {
     await goTo(win, 'Inspect');
     await expect(dock(win)).toBeVisible();
     await expect(win.getByTestId('photo-viewer')).toBeVisible();
+    // the finding selected in Issues has its photo in the viewer beside the column: nothing
+    // scrolls sideways, and its row is in the findings list
+    expect(await sidewaysScrollers(win)).toEqual([]);
     await openFindings(win);
+    await expect(findingRows(win).first()).toBeVisible();
+    await expectInside(
+      win,
+      {
+        'the findings': '[data-testid="inspect-findings"]',
+        'the viewer': '[data-testid="photo-viewer"]',
+      },
+      150,
+    );
     await expectRoom(win);
     await expectTitleBarFits(win, 'Inspect');
     await expectInside(win, { 'the inspect screen': '.insp-body' }, 400);
