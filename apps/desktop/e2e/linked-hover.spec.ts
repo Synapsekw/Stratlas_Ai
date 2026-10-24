@@ -366,13 +366,27 @@ test('with the section window open the tag stays visible above it', async ({
   const tag = tag3d(win).first();
   await expect(tag).toBeVisible();
   await expect(tag).toHaveAttribute('data-key', 'section');
-  // nothing covers the tag: the point under its middle is the tag
-  const c = await centreOf(tag);
-  const top = await win.evaluate(
-    ([x, y]) => document.elementFromPoint(x, y)?.closest('[data-testid="link-tag"]') !== null,
-    [c.x, c.y] as const,
-  );
-  expect(top).toBe(true);
+  // a double-click flies there: the point lands in the view above the window, and nothing covers
+  // its tag (the point under the tag's middle is the tag; the tag lets clicks through, so it takes
+  // them for this one probe)
+  const box = await chart.locator('svg.pc-svg').boundingBox();
+  if (!box) throw new Error('no chart');
+  await win.mouse.dblclick(box.x + box.width * 0.5, box.y + Math.min(box.height / 2, 40));
+  await expect(chart.getByTestId('chart-pin-badge')).toBeVisible();
+  const uncovered = () =>
+    tag.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0) return false;
+      const layer = el.parentElement;
+      const was = [el.style.pointerEvents, layer?.style.pointerEvents ?? ''];
+      el.style.pointerEvents = 'auto';
+      if (layer) layer.style.pointerEvents = 'auto';
+      const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      el.style.pointerEvents = was[0] ?? '';
+      if (layer) layer.style.pointerEvents = was[1] ?? '';
+      return at?.closest('[data-testid="link-tag"]') === el;
+    });
+  await expect.poll(uncovered, { timeout: 15_000 }).toBe(true);
   // and the window above the stage's lower part leaves the rest of the view to it
   const stage = await win.locator('.stage').first().boundingBox();
   const w = await big.boundingBox();
