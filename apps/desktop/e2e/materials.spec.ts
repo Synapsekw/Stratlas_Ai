@@ -14,8 +14,8 @@ import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
-import { measureControl, measureSaved, measureTree, selectMeasure } from './island';
-import { volumeSettled } from './measureCard';
+import { measureControl, measureSaved, measureTree } from './island';
+import { focusMeasure, volumeSettled } from './measureCard';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -74,9 +74,11 @@ test('site materials from CSV, a material on a measurement, and the weight calcu
 
   // the lift: prepare the surveys, then compute previous to current
   await measureTree(win);
-  await selectMeasure(win, 'Cell 1');
-  const panel = win.getByTestId('survey-panel');
-  await panel.getByTestId('survey-prepare').click();
+  // a pile: its full volume card is the Measure tab's (focusMeasure brings it forward); the
+  // surveys may be preparing quietly already (on open), else Prepare starts it
+  const panel = await focusMeasure(win, 'Cell 1');
+  const prepare = panel.getByTestId('survey-prepare');
+  if (await prepare.isVisible()) await prepare.click();
   await expect(panel.getByTestId('survey-prepare')).toHaveCount(0, { timeout: 240_000 });
   const lift = panel.getByTestId('survey-cmp-item').first();
   await expect(lift.getByTestId('survey-cmp-result')).toBeVisible({ timeout: 60_000 });

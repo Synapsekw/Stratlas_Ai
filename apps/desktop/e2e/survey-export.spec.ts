@@ -11,7 +11,7 @@ import { mkdir, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
-import { openDemo, prepareSurveys } from './surveyJobs';
+import { openDemo, prepareSurveys, setAutoPrepare } from './surveyJobs';
 import { measureControl } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
@@ -54,6 +54,8 @@ test('the design as LandXML and DXF, a DSM as GeoTIFF in WGS 84, measurements as
     out.replace(/\\/g, '/'),
   );
 
+  // the exports alone write: no quiet prepare of the third date on open (setting off)
+  await setAutoPrepare(win, false);
   await openDemo(win, earthworksProject.name, earthworksProject.id);
   await (await measureControl(win, 'survey-export-open')).click();
   const dlg = win.getByTestId('survey-export-dialog');

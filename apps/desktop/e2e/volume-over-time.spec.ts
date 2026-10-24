@@ -107,6 +107,27 @@ test('a volume measurement shows a bar per survey date with the latest highlight
   await expect(chart.getByTestId('time-readout')).toBeVisible();
   await expect(chart.getByTestId('time-readout')).toContainText(/31 Mar/);
   await expectAccessible(win, 'Volume over time', { include: '[data-testid="survey-panel"]' });
+
+  // the same figures in the pile's panel (the Volumes tab, where a picked pile opens): the latest
+  // volume, its tonnes at the material's density (1.6 t/m³) and the change since 28 February
+  const view = await volumesView(win);
+  const panel = view.getByTestId('pile-panel');
+  await expect(panel).toHaveAttribute('aria-label', 'Stockpile SP1');
+  near(figure(await panel.getByTestId('pile-kpi-volume').innerText()), want('m3'));
+  near(figure(await panel.getByTestId('pile-kpi-tonnes').innerText()) / 1.6, want('m3'));
+  await expect(panel.getByTestId('pile-kpi-vs')).toHaveAttribute('data-sign', 'gain');
+  await expect(panel.getByTestId('pile-kpi-vs')).toContainText(/28 Feb/);
+  near(
+    figure(await panel.getByTestId('pile-kpi-vs').locator('b').innerText()),
+    want('m3') - want('m2'),
+  );
+  // History: a row per date, newest first, the earliest "first"
+  await panel.getByTestId('pile-tab-history').click();
+  const hist = panel.getByTestId('pile-history-table').locator('tbody tr');
+  await expect(hist).toHaveCount(DATES.length);
+  for (const [i, d] of [...DATES].reverse().entries())
+    near(figure(await hist.nth(i).locator('td').first().innerText()), want(d));
+  await expect(hist.last().locator('td').last()).toHaveText('first');
 });
 
 test('the site inventory stacks two piles', async ({ quarryProject, win }) => {
@@ -118,8 +139,10 @@ test('the site inventory stacks two piles', async ({ quarryProject, win }) => {
   const pit = (d: string) => (d === 'm3' ? -truth.pit.sumpCutM3 : 0);
   await prepared(win, quarryProject.name, quarryProject.id);
 
-  // the Volumes view: every volume measurement as a live card, then the inventory per date
+  // the Volumes view: every volume measurement as a live card, then the inventory per date (the
+  // pile picked to prepare opened in its panel: back to the inventory first)
   const view = await volumesView(win);
+  await view.getByTestId('pile-back').click();
   await expect(view.getByTestId('volumes-pile')).toHaveCount(4);
   const inventory = view.getByTestId('volumes-inventory');
   await expect(inventory).toBeVisible({ timeout: 180_000 });

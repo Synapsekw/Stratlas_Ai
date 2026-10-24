@@ -26,7 +26,14 @@ import {
 } from './fixtures';
 import { prepareSurveys } from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
-import { measureBench, measureSaved, measureSection, measureTree, selectMeasure } from './island';
+import {
+  measureBench,
+  measureSaved,
+  measureSection,
+  measureTree,
+  pickGroupTab,
+  selectMeasure,
+} from './island';
 
 const REPO = join(import.meta.dirname, '..', '..', '..');
 
@@ -301,8 +308,11 @@ test('a package of a survey project shows its measurements read only, drawn, wit
       .toBeGreaterThan(0);
 
     // the properties are read only: no delete, no vertex editing, the label cannot be typed in
+    // a pile: it opens in its panel in the Volumes tab, its full card is the Measure tab's
     await selectMeasure(pw, 'Cone (synthetic)');
+    await expect(pw.getByTestId('pile-panel')).toHaveAttribute('aria-label', 'Cone (synthetic)');
     const panel = pw.getByTestId('survey-panel');
+    await pickGroupTab(pw, 'measure', panel.getByTestId('card-name'));
     await expect(panel).toBeVisible();
     await expect(panel.getByTestId('card-name')).toHaveText('Cone (synthetic)');
     await expect(panel.getByRole('textbox', { name: 'Rename' })).toHaveCount(0);

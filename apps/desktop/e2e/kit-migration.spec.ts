@@ -5,7 +5,9 @@
  * measurement in the Stockpiles folder showing exactly its old figure, labelled "From an earlier
  * version (kit, Triangulated)", with nothing marked unsaved; the conversion is written once and
  * never again, so a pile deleted afterwards stays deleted; a package of it shows the same figures
- * and writes nothing. No pipeline Python: nothing is computed. Off-screen, zero network.
+ * and writes nothing. A picked pile opens in its pile panel in the Volumes tab (volumetrics
+ * redesign B5); its full card stays the Measure tab's. No pipeline Python: nothing is computed.
+ * Off-screen, zero network.
  *
  * Heights (volumetrics redesign A3): the project's origin is 51 m up and the kit left a DSM per
  * survey (`legacy/data/dsm_<epoch>.js`, a tilted plane, the second survey 0.5 m higher), so a
@@ -26,7 +28,7 @@ import {
   tinyManifest,
   type DataRoot,
 } from './fixtures';
-import { measureRow, measureSaved, measureTree, volumesView } from './island';
+import { measureRow, measureSaved, measureTree, pickGroupTab, volumesView } from './island';
 import { focusMeasure } from './measureCard';
 
 /**
@@ -237,8 +239,11 @@ async function reopen(win: Page): Promise<void> {
 async function expectNorthCarried(win: Page, readOnly = false): Promise<void> {
   let card: Locator;
   if (readOnly) {
-    // a package: the name is a heading, not a field
+    // a package: the name is a heading, not a field. The pile opens in its panel in the Volumes
+    // tab; its full card is the Measure tab's
     await measureRow(win, 'Pile North').locator('.tn').click();
+    await expect(win.getByTestId('pile-panel')).toHaveAttribute('aria-label', 'Pile North');
+    await pickGroupTab(win, 'measure', win.getByTestId('survey-panel').getByTestId('card-name'));
     card = win.getByTestId('survey-panel');
     await expect(card.getByTestId('card-name')).toHaveText('Pile North');
     await expect(card.getByRole('textbox', { name: 'Rename' })).toHaveCount(0);
@@ -527,7 +532,7 @@ test('in a package the figures show, the heights are repaired in memory and noth
   expect(await readFile(pkg)).toEqual(bytes);
 });
 
-test('the Volumes view lists the kit piles; picking one shows its carried figure', async ({
+test('the Volumes view lists the kit piles; picking one opens its pile panel with the carried figure', async ({
   win,
 }) => {
   await openTiny(win);
@@ -541,13 +546,27 @@ test('the Volumes view lists the kit piles; picking one shows its carried figure
   }));
   expect(heights.list).toBeGreaterThanOrEqual(heights.rows);
   await piles.filter({ hasText: 'Pile North' }).click({ timeout: 15_000 });
-  const detail = view.getByTestId('volumes-detail');
-  await expect(detail).toBeVisible();
-  await expect(detail.getByTestId('survey-cmp-status').first()).toHaveText(
-    'From an earlier version (kit, Triangulated)',
-  );
-  expect(figure(await detail.getByTestId('card-primary').innerText())).toBeCloseTo(
+  // the pile panel: its carried figure in the Volume tile, its status said beside it
+  const panel = view.getByTestId('pile-panel');
+  await expect(panel).toBeVisible();
+  await expect(panel.getByTestId('pile-name')).toHaveText('Pile North');
+  await expect(panel.getByTestId('pile-status')).toContainText('From an earlier version');
+  expect(figure(await panel.getByTestId('pile-kpi-volume').innerText())).toBeCloseTo(
     NORTH_E2_EDITED,
     1,
   );
+  // History: both dates, newest first, the first marked "first"
+  await panel.getByTestId('pile-tab-history').click();
+  const rows = panel.getByTestId('pile-history-table').locator('tbody tr');
+  await expect(rows).toHaveCount(2);
+  expect(figure(await rows.nth(0).locator('td').first().innerText())).toBeCloseTo(
+    NORTH_E2_EDITED,
+    1,
+  );
+  expect(figure(await rows.nth(1).locator('td').first().innerText())).toBeCloseTo(NORTH_E1, 1);
+  await expect(rows.nth(1).locator('td').last()).toHaveText('first');
+  // back to the inventory
+  await panel.getByTestId('pile-back').click();
+  await expect(view.getByTestId('pile-panel')).toHaveCount(0);
+  await expect(view.getByTestId('volumes-pile')).toHaveCount(2);
 });

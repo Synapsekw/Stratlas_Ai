@@ -172,6 +172,22 @@ test('add an earlier survey and the design as chips, shade vs design, hover show
   // the screen reader hears the chainage and the difference
   await expect(chart.getByTestId('chart-live')).toContainText('Difference');
   await expectAccessible(win, 'Profile chart', { include: '[data-testid="survey-panel"]' });
+
+  // a click pins the point: the pin and its read-out stay when the pointer leaves the chart,
+  // a second click on it clears it, and Esc clears a pin too
+  const mid = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await win.mouse.click(mid.x, mid.y);
+  const badge = chart.getByTestId('chart-pin-badge');
+  await expect(badge).toBeVisible();
+  await win.mouse.move(box.x + box.width / 2, box.y - 60);
+  await expect(badge).toBeVisible();
+  await expect(readout).toBeVisible();
+  await win.mouse.click(mid.x, mid.y);
+  await expect(badge).toHaveCount(0);
+  await win.mouse.click(mid.x, mid.y);
+  await expect(badge).toBeVisible();
+  await win.keyboard.press('Escape');
+  await expect(badge).toHaveCount(0);
 });
 
 test('turning a chip off removes its line; DXF opens one dialog with five variants', async ({

@@ -4,7 +4,7 @@
  * "settled", the wait until every comparison shows its figures and no compute runs.
  */
 import { expect, type Locator, type Page } from '@playwright/test';
-import { selectMeasure } from './island';
+import { pickGroupTab, selectMeasure } from './island';
 
 /** The seven bases of the volume card's picker (`survey/card/baseNames.ts`). */
 export type BaseId = 'smart' | 'lowest' | 'plane' | 'level' | 'mean' | 'surface' | 'custom';
@@ -12,12 +12,32 @@ export type BaseId = 'smart' | 'lowest' | 'plane' | 'level' | 'mean' | 'surface'
 /** The focused measurement's detail card. */
 export const measureCard = (win: Page): Locator => win.getByTestId('survey-panel');
 
-/** Select a measurement in the tree and wait for its card, its name in the Rename field. */
+/**
+ * Select a measurement in the tree and wait for its card, its name in the Rename field. A pile
+ * opens in the Volumes tab (its pile panel, `focusPile`); its full volume card is the Measure
+ * tab's, which is brought forward for it.
+ */
 export async function focusMeasure(win: Page, label: string): Promise<Locator> {
   await selectMeasure(win, label);
   const card = measureCard(win);
-  await expect(card.getByRole('textbox', { name: 'Rename', exact: true })).toHaveValue(label);
+  const name = card.getByRole('textbox', { name: 'Rename', exact: true });
+  const panel = win.getByTestId('pile-panel');
+  await expect(name.or(panel).first()).toBeVisible();
+  if (!(await name.isVisible())) {
+    await expect(panel).toHaveAttribute('aria-label', label);
+    await pickGroupTab(win, 'measure', name);
+  }
+  await expect(name).toHaveValue(label);
   return card;
+}
+
+/** Select a pile in the tree and wait for its pile panel in the Volumes tab. */
+export async function focusPile(win: Page, label: string): Promise<Locator> {
+  await selectMeasure(win, label);
+  const panel = win.getByTestId('pile-panel');
+  await expect(panel).toBeVisible();
+  await expect(panel.getByTestId('pile-name')).toHaveText(label);
+  return panel;
 }
 
 /**

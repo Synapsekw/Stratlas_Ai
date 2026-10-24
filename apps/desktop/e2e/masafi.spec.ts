@@ -11,7 +11,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, realDataTest } from './fixtures';
-import { islandGroup, islandTool, volumesView } from './island';
+import { islandGroup, islandTool, pickGroupTab, volumesView } from './island';
 import { hasRealData, missingRealProject, realProjectDir } from './realData';
 
 const MASAFI = realProjectDir('masafi');
@@ -202,8 +202,18 @@ test('@realdata the stockpile project: piles as volume measurements, 3D selectio
   await expect(view.getByTestId('volumes-pile')).toHaveCount(19, { timeout: 30_000 });
   await expect(win.getByTestId('vol-register')).toHaveCount(0);
   await pileCard(view, p02.name || p02.id).click();
-  const card = view.getByTestId('volumes-detail');
-  await expect(card).toBeVisible();
+  // the pile opens in its panel: the carried figure with its status, both dates in History
+  const panel = view.getByTestId('pile-panel');
+  await expect(panel).toBeVisible();
+  await expect(panel.getByTestId('pile-status')).toContainText('From an earlier version');
+  const shown = (l: Locator) => l.innerText().then((t) => figure(t.replace(/\s/g, ' ')));
+  await panel.getByTestId('pile-tab-history').click();
+  await expect(panel.getByTestId('pile-history-table').locator('tbody tr')).toHaveCount(2);
+  const kpi = await shown(panel.getByTestId('pile-kpi-volume').locator('b'));
+  await panel.getByTestId('pile-tab-overview').click();
+  // its full card is the Measure tab's
+  const card = win.getByTestId('survey-panel');
+  await pickGroupTab(win, 'measure', card.getByTestId('card-primary'));
   // the pile's card never holds the window: it reads no terrain (a pile shows no terrain row), and
   // a card that does reads it off the render; the next frame comes at once, not minutes later
   const frameMs = await win.evaluate(
@@ -227,6 +237,7 @@ test('@realdata the stockpile project: piles as volume measurements, 3D selectio
   expect(Math.round(latest)).toBe(11_379);
   const primary = await card.getByTestId('card-primary').locator('.mc-value').innerText();
   expect(Math.abs(figure(primary) - latest)).toBeLessThan(0.5);
+  expect(Math.abs(kpi - latest)).toBeLessThan(0.5);
   const rows = card.getByTestId('vol-time-table').locator('tbody tr');
   await expect(rows).toHaveCount(2);
   expect(

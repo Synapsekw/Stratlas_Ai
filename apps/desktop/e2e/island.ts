@@ -114,7 +114,7 @@ export async function islandGroup(win: Page, g: GroupId): Promise<Locator> {
  * so a click could land beside the tab. An Enter pressed while it morphs can be lost too, so the
  * pick is tried again until the island is back at rest with `bench` showing.
  */
-async function pickGroupTab(win: Page, g: GroupId, bench: Locator): Promise<void> {
+export async function pickGroupTab(win: Page, g: GroupId, bench: Locator): Promise<void> {
   const bar = island(win);
   let tries = 0;
   await expect(async () => {

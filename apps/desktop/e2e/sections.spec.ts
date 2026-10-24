@@ -2,9 +2,11 @@
  * Cross-sections in the real app (M11 G5, SRV-7; volumetric parity W1) on the synthetic earthworks
  * demo: two surveys prepared by `survey.prepare`, a **Cross-section** measurement across the pad
  * opens the dock on the shared profile chart with the current survey; the earlier survey and the
- * pad design join as chips; Shade vs the earlier survey gives a click's pin its deltas and grades;
- * the exaggeration goes to 4:1; the large window opens; **DXF…** writes a DXF (2D XZ) through
- * `survey.section` and the save dialog. Off-screen, zero network, pipeline Python needed.
+ * pad design join as chips; a click pins the shared point and "Add pin here" adds a section pin
+ * there, its deltas against Shade vs the earlier survey and its grades; the exaggeration goes to
+ * 4:1; the large window opens over the lower stage, not modal (volumetrics redesign B6), and Esc
+ * or Close returns it; **DXF…** writes a DXF (2D XZ) through `survey.section` and the save dialog.
+ * Off-screen, zero network, pipeline Python needed.
  */
 import type { MeasurementsFile } from '@aio/schema';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -85,11 +87,15 @@ test('a section across the pad: two surveys and the design, a pin, 4:1, the wind
   await expect(shade.getByRole('button').first()).toHaveAttribute('aria-pressed', 'true');
   await expect(chart.getByTestId('chart-areas')).toBeVisible();
 
-  // pin the middle of the pad: every surface has a value, deltas from the Shade vs target
+  // a click pins the shared point (it stays when the pointer leaves); "Add pin here" in its
+  // read-out adds a section pin there: every surface has a value, deltas from the Shade vs target
   const box = await chart.locator('svg.pc-svg').boundingBox();
   if (!box) throw new Error('no chart');
   await win.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(chart.getByTestId('chart-pin-badge')).toBeVisible();
   const pin = dock.getByTestId('section-pin');
+  await expect(pin).toHaveCount(0);
+  await chart.getByTestId('section-add-pin').click();
   await expect(pin).toHaveCount(1);
   await expect(pin.getByTestId('section-pin-z')).toHaveCount(3);
   await expect(pin.getByTestId('section-pin-z').first()).toContainText(' m');
@@ -115,7 +121,34 @@ test('a section across the pad: two surveys and the design, a pin, 4:1, the wind
   const big = win.getByTestId('section-window');
   await expect(big).toBeVisible();
   await expect(big.getByTestId('section-window-chart')).toBeVisible();
+  // not a modal: a region over the lower part of the stage, no dialog, no scrim; the top of the
+  // stage above it is still the stage's
+  await expect(big).toHaveAttribute('role', 'region');
+  await expect(win.getByRole('dialog')).toHaveCount(0);
+  const stageBox = await win.locator('.stage').first().boundingBox();
+  const winBox = await big.boundingBox();
+  if (!stageBox || !winBox) throw new Error('no stage or window');
+  expect(winBox.y).toBeGreaterThan(stageBox.y + stageBox.height * 0.3);
+  const topHit = await win.evaluate(
+    ([x, y]) => {
+      const el = document.elementFromPoint(x, y);
+      return {
+        inStage: el?.closest('.stage') !== null,
+        inWindow: el?.closest('[data-testid="section-window"]') !== null,
+      };
+    },
+    [stageBox.x + stageBox.width / 2, stageBox.y + stageBox.height * 0.35] as const,
+  );
+  expect(topHit).toEqual({ inStage: true, inWindow: false });
+  // Esc: the section's pinned point first (when one is pinned), then the window
   await win.keyboard.press('Escape');
+  await expect(big.getByTestId('chart-pin-badge')).toHaveCount(0);
+  if ((await big.count()) > 0) await win.keyboard.press('Escape');
+  await expect(big).toHaveCount(0);
+  // the window closes from its own button too
+  await dock.getByTestId('section-popout').click();
+  await expect(big).toBeVisible();
+  await big.getByTestId('section-window-close').click();
   await expect(big).toHaveCount(0);
 
   // DXF… opens the one export dialog with five variants; 2D XZ is the default
