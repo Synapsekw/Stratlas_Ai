@@ -4,7 +4,7 @@
  * same backend and without a new confirm), "Review n suggestions" (the review queue) and Close.
  */
 import { useAnnotateReadOnly } from '@aio/annotate';
-import { useT } from '@aio/ui';
+import { Tip, useT } from '@aio/ui';
 import { useState, type ReactElement } from 'react';
 import { openQueue } from '../inspectUi';
 import { clearAskRun, retryAskRun, stopAskRun, useAskAiRun, type AskRun } from './runs';
@@ -38,6 +38,22 @@ export function RunStrip(): ReactElement | null {
   if (!run) return null;
   const busy = run.phase === 'running' || run.phase === 'queued';
   const pct = run.total > 0 ? Math.min(100, (run.done / run.total) * 100) : 0;
+  const retry = (
+    <button
+      type="button"
+      className="btn sm"
+      data-testid="ask-ai-retry"
+      disabled={readOnly}
+      onClick={() => {
+        setError(null);
+        retryAskRun().catch((e: unknown) => {
+          setError(e instanceof Error ? e.message : String(e));
+        });
+      }}
+    >
+      {t('askAi.run.retry', { count: run.remaining.length })}
+    </button>
+  );
   return (
     <div
       className={`ask-run${run.phase === 'failed' ? ' failed' : ''}`}
@@ -59,23 +75,8 @@ export function RunStrip(): ReactElement | null {
           </button>
         ) : (
           <>
-            {run.remaining.length > 0 && (
-              <button
-                type="button"
-                className="btn sm"
-                data-testid="ask-ai-retry"
-                disabled={readOnly}
-                title={readOnly ? t('inspect.readOnly') : undefined}
-                onClick={() => {
-                  setError(null);
-                  retryAskRun().catch((e: unknown) => {
-                    setError(e instanceof Error ? e.message : String(e));
-                  });
-                }}
-              >
-                {t('askAi.run.retry', { count: run.remaining.length })}
-              </button>
-            )}
+            {run.remaining.length > 0 &&
+              (readOnly ? <Tip content={t('inspect.readOnly')}>{retry}</Tip> : retry)}
             {run.found > 0 && (
               <button
                 type="button"

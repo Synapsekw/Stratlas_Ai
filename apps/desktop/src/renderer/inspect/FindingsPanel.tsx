@@ -8,7 +8,7 @@
 import { annotateUi, severityColor, SeverityBadge, useTaxonomy } from '@aio/annotate';
 import { detectorThreshold, isDetectorDraft, type Detection } from '@aio/annotate/detections';
 import type { Issue } from '@aio/schema';
-import { Icon, useT } from '@aio/ui';
+import { Icon, Tip, useT } from '@aio/ui';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { RejectReasonMenu } from '../detections/detectors/RejectReasonMenu';
 import { ScoreBadge } from '../detections/detectors/ScoreBadge';
@@ -50,19 +50,20 @@ function YouCard({
       data-selected={row.selected || undefined}
       style={{ ['--sev' as string]: severityColor(model, row.severity) }}
     >
-      <button
-        type="button"
-        className="inspect-row-head"
-        aria-current={row.selected || undefined}
-        title={row.title}
-        onClick={onSelect}
-      >
-        <span className="inspect-tag you">{t('inspect.tag.you')}</span>
-        <span className="inspect-row-class">
-          <b className="mono">{row.code}</b> {classById.get(row.classId)?.label ?? row.title}
-        </span>
-        <SeverityBadge model={model} severity={row.severity} />
-      </button>
+      <Tip content={row.title} placement="top">
+        <button
+          type="button"
+          className="inspect-row-head"
+          aria-current={row.selected || undefined}
+          onClick={onSelect}
+        >
+          <span className="inspect-tag you">{t('inspect.tag.you')}</span>
+          <span className="inspect-row-class">
+            <b className="mono">{row.code}</b> {classById.get(row.classId)?.label ?? row.title}
+          </span>
+          <SeverityBadge model={model} severity={row.severity} />
+        </button>
+      </Tip>
     </li>
   );
 }

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { ProjectManifest } from '@aio/schema';
-import type { PhotoPick } from '@aio/ui';
+import { TIP_DELAY_MS, type PhotoPick } from '@aio/ui';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -93,6 +93,22 @@ afterEach(() => {
 });
 
 const q = (id: string) => host.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`);
+
+/** Hovers a control and returns the text of the tip it opens. */
+function tipOf(el: HTMLElement | null): string | undefined {
+  vi.useFakeTimers();
+  try {
+    act(() => {
+      el?.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }));
+    });
+    act(() => {
+      vi.advanceTimersByTime(TIP_DELAY_MS);
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+  return document.querySelector('[role="tooltip"]')?.textContent ?? undefined;
+}
 const click = async (id: string) => {
   await act(async () => {
     q(id)?.click();
@@ -243,7 +259,7 @@ describe('AskAiBar', () => {
     h.answers['inference:models'] = MODELS_OFF;
     bar({ current: P1 });
     expect(q('ask-ai')?.disabled).toBe(true);
-    expect(q('ask-ai')?.title).toContain('Install a local model or detector in Settings');
+    expect(tipOf(q('ask-ai'))).toContain('Install a local model or detector in Settings');
     expect(q('ask-ai-blocked')?.textContent).toContain('No AI can look at this.');
     await click('ask-ai-settings');
     expect(h.openSettingsPage).toHaveBeenCalledWith('ai');

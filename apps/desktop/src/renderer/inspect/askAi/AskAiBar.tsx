@@ -8,7 +8,7 @@
  */
 import { useAnnotateReadOnly } from '@aio/annotate';
 import type { Layer, ProjectManifest } from '@aio/schema';
-import { Icon, useT, type PhotoPick } from '@aio/ui';
+import { Icon, Tip, useT, type PhotoPick } from '@aio/ui';
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { DetectItem } from '../../detections/convert';
 import { shell, useCall } from '../../shell';
@@ -281,37 +281,43 @@ export function AskAiBar({
   );
 
   const title = readOnly ? t('inspect.readOnly') : (why ?? undefined);
+  const askButton = (
+    <button
+      type="button"
+      className="btn sm ask-btn"
+      data-testid="ask-ai"
+      disabled={off}
+      onClick={ask}
+    >
+      <Icon name="agent" size={14} className="ask-spark" />
+      {t('askAi.button')}
+    </button>
+  );
   return (
     <div className="ask-bar" ref={bar}>
       <div className="ask-bar-row">
         <div className="ask-btn-group">
-          <button
-            type="button"
-            className="btn sm ask-btn"
-            data-testid="ask-ai"
-            disabled={off}
-            title={title}
-            onClick={ask}
+          {title ? <Tip content={title}>{askButton}</Tip> : askButton}
+          <Tip
+            content={option ? t('askAi.checks.current', { name: option.label }) : t('askAi.checks')}
+            repeatsName={!option}
           >
-            <Icon name="agent" size={14} className="ask-spark" />
-            {t('askAi.button')}
-          </button>
-          <button
-            type="button"
-            className="btn sm ask-caret"
-            data-testid="ask-ai-checks"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            aria-label={t('askAi.checks')}
-            title={option ? `${t('askAi.checks')}: ${option.label}` : t('askAi.checks')}
-            disabled={readOnly || running}
-            onClick={() => {
-              setMenuOpen((o) => !o);
-              setFramesOpen(false);
-            }}
-          >
-            <Icon name="chev-d" size={12} />
-          </button>
+            <button
+              type="button"
+              className="btn sm ask-caret"
+              data-testid="ask-ai-checks"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-label={t('askAi.checks')}
+              disabled={readOnly || running}
+              onClick={() => {
+                setMenuOpen((o) => !o);
+                setFramesOpen(false);
+              }}
+            >
+              <Icon name="chev-d" size={12} />
+            </button>
+          </Tip>
           {menuOpen && (
             <div className="ask-menu" role="menu" aria-label={t('askAi.checks')}>
               <div className="ask-menu-head caps">{t('askAi.checks')}</div>
@@ -369,18 +375,18 @@ export function AskAiBar({
               <div className="ask-frames-every">
                 <div className="seg" role="group" aria-label={t('askAi.frames.every', { s: '' })}>
                   {everyOptions.map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      aria-pressed={everyS === n}
-                      data-testid={`ask-ai-frames-every-${String(n)}`}
-                      title={t('askAi.frames.every', { s: n })}
-                      onClick={() => {
-                        setEveryPick(n);
-                      }}
-                    >
-                      {n}
-                    </button>
+                    <Tip key={n} content={t('askAi.frames.every', { s: n })}>
+                      <button
+                        type="button"
+                        aria-pressed={everyS === n}
+                        data-testid={`ask-ai-frames-every-${String(n)}`}
+                        onClick={() => {
+                          setEveryPick(n);
+                        }}
+                      >
+                        {n}
+                      </button>
+                    </Tip>
                   ))}
                 </div>
                 <span>{t('askAi.frames.every', { s: everyS })}</span>

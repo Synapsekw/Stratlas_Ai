@@ -17,7 +17,7 @@ import {
   type DetectionSource,
 } from '@aio/annotate/detections';
 import type { DetectionGeom, ImageGeom, Layer } from '@aio/schema';
-import { Icon, useT, type PhotoPick } from '@aio/ui';
+import { Icon, Tip, useT, type PhotoPick } from '@aio/ui';
 import { useCallback, useMemo, useRef, type ReactElement, type Ref } from 'react';
 import { ReviewEditor, type EditorShape } from '../detections/Editor';
 import { detectionLook } from '../detections/look';
@@ -137,29 +137,31 @@ export function InspectViewer(p: InspectViewerProps): ReactElement | null {
           </button>
           {!p.readOnly && (
             <>
-              <button
-                type="button"
-                className="ok"
-                data-testid="inspect-inline-accept"
-                aria-label={t('inspect.accept')}
-                title={t('inspect.accept')}
-                onClick={() => {
-                  p.onAccept(d.id);
-                }}
-              >
-                <Icon name="check" size={12} />
-              </button>
-              <button
-                type="button"
-                data-testid="inspect-inline-dismiss"
-                aria-label={t('inspect.dismiss')}
-                title={t('inspect.dismiss')}
-                onClick={() => {
-                  p.onDismiss(d.id);
-                }}
-              >
-                <Icon name="x" size={12} />
-              </button>
+              <Tip content={t('inspect.accept')} repeatsName>
+                <button
+                  type="button"
+                  className="ok"
+                  data-testid="inspect-inline-accept"
+                  aria-label={t('inspect.accept')}
+                  onClick={() => {
+                    p.onAccept(d.id);
+                  }}
+                >
+                  <Icon name="check" size={12} />
+                </button>
+              </Tip>
+              <Tip content={t('inspect.dismiss')} repeatsName>
+                <button
+                  type="button"
+                  data-testid="inspect-inline-dismiss"
+                  aria-label={t('inspect.dismiss')}
+                  onClick={() => {
+                    p.onDismiss(d.id);
+                  }}
+                >
+                  <Icon name="x" size={12} />
+                </button>
+              </Tip>
             </>
           )}
         </div>

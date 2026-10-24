@@ -43,13 +43,13 @@
   position: absolute;
   inset-block: 0;
   inset-inline-end: 0;
-  z-index: 15;
+  z-index: var(--z-panel);
   width: min(300px, 70%);
-  box-shadow: -8px 0 24px var(--shadow);
+  box-shadow: var(--el-2);
 }
 .insp-review {
   border-color: var(--warn);
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .insp-center {
@@ -116,7 +116,7 @@
 /* the chip under a dashed AI box: class, confidence, Accept and Dismiss */
 .insp-inline {
   position: absolute;
-  z-index: 5;
+  z-index: var(--z-stage-ui);
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -146,9 +146,9 @@
   color: var(--fg-0);
 }
 .insp-inline .insp-inline-name b {
-  color: var(--warn);
+  color: var(--warn-ink);
   font-weight: 600;
 }
 .insp-inline button.ok {
-  color: var(--warn);
+  color: var(--warn-ink);
 }

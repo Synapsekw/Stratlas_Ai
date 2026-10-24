@@ -7,6 +7,7 @@
 import { setAnnotateReadOnly } from '@aio/annotate';
 import { initialReview, reviewReducer, type Detection } from '@aio/annotate/detections';
 import type { ProjectManifest } from '@aio/schema';
+import { TIP_DELAY_MS } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -155,6 +156,22 @@ async function mount(readOnly = false) {
 }
 
 const byId = (id: string) => host.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+
+/** Hovers a control and returns the text of the tip it opens. */
+function tipOf(el: HTMLElement | null): string | undefined {
+  vi.useFakeTimers();
+  try {
+    act(() => {
+      el?.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }));
+    });
+    act(() => {
+      vi.advanceTimersByTime(TIP_DELAY_MS);
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+  return document.querySelector('[role="tooltip"]')?.textContent ?? undefined;
+}
 const text = (id: string) => byId(id)?.textContent ?? '';
 const find = (id: string) => detections.getState().review.detections.find((d) => d.id === id);
 
@@ -372,7 +389,7 @@ describe('ReviewQueue', () => {
       'det-reject-all',
     ])
       expect((byId(id) as HTMLButtonElement).disabled).toBe(true);
-    expect(byId('queue-accept')?.title).toBe('This package is read only.');
+    expect(tipOf(byId('queue-accept'))).toBe('This package is read only.');
     expect(queueCommand('accept')).toBe(true);
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));

@@ -1,5 +1,5 @@
 import type { Layer } from '@aio/schema';
-import { formatClock, formatCount, formatDuration, Icon, useT } from '@aio/ui';
+import { formatClock, formatCount, formatDuration, Icon, Tip, useT } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { showsClipList, type FlightCard } from '../screens/mediaModel';
 import { shell } from '../shell';
@@ -56,7 +56,7 @@ export function FlightTile({
             {flight.estimated ? '~' : ''}
             {formatDuration(flight.endMs - flight.startMs)}
           </span>
-          {playing && <span className="m-live">Active</span>}
+          {playing && <span className="m-live">{t('inspect.flight.active')}</span>}
         </div>
         <div className="m-meta">
           <b>{flight.name}</b>
@@ -67,17 +67,18 @@ export function FlightTile({
         </div>
       </button>
       {first && (
-        <button
-          type="button"
-          className="btn icon sm m-play"
-          aria-label={`Play ${flight.name} in the scene`}
-          title="Play in the scene"
-          onClick={() => {
-            playClip(first);
-          }}
-        >
-          <Icon name="play" size={14} />
-        </button>
+        <Tip content={t('inspect.flight.playTip')}>
+          <button
+            type="button"
+            className="btn icon sm m-play"
+            aria-label={t('inspect.flight.play', { name: flight.name })}
+            onClick={() => {
+              playClip(first);
+            }}
+          >
+            <Icon name="play" size={14} />
+          </button>
+        </Tip>
       )}
     </div>
   );

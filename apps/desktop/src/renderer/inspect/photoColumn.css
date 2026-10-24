@@ -37,7 +37,7 @@
   font-size: var(--t-12);
 }
 .insp-chip .mono {
-  font-size: 11px;
+  font-size: var(--t-11);
   color: var(--fg-3);
 }
 .insp-chip:hover {
@@ -83,7 +83,7 @@
   border-radius: 3px;
   background: var(--scrim);
   color: var(--ov);
-  font-size: 11px;
+  font-size: var(--t-11);
   font-weight: 600;
   pointer-events: none;
 }

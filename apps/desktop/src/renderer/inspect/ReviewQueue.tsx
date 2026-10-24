@@ -19,7 +19,7 @@ import {
   type QueueFilter,
 } from '@aio/annotate/detections';
 import type { ProjectManifest } from '@aio/schema';
-import { formatCount, Icon, shortcutHint, useT } from '@aio/ui';
+import { formatCount, Icon, shortcutHint, Tip, useT } from '@aio/ui';
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { BatchConfirm } from '../detections/BatchConfirm';
 import { RejectReasonMenu } from '../detections/detectors/RejectReasonMenu';
@@ -74,6 +74,11 @@ detections.subscribe((s, prev) => {
 });
 
 const isScored = (d: Detection) => !d.unscored && d.confidence !== undefined;
+
+/** A tip carrying the reason a control is greyed out; the control alone when there is none. */
+function WithReason(p: { reason: string | undefined; children: ReactElement }): ReactElement {
+  return p.reason ? <Tip content={p.reason}>{p.children}</Tip> : p.children;
+}
 
 export function ReviewQueue(p: {
   projectId: string;
@@ -319,37 +324,36 @@ export function ReviewQueue(p: {
             {t('queue.progress', { index: at >= 0 ? at + 1 : 0, total: list.length })}
           </span>
           <span className="grow" />
-          <button
-            type="button"
-            className="btn ghost icon sm"
-            data-testid="queue-undo"
-            aria-label={t('det.undo', { keys: shortcutHint('review.undo') })}
-            title={t('det.undo', { keys: shortcutHint('review.undo') })}
-            disabled={readOnly || !canUndo(review)}
-            onClick={undoReview}
-          >
-            <Icon name="undo" size={14} />
-          </button>
-          <button
-            type="button"
-            className="btn ghost icon sm"
-            data-testid="queue-redo"
-            aria-label={t('det.redo', { keys: shortcutHint('review.redo') })}
-            title={t('det.redo', { keys: shortcutHint('review.redo') })}
-            disabled={readOnly || !canRedo(review)}
-            onClick={redoReview}
-          >
-            <Icon name="undo" size={14} className="flip" />
-          </button>
-          <span
-            className="ann-save"
-            data-state={save.state}
-            title={save.error ?? ''}
-            data-testid="det-save"
-          >
-            <i />
-            {readOnly ? t('det.save.readOnly') : t(`det.save.${save.state}`)}
-          </span>
+          <Tip content={t('det.undo', { keys: shortcutHint('review.undo') })}>
+            <button
+              type="button"
+              className="btn ghost icon sm"
+              data-testid="queue-undo"
+              aria-label={t('det.undo', { keys: shortcutHint('review.undo') })}
+              disabled={readOnly || !canUndo(review)}
+              onClick={undoReview}
+            >
+              <Icon name="undo" size={14} />
+            </button>
+          </Tip>
+          <Tip content={t('det.redo', { keys: shortcutHint('review.redo') })}>
+            <button
+              type="button"
+              className="btn ghost icon sm"
+              data-testid="queue-redo"
+              aria-label={t('det.redo', { keys: shortcutHint('review.redo') })}
+              disabled={readOnly || !canRedo(review)}
+              onClick={redoReview}
+            >
+              <Icon name="undo" size={14} className="flip" />
+            </button>
+          </Tip>
+          <WithReason reason={save.error ?? undefined}>
+            <span className="ann-save" data-state={save.state} data-testid="det-save">
+              <i />
+              {readOnly ? t('det.save.readOnly') : t(`det.save.${save.state}`)}
+            </span>
+          </WithReason>
           <button
             type="button"
             className="btn ghost sm"
@@ -454,33 +458,35 @@ export function ReviewQueue(p: {
             layers={p.manifest.layers}
           />
           <div className="queue-step">
-            <button
-              type="button"
-              className="btn ghost icon sm"
-              data-testid="queue-prev"
-              aria-label={shortcutHint('review.prev')}
-              title={shortcutHint('review.prev')}
-              onClick={() => {
-                step(-1);
-              }}
-            >
-              <Icon name="chev-r" size={14} className="flip" />
-            </button>
+            <Tip content={shortcutHint('review.prev')} repeatsName>
+              <button
+                type="button"
+                className="btn ghost icon sm"
+                data-testid="queue-prev"
+                aria-label={shortcutHint('review.prev')}
+                onClick={() => {
+                  step(-1);
+                }}
+              >
+                <Icon name="chev-r" size={14} className="flip" />
+              </button>
+            </Tip>
             {current.confidence !== undefined && !current.unscored && (
               <span className="mono faint">{Math.round(current.confidence * 100)}%</span>
             )}
-            <button
-              type="button"
-              className="btn ghost icon sm"
-              data-testid="queue-next"
-              aria-label={shortcutHint('review.next')}
-              title={shortcutHint('review.next')}
-              onClick={() => {
-                step(1);
-              }}
-            >
-              <Icon name="chev-r" size={14} />
-            </button>
+            <Tip content={shortcutHint('review.next')} repeatsName>
+              <button
+                type="button"
+                className="btn ghost icon sm"
+                data-testid="queue-next"
+                aria-label={shortcutHint('review.next')}
+                onClick={() => {
+                  step(1);
+                }}
+              >
+                <Icon name="chev-r" size={14} />
+              </button>
+            </Tip>
           </div>
           <label className="ann-field">
             <span>{t('det.class')}</span>
@@ -511,83 +517,90 @@ export function ReviewQueue(p: {
             <span>{t('det.severity')}</span>
             <div className="det-sevs" role="group" aria-label={t('det.severity')}>
               {(model?.levels ?? []).map((l) => (
-                <button
-                  key={l.value}
-                  type="button"
-                  className="det-sev"
-                  data-testid={`queue-sev-${String(l.value)}`}
-                  aria-pressed={current.severity === l.value}
-                  disabled={locked || pendingState}
-                  title={`${String(l.value)} ${l.label}${l.criteria ? `: ${l.criteria}` : ''}`}
-                  onClick={() => {
-                    dispatch({
-                      type: 'edit',
-                      id: current.id,
-                      patch: { severity: l.value, uncertain: false },
-                      now: new Date().toISOString(),
-                    });
-                  }}
+                <Tip
+                  content={`${String(l.value)} ${l.label}${l.criteria ? `: ${l.criteria}` : ''}`}
                 >
-                  <SeverityBadge model={model} severity={l.value} withLabel />
-                </button>
+                  <button
+                    key={l.value}
+                    type="button"
+                    className="det-sev"
+                    data-testid={`queue-sev-${String(l.value)}`}
+                    aria-pressed={current.severity === l.value}
+                    disabled={locked || pendingState}
+                    onClick={() => {
+                      dispatch({
+                        type: 'edit',
+                        id: current.id,
+                        patch: { severity: l.value, uncertain: false },
+                        now: new Date().toISOString(),
+                      });
+                    }}
+                  >
+                    <SeverityBadge model={model} severity={l.value} withLabel />
+                  </button>
+                </Tip>
               ))}
             </div>
           </div>
           <div className="queue-actions">
-            <button
-              type="button"
-              className="btn primary queue-big"
-              data-testid="queue-accept"
-              disabled={locked || pendingState}
-              title={reason}
-              onClick={() => void accept()}
-            >
-              <Icon name="check" size={14} />
-              {t('queue.accept')}
-              <kbd>A</kbd>
-            </button>
-            <button
-              type="button"
-              className="btn queue-big"
-              data-testid="queue-fix"
-              disabled={locked || pendingState}
-              title={reason}
-              onClick={fix}
-            >
-              {t('queue.fix')}
-              <kbd>F</kbd>
-            </button>
-            <span className="queue-dismiss">
+            <WithReason reason={reason}>
+              <button
+                type="button"
+                className="btn primary queue-big"
+                data-testid="queue-accept"
+                disabled={locked || pendingState}
+                onClick={() => void accept()}
+              >
+                <Icon name="check" size={14} />
+                {t('queue.accept')}
+                <kbd>A</kbd>
+              </button>
+            </WithReason>
+            <WithReason reason={reason}>
               <button
                 type="button"
                 className="btn queue-big"
-                data-testid="queue-not-fault"
-                disabled={!canDismiss || pendingState}
-                title={reason}
-                onClick={() => {
-                  dismiss();
-                }}
+                data-testid="queue-fix"
+                disabled={locked || pendingState}
+                onClick={fix}
               >
-                <Icon name="x" size={14} />
-                {t('queue.notFault')}
-                <kbd>D</kbd>
+                {t('queue.fix')}
+                <kbd>F</kbd>
               </button>
-              <button
-                ref={reasonBtn}
-                type="button"
-                className="btn ghost icon"
-                data-testid="queue-reject-reason"
-                aria-label={t('detect.preset.reject.title')}
-                title={reason ?? t('detect.preset.reject.title')}
-                aria-haspopup="menu"
-                aria-expanded={reasonOpen}
-                disabled={!canDismiss || pendingState}
-                onClick={() => {
-                  setReasonOpen((o) => !o);
-                }}
-              >
-                <Icon name="chev-d" size={12} />
-              </button>
+            </WithReason>
+            <span className="queue-dismiss">
+              <WithReason reason={reason}>
+                <button
+                  type="button"
+                  className="btn queue-big"
+                  data-testid="queue-not-fault"
+                  disabled={!canDismiss || pendingState}
+                  onClick={() => {
+                    dismiss();
+                  }}
+                >
+                  <Icon name="x" size={14} />
+                  {t('queue.notFault')}
+                  <kbd>D</kbd>
+                </button>
+              </WithReason>
+              <Tip content={reason ?? t('detect.preset.reject.title')}>
+                <button
+                  ref={reasonBtn}
+                  type="button"
+                  className="btn ghost icon"
+                  data-testid="queue-reject-reason"
+                  aria-label={t('detect.preset.reject.title')}
+                  aria-haspopup="menu"
+                  aria-expanded={reasonOpen}
+                  disabled={!canDismiss || pendingState}
+                  onClick={() => {
+                    setReasonOpen((o) => !o);
+                  }}
+                >
+                  <Icon name="chev-d" size={12} />
+                </button>
+              </Tip>
               <RejectReasonMenu
                 open={reasonOpen}
                 opener={reasonBtn}
@@ -609,31 +622,33 @@ export function ReviewQueue(p: {
 
       {footerClass && (
         <footer className="queue-f">
-          <button
-            type="button"
-            className="btn sm"
-            data-testid="det-accept-all"
-            title={reason}
-            disabled={readOnly || pendingState || batch !== null || acceptPlan.accept === 0}
-            onClick={() => {
-              setSkipped(0);
-              setBatch('accept');
-            }}
-          >
-            {t('queue.acceptAbove', { class: footerLabel, pct, count: acceptPlan.accept })}
-          </button>
-          <button
-            type="button"
-            className="btn ghost sm"
-            data-testid="det-reject-all"
-            title={reason}
-            disabled={readOnly || pendingState || batch !== null || rejectPlan.reject === 0}
-            onClick={() => {
-              setBatch('reject');
-            }}
-          >
-            {t('queue.rejectClass', { class: footerLabel, count: rejectPlan.reject })}
-          </button>
+          <WithReason reason={reason}>
+            <button
+              type="button"
+              className="btn sm"
+              data-testid="det-accept-all"
+              disabled={readOnly || pendingState || batch !== null || acceptPlan.accept === 0}
+              onClick={() => {
+                setSkipped(0);
+                setBatch('accept');
+              }}
+            >
+              {t('queue.acceptAbove', { class: footerLabel, pct, count: acceptPlan.accept })}
+            </button>
+          </WithReason>
+          <WithReason reason={reason}>
+            <button
+              type="button"
+              className="btn ghost sm"
+              data-testid="det-reject-all"
+              disabled={readOnly || pendingState || batch !== null || rejectPlan.reject === 0}
+              onClick={() => {
+                setBatch('reject');
+              }}
+            >
+              {t('queue.rejectClass', { class: footerLabel, count: rejectPlan.reject })}
+            </button>
+          </WithReason>
           {batch && (
             <BatchConfirm
               kind={batch}

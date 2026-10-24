@@ -6,6 +6,7 @@ import {
   formatDuration,
   Icon,
   shortcutHint,
+  Tip,
   useT,
   type PhotoPick,
 } from '@aio/ui';
@@ -163,19 +164,20 @@ export function PhotoColumn(p: {
           {chip('review', t('inspect.chip.review'), { toReview: true, onlyFindings: false })}
           {chip('findings', t('inspect.chip.findings'), { toReview: false, onlyFindings: true })}
           {chip('all', t('inspect.chip.all'), { toReview: false, onlyFindings: false })}
-          <button
-            type="button"
-            className={`btn icon sm ghost${filterOpen ? ' on' : ''}`}
-            aria-expanded={filterOpen}
-            aria-label={t('inspect.filter')}
-            title={t('inspect.filter')}
-            data-testid="inspect-filter"
-            onClick={() => {
-              setFilterOpen((v) => !v);
-            }}
-          >
-            <Icon name="filter" size={14} />
-          </button>
+          <Tip content={t('inspect.filter')} repeatsName>
+            <button
+              type="button"
+              className={`btn icon sm ghost${filterOpen ? ' on' : ''}`}
+              aria-expanded={filterOpen}
+              aria-label={t('inspect.filter')}
+              data-testid="inspect-filter"
+              onClick={() => {
+                setFilterOpen((v) => !v);
+              }}
+            >
+              <Icon name="filter" size={14} />
+            </button>
+          </Tip>
         </div>
         {filterOpen && (
           <div className="insp-filter" role="group" aria-label={t('inspect.filter')}>
@@ -244,7 +246,8 @@ export function PhotoColumn(p: {
         {flights.length > 0 && (
           <section className="m-sec">
             <h2 className="caps">
-              Flights <span className="mono faint">{formatCount(flights.length)}</span>
+              {t('inspect.flights')}{' '}
+              <span className="mono faint">{formatCount(flights.length)}</span>
             </h2>
             <div className="m-grid flights">
               {flights.map((f) => (
@@ -273,7 +276,7 @@ export function PhotoColumn(p: {
           <section
             className="m-sec"
             id="m-flight-clips"
-            aria-label={`Clips of ${shownFlight.name}`}
+            aria-label={t('inspect.flight.clipsOf', { name: shownFlight.name })}
           >
             <h2 className="caps">
               {shownFlight.name}{' '}
@@ -289,24 +292,29 @@ export function PhotoColumn(p: {
                 const start = c.flight.startUtcMs + c.offsetMs;
                 const d = durations[c.id];
                 return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className={`m-card${c.id === activeClip ? ' on' : ''}`}
-                    title={`Play ${c.name} in the scene`}
-                    onClick={() => {
-                      playClip(c);
-                    }}
-                  >
-                    <MediaThumb projectId={projectId} asset={c.poster} icon="video" thumb={false} />
-                    <div className="m-meta">
-                      <b>{clipLabel(c.name, shownFlight.name)}</b>
-                      <span className="mono">
-                        {formatClock(start)}
-                        {d !== undefined ? ` · ${formatDuration(d)}` : ''}
-                      </span>
-                    </div>
-                  </button>
+                  <Tip key={c.id} content={t('inspect.flight.play', { name: c.name })}>
+                    <button
+                      type="button"
+                      className={`m-card${c.id === activeClip ? ' on' : ''}`}
+                      onClick={() => {
+                        playClip(c);
+                      }}
+                    >
+                      <MediaThumb
+                        projectId={projectId}
+                        asset={c.poster}
+                        icon="video"
+                        thumb={false}
+                      />
+                      <div className="m-meta">
+                        <b>{clipLabel(c.name, shownFlight.name)}</b>
+                        <span className="mono">
+                          {formatClock(start)}
+                          {d !== undefined ? ` · ${formatDuration(d)}` : ''}
+                        </span>
+                      </div>
+                    </button>
+                  </Tip>
                 );
               })}
             </div>
@@ -315,7 +323,7 @@ export function PhotoColumn(p: {
         {noMatch && (
           <div className="side-empty" data-testid="media-no-match">
             <Icon name="filter" size={20} />
-            <p>No photos match this filter.</p>
+            <p>{t('inspect.noMatch')}</p>
           </div>
         )}
         {shownSets.map(({ set, items }) => {
@@ -353,42 +361,45 @@ export function PhotoColumn(p: {
                       edited={isPhotoEdited(orientation, set.id, ph)}
                       onMenu={tileMenu.open}
                     >
-                      <button
-                        type="button"
-                        data-photo={ph.id}
-                        data-picked={picked ? 'true' : undefined}
-                        data-ai={waiting > 0 ? waiting : undefined}
-                        data-confirmed={confirmed > 0 ? confirmed : undefined}
-                        className={`m-card sq${on ? ' on' : ''}`}
-                        onClick={(e) => {
-                          const mods = { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey };
-                          mediaPicks.getState().click(projectId, hit, mods, tileOrder);
-                          // Ctrl or Shift only picks; a plain click also opens the photo
-                          if (mods.ctrl || mods.shift) return;
-                          workspace.getState().select({ kind: 'photo', id: ph.id, layer: set.id });
-                        }}
-                        title={`${ph.id}${when}${what ? ` · ${what}` : ''}`}
-                        aria-label={what ? `${ph.id} · ${what}` : ph.id}
-                      >
-                        <MediaThumb projectId={projectId} asset={ph.src} icon="photo" />
-                        {waiting > 0 && (
-                          <span className="insp-b ai mono" role="img" aria-label={aiText}>
-                            <i />
-                            {waiting}
-                          </span>
-                        )}
-                        {confirmed > 0 && f && (
-                          <span
-                            className="insp-b ok mono"
-                            role="img"
-                            aria-label={okText}
-                            style={{ ['--c' as string]: f.confirmedColor }}
-                          >
-                            <i />
-                            {confirmed}
-                          </span>
-                        )}
-                      </button>
+                      <Tip content={`${ph.id}${when}${what ? ` · ${what}` : ''}`}>
+                        <button
+                          type="button"
+                          data-photo={ph.id}
+                          data-picked={picked ? 'true' : undefined}
+                          data-ai={waiting > 0 ? waiting : undefined}
+                          data-confirmed={confirmed > 0 ? confirmed : undefined}
+                          className={`m-card sq${on ? ' on' : ''}`}
+                          onClick={(e) => {
+                            const mods = { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey };
+                            mediaPicks.getState().click(projectId, hit, mods, tileOrder);
+                            // Ctrl or Shift only picks; a plain click also opens the photo
+                            if (mods.ctrl || mods.shift) return;
+                            workspace
+                              .getState()
+                              .select({ kind: 'photo', id: ph.id, layer: set.id });
+                          }}
+                          aria-label={what ? `${ph.id} · ${what}` : ph.id}
+                        >
+                          <MediaThumb projectId={projectId} asset={ph.src} icon="photo" />
+                          {waiting > 0 && (
+                            <span className="insp-b ai mono" role="img" aria-label={aiText}>
+                              <i />
+                              {waiting}
+                            </span>
+                          )}
+                          {confirmed > 0 && f && (
+                            <span
+                              className="insp-b ok mono"
+                              role="img"
+                              aria-label={okText}
+                              style={{ ['--c' as string]: f.confirmedColor }}
+                            >
+                              <i />
+                              {confirmed}
+                            </span>
+                          )}
+                        </button>
+                      </Tip>
                     </PhotoTile>
                   );
                 })}

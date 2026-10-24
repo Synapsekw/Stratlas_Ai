@@ -86,7 +86,7 @@
 }
 .inspect-tag.ai {
   border: 1px dashed var(--warn);
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 .inspect-row-acts {
   display: flex;

@@ -8,7 +8,7 @@
 import { ClassSeverityForm, useNewClass } from '@aio/annotate';
 import type { Detection } from '@aio/annotate/detections';
 import type { Issue } from '@aio/schema';
-import { useT } from '@aio/ui';
+import { Tip, useT } from '@aio/ui';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { createClassFromLabel } from '../detections/createFromLabel';
 import { LinkPicker } from '../detections/LinkPicker';
@@ -123,24 +123,25 @@ export function ChangePicker({
           rows={
             <>
               {word && create && (
-                <button
-                  type="button"
-                  className="ann-btn ghost"
-                  data-testid="det-create-class"
-                  disabled={disabledReason !== null || creating}
-                  title={disabledReason ?? t('det.suggestedClass', { label: word })}
-                  onClick={() => {
-                    setCreating(true);
-                    setError(null);
-                    void createClassFromLabel(word).then((e) => {
-                      if (!alive.current) return;
-                      setCreating(false);
-                      setError(e);
-                    });
-                  }}
-                >
-                  {t('inspect.change.addClass', { label: word })}
-                </button>
+                <Tip content={disabledReason ?? t('det.suggestedClass', { label: word })}>
+                  <button
+                    type="button"
+                    className="ann-btn ghost"
+                    data-testid="det-create-class"
+                    disabled={disabledReason !== null || creating}
+                    onClick={() => {
+                      setCreating(true);
+                      setError(null);
+                      void createClassFromLabel(word).then((e) => {
+                        if (!alive.current) return;
+                        setCreating(false);
+                        setError(e);
+                      });
+                    }}
+                  >
+                    {t('inspect.change.addClass', { label: word })}
+                  </button>
+                </Tip>
               )}
               <button
                 type="button"
