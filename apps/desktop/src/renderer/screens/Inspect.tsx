@@ -71,7 +71,7 @@ import { draftOnPhoto, photoToDraft } from '../inspect/viewerShapes';
 import '../inspect/inspect.css';
 import { trackDrawingChoice } from '../inspect/lastChoice';
 import { PhotoColumn } from '../inspect/PhotoColumn';
-import { queueCommand, ReviewQueue } from '../inspect/ReviewQueue';
+import { queueCommand, ReviewQueue, useQueueSeed } from '../inspect/ReviewQueue';
 import { IssueCard } from '../issueCard/IssueCard';
 import { useMedia } from '../media';
 import { processing } from '../processing/store';
@@ -123,6 +123,8 @@ function InspectBody(): ReactElement | null {
   const t = useT();
   const panelId = useId();
   const project = useWorkspace((s) => s.project);
+  // the queue slider's start applies from the first view, not once the queue opens
+  useQueueSeed(project?.id ?? '');
   const issues = useWorkspace((s) => s.issues);
   const selection = useWorkspace((s) => s.selection);
   const pkg = useShell((s) => s.pkg);

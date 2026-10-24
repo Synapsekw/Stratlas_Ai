@@ -424,6 +424,29 @@ describe('InspectScreen', () => {
     expect(card?.dataset.issue).toBe('i-3d');
   });
 
+  it('applies the slider start from the first view: the queue never opened, a 0.4 suggestion is left out', async () => {
+    const { askAiPrefs, readPrefs } = await import('../inspect/askAi/prefs');
+    askAiPrefs.setState(readPrefs());
+    detections.setState({
+      review: reviewReducer(initialReview(), {
+        type: 'load',
+        detections: [
+          { ...draft('d-a', 'a'), confidence: 0.4 },
+          { ...draft('d-c', 'c'), confidence: 0.6 },
+        ],
+      }),
+    });
+    mount();
+    expect(host.querySelector('[data-testid="inspect-queue"]')).toBeNull();
+    expect(host.querySelector('[data-testid="inspect-review"]')?.textContent).toContain(
+      'Review 1 suggestion',
+    );
+    select({ kind: 'photo', id: 'a', layer: 'photos' });
+    expect(rows()).toHaveLength(0);
+    select({ kind: 'photo', id: 'c', layer: 'photos' });
+    expect(rows().map((r) => r.dataset.kind)).toEqual(['ai']);
+  });
+
   it('offers the review queue while suggestions wait, and Esc leaves it', () => {
     mount();
     select({ kind: 'photo', id: 'a', layer: 'photos' });

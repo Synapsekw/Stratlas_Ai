@@ -73,6 +73,20 @@ detections.subscribe((s, prev) => {
   if (s.projectId !== prev.projectId) seeded = null;
 });
 
+/**
+ * The slider starts at the Ask AI setting once per project load, then is the reviewer's. Inspect
+ * calls this as soon as it opens a project, so the photo findings, the "Review n suggestions"
+ * count and the queue agree before the queue first opens; the queue calls it too (once only).
+ */
+export function useQueueSeed(projectId: string): void {
+  const storeProject = useDetections((s) => s.projectId);
+  useEffect(() => {
+    if (storeProject !== projectId || seeded === storeProject) return;
+    seeded = storeProject;
+    dispatch({ type: 'minConfidence', value: askAiPrefs.getState().queueThreshold });
+  }, [storeProject, projectId]);
+}
+
 const isScored = (d: Detection) => !d.unscored && d.confidence !== undefined;
 
 /**
@@ -102,7 +116,6 @@ export function ReviewQueue(p: {
 }): ReactElement {
   const t = useT();
   const review = useDetections((s) => s.review);
-  const storeProject = useDetections((s) => s.projectId);
   const storeReadOnly = useDetections((s) => s.readOnly);
   const save = useDetections((s) => s.save);
   const issueError = useDetections((s) => s.issueError);
@@ -119,12 +132,7 @@ export function ReviewQueue(p: {
   const reasonBtn = useRef<HTMLButtonElement>(null);
   const [sizes, setSizes] = useState<ReadonlyMap<string, [number, number]>>(new Map());
 
-  // the slider starts at the Ask AI setting once per project load, then is the reviewer's
-  useEffect(() => {
-    if (storeProject !== p.projectId || seeded === storeProject) return;
-    seeded = storeProject;
-    dispatch({ type: 'minConfidence', value: askAiPrefs.getState().queueThreshold });
-  }, [storeProject, p.projectId]);
+  useQueueSeed(p.projectId);
 
   const queueAll = useMemo(() => queueOf(review), [review]);
   // a draft relabelled in the queue stays on the chip while it is current, so relabel then
