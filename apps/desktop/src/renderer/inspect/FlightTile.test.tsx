@@ -4,8 +4,8 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { selectClip } from '../workspace/pickClip';
-import { FlightTile } from './Media';
-import { flightCards } from './mediaModel';
+import { flightCards } from '../screens/mediaModel';
+import { FlightTile } from './FlightTile';
 
 vi.mock('../workspace/pickClip', () => ({ selectClip: vi.fn() }));
 vi.mock('../thumbs/Thumb', () => ({ MediaThumb: () => null }));
