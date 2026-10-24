@@ -156,6 +156,19 @@ async function sizeFor(d: Detection): Promise<{ ok: true } | { ok: false; error:
 }
 
 /**
+ * Note `d`'s size in the review store again, synchronously, just before an accept: a forced
+ * reload (Ask AI, a change on disk, a team reload) clears the store's sizes while a photo is
+ * read, but not the annotate registry `knownSize` reads. False for a normalized draft whose size
+ * is unknown: it must not be accepted.
+ */
+function notedNow(d: Detection): boolean {
+  const key = sourceKey(d.source);
+  const known = knownSize(key);
+  if (known) noteImageSize(key, known);
+  return known !== null || !isNormalized(d);
+}
+
+/**
  * Wait for the size, then check the draft is still the same one waiting in the same project
  * (the person may have moved on, or closed the project, while the photo was read).
  */
@@ -181,6 +194,7 @@ async function prepared(
 
 /** Make `id` current and accept it through the review store; the store's error otherwise. */
 function acceptNow(d: Detection, mode: AcceptMode, patch: DetectionPatch | null): AcceptOutcome {
+  if (!notedNow(d)) return { ok: false, error: t('card.photoFailed') };
   if (patch) dispatch({ type: 'edit', id: d.id, patch, now: new Date().toISOString() });
   dispatch({ type: 'select', id: d.id });
   const r = acceptCurrent(mode);
@@ -294,8 +308,10 @@ export async function acceptAllAbove(
   const unread = list.length - ids.size;
   // the drafts as they are now: one may have been decided while the photos were read
   const now = detections.getState().review.detections.filter((d) => ids.has(d.id));
-  const r = acceptAll(now);
-  return 'error' in r ? r : { accepted: r.accepted, skipped: r.skipped + unread };
+  const sized = now.filter(notedNow);
+  const r = acceptAll(sized);
+  const lost = now.length - sized.length;
+  return 'error' in r ? r : { accepted: r.accepted, skipped: r.skipped + unread + lost };
 }
 
 export function rejectAllOfClass(classId: string): number {

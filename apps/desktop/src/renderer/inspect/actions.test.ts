@@ -19,7 +19,7 @@ vi.hoisted(() => {
   };
 });
 
-import { detections, undoReview } from '../detections/store';
+import { detections, loadDetections, undoReview } from '../detections/store';
 import {
   acceptAllAbove,
   acceptSuggestion,
@@ -49,7 +49,7 @@ const manifest: ProjectManifest = {
       id: 'photos',
       name: 'Photos',
       visible: true,
-      items: [photo('p001'), photo('p002'), photo('p003'), photo('p004')],
+      items: [photo('p001'), photo('p002'), photo('p003'), photo('p004'), photo('p005')],
     },
   ],
   severityModels: [
@@ -330,6 +330,45 @@ describe('waitingOf, acceptAllAbove and rejectAllOfClass', () => {
     expect(await acceptAllAbove('corrosion', 0.8)).toEqual({ accepted: 1, skipped: 1 });
     const s = issues()[0]?.sightings[0];
     expect(s && 'geom' in s ? s.geom : null).toMatchObject({ x: 2000, y: 1500, w: 400, h: 300 });
+  });
+
+  it('keeps pixels in Accept all when the project reloads while a photo is read', async () => {
+    const decode: { run: (() => void) | null } = { run: null };
+    vi.stubGlobal(
+      'Image',
+      class {
+        naturalWidth = 2000;
+        naturalHeight = 1000;
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        set src(_v: string) {
+          decode.run = () => this.onload?.();
+        }
+      },
+    );
+    rememberImageSize('photos', 'p004', [4000, 3000]);
+    const norm = {
+      size: [1, 1] as [number, number],
+      geom: { type: 'box' as const, x: 0.5, y: 0.5, w: 0.1, h: 0.1 },
+    };
+    review([
+      det('k1', { ...norm, source: src('p004') }),
+      det('k2', { ...norm, source: src('p005') }),
+    ]);
+    const pending = acceptAllAbove('corrosion', 0.8);
+    // a forced reload clears the review store's sizes while p005 is still being decoded
+    await loadDetections('p1', true).catch(() => undefined);
+    await vi.waitFor(() => {
+      expect(decode.run).not.toBeNull();
+    });
+    decode.run?.();
+    expect(await pending).toEqual({ accepted: 2, skipped: 0 });
+    const geoms = issues().map((i) => {
+      const s = i.sightings[0];
+      return s && 'geom' in s ? s.geom : null;
+    });
+    expect(geoms).toContainEqual(expect.objectContaining({ x: 2000, y: 1500, w: 400, h: 300 }));
+    expect(geoms).toContainEqual(expect.objectContaining({ x: 1000, y: 500, w: 200, h: 100 }));
   });
 
   it('rejects every waiting draft of one class', () => {
