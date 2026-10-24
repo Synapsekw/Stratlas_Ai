@@ -12,13 +12,14 @@ import type { SiteMaterial, SurveyMeasurement } from '@aio/schema';
 import { densityOn, effectiveUnits, materialColour } from '@aio/survey';
 import { EmptyState, Icon, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useId, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useStore } from 'zustand';
 import type { StoreApi } from 'zustand/vanilla';
 import { useTimeline } from '../../workspace/timeline';
 import { exportMaterialsCsv, importMaterialsCsv } from '../Materials';
 import { useMeasure } from '../measureStore';
 import { isPile } from '../pile/openPile';
+import { useCounted } from '../useInventory';
 import { massParts, volumeParts } from '../pile/PileHeader';
 import {
   captureDateOf,
@@ -148,6 +149,8 @@ export function MaterialsPane({ draft = materialsDraft }: MaterialsPaneProps): R
   const dateOf = useMemo(() => captureDateOf(captures), [captures]);
   const capture = useCaptureShown(dated);
   const piles = useMemo(() => measurements.filter(isPile), [measurements]);
+  // the Volumes tab's one counting rule, so the table never adds a figure the inventory leaves out
+  const isCounted = useCounted(measurements);
   const units = effectiveUnits(settings.units);
   const locale = settings.locale ?? localeOf(units.distance);
   const materials = state.draft ?? settings.materials;
@@ -160,8 +163,10 @@ export function MaterialsPane({ draft = materialsDraft }: MaterialsPaneProps): R
 
   const table = useMemo(
     () =>
-      capture === null ? null : materialRows(materials, piles, state.assignments, capture, dateOf),
-    [materials, piles, state.assignments, capture, dateOf],
+      capture === null
+        ? null
+        : materialRows(materials, piles, state.assignments, capture, dateOf, { isCounted }),
+    [materials, piles, state.assignments, capture, dateOf, isCounted],
   );
   const vol = (m3: number) => volumeParts(m3, units, settings.precision.volume, locale).num;
   const mass = (tn: number | null) => (tn === null ? '-' : massParts(tn, units, locale).num);
@@ -342,6 +347,7 @@ export function MaterialsPane({ draft = materialsDraft }: MaterialsPaneProps): R
           draft={draft}
           state={state}
           piles={piles}
+          isCounted={isCounted}
           captures={captures}
           dated={dated}
           capture={capture}
@@ -425,6 +431,7 @@ interface EditorProps {
   draft: StoreApi<MaterialsDraftState>;
   state: MaterialsDraftState;
   piles: readonly SurveyMeasurement[];
+  isCounted: (pile: string, capture: string) => boolean;
   captures: readonly DatedCapture[];
   dated: readonly DatedCapture[];
   capture: string | null;
@@ -443,7 +450,9 @@ function MaterialEditor(p: EditorProps): ReactElement {
   const fromId = useId();
   const edit = state.densityEdits[m.id] ?? null;
   const dateOf = useMemo(() => captureDateOf(captures), [captures]);
-  const from = edit?.fromCapture ?? p.capture;
+  // a "from" date picked before any value is typed: only the date moves until one is committed
+  const [pickedFrom, setPickedFrom] = useState<string | null>(null);
+  const from = edit?.fromCapture ?? pickedFrom ?? p.capture;
   const dateOfId = (id: string) => captures.find((c) => c.id === id)?.date ?? '';
   const oldDensity = saved && from ? densityOn(saved, from, dateOf) : null;
   const newDensity = edit?.tPerM3 ?? oldDensity;
@@ -455,10 +464,33 @@ function MaterialEditor(p: EditorProps): ReactElement {
     );
   const impact =
     edit && saved
-      ? densityImpact(saved, m, edit.fromCapture, p.piles, state.assignments, captures)
+      ? densityImpact(saved, m, edit.fromCapture, p.piles, state.assignments, captures, {
+          isCounted: p.isCounted,
+        })
       : null;
   const history = historyRows(m, edit, dateOf);
-  const colour = swatch(materialColour(m, p.index));
+  // the colour previews while the picker is dragged and is written to the draft once it ends
+  const [preview, setPreview] = useState<string | null>(null);
+  const colour = swatch(preview ?? materialColour(m, p.index));
+  const colourInput = useRef<HTMLInputElement>(null);
+  const commitColour = () => {
+    if (preview === null) return;
+    if (preview !== m.colour) draft.getState().edit(m.id, { colour: preview });
+    setPreview(null);
+  };
+  useEffect(() => {
+    const el = colourInput.current;
+    if (!el || preview === null) return;
+    // the native change event fires when the pick ends (React's onChange fires on every input)
+    const end = () => {
+      if (preview !== m.colour) draft.getState().edit(m.id, { colour: preview });
+      setPreview(null);
+    };
+    el.addEventListener('change', end);
+    return () => {
+      el.removeEventListener('change', end);
+    };
+  }, [preview, m.colour, m.id, draft]);
 
   // "Density {old} → {new} t/m³ from": the new value is the input, the rest is the sentence
   const MARK = '\u0001';
@@ -483,14 +515,16 @@ function MaterialEditor(p: EditorProps): ReactElement {
         <label className="mp-colour">
           <span className="mp-swatch" aria-hidden="true" style={{ background: colour }} />
           <input
+            ref={colourInput}
             type="color"
             className="sr-only"
             aria-label={t('materials.colour.change')}
-            value={m.colour ?? '#808080'}
+            value={preview ?? m.colour ?? '#808080'}
             disabled={readOnly}
             onChange={(e) => {
-              draft.getState().edit(m.id, { colour: e.target.value });
+              setPreview(e.target.value);
             }}
+            onBlur={commitColour}
           />
         </label>
         <input
@@ -539,7 +573,10 @@ function MaterialEditor(p: EditorProps): ReactElement {
             labelledBy={fromId}
             testId="materials-new-density"
             onCommit={(v) => {
-              if (v !== null) draft.getState().setDensityFrom(m.id, from, v);
+              if (v !== null) {
+                draft.getState().setDensityFrom(m.id, from, v);
+                setPickedFrom(null);
+              }
             }}
           />
           <span className="mp-sentence">{sentence(after)}</span>
@@ -550,8 +587,10 @@ function MaterialEditor(p: EditorProps): ReactElement {
             aria-labelledby={fromId}
             data-testid="materials-from"
             onChange={(e) => {
-              const v = newDensity;
-              if (v !== null) draft.getState().setDensityFrom(m.id, e.target.value, v);
+              // a typed value moves with its date; without one only the date changes, so the
+              // density shown for it never overrides a later entry
+              if (edit) draft.getState().setDensityFrom(m.id, e.target.value, edit.tPerM3);
+              else setPickedFrom(e.target.value);
             }}
           >
             {dated.map((c) => (

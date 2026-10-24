@@ -19,6 +19,7 @@ const s = vi.hoisted(() => ({
     file: { measurements: SurveyMeasurement[] };
   },
   focus: 'd2',
+  counted: null as null | ((pile: string, capture: string) => boolean),
 }));
 const calls = vi.hoisted(() => ({
   bridge: vi.fn(() => Promise.resolve({ ok: true, value: { path: 'C:/x/site-materials.csv' } })),
@@ -34,6 +35,10 @@ vi.mock('../measureStore', () => ({
 }));
 vi.mock('../../workspace/timeline', () => ({
   useTimeline: (sel: (x: unknown) => unknown) => sel({ focus: s.focus }),
+  timeline: { getState: () => ({ focus: s.focus }) },
+}));
+vi.mock('../useInventory', () => ({
+  useCounted: () => s.counted ?? (() => true),
 }));
 vi.mock('@aio/workspace', async (original) => ({
   ...(await original<Record<string, unknown>>()),
@@ -113,6 +118,7 @@ beforeEach(() => {
   host = document.createElement('div');
   document.body.append(host);
   s.focus = 'd2';
+  s.counted = null;
   s.measure = {
     settings: { ...defaultSurveySettings(), materials: [AGG, SAND] },
     readOnly: false,
@@ -224,6 +230,59 @@ describe('the Materials pane', () => {
     const agg = draft.getState().draft?.find((m) => m.id === 'agg');
     expect(agg?.densityHistory).toEqual([{ fromCapture: 'd1', tPerM3: 2 }]);
     expect(agg?.densityTPerM3).toBe(2);
+  });
+
+  it('the table counts piles by the inventory rule (review finding 4)', () => {
+    s.counted = (pile) => pile !== 'Pile 01';
+    render();
+    expect(cells(row('agg')).slice(3)).toEqual(['1', '0.0', '0']);
+    expect(cells(q('survey-mat-total')).slice(3)).toEqual(['2', '100.0', '150']);
+  });
+
+  it('changing the from date alone writes nothing until a value is typed (finding 16)', () => {
+    s.measure.settings = {
+      ...s.measure.settings,
+      materials: [
+        {
+          ...AGG,
+          densityTPerM3: 1.7,
+          densityHistory: [
+            { fromCapture: 'd1', tPerM3: 1.6 },
+            { fromCapture: 'd2', tPerM3: 1.7 },
+          ],
+        },
+        SAND,
+      ],
+    };
+    render();
+    open('agg');
+    const sel = host.querySelector<HTMLSelectElement>('[data-testid="materials-from"]');
+    act(() => {
+      if (sel) sel.value = 'd1';
+      sel?.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(draft.getState().draft).toBeNull();
+    expect(sel?.value).toBe('d1');
+    type(host.querySelector<HTMLInputElement>('[data-testid="materials-new-density"]'), '1.65');
+    const agg = draft.getState().draft?.find((m) => m.id === 'agg');
+    expect(agg?.densityHistory).toEqual([
+      { fromCapture: 'd1', tPerM3: 1.65 },
+      { fromCapture: 'd2', tPerM3: 1.7 },
+    ]);
+  });
+
+  it('the colour previews while dragged and is written once the pick ends', () => {
+    render();
+    open('agg');
+    const input = host.querySelector<HTMLInputElement>('.mp-colour input[type="color"]');
+    type(input, '#ff0000');
+    expect(draft.getState().draft).toBeNull();
+    const swatchEl = host.querySelector<HTMLElement>('.mp-ed-head .mp-swatch');
+    expect(swatchEl?.style.background).toMatch(/255, 0, 0|#ff0000/);
+    act(() => {
+      input?.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(draft.getState().draft?.find((m) => m.id === 'agg')?.colour).toBe('#ff0000');
   });
 
   it('Save writes densityHistory and densityTPerM3 equal to the newest entry', async () => {

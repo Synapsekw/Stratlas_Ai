@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import type { ComparisonResult, SiteMaterial, SurveyMeasurement } from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
+import { createStore } from 'zustand/vanilla';
 import {
   captureDateOf,
   createMaterialsDraft,
   densityImpact,
+  followProject,
   historyRows,
   materialRows,
   swatch,
@@ -296,3 +298,123 @@ function make2() {
     }),
   };
 }
+
+describe('review findings 1, 3 and 4', () => {
+  it('materialRows counts by the inventory rule (a stale fingerprint is left out)', () => {
+    const seen: [string, string][] = [];
+    const isCounted = (pile: string, capture: string) => {
+      seen.push([pile, capture]);
+      return pile !== 'p1';
+    };
+    const { rows, total } = materialRows(MATERIALS, PILES, {}, 'd2', dateOf, { isCounted });
+    expect(rows.map((r) => [r.material.id, r.piles, r.volumeM3, r.tonnes])).toEqual([
+      ['agg', 1, 0, 0],
+      ['sand', 1, 50, 75],
+    ]);
+    expect(total.volumeM3).toBe(50);
+    expect(seen).toContainEqual(['p1', 'd2']);
+  });
+
+  it('densityImpact counts by the same rule', () => {
+    const draft = { ...AGG, densityTPerM3: 2 };
+    const isCounted = (pile: string) => pile !== 'p1';
+    const impact = densityImpact(AGG, draft, 'd2', PILES, {}, CAPTURES, { isCounted });
+    expect(impact).toMatchObject({ from: 0, to: 0, otherTonnes: 0 });
+  });
+
+  it('a project change drops the draft and the pending assignments', () => {
+    const ws = createStore<{ project: { id: string } | null }>(() => ({ project: { id: 'a' } }));
+    const store = make2().store;
+    const off = followProject(store, ws);
+    store.getState().setDensityFrom('agg', 'd2', 1.62);
+    store.getState().assign('sand', ['p1']);
+    ws.setState({ project: { id: 'a' } });
+    expect(store.getState().dirty()).toBe(true);
+    ws.setState({ project: { id: 'b' } });
+    expect(store.getState().draft).toBeNull();
+    expect(store.getState().assignments).toEqual({});
+    expect(store.getState().densityEdits).toEqual({});
+    off();
+  });
+
+  it('starts watching for a project change at the first edit, once', () => {
+    const watch = vi.fn();
+    const store = createMaterialsDraft({
+      base: () => MATERIALS,
+      captures: () => CAPTURES,
+      readOnly: () => false,
+      watch,
+      save: () => Promise.resolve(null),
+    });
+    expect(watch).not.toHaveBeenCalled();
+    store.getState().assign('sand', ['p1']);
+    store.getState().setDensityFrom('agg', 'd2', 1.62);
+    expect(watch).toHaveBeenCalledTimes(1);
+  });
+
+  it('Save rebases the edits onto the materials saved meanwhile', async () => {
+    let base: SiteMaterial[] = MATERIALS;
+    const save = vi.fn<
+      (m: SiteMaterial[], a: Record<string, string | null>) => Promise<string | null>
+    >(() => Promise.resolve(null));
+    const store = createMaterialsDraft({
+      base: () => base,
+      captures: () => CAPTURES,
+      readOnly: () => false,
+      save,
+    });
+    store.getState().setDensityFrom('agg', 'd2', 1.62);
+    store.getState().edit('agg', { name: 'Aggregate 20' });
+    // the pile panel saved a density for sand and a code for agg, and a material was added
+    base = [
+      { ...AGG, code: 'A1' },
+      { ...SAND, densityTPerM3: 1.45 },
+      { id: 'clay', name: 'Clay' },
+    ];
+    expect(await store.getState().save()).toBeNull();
+    const [materials] = save.mock.calls[0] ?? [];
+    expect(materials).toEqual([
+      {
+        ...AGG,
+        name: 'Aggregate 20',
+        code: 'A1',
+        densityTPerM3: 1.62,
+        densityHistory: [
+          { fromCapture: 'd1', tPerM3: 1.6 },
+          { fromCapture: 'd2', tPerM3: 1.62 },
+        ],
+      },
+      { ...SAND, densityTPerM3: 1.45 },
+      { id: 'clay', name: 'Clay' },
+    ]);
+  });
+
+  it('a CSV import keeps colour and history and dates a changed density from the focus', () => {
+    const dated: SiteMaterial = {
+      ...SAND,
+      densityHistory: [
+        { fromCapture: 'd1', tPerM3: 1.4 },
+        { fromCapture: 'd2', tPerM3: 1.5 },
+      ],
+    };
+    const store = createMaterialsDraft({
+      base: () => [AGG, dated],
+      captures: () => CAPTURES,
+      readOnly: () => false,
+      focus: () => 'd3',
+      save: () => Promise.resolve(null),
+    });
+    store.getState().importCsv('id,name,density_t_per_m3\r\nsand,Sand,1.55\r\nagg,Agg,1.6\r\n');
+    const d = store.getState().draft ?? [];
+    expect(d.find((m) => m.id === 'agg')).toEqual({ ...AGG, name: 'Agg' });
+    const sand = d.find((m) => m.id === 'sand');
+    expect(sand?.colour).toBe('#112233');
+    expect(sand?.densityHistory).toEqual([
+      { fromCapture: 'd1', tPerM3: 1.4 },
+      { fromCapture: 'd2', tPerM3: 1.5 },
+      { fromCapture: 'd3', tPerM3: 1.55 },
+    ]);
+    expect(store.getState().densityEdits.sand).toEqual({ fromCapture: 'd3', tPerM3: 1.55 });
+    expect(store.getState().densityEdits.agg).toBeUndefined();
+  });
+});
