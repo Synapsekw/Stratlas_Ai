@@ -11,6 +11,7 @@ import { linkedHover, type HoverLine } from './linkedHover';
 import { attachHover3d, attachHoverFly, attachHoverMap, LINK_LAYERS } from './hoverScene';
 import { frameOf } from './measureScene';
 import { measureStore } from './measureStore';
+import { sectionStore } from './sectionStore';
 
 vi.mock('../shell', () => ({ bridge: { call: () => Promise.resolve({ ok: false }) }, jobs: {} }));
 
@@ -236,6 +237,48 @@ describe('3D', () => {
     expect(target.distance).toBe(40);
     expect(target.p[0]).toBeCloseTo(50, 0);
     expect(target.p[1]).toBeCloseTo(8.37, 1);
+    s.detach();
+    offFly();
+    fly.mockRestore();
+  });
+
+  it('with the section window open the fly lands the point in the upper quarter', () => {
+    const fly = vi.spyOn(workspace.getState(), 'flyTo').mockImplementation(() => undefined);
+    const s = fakeStage();
+    const offFly = attachHoverFly(
+      frame,
+      () => 0,
+      () => s.stage.camera,
+    );
+    linkedHover.getState().register(line(TWO));
+    sectionStore.setState({ window: true });
+    linkedHover.getState().flyTo('measure:m', 50);
+    const target = fly.mock.calls[0]?.[0] as {
+      kind: string;
+      p: [number, number, number];
+      distance: number;
+      dir: [number, number, number];
+    };
+    const point = new Vector3(...frame.toLocal([50, 0, 8.37]));
+    // the camera the stage flies to: at the target, back along dir by distance, looking at it
+    const t = new Vector3(...target.p);
+    const cam = new PerspectiveCamera(s.stage.camera.fov, 400 / 300, 0.1, 5000);
+    cam.position.copy(t).addScaledVector(new Vector3(...target.dir).normalize(), target.distance);
+    cam.lookAt(t);
+    cam.updateMatrixWorld();
+    const ndc = point.clone().project(cam);
+    // a quarter of the way down from the top, centred across
+    expect((1 - ndc.y) / 2).toBeCloseTo(0.25, 2);
+    expect(ndc.x).toBeCloseTo(0, 2);
+    // the point stays at the asked distance from the camera's plane
+    expect(cam.position.distanceTo(point)).toBeGreaterThan(target.distance - 1e-6);
+    // closed: the point itself
+    sectionStore.setState({ window: false });
+    linkedHover.getState().flyTo('measure:m', 50);
+    const plain = fly.mock.calls[1]?.[0] as { p: number[]; dir?: unknown };
+    expect(plain.p[0]).toBeCloseTo(point.x, 6);
+    expect(plain.p[1]).toBeCloseTo(point.y, 6);
+    expect(plain.dir).toBeUndefined();
     s.detach();
     offFly();
     fly.mockRestore();

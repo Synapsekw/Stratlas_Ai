@@ -7,10 +7,10 @@
  * drives the chart; a click pins, a double-click flies there. Everything is drawn on top of the
  * scene (no depth test, like the measurement lines) and never takes a raycast.
  */
-import type { EngineStage } from '@aio/engine';
+import { getActiveStage, type EngineStage } from '@aio/engine';
 import { formatNumber, localeOf, toWgs84, unitFactor, unitLabel } from '@aio/geo';
 import type { MapController } from '@aio/maps';
-import type { SitePoint } from '@aio/schema';
+import type { SitePoint, Vec3 } from '@aio/schema';
 import { effectiveUnits, type ChartSeries } from '@aio/survey';
 import { workspace } from '@aio/workspace';
 import {
@@ -23,6 +23,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   Points,
+  PerspectiveCamera,
   PointsMaterial,
   RingGeometry,
   Vector3,
@@ -36,6 +37,7 @@ import { markerAt, pointAt, snapScreen, tagText, type TagFormat } from './linked
 import type { Frame } from './measureScene';
 import { measureStore } from './measureStore';
 import { pointerBusy } from './pointerBusy';
+import { sectionStore } from './sectionStore';
 
 type Pt = readonly [number, number];
 
@@ -935,11 +937,52 @@ export function attachHoverMap(ctl: MapController, frame: Frame): () => void {
 
 // ---------------------------------------------------------------- fly
 
+/** Where the point lands while the section window covers the stage's lower part: from the top. */
+export const LINK_FLY_UNDER_WINDOW = 0.25;
+
+/**
+ * The point fly that lands `p` at `fromTop` (a fraction of the view's height) instead of the
+ * centre, keeping the camera's direction: the target moves down the screen from `p` by the
+ * matching part of the view's half-height at `distance`, and the camera keeps looking along its
+ * own direction.
+ */
+export function flyLandingHigh(
+  p: readonly [number, number, number],
+  distance: number,
+  camera: PerspectiveCamera,
+  fromTop: number,
+): { kind: 'point'; p: Vec3; distance: number; dir: Vec3 } {
+  camera.updateMatrixWorld();
+  const forward = camera.getWorldDirection(new Vector3());
+  // the camera's screen-up in the world, square to its direction
+  const up = new Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+  up.addScaledVector(forward, -up.dot(forward)).normalize();
+  const half = distance * Math.tan(((camera.fov / 2) * Math.PI) / 180);
+  const shift = (1 - 2 * fromTop) * half;
+  const target = new Vector3(...p).addScaledVector(up, -shift);
+  const back = forward.clone().negate();
+  return {
+    kind: 'point',
+    p: [target.x, target.y, target.z],
+    distance,
+    dir: [back.x, back.y, back.z],
+  };
+}
+
 /**
  * Carry out the flies the chart or a line asks for (`linkedHover.flyTo`): the camera in 3D and the
- * map in Map view both follow the workspace's point fly. Attach once, not per view.
+ * map in Map view both follow the workspace's point fly. Attach once, not per view. While the
+ * section window is open (it covers the lower part of the stage) the 3D fly lands the point in the
+ * upper quarter of the view (`camera`: the active 3D stage's).
  */
-export function attachHoverFly(frame: Frame, fallbackZ: () => number = () => 0): () => void {
+export function attachHoverFly(
+  frame: Frame,
+  fallbackZ: () => number = () => 0,
+  camera: () => PerspectiveCamera | null = () => {
+    const c = getActiveStage()?.camera;
+    return c instanceof PerspectiveCamera ? c : null;
+  },
+): () => void {
   return linkedHover.subscribe((s, prev) => {
     const fly = s.fly;
     if (!fly || fly === prev.fly) return;
@@ -947,8 +990,14 @@ export function attachHoverFly(frame: Frame, fallbackZ: () => number = () => 0):
     if (!line) return;
     const m = markerAt(line, fly.chainageM);
     const z = m.dots.at(-1)?.z ?? fallbackZ();
+    const p = frame.toLocal([m.e, m.n, z]);
+    const cam = sectionStore.getState().window ? camera() : null;
     workspace
       .getState()
-      .flyTo({ kind: 'point', p: frame.toLocal([m.e, m.n, z]), distance: LINK_FLY_DISTANCE_M });
+      .flyTo(
+        cam
+          ? flyLandingHigh(p, LINK_FLY_DISTANCE_M, cam, LINK_FLY_UNDER_WINDOW)
+          : { kind: 'point', p, distance: LINK_FLY_DISTANCE_M },
+      );
   });
 }
