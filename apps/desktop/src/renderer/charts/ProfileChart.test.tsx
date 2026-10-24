@@ -184,8 +184,17 @@ describe('ProfileChart', () => {
     expect(r).not.toContain(' m');
   });
 
-  it('hover readout lists every visible surface, difference and grade', () => {
+  it('shaded against the date before, the change shows once: the Δ line, no Difference row', () => {
     const h = render({ shadeVs: 'cap-1' });
+    move(h, sampleX(h, 1) + (sampleX(h, 2) - sampleX(h, 1)) / 2); // chainage 15
+    const r = readout(h);
+    expect(r?.querySelector('[data-testid="chart-delta"]')?.textContent).toContain('+2.00 m');
+    expect(r?.querySelector('[data-row="diff"]')).toBeNull();
+    expect(r?.querySelector('[data-row="grade"]')).not.toBeNull();
+  });
+
+  it('hover readout lists every visible surface, difference and grade', () => {
+    const h = render({ shadeVs: 'design-1' });
     expect(h.querySelector('[data-testid="chart-crosshair"]')).toBeNull();
     move(h, sampleX(h, 1) + (sampleX(h, 2) - sampleX(h, 1)) / 2); // chainage 15
     expect(h.querySelector('[data-testid="chart-crosshair"]')).not.toBeNull();
@@ -196,7 +205,7 @@ describe('ProfileChart', () => {
     expect(txt).toContain('103.00 m'); // current at 15
     expect(txt).toContain('101.00 m'); // earlier at 15
     expect(txt).toContain('Difference');
-    expect(r?.querySelector('[data-row="diff"]')?.textContent).toContain('+2.00 m'); // 103 - 101
+    expect(r?.querySelector('[data-row="diff"]')?.textContent).toContain('1.00 m'); // 103 - 104
     expect(txt).toContain('Grade');
     expect(txt).toContain('20.0 %'); // 2 m over 10 m
     // one dot per surface with data
@@ -207,7 +216,7 @@ describe('ProfileChart', () => {
     expect(svgOf(h).hasAttribute('aria-label')).toBe(false);
     const live = h.querySelector('[data-testid="chart-live"]');
     expect(live?.getAttribute('aria-live')).toBe('polite');
-    expect(live?.textContent).toBe('15.00 m, Difference +2.00 m');
+    expect(live?.textContent).toBe('15.00 m, Difference -1.00 m');
     // blur while the pointer is still over the plot keeps the crosshair
     act(() => plot?.focus());
     act(() => plot?.blur());

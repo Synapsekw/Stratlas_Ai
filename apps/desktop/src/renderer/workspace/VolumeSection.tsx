@@ -9,9 +9,11 @@ import { formatQuantity, localeOf } from '@aio/geo';
 import type { ChartSeries } from '@aio/survey';
 import { useT } from '@aio/ui';
 import { useVolumetric, volumetric } from '@aio/volumetric';
+import { useMemo } from 'react';
 import { ProfileChart } from '../charts';
 import { autoExaggeration } from '../charts/exaggeration';
 import { useMeasure } from '../survey/measureStore';
+import { useLinkedChart } from '../survey/useLinkedChart';
 import { surveyDateLabel } from './surveyDateLabel';
 
 const NO_CAPTURES: readonly { epoch: string; date: string; label: string }[] = [];
@@ -22,31 +24,36 @@ export function VolumeSection() {
   const ready = useVolumetric((s) => s.status === 'ready');
   const captures = useVolumetric((s) => s.file?.captures ?? NO_CAPTURES);
   const settings = useMeasure((s) => s.settings);
-  if (!ready || section.mode === 'idle') return null;
   const p = section.profile;
   const from = captures.find((c) => c.epoch === section.pair?.from);
   const to = captures.find((c) => c.epoch === section.pair?.to);
-  const series: ChartSeries[] =
-    p && from && to
-      ? [
-          {
-            key: 'from',
-            label: surveyDateLabel(from),
-            kind: 'earlier',
-            date: from.date,
-            chainage: p.s,
-            z: p.z1,
-          },
-          {
-            key: 'to',
-            label: surveyDateLabel(to),
-            kind: 'current',
-            date: to.date,
-            chainage: p.s,
-            z: p.z2,
-          },
-        ]
-      : [];
+  const series = useMemo(
+    (): ChartSeries[] =>
+      ready && section.mode === 'done' && p && from && to
+        ? [
+            {
+              key: 'from',
+              label: surveyDateLabel(from),
+              kind: 'earlier',
+              date: from.date,
+              chainage: p.s,
+              z: p.z1,
+            },
+            {
+              key: 'to',
+              label: surveyDateLabel(to),
+              kind: 'current',
+              date: to.date,
+              chainage: p.s,
+              z: p.z2,
+            },
+          ]
+        : [],
+    [ready, section.mode, p, from, to],
+  );
+  // the chart and the drawn line in 3D and on the map share one point (spec section 4)
+  const linked = useLinkedChart('kit-section', section.points, series);
+  if (!ready || section.mode === 'idle') return null;
   return (
     <div className="vol-stage">
       <div className="vol-under">
@@ -94,6 +101,7 @@ export function VolumeSection() {
               locale={settings.locale ?? localeOf(settings.units.distance)}
               {...(settings.angles ? { angles: settings.angles } : {})}
               height={170}
+              {...linked}
               testId="vol-section-chart"
             />
           ) : (

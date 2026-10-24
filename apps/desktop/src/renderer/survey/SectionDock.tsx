@@ -9,7 +9,7 @@
  */
 import type { EngineStage } from '@aio/engine';
 import { cutawayPlane } from '@aio/survey';
-import { Icon } from '@aio/ui';
+import { Icon, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect } from 'react';
 import { measureStore } from './measureStore';
@@ -26,7 +26,10 @@ import {
 import { SectionWindow } from './SectionWindow';
 import './section.css';
 
-/** Follow the focused Section measurement: its line opens the dock. */
+/**
+ * Follow the focused Section measurement: its line opens the dock, and the dock closes when that
+ * measurement loses the focus or is deleted (it never stays stuck over the stage).
+ */
 function useFollowMeasurement(): void {
   useEffect(() => {
     const follow = () => {
@@ -46,7 +49,13 @@ function useFollowMeasurement(): void {
     };
     follow();
     return measureStore.subscribe((s, prev) => {
-      if (s.focus !== prev.focus || s.file !== prev.file || s.editing !== prev.editing) follow();
+      if (s.focus === prev.focus && s.file === prev.file && s.editing === prev.editing) return;
+      // the focus moved off the dock's measurement, or it was deleted: other edits leave it open
+      const src = sectionStore.getState().source;
+      const mine = src?.kind === 'measurement' ? src.id : null;
+      const gone = mine !== null && !s.file.measurements.some((x) => x.id === mine);
+      if (mine !== null && (gone || (prev.focus === mine && s.focus !== mine))) closeSection();
+      follow();
     });
   }, []);
 }
@@ -70,6 +79,7 @@ function useCutaway(stage: EngineStage | null): void {
 
 /** The dock under the view, mounted with the measurements (`MeasureLayer`). */
 export function SectionDock({ stage }: { stage: EngineStage | null }) {
+  const t = useT();
   const projectId = useWorkspace((s) => s.project?.id ?? null);
   const shown = useSection((s) => s.line !== null && !isDismissed(s));
   const label = useSection((s) => s.source?.label ?? 'Section');
@@ -82,42 +92,41 @@ export function SectionDock({ stage }: { stage: EngineStage | null }) {
     else sectionStore.setState({ line: null, source: null, projectId: null });
   }, [projectId]);
   if (!shown) return null;
+  // the larger window takes the dock's place over the stage; Esc or Close brings the dock back
+  if (windowOpen) return <SectionWindow />;
   return (
-    <>
-      <section
-        className="sv-card sec-dock"
-        aria-label={`Cross-section ${label}`}
-        data-testid="section-dock"
-      >
-        <header className="sv-head">
-          <h2>
-            <Icon name="section" size={14} /> {label}
-          </h2>
-          {busy && <span className="small faint">Sampling…</span>}
-          <button
-            type="button"
-            className="btn ghost sm"
-            data-testid="section-popout"
-            aria-label="Open the section in a large window"
-            onClick={() => {
-              setWindow(true);
-            }}
-          >
-            <Icon name="maximize" size={14} />
-          </button>
-          <button
-            type="button"
-            className="btn ghost sm"
-            aria-label="Close the section"
-            onClick={closeSection}
-          >
-            <Icon name="x" size={14} />
-          </button>
-        </header>
-        {!windowOpen && <SectionBody />}
-        {windowOpen && <p className="small faint">The section is open in the large window.</p>}
-      </section>
-      {windowOpen && <SectionWindow />}
-    </>
+    <section
+      className="sv-card sec-dock"
+      aria-label={`Cross-section ${label}`}
+      data-testid="section-dock"
+    >
+      <header className="sv-head">
+        <h2>
+          <Icon name="section" size={14} /> {label}
+        </h2>
+        {busy && <span className="small faint">Sampling…</span>}
+        <button
+          type="button"
+          className="btn ghost sm"
+          data-testid="section-popout"
+          aria-label="Open the section in a large window"
+          onClick={() => {
+            setWindow(true);
+          }}
+        >
+          <Icon name="maximize" size={14} />
+        </button>
+        <button
+          type="button"
+          className="btn ghost sm"
+          data-testid="section-close"
+          aria-label={t('section.close')}
+          onClick={closeSection}
+        >
+          <Icon name="x" size={14} />
+        </button>
+      </header>
+      <SectionBody />
+    </section>
   );
 }

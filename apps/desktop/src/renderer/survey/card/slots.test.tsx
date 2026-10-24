@@ -64,6 +64,7 @@ vi.mock('../sectionStore', async (orig) => ({
   },
 }));
 
+import { linkedHover } from '../linkedHover';
 import { measureStore } from '../measureStore';
 import { qaStore } from '../qaStore';
 import { TOOL_ICON } from './cardModel';
@@ -296,6 +297,7 @@ afterEach(() => {
   measureStore.setState({ settings: defaultSurveySettings(), file: emptyMeasurements() });
   qaStore.setState({ surfaces: [] });
   cardViews.setState({}, true);
+  linkedHover.setState({ hover: null, pin: null, fly: null });
   workspace.getState().closeProject();
   ground.at = {};
   states.map = new Map();
@@ -369,6 +371,79 @@ describe('lines on the card', () => {
     expect(side('right')[0]).toBe('15.000 m');
     expect(side('crest')[0]).toBe('6.000 m');
     expect(side('base')[0]).toBe('10.000 m');
+  });
+
+  it("a distance card's chart drives the hover store and follows it", async () => {
+    ground.at = { sjun: () => 1, sjan: () => 0 };
+    const m = of('distance', [
+      [0, 3, 0],
+      [20, 3, 0],
+    ]);
+    await render(slotsFor(m, 'detail').chart);
+    // the card's line is registered under its measurement, along the drawn plan line
+    const line = linkedHover.getState().lines.get('measure:distance');
+    expect(line?.polyline).toEqual([
+      [0, 3],
+      [20, 3],
+    ]);
+    expect(line?.series.map((x) => x.key)).toEqual(['jan', 'jun']);
+    // the scene's point moves the chart's crosshair
+    expect(host.querySelector('[data-testid="chart-crosshair"]')).toBeNull();
+    act(() => {
+      linkedHover.getState().setHover({ key: 'measure:distance', chainageM: 8, source: '3d' });
+    });
+    expect(host.querySelector('[data-testid="chart-crosshair"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="chart-readout"]')?.textContent).toContain('8.0');
+    // a point on another line leaves this chart alone
+    act(() => {
+      linkedHover.getState().setHover({ key: 'section', chainageM: 3, source: '3d' });
+    });
+    expect(host.querySelector('[data-testid="chart-crosshair"]')).toBeNull();
+    // the keyboard on the chart drives the store
+    const plot = host.querySelector<HTMLElement>('[data-testid="chart-plot"]');
+    act(() => {
+      plot?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    });
+    expect(linkedHover.getState().hover).toEqual({
+      key: 'measure:distance',
+      chainageM: 0,
+      source: 'chart',
+    });
+    // Enter pins, the pin is the store's
+    act(() => {
+      plot?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    expect(linkedHover.getState().pin).toMatchObject({ key: 'measure:distance', chainageM: 0 });
+    // the footer says how
+    expect(host.querySelector('[data-testid="hover-footer"]')?.textContent).toBe(
+      'Hover the chart or the line: the point follows in both. Click to pin, double-click to fly there.',
+    );
+    // the line goes with the card
+    act(() => root?.unmount());
+    root = undefined;
+    expect(linkedHover.getState().lines.has('measure:distance')).toBe(false);
+    expect(linkedHover.getState().pin).toBeNull();
+  });
+
+  it('shows the change between the two dates once: the Δ line, no Difference row', async () => {
+    ground.at = { sjun: () => 1, sjan: () => 0 };
+    const m = of('distance', [
+      [0, 4, 0],
+      [20, 4, 0],
+    ]);
+    act(() => {
+      cardViews.setState({
+        distance: { shown: ['jun', 'jan'], off: [], shadeVs: 'jan', vs: null },
+      });
+    });
+    await render(slotsFor(m, 'detail').chart);
+    act(() => {
+      linkedHover.getState().setHover({ key: 'measure:distance', chainageM: 8, source: '3d' });
+    });
+    const r = host.querySelector('[data-testid="chart-readout"]');
+    expect(r?.querySelector('[data-testid="chart-delta"]')?.textContent).toContain('+1.000 m');
+    expect(r?.querySelector('[data-row="diff"]')).toBeNull();
+    expect(r?.querySelector('[data-row="grade"]')).not.toBeNull();
   });
 
   it('a cross-section opens in the section view, its pins stay there', async () => {

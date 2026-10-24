@@ -346,6 +346,8 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
           value: `${dzMag === dist(0) ? '' : dz < 0 ? '−' : '+'}${dzMag}`,
         });
   const delta = readout?.deltaM ?? null;
+  // shaded against the date before the newest, the Δ line already says it: no Difference row
+  const diffShown = !!target && !(dz !== null && target.key === before?.key);
   // signed, with no "+" on a value that rounds to zero
   const diffText =
     delta === null ? '-' : `${delta > 0 && dist(delta) !== dist(0) ? '+' : ''}${dist(delta)}`;
@@ -543,13 +545,13 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
               </p>
             )}
             <dl className="pc-ro-rows">
-              {target && (
+              {diffShown && (
                 <div className="pc-ro-row pc-ro-sep" data-row="diff">
                   <dt>{t('chart.diff')}</dt>
                   <dd>{diffText}</dd>
                 </div>
               )}
-              <div className={target ? 'pc-ro-row' : 'pc-ro-row pc-ro-sep'} data-row="grade">
+              <div className={diffShown ? 'pc-ro-row' : 'pc-ro-row pc-ro-sep'} data-row="grade">
                 <dt>{t('chart.grade')}</dt>
                 <dd>
                   {formatRow(

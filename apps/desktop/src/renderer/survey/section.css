@@ -33,9 +33,9 @@
   gap: var(--sp-3);
   min-width: 0;
 }
-/* the chart is the shared profile chart (charts/charts.css); the window gives it more room */
+/* the chart is the shared profile chart (charts/charts.css); the window gives it the room left */
 .sec-body.big .pc-plot {
-  block-size: min(62vh, 640px);
+  block-size: clamp(160px, calc(55vh - 200px), 520px);
 }
 .sec-empty {
   display: grid;
@@ -67,9 +67,20 @@
 .sec-stations .sv-field input {
   width: 64px;
 }
-.sv-dialog.sec-window {
-  width: min(1500px, 100%);
-  height: min(90vh, 900px);
+/* the larger window: a panel over the lower 55 % of the stage, no scrim, so the linked hover
+   marker on the line stays in sight above it and the views stay usable */
+.sec-window {
+  position: absolute;
+  inset-inline: var(--sp-4);
+  inset-block-end: var(--sp-4);
+  z-index: var(--z-panel);
+  block-size: calc(55% - var(--sp-4));
+  overflow: auto;
+  box-shadow: var(--el-2);
+}
+.sec-window.is-floating {
+  position: fixed;
+  block-size: 55vh;
 }
 
 /* the overlays panel */

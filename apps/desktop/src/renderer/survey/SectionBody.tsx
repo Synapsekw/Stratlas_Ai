@@ -25,6 +25,7 @@ import { addToReport } from '../report/templateStore';
 import { useShell } from '../shell';
 import { measureEditBlocked } from '../shell/actions/measureActions';
 import { useDesigns } from './designsStore';
+import { useLinkedHover } from './linkedHover';
 import { fileBase } from './exportHelpers';
 import { useMeasure } from './measureStore';
 import {
@@ -49,6 +50,7 @@ import {
   useSection,
   type SectionFormat,
 } from './sectionStore';
+import { useLinkedChart } from './useLinkedChart';
 
 /** Below this a grade reads flat (a plane's rounding, not a slope). */
 const FLAT = 1e-6;
@@ -127,6 +129,17 @@ export function SectionBody({ big = false }: { big?: boolean }) {
   );
   const hidden = useMemo(() => new Set(s.hidden), [s.hidden]);
   const visible = useMemo(() => all.filter((x) => !hidden.has(x.key)), [all, hidden]);
+  // the chart and the section line in 3D and on the map share one point (spec section 4); the
+  // dock and the window show one body at a time, both under the key 'section'
+  const linked = useLinkedChart('section', s.line, visible);
+  // "Add pin here" pins the section at the point the readout shows: the pin, else the hover
+  const here = useLinkedHover((h) =>
+    h.pin?.key === 'section'
+      ? h.pin.chainageM
+      : h.hover?.key === 'section'
+        ? h.hover.chainageM
+        : null,
+  );
   // shading is against the current survey, so with it off there is nothing to shade
   const targets = visible.some((x) => x.kind === 'current') ? shadeTargets(visible) : [];
 
@@ -318,9 +331,19 @@ export function SectionBody({ big = false }: { big?: boolean }) {
             locale={settings.locale ?? localeOf(settings.units.distance)}
             {...(settings.angles ? { angles: settings.angles } : {})}
             pins={pins}
-            onPin={(c) => {
-              void addPin(c);
-            }}
+            {...linked}
+            readoutAction={
+              <Button
+                icon="pin"
+                data-testid="section-add-pin"
+                disabled={here === null}
+                onClick={() => {
+                  if (here !== null) void addPin(here);
+                }}
+              >
+                {tr('section.addPinHere')}
+              </Button>
+            }
             testId={big ? 'section-window-chart' : 'section-chart'}
             actions={actions}
           />
@@ -334,10 +357,13 @@ export function SectionBody({ big = false }: { big?: boolean }) {
           </p>
         )}
         <p className="small faint">
-          {result
-            ? `${d(result.length)} long, sampled every ${d(result.stepM)}. Click the chart to pin a chainage.`
-            : ''}
+          {result ? `${d(result.length)} long, sampled every ${d(result.stepM)}.` : ''}
         </p>
+        {result && visible.length > 0 && (
+          <p className="small faint" data-testid="hover-footer">
+            {tr('hover.footer')}
+          </p>
+        )}
       </div>
       <div className="sec-pins">
         <span className="pop-title">Pins</span>

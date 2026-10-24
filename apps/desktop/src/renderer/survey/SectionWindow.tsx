@@ -1,49 +1,60 @@
 /**
- * The cross-section in a large window (M11 G5): the "pop-out" of the dock. The app has no
- * renderer pop-out windows of its own (popups only open project files in a viewer), so this is a
- * large modal over the workspace with the same chart, pins and controls; Esc or Close returns the
- * section to the dock.
+ * The cross-section in a larger panel (M11 G5; spec section 4): the "pop-out" of the dock. Not a
+ * modal: no scrim and no focus trap, a panel over the lower part of the stage so the linked hover
+ * marker on the line stays visible above it, and the 3D view and the map stay usable. Esc (a pin
+ * on the section first) or Close returns the section to the dock.
  */
-import { Icon, useFocusTrap } from '@aio/ui';
-import { useRef } from 'react';
+import { Icon, useT } from '@aio/ui';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { linkedHover } from './linkedHover';
 import { SectionBody } from './SectionBody';
 import { setWindow, useSection } from './sectionStore';
 
 export function SectionWindow() {
+  const t = useT();
   const label = useSection((s) => s.source?.label ?? 'Section');
-  const ref = useRef<HTMLDivElement>(null);
+  // set over the stage (the 3D view, the map and the split); without one it floats on the window
+  const [stage] = useState(() => document.querySelector<HTMLElement>('.stage'));
   const close = () => {
     setWindow(false);
   };
-  useFocusTrap(ref, true, { onEscape: close });
-  return (
-    <div
-      ref={ref}
-      className="sv-scrim"
-      role="dialog"
-      aria-modal="true"
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // a dialog, a menu or the chart that took the Esc keeps it
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const h = linkedHover.getState();
+      if (h.pin?.key === 'section') h.setPin(null);
+      else setWindow(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+    };
+  }, []);
+  const panel = (
+    <section
+      className={`sv-card sec-window${stage ? '' : ' is-floating'}`}
+      role="region"
       aria-labelledby="sec-window-title"
       data-testid="section-window"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
     >
-      <div className="sv-dialog sec-window">
-        <header className="sv-head" role="none">
-          <h2 id="sec-window-title">
-            <Icon name="section" size={14} /> {label}
-          </h2>
-          <button
-            type="button"
-            className="btn ghost sm"
-            aria-label="Back to the dock"
-            onClick={close}
-          >
-            <Icon name="x" size={14} />
-          </button>
-        </header>
-        <SectionBody big />
-      </div>
-    </div>
+      <header className="sv-head">
+        <h2 id="sec-window-title">
+          <Icon name="section" size={14} /> {label}
+        </h2>
+        <button
+          type="button"
+          className="btn ghost sm"
+          data-testid="section-window-close"
+          aria-label={t('section.close')}
+          onClick={close}
+        >
+          <Icon name="x" size={14} />
+        </button>
+      </header>
+      <SectionBody big />
+    </section>
   );
+  return stage ? createPortal(panel, stage) : panel;
 }

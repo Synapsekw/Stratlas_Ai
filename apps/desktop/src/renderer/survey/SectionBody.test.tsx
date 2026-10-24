@@ -5,13 +5,12 @@ import type { ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./sectionEngine', () => ({
-  sectionEngine: () => ({
-    section: vi.fn(),
-    pin: vi.fn(),
-    setSources: vi.fn(() => Promise.resolve()),
-  }),
+const engine = vi.hoisted(() => ({
+  section: vi.fn(),
+  pin: vi.fn(),
+  setSources: vi.fn(() => Promise.resolve()),
 }));
+vi.mock('./sectionEngine', () => ({ sectionEngine: () => engine }));
 vi.mock('../shell', () => ({
   bridge: { call: vi.fn() },
   useShell: <T,>(pick: (s: { pkg: null }) => T) => pick({ pkg: null }),
@@ -35,6 +34,7 @@ vi.mock('../report/templateStore', () => report);
 const { SectionBody } = await import('./SectionBody');
 const { sectionStore } = await import('./sectionStore');
 const { measureStore } = await import('./measureStore');
+const { linkedHover } = await import('./linkedHover');
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -92,6 +92,7 @@ afterEach(() => {
   act(() => root?.unmount());
   root = undefined;
   document.body.innerHTML = '';
+  linkedHover.setState({ hover: null, pin: null, fly: null });
 });
 
 function mount() {
@@ -192,6 +193,43 @@ describe('the section body on the profile chart', () => {
     } finally {
       measureStore.setState({ settings });
     }
+  });
+
+  it('registers its line as the section and follows the shared point', () => {
+    mount();
+    const line = linkedHover.getState().lines.get('section');
+    expect(line?.polyline).toEqual([
+      [0, 0],
+      [10, 0],
+    ]);
+    expect(line?.series.map((x) => x.key)).toEqual(['survey:a']);
+    act(() => {
+      linkedHover.getState().setHover({ key: 'section', chainageM: 5, source: 'map' });
+    });
+    expect(host.querySelector('[data-testid="chart-crosshair"]')).not.toBeNull();
+    act(() => root?.unmount());
+    root = undefined;
+    expect(linkedHover.getState().lines.has('section')).toBe(false);
+  });
+
+  it('Add pin here adds a section pin at the hovered chainage', async () => {
+    engine.pin.mockImplementation((q: { chainage: number }) =>
+      Promise.resolve({ chainage: q.chainage, e: q.chainage, n: 0, reference: 0, values: [] }),
+    );
+    mount();
+    // a click on the chart pins the point; the readout stays on it with the button
+    act(() => {
+      linkedHover.getState().setPin({ key: 'section', chainageM: 7.5, source: 'chart' });
+    });
+    const add = host.querySelector<HTMLButtonElement>('[data-testid="section-add-pin"]');
+    expect(add?.textContent).toContain('Add pin here');
+    await act(async () => {
+      add?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(engine.pin).toHaveBeenCalledWith(expect.objectContaining({ chainage: 7.5 }));
+    expect(sectionStore.getState().pins.map((p) => p.chainage)).toEqual([7.5]);
   });
 
   it('PNG saves the chart the toolbar sits under, with dock and window both open', async () => {

@@ -71,7 +71,9 @@ import { drawnPoints } from '../measureDates';
 import { measureStore, updateMeasurement, useMeasure } from '../measureStore';
 import { useFocusCapture } from '../qaHelpers';
 import { surfaceOfCapture, useQa } from '../qaStore';
+import { pointAt } from '../linkedHoverGeom';
 import { openSection, setWindow } from '../sectionStore';
+import { useLinkedChart } from '../useLinkedChart';
 import {
   usePrepareRunning,
   usePreparingSoon,
@@ -860,22 +862,8 @@ function bermOf(visible: readonly ChartSeries[]): { series: ChartSeries; berm: B
   return s && berm ? { series: s, berm } : null;
 }
 
-/** Where along the line (E, N) a chainage is. */
-function atChainage(pts: readonly SitePoint[], c: number): [number, number] {
-  let base = 0;
-  for (let i = 1; i < pts.length; i++) {
-    const a = pts[i - 1];
-    const b = pts[i];
-    if (!a || !b) continue;
-    const len = horizontalDistance(a, b);
-    if (c <= base + len || i === pts.length - 1) {
-      const f = len > 0 ? Math.min(1, Math.max(0, (c - base) / len)) : 0;
-      return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
-    }
-    base += len;
-  }
-  return [pts[0]?.[0] ?? 0, pts[0]?.[1] ?? 0];
-}
+/** The line's plan (E, N), as the linked hover takes it. */
+const planOf = (pts: readonly SitePoint[]): [number, number][] => pts.map((p) => [p[0], p[1]]);
 
 /** The berm's toes and crest edges as marks on the profile. */
 export function bermPins(pts: readonly SitePoint[], series: ChartSeries, berm: BermCheck): Pin[] {
@@ -885,8 +873,9 @@ export function bermPins(pts: readonly SitePoint[], series: ChartSeries, berm: B
     [berm.right.crestEdgeChainageM, berm.crestZ],
     [berm.right.toeChainageM, berm.right.toeZ],
   ];
+  const plan = planOf(pts);
   return marks.map(([c, z]) => {
-    const [e, n] = atChainage(pts, c);
+    const [e, n] = pointAt(plan, c);
     return {
       chainage: c,
       e,
@@ -903,6 +892,9 @@ function LineProfile({ m }: { m: SurveyMeasurement }): ReactElement | null {
   const { pts, series, visible, view, shown, any, reason } = useLine(m);
   const { settings, units, angles, locale } = useFormat(m);
   const note = useLoadNote(series, 'line-profile', reason);
+  // the chart and the line in 3D and on the map share one point (spec section 4)
+  const plan = useMemo(() => planOf(pts), [pts]);
+  const linked = useLinkedChart(`measure:${m.id}`, plan, visible);
   if (!any) return <Note text={reason} testId="line-profile-none" />;
   if (note) return note;
   if (!visible.some((s) => s.z.some((z) => z !== null)))
@@ -931,8 +923,12 @@ function LineProfile({ m }: { m: SurveyMeasurement }): ReactElement | null {
         locale={locale}
         angles={angles}
         {...(berm ? { pins: bermPins(pts, berm.series, berm.berm) } : {})}
+        {...linked}
         testId="line-profile"
       />
+      <p className="small faint" data-testid="hover-footer">
+        {t('hover.footer')}
+      </p>
     </>
   );
 }
