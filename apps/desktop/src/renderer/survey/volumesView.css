@@ -1,5 +1,5 @@
-/* The volumes view (volumetric parity W3/W4): the folder filter, the piles as live cards, the one in
-   the detail card, the current totals and the site inventory over time. */
+/* The volumes view (volumetric parity W3/W4): the folder filter, the piles as live cards (a click
+   opens one in the pile panel, pile.css), the current totals and the site inventory over time. */
 /* every row its content height: in the bench's fixed height the view scrolls, never a row */
 .vv {
   display: grid;
@@ -24,7 +24,7 @@
   max-width: 24ch;
 }
 
-/* the piles: rows, not a grid of cards; the one in the detail card stays marked */
+/* the piles: rows, not a grid of cards; a click opens one in the pile panel */
 .vv-piles {
   display: grid;
   margin: 0;
@@ -46,19 +46,9 @@
 .vv-pile:hover {
   background: var(--bg-2);
 }
-.vv-pile[aria-pressed='true'] {
-  background: var(--acc-a12);
-}
 .vv-pile:focus-visible {
   outline: 1px solid var(--acc);
   outline-offset: -1px;
-}
-
-.vv-detail {
-  padding: var(--sp-4);
-  border: 1px solid var(--line);
-  border-radius: var(--r-6);
-  background: var(--bg-1);
 }
 
 /* a total holding a figure partly outside the survey: marked, its tip names the piles */

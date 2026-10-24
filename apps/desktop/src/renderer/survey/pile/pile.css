@@ -1,0 +1,390 @@
+/* The pile panel (volumetrics redesign, spec section 3, boards 2 and 3): the Volumes tab's view of
+   one pile. Tokens only. */
+
+.pp {
+  display: grid;
+  grid-auto-rows: max-content;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+
+/* ---------- head: back and position, name, material, density ---------- */
+.pp-head {
+  display: grid;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+.pp-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+.pp-back {
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-12);
+  white-space: nowrap;
+  transition: border-color var(--d-1) var(--ease);
+}
+.pp-back:hover {
+  border-color: var(--line-strong);
+  color: var(--fg-0);
+}
+.pp-back:focus-visible {
+  outline: 1px solid var(--acc);
+  outline-offset: 2px;
+}
+.pp-pos {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--fg-3);
+  font-size: var(--t-12);
+  white-space: nowrap;
+}
+.pp-pos > span {
+  margin-inline-end: var(--sp-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4) var(--sp-5);
+  min-width: 0;
+}
+.pp-name {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--f-mono);
+  font-size: var(--t-20);
+  font-weight: 500;
+  color: var(--fg-0);
+}
+.pp-material {
+  gap: var(--sp-3);
+  padding-inline-start: var(--sp-4);
+  border-radius: var(--r-pill);
+}
+.pp-material .vd-select {
+  max-inline-size: 22ch;
+}
+.pp-swatch {
+  inline-size: 9px;
+  block-size: 9px;
+  border-radius: var(--r-2);
+  background: var(--date-3);
+}
+.pp-swatch[data-none] {
+  background: transparent;
+  box-shadow: var(--el-1);
+}
+.pp-density {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-inline-start: auto;
+  color: var(--fg-3);
+  font-size: var(--t-12);
+}
+.pp-density .sv-input {
+  inline-size: 7ch;
+  text-align: end;
+}
+.pp-unit {
+  color: var(--fg-3);
+}
+.pp-error {
+  margin: 0;
+}
+
+/* ---------- the three figures: volume widest, as the boards (1.25fr 1fr 1fr) ---------- */
+.pp-kpi {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr 1fr;
+  gap: 1px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-6);
+  background: var(--line-soft);
+  overflow: hidden;
+}
+.pp-tile {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-1);
+  min-width: 0;
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--bg-2);
+}
+.pp-tile b {
+  margin-block-start: var(--sp-1);
+  font-family: var(--f-mono);
+  font-size: var(--t-16);
+  font-weight: 500;
+  color: var(--fg-0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.pp-tile b small {
+  font-size: var(--t-11);
+  font-weight: 400;
+  color: var(--fg-3);
+}
+.pp-tile em {
+  font-style: normal;
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.pp-tile[data-sign='loss'] .pp-change {
+  color: var(--cut);
+}
+.pp-tile[data-sign='gain'] .pp-change {
+  color: var(--ok);
+}
+
+/* the small capitals over a figure */
+.pp-cap {
+  font-family: var(--f-cond);
+  font-size: var(--t-11);
+  font-weight: 600;
+  letter-spacing: var(--caps-ls);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.pp-status {
+  margin: 0;
+  font-size: var(--t-12);
+}
+
+.pp-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: var(--sp-4) var(--sp-7);
+  margin: 0;
+}
+.pp-facts > div {
+  display: grid;
+  gap: var(--sp-1);
+}
+.pp-facts dd {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: var(--t-13);
+  font-weight: 500;
+  color: var(--fg-0);
+}
+.pp-facts dd[data-sign='loss'] {
+  color: var(--cut);
+}
+.pp-facts dd[data-sign='gain'] {
+  color: var(--fill);
+}
+.pp-base dd {
+  font-family: var(--f-ui);
+  font-weight: 400;
+}
+
+/* ---------- tabs' bodies ---------- */
+.pp-body {
+  display: grid;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+.pp-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3) var(--sp-5);
+}
+.pp-sub {
+  margin: 0;
+  font-size: var(--t-13);
+  font-weight: 500;
+  color: var(--fg-0);
+}
+
+.pp-overview,
+.pp-profile,
+.pp-history {
+  display: grid;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+.pp-overview .vd-status {
+  margin: 0;
+}
+.pp-method {
+  margin: 0;
+  font-size: var(--t-12);
+  color: var(--fg-3);
+}
+.pp-split {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-4);
+  margin: 0;
+}
+.pp-split > div {
+  display: grid;
+  gap: var(--sp-1);
+}
+.pp-split dd {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: var(--t-13);
+  color: var(--fg-0);
+}
+.pp-more {
+  border-block-start: 1px solid var(--line-soft);
+  padding-block-start: var(--sp-4);
+}
+.pp-more > summary {
+  cursor: pointer;
+  font-size: var(--t-13);
+  color: var(--fg-1);
+}
+.pp-more > summary:focus-visible {
+  outline: 1px solid var(--acc);
+  outline-offset: 2px;
+}
+.pp-more-body {
+  display: grid;
+  gap: var(--sp-5);
+  margin-block-start: var(--sp-4);
+}
+
+/* Profile: "Shade cut & fill vs [date]" as a switch, the line's length on the end side */
+.pp-shade {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-2);
+  font-size: var(--t-12);
+}
+.pp-shade b {
+  font-weight: 500;
+  color: var(--fg-0);
+}
+.pp-shade-box {
+  inline-size: 12px;
+  block-size: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-2);
+  background: transparent;
+  transition: background-color var(--d-1) var(--ease);
+}
+.pp-shade[aria-pressed='true'] .pp-shade-box {
+  border-color: var(--cut);
+  background: var(--cut-a);
+}
+.pp-shade:focus-visible {
+  outline: 1px solid var(--acc);
+  outline-offset: 2px;
+}
+.pp-line {
+  color: var(--fg-3);
+  font-size: var(--t-12);
+}
+.pp-building {
+  margin: 0;
+}
+
+/* History: the table, newest first */
+.pp-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-12);
+}
+.pp-table th,
+.pp-table td {
+  padding: var(--sp-3);
+  border-block-end: 1px solid var(--line-soft);
+  text-align: end;
+  white-space: nowrap;
+}
+.pp-table thead th {
+  font-size: var(--t-11);
+  font-weight: 500;
+  color: var(--fg-3);
+}
+.pp-table th:first-child {
+  text-align: start;
+}
+.pp-table tbody th {
+  font-weight: 400;
+  color: var(--fg-1);
+}
+.pp-table td {
+  font-family: var(--f-mono);
+  color: var(--fg-1);
+  font-variant-numeric: tabular-nums;
+}
+.pp-table tr[aria-current] th {
+  color: var(--fg-0);
+  font-weight: 500;
+}
+.pp-table td[data-sign='loss'] {
+  color: var(--cut);
+}
+.pp-table td[data-sign='gain'] {
+  color: var(--ok);
+}
+.pp-was {
+  display: block;
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.pp-note {
+  margin: 0;
+  font-size: var(--t-12);
+  color: var(--fg-3);
+  max-inline-size: 65ch;
+}
+
+.pp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+/* the History's bars (TimeChart `bars`) */
+.tc-bar {
+  fill: color-mix(in oklch, var(--chart-earlier) 70%, var(--bg-1));
+}
+.tc-bar[data-latest] {
+  fill: var(--chart-current);
+}
+.tc-bar[data-stale] {
+  fill-opacity: 0.45;
+}
+.tc-bar-change {
+  font-family: var(--f-mono);
+  font-size: var(--t-11);
+}
+.tc-bar-change[data-sign='cut'] {
+  fill: var(--cut);
+}
+.tc-bar-change[data-sign='fill'] {
+  fill: var(--ok);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pp-back,
+  .pp-shade-box {
+    transition: none;
+  }
+}

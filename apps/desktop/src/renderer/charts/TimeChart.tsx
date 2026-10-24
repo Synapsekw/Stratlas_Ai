@@ -62,6 +62,21 @@ export interface TimeChartProps {
   /** Why a date has no value (its gap's tip and the readout); absent: "No survey data". */
   gapReason?: (capture: string) => string;
   testId?: string;
+  /** Volume only: one bar per date from zero, its value above it and the change in % (pile History). */
+  bars?: boolean;
+  /** The value axis title in place of "Volume (m³)" or "Elevation (m)". */
+  yTitle?: string;
+  /**
+   * Volume only: what each date shows in place of its volume (the pile's tonnes), already in display
+   * units, and how one is written.
+   */
+  values?: TimeValueOf;
+}
+
+/** A volume chart's values from outside (`TimeChartProps.values`; not `valueOf`, which every object has). */
+export interface TimeValueOf {
+  value(r: TimeRow): number | null;
+  format(v: number): string;
 }
 
 const PAD = { left: 60, right: 14, top: 22, bottom: 40 };
@@ -70,6 +85,7 @@ const DEFAULT_HEIGHT = 220;
 /** Space kept before the first and after the last date, so the end bars stay inside the plot. */
 const EDGE = 22;
 const MAX_BAR = 28; // the stacked bars
+const MAX_COLUMN = 56; // the History's bars
 const MIN_BAR = 4;
 const DOT_R = 4;
 const DOT_R_LATEST = 6;
@@ -97,12 +113,14 @@ interface Col {
   stack?: StackRow;
 }
 
-function columns(data: TimeChartData): Col[] {
+function columns(data: TimeChartData, valueOf?: TimeValueOf): Col[] {
   let prev: number | null = null;
   const out: Col[] = data.rows.map((r) => {
     const value =
       data.kind === 'volume'
-        ? (r as TimeRow).valueM3
+        ? valueOf
+          ? valueOf.value(r as TimeRow)
+          : (r as TimeRow).valueM3
         : data.kind === 'elevation'
           ? (r as { z: number | null }).z
           : (r as StackRow).totalM3;
@@ -110,7 +128,7 @@ function columns(data: TimeChartData): Col[] {
     // table under it), never this total minus the last one
     const stackChange = data.kind === 'stack' ? ((r as StackRow).change ?? null) : null;
     const change =
-      data.kind === 'volume'
+      data.kind === 'volume' && !valueOf
         ? (r as TimeRow).changeM3
         : data.kind === 'stack'
           ? (stackChange?.m3 ?? null)
@@ -180,15 +198,24 @@ export function TimeChart(p: TimeChartProps): ReactElement {
   const h = p.height ?? measured.h;
 
   const { data } = p;
-  const cols = useMemo(() => columns(data), [data]);
+  const valueOf = data.kind === 'volume' ? p.values : undefined;
+  const cols = useMemo(() => columns(data, valueOf), [data, valueOf]);
   const isElev = data.kind === 'elevation';
+  const bars = p.bars === true && data.kind === 'volume';
   const quantity = isElev ? 'distance' : 'volume';
   const unit = isElev ? p.units.distance : p.units.volume;
-  const factor = isElev
-    ? unitFactor('distance', p.units.distance)
-    : unitFactor('volume', p.units.volume);
+  // values from outside are already in display units
+  const factor = valueOf
+    ? 1
+    : isElev
+      ? unitFactor('distance', p.units.distance)
+      : unitFactor('volume', p.units.volume);
   const locale = p.locale ?? localeOf(p.units.distance);
-  const fmt = (v: number) => formatQuantity(v, quantity, p.units, p.precision, locale);
+  const fmt = (v: number) =>
+    valueOf ? valueOf.format(v) : formatQuantity(v, quantity, p.units, p.precision, locale);
+  /** A bar's label: the number alone (the axis names the unit). */
+  const bare = (v: number) =>
+    valueOf ? valueOf.format(v) : formatNumber(v / factor, p.precision.volume, locale);
 
   const plotW = Math.max(1, w - PAD.left - PAD.right);
   const plotH = Math.max(1, h - PAD.top - PAD.bottom);
@@ -203,15 +230,16 @@ export function TimeChart(p: TimeChartProps): ReactElement {
   const span = t1 - t0;
   const inner = Math.max(1, plotW - 2 * EDGE);
   const x = (time: number) => left + (span > 0 ? EDGE + ((time - t0) / span) * inner : plotW / 2);
-  const barW = useMemo(() => {
+  const gapPx = useMemo(() => {
     let min = Infinity;
     for (let i = 1; i < cols.length; i++) {
       const d = (cols[i]?.t ?? 0) - (cols[i - 1]?.t ?? 0);
       if (d > 0 && d < min) min = d;
     }
-    const px = Number.isFinite(min) && span > 0 ? (min / span) * inner : MAX_BAR;
-    return Math.max(MIN_BAR, Math.min(MAX_BAR, px * 0.6));
+    return Number.isFinite(min) && span > 0 ? (min / span) * inner : null;
   }, [cols, span, inner]);
+  const barW = Math.max(MIN_BAR, Math.min(MAX_BAR, (gapPx ?? MAX_BAR) * 0.6));
+  const columnW = Math.max(MIN_BAR, Math.min(MAX_COLUMN, (gapPx ?? MAX_COLUMN) * 0.35));
 
   // y by value: the stack grows from zero; the lines span their own range
   const refs = useMemo(
@@ -226,10 +254,12 @@ export function TimeChart(p: TimeChartProps): ReactElement {
     if (vals.length === 0) return [0, 1];
     const hi = Math.max(...vals);
     if (data.kind === 'stack') return [0, hi > 0 ? hi * 1.08 : 1];
+    // bars grow from zero, with room above the tallest for its label
+    if (bars) return [0, hi > 0 ? hi * 1.15 : 1];
     const lo = Math.min(...vals);
     const pad = Math.max(0.1, (hi - lo) * 0.12);
     return [lo - pad, hi + pad];
-  }, [cols, refs, data.kind]);
+  }, [cols, refs, data.kind, bars]);
   const y = (v: number) => top + plotH - ((v - yLo) / (yHi - yLo || 1)) * plotH;
   const yStep = niceStep((yHi - yLo) / factor, Math.max(2, Math.floor(plotH / 36)));
   const yTicks = ticks(yLo, yHi, factor, yStep);
@@ -320,10 +350,12 @@ export function TimeChart(p: TimeChartProps): ReactElement {
         ? 'vol.inventory'
         : 'chart.elevation',
   );
-  const yTitle = t('chart.axisTitle', {
-    label: t(isElev ? 'chart.elevation' : 'chart.volume'),
-    unit: unitLabel(unit),
-  });
+  const yTitle =
+    p.yTitle ??
+    t('chart.axisTitle', {
+      label: t(isElev ? 'chart.elevation' : 'chart.volume'),
+      unit: unitLabel(unit),
+    });
 
   const signed = (v: number | null) =>
     v === null ? '-' : `${v > 0 && fmt(v) !== fmt(0) ? '+' : ''}${fmt(v)}`;
@@ -350,6 +382,56 @@ export function TimeChart(p: TimeChartProps): ReactElement {
   const flip = cx > left + plotW / 2;
 
   const columnsOf = cols.map((c) => ({ c, cx: x(c.t) }));
+
+  /** The History's bar of a date: its value above it, and the change in % since the bar before. */
+  const barOf = (c: Col, value: number): ReactElement => {
+    const px = x(c.t);
+    const at = cols.indexOf(c);
+    const before = cols.slice(0, at).findLast((b) => b.value !== null);
+    const was = before?.value ?? null;
+    const pct = before && was !== null && was !== 0 ? ((value - was) / Math.abs(was)) * 100 : null;
+    const zero = formatNumber(0, 1, locale);
+    const sign = pct === null || formatNumber(pct, 1, locale) === zero ? '' : pct < 0 ? '−' : '+';
+    const top0 = y(value);
+    const flags = flagsOf(c);
+    return (
+      <g key={c.capture} data-column={c.capture}>
+        {flags.length > 0 && <desc>{flags.join('. ')}</desc>}
+        <rect
+          data-bar={c.capture}
+          className="tc-bar"
+          data-latest={c.latest ? '' : undefined}
+          data-stale={c.stale ? '' : undefined}
+          x={px - columnW / 2}
+          width={columnW}
+          y={top0}
+          height={Math.max(0, bottom - top0)}
+          rx={3}
+        />
+        <text
+          data-bar-value={c.capture}
+          className={c.latest ? 'tc-total tc-total-latest' : 'tc-total'}
+          x={px}
+          y={top0 - 5}
+          textAnchor="middle"
+        >
+          {bare(value)}
+        </text>
+        {before && was !== null && pct !== null && (
+          <text
+            data-bar-change={c.capture}
+            className="tc-bar-change"
+            data-sign={pct < 0 ? 'cut' : 'fill'}
+            x={(x(before.t) + px) / 2}
+            y={Math.min(y(was), top0) + 14}
+            textAnchor="middle"
+          >
+            {`${sign}${formatNumber(Math.abs(pct), 1, locale)} %`}
+          </text>
+        )}
+      </g>
+    );
+  };
   const linePts = (() => {
     const runs: string[] = [];
     let cur: string[] = [];
@@ -447,6 +529,7 @@ export function TimeChart(p: TimeChartProps): ReactElement {
           ))}
 
           {data.kind !== 'stack' &&
+            !bars &&
             linePts.map((pts) => (
               <polyline
                 key={pts}
@@ -512,6 +595,7 @@ export function TimeChart(p: TimeChartProps): ReactElement {
                 </g>
               );
             }
+            if (bars) return barOf(c, c.value);
             // a line chart dot: hollow when stale, dashed when partly outside the survey
             const flags = flagsOf(c);
             const dot = (

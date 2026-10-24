@@ -1,7 +1,7 @@
 /**
  * The volumes view (volumetric parity W3 and W4), the Volumes bench's body: every volume
- * measurement, or one folder's, as live cards in rows (a click focuses one in the detail card
- * under them), the total on the latest survey date (`BulkTotals`) and the site inventory over time,
+ * measurement, or one folder's, as live cards in rows (a click opens one in the pile panel in
+ * their place, with "‹ Inventory" back: volumetrics redesign, spec section 3), the total on the latest survey date (`BulkTotals`) and the site inventory over time,
  * the piles stacked per survey date with a table. Both totals are rows of one `inventorySeries`, so
  * they agree: a total adds current figures only, and every pile left out is named with why (stale,
  * no survey data, not computed yet, could not compute, no comparison), never counted as zero.
@@ -25,20 +25,11 @@ import { TimeChart } from '../charts/TimeChart';
 import { processing } from '../processing/store';
 import { bridge, useShell } from '../shell';
 import { BulkTotals, notCountedList } from './BulkTotals';
-import { CardActions, CardMenu, cardModel, MeasureCard } from './card';
-import { templateItems } from './card/cardModel';
-import { slotsFor, useCardTerrain } from './card/slots';
+import { cardModel, MeasureCard } from './card';
 import { computeSeries, isStale, seriesStale, useCompare } from './compareStore';
 import { fileBase } from './exportHelpers';
-import { drawnPoints } from './measureDates';
-import {
-  knownTemplates,
-  measureFolders,
-  renameMeasurement,
-  select,
-  startTool,
-  useMeasure,
-} from './measureStore';
+import { knownTemplates, measureFolders, select, startTool, useMeasure } from './measureStore';
+import { PilePanel } from './pile/PilePanel';
 import { setSeriesFailed, useInventory } from './useInventory';
 import { pickInVolumesView } from './volumesPick';
 import './compare.css';
@@ -189,6 +180,16 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   }
 
   const focused = piles.find((m) => m.id === focus) ?? null;
+  // the focused pile opens in the pile panel, stepping through the piles in this view's order
+  if (focused)
+    return (
+      <div
+        className={['vv', 'vv-open', className].filter(Boolean).join(' ')}
+        data-testid="volumes-view"
+      >
+        <PilePanel id={focused.id} order={piles.map((m) => m.id)} />
+      </div>
+    );
   const ctx = { settings, templates: knownTemplates({ templates, settings }), captures };
   const units = settings.units;
   const locale = settings.locale ?? localeOf(units.distance);
@@ -263,9 +264,8 @@ export function VolumesView({ className }: { className?: string }): ReactElement
           <li key={m.id}>
             <PileRow
               id={m.id}
-              pressed={m.id === focused?.id}
               onPick={() => {
-                // shown in the detail card below: the sidebar stays on this view
+                // opened in the pile panel here: the sidebar stays on this view
                 pickInVolumesView(m.id);
                 select([m.id], m.id);
               }}
@@ -275,12 +275,6 @@ export function VolumesView({ className }: { className?: string }): ReactElement
           </li>
         ))}
       </ul>
-
-      {focused && (
-        <div className="vv-detail">
-          <DetailCard m={focused} readOnly={readOnly} />
-        </div>
-      )}
 
       {/* the latest survey date's row, the same the table marks latest */}
       <BulkTotals inventory={{ piles, row: stack.at(-1), names }} />
@@ -304,61 +298,13 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   );
 }
 
-/**
- * The focused pile's detail card: the measurement panel's card (`MeasurementPanel`), built from
- * the same context (the points where they are drawn, the project's dates, the terrain under them
- * as `useCardTerrain` reads it) with the same slots (`slotsFor`: chips, comparisons,
- * Calculators), so the two never differ.
- */
-function DetailCard({ m, readOnly }: { m: SurveyMeasurement; readOnly: boolean }) {
-  const settings = useMeasure((s) => s.settings);
-  const templates = useMeasure((s) => s.templates);
-  const manifest = useWorkspace((s) => s.project?.manifest ?? null);
-  const shown = useMemo(() => ({ ...m, points: drawnPoints(m, manifest) }), [m, manifest]);
-  const all = useMemo(() => knownTemplates({ templates, settings }), [templates, settings]);
-  const { surface, terrainPending, terrainError } = useCardTerrain(shown, templateItems(m, all));
-  const model = useMemo(
-    () =>
-      cardModel(shown, {
-        settings,
-        templates: all,
-        captures: manifest?.captures ?? [],
-        ...(surface ? { surface } : {}),
-        ...(terrainPending ? { terrainPending } : {}),
-        ...(terrainError ? { terrainError } : {}),
-      }),
-    [shown, settings, all, manifest, surface, terrainPending, terrainError],
-  );
-  const slots = useMemo(() => slotsFor(m, 'detail'), [m]);
-  return (
-    <MeasureCard
-      model={model}
-      variant="detail"
-      measureId={m.id}
-      testId="volumes-detail"
-      slots={slots}
-      menu={<CardMenu id={m.id} />}
-      actions={<CardActions id={m.id} />}
-      {...(readOnly
-        ? {}
-        : {
-            onRename: (name: string) => {
-              renameMeasurement(m.id, name);
-            },
-          })}
-    />
-  );
-}
-
-/** One pile in the list: its live card (read out as it is), pressed when in the detail card. */
+/** One pile in the list: its live card (read out as it is); a click opens it in the pile panel. */
 function PileRow({
   id,
-  pressed,
   onPick,
   children,
 }: {
   id: string;
-  pressed: boolean;
   onPick: () => void;
   children: ReactElement;
 }) {
@@ -373,7 +319,6 @@ function PileRow({
       className="vv-pile"
       role="button"
       tabIndex={0}
-      aria-pressed={pressed}
       data-testid="volumes-pile"
       data-id={id}
       onClick={onPick}

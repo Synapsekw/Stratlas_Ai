@@ -39,7 +39,7 @@ export function Comparisons({ m }: { m: SurveyMeasurement }) {
   );
 }
 
-function HeatControls({ m, computed }: { m: SurveyMeasurement; computed: Computed | null }) {
+export function HeatControls({ m, computed }: { m: SurveyMeasurement; computed: Computed | null }) {
   const t = useT();
   const heat = useCompare((s) => s.heat);
   const has = (computed?.heat.length ?? 0) > 0;

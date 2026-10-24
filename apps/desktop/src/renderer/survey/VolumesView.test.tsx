@@ -79,6 +79,12 @@ vi.mock('./card/slots', () => ({
         }
       : {},
 }));
+// the focused pile opens in the pile panel (its own tests), in place of the list
+vi.mock('./pile/PilePanel', () => ({
+  PilePanel: ({ id, order }: { id: string; order?: readonly string[] }) => (
+    <div data-testid="pile-panel" data-id={id} data-order={(order ?? []).join(',')} />
+  ),
+}));
 vi.mock('./card/CardActions', () => ({
   CardActions: () => null,
   CardMenu: () => null,
@@ -532,10 +538,10 @@ describe('VolumesView', () => {
     expect(q('[data-testid="volumes-inventory"] .vd-sub')?.tagName).toBe('H3');
   });
 
-  it('clicking a pile focuses it in the detail card', () => {
-    s.measure.file.measurements = [pile('a'), pile('b')];
+  it('clicking a pile opens it in the pile panel, in place of the list', () => {
+    s.measure.file.measurements = [pile('a'), pile('b'), pile('c', { folder: 'North' })];
     render();
-    expect(q('[data-testid="slot-detail"]')).toBeNull();
+    expect(q('[data-testid="pile-panel"]')).toBeNull();
     click(qa('[data-testid="volumes-pile"]')[1]);
     expect(calls.select).toHaveBeenCalledWith(['b'], 'b');
     // the pick is the view's own: the sidebar leaves the view in front
@@ -543,15 +549,20 @@ describe('VolumesView', () => {
     s.measure.focus = 'b';
     s.measure.selected = ['b'];
     render();
-    // the panel's slots (chips, comparisons and Calculators), not a card of its own
-    expect(
-      q('[data-testid="volumes-detail"] [data-testid="slot-detail"]')?.getAttribute('data-id'),
-    ).toBe('b');
-    expect(q('[data-testid="volumes-detail"] [data-testid="slot-chips"]')).not.toBeNull();
-    expect(q('.mc[data-variant="detail"]')?.getAttribute('data-measure-id')).toBe('b');
-    expect(qa('[data-testid="volumes-pile"]')[1]?.getAttribute('aria-pressed')).toBe('true');
-    // and the panel's terrain read, so its terrain rows read what the panel's do
-    expect(calls.terrain).toHaveBeenCalledWith('b');
+    const panel = q('[data-testid="pile-panel"]');
+    expect(panel?.getAttribute('data-id')).toBe('b');
+    // Pile n of N steps through the piles in the inventory's order
+    expect(panel?.getAttribute('data-order')).toBe('a,b,c');
+    expect(q('[data-testid="volumes-pile"]')).toBeNull();
+    expect(q('[data-testid="volumes-inventory"]')).toBeNull();
+  });
+
+  it('a focus on something other than a pile keeps the list', () => {
+    s.measure.file.measurements = [pile('a')];
+    s.measure.focus = 'not-a-pile';
+    render();
+    expect(q('[data-testid="pile-panel"]')).toBeNull();
+    expect(qa('[data-testid="volumes-pile"]').length).toBe(1);
   });
 
   it('exports the volume over time as CSV with the material density', async () => {

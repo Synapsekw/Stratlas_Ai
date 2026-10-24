@@ -394,3 +394,50 @@ describe('TimeChart', () => {
     expect(Number(dot(h, 'a')?.getAttribute('data-cx'))).toBeCloseTo(60 + (600 - 60 - 14) / 2, 0);
   });
 });
+
+describe('TimeChart bars (the pile History)', () => {
+  function renderBars(p: Partial<Parameters<typeof TimeChart>[0]>) {
+    host = document.createElement('div');
+    document.body.append(host);
+    root = createRoot(host);
+    act(() =>
+      root?.render(
+        <TimeChart
+          data={{
+            kind: 'volume',
+            rows: [
+              row('a', '2020-12-31', 14686.7, { tonnes: 23498.72 }),
+              row('b', '2021-01-10', 11378.7, { changeM3: -3308, tonnes: 18205.92, latest: true }),
+            ],
+          }}
+          units={METRIC}
+          precision={PRECISION}
+          width={368}
+          height={196}
+          {...p}
+        />,
+      ),
+    );
+    return host;
+  }
+
+  it('draws one bar per date from zero with its value and the change in % over the later bar', () => {
+    const h = renderBars({ bars: true });
+    expect(h.querySelectorAll('rect[data-bar]').length).toBe(2);
+    expect(h.querySelector('circle[data-dot]')).toBeNull();
+    expect(h.querySelector('[data-bar-value="b"]')?.textContent).toBe('11 378.7');
+    expect(h.querySelector('[data-bar-change="b"]')?.textContent).toBe('−22.5 %');
+    expect(h.querySelector('[data-bar-change="a"]')).toBeNull();
+  });
+
+  it('takes its values and axis title from outside (tonnes)', () => {
+    const h = renderBars({
+      bars: true,
+      yTitle: 'Tonnes (t)',
+      values: { value: (r) => r.tonnes, format: (v) => String(Math.round(v)) },
+    });
+    expect(h.textContent).toContain('Tonnes (t)');
+    expect(h.querySelector('[data-bar-value="a"]')?.textContent).toBe('23499');
+    expect(h.querySelector('[data-bar-value="b"]')?.textContent).toBe('18206');
+  });
+});
