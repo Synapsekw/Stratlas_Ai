@@ -74,7 +74,8 @@ describe('openPile', () => {
     expect(measureStore.getState().focus).toBe('pile1');
     expect(measureStore.getState().selected).toEqual(['pile1']);
     expect(bench.getState().front).toBe('volumes');
-    expect(bench.getState().tabs.some((t) => t.id === 'measure')).toBe(false);
+    // the Project tab (id `measure`) is always there now, but it is not the one in front
+    expect(bench.getState().front).not.toBe('measure');
     // the sidebar is open: the tab comes forward, no drawer pops
     expect(drawerStore.getState().opened).toBeNull();
   });
