@@ -34,6 +34,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type FocusEvent,
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent,
@@ -275,6 +276,9 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
   };
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (stations.length === 0) return;
+    // a key on a control inside the chart (the readout's "Add pin here") is the control's; Esc
+    // still clears the pin and the crosshair from there
+    if (e.target !== e.currentTarget && e.key !== 'Escape') return;
     const i = at === null ? 0 : nearest(at);
     const last = stations.length - 1;
     let next: number | null = null;
@@ -285,6 +289,18 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
     else if ((e.key === 'Enter' || e.key === ' ') && at !== null && (p.onPinAt ?? p.onPin)) {
       e.preventDefault();
       pinAt(at);
+      return;
+    } else if (
+      (e.key === 'f' || e.key === 'F') &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      at !== null &&
+      p.onFly
+    ) {
+      // the keyboard's double-click: fly the camera and the map to the crosshair
+      e.preventDefault();
+      p.onFly(at);
       return;
     } else if (e.key === 'Escape') {
       // the pin goes first, then the crosshair; the panel or dialog around the chart stays open
@@ -334,6 +350,7 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
     : {};
 
   const readoutId = `${clipId}-readout`;
+  const helpId = `${clipId}-keys`;
   const cx = shownAt === null ? 0 : x(shownAt);
   const flip = cx > PAD.left + plotW / 2;
   const px = pin === null ? 0 : x(pin);
@@ -362,11 +379,13 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
         tabIndex={interactive ? 0 : undefined}
         role={interactive ? 'group' : undefined}
         aria-label={interactive ? chartLabel : undefined}
-        aria-describedby={readout ? readoutId : undefined}
+        aria-describedby={interactive ? (readout ? `${helpId} ${readoutId}` : helpId) : undefined}
         onKeyDown={interactive ? onKey : undefined}
         onFocus={
           interactive
-            ? () => {
+            ? (e: FocusEvent<HTMLDivElement>) => {
+                // the focus of a control inside (the readout's button) leaves the crosshair be
+                if (e.target !== e.currentTarget) return;
                 if (at === null && stations.length > 0) setAt(stations[0] ?? null);
               }
             : undefined
@@ -581,6 +600,11 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
             <Icon name="pin" size={12} />
             {t('hover.pinned', { chainage: dist(pin) })}
           </div>
+        )}
+        {interactive && (
+          <p className="sr-only" id={helpId} data-testid="chart-keys">
+            {t(p.onFly ? 'chart.keysFly' : 'chart.keys')}
+          </p>
         )}
         {interactive && (
           <p className="sr-only" aria-live="polite" data-testid="chart-live">

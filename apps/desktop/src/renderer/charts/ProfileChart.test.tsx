@@ -510,4 +510,83 @@ describe('ProfileChart', () => {
       delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
     }
   });
+
+  it("the readout's own button keeps the crosshair and its keys", () => {
+    const onHover = vi.fn();
+    const onPinAt = vi.fn();
+    const onAction = vi.fn();
+    const h = render({
+      pinnedAt: 30,
+      onPinAt,
+      onHover,
+      readoutAction: (
+        <button type="button" data-testid="ro-action" onClick={onAction}>
+          Add pin here
+        </button>
+      ),
+    });
+    const button = h.querySelector<HTMLButtonElement>('[data-testid="ro-action"]');
+    expect(button).not.toBeNull();
+    // a press focuses the button: the crosshair does not jump to the line's start
+    act(() => button?.focus());
+    expect(onHover).not.toHaveBeenCalled();
+    expect(readout(h)?.querySelector('.pc-ro-head')?.textContent).toBe('Chainage 30.00 m');
+    // Enter on the button is the button's, not the chart's pin
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    act(() => {
+      button?.dispatchEvent(enter);
+    });
+    expect(enter.defaultPrevented).toBe(false);
+    expect(onPinAt).not.toHaveBeenCalled();
+    act(() => button?.click());
+    expect(onAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("F flies to the keyboard crosshair and the keys are told in the chart's help", () => {
+    const onFly = vi.fn();
+    const h = render({ onFly, onPinAt: vi.fn() });
+    const plot = h.querySelector<HTMLElement>('[data-testid="chart-plot"]');
+    act(() => plot?.focus());
+    const key = (k: string) => {
+      const e = new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true });
+      act(() => {
+        plot?.dispatchEvent(e);
+      });
+      return e;
+    };
+    key('ArrowRight');
+    key('ArrowRight');
+    expect(key('f').defaultPrevented).toBe(true);
+    expect(onFly).toHaveBeenCalledWith(20);
+    key('F');
+    expect(onFly).toHaveBeenCalledTimes(2);
+    // with a modifier it is someone else's shortcut
+    const ctrl = new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true });
+    act(() => {
+      plot?.dispatchEvent(ctrl);
+    });
+    expect(onFly).toHaveBeenCalledTimes(2);
+    const help = (plot?.getAttribute('aria-describedby') ?? '')
+      .split(' ')
+      .map((id) => document.getElementById(id)?.textContent ?? '')
+      .join(' ');
+    expect(help).toContain('Enter pins');
+    expect(help).toContain('F flies');
+  });
+
+  it('without onFly, F does nothing and the help leaves it out', () => {
+    const h = render({ onPinAt: vi.fn() });
+    const plot = h.querySelector<HTMLElement>('[data-testid="chart-plot"]');
+    act(() => plot?.focus());
+    const e = new KeyboardEvent('keydown', { key: 'f', bubbles: true, cancelable: true });
+    act(() => {
+      plot?.dispatchEvent(e);
+    });
+    expect(e.defaultPrevented).toBe(false);
+    const help = (plot?.getAttribute('aria-describedby') ?? '')
+      .split(' ')
+      .map((id) => document.getElementById(id)?.textContent ?? '')
+      .join(' ');
+    expect(help).not.toContain('F flies');
+  });
 });

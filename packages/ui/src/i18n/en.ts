@@ -6365,6 +6365,10 @@ export const en = {
   'pile.history.was': 'was {value} · earlier version',
   'pile.history.note':
     'Density {density} t/m³ for {material} applies from {date}. A new density takes effect from the date you choose in Materials; earlier dates keep the tonnes they had.',
+  'pile.axis.a': 'Profile line end A: arrow keys move it, Shift moves it further',
+  'pile.axis.b': 'Profile line end B: arrow keys move it, Shift moves it further',
+  'pile.axis.turn': 'Turn the profile line: arrow keys turn it, Shift turns it further',
+  'hover.onLine': 'Pointer on the line',
   'hover.following': 'Following the chart',
   'hover.legend': '{date} surface · where {earlier} was · A to here',
   'hover.snapped': 'Pointer on the line · snapped to {chainage}',
@@ -6377,6 +6381,9 @@ export const en = {
   'chart.chainageAt': 'Chainage {value}',
   'chart.deltaCut': 'Δ {value} cut',
   'chart.deltaFill': 'Δ {value} fill',
+  'chart.keys': 'Left and right arrows move along the line, Enter pins the point, Esc clears it.',
+  'chart.keysFly':
+    'Left and right arrows move along the line, Enter pins the point, F flies the view there, Esc clears it.',
   'section.close': 'Close the section',
   'section.addPinHere': 'Add pin here',
 } as const satisfies Record<string, string>;
