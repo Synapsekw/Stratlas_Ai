@@ -269,7 +269,7 @@ describe('RightSidebar', () => {
       workbench.setState({ attention: 'measure', waiting: ['measure'] });
     });
     const note = host.querySelector<HTMLElement>('[data-testid="wb-show-it"]');
-    expect(note?.textContent).toContain('Measure');
+    expect(note?.textContent).toContain('Project');
     const button = [...(note?.querySelectorAll('button') ?? [])].find(
       (b) => b.textContent === 'Show it',
     );
@@ -284,7 +284,20 @@ describe('RightSidebar', () => {
 
   it('hides Volumes and Changes where the project has none', () => {
     render();
-    expect(tabIds()).toEqual(['wb-tab-selection', 'wb-tab-issues']);
+    expect(tabIds()).toEqual(['wb-tab-measure', 'wb-tab-selection', 'wb-tab-issues']);
+  });
+
+  it('labels the Measure bench tab Project, a fixed tab with its bench head and bench', () => {
+    render();
+    const tab = document.getElementById('wb-tab-measure');
+    expect(tab?.textContent).toBe('Project');
+    act(() => {
+      tab?.click();
+    });
+    expect(workbench.getState().front).toBe('measure');
+    const panel = host.querySelector('[role="tabpanel"]');
+    expect(panel?.querySelector('.wb-bench-head')).not.toBeNull();
+    expect(panel?.textContent).toContain('measure bench');
   });
 
   it('shows the front tab content and follows a click', () => {
@@ -454,7 +467,7 @@ describe('RightSidebar', () => {
       live = [{ kind: 'tool', label: 'Distance', reading: null }];
       workbench.getState().toolStarted('measure');
     });
-    expect(document.getElementById('wb-tab-measure')?.textContent).toContain('Measure');
+    expect(document.getElementById('wb-tab-measure')?.textContent).toContain('Project');
     expect(linked).toBe(true);
     act(() => {
       workbench.getState().show('issues');

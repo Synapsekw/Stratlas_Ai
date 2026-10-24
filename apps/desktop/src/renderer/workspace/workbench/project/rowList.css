@@ -1,0 +1,46 @@
+/* The Project tab's "In this project" list (ProjectList.tsx): its captions in the faint caps of
+   the sidebar's tree header ("DATASETS"), its groups as the bench's sections (section.css), and a
+   group's rows, which scroll inside the group beyond eight so a long group never pushes the tools
+   out of reach. */
+.pl {
+  --pl-row-h: 26px; /* a Row kind="tree" */
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.pl-groups {
+  display: flex;
+  flex-direction: column;
+}
+/* the captions: IN THIS PROJECT (the list's fold) and TOOLS, at the section titles' inset */
+.pl-caption {
+  margin: 0;
+  padding: var(--sp-4) 8px var(--sp-1);
+  color: var(--fg-3);
+  font-size: var(--t-11);
+  font-weight: 500;
+}
+.pl-caption.wb-section-head {
+  font-size: var(--t-11);
+  font-weight: 500;
+  color: var(--fg-3);
+}
+.pl-caption.wb-section-head:hover {
+  color: var(--fg-1);
+}
+.pl-caption.wb-section-head .caps {
+  flex: 1;
+  min-width: 0;
+}
+.pl-tools {
+  padding-block-start: var(--sp-5);
+}
+/* a group's rows: eight in view, the rest scroll inside the group */
+.pl-rows {
+  max-height: calc(8 * var(--pl-row-h));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}

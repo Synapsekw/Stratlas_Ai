@@ -106,4 +106,34 @@ describe('Section', () => {
     act(() => root?.render(<Page />));
     expect(head('a')?.getAttribute('aria-expanded')).toBe('false');
   });
+
+  it('renders actions outside the toggle button', () => {
+    let clicks = 0;
+    root = createRoot(host);
+    act(() =>
+      root?.render(
+        <Section
+          id="c"
+          bench="measure"
+          title="Gamma"
+          testId="custom-c"
+          actions={
+            <button type="button" data-testid="c-act" onClick={() => (clicks += 1)}>
+              eye
+            </button>
+          }
+        >
+          <p>c-body</p>
+        </Section>,
+      ),
+    );
+    const section = host.querySelector<HTMLElement>('[data-testid="custom-c"]');
+    const toggle = section?.querySelector<HTMLButtonElement>(':scope > button');
+    const action = host.querySelector<HTMLButtonElement>('[data-testid="c-act"]');
+    expect(toggle?.contains(action ?? null)).toBe(false);
+    expect(action?.closest('.wb-section-actions')?.parentElement).toBe(section);
+    act(() => action?.click());
+    expect(clicks).toBe(1);
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+  });
 });

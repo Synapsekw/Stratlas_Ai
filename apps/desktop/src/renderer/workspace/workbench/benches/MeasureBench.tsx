@@ -1,6 +1,8 @@
 /**
- * The Measure workbench (stage island D12, D13, D16, D18, D19): search, Favourites and recent,
- * every measuring tool by family, Site data, Drawing aids, Templates, and "Saved in this project".
+ * The Measure workbench, the body of the Project tab (stage island D12, D13, D16, D18, D19): the
+ * "In this project" list (`project/ProjectList.tsx`) over a TOOLS caption, then the tools as they
+ * always were: the save controls, search, Favourites and recent, every measuring tool by family,
+ * Site data, Drawing aids and Templates.
  * While a tool is live it morphs in place: the live card on top (the shared measurement card in
  * its live variant, then the points, Undo, Stop and Save with their keys) and the catalogue
  * shrinks to a strip of tool buttons. A picked measurement shows its detail card.
@@ -77,10 +79,9 @@ import {
   useTelecomUnavailable,
 } from '../../../survey/TelecomTools';
 import { AntennaCsvTool } from '../../../telecom/AntennaCsvTool';
-import { AntennaSection, antennaSectionMatches } from '../../../telecom/AntennaSection';
-import { useAntennas } from '../../../telecom/antennaStore';
 import { Tool, useEngineStage } from '../../StageTools';
 import { SectionPanel, toggleMeasure, toggleSection } from '../../tools/measure';
+import { ProjectList } from '../project/ProjectList';
 import { Section } from '../Section';
 import { filterSections, sectionStore } from '../sectionState';
 import type { TabId } from '../tabsModel';
@@ -739,14 +740,7 @@ function Catalogue({
   const templatesWhole = !searching || labelMatches(templatesTitle, query);
   const templateHits = bookmarked.filter(({ template: tpl }) => labelMatches(tpl.name, query));
   const templates = !readOnly && (templatesWhole || templateHits.length > 0);
-  const antennas = useAntennas((a) => a.file !== null || a.running);
-  const nothing =
-    searching &&
-    found?.length === 0 &&
-    site.length === 0 &&
-    !aids &&
-    !templates &&
-    !(antennas && antennaSectionMatches(query));
+  const nothing = searching && found?.length === 0 && site.length === 0 && !aids && !templates;
   const label = (id: string) => families.find((f) => f.id === id)?.label ?? id;
   return (
     <div className="meb-cat" data-testid="survey-tools">
@@ -894,23 +888,20 @@ export function MeasureBench() {
   useCollapseEndsSearch(setQuery);
   return (
     <div className="meb wb-scroll">
-      {live ? (
-        <LiveCard />
-      ) : (
-        <>
-          <PendingCard />
-          <SelectedCard searching={searching} />
-        </>
-      )}
+      {/* a running tool is never pushed down: its card (or the unsaved state) stays first */}
+      {live ? <LiveCard /> : <PendingCard />}
+      {/* In this project, then the TOOLS caption; a search filters only the tools */}
+      <ProjectList />
       {/* a search is about the tools: the save controls step aside until it is cleared */}
       {!searching && <SavedFooter />}
       {live ? (
         <Strip families={families} stage={stage} />
       ) : (
-        <Catalogue families={families} stage={stage} query={query} onQuery={setQuery} />
+        <>
+          <Catalogue families={families} stage={stage} query={query} onQuery={setQuery} />
+          <SelectedCard searching={searching} />
+        </>
       )}
-      {/* the antenna inventory; a search shows it only when its title matches */}
-      <AntennaSection query={searching ? query : ''} />
     </div>
   );
 }

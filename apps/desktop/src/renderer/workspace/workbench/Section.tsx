@@ -13,10 +13,17 @@ export interface SectionProps {
   defaultOpen?: boolean | undefined;
   /** Open whatever is saved: the live tool's family, or a search with matches. */
   forceOpen?: boolean | undefined;
+  /** Beside the header, not inside its toggle (a click on one never folds the section). */
+  actions?: ReactNode;
+  /** Overrides the `wb-section-${id}` test id. */
+  testId?: string | undefined;
   children?: ReactNode;
 }
 
-/** A workbench section: a header row (chevron, title, count) over a body that folds away. */
+/**
+ * A workbench section: a header row (chevron, title, count, then any actions beside the toggle)
+ * over a body that folds away.
+ */
 export function Section({
   id,
   bench,
@@ -24,13 +31,20 @@ export function Section({
   count,
   defaultOpen,
   forceOpen,
+  actions,
+  testId,
   children,
 }: SectionProps) {
   const sections = useSections(bench);
   const bodyId = useId();
   const open = forceOpen === true || sections.isOpen(id, defaultOpen);
   return (
-    <section className="wb-section" data-open={open} data-testid={`wb-section-${id}`}>
+    <section
+      className="wb-section"
+      data-open={open}
+      data-actions={actions ? '' : undefined}
+      data-testid={testId ?? `wb-section-${id}`}
+    >
       {/* a real button: click, Enter and Space all toggle */}
       <button
         type="button"
@@ -45,6 +59,7 @@ export function Section({
         <span className="wb-section-title">{title}</span>
         {count !== undefined && <span className="wb-section-count">{count}</span>}
       </button>
+      {actions && <div className="wb-section-actions">{actions}</div>}
       <div className="wb-section-body" id={bodyId} inert={!open}>
         <div className="wb-section-inner">{children}</div>
       </div>

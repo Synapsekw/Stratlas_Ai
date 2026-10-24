@@ -32,6 +32,21 @@
   color: var(--fg-3);
   font-variant-numeric: tabular-nums;
 }
+/* with actions, the header toggle and its actions share the head row; the body spans both */
+.wb-section[data-actions] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+.wb-section[data-actions] > .wb-section-body {
+  grid-column: 1 / -1;
+}
+.wb-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-inline-end: 4px;
+}
 .wb-section-body {
   display: grid;
   grid-template-rows: 0fr;

@@ -6,6 +6,7 @@
  */
 import type { StoreApi } from 'zustand/vanilla';
 import { showBench } from '../workbench/followTool';
+import { requestToolsScroll } from '../workbench/project/projectListStore';
 import type { TabId } from '../workbench/tabsModel';
 import { workbench, type WorkbenchState } from '../workbench/workbenchStore';
 import type { GroupId } from './islandModel';
@@ -26,8 +27,10 @@ export const GROUP_TAB: Record<GroupId, TabId | null> = {
  * An open the person makes from the island (a group, a tile, All tools): the tab comes to the
  * front of the workbench, opened as an unpinned panel (D15) when it is not there yet. The island
  * never unfolds the sidebar (rulings I-R40, I-R40a): a folded sidebar shows the tab in the
- * workbench drawer (`showBench`).
+ * workbench drawer (`showBench`). The Project tab (`measure`) opens scrolled so its TOOLS caption
+ * is at the top, so a tool is no further away than before the "In this project" list.
  */
 export function openBenchFromIsland(id: TabId, bench: StoreApi<WorkbenchState> = workbench): void {
+  if (id === 'measure') requestToolsScroll();
   showBench(id, bench);
 }

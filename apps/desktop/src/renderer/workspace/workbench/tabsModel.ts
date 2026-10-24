@@ -74,8 +74,11 @@ export function personToolLive(tabs: readonly Tab[]): boolean {
   return tabs.some((t) => t.live && !ACTIVITIES.has(t.id));
 }
 
-/** Fixed tabs sit at the end of the row in this order (D11). */
-const FIXED_ORDER: readonly TabId[] = ['selection', 'issues', 'volumes', 'changes'];
+/**
+ * Fixed tabs sit at the end of the row in this order (D11); Project (id `measure`, the Measure
+ * bench under an "In this project" list) is the first of them.
+ */
+const FIXED_ORDER: readonly TabId[] = ['measure', 'selection', 'issues', 'volumes', 'changes'];
 
 const fixedRank = (id: TabId): number => {
   const i = FIXED_ORDER.indexOf(id);
@@ -144,14 +147,14 @@ export function onToolStop(
 
 /**
  * The `overflowOrder` for the foundation `Tabs` part (higher value leaves first; Tabs never
- * drops the selected tab): fixed tabs leave first, then panels, then Selection, live tabs last.
- * Within a group the later tab leaves first. Unknown ids get 0.
+ * drops the selected tab): fixed tabs leave first, then panels, then Selection and Project, live
+ * tabs last. Within a group the later tab leaves first. Unknown ids get 0.
  */
 export function overflowOrderFor(state: Pick<TabsState, 'tabs'>): (id: TabId) => number {
   const ordered = orderTabs(state.tabs);
   const group = (t: Tab): number => {
     if (t.live) return 0;
-    if (t.id === 'selection') return 1;
+    if (t.id === 'selection' || t.id === 'measure') return 1;
     return t.fixed ? 3 : 2;
   };
   const order = new Map(ordered.map((t, index) => [t.id, group(t) * 100 + index]));

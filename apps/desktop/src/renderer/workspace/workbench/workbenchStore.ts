@@ -18,7 +18,11 @@ import {
 
 const KEY = 'quadrion.workbench';
 
-const FIXED: readonly TabId[] = ['selection', 'issues', 'volumes', 'changes'];
+/**
+ * The tabs that are always there; Project (id `measure`) first. A remembered pin of one is skipped
+ * (fixed tabs are never pinned), which is how an older pin of Measure moves over.
+ */
+const FIXED: readonly TabId[] = ['measure', 'selection', 'issues', 'volumes', 'changes'];
 /** Volumes and Changes open at least this wide (D17, founder 16 Oct). */
 export const WIDE_TAB_PX = 470;
 /**

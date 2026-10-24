@@ -223,6 +223,46 @@ describe('overflowOrderFor', () => {
   it('gives unknown ids 0', () => {
     expect(overflowOrderFor({ tabs })('hydro')).toBe(0);
   });
+
+  it('never drops Project before a panel (it overflows with Selection)', () => {
+    const withProject = [tab('measure', { fixed: true }), ...fixedTabs(), tab('display')];
+    const order = overflowOrderFor({ tabs: withProject });
+    const leaving = withProject.map((t) => t.id).sort((a, b) => order(b) - order(a));
+    expect(leaving).toEqual(['changes', 'volumes', 'issues', 'display', 'selection', 'measure']);
+  });
+});
+
+describe('the Project tab (id measure)', () => {
+  it('keeps the Project tab first among the fixed tabs', () => {
+    const tabs = [
+      ...fixedTabs(),
+      tab('measure', { fixed: true }),
+      tab('display'),
+      tab('jobs', { live: true }),
+    ];
+    expect(ids(orderTabs(tabs))).toEqual([
+      'jobs',
+      'display',
+      'measure',
+      'selection',
+      'issues',
+      'volumes',
+      'changes',
+    ]);
+  });
+
+  it('a live Project tab leads the row, and stays when its tool stops', () => {
+    const state = {
+      tabs: [tab('measure', { fixed: true }), ...fixedTabs()],
+      front: 'measure' as TabId,
+      issueEditing: false,
+    };
+    const started = onToolStart(state, 'measure');
+    expect(ids(started.tabs)[0]).toBe('measure');
+    const stopped = onToolStop({ ...state, tabs: started.tabs }, 'measure', { openedByTool: true });
+    expect(ids(stopped.tabs)).toContain('measure');
+    expect(ids(stopped.tabs).indexOf('measure')).toBe(ids(stopped.tabs).indexOf('selection') - 1);
+  });
 });
 
 describe('paneWidth', () => {

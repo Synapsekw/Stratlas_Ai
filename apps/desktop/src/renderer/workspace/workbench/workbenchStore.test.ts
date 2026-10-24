@@ -25,21 +25,60 @@ afterEach(() => {
 });
 
 describe('workbench store', () => {
-  it('starts with the fixed set, Selection in front', () => {
+  it('starts with the fixed set, Project first, Selection in front', () => {
     const s = createWorkbenchStore(memory()).getState();
-    expect(ids(s)).toEqual(['selection', 'issues', 'volumes', 'changes']);
+    expect(ids(s)).toEqual(['measure', 'selection', 'issues', 'volumes', 'changes']);
     expect(s.front).toBe('selection');
   });
 
   it('a started tool takes the front and its tab closes when it stops', () => {
     const store = createWorkbenchStore(memory());
-    store.getState().toolStarted('measure');
-    expect(store.getState().front).toBe('measure');
-    expect(store.getState().openedByTool.has('measure')).toBe(true);
-    store.getState().toolStopped('measure');
-    expect(ids(store.getState())).not.toContain('measure');
+    store.getState().toolStarted('annotate');
+    expect(store.getState().front).toBe('annotate');
+    expect(store.getState().openedByTool.has('annotate')).toBe(true);
+    store.getState().toolStopped('annotate');
+    expect(ids(store.getState())).not.toContain('annotate');
     expect(store.getState().front).toBe('selection');
     expect(store.getState().openedByTool.size).toBe(0);
+  });
+
+  it('always has the Project tab', () => {
+    const store = createWorkbenchStore(memory());
+    store.getState().open('display');
+    store.getState().reset();
+    expect(store.getState().tabs.find((t) => t.id === 'measure')).toMatchObject({
+      fixed: true,
+      pinned: false,
+    });
+    // a fixed tab has no close
+    store.getState().show('measure');
+    store.getState().close('measure');
+    expect(ids(store.getState())).toContain('measure');
+    expect(store.getState().front).toBe('measure');
+  });
+
+  it('ignores a remembered pin of measure', () => {
+    const storage = memory({
+      'quadrion.workbench': JSON.stringify({ pinned: ['measure', 'rf'] }),
+    });
+    const s = createWorkbenchStore(storage).getState();
+    expect(s.tabs.filter((t) => t.id === 'measure')).toEqual([
+      { id: 'measure', live: false, pinned: false, fixed: true },
+    ]);
+    expect(s.tabs.find((t) => t.id === 'rf')?.pinned).toBe(true);
+  });
+
+  it('keeps Project in front after the tool that made it live stops', () => {
+    const store = createWorkbenchStore(memory());
+    store.getState().toolStarted('measure');
+    expect(store.getState().front).toBe('measure');
+    expect(store.getState().openedByTool.has('measure')).toBe(false);
+    store.getState().toolStopped('measure');
+    expect(store.getState().front).toBe('measure');
+    expect(store.getState().tabs.find((t) => t.id === 'measure')).toMatchObject({
+      live: false,
+      fixed: true,
+    });
   });
 
   it('toolStarted(measure) while an issue is edited keeps issues in front', () => {
@@ -171,12 +210,12 @@ describe('workbench store', () => {
     const stop = vi.fn(() => {
       running = false;
     });
-    const off = linkLiveTab('measure', () => running, stop, store);
-    store.getState().toolStarted('measure');
-    store.getState().close('measure');
+    const off = linkLiveTab('annotate', () => running, stop, store);
+    store.getState().toolStarted('annotate');
+    store.getState().close('annotate');
     expect(stop).toHaveBeenCalledTimes(1);
     expect(store.getState().front).toBe('selection');
-    expect(store.getState().openedByTool.has('measure')).toBe(false);
+    expect(store.getState().openedByTool.has('annotate')).toBe(false);
     off();
   });
 
@@ -215,7 +254,7 @@ describe('workbench store', () => {
     store.getState().open('display');
     store.getState().toolStarted('measure');
     workspace.setState({ project: { id: 'other', root: '/o', manifest: {} } as never });
-    expect(ids(store.getState())).toEqual(['selection', 'issues', 'volumes', 'changes']);
+    expect(ids(store.getState())).toEqual(['measure', 'selection', 'issues', 'volumes', 'changes']);
     expect(store.getState().front).toBe('selection');
     stop();
     workspace.setState({ project: null });

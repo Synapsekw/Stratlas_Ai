@@ -72,7 +72,8 @@ describe('followMeasureTool', () => {
     // the Scene unmounts: the follower goes
     off();
     expect(personToolLive(bench.getState().tabs)).toBe(false);
-    expect(bench.getState().tabs.some((t) => t.id === 'measure')).toBe(false);
+    // the Project tab is fixed: it stays, no longer live
+    expect(bench.getState().tabs.find((t) => t.id === 'measure')?.live).toBe(false);
     // back on the Scene: a new follower, then the mount stops the tool it never saw start
     const again = followMeasureTool(store as never, bench);
     store.setState({ tool: null });

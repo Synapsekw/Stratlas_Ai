@@ -17,6 +17,7 @@ import { followMeasureTool, followRecent } from '../measureFollow';
 import { createFavouritesStore } from '../../../survey/measureCatalogue';
 import { MeasureBench } from './MeasureBench';
 import { UnsavedBar } from '../../../survey/MeasureToolbar';
+import { openBenchFromIsland } from '../../island/islandBench';
 
 // the site data tools are their own screens: here only that the bench lists them
 vi.mock('../../../survey/Designs', () => ({
@@ -254,8 +255,56 @@ describe('the Measure workbench', () => {
   });
 });
 
+/** Whether `a` comes before `b` in the document. */
+const before = (a: Element | null, b: Element | null): boolean =>
+  a !== null &&
+  b !== null &&
+  (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+describe('the Project tab: In this project above the tools', () => {
+  it('puts the project list above the tools and the live card above the list', () => {
+    render();
+    const caption = q('project-caption');
+    const tools = q('project-tools-caption');
+    expect(caption?.textContent).toContain('In this project');
+    expect(tools?.textContent).toBe('Tools');
+    expect(before(caption, tools)).toBe(true);
+    // the save controls and the catalogue come after the TOOLS caption
+    expect(before(tools, host.querySelector('.sv-saved'))).toBe(true);
+    expect(before(tools, q('survey-tools'))).toBe(true);
+    // a live tool's card stays first, above the list; the strip is under the TOOLS caption
+    press('m');
+    expect(before(q('survey-drawbar'), q('project-caption'))).toBe(true);
+    expect(before(q('project-tools-caption'), host.querySelector('.meb-strip'))).toBe(true);
+    act(() => {
+      stopTool();
+    });
+  });
+
+  it('has no Antenna inventory section among the tools', () => {
+    render();
+    expect(q('wb-section-telecom-antennas')).toBeNull();
+    expect(q('antenna-panel')).toBeNull();
+    const src = readFileSync(join(import.meta.dirname, 'MeasureBench.tsx'), 'utf8');
+    expect(src).not.toContain('AntennaSection');
+  });
+
+  it('scrolls the TOOLS caption to the top on a tools-scroll request', () => {
+    render();
+    const scroller = host.querySelector<HTMLElement>('.meb.wb-scroll');
+    const tools = q('project-tools-caption') as HTMLElement | null;
+    if (!scroller || !tools) throw new Error('no scroller or caption');
+    scroller.getBoundingClientRect = () => ({ top: 100 }) as DOMRect;
+    tools.getBoundingClientRect = () => ({ top: 340 }) as DOMRect;
+    act(() => {
+      openBenchFromIsland('measure', createWorkbenchStore(null));
+    });
+    expect(scroller.scrollTop).toBe(240);
+  });
+});
+
 describe('the Measure tab follows the tool', () => {
-  it('stopping a tool that opened the tab returns the front to Selection', () => {
+  it('stopping a tool leaves the Project tab, a fixed tab, in front', () => {
     const wb = createWorkbenchStore(null);
     const off = followMeasureTool(measureStore, wb);
     try {
@@ -263,11 +312,12 @@ describe('the Measure tab follows the tool', () => {
       expect(wb.getState().front).toBe('measure');
       expect(wb.getState().tabs.find((t) => t.id === 'measure')?.live).toBe(true);
       stopTool();
-      expect(wb.getState().front).toBe('selection');
-      expect(wb.getState().tabs.some((t) => t.id === 'measure')).toBe(false);
+      // the tab is always there: it stays, in front, no longer live (it used to close)
+      expect(wb.getState().front).toBe('measure');
+      expect(wb.getState().tabs.find((t) => t.id === 'measure')?.live).toBe(false);
 
-      // opened by the person, the bench stays (back to the full catalogue)
-      wb.getState().open('measure');
+      // brought forward by the person, the bench stays too (back to the full catalogue)
+      wb.getState().show('measure');
       startTool('area');
       stopTool();
       expect(wb.getState().front).toBe('measure');
@@ -293,20 +343,19 @@ describe('the Measure tab follows the tool', () => {
     }
   });
 
-  it('closing the live Measure tab with its X stops the drawing', () => {
+  it('the live Project tab has no close: a close leaves the drawing going', () => {
     const wb = createWorkbenchStore(null);
     const off = followMeasureTool(measureStore, wb);
     try {
       startTool('distance');
       expect(wb.getState().tabs.find((t) => t.id === 'measure')?.live).toBe(true);
       wb.getState().close('measure');
-      expect(measureStore.getState().tool).toBeNull();
-      expect(measureStore.getState().draw).toBeNull();
-      expect(wb.getState().front).toBe('selection');
-      // the next tool opens its tab again
-      startTool('area');
+      expect(measureStore.getState().tool?.tool).toBe('distance');
       expect(wb.getState().front).toBe('measure');
+      expect(wb.getState().tabs.find((t) => t.id === 'measure')?.live).toBe(true);
+      // Stop (or Esc) ends it
       stopTool();
+      expect(wb.getState().tabs.find((t) => t.id === 'measure')?.live).toBe(false);
     } finally {
       off();
     }
