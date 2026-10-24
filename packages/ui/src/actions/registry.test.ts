@@ -168,5 +168,6 @@ describe('actionsFor', () => {
   });
   it('counts a measurements target by its ids', () => {
     expect(targetCount({ kind: 'measurements', ids: ['a', 'b'], clicked: 'a' })).toBe(2);
+    expect(targetCount({ kind: 'antennas', ids: ['a', 'b'], clicked: 'a' })).toBe(2);
   });
 });

@@ -1,3 +1,4 @@
+import { registerAntennaActions } from './antennaActions';
 import { registerAreaActions } from './areaActions';
 import { registerDateActions } from './dateActions';
 import { registerKindActions } from './kindActions';
@@ -29,4 +30,5 @@ export function registerSidebarActions(): void {
   registerAreaActions();
   registerRfActions();
   registerThermalActions();
+  registerAntennaActions();
 }

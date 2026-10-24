@@ -64,6 +64,8 @@ export interface AntennaState {
   ticked: Record<string, true>;
   /** A request to fly the camera to these units (the 3D view answers it); `seq` tells repeats. */
   flyRequest: { ids: string[]; seq: number } | null;
+  /** A request to focus a typed field of a unit's row (the menu's Edit azimuth); `seq` tells repeats. */
+  focusField: { id: string; key: 'azimuthGridDeg' | 'downtiltDeg'; seq: number } | null;
 }
 
 export interface AiPreview {
@@ -97,6 +99,7 @@ const initial = (): AntennaState => ({
   flagStarting: false,
   ticked: {},
   flyRequest: null,
+  focusField: null,
 });
 
 export const antennaStore = createStore<AntennaState>()(initial);
@@ -546,6 +549,15 @@ export function clearTicked(): void {
 /** Ask the 3D view to fly to these units. */
 export function requestFly(ids: readonly string[]): void {
   set({ flyRequest: { ids: [...ids], seq: (get().flyRequest?.seq ?? 0) + 1 } });
+}
+
+/** Ask the unit's row to focus one of its typed fields; selects the unit. */
+export function requestFocusField(id: string, key: 'azimuthGridDeg' | 'downtiltDeg'): void {
+  set({
+    selected: id,
+    note: null,
+    focusField: { id, key, seq: (get().focusField?.seq ?? 0) + 1 },
+  });
 }
 
 export function selectAntenna(id: string | null): void {
