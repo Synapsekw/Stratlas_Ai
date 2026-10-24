@@ -138,9 +138,12 @@ async function opened(win: Page, p: SurveyDemoProject): Promise<Locator> {
   await openDemo(win, p.name, p.id);
   const view = await volumesView(win);
   await expect(view.getByTestId('volumes-pile')).toHaveCount(4, { timeout: 60_000 });
-  await expect(
-    view.getByTestId('volumes-inventory-table').locator('tbody tr[data-capture="m3"]'),
-  ).toHaveCount(1, { timeout: 360_000 });
+  // every survey prepared and its figures worked out: the dates strip draws the site on each
+  const strip = win.getByRole('region', { name: 'Survey dates chart' });
+  await expect(strip.locator('[data-survey][data-state="ready"]')).toHaveCount(DATES.length, {
+    timeout: 360_000,
+  });
+  await expect(strip.locator('circle.ds-dot')).toHaveCount(DATES.length, { timeout: 240_000 });
   return view;
 }
 

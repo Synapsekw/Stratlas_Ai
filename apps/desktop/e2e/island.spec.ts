@@ -373,6 +373,13 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
     const bar = island(win);
     await expect(win.getByTestId('video-window')).toBeVisible(VIEW_READY);
+    // two survey dates with piles and a clip: the bottom bar opens on the dates strip and offers
+    // Dates | Footage. This test measures the island over the stage the footage timeline leaves
+    // (the strip is taller, and with it the open island reaches past the middle even with the
+    // right panel folded), so it picks Footage; the strip's own layout is dates-strip.spec.ts's
+    await expect(win.getByTestId('bottom-switch-dates')).toHaveAttribute('aria-pressed', 'true');
+    await win.getByTestId('bottom-switch-footage').click();
+    await expect(win.getByRole('region', { name: 'Survey dates chart' })).toHaveCount(0);
     // the clip is paused, and no PAUSED chip stands on the stage (D30): the island's live line
     // and the Video workbench say what the clip does
     await expect(win.locator('.stage-slot').filter({ hasText: /paused/i })).toHaveCount(0);
@@ -463,7 +470,9 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     await expect(win.locator('.ws')).not.toHaveClass(/right-off/);
 
     // the Volumes group's full set is the Volumes workbench (I-R19): it lies in the right panel,
-    // inside the window, its one Survey date switch in view, and the centre still the view's
+    // inside the window, its segments and Export in view, no Survey date switch of its own (the
+    // notch and the dates strip carry the date), and the centre still the view's; the stage's
+    // Show control stands top-left on the stage (volumetrics redesign, board 1)
     const bench = await islandGroup(win, 'volumes');
     await expect(bench.getByTestId('volumes-bench')).toBeVisible();
     // under the controls, the volumes view (volumetric parity W3): every volume measurement, or
@@ -487,15 +496,28 @@ test.describe('in the window CI runs, 1100 x 720', () => {
         stage: box(document.querySelector('.ws > .stage')),
         panel: box(panel),
         dates: panel?.querySelectorAll('[role="group"][aria-label="Survey date"]').length ?? 0,
-        controls: [...(panel?.querySelectorAll('.vol-bench-controls button') ?? [])].map((b) => ({
+        show: box(document.querySelector('[data-testid="stage-show"]')),
+        controls: [
+          ...(panel?.querySelectorAll(
+            '[data-testid="volumes-segment"], [data-testid="volumes-csv"]',
+          ) ?? []),
+        ].map((b) => ({
           name: b.getAttribute('aria-label') ?? b.textContent.trim(),
           box: box(b),
         })),
       };
     });
     expect(set.panel, 'the Volumes workbench is open').not.toBeNull();
-    expect(set.dates, 'Survey date switches in the Volumes tab').toBe(1);
-    expect(set.controls.length, 'controls above the inventory').toBeGreaterThan(4);
+    expect(set.dates, 'Survey date switches in the Volumes tab').toBe(0);
+    expect(set.controls.length, 'the segments and Export above the inventory').toBe(4);
+    expect(set.show, 'the Show control on the stage').not.toBeNull();
+    if (set.show && set.stage) {
+      expect(set.show.left).toBeGreaterThanOrEqual(set.stage.left);
+      expect(set.show.right, 'the Show control keeps to the left half').toBeLessThan(
+        (set.stage.left + set.stage.right) / 2,
+      );
+      expect(set.show.top).toBeGreaterThanOrEqual(set.stage.top);
+    }
     if (set.panel && set.stage) {
       const p = set.panel;
       expect(p.left, 'the workbench starts right of the stage').toBeGreaterThanOrEqual(

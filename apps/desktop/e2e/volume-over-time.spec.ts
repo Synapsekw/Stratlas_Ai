@@ -2,7 +2,8 @@
  * Volume over time (volumetric parity W4) in the real app, on the synthetic quarry demo: three
  * monthly surveys prepared through the real `survey.prepare` job; a stockpile's volume card charts
  * its volume on every survey date (the latest marked) and lists it with the change in a table; the
- * Volumes view stacks the piles per date in the site inventory. Every figure is checked against
+ * dates strip under the stage stacks the site inventory by material, and the Volumes tab's header
+ * gives each date's total as it comes into focus. Every figure is checked against
  * the demo's `truth.json` (the quick grid, within its 2 % tolerance: the bases equal the planar
  * ground, so each pile's volume is its shape's). The quarry demo is used rather than the change
  * demo: it has the volume measurements and the per-date truth. Off-screen, zero network, pipeline
@@ -104,7 +105,7 @@ test('a volume measurement shows a bar per survey date with the latest highlight
   await expect(card.getByTestId('vol-since')).toContainText(/28 Feb/);
   await expect(card.getByTestId('vol-material')).toContainText('Crushed rock 20 mm');
   // the primary value is the latest date's figure
-  near(figure(await card.getByTestId('card-primary').innerText()), want('m3'));
+  near(figure(await card.getByTestId('card-primary').locator('.mc-value').innerText()), want('m3'));
 
   // hovering the last date reads its volume and change
   const plot = chart.getByTestId('time-plot');
@@ -135,7 +136,10 @@ test('a volume measurement shows a bar per survey date with the latest highlight
   await expect(hist.last().locator('td').last()).toHaveText('first');
 });
 
-test('the site inventory stacks two piles', async ({ quarryProject, win }) => {
+test('the site inventory stacks the materials in the dates strip, each date its total', async ({
+  quarryProject,
+  win,
+}) => {
   test.setTimeout(480_000);
   const truth = quarryProject.truth as unknown as QuarryTruth;
   const piles = truth.stockpiles;
@@ -144,37 +148,41 @@ test('the site inventory stacks two piles', async ({ quarryProject, win }) => {
   const pit = (d: string) => (d === 'm3' ? -truth.pit.sumpCutM3 : 0);
   await prepared(win, quarryProject.name, quarryProject.id);
 
-  // the Volumes view: every volume measurement as a live card, then the inventory per date (the
-  // pile picked to prepare opened in its panel: back to the inventory first)
+  // the Volumes tab (the pile picked to prepare opened in its panel: back to the inventory first)
   const view = await volumesView(win);
   await view.getByTestId('pile-back').click();
   await expect(view.getByTestId('volumes-pile')).toHaveCount(4);
-  const inventory = view.getByTestId('volumes-inventory');
-  await expect(inventory).toBeVisible({ timeout: 180_000 });
-  const chart = inventory.getByTestId('volumes-inventory-chart');
-  await expect(chart).toHaveAttribute('data-kind', 'stack');
+  await expect(view.getByTestId('volumes-inventory')).toBeVisible({ timeout: 180_000 });
 
-  // on 31 January the two first piles are stacked in one bar, both counted
-  const first = chart.locator('g[data-stack="m1"]');
-  await expect(first.locator('rect[data-part="m-sp1"]')).toHaveCount(1, { timeout: 180_000 });
-  await expect(first.locator('rect[data-part="m-sp2"]')).toHaveCount(1);
-  // the legend names the piles stacked
-  await expect(inventory.getByTestId('time-legend')).toContainText('Stockpile SP1');
-  await expect(inventory.getByTestId('time-legend')).toContainText('Stockpile SP2');
+  // the site inventory over time is the dates strip under the stage (volumetrics redesign C4b):
+  // the materials stacked, a point on each survey's total
+  const strip = win.locator('[aria-label="Survey dates chart"]');
+  await expect(strip).toBeVisible();
+  await expect(strip.locator('circle.ds-dot')).toHaveCount(DATES.length, { timeout: 180_000 });
+  await expect(strip.locator('g[data-stack="crushed-20"]')).toHaveCount(1);
+  await expect(strip.locator('g[data-stack="washed-sand"]')).toHaveCount(1);
+  // the legend names the materials stacked
+  await expect(strip.getByTestId('strip-legend')).toContainText('Crushed rock 20 mm');
+  await expect(strip.getByTestId('strip-legend')).toContainText('Washed sand');
 
-  // each date's total is the truth of every volume measurement counted on it (SP3 lies on the
-  // bare ground until March: about 0), the latest marked; the pit's month-on-month change has no
-  // date before the first, so it is named as not counted there
-  const table = inventory.getByTestId('volumes-inventory-table');
+  // each date's total, in the Volumes header as the date comes into focus, is the truth of every
+  // volume measurement counted on it (SP3 lies on the bare ground until March: about 0); the
+  // pit's month-on-month change has no date before the first, so it is not counted there
+  const header = view.getByTestId('volumes-header');
   for (const d of DATES) {
-    const row = table.locator(`tbody tr[data-capture="${d}"]`);
-    await expect(row).toHaveCount(1);
-    const total = figure(await row.getByTestId('volumes-inventory-value').innerText());
-    near(total, at('sp1', d) + at('sp2', d) + at('sp3', d) + pit(d));
+    await strip.locator(`[data-survey="${d}"]`).click();
+    await expect(strip.locator(`[data-survey="${d}"]`)).toHaveAttribute('aria-current', 'date');
+    const want = at('sp1', d) + at('sp2', d) + at('sp3', d) + pit(d);
+    await expect
+      .poll(async () => figure(await header.getByTestId('volumes-kpi-volume').innerText()))
+      .toBeCloseTo(want, -1);
+    near(figure(await header.getByTestId('volumes-kpi-volume').innerText()), want);
+    // the strip's readout reads the same survey
+    await expect(strip.getByTestId('strip-readout')).toContainText(
+      d === 'm1' ? '31 Jan 2026' : d === 'm2' ? '28 Feb 2026' : '31 Mar 2026',
+    );
   }
-  await expect(table.locator('tbody tr[data-latest]')).toHaveAttribute('data-capture', 'm3');
-  await expect(
-    table.locator('tbody tr[data-capture="m1"]').getByTestId('volumes-inventory-left'),
-  ).toContainText('Pit (month on month)');
+  await strip.locator('[data-survey="m1"]').click();
+  await expect(header.getByTestId('volumes-status')).toContainText('Pit (month on month)');
   await expectAccessible(win, 'Site inventory', { include: '[data-testid="volumes-view"]' });
 });

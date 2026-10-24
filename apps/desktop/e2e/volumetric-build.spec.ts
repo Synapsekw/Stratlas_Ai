@@ -16,7 +16,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { closeProcessing, expect, launchApp, test } from './fixtures';
-import { islandGroup, toggleCompareDates, volumesView } from './island';
+import { showSurface, toggleCompareDates, volumesView } from './island';
 
 const repo = join(import.meta.dirname, '..', '..', '..');
 const venvPython =
@@ -130,16 +130,6 @@ function overlays(win: Page, pile: string) {
     };
     return { main: of(w.__stratlas.stage()), second: of(w.__stratlas.compare().second) };
   }, pile);
-}
-
-/** The Photo, Elevation or Cut / fill switch of a stockpile project (the Volumes workbench). */
-async function surfaceColours(win: Page, name: 'Photo' | 'Elevation' | 'Cut / fill') {
-  const full = await islandGroup(win, 'volumes');
-  const button = full
-    .getByRole('group', { name: 'Surface colours' })
-    .getByRole('button', { name, exact: true });
-  await button.click();
-  await expect(button).toHaveAttribute('aria-pressed', 'true');
 }
 
 test.skip(!existsSync(venvPython), `no Python with aio_pipelines at ${venvPython}`);
@@ -276,7 +266,7 @@ test('a volumetric project from two raw survey dates: wizard, Processing drawer,
     await expect
       .poll(() => overlays(win, pid), { timeout: 60_000 })
       .toEqual({ main: { drapes: [], pile: true }, second: { drapes: [], pile: true } });
-    await surfaceColours(win, 'Elevation');
+    await showSurface(win, 'Elevation');
     await expect
       .poll(() => overlays(win, pid), { timeout: 60_000 })
       .toEqual({ main: { drapes: ['e1'], pile: true }, second: { drapes: ['e2'], pile: true } });
@@ -325,7 +315,7 @@ test('a volumetric project from two raw survey dates: wizard, Processing drawer,
         (window as unknown as Views).__stratlas.compare().second?.scene.getObjectByName('drape:e2')
           ?.uuid ?? null,
     );
-    await surfaceColours(win, 'Cut / fill');
+    await showSurface(win, 'Cut & fill');
     await expect(legend).toHaveAttribute('data-surface-shown', 'change');
     await expect
       .poll(

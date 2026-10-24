@@ -3,8 +3,9 @@
  * demo: import materials from CSV into the site list (merged by id) and save them to
  * `survey/settings.json`; on the cell's lift (previous to current, prepared through the real
  * `survey.prepare` job) pick a material for its tonnes, and type a weighed tonnage for the density
- * it achieved, shown as the calculators show it. The stored volume never changes. Axe on the dialog
- * and the panel. Off-screen, zero network.
+ * it achieved, shown as the calculators show it. The stored volume never changes. The site list is
+ * the Volumes tab's Materials pane (volumetrics redesign, board 5), which the Measure tab's Site
+ * materials entry opens. Axe on the pane and the panel. Off-screen, zero network.
  */
 import { formatQuantity } from '@aio/geo';
 import type { MeasurementsFile, SurveySettings } from '@aio/schema';
@@ -14,7 +15,7 @@ import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
-import { measureControl, measureSaved, measureTree } from './island';
+import { measureControl, measureSaved, stockpileTree } from './island';
 import { focusMeasure, volumeSettled } from './measureCard';
 import { setAutoPrepare } from './surveyJobs';
 
@@ -48,9 +49,10 @@ test('site materials from CSV, a material on a measurement, and the weight calcu
   await setAutoPrepare(win, false);
   await open(win, landfillProject);
 
-  // the site list: one material from the demo, the CSV replaces it and adds one
+  // the site list: one material from the demo, the CSV replaces it and adds one. Site materials
+  // in the Measure tab opens the Volumes tab on its Materials pane
   await (await measureControl(win, 'survey-materials-tool')).click();
-  const dlg = win.getByTestId('survey-materials');
+  const dlg = win.getByTestId('materials-pane');
   await expect(dlg).toBeVisible();
   await expect(dlg.getByTestId('survey-mat-row')).toHaveCount(1);
   await dlg.getByTestId('survey-mat-import').setInputFiles({
@@ -61,10 +63,17 @@ test('site materials from CSV, a material on a measurement, and the weight calcu
   await expect(dlg.getByTestId('survey-mat-row')).toHaveCount(2);
   await expect(dlg.getByTestId('survey-mat-note')).toContainText('2 materials read');
   await expect(dlg.getByTestId('survey-mat-error')).toContainText('Line 4');
-  await expectAccessible(win, 'Site materials', { include: '[data-testid="survey-materials"]' });
-  await dlg.getByTestId('survey-mat-save').click();
-  await expect(dlg).toHaveCount(0);
-  const settings = await readJson<SurveySettings>(join(dir, 'survey', 'settings.json'));
+  await expectAccessible(win, 'Site materials', { include: '[data-testid="materials-pane"]' });
+  const save = dlg.getByTestId('survey-mat-save');
+  await save.click();
+  // saved: nothing left to save (Save goes with the unsaved mark), the pane stays with the list
+  await expect(save).toHaveCount(0);
+  await expect(dlg.getByTestId('survey-mat-row')).toHaveCount(2);
+  const settingsFile = join(dir, 'survey', 'settings.json');
+  await expect
+    .poll(async () => (await readJson<SurveySettings>(settingsFile)).materials.length)
+    .toBe(2);
+  const settings = await readJson<SurveySettings>(settingsFile);
   expect(settings.materials).toEqual([
     { id: 'msw', name: 'Municipal solid waste', code: 'MSW', densityTPerM3: 0.95 },
     {
@@ -77,7 +86,7 @@ test('site materials from CSV, a material on a measurement, and the weight calcu
   ]);
 
   // the lift: prepare the surveys, then compute previous to current
-  await measureTree(win);
+  await stockpileTree(win);
   // a pile: its full volume card is the Measure tab's (focusMeasure brings it forward)
   const panel = await focusMeasure(win, 'Cell 1');
   await panel.getByTestId('survey-prepare').click();

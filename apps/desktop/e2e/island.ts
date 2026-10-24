@@ -149,6 +149,28 @@ export async function volumesView(win: Page): Promise<Locator> {
   return view;
 }
 
+/**
+ * The stage's Show control (volumetrics redesign, board 1): top-left of the stage while the
+ * Volumes tab is in front, the surface (Photo | Elevation | Cut & fill) and the pile overlays
+ * (Outlines | Labels). The Volumes tab is brought to the front first.
+ */
+export async function stageShow(win: Page): Promise<Locator> {
+  await islandGroup(win, 'volumes');
+  const show = win.getByTestId('stage-show');
+  await expect(show).toBeVisible();
+  return show;
+}
+
+/** Pick the stage's surface in the Show control and wait for it to read as picked. */
+export async function showSurface(
+  win: Page,
+  name: 'Photo' | 'Elevation' | 'Cut & fill',
+): Promise<void> {
+  const button = (await stageShow(win)).getByRole('button', { name, exact: true });
+  await button.click();
+  await expect(button).toHaveAttribute('aria-pressed', 'true');
+}
+
 /** A tool button of a group's full set (the set opened, so it shows). */
 export async function islandTool(win: Page, g: GroupId, name: string | RegExp): Promise<Locator> {
   const full = await islandGroup(win, g);
@@ -291,7 +313,9 @@ export async function siteDataButton(win: Page, name: string): Promise<Locator> 
  * unfolded from its rail (the Scene folds it in a narrow window) and the group open. Returns the
  * group, its head row and its rows (`measure-row`, `measure-folder`). In a project with survey
  * dates each date folder holds its own Measurements group: `date` (a capture id) picks that
- * date's, its folder opened with its arrow first (the focus stays where it was).
+ * date's, its folder opened with its arrow first (the focus stays where it was). Without a date,
+ * a project whose only site measurements are stockpiles has no Measurements group: its piles sit
+ * in the project's Stockpiles group (volumetrics redesign, spec section 5), which is returned.
  */
 export async function measureTree(win: Page, date?: string): Promise<Locator> {
   const handle = win.getByTestId('panel-handle-left');
@@ -306,9 +330,30 @@ export async function measureTree(win: Page, date?: string): Promise<Locator> {
     scope = folder;
   }
   const toggle = scope.getByTestId('tree-group-toggle-measurements');
+  if (date === undefined) {
+    const piles = win.getByTestId('tree-group-toggle-stockpiles');
+    await expect(toggle.or(piles).first()).toBeVisible();
+    if ((await toggle.count()) === 0) return stockpileTree(win);
+  }
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   return scope.getByTestId('tree-group-measurements').locator('..');
+}
+
+/**
+ * The project's Stockpiles group of the Datasets tree (volumetrics redesign, spec section 5): in
+ * a project with survey dates, after the date folders, the site's piles with their figures on the
+ * date in focus (the head counts them: "2 · 1 Feb 2026"). The sidebar unfolded and the group open;
+ * returns the group with its head row (`tree-group-stockpiles`) and its rows (`measure-row`).
+ */
+export async function stockpileTree(win: Page): Promise<Locator> {
+  const handle = win.getByTestId('panel-handle-left');
+  if ((await handle.getAttribute('aria-expanded')) !== 'true') await handle.click();
+  await expect(handle).toHaveAttribute('aria-expanded', 'true');
+  const toggle = win.getByTestId('tree-group-toggle-stockpiles');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  return win.getByTestId('tree-group-stockpiles').locator('..');
 }
 
 /** The filter box at the top of the tree's Measurements group (the group opened first). */

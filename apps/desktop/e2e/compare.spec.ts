@@ -20,7 +20,7 @@ import {
   tinyManifest,
 } from './fixtures';
 import { headerProblems } from './split';
-import { closeIslandTools, islandGroup, islandRow, stageMode, toggleCompareDates } from './island';
+import { closeIslandTools, islandRow, showSurface, stageMode, toggleCompareDates } from './island';
 import { choosePane } from './panoFixtures';
 import { copyRealData, hasRealData, missingRealProject, realProjectDir } from './realData';
 
@@ -273,16 +273,6 @@ function measuresOnMaps(win: Page) {
     },
     null,
   );
-}
-
-/** The Photo, Elevation or Cut / fill switch of a stockpile project (the Volumes workbench). */
-async function surfaceColours(win: Page, name: 'Photo' | 'Elevation' | 'Cut / fill') {
-  const full = await islandGroup(win, 'volumes');
-  const button = full
-    .getByRole('group', { name: 'Surface colours' })
-    .getByRole('button', { name, exact: true });
-  await button.click();
-  await expect(button).toHaveAttribute('aria-pressed', 'true');
 }
 
 /** The surface colours draped on each 3D view: the survey (epoch) of each drape that shows. */
@@ -845,7 +835,7 @@ real.describe('@realdata Masafi', () => {
 
       // one switch, both views: each drapes the elevation colours on its own survey
       const second = win.getByTestId('pane-3d-compare');
-      await surfaceColours(win, 'Elevation');
+      await showSurface(win, 'Elevation');
       await expect
         .poll(() => drapes(win), { timeout: 60_000 })
         .toEqual({ main: ['e1'], second: ['e2'] });
@@ -874,7 +864,7 @@ real.describe('@realdata Masafi', () => {
         ({ w }) => w.__stratlas.compare().second?.scene.getObjectByName('drape:e2')?.uuid ?? null,
         null,
       );
-      await surfaceColours(win, 'Cut / fill');
+      await showSurface(win, 'Cut & fill');
       await expect(legend).toHaveAttribute('data-surface-shown', 'change');
       await expect
         .poll(
@@ -891,7 +881,7 @@ real.describe('@realdata Masafi', () => {
       await expect.poll(() => drapes(win)).toEqual({ main: ['e1'], second: ['e2'] });
       await win.waitForTimeout(1500);
       await shot(win, 'stockpile-cutfill');
-      await surfaceColours(win, 'Photo');
+      await showSurface(win, 'Photo');
       await expect.poll(() => drapes(win)).toEqual({ main: [], second: [] });
       await expect(legend).toHaveCount(0);
 

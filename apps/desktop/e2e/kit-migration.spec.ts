@@ -2,8 +2,8 @@
  * Old stockpile projects (volumetric parity W3) in the real app: the synthetic tiny project, given
  * two survey dates and a fictional stockpile kit result (`volumes.json`, two piles, and one toe
  * line corrected by hand in `edits/boundaries.json`), opens with each kit pile as a volume
- * measurement in the Stockpiles folder showing exactly its old figure, labelled "From an earlier
- * version (kit, Triangulated)", with nothing marked unsaved; the conversion is written once and
+ * measurement in the Stockpiles group showing exactly its old figure, labelled "From an earlier
+ * version (kit, Triangulated toe)", with nothing marked unsaved; the conversion is written once and
  * never again, so a pile deleted afterwards stays deleted; a package of it shows the same figures
  * and writes nothing. A picked pile opens in its pile panel in the Volumes tab (volumetrics
  * redesign B5); its full card stays the Measure tab's. No pipeline Python: nothing is computed.
@@ -28,7 +28,7 @@ import {
   tinyManifest,
   type DataRoot,
 } from './fixtures';
-import { measureRow, measureSaved, measureTree, pickGroupTab, volumesView } from './island';
+import { measureRow, measureSaved, pickGroupTab, stockpileTree, volumesView } from './island';
 import { focusMeasure } from './measureCard';
 
 /**
@@ -249,12 +249,13 @@ async function expectNorthCarried(win: Page, readOnly = false): Promise<void> {
     await expect(card.getByRole('textbox', { name: 'Rename' })).toHaveCount(0);
   } else card = await focusMeasure(win, 'Pile North');
   await expect(card.getByTestId('survey-cmp-status').first()).toHaveText(
-    'From an earlier version (kit, Triangulated)',
+    'From an earlier version (kit, Triangulated toe)',
   );
-  expect(figure(await card.getByTestId('card-primary').innerText())).toBeCloseTo(
-    NORTH_E2_EDITED,
-    2,
-  );
+  // the figure alone: the headline carries its status as a chip beside it
+  await expect(card.getByTestId('card-status')).toHaveText('From an earlier version');
+  expect(
+    figure(await card.getByTestId('card-primary').locator('.mc-value').innerText()),
+  ).toBeCloseTo(NORTH_E2_EDITED, 2);
   const result = card.getByTestId('survey-cmp-result');
   await expect(result).toHaveCount(1);
   expect(figure(await result.locator('tr[data-key="net"] td').first().innerText())).toBeCloseTo(
@@ -297,10 +298,12 @@ test('an old stockpile project opens with its kit figures labelled and no unsave
   const dir = dataRoot.projectDir;
   const kitBefore = await readFile(join(dir, 'volumes.json'));
   await openTiny(win);
-  await measureTree(win);
+  await stockpileTree(win);
 
-  // both kit piles, in the Stockpiles folder
-  await expect(win.getByTestId('measure-folder').filter({ hasText: 'Stockpiles' })).toBeVisible();
+  // both kit piles, in the project's Stockpiles group, counted on the date in focus
+  await expect(win.getByTestId('tree-group-stockpiles').locator('.gcount')).toHaveText(
+    '2 · 1 Feb 2026',
+  );
   await expect(win.getByTestId('measure-row')).toHaveCount(2);
   await expect(measureRow(win, 'Pile North')).toHaveCount(1);
   await expect(measureRow(win, 'Pile South')).toHaveCount(1);
@@ -352,7 +355,7 @@ test('converted piles sit on the kit DSM: every vertex within 0.05 m', async ({
 }) => {
   const dir = dataRoot.projectDir;
   await openTiny(win);
-  await measureTree(win);
+  await stockpileTree(win);
   await expect
     .poll(async () => (await readMeasurements(dir).catch(() => null))?.kitPilesConverted ?? null)
     .toEqual(['p01', 'p02']);
@@ -374,7 +377,7 @@ test('an earlier conversion with Z 0 is repaired once: kitHeightsRepaired lists 
   // converted by a build without heights: no DSM to read, every vertex left at 0
   await withoutDsms(dir);
   await openTiny(win);
-  await measureTree(win);
+  await stockpileTree(win);
   await expect
     .poll(async () => (await readMeasurements(dir).catch(() => null))?.kitPilesConverted ?? null)
     .toEqual(['p01', 'p02']);
@@ -387,7 +390,7 @@ test('an earlier conversion with Z 0 is repaired once: kitHeightsRepaired lists 
   // the kit's DSMs are there now: the next open repairs both piles once, quietly
   await writeKitDsms(dir);
   await reopen(win);
-  await measureTree(win);
+  await stockpileTree(win);
   await expect
     .poll(async () => [...((await readMeasurements(dir)).kitHeightsRepaired ?? [])].sort())
     .toEqual(flat.measurements.map((m) => m.id).sort());
@@ -403,7 +406,7 @@ test('an earlier conversion with Z 0 is repaired once: kitHeightsRepaired lists 
 
   // opened again: nothing left to repair, the file untouched
   await reopen(win);
-  await measureTree(win);
+  await stockpileTree(win);
   await expect(win.getByTestId('measure-row')).toHaveCount(2);
   await expect(await measureSaved(win)).toContainText('All saved');
   expect(await readFile(join(dir, 'survey', 'measurements.json'))).toEqual(once);
@@ -412,7 +415,7 @@ test('an earlier conversion with Z 0 is repaired once: kitHeightsRepaired lists 
 test('reopening adds nothing; a deleted pile stays deleted', async ({ win, dataRoot }) => {
   const dir = dataRoot.projectDir;
   await openTiny(win);
-  await measureTree(win);
+  await stockpileTree(win);
   await expect(win.getByTestId('measure-row')).toHaveCount(2);
   await expect
     .poll(async () => (await readMeasurements(dir).catch(() => null))?.kitPilesConverted ?? null)
@@ -421,7 +424,7 @@ test('reopening adds nothing; a deleted pile stays deleted', async ({ win, dataR
 
   // opened again: the same two, the file untouched
   await reopen(win);
-  await measureTree(win);
+  await stockpileTree(win);
   await expect(win.getByTestId('measure-row')).toHaveCount(2);
   await expect(await measureSaved(win)).toContainText('All saved');
   expect(await readFile(join(dir, 'survey', 'measurements.json'))).toEqual(once);
@@ -437,7 +440,7 @@ test('reopening adds nothing; a deleted pile stays deleted', async ({ win, dataR
 
   // opened again: the kit still lists it, but it stays deleted
   await reopen(win);
-  await measureTree(win);
+  await stockpileTree(win);
   await expect(win.getByTestId('measure-row')).toHaveCount(1);
   await expect(measureRow(win, 'Pile South')).toHaveCount(0);
   await expect(await measureSaved(win)).toContainText('All saved');
@@ -456,7 +459,7 @@ test('in a package the figures show, the heights are repaired in memory and noth
   // converted at Z 0 before the kit's DSMs were found; they travel in the package
   await withoutDsms(dataRoot.projectDir);
   await openTiny(win);
-  await measureTree(win);
+  await stockpileTree(win);
   await expect(win.getByTestId('measure-row')).toHaveCount(2);
   await expect
     .poll(
@@ -498,7 +501,7 @@ test('in a package the figures show, the heights are repaired in memory and noth
     await expect(pw.getByTestId('readonly-chip')).toHaveText('Read-only package');
     await pw.locator('.sb-nav .nav-item', { hasText: 'Scene' }).first().click();
     await expect(pw.locator('[data-scene-view] canvas').first()).toBeVisible();
-    await measureTree(pw);
+    await stockpileTree(pw);
     await expect(pw.getByTestId('measure-row')).toHaveCount(2);
     const saved = await measureSaved(pw);
     await expect(saved.getByTestId('survey-list-readonly')).toBeVisible();
@@ -549,12 +552,16 @@ test('the Volumes view lists the kit piles; picking one opens its pile panel wit
   const view = await volumesView(win);
   const piles = view.getByTestId('volumes-pile');
   await expect(piles).toHaveCount(2, { timeout: 30_000 });
-  // the list is as tall as its rows: none is clipped away by it
-  const heights = await view.locator('.vv-piles').evaluate((ul) => ({
-    list: ul.getBoundingClientRect().height,
-    rows: [...ul.children].reduce((s, li) => s + li.getBoundingClientRect().height, 0),
-  }));
-  expect(heights.list).toBeGreaterThanOrEqual(heights.rows);
+  // the inventory table is as tall as its rows: none is clipped away by it
+  const heights = await view
+    .getByTestId('volumes-inventory-table')
+    .locator('tbody')
+    .evaluate((body) => ({
+      list: body.getBoundingClientRect().height,
+      rows: [...body.children].reduce((s, tr) => s + tr.getBoundingClientRect().height, 0),
+    }));
+  expect(heights.list).toBeGreaterThanOrEqual(heights.rows - 0.5);
+  for (const row of await piles.all()) await expect(row).toBeVisible();
   await piles.filter({ hasText: 'Pile North' }).click({ timeout: 15_000 });
   // the pile panel: its carried figure in the Volume tile, its status said beside it
   const panel = view.getByTestId('pile-panel');

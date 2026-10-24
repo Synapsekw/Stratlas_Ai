@@ -11,8 +11,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, realDataTest } from './fixtures';
-import { islandGroup, islandTool, pickGroupTab, volumesView } from './island';
+import { closeIslandTools, islandRow, pickGroupTab, showSurface, volumesView } from './island';
 import { hasRealData, missingRealProject, realProjectDir } from './realData';
+
+/** A survey's marker in the dates strip under the stage, by its date. */
+const surveyMarker = (win: Page, date: string): Locator =>
+  win
+    .getByRole('region', { name: 'Survey dates chart' })
+    .locator('[data-survey]', { hasText: date });
 
 const MASAFI = realProjectDir('masafi');
 
@@ -324,12 +330,8 @@ test('@realdata the stockpile project: piles as volume measurements, 3D selectio
   await expect.poll(() => pileDrawn(win, 'P05')).toBe(true);
   await selectPile(win, 'P02');
 
-  // The other survey: its terrain shows, the other hides.
-  await (
-    await islandGroup(win, 'volumes')
-  )
-    .locator('.vol-dates button', { hasText: '31 Dec' })
-    .click();
+  // The other survey (its marker in the dates strip): its terrain shows, the other hides.
+  await surveyMarker(win, '31 Dec 2020').click();
   expect(
     await inspect(
       win,
@@ -340,16 +342,10 @@ test('@realdata the stockpile project: piles as volume measurements, 3D selectio
       null,
     ),
   ).toEqual([true, false]);
-  await (
-    await islandGroup(win, 'volumes')
-  )
-    .locator('.vol-dates button', { hasText: '10 Jan' })
-    .click();
+  await surveyMarker(win, '10 Jan 2021').click();
 
-  // Elevation colours drape on the shown survey, from the Volumes workbench.
-  const surfaces = async () =>
-    (await islandGroup(win, 'volumes')).getByRole('group', { name: 'Surface colours' });
-  await (await surfaces()).getByRole('button', { name: 'Elevation' }).click();
+  // Elevation colours drape on the shown survey, from the stage's Show control.
+  await showSurface(win, 'Elevation');
   await expect
     .poll(
       () =>
@@ -392,7 +388,7 @@ test('@realdata the stockpile project: piles as volume measurements, 3D selectio
   await elev.getByRole('radio', { name: 'Turbo' }).click();
 
   // Cut and fill colours drape on the last survey.
-  await (await surfaces()).getByRole('button', { name: 'Cut / fill' }).click();
+  await showSurface(win, 'Cut & fill');
   await expect
     .poll(
       () =>
@@ -404,15 +400,16 @@ test('@realdata the stockpile project: piles as volume measurements, 3D selectio
       { timeout: 20_000 },
     )
     .toBe(true);
-  await (await surfaces()).getByRole('button', { name: 'Photo' }).click();
+  await showSurface(win, 'Photo');
   await selectPile(win, null);
 
-  // Swipe shows both surveys.
+  // Swipe (the notch's Volumes row) shows both surveys.
   await (
-    await islandGroup(win, 'volumes')
+    await islandRow(win, 'volumes')
   )
-    .locator('.vol-dates button', { hasText: 'Swipe' })
+    .getByRole('button', { name: 'Swipe between surveys' })
     .click();
+  await closeIslandTools(win);
   await expect(win.getByTestId('vol-swipe')).toBeVisible();
   expect(
     await inspect(
@@ -425,15 +422,21 @@ test('@realdata the stockpile project: piles as volume measurements, 3D selectio
     ),
   ).toEqual([true, true]);
   await (
-    await islandGroup(win, 'volumes')
+    await islandRow(win, 'volumes')
   )
-    .locator('.vol-dates button', { hasText: 'Swipe' })
+    .getByRole('button', { name: 'Swipe between surveys' })
     .click();
+  await closeIslandTools(win);
 
   // Section across the yard: a profile of both surveys with cut and fill areas.
   await win.locator('body').press('h'); // whole site
   await win.waitForTimeout(1200);
-  await (await islandTool(win, 'volumes', 'Section line between the surveys')).click();
+  await (
+    await islandRow(win, 'volumes')
+  )
+    .getByRole('button', { name: 'Section line between the surveys' })
+    .click();
+  await closeIslandTools(win);
   const box = await win.locator('[data-scene-view] canvas').boundingBox();
   if (!box) throw new Error('no canvas');
   const camera = () =>
