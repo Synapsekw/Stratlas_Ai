@@ -100,7 +100,7 @@ export function volumeStatusLine(
   if (state.computing) return { tone: 'muted', text: t('vol.status.computing') };
   if (!r)
     return state.absent
-      ? { tone: 'warn', text: t('vol.status.none') }
+      ? { tone: 'warn', text: t('mcard.notMeasured') }
       : state.seriesFailed
         ? { tone: 'warn', text: t('vol.card.seriesFailed') }
         : { tone: 'muted', text: t('vol.status.notComputed') };

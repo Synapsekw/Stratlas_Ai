@@ -408,7 +408,7 @@ describe('VolumeDetail', () => {
       }),
     ];
     show(pile({ results: [], series }));
-    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe('No survey data');
+    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe('Not measured on this date');
     const rows = [...host.querySelectorAll('[data-testid="vol-time-table"] tbody tr')];
     expect(rows).toHaveLength(2);
     expect(rows[1]?.querySelector('td')?.textContent).toBe('Not measured on this date');
@@ -429,7 +429,7 @@ describe('VolumeDetail', () => {
     });
     s.compare.computed = heatRun([]);
     show(pile({ results: [], series }));
-    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe('No survey data');
+    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe('Not measured on this date');
     act(() => root?.unmount());
     host.remove();
     s.compare.computed = heatRun([result()]);
