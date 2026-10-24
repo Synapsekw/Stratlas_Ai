@@ -26,6 +26,8 @@ const h = vi.hoisted(() => ({
   started: [] as IpcRequest<'jobs:start'>[],
   startAnswer: null as string | null,
   progress: [] as ((e: unknown) => void)[],
+  /** The review cannot be read again (a reload that throws). */
+  readFails: false,
 }));
 
 vi.mock('../../shell', async () => {
@@ -52,6 +54,8 @@ vi.mock('../../shell', async () => {
           h.inference = deferred<unknown>();
           return h.inference.promise;
         }
+        if (channel === 'detections:read' && h.readFails)
+          return Promise.reject(new Error('The review could not be read.'));
         if (channel === 'detect:queue')
           return Promise.resolve({
             ok: true,
@@ -143,6 +147,7 @@ beforeEach(() => {
   h.started = [];
   h.startAnswer = null;
   h.progress = [];
+  h.readFails = false;
   window.localStorage.clear();
   (window as unknown as { aio: unknown }).aio = {
     on: (channel: string, cb: (e: unknown) => void) => {
@@ -408,6 +413,32 @@ describe('Ask AI runs', () => {
     expect(askAiRun.getState().run?.remaining).toHaveLength(2);
   });
 
+  it('ends a stopped detector run as stopped even when the review cannot be read again', async () => {
+    h.readFails = true;
+    const detector = { id: 'rust-v1', name: 'Rust', classId: 'corrosion', threshold: 0.9 };
+    void startAskRun({
+      projectId: 'p',
+      projectRoot: '/projects/p',
+      manifest: MANIFEST,
+      items: photos(2),
+      check: { kind: 'everything' },
+      what: 'All photos',
+      backend: {
+        kind: 'detectors',
+        chosen: [
+          { where: 'library', detector: detector as unknown as VlmDetector, threshold: 0.7 },
+        ],
+      },
+      prefs: readPrefs(),
+    });
+    await flush();
+    stopAskRun();
+    await flush();
+    // never left stopping (Ask AI would stay off for good)
+    expect(askAiRun.getState().run).toMatchObject({ phase: 'stopped' });
+    expect(askAiRun.getState().run?.remaining).toHaveLength(2);
+  });
+
   it('says a detector run waits while the queue holds it', async () => {
     h.startAnswer = 'Waiting for the graphics card.';
     h.queueStarted = true;
@@ -479,6 +510,16 @@ describe('Ask AI runs', () => {
     // the frames not read are not assessed: the same run tries them again
     expect(askAiRun.getState().run).toMatchObject({ phase: 'done', done: 5 });
     expect(askAiRun.getState().run?.remaining).toEqual(frames(5).slice(3));
+  });
+
+  it('ends a stopped local run as stopped even when the review cannot be read again', async () => {
+    h.readFails = true;
+    void localFrames(frames(3));
+    await flush();
+    stopAskRun();
+    h.inference?.resolve({ ok: true, value: { ok: true, file: 'f.json', count: 0 } });
+    await flush();
+    expect(askAiRun.getState().run).toMatchObject({ phase: 'stopped' });
   });
 
   it('fails with the reason, not done, when no frame could be read', async () => {

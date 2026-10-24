@@ -95,7 +95,10 @@ export function AskAiBar({
   const modelsRev = useModelsRevision();
   const models = useCall('inference:models', {}, `${projectId}|${String(modelsRev)}|${aiKey}`);
   const dets = useCall('detectors:list', { projectId }, projectId);
-  const status = useCall('ai:status', { projectId, task: 'vision' }, `${projectId}|${aiKey}`);
+  // The project's own cloud AI policy is `aiPolicy` in its manifest.json, which main reads on each
+  // `ai:status` (the schema strips it from the manifest here): a reloaded manifest asks again.
+  const statusKey = useMemo(() => ({ projectId, aiKey, manifest }), [projectId, aiKey, manifest]);
+  const status = useCall('ai:status', { projectId, task: 'vision' }, statusKey);
 
   const layers = manifest.layers;
   const classes = useMemo(
@@ -185,26 +188,6 @@ export function AskAiBar({
     [scope, current, selected, all, frameItems],
   );
 
-  const backend = avail
-    ? resolveBackend({
-        pref: prefs.backend,
-        check,
-        items,
-        layers,
-        avail,
-        localModel: prefs.localModel,
-        classMapOf: (id) => {
-          const m = avail.local.models.find((x) => x.id === id);
-          return m ? classMapFor(projectId, m, classes) : {};
-        },
-        assetTypes,
-      })
-    : null;
-  const why =
-    backend?.kind === 'none'
-      ? [t(reasonKey(backend.reason)), backend.message].filter(Boolean).join(' ')
-      : null;
-
   // the detectors run in the Analytics pack, on an NVIDIA card: checked once some are listed
   const hasDetectors = (avail?.detectors.length ?? 0) > 0;
   useEffect(() => {
@@ -216,23 +199,54 @@ export function AskAiBar({
   const hardwareError = useAnalyticsPack((s) => s.hardwareError);
   const refused = hardware && !hardware.ok ? hardware : null;
   const tooBusy = refused?.code === 'tooBusy' ? refused.reason : null;
-  /** Why the chosen detectors cannot run; `checking` while the pack and the card are read. */
-  const detectorBlock: { reason: string; checking?: true } | null =
-    backend?.kind !== 'detectors'
-      ? null
-      : pack === null || (hardware === null && hardwareError === null)
-        ? packError !== null
-          ? { reason: packError }
-          : { reason: t('askAi.detectors.checking'), checking: true }
-        : refused?.code === 'mac'
-          ? { reason: refused.reason }
-          : !pack.installed
-            ? { reason: pack.unusable[0]?.reason ?? t('detect.preset.pack.missing') }
-            : hardwareError !== null
-              ? { reason: t('detect.preset.settings.hw.failed') }
-              : refused && tooBusy === null
-                ? { reason: refused.reason }
-                : null;
+  /** Why no detector can run here; `checking` while the pack and the card are read. */
+  const packBlock: { reason: string; checking?: true } | null = !hasDetectors
+    ? null
+    : pack === null || (hardware === null && hardwareError === null)
+      ? packError !== null
+        ? { reason: packError }
+        : { reason: t('askAi.detectors.checking'), checking: true }
+      : refused?.code === 'mac'
+        ? { reason: refused.reason }
+        : !pack.installed
+          ? { reason: pack.unusable[0]?.reason ?? t('detect.preset.pack.missing') }
+          : hardwareError !== null
+            ? { reason: t('detect.preset.settings.hw.failed') }
+            : refused && tooBusy === null
+              ? { reason: refused.reason }
+              : null;
+
+  const resolve = (a: Availability) =>
+    resolveBackend({
+      pref: prefs.backend,
+      check,
+      items,
+      layers,
+      avail: a,
+      localModel: prefs.localModel,
+      classMapOf: (id) => {
+        const m = a.local.models.find((x) => x.id === id);
+        return m ? classMapFor(projectId, m, classes) : {};
+      },
+      assetTypes,
+    });
+  const listed = avail ? resolve(avail) : null;
+  // Detectors chosen while the pack, the Mac or the card says no: a check naming a detector is
+  // blocked with that reason; any other check falls back to the local model, then the cloud (which
+  // still asks first), and says the pack's reason only when nothing else can look. While the pack
+  // and the card are still read, Ask AI waits rather than guess.
+  const withoutDetectors =
+    avail && listed?.kind === 'detectors' && packBlock && !packBlock.checking
+      ? check.kind === 'detector'
+        ? null
+        : resolve({ ...avail, detectors: [] })
+      : null;
+  const backend = withoutDetectors && withoutDetectors.kind !== 'none' ? withoutDetectors : listed;
+  const detectorBlock = backend?.kind === 'detectors' ? packBlock : null;
+  const why =
+    backend?.kind === 'none'
+      ? [t(reasonKey(backend.reason)), backend.message].filter(Boolean).join(' ')
+      : null;
 
   // the cloud confirm, rebuilt from whatever is in view while it is open
   const [asking, setAsking] = useState(false);

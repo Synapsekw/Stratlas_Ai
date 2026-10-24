@@ -109,6 +109,13 @@ function runStamp(): string {
 
 const classesOf = (m: ProjectManifest) => m.classCatalogues.flatMap((c) => c.classes);
 
+/**
+ * Read the review again for the pass a run wrote. A read that throws must not keep the run
+ * going or stopping for good (Ask AI would stay off): the run ends on what the review holds.
+ */
+const reloadReview = (projectId: string): Promise<void> =>
+  loadDetections(projectId, true).catch(() => undefined);
+
 export async function startAskRun(i: AskRunInput): Promise<void> {
   if (i.backend.kind === 'cloud' && i.confirmed !== true && !cloudConfirmSkipped(i.projectId))
     throw new Error('A cloud run starts only once the person has confirmed what is sent.');
@@ -274,7 +281,7 @@ async function runLocal(
   }
   if (!isLive(token)) return;
   // the review reads the pass the run wrote
-  await loadDetections(projectId, true);
+  await reloadReview(projectId);
   patch(token, (r) => {
     const error = !res.ok ? res.error : !res.value.ok ? res.value.error : null;
     if (error !== null) return { phase: 'failed', error, remaining: rest(r, true) };
@@ -330,7 +337,7 @@ async function runDetectors(token: number, i: AskRunInput, chosen: Chosen[]): Pr
     unsub?.();
     unsub = null;
     if (!isLive(token)) return;
-    void loadDetections(i.projectId, true).then(() => {
+    void reloadReview(i.projectId).then(() => {
       const passes = new Set(ids.map(vlmPassName));
       patch(token, () => ({
         phase: 'stopped',
@@ -380,7 +387,7 @@ async function runDetectors(token: number, i: AskRunInput, chosen: Chosen[]): Pr
 
   const finish = async (failedRuns: number[], error: string | undefined) => {
     unsub?.();
-    await loadDetections(i.projectId, true);
+    await reloadReview(i.projectId);
     const passes = new Set(ids.map(vlmPassName));
     patch(token, () => ({
       phase: failedRuns.length > 0 ? 'failed' : 'done',

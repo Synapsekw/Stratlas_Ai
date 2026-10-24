@@ -418,7 +418,7 @@ describe('AskAiBar', () => {
   it('follows the cloud setting while open', () => {
     h.answers['inference:models'] = MODELS_OFF;
     h.answers['ai:status'] = (key: unknown) =>
-      JSON.stringify(key).includes('true') ? CLOUD_ON : CLOUD_OFF;
+      (key as { aiKey: string }).aiKey.includes('true') ? CLOUD_ON : CLOUD_OFF;
     bar({ current: P1 });
     expect(isOff('ask-ai')).toBe(true);
     act(() => {
@@ -428,9 +428,37 @@ describe('AskAiBar', () => {
     expect(q('ask-ai-blocked')).toBeNull();
   });
 
+  it("asks again when the project's manifest (its own cloud AI policy) is reloaded", () => {
+    const keys: unknown[] = [];
+    h.answers['inference:models'] = MODELS_OFF;
+    // main reads the project's aiPolicy from manifest.json: forbidden first, allowed after
+    h.answers['ai:status'] = (key: unknown) => {
+      if (!keys.includes(key)) keys.push(key);
+      return keys.indexOf(key) === 0 ? CLOUD_OFF : CLOUD_ON;
+    };
+    bar({ current: P1 });
+    expect(isOff('ask-ai')).toBe(true);
+    act(() => {
+      root.render(
+        <AskAiBar
+          projectId="proj"
+          projectRoot="C:/proj"
+          manifest={{ ...manifest }}
+          current={P1}
+          selected={[]}
+          all={[P1, P2]}
+          durations={{ clip: 20_000 }}
+        />,
+      );
+    });
+    expect(isOff('ask-ai')).toBe(false);
+  });
+
   describe('local detectors', () => {
     beforeEach(() => {
       h.answers['detectors:list'] = DETECTORS;
+      // no local model and no cloud unless a test says so: only the detectors could look
+      h.answers['inference:models'] = MODELS_OFF;
     });
 
     it('checks the Analytics pack and runs the detector when it can', async () => {
@@ -440,7 +468,47 @@ describe('AskAiBar', () => {
       expect(startedWith().backend).toMatchObject({ kind: 'detectors' });
     });
 
-    it('says the pack is missing, next to Ask AI, and starts nothing', async () => {
+    it('falls back to the local model when the pack is missing', async () => {
+      h.answers['inference:models'] = MODELS_ON;
+      analyticsPack.setState({ status: { ...PACK, installed: null } });
+      bar({ current: P1 });
+      expect(isOff('ask-ai')).toBe(false);
+      expect(q('ask-ai-blocked')).toBeNull();
+      await click('ask-ai');
+      expect(startedWith().backend).toMatchObject({ kind: 'local' });
+    });
+
+    it('falls back to the cloud, which still asks first, when the pack is missing', async () => {
+      h.answers['ai:status'] = CLOUD_ON;
+      analyticsPack.setState({ status: { ...PACK, installed: null } });
+      bar({ current: P1 });
+      await click('ask-ai');
+      expect(q('cloud-confirm')).not.toBeNull();
+      expect(h.start).not.toHaveBeenCalled();
+    });
+
+    it('blocks a check that names the detector, even with a local model ready', async () => {
+      h.answers['inference:models'] = MODELS_ON;
+      rememberCheck('proj', { kind: 'detector', where: 'library', id: 'rust-v1' });
+      analyticsPack.setState({ status: { ...PACK, installed: null } });
+      bar({ current: P1 });
+      expect(isOff('ask-ai')).toBe(true);
+      expect(q('ask-ai-blocked')?.textContent).toContain(
+        'Install the Analytics pack in Settings to run detectors.',
+      );
+      await click('ask-ai');
+      expect(h.start).not.toHaveBeenCalled();
+    });
+
+    it('waits while the pack is checked, even with a local model ready', () => {
+      h.answers['inference:models'] = MODELS_ON;
+      analyticsPack.setState({ status: null, hardware: null });
+      bar({ current: P1 });
+      expect(isOff('ask-ai')).toBe(true);
+      expect(tipOf(q('ask-ai'))).toBe('Checking the Analytics pack and the graphics card.');
+    });
+
+    it('says the pack is missing when nothing else can look, and starts nothing', async () => {
       analyticsPack.setState({ status: { ...PACK, installed: null } });
       bar({ current: P1 });
       const why = 'Install the Analytics pack in Settings to run detectors.';
@@ -499,13 +567,6 @@ describe('AskAiBar', () => {
       analyticsPack.setState({ hardware: null, hardwareError: 'no answer' });
       bar({ current: P1 });
       expect(q('ask-ai-blocked')?.textContent).toContain('Could not check the graphics card.');
-    });
-
-    it('is off while the pack is checked, saying so in its tip', () => {
-      analyticsPack.setState({ status: null, hardware: null });
-      bar({ current: P1 });
-      expect(isOff('ask-ai')).toBe(true);
-      expect(tipOf(q('ask-ai'))).toBe('Checking the Analytics pack and the graphics card.');
     });
   });
 });
