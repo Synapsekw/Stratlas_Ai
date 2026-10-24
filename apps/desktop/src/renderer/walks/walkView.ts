@@ -136,7 +136,7 @@ export function horizontalFov(fovDeg: number, w: number, h: number): number {
 /** The Beam's parts on screen (map, drawings), px: the same size at every zoom. */
 export const BEAM_PX = {
   /** How far the fan reaches from the spot. */
-  reach: 64,
+  reach: 70,
   dot: 6,
   /** The light ring round the dot. */
   ring: 2,
@@ -154,12 +154,15 @@ export const BEAM_M = {
   stem: 1.8,
 } as const;
 
-/** The fan's fade along its reach (offset 0..1, opacity): strong at the spot, gone at the rim. */
+/**
+ * The fan's fade along its reach (offset 0..1, opacity): strong at the spot, gone at the rim, and
+ * still clear half way out, so it reads on a busy ortho.
+ */
 export const BEAM_FADE: readonly (readonly [number, number])[] = [
-  [0, 0.6],
-  [0.25, 0.38],
-  [0.55, 0.16],
-  [0.8, 0.05],
+  [0, 0.7],
+  [0.3, 0.52],
+  [0.6, 0.32],
+  [0.85, 0.12],
   [1, 0],
 ];
 

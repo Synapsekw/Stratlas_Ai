@@ -1,6 +1,8 @@
 import { shiftLocal, type DateShift } from '@aio/schema';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  BEAM_FADE,
+  BEAM_PX,
   beamFanPath,
   along,
   beamHalfRad,
@@ -121,6 +123,18 @@ describe('the Beam cone', () => {
     expect(beamFanPath(10, Math.PI / 4)).toBe('M0 0L7.071 -7.071A10 10 0 0 1 7.071 7.071Z');
     // past a half circle the arc takes the long way round
     expect(beamFanPath(10, (100 * Math.PI) / 180)).toContain('A10 10 0 1 1');
+  });
+
+  it('reads on a busy ortho: about 70 px out, strong at the dot, fading to nothing', () => {
+    expect(BEAM_PX.reach).toBeGreaterThanOrEqual(64);
+    expect(BEAM_PX.reach).toBeLessThanOrEqual(72);
+    expect(BEAM_FADE[0]).toEqual([0, 0.7]);
+    expect(BEAM_FADE.at(-1)).toEqual([1, 0]);
+    // the fade falls all the way: half way out it is still clearly there
+    for (let i = 1; i < BEAM_FADE.length; i++)
+      expect(BEAM_FADE[i]?.[1]).toBeLessThan(BEAM_FADE[i - 1]?.[1] ?? 0);
+    const mid = BEAM_FADE.find(([at]) => at >= 0.5);
+    expect(mid?.[1]).toBeGreaterThanOrEqual(0.3);
   });
 });
 
