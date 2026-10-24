@@ -5,12 +5,11 @@ import {
   antennaStore,
   beginFlag,
   requestFly,
-  requestFocusField,
   setAntennaSolo,
   setUnitStatus,
+  showAntennaField,
   toggleAntennaHidden,
 } from '../../telecom/antennaStore';
-import { revealInList } from '../../workspace/workbench/project/projectListStore';
 
 /*
  * The right-click actions of the antenna rows in the project list (and of a unit picked in 3D):
@@ -56,8 +55,7 @@ function decide(tg: Target, status: Exclude<AntennaStatus, 'draft'>): void {
 }
 
 function focusField(tg: Target, key: 'azimuthGridDeg' | 'downtiltDeg'): void {
-  revealInList('antennas', tg.clicked);
-  requestFocusField(tg.clicked, key);
+  showAntennaField(tg.clicked, key);
 }
 
 const actions: readonly Action[] = [

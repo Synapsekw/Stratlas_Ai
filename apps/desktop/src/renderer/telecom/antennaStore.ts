@@ -584,20 +584,53 @@ export function selectAntenna(id: string | null): void {
 }
 
 /**
- * A unit picked in the 3D view, or shown by another tool: selected, and its row revealed in the
- * Project list, which comes to the front unless a tool is in front (a pick never takes Coverage
- * or a live measuring tool away; the list updates behind it). `show` alone never pops the drawer
- * of a folded sidebar, as the focus-follow rule has it.
+ * How the Project tab is brought forward for an explicit ask (a review link, an edit from the
+ * menu): the stage registers `showBench`, which also opens a folded sidebar's drawer and gives the
+ * bench back from a maximised agent. Injected so the store keeps `../shell` out of its imports.
+ */
+type ShowProject = (bench: StoreApi<WorkbenchState>) => void;
+let showProject: ShowProject = (bench) => {
+  bench.getState().show('measure');
+};
+export function setShowProject(fn: ShowProject): void {
+  showProject = fn;
+}
+
+/**
+ * A unit shown in the Project list: selected, its row revealed (a filter that would hide it shows
+ * every unit), the Project tab brought forward. What `ask` says decides how:
+ * - none, a pick in the 3D view: the tab comes forward unless a tool is in front (a pick never
+ *   takes Coverage or a live tool away; the list updates behind it) and a folded sidebar stays
+ *   folded, since the 3D labels still show the pick (`show` alone never pops the drawer);
+ * - `review`, a review link: the same, but the person asked for the list, so a folded drawer opens;
+ * - `edit`, an edit from the menu: always forward, also over Coverage, drawer opened, as the person
+ *   asked to type in the row.
  */
 export function revealAntenna(
   id: string | null,
   bench: StoreApi<WorkbenchState> = workbench,
+  ask?: 'review' | 'edit',
 ): void {
+  if (id !== null && !filteredUnits(get().file, get().filter).some((u) => u.id === id))
+    setAntennaFilter('all');
   set({ selected: id, reveal: get().reveal + 1 });
   revealInList('antennas', id);
   const { tabs, front } = bench.getState();
-  if (!toolInFront({ tabs, front, issueEditing: isIssueEditing() }))
-    bench.getState().show('measure');
+  if (ask === 'edit') showProject(bench);
+  else if (!toolInFront({ tabs, front, issueEditing: isIssueEditing() })) {
+    if (ask === 'review') showProject(bench);
+    else bench.getState().show('measure');
+  }
+}
+
+/** Edit azimuth / Edit downtilt: show the row and focus the field (the one path for both menus). */
+export function showAntennaField(
+  id: string,
+  key: 'azimuthGridDeg' | 'downtiltDeg',
+  bench: StoreApi<WorkbenchState> = workbench,
+): void {
+  revealAntenna(id, bench, 'edit');
+  requestFocusField(id, key);
 }
 
 export function toggleAntennaHidden(id: string): void {
@@ -637,7 +670,7 @@ export function setAntennaFilter(f: AntennaFilter): void {
 export function openAntennaReview(bench: StoreApi<WorkbenchState> = workbench): void {
   const first = filteredUnits(get().file, 'draft')[0];
   set({ filter: 'draft', note: null });
-  revealAntenna(first?.id ?? null, bench);
+  revealAntenna(first?.id ?? null, bench, 'review');
 }
 
 /** The group eye: hide the whole kind when any of it shows, else show it all. */

@@ -377,6 +377,27 @@ describe('the antenna menu on a row', () => {
     expect(document.activeElement).toBe(row.querySelector('[data-testid="antenna-row-az"]'));
     expect(document.querySelector('[data-testid="antenna-menu"]')).toBeNull();
   });
+
+  it.each(['selection', 'rf'] as const)(
+    'Edit azimuth shows the Project tab and focuses the field with %s in front',
+    async (front) => {
+      await mount();
+      workbench.getState().open(front);
+      workbench.getState().show(front);
+      const row = section()!.querySelector<HTMLElement>('[data-row-id="ant-d1"] .antenna-row')!;
+      act(() => {
+        row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      });
+      act(() => {
+        document
+          .querySelector<HTMLElement>('[data-testid="ctx-item-antenna.editAzimuth"]')!
+          .click();
+      });
+      await flush();
+      expect(workbench.getState().front).toBe('measure');
+      expect(document.activeElement).toBe(row.querySelector('[data-testid="antenna-row-az"]'));
+    },
+  );
 });
 
 describe('openAntennaReview (another tool asks for the review)', () => {

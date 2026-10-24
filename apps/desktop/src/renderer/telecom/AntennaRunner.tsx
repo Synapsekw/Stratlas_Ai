@@ -1,8 +1,8 @@
 /**
  * What the antenna inventory keeps going whatever the workbench shows: the project's inventory
  * read in, its boxes and labels in the 3D view (where their survey date is drawn; a pick selects
- * the unit and shows its row in the Project tab, a right-click opens the antenna menu), the camera framing a newly selected unit or a fly request (the
- * list's Fly to), the review keys while a unit is selected, the delete confirmation, and the AI
+ * the unit and shows its row in the Project tab, a right-click opens the antenna menu), the
+ * camera framing a newly selected unit or a fly request (the list's Fly to), the review keys while a unit is selected, the delete confirmation, and the AI
  * send preview, a modal dialog under <body> so no column, drawer or folded section can clip it or
  * make it inert. The unit's details live in the Project list, not on the stage. The stage mounts
  * it, once.
@@ -22,9 +22,10 @@ import { useShell } from '../shell';
 import { frameOf } from '../survey/measureScene';
 import '../survey/telecom.css';
 import { flyToLocalBox } from '../workspace/flyToBox';
+import { followAntennaPick } from '../workspace/workbench/project/antennaFollow';
 import { AntennaDeleteDialog } from './AntennaDeleteDialog';
-import { AntennaMenu } from './AntennaMenu';
 import { AntennaLabelsControl } from './AntennaLabelsControl';
+import { AntennaMenu } from './AntennaMenu';
 import { AntennaSendPreview } from './AntennaSendPreview';
 import { attachAntennaLabels } from './antennaLabels';
 import { antennaCorners } from './antennaMeasure';
@@ -43,7 +44,6 @@ import {
   sendAiLabels,
   useAntennas,
 } from './antennaStore';
-import { followAntennaPick } from '../workspace/workbench/project/antennaFollow';
 import { useAntennaKeys } from './useAntennaKeys';
 
 /** The point cloud layers of the open project, none in a package (read only, no pipelines). */
