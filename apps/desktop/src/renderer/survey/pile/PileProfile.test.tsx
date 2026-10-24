@@ -23,12 +23,14 @@ const s = vi.hoisted(() => ({
     tiles: FakeTiles | null;
   }[],
   chart: null as ProfileChartProps | null,
+  section: { window: false, source: null },
 }));
 const calls = vi.hoisted(() => ({
   run: vi.fn(() =>
     Promise.resolve({ results: [{ cutM3: 4403.1, fillM3: 19.6 }], heat: [], shares: [], ms: 1 }),
   ),
   openSection: vi.fn(),
+  sample: vi.fn(),
   setWindow: vi.fn(),
   addToReport: vi.fn(() => Promise.resolve('added')),
 }));
@@ -56,12 +58,14 @@ vi.mock('../card/slots', () => ({
 // the earlier survey is flat at 10 m; the later one falls to 7.04 m from E 20 on
 vi.mock('../card/pointHistory', () => ({
   surfaceTiles: () => () => Promise.resolve(null),
-  withSurface: <T,>(compute: (h: HeightSampler) => T, tiles: FakeTiles) =>
-    Promise.resolve(
+  withSurface: <T,>(compute: (h: HeightSampler) => T, tiles: FakeTiles) => {
+    calls.sample(tiles.id);
+    return Promise.resolve(
       compute({
         heightAt: (e: number) => (tiles.id === 's1' ? 10 : e < 20 ? 9 : 7.04),
       }),
-    ),
+    );
+  },
   emptyReason: () => 'mcard.notMeasured',
 }));
 vi.mock('../qaStore', () => ({ useQa: (sel: (x: unknown) => unknown) => sel({ surfaces: [] }) }));
@@ -75,7 +79,11 @@ vi.mock('../compareStore', () => ({
   engineClient: () => ({ run: calls.run }),
   ringOf: (pts: readonly number[][]) => pts.map((p) => [p[0], p[1]]),
 }));
-vi.mock('../sectionStore', () => ({ openSection: calls.openSection, setWindow: calls.setWindow }));
+vi.mock('../sectionStore', () => ({
+  openSection: calls.openSection,
+  setWindow: calls.setWindow,
+  sectionStore: { getState: () => s.section },
+}));
 vi.mock('../../report/templateStore', () => ({ addToReport: calls.addToReport }));
 vi.mock('../../charts/exportChart', () => ({ chartPng: vi.fn(), savePng: vi.fn() }));
 vi.mock('../../charts/ProfileChart', () => ({
@@ -140,6 +148,7 @@ beforeEach(() => {
   pileView.setState({ axis: new Map() });
   linkedHover.setState({ lines: new Map(), hover: null, pin: null, fly: null });
   s.chart = null;
+  s.section = { window: false, source: null };
   s.dates = [
     {
       capture: 'c1',
@@ -267,5 +276,80 @@ describe('PileProfile', () => {
       expect.objectContaining({ kind: 'measurement', id: '02' }),
     );
     expect(calls.setWindow).toHaveBeenCalledWith(true);
+  });
+
+  it('a line dragged in the scene keeps the chart and its link, and is read again once it rests', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      await render();
+      const axis = pileAxis(m.points);
+      expect(calls.sample).toHaveBeenCalledTimes(2);
+      act(() => {
+        linkedHover.getState().setPin({ key: 'pile:02', chainageM: 7, source: 'chart' });
+      });
+      // a drag: the line moves every frame
+      for (const deg of [10, 20, 30]) {
+        await act(async () => {
+          pileView.getState().setAxis('02', pileAxis(m.points, { angleDeg: deg }));
+          await Promise.resolve();
+        });
+        await act(async () => {
+          vi.advanceTimersByTime(40);
+          await Promise.resolve();
+        });
+      }
+      // nothing read yet: the chart stays with the last line, still linked, the pin kept
+      expect(calls.sample).toHaveBeenCalledTimes(2);
+      expect(q('[data-testid="pile-profile-chart"]')).not.toBeNull();
+      expect(text('[role="status"]')).not.toContain('Reading');
+      expect(linkedHover.getState().lines.get('pile:02')?.polyline).toEqual([axis.a, axis.b]);
+      expect(linkedHover.getState().pin?.chainageM).toBe(7);
+      // at rest: read once along the new line
+      await act(async () => {
+        vi.advanceTimersByTime(200);
+        await Promise.resolve();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(calls.sample).toHaveBeenCalledTimes(4);
+      const now = pileAxis(m.points, { angleDeg: 30 });
+      expect(linkedHover.getState().lines.get('pile:02')?.polyline).toEqual([now.a, now.b]);
+      expect(q('[data-testid="pile-profile-chart"]')).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the section window opened larger follows the line moved afterwards', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      await render();
+      const open = [...host.querySelectorAll('button')].find(
+        (b) => b.textContent === 'Open larger',
+      );
+      act(() => {
+        open?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      expect(calls.openSection).toHaveBeenCalledTimes(1);
+      const source = calls.openSection.mock.calls[0]?.[1] as never;
+      s.section = { window: true, source };
+      const turned = pileAxis(m.points, { angleDeg: 45 });
+      act(() => {
+        pileView.getState().setAxis('02', turned);
+        vi.advanceTimersByTime(200);
+      });
+      expect(calls.openSection).toHaveBeenCalledTimes(2);
+      expect(calls.openSection).toHaveBeenLastCalledWith([turned.a, turned.b], source);
+      // closed: the pile no longer leads it
+      s.section = { window: false, source };
+      act(() => {
+        pileView.getState().setAxis('02', pileAxis(m.points, { angleDeg: 60 }));
+        vi.advanceTimersByTime(200);
+      });
+      expect(calls.openSection).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

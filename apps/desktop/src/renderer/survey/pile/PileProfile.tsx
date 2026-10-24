@@ -16,7 +16,13 @@ import {
   type SitePoint,
   type SurveyMeasurement,
 } from '@aio/schema';
-import { effectiveUnits, pileAxis, sampleProfile, type ChartSeries } from '@aio/survey';
+import {
+  effectiveUnits,
+  pileAxis,
+  sampleProfile,
+  type ChartSeries,
+  type PileAxis,
+} from '@aio/survey';
 import { Button, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
@@ -33,10 +39,10 @@ import { drawnPoints } from '../measureDates';
 import { useMeasure } from '../measureStore';
 import { useFocusCapture } from '../qaHelpers';
 import { useQa } from '../qaStore';
-import { openSection, setWindow } from '../sectionStore';
+import { openSection, sectionStore, setWindow, type SectionSource } from '../sectionStore';
 import { usePreparingSoon } from '../surfaceStates';
 import { useLinkedChart } from '../useLinkedChart';
-import { largestDrop, minusSigned, usePileView } from './pileView';
+import { largestDrop, minusSigned, pileView, usePileView } from './pileView';
 import '../../charts/charts.css';
 
 /** What the person chose on this pile's chips (kept while the panel is open on the pile). */
@@ -52,6 +58,66 @@ interface DatesCutFill {
   key: string;
   cutM3: number;
   fillM3: number;
+}
+
+/** The surfaces sampled along a line, with the line they were sampled on. */
+interface Sampled {
+  polyline: readonly (readonly [number, number])[];
+  series: ChartSeries[];
+}
+
+/** How long the line rests before it is sampled again (a drag moves it every frame). */
+const SETTLE_MS = 150;
+
+/** `value`, once it has stopped changing for `ms` (the first value at once). */
+function useSettled<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    if (Object.is(value, settled)) return;
+    const timer = setTimeout(() => {
+      setSettled(value);
+    }, ms);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [value, settled, ms]);
+  return settled;
+}
+
+/**
+ * The pile whose line the section window was opened along ("Open larger"): while the window shows
+ * that pile, it follows the line moved, turned or refitted in `pileView` (once it rests).
+ */
+let windowPile: { id: string; source: SectionSource } | null = null;
+let following = false;
+let followTimer: ReturnType<typeof setTimeout> | undefined;
+
+const lineOf = (axis: PileAxis): [number, number][] => [
+  [axis.a[0], axis.a[1]],
+  [axis.b[0], axis.b[1]],
+];
+
+function followInWindow(id: string, source: SectionSource): void {
+  windowPile = { id, source };
+  if (following) return;
+  following = true;
+  pileView.subscribe((s, prev) => {
+    const w = windowPile;
+    if (!w) return;
+    const axis = s.axis.get(w.id);
+    if (!axis || axis === prev.axis.get(w.id)) return;
+    clearTimeout(followTimer);
+    followTimer = setTimeout(() => {
+      const sec = sectionStore.getState();
+      // the window closed or shows another section: the pile no longer leads it
+      if (!sec.window || sec.source?.kind !== 'measurement' || sec.source.id !== w.id) {
+        if (windowPile === w) windowPile = null;
+        return;
+      }
+      const now = pileView.getState().axis.get(w.id);
+      if (now) openSection(lineOf(now), sec.source);
+    }, SETTLE_MS);
+  });
 }
 
 const surfacesKey = (opts: readonly { key: string; tiles?: HeightTiles | undefined }[]) =>
@@ -73,13 +139,16 @@ export function PileProfile({ m }: { m: SurveyMeasurement }): ReactElement {
   const pts = useMemo(() => drawnPoints(m, manifest), [m, manifest]);
   const kept = usePileView((s) => s.axis.get(m.id));
   const axis = useMemo(() => kept ?? pileAxis(pts), [kept, pts]);
-  const polyline = useMemo(() => [axis.a, axis.b] as const, [axis]);
+  // sampled once the line rests: a drag in the scene moves it every frame, and the chart keeps
+  // the last line's series (and its place in the linked hover) until the new ones are read
+  const settled = useSettled(axis, SETTLE_MS);
+  const polyline = useMemo(() => [settled.a, settled.b] as const, [settled]);
   const line = useMemo(
     (): SitePoint[] => [
-      [axis.a[0], axis.a[1], 0],
-      [axis.b[0], axis.b[1], 0],
+      [settled.a[0], settled.a[1], 0],
+      [settled.b[0], settled.b[1], 0],
     ],
-    [axis],
+    [settled],
   );
 
   // the surfaces: every survey date with its state, and the designs
@@ -123,14 +192,14 @@ export function PileProfile({ m }: { m: SurveyMeasurement }): ReactElement {
   // a survey date draws once its surface is ready
   const picked = options.filter((o) => shown.includes(o.key) && tilesOf(o.key) !== undefined);
 
-  const len = axis.lengthM;
-  const series = useLoaded<ChartSeries[]>(
+  const len = settled.lengthM;
+  const loaded = useLoaded<Sampled>(
     project && len > 0 && picked.length > 0
       ? `pile|${project}|${JSON.stringify(line)}|${surfacesKey(picked.map((o) => ({ key: `${o.key}/${o.kind}`, tiles: tilesOf(o.key) })))}`
       : null,
     () => {
       const step = Math.max(0.25, len / 400);
-      return Promise.all(
+      const series = Promise.all(
         picked.flatMap((o) => {
           const tiles = tilesOf(o.key);
           if (!tiles) return [];
@@ -151,17 +220,26 @@ export function PileProfile({ m }: { m: SurveyMeasurement }): ReactElement {
           ];
         }),
       );
+      return series.then((s): Sampled => ({ polyline, series: s }));
     },
   );
+  // the last series read stay on screen while the next are read (set while rendering, React's
+  // way to keep a value from an earlier render)
+  const [last, setLast] = useState<Sampled | null>(null);
+  if (loaded.status === 'ready' && loaded.value !== last) setLast(loaded.value);
+  const sampled =
+    loaded.status === 'ready' ? loaded.value : loaded.status === 'loading' ? last : null;
+  const reading = loaded.status === 'loading' && sampled === null;
   const visible = useMemo(() => {
-    if (series.status !== 'ready') return [];
+    if (!sampled) return [];
     const off = new Set(view.off);
     // oldest first, as the linked hover reads them
-    return series.value
+    return sampled.series
       .filter((x) => !off.has(x.key))
       .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
-  }, [series, view.off]);
-  const link = useLinkedChart(`pile:${m.id}`, polyline, visible);
+  }, [sampled, view.off]);
+  // the line the shown series were read along, so the scene's point and the chart agree
+  const link = useLinkedChart(`pile:${m.id}`, sampled?.polyline ?? polyline, visible);
 
   // shading and the whole-pile figures: the date in view against the latest earlier date shown
   const later = visible.find((x) => x.kind === 'current') ?? null;
@@ -299,7 +377,7 @@ export function PileProfile({ m }: { m: SurveyMeasurement }): ReactElement {
             })}`}
         </p>
       )}
-      {series.status === 'loading' && !building && (
+      {reading && !building && (
         <p className="small faint" role="status">
           {t('vol.elev.reading')}
         </p>
@@ -320,7 +398,7 @@ export function PileProfile({ m }: { m: SurveyMeasurement }): ReactElement {
         />
       ) : (
         !building &&
-        series.status !== 'loading' && (
+        !reading && (
           <p className="small faint" data-testid="pile-profile-none">
             {t(
               emptyReason(
@@ -364,13 +442,15 @@ export function PileProfile({ m }: { m: SurveyMeasurement }): ReactElement {
           icon="section"
           data-testid="pile-open-larger"
           onClick={() => {
-            openSection([[...axis.a], [...axis.b]], {
+            const source: SectionSource = {
               kind: 'measurement',
               id: m.id,
               label: m.label,
               ...(m.scope.kind === 'survey' ? { capture: m.scope.capture } : {}),
-            });
+            };
+            openSection(lineOf(axis), source);
             setWindow(true);
+            followInWindow(m.id, source);
           }}
         >
           {t('pile.openLarger')}
