@@ -280,6 +280,32 @@ describe('the English catalogue', () => {
     );
   });
 
+  it('has the strings for prepared surfaces and their states', () => {
+    const want: Record<string, string> = {
+      'surface.state.ready': 'ready',
+      'surface.state.preparing': 'preparing {pct} %',
+      'surface.state.prepare': 'Prepare',
+      'surface.state.none': 'No elevation for this date',
+      'surface.preparing.title': 'Preparing survey surfaces',
+      'surface.preparing.count': 'Preparing {done} of {total}',
+      'surface.preparing.onOpen':
+        'Started on its own when the project opened. You can keep working.',
+      'mcard.surfacePreparing': 'Surface preparing',
+      'mcard.noElevation': 'No elevation for this date',
+      'mcard.notMeasured': 'Not measured on this date',
+      'chart.building': 'Building the height surface for {date}…',
+      'chart.buildingRest':
+        'The {ready} line is ready; {waiting} and the cut/fill shading appear when it finishes.',
+      'settings.autoPrepare.label': 'Prepare survey surfaces when a project opens',
+      'settings.autoPrepare.hint': 'Runs in the background and shows in Jobs. You can cancel it.',
+    };
+    for (const [k, v] of Object.entries(want)) {
+      expect((en as Record<string, string>)[k], k).toBe(v);
+    }
+    expect(t('surface.state.preparing', { pct: 62 })).toBe('preparing 62 %');
+    expect(t('surface.preparing.count', { done: 1, total: 2 })).toBe('Preparing 1 of 2');
+  });
+
   it('finds missing keys and placeholder mismatches in a translation', () => {
     expect(placeholders('{count} of {total}')).toEqual(['count', 'total']);
     const bad: Catalogue = { 'library.count_one': '{n} مشروع', 'nope.key': 'x' };
