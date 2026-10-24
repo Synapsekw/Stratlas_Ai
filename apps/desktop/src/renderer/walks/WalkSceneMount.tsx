@@ -17,7 +17,7 @@ import {
 } from './placeWalk';
 import { resolveCssColour } from './walkMapOverlay';
 import type { SheetWalk } from './walkOverlay';
-import { drapeRunsInFrames, walkGround, type GroundAt } from './walkGround';
+import { budgetedGround, drapeRunsInFrames, walkGround, type GroundAt } from './walkGround';
 import {
   attachWalkScene,
   DRAPE_LIFT_M,
@@ -123,10 +123,50 @@ export function scenePlacedWalks(
     }));
 }
 
-/** How long after a date change the ground is asked again (visibility follows it a moment later). */
-const DATE_SETTLE_MS = 400;
+/**
+ * How long after a date change, a project edit or a layer switched on or off the ground is asked
+ * again (once: visibility follows a date change a moment later).
+ */
+export const SETTLE_MS = 400;
 /** Layers that load close together are answered with one resample this long after the last. */
-const LOADED_SETTLE_MS = 150;
+export const LOADED_SETTLE_MS = 150;
+/** Fresh ground asks the Beams may make in one draw; the rest come on the next frames. */
+export const BEAM_GROUND_BUDGET = 64;
+
+/** The timers `resampleWhenSettled` runs on (the window's in the app). */
+export interface SettleTimers {
+  set(cb: () => void, ms: number): number;
+  clear(handle: number): void;
+}
+const windowTimers: SettleTimers = {
+  set: (cb, ms) => window.setTimeout(cb, ms),
+  clear: (h) => {
+    window.clearTimeout(h);
+  },
+};
+
+/**
+ * Ask the ground again (`resample`) once things settle: one pass `SETTLE_MS` from now (the date,
+ * the project or a layer's visibility changed), and one `LOADED_SETTLE_MS` after the last of
+ * layers that load close together. The returned function stops both.
+ */
+export function resampleWhenSettled(
+  onLayerLoaded: (cb: () => void) => () => void,
+  resample: () => void,
+  timers: SettleTimers = windowTimers,
+): () => void {
+  const settle = timers.set(resample, SETTLE_MS);
+  let loaded: number | null = null;
+  const off = onLayerLoaded(() => {
+    if (loaded !== null) timers.clear(loaded);
+    loaded = timers.set(resample, LOADED_SETTLE_MS);
+  });
+  return () => {
+    off();
+    timers.clear(settle);
+    if (loaded !== null) timers.clear(loaded);
+  };
+}
 
 /**
  * The placed walks moved onto `ground` (lifted `DRAPE_LIFT_M`; the stored height where nothing is
@@ -316,29 +356,19 @@ export function WalkSceneMount({ stage }: { stage: EngineStage | null }): null {
     [fits, hidden, manifest, editing],
   );
   // the ground is asked again when layers load, the date on screen changes (visibility follows
-  // it a moment later) or the project changes (a layer switched on or off, a walk moved)
+  // it a moment later), the project changes (a walk moved) or a layer is switched on or off
   const focus = useTimeline((s) => s.focus);
+  const switchedOff = useWorkspace((s) => s.hidden);
   const groundVersion = useStore(walkGround.store, (s) => s.version);
-  const first = useRef(true);
   useEffect(() => {
     if (!stage) return;
-    if (first.current) first.current = false;
-    else walkGround.resample();
-    const resample = () => {
-      walkGround.resample();
-    };
-    const again = window.setTimeout(resample, DATE_SETTLE_MS);
-    let pending = 0;
-    const off = stage.onLayerLoaded(() => {
-      window.clearTimeout(pending);
-      pending = window.setTimeout(resample, LOADED_SETTLE_MS);
-    });
-    return () => {
-      off();
-      window.clearTimeout(again);
-      window.clearTimeout(pending);
-    };
-  }, [stage, focus, manifest]);
+    return resampleWhenSettled(
+      (cb) => stage.onLayerLoaded(cb),
+      () => {
+        walkGround.resample();
+      },
+    );
+  }, [stage, focus, manifest, switchedOff]);
   useEffect(() => {
     const v = view.current;
     if (!v || !stage) return;
@@ -353,10 +383,15 @@ export function WalkSceneMount({ stage }: { stage: EngineStage | null }): null {
     const v = view.current;
     if (!v || !stage || !manifest) return;
     const colourOf = (w: SheetWalk) => resolveCssColour(walkColour(manifest, w.layer));
+    // a draw asks the ground afresh a few dozen times at most: a cone swept onto new ground is
+    // finished on the next frames
+    let more: number | null = null;
     const draw = () => {
-      v.setMarkers(
-        sceneMarkers(fits, walkViews.getState(), hidden, editing, colourOf, walkGround.ground),
-      );
+      if (more !== null) cancelAnimationFrame(more);
+      more = null;
+      const ground = budgetedGround(walkGround, BEAM_GROUND_BUDGET);
+      v.setMarkers(sceneMarkers(fits, walkViews.getState(), hidden, editing, colourOf, ground));
+      if (ground.starved()) more = requestAnimationFrame(draw);
     };
     draw();
     const offViews = walkViews.subscribe(draw);
@@ -364,6 +399,7 @@ export function WalkSceneMount({ stage }: { stage: EngineStage | null }): null {
     return () => {
       offViews();
       offLoaded();
+      if (more !== null) cancelAnimationFrame(more);
       v.setMarkers([]);
     };
   }, [fits, hidden, manifest, editing, stage, groundVersion]);

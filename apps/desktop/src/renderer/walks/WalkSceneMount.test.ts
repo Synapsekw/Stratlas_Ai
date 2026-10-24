@@ -15,8 +15,17 @@ vi.mock('../builder/state', () => ({
   builder: { getState: () => ({ saveLayers: vi.fn() }), subscribe: () => () => undefined },
 }));
 
-const { drapePlaced, placedReach, sceneMarkers, scenePlacedWalks, scenePlacing, walkReach } =
-  await import('./WalkSceneMount');
+const {
+  drapePlaced,
+  LOADED_SETTLE_MS,
+  placedReach,
+  resampleWhenSettled,
+  sceneMarkers,
+  scenePlacedWalks,
+  scenePlacing,
+  SETTLE_MS,
+  walkReach,
+} = await import('./WalkSceneMount');
 const { DRAPE_LIFT_M } = await import('./walkScene');
 
 describe('scenePlacing', () => {
@@ -307,5 +316,72 @@ describe('drapePlaced', () => {
     expect(done).not.toHaveBeenCalled();
     cancel();
     expect(scheduler.cancel).toHaveBeenCalled();
+  });
+});
+
+describe('resampleWhenSettled', () => {
+  /** Timers stepped by hand. */
+  function clock() {
+    let now = 0;
+    let next = 1;
+    const due = new Map<number, { at: number; cb: () => void }>();
+    return {
+      timers: {
+        set: (cb: () => void, ms: number) => {
+          due.set(next, { at: now + ms, cb });
+          return next++;
+        },
+        clear: (h: number) => {
+          due.delete(h);
+        },
+      },
+      run(ms: number) {
+        now += ms;
+        for (const [h, d] of [...due].sort((a, b) => a[1].at - b[1].at))
+          if (d.at <= now) {
+            due.delete(h);
+            d.cb();
+          }
+      },
+    };
+  }
+
+  it('asks the ground again once, when things settle: never at once and twice', () => {
+    const c = clock();
+    const resample = vi.fn();
+    resampleWhenSettled(() => () => undefined, resample, c.timers);
+    expect(resample).not.toHaveBeenCalled();
+    c.run(SETTLE_MS);
+    expect(resample).toHaveBeenCalledTimes(1);
+    c.run(SETTLE_MS * 4);
+    expect(resample).toHaveBeenCalledTimes(1);
+  });
+
+  it('layers that load close together are answered once, after the last', () => {
+    const c = clock();
+    const resample = vi.fn();
+    let loaded: () => void = () => undefined;
+    const stop = resampleWhenSettled(
+      (cb) => {
+        loaded = cb;
+        return () => undefined;
+      },
+      resample,
+      c.timers,
+    );
+    c.run(SETTLE_MS);
+    resample.mockClear();
+    loaded();
+    c.run(LOADED_SETTLE_MS / 2);
+    loaded();
+    c.run(LOADED_SETTLE_MS / 2);
+    expect(resample).not.toHaveBeenCalled();
+    c.run(LOADED_SETTLE_MS);
+    expect(resample).toHaveBeenCalledTimes(1);
+    // stopped: nothing more
+    loaded();
+    stop();
+    c.run(SETTLE_MS);
+    expect(resample).toHaveBeenCalledTimes(1);
   });
 });

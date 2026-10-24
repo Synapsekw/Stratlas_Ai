@@ -1,6 +1,7 @@
 import type { Layer } from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  budgetedGround,
   cachedGround,
   createWalkGround,
   drapePoints,
@@ -212,5 +213,28 @@ describe('createWalkGround', () => {
     expect(g.ground(0, 0)).toBeNull();
     ray = () => 2;
     expect(g.ground(0, 0)).toBe(2);
+  });
+});
+
+describe('budgetedGround', () => {
+  it('asks afresh at most its budget, answers it remembers are free, and says when it ran short', () => {
+    const ray = vi.fn((x: number) => x);
+    const g = createWalkGround(() => ray);
+    // two cells already asked
+    g.ground(0.5, 0);
+    g.ground(1.5, 0);
+    ray.mockClear();
+    const b = budgetedGround(g, 2);
+    expect(b(0.5, 0)).toBe(0.5);
+    expect(b(1.5, 0)).toBe(1.5);
+    expect(b.starved()).toBe(false);
+    expect(b(2.5, 0)).toBe(2.5);
+    expect(b(3.5, 0)).toBe(3.5);
+    // past the budget: nothing asked, null, and the caller knows to ask again
+    expect(b(4.5, 0)).toBeNull();
+    expect(b.starved()).toBe(true);
+    expect(ray).toHaveBeenCalledTimes(2);
+    // what was asked is remembered for the next frame
+    expect(budgetedGround(g, 0)(3.5, 0)).toBe(3.5);
   });
 });

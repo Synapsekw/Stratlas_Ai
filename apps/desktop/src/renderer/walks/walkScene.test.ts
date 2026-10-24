@@ -389,6 +389,49 @@ describe('the Beam in the 3D view', () => {
     view.dispose();
   });
 
+  it('moves a walk’s Beam in place on every view tick: the same objects, nothing made or freed', () => {
+    const { stage } = fakeStage(null);
+    const view = attachWalkScene(stage);
+    const mk = {
+      id: 'walk-a',
+      colour: '#ff0000',
+      at: [10, 5, 20] as [number, number, number],
+      lookHeadingRad: -Math.PI / 2,
+      halfRad: Math.PI / 4,
+      walkHeadingRad: 0,
+      ground: (x: number) => ground(x),
+    };
+    view.setMarkers([mk]);
+    const g = stage.scene.getObjectByName('aio-walk-marker-walk-a');
+    if (!g) throw new Error('no marker');
+    const parts: Object3D[] = [];
+    g.traverse((o) => parts.push(o));
+    const freed = vi.fn();
+    for (const o of parts) {
+      const m = o as Partial<Mesh>;
+      m.geometry?.addEventListener('dispose', freed);
+      for (const x of [m.material ?? []].flat()) x.addEventListener('dispose', freed);
+    }
+    // the walk moves on and the look turns north
+    view.setMarkers([{ ...mk, at: [12, 5.2, 20], lookHeadingRad: 0 }]);
+    const again = stage.scene.getObjectByName('aio-walk-marker-walk-a');
+    expect(again).toBe(g);
+    const now: Object3D[] = [];
+    again?.traverse((o) => now.push(o));
+    expect(now).toEqual(parts);
+    expect(freed).not.toHaveBeenCalled();
+    expect(g.position.toArray()).toEqual([12, 5.2, 20]);
+    // the cone now points north (-z), on the ground under it
+    const verts = coneVertices(g);
+    expect(Math.max(...verts.map(([, , z]) => z))).toBeLessThanOrEqual(1e-9);
+    for (const [x, y] of verts)
+      expect(y).toBeCloseTo(5 + (12 + x - 10) * 0.1 - 5.2 + BEAM_LIFT_M, 6);
+    // the walk's Beam goes: its own parts are freed
+    view.setMarkers([]);
+    expect(freed).toHaveBeenCalled();
+    view.dispose();
+  });
+
   it('a walk without a look stands as a dot and stem, without a cone; markers go when cleared', () => {
     const { stage } = fakeStage(null);
     const view = attachWalkScene(stage);

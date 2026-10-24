@@ -69,22 +69,30 @@ export function layerGround(
   };
 }
 
+/** What a remembering ground already knows at x/z: its answer, or undefined when not asked yet. */
+export type KnownAt = (x: number, z: number) => number | null | undefined;
+
 /** A ground that remembers its answer (a miss too) per `cellM` square cell, until `clear`. */
 export function cachedGround(
   ground: GroundAt,
   cellM: number = GROUND_CELL_M,
-): GroundAt & { clear(): void } {
-  const known = new Map<string, number | null>();
+): GroundAt & { clear(): void; known: KnownAt } {
+  const answers = new Map<string, number | null>();
+  const keyOf = (x: number, z: number) => `${Math.floor(x / cellM)},${Math.floor(z / cellM)}`;
   const g = (x: number, z: number) => {
-    const key = `${Math.floor(x / cellM)},${Math.floor(z / cellM)}`;
-    if (known.has(key)) return known.get(key) ?? null;
+    const key = keyOf(x, z);
+    if (answers.has(key)) return answers.get(key) ?? null;
     const y = ground(x, z);
-    known.set(key, y);
+    answers.set(key, y);
     return y;
   };
   return Object.assign(g, {
     clear: () => {
-      known.clear();
+      answers.clear();
+    },
+    known: (x: number, z: number) => {
+      const key = keyOf(x, z);
+      return answers.has(key) ? (answers.get(key) ?? null) : undefined;
     },
   });
 }
@@ -230,6 +238,8 @@ export function drapeRunsInFrames(
 export interface WalkGround {
   /** The sampler now: remembered answers until `resample`. */
   ground: GroundAt;
+  /** What the sampler remembers at x/z (undefined: not asked since the last `resample`). */
+  known: KnownAt;
   /** Forget every answer (layers loaded, the date or a layer's visibility changed). */
   resample: () => void;
   /** `version` moves on every `resample`, so drapes and tracks are made again. */
@@ -238,7 +248,7 @@ export interface WalkGround {
 
 /** A shared walk ground over `source` (null: no 3D view, nothing remembered, every ask null). */
 export function createWalkGround(source: () => GroundAt | null): WalkGround {
-  let cache: (GroundAt & { clear(): void }) | null = null;
+  let cache: ReturnType<typeof cachedGround> | null = null;
   const store = createStore<{ version: number }>(() => ({ version: 0 }));
   return {
     ground: (x, z) => {
@@ -249,12 +259,38 @@ export function createWalkGround(source: () => GroundAt | null): WalkGround {
       }
       return cache(x, z);
     },
+    known: (x, z) => cache?.known(x, z),
     resample: () => {
       cache = null;
       store.setState((s) => ({ version: s.version + 1 }));
     },
     store,
   };
+}
+
+/**
+ * The walk ground `g` for one draw that asks afresh at most `budget` times (what it remembers is
+ * free): past that it answers null, the caller keeps its stored height, and `starved` says to draw
+ * again next frame, when the asked cells are remembered and the budget is new (a Beam's cone moves
+ * on every view tick, and rays down a heavy model are not cheap).
+ */
+export function budgetedGround(
+  g: Pick<WalkGround, 'ground' | 'known'>,
+  budget: number,
+): GroundAt & { starved(): boolean } {
+  let left = budget;
+  let short = false;
+  const at = (x: number, z: number): number | null => {
+    const k = g.known(x, z);
+    if (k !== undefined) return k;
+    if (left <= 0) {
+      short = true;
+      return null;
+    }
+    left--;
+    return g.ground(x, z);
+  };
+  return Object.assign(at, { starved: () => short });
 }
 
 /** The ground the app's 3D view draws: the shell's `rayDown` over the open project's layers. */
