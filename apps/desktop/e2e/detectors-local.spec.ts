@@ -399,15 +399,20 @@ test('runs a detector from Ask AI and reviews its drafts', async () => {
       )
       .toBe('done');
 
-    // 4. the run strip says it is done; the queue holds the drafts at or above the detector's bar
+    // 4. the run strip says it is done; the confidence slider is the queue's only bar: at 0 it
+    // holds every draft, the ones under the detector's 0.8 too
     await expect(strip).toContainText(`AI checked ${String(PHOTOS.length)} photos`, {
       timeout: 30_000,
     });
     await win.getByTestId('ask-ai-review').click();
+    await expect(win.getByTestId('queue-progress')).toHaveText(/ of 4$/);
+    // above the 0.6 drafts only the 0.95 ones stay, and back under it the 0.6 ones show again
+    await win.getByTestId('queue-threshold').fill('0.7');
     await expect(win.getByTestId('queue-progress')).toHaveText('1 of 2');
-    // the drafts under 0.8 stay out of the queue whatever the confidence slider says
     await win.getByTestId('queue-threshold').fill('0.5');
-    await expect(win.getByTestId('queue-progress')).toHaveText('1 of 2');
+    await expect(win.getByTestId('queue-progress')).toHaveText(/ of 4$/);
+    await win.getByTestId('queue-threshold').fill('0.7');
+    await expect(win.getByTestId('queue-progress')).toHaveText(/ of 2$/);
     // the score of the draft in view, as a percentage
     await expect(win.locator('.queue-step .mono')).toHaveText(
       `${String(Math.round(VLM_HIGH * 100))}%`,
