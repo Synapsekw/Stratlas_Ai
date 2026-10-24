@@ -153,6 +153,14 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     since: '0.20',
   },
   {
+    // units the user deleted, so a re-detection never brings them back (antennas.ts)
+    family: 'aio.antenna-deletions',
+    version: 1,
+    home: 'project',
+    where: 'telecom/antenna-deletions.json',
+    since: '0.26',
+  },
+  {
     family: 'aio.drawingplacement',
     version: 1,
     home: 'project',

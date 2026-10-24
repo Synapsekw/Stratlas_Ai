@@ -69,7 +69,6 @@
   border-color: var(--line-strong);
 }
 .pl-rename:focus {
-  outline: none;
+  outline: 3px solid var(--acc-a12);
   border-color: var(--acc);
-  box-shadow: 0 0 0 3px var(--acc-a12);
 }
