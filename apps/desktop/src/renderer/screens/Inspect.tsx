@@ -494,6 +494,8 @@ function InspectBody(): ReactElement | null {
   };
 
   const onKeyDownCapture = (e: KeyboardEvent<HTMLElement>) => {
+    // React passes keys up from portals: a menu or dialog drawn outside the screen keeps its own
+    if (!(e.target instanceof Node) || !e.currentTarget.contains(e.target)) return;
     if (typingIn(e.target) || annotateUi.getState().pending) return;
     if (e.currentTarget.querySelector(KEY_TAKERS)) return;
     const target = e.target instanceof HTMLElement ? e.target : null;

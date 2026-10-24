@@ -42,7 +42,7 @@ const h = vi.hoisted(() => {
     observe = () => undefined;
     disconnect = () => undefined;
   };
-  return { calls };
+  return { calls, menuOpen: false };
 });
 
 vi.mock('../detections/store', async (importOriginal) => ({
@@ -67,7 +67,26 @@ vi.mock('../inspect/InspectViewer', () => ({
     );
   },
 }));
-vi.mock('../inspect/PhotoColumn', () => ({ PhotoColumn: () => <div data-testid="column" /> }));
+// the column stand-in draws its tile right-click menu into a portal on the page, as the real one
+// does, while the test sets `h.menuOpen`
+vi.mock('../inspect/PhotoColumn', async () => {
+  const { createPortal } = await import('react-dom');
+  return {
+    PhotoColumn: () => (
+      <div data-testid="column">
+        {h.menuOpen &&
+          createPortal(
+            <div role="menu" data-testid="tile-menu">
+              <button type="button" role="menuitem">
+                As 360
+              </button>
+            </div>,
+            document.body,
+          )}
+      </div>
+    ),
+  };
+});
 vi.mock('../inspect/askAi/AskAiBar', () => ({ AskAiBar: () => null }));
 vi.mock('../inspect/askAi/RunStrip', () => ({ RunStrip: () => null }));
 vi.mock('../issueCard/IssueCard', () => ({
@@ -202,6 +221,7 @@ const press = (el: Element, key: string) => {
 
 beforeEach(() => {
   h.calls.length = 0;
+  h.menuOpen = false;
   setAnnotateReadOnly(false);
   localStorage.clear();
   workspace.getState().openProject({ id: 'p1', root: 'E:/p1', manifest }, [ON_B, IN_3D]);
@@ -283,6 +303,26 @@ describe('InspectScreen', () => {
     press(section(), 'a');
     await flush();
     expect(workspace.getState().issues).toHaveLength(2);
+  });
+
+  it('leaves the keys pressed in a portalled tile menu to the menu', async () => {
+    h.menuOpen = true;
+    mount();
+    select({ kind: 'photo', id: 'a', layer: 'photos' });
+    act(() => {
+      dispatch({ type: 'select', id: 'd-a' });
+    });
+    const item = document.querySelector('[data-testid="tile-menu"] [role="menuitem"]');
+    if (!item) throw new Error('no tile menu');
+    press(item, 'ArrowDown');
+    press(item, 'j');
+    press(item, 'a');
+    await flush();
+    expect(detections.getState().review.detections.find((d) => d.id === 'd-a')?.status).toBe(
+      'draft',
+    );
+    expect(workspace.getState().issues).toHaveLength(2);
+    expect(viewer()?.dataset.photo).toBe('photos/a');
   });
 
   it('ignores the keys while typing in a field', async () => {
