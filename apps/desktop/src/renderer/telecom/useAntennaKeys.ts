@@ -56,6 +56,12 @@ function actionOf(key: string): (() => void) | null {
 const OWNS_KEYS =
   '[role="tablist"], [role="menu"], [role="listbox"], [role="slider"], [role="tree"]';
 
+/** Rows of another content group in the Project list (measurements, issues) own their Delete. */
+function inOtherListRow(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return target.closest('.pl-rows') !== null && target.closest('[data-antenna-tree]') === null;
+}
+
 function ownedElsewhere(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
   const owner = target.closest(OWNS_KEYS);
@@ -82,6 +88,7 @@ export function useAntennaKeys(enabled: boolean): void {
     const onBubble = (e: KeyboardEvent): void => {
       if (/^[aArR]$/.test(e.key) || ignored(e)) return;
       if (ownedElsewhere(e.target)) return;
+      if (e.key === 'Delete' && inOtherListRow(e.target)) return;
       const act = actionOf(e.key);
       if (!act) return;
       e.preventDefault();

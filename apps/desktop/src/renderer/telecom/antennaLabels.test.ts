@@ -139,15 +139,8 @@ it('puts the name wholly above its anchor and hangs the width under its line', (
     { key: 'u:dim:w', text: '1.51 m', at: [0, 0, 0], kind: 'dim', selected: true, align: 'below' },
     { key: 'u:dim:h', text: '1.31 m', at: [0, 0, 0], kind: 'dim', selected: true },
   ];
-  let placed = 0;
-  const detach = attachAntennaLabels(
-    stage as unknown as EngineStage,
-    () => spots,
-    undefined,
-    () => placed++,
-  );
+  const detach = attachAntennaLabels(stage as unknown as EngineStage, () => spots);
   frame();
-  expect(placed).toBe(1);
   const el = (key: string) => host.querySelector<HTMLElement>(`[data-key="${key}"]`);
   expect(el('u:name')?.dataset.align).toBe('above');
   expect(el('u:name')?.style.transform).toMatch(/translate\(-50%, calc\(-100% - 4px\)\)$/);

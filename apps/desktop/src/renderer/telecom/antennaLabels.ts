@@ -22,8 +22,6 @@ export function attachAntennaLabels(
   stage: EngineStage,
   getSpots: () => AntennaLabelSpot[],
   onPick?: (unitId: string) => void,
-  /** Told after every placement, when the labels stand where this frame draws them. */
-  onPlaced?: () => void,
 ): () => void {
   const canvas = stage.renderer.domElement;
   const host = canvas.parentElement ?? canvas;
@@ -108,7 +106,6 @@ export function attachAntennaLabels(
       el.style.transform = align ? to + ALIGN[align] : to;
     }
     hidePinsUnderSelected();
-    onPlaced?.();
   };
 
   const off = stage.onFrame(place);

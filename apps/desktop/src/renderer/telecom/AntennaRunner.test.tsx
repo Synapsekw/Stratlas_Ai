@@ -192,15 +192,36 @@ describe('AntennaRunner', () => {
   });
 
   it('flies to every unit of a fly request, and not twice for the same request', () => {
+    interface Box {
+      min: number[];
+      max: number[];
+    }
+    const last = () => flyTo.mock.calls.at(-1)?.[0] as Box;
+    act(() => {
+      requestFly(['ant-a3']);
+    });
+    const a = last();
+    act(() => {
+      requestFly(['ant-d1']);
+    });
+    const d = last();
     act(() => {
       requestFly(['ant-a3', 'ant-d1']);
     });
-    expect(flyTo).toHaveBeenCalledTimes(1);
-    expect(flyTo.mock.calls[0]?.[0]).toMatchObject({ kind: 'box' });
+    const both = last();
+    expect(flyTo).toHaveBeenCalledTimes(3);
+    // the box covers both units: it holds each single box and is larger than either
+    for (let i = 0; i < 3; i++) {
+      expect(both.min[i]).toBeLessThanOrEqual(Math.min(a.min[i] ?? 0, d.min[i] ?? 0));
+      expect(both.max[i]).toBeGreaterThanOrEqual(Math.max(a.max[i] ?? 0, d.max[i] ?? 0));
+    }
+    const size = (b: Box) => b.max.reduce((n, v, i) => n + v - (b.min[i] ?? 0), 0);
+    expect(size(both)).toBeGreaterThan(size(a));
+    expect(size(both)).toBeGreaterThan(size(d));
     act(() => {
       selectAntenna(null);
     });
-    expect(flyTo).toHaveBeenCalledTimes(1);
+    expect(flyTo).toHaveBeenCalledTimes(3);
   });
 
   it('Delete asks to delete the selected unit, and mounts the confirmation', () => {

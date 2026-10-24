@@ -875,10 +875,6 @@
     calc(anchor(--aio-antenna-labels top, 0px) + var(--sp-2))
   );
 }
-/* a selected antenna's card over the legend: the legend steps aside in place (its corner kept) */
-.rf-legend[data-covered] {
-  visibility: hidden;
-}
 /* in its stage corner it keeps to the lower half of the stage and scrolls the rest (Details open) */
 .stage-slot > .rf-legend {
   max-block-size: calc(50vh - 64px);

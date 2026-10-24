@@ -126,11 +126,11 @@ function useCornersCrowded(panes: ReturnType<typeof useStagePanes>): boolean {
 
 /**
  * Whether the stage gives the coverage card a corner. After a run (the layer is on and draws
- * something) the legend keeps its place before the dates and the readout. Before one, the card is the chip alone
- * (the project has antennas, spec F1 revised), and it shows only where it costs the dates pill
- * and the readout nothing (`useCornersCrowded`) and the antenna list lives in the side panel, so
- * a selected antenna never moves it. Never while two dates are compared:
- * the comparison has the stage.
+ * something) the legend keeps its place before the dates and the readout. Before one, the card is
+ * the chip alone (the project has antennas, spec F1 revised), and it shows only where it costs the
+ * dates pill and the readout nothing (`useCornersCrowded`). A selected antenna never moves it: the
+ * antenna's details live in the side panel. Never while two dates are compared: the comparison has
+ * the stage.
  */
 export function useCoverageLegendShown(): boolean {
   const chip = useChipState().kind !== 'hidden';

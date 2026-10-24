@@ -81,7 +81,7 @@ export function AntennaRunner(): ReactElement | null {
   const root = project?.root ?? null;
   const manifest = project?.manifest ?? null;
   const frame = useMemo(() => (manifest ? frameOf(manifest) : null), [manifest]);
-  // the labels and the card both read the spots on every frame: computed once per drawn state
+  // the labels read the spots on every frame: computed once per drawn state
   const spotsOf = useMemo(() => (frame ? labelSpotsCache(frame) : null), [frame]);
 
   // P8: the inventory is read on mount and when the project root changes

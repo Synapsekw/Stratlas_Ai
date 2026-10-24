@@ -27,6 +27,16 @@ function Probe({ on }: { on: boolean }) {
   return (
     <div>
       <ul role="tree" data-testid="datasets-tree" tabIndex={0} />
+      <ul className="pl-rows" data-testid="issue-rows" role="none">
+        <li>
+          <button type="button" data-testid="issue-row" />
+        </li>
+      </ul>
+      <ul className="pl-rows" role="tree" data-antenna-tree="" data-testid="antenna-rows">
+        <li role="none">
+          <button type="button" role="treeitem" data-testid="antenna-row" />
+        </li>
+      </ul>
       <input data-testid="field" />
       <button type="button" data-testid="plain" />
     </div>
@@ -79,6 +89,16 @@ describe('useAntennaKeys', () => {
 
   it('Delete in the Datasets tree is left to the tree', () => {
     press(q('datasets-tree'), 'Delete');
+    expect(antennaDeleteStore.getState().ask).toBeNull();
+  });
+
+  it('Delete on a row of the antenna list asks', () => {
+    press(q('antenna-row'), 'Delete');
+    expect(antennaDeleteStore.getState().ask?.ids).toEqual(['ant-a3']);
+  });
+
+  it('Delete on a row of another group is left to that group', () => {
+    press(q('issue-row'), 'Delete');
     expect(antennaDeleteStore.getState().ask).toBeNull();
   });
 
