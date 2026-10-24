@@ -15,7 +15,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
-import { stageShow, showSurface, volumesView } from './island';
+import { stageMode, stageShow, showSurface, volumesView } from './island';
 import { openDemo } from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
 
@@ -414,4 +414,38 @@ test('the Show control switches Photo, Elevation and Cut & fill, and hides the p
   await outlines.click();
   await expect(label).toBeVisible();
   await expect.poll(outlined).toBe(true);
+});
+
+/** Whether the stage's map has a layer. */
+const mapHasLayer = (win: Page, id: string): Promise<boolean> =>
+  win.evaluate((layer) => {
+    type MapEl = Element & { __aioMap: { getLayer(id: string): unknown } };
+    const el = [...document.querySelectorAll('*')].find((x) => '__aioMap' in x) as
+      MapEl | undefined;
+    return el ? el.__aioMap.getLayer(layer) !== undefined : false;
+  }, id);
+
+test('Show → Cut & fill with no pile picked draws the whole site between the compare pair, its legend on the stage', async ({
+  quarryProject,
+  win,
+}) => {
+  test.setTimeout(600_000);
+  const view = await opened(win, quarryProject);
+  await expect(view.getByTestId('pile-panel')).toHaveCount(0);
+  await stageMode(win, 'Map');
+  await showSurface(win, 'Cut & fill');
+  // the legend in a bottom corner of the stage, the site's heat map on the map
+  const legend = win.locator('.stage-slot [data-testid="cutfill-legend"]');
+  await expect(legend).toBeVisible({ timeout: 240_000 });
+  expect(
+    await legend.evaluate((el) => el.closest('.stage-slot')?.getAttribute('data-slot') ?? ''),
+  ).toMatch(/^b[lr]$/);
+  await expect
+    .poll(() => mapHasLayer(win, 'aio-survey-heat-layer'), { timeout: 120_000 })
+    .toBe(true);
+  // still no pile picked: it is the whole site's
+  await expect(view.getByTestId('pile-panel')).toHaveCount(0);
+  // Photo: the legend goes
+  await showSurface(win, 'Photo');
+  await expect(legend).toHaveCount(0);
 });

@@ -152,11 +152,11 @@ export async function volumesView(win: Page): Promise<Locator> {
 /**
  * The stage's Show control (volumetrics redesign, board 1): top-left of the stage while the
  * Volumes tab is in front, the surface (Photo | Elevation | Cut & fill) and the pile overlays
- * (Outlines | Labels). The Volumes tab is brought to the front first.
+ * (Outlines | Labels). The Volumes tab is brought to the front first when the control is not up.
  */
 export async function stageShow(win: Page): Promise<Locator> {
-  await islandGroup(win, 'volumes');
   const show = win.getByTestId('stage-show');
+  if (!(await show.isVisible())) await islandGroup(win, 'volumes');
   await expect(show).toBeVisible();
   return show;
 }

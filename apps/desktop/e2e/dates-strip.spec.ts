@@ -449,6 +449,55 @@ test.describe('the smallest window, 1100 x 700', () => {
 test.describe('a project with video', () => {
   test.use({ appEnv: { ...PIPELINE_ENV, QUADRION_DEMO: DEMO_FOLDER } });
 
+  test('on the narrow bar between both sidebars the switch keeps to its icons and Compare, Fit and Collapse stay in the strip', async ({
+    win,
+  }) => {
+    test.setTimeout(240_000);
+    await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
+    // both sidebars open (the CI window, 1100 x 720)
+    const left = win.getByTestId('panel-handle-left');
+    if ((await left.getAttribute('aria-expanded')) !== 'true') await left.click();
+    await expect(left).toHaveAttribute('aria-expanded', 'true');
+    await expect(win.locator('.ws')).not.toHaveClass(/right-off/);
+    const strip = stripOf(win);
+    await expect(strip).toBeVisible();
+    await expect(win.getByTestId('bottom-switch-dates')).toHaveAccessibleName('Dates');
+    const m = await win.evaluate(() => {
+      const box = (el: Element | null) => {
+        const r = el?.getBoundingClientRect();
+        return r
+          ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom, w: r.width }
+          : null;
+      };
+      const q = (id: string) => box(document.querySelector(`[data-testid="${id}"]`));
+      return {
+        strip: box(document.querySelector('[role="region"][aria-label="Survey dates chart"]')),
+        dates: q('bottom-switch-dates'),
+        footage: q('bottom-switch-footage'),
+        tools: ['strip-compare', 'strip-fit', 'strip-collapse'].map((id) => ({ id, box: q(id) })),
+      };
+    });
+    // each side of the switch is its icon alone, about 28 px
+    for (const b of [m.dates, m.footage]) {
+      expect(b).not.toBeNull();
+      expect(b?.w ?? 0).toBeGreaterThan(20);
+      expect(b?.w ?? 99).toBeLessThanOrEqual(36);
+    }
+    // Compare, Fit and Collapse lie inside the strip, after the switch
+    const s = m.strip;
+    expect(s).not.toBeNull();
+    for (const t of m.tools) {
+      expect(t.box, t.id).not.toBeNull();
+      if (!t.box || !s) continue;
+      expect(t.box.left, t.id).toBeGreaterThanOrEqual(s.left - 0.5);
+      expect(t.box.right, t.id).toBeLessThanOrEqual(s.right + 0.5);
+      expect(t.box.left, t.id).toBeGreaterThanOrEqual((m.footage?.right ?? 0) - 0.5);
+    }
+    await expect(strip.getByTestId('strip-collapse')).toBeVisible();
+    await strip.getByTestId('strip-compare').click();
+    await expect(strip.getByTestId('strip-compare')).toHaveAttribute('aria-pressed', 'true');
+  });
+
   test('the bottom bar offers Dates and Footage, opens on the dates with piles, and remembers the choice', async ({
     win,
   }) => {
