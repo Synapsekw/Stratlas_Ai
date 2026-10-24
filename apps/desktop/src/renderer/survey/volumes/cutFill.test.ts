@@ -1,7 +1,9 @@
 import type { ComparisonItem, ComparisonResult, HeightTiles, SurveyMeasurement } from '@aio/schema';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   captureRef,
+  clearCutFillCache,
+  pairKey,
   CUT_FILL_DEFAULT_M,
   cutFillByPile,
   cutFillCsv,
@@ -117,6 +119,90 @@ describe('cut and fill per pile', () => {
   });
 });
 
+describe('the shared answers', () => {
+  beforeEach(() => {
+    clearCutFillCache();
+  });
+  const PAIR = { from: FROM, to: TO };
+  const key = pairKey([{ id: 's1', fingerprint: 'f1' }], PAIR);
+
+  it('asks the engine once per pile, pair and threshold, whoever asks', async () => {
+    const run = vi.fn<PileRun>(() => Promise.resolve(result(5, 1)));
+    const piles = [pile('a', 'A'), pile('b', 'B')];
+    await cutFillByPile(piles, PAIR, 0.1, run, undefined, { pair: key });
+    // the strip's question for one pile, then the same pile saved (a new updatedAt)
+    await cutFillByPile([pile('a', 'A')], PAIR, 0.1, run, undefined, { pair: key });
+    await cutFillByPile(
+      [pile('a', 'A', { updatedAt: '2026-10-24T00:00:00Z' })],
+      PAIR,
+      0.1,
+      run,
+      undefined,
+      { pair: key },
+    );
+    expect(run).toHaveBeenCalledTimes(2);
+    // a new threshold, a moved ring or a re-prepared surface is a new question
+    await cutFillByPile([pile('a', 'A')], PAIR, 0.2, run, undefined, { pair: key });
+    await cutFillByPile(
+      [
+        pile('a', 'A', {
+          points: [
+            [1, 0, 0],
+            [10, 0, 0],
+            [10, 10, 0],
+          ],
+        } as never),
+      ],
+      PAIR,
+      0.1,
+      run,
+      undefined,
+      { pair: key },
+    );
+    const refreshed = pairKey([{ id: 's1', fingerprint: 'f2' }], PAIR);
+    await cutFillByPile([pile('a', 'A')], PAIR, 0.1, run, undefined, { pair: refreshed });
+    expect(run).toHaveBeenCalledTimes(5);
+  });
+
+  it('shares a run still going, and a cancelled asker does not stop it for the others', async () => {
+    let done: (r: ComparisonResult) => void = () => undefined;
+    const run = vi.fn<PileRun>(
+      () =>
+        new Promise((resolve) => {
+          done = resolve;
+        }),
+    );
+    const ac = new AbortController();
+    const first = cutFillByPile([pile('a', 'A')], PAIR, 0.1, run, ac.signal, { pair: key });
+    const second = cutFillByPile([pile('a', 'A')], PAIR, 0.1, run, undefined, { pair: key });
+    ac.abort();
+    await expect(first).rejects.toThrow();
+    done(result(3, 0));
+    expect((await second)[0]?.cutM3).toBe(3);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps no failed run', async () => {
+    const run = vi
+      .fn<PileRun>()
+      .mockRejectedValueOnce(new Error('busy'))
+      .mockResolvedValueOnce(result(1, 0));
+    const a = await cutFillByPile([pile('a', 'A')], PAIR, 0.1, run, undefined, { pair: key });
+    expect(a[0]?.status).toBe('refused');
+    const b = await cutFillByPile([pile('a', 'A')], PAIR, 0.1, run, undefined, { pair: key });
+    expect(b[0]?.status).toBe('ok');
+  });
+
+  it('asks the whole site once per pair, threshold and cell', async () => {
+    const site = vi.fn(() => Promise.resolve({ result: result(9, 1), grid: null }));
+    await wholeSiteCutFill(PAIR, 0.1, 0.5, site, { pair: key });
+    await wholeSiteCutFill(PAIR, 0.1, 0.5, site, { pair: key });
+    expect(site).toHaveBeenCalledTimes(1);
+    await wholeSiteCutFill(PAIR, 0.3, 0.5, site, { pair: key });
+    expect(site).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('whole site', () => {
   it('whole site passes deadbandM to the engine', async () => {
     const site = vi.fn(() => Promise.resolve({ result: result(24297.1, 2098.8), grid: null }));
@@ -206,10 +292,17 @@ describe('the pieces around the figures', () => {
           { ...result(0, b, { item: 'a' }), toCapture: 'c2' },
         ],
       });
-    expect(inventoryChange([withSeries('a', 100, 80), withSeries('b', 10, 5)], 'c1', 'c2')).toBe(
-      -25,
-    );
-    expect(inventoryChange([withSeries('a', 100, 80), pile('b', 'b')], 'c1', 'c2')).toBeNull();
+    const all = () => true;
+    expect(
+      inventoryChange([withSeries('a', 100, 80), withSeries('b', 10, 5)], 'c1', 'c2', all),
+    ).toBe(-25);
+    expect(inventoryChange([withSeries('a', 100, 80), pile('b', 'b')], 'c1', 'c2', all)).toBeNull();
+    // the inventory's rule, not the status: a figure it leaves out (stale by the fingerprints)
+    // leaves the change unbacked
+    const notB1 = (id: string, c: string) => !(id === 'b' && c === 'c1');
+    expect(
+      inventoryChange([withSeries('a', 100, 80), withSeries('b', 10, 5)], 'c1', 'c2', notB1),
+    ).toBeNull();
   });
 
   it('the CSV has a row per pile and the totals, with plain numbers', () => {

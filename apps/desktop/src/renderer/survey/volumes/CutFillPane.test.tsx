@@ -27,6 +27,8 @@ const engine = vi.hoisted(() => ({
 vi.mock('../compareStore', () => ({
   useCompare: (sel: (x: unknown) => unknown) => sel(s.compare),
   engineClient: () => ({ run: engine.run, site: engine.site }),
+  isStale: () => false,
+  seriesStale: () => false,
 }));
 vi.mock('../measureStore', () => ({
   useMeasure: (sel: (x: unknown) => unknown) => sel(s.measure),
@@ -35,13 +37,15 @@ vi.mock('../measureStore', () => ({
 vi.mock('../qaHelpers', () => ({ useFocusCapture: () => s.focus }));
 vi.mock('@aio/workspace', () => ({
   useWorkspace: (sel: (x: unknown) => unknown) => sel({ project: s.project }),
+  // the compare pair follows the open project; the pane's tests set the pair themselves
+  workspace: { getState: () => ({ project: null }), subscribe: () => () => undefined },
   dateTags: () => ({ c1: { colour: 'var(--date-1)' }, c2: { colour: 'var(--date-2)' } }),
 }));
 vi.mock('../../shell', () => ({ bridge: { call: engine.save } }));
 
 const { CutFillPane } = await import('./CutFillPane');
 const { compareDates } = await import('../../workspace/dates/compareDates');
-const { cutFillPrefs } = await import('./cutFill');
+const { cutFillPrefs, clearCutFillCache } = await import('./cutFill');
 
 const CAPTURES = [
   { id: 'c1', date: '2020-12-31', label: '31 Dec 2020' },
@@ -128,7 +132,12 @@ beforeEach(() => {
   s.compare = {
     status: 'ready',
     surfaces: [tiles('s1', 'c1'), tiles('s2', 'c2'), tiles('s3', 'c3')],
+    captures: CAPTURES,
+    current: {},
+    seriesCurrent: {},
+    seriesInputs: {},
   };
+  clearCutFillCache();
   setPiles(3);
   figures = new Map([
     [1, [5115.9, 0]],
@@ -255,7 +264,7 @@ describe('the Cut & fill pane', () => {
   });
 
   it('a date without a prepared surface waits for it and computes nothing', async () => {
-    s.compare = { status: 'ready', surfaces: [tiles('s2', 'c2')] };
+    s.compare = { ...s.compare, surfaces: [tiles('s2', 'c2')] };
     await render();
     expect(text('.cf-status')).toBe('Change: waiting for 31 Dec 2020');
     expect(engine.run).not.toHaveBeenCalled();

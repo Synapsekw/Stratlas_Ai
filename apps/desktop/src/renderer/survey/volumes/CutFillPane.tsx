@@ -22,6 +22,7 @@ import { engineClient, useCompare } from '../compareStore';
 import { fileBase } from '../exportHelpers';
 import { useMeasure } from '../measureStore';
 import { useFocusCapture } from '../qaHelpers';
+import { useCounted } from '../useInventory';
 import {
   captureRef,
   cutFillByPile,
@@ -29,6 +30,8 @@ import {
   cutFillPrefs,
   cutFillTotals,
   inventoryChange,
+  pairKey,
+  pileRunKey,
   parseThreshold,
   siteCellM,
   useCutFillPrefs,
@@ -51,9 +54,15 @@ export interface CutFillPaneProps {
 interface Figures {
   /** What the figures are for, so an older answer is never shown for a newer question. */
   key: string;
+  /** Inside piles only (whole site runs no pile). */
   rows: CutFillRow[];
   site: { cutM3: number; fillM3: number; netM3: number } | null;
+  /** The whole-site run has answered (or failed): nothing more is coming. */
+  siteDone: boolean;
 }
+
+const cancelledRun = (e: unknown) =>
+  e instanceof Error && (e.name === 'RunCancelled' || e.name === 'AbortError');
 
 /** The engine's per-pile run through the worker; a newer run of the same pile cancels the older. */
 const workerRun: PileRun = async (ring, item, capture, id) => {
@@ -155,6 +164,8 @@ export function CutFillPane({ className, onPile }: CutFillPaneProps): ReactEleme
   };
 
   const piles = useMemo(() => inventoryPiles(measurements), [measurements]);
+  // the inventory's one counting rule, for the note's change
+  const isCounted = useCounted(piles);
   const fromRef = pair ? captureRef(surfaces, pair.from) : null;
   const toRef = pair ? captureRef(surfaces, pair.to) : null;
   const dateOf = (id: string) => dated.find((c) => c.id === id)?.date ?? '';
@@ -165,38 +176,58 @@ export function CutFillPane({ className, onPile }: CutFillPaneProps): ReactEleme
   /** A problem, for the question it was asked for (a newer question hides it). */
   const [failure, setFailure] = useState<{ key: string | null; message: string } | null>(null);
 
+  // what the runs read: the pair's surfaces with their fingerprints, the threshold, the area shown
+  // and the piles' rings (never `updatedAt`: saving the measurements does not ask again)
+  const pk = fromRef && toRef ? pairKey(surfaces, { from: fromRef, to: toRef }) : null;
+  const cellM = siteCellM(surfaces);
   const runKey =
-    fromRef && toRef && engineReady
+    pk !== null && engineReady
       ? JSON.stringify([
-          fromRef,
-          toRef,
+          pk,
           thresholdM,
-          piles.map((m) => [m.id, m.label, m.updatedAt ?? m.createdAt, m.points.length]),
-          surfaces.map((s) => s.fingerprint),
+          area,
+          area === 'piles' ? piles.map((m) => [pileRunKey(m), m.label]) : null,
+          cellM,
         ])
       : null;
-  const latest = useRef(0);
   useEffect(() => {
-    if (!runKey || !fromRef || !toRef) return;
-    const mine = ++latest.current;
+    if (!runKey || !fromRef || !toRef || pk === null) return;
     const ac = new AbortController();
+    const live = () => !ac.signal.aborted;
     const refs = { from: fromRef, to: toRef };
+    const siteRun = async (): Promise<Figures['site']> => {
+      try {
+        return await wholeSiteCutFill(
+          refs,
+          thresholdM,
+          cellM,
+          (req, key) => engineClient().site(req, key),
+          { pair: pk, signal: ac.signal },
+        );
+      } catch (e) {
+        if (cancelledRun(e)) throw e;
+        return null;
+      }
+    };
     void (async () => {
       try {
-        const rows = await cutFillByPile(piles, refs, thresholdM, workerRun, ac.signal);
-        let site: Figures['site'] = null;
-        try {
-          site = await wholeSiteCutFill(refs, thresholdM, siteCellM(surfaces), (req, key) =>
-            engineClient().site(req, key),
-          );
-        } catch (e) {
-          if (e instanceof Error && e.name === 'RunCancelled') throw e;
-          site = null;
+        // only the area shown runs: inside piles, the piles and then the whole-site line under
+        // the tiles; whole site, the site comparison alone. Answers are kept (`cutFill.ts`), so
+        // switching back asks nothing again.
+        if (area === 'piles') {
+          const rows = await cutFillByPile(piles, refs, thresholdM, workerRun, ac.signal, {
+            pair: pk,
+          });
+          if (ac.signal.aborted) return;
+          setFigures({ key: runKey, rows, site: null, siteDone: false });
+          const site = await siteRun();
+          if (live()) setFigures({ key: runKey, rows, site, siteDone: true });
+        } else {
+          const site = await siteRun();
+          if (!ac.signal.aborted) setFigures({ key: runKey, rows: [], site, siteDone: true });
         }
-        if (mine === latest.current) setFigures({ key: runKey, rows, site });
       } catch (e) {
-        if (mine !== latest.current || ac.signal.aborted) return;
-        if (e instanceof Error && (e.name === 'RunCancelled' || e.name === 'AbortError')) return;
+        if (ac.signal.aborted || cancelledRun(e)) return;
         setFailure({ key: runKey, message: e instanceof Error ? e.message : String(e) });
       }
     })();
@@ -209,7 +240,7 @@ export function CutFillPane({ className, onPile }: CutFillPaneProps): ReactEleme
 
   const current = figures?.key === runKey ? figures : null;
   const error = failure?.key === runKey ? failure.message : null;
-  const computing = runKey !== null && !current && error === null;
+  const computing = runKey !== null && !current?.siteDone && error === null;
 
   // ---------------------------------------------------------------- the threshold field
   // what is typed, for the threshold it was typed over (a new threshold shows itself instead)
@@ -241,7 +272,7 @@ export function CutFillPane({ className, onPile }: CutFillPaneProps): ReactEleme
   const shownTotals = area === 'site' ? (current?.site ?? null) : current ? pileTotals : null;
   const folded = foldSmall(counted);
   const maxBar = Math.max(1e-9, ...folded.shown.map((r) => Math.max(r.cutM3, r.fillM3)));
-  const invDelta = pair ? inventoryChange(piles, pair.from, pair.to) : null;
+  const invDelta = pair ? inventoryChange(piles, pair.from, pair.to, isCounted) : null;
   // the note says the inventory change is smaller: only shown when it is
   const noteDelta =
     shownTotals !== null &&
@@ -320,7 +351,7 @@ export function CutFillPane({ className, onPile }: CutFillPaneProps): ReactEleme
             </span>
             <Button
               className="cf-export"
-              disabled={!current}
+              disabled={!current || current.rows.length === 0}
               onClick={() => {
                 void exportCsv();
               }}

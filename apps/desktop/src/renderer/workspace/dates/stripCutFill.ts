@@ -2,15 +2,20 @@
  * The dates strip's Cut & fill bars (spec section 5): one comparison between each pair of
  * consecutive surveys, with the Cut & fill tab's area rule and threshold (`cutFillPrefs`). Inside
  * piles, the piles' totals (or the selected pile's own row); whole site, the engine's site
- * comparison. A pair whose dates lack a prepared surface waits for it; nothing is estimated.
+ * comparison, and only the area shown is run. Answers are shared with the Cut & fill tab and kept
+ * per pair, pile and threshold (`cutFill.ts`), so a change elsewhere asks only what is new, and a
+ * superseded run stops asking. A pair whose dates lack a prepared surface waits for it; nothing is
+ * estimated.
  */
 import type { HeightTiles, SurveyMeasurement } from '@aio/schema';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { engineClient, useCompare } from '../../survey/compareStore';
 import {
   captureRef,
   cutFillByPile,
   cutFillTotals,
+  pairKey,
+  pileRunKey,
   siteCellM,
   useCutFillPrefs,
   wholeSiteCutFill,
@@ -68,21 +73,26 @@ export function useStripCutFill(
     const on = pairNeeds(surfaces, p);
     return on === null ? [] : [{ ...p, on }];
   });
+  const siteArea = pile === null && area === 'site';
+  // what the runs read: the pairs' surfaces with their fingerprints, the threshold, the area and
+  // the piles' rings (never `updatedAt`: saving the measurements does not ask again)
   const key =
     enabled && ready && runnable.length > 0
       ? JSON.stringify([
-          runnable,
+          runnable.map((p) => {
+            const from = captureRef(surfaces, p.from);
+            const to = captureRef(surfaces, p.to);
+            return from && to ? pairKey(surfaces, { from, to }) : null;
+          }),
           thresholdM,
-          pile === null ? area : 'piles',
-          subset.map((m) => [m.id, m.updatedAt ?? m.createdAt, m.points.length]),
-          surfaces.map((s) => s.fingerprint),
+          siteArea ? 'site' : 'piles',
+          siteArea ? null : subset.map(pileRunKey),
+          siteArea ? siteCellM(surfaces) : null,
         ])
       : null;
-  const [done, setDone] = useState<{ key: string; bars: CutFillPair[] } | null>(null);
-  const latest = useRef(0);
+  const [done, setDone] = useState<{ key: string; bars: CutFillPair[]; all: boolean } | null>(null);
   useEffect(() => {
     if (key === null) return;
-    const mine = ++latest.current;
     const ac = new AbortController();
     void (async () => {
       const bars: CutFillPair[] = [];
@@ -92,24 +102,33 @@ export function useStripCutFill(
           const to = captureRef(surfaces, p.to);
           if (!from || !to) continue;
           const refs = { from, to };
-          if (pile === null && area === 'site') {
-            // its own key: the Cut & fill tab's site run is never cancelled by the strip's
-            const site = await wholeSiteCutFill(refs, thresholdM, siteCellM(surfaces), (req) =>
-              engineClient().site(req, `strip-site:${p.from}:${p.to}`),
+          const pk = pairKey(surfaces, refs);
+          if (siteArea) {
+            // its own engine key: the Cut & fill tab's site run is never cancelled by the strip's
+            const site = await wholeSiteCutFill(
+              refs,
+              thresholdM,
+              siteCellM(surfaces),
+              (req) => engineClient().site(req, `strip-site:${p.from}:${p.to}`),
+              { pair: pk, signal: ac.signal },
             );
             if (site.status !== 'refused' && site.status !== 'stale')
               bars.push({ ...p, cutM3: site.cutM3, fillM3: site.fillM3 });
           } else {
-            const rows = await cutFillByPile(subset, refs, thresholdM, stripRun, ac.signal);
+            const rows = await cutFillByPile(subset, refs, thresholdM, stripRun, ac.signal, {
+              pair: pk,
+            });
             const tot = cutFillTotals(rows);
             if (tot.counted > 0) bars.push({ ...p, cutM3: tot.cutM3, fillM3: tot.fillM3 });
           }
+          // each pair's bar shows as soon as it is known
+          if (!ac.signal.aborted) setDone({ key, bars: [...bars], all: false });
         }
       } catch {
         // cancelled, or the engine failed: the bars computed so far stand, the rest stay empty
-        if (ac.signal.aborted || mine !== latest.current) return;
+        if (ac.signal.aborted) return;
       }
-      if (mine === latest.current) setDone({ key, bars });
+      if (!ac.signal.aborted) setDone({ key, bars, all: true });
     })();
     return () => {
       ac.abort();
@@ -118,6 +137,6 @@ export function useStripCutFill(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   if (!enabled) return EMPTY;
-  const current = done?.key === key ? done.bars : [];
-  return { bars: current, waiting, computing: key !== null && done?.key !== key };
+  const mine = done?.key === key ? done : null;
+  return { bars: mine?.bars ?? [], waiting, computing: key !== null && !mine?.all };
 }

@@ -14,11 +14,12 @@ import type {
   SurfaceRef,
   SurveyMeasurement,
 } from '@aio/schema';
-import { figureOn, surfaceOfCapture } from '@aio/survey';
+import { surfaceOfCapture } from '@aio/survey';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import type { SiteReply } from '../engineClient';
 import type { SiteRequest } from '../engineProtocol';
+import { countedFigureOn, type IsCounted } from './inventory';
 
 /** "Ignore under" default, metres (spec: 0.10 m). */
 export const CUT_FILL_DEFAULT_M = 0.1;
@@ -93,13 +94,116 @@ export function cutFillItem(pair: CutFillPair, thresholdM: number): ComparisonIt
 const cancelled = (e: unknown) =>
   e instanceof Error && (e.name === 'RunCancelled' || e.name === 'AbortError');
 
-/** One row per pile, in the order given; a run that fails is a refused row with no figures. */
+// ---------------------------------------------------------------- the shared run cache
+
+/**
+ * The engine's answers, shared by the Cut & fill pane and the dates strip's bars: one per pile,
+ * pair of surfaces and threshold (keyed on the ring, the surfaces' fingerprints and the threshold,
+ * never on a measurement's `updatedAt`), and one per whole-site question. A question asked again
+ * (another view, the area switched back, the measurements saved) is answered from here; a run
+ * still going is shared, not started twice. Failed and cancelled runs are not kept.
+ */
+const CACHE_MAX = 4000;
+const answers = new Map<string, Promise<unknown>>();
+
+/** Forget every kept answer (tests; a project closed). */
+export function clearCutFillCache(): void {
+  answers.clear();
+}
+
+function cached<T>(key: string, start: () => Promise<T>): Promise<T> {
+  const hit = answers.get(key) as Promise<T> | undefined;
+  if (hit) {
+    // the most recently used last, so the oldest go first
+    answers.delete(key);
+    answers.set(key, hit);
+    return hit;
+  }
+  const p = start();
+  answers.set(key, p);
+  p.catch(() => {
+    if (answers.get(key) === p) answers.delete(key);
+  });
+  while (answers.size > CACHE_MAX) {
+    const oldest = answers.keys().next().value;
+    if (oldest === undefined) break;
+    answers.delete(oldest);
+  }
+  return p;
+}
+
+/** `p`, or its rejection as soon as `signal` aborts (the run itself goes on for others). */
+function abortable<T>(p: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return p;
+  signal.throwIfAborted();
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      reject(signal.reason instanceof Error ? signal.reason : new DOMException('', 'AbortError'));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    p.then(
+      (v) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(v);
+      },
+      (e: unknown) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      },
+    );
+  });
+}
+
+/**
+ * A kept answer, or a new run kept for the next asker. A shared run another view cancelled (its
+ * newer run took the engine key) is asked again, unless this asker was cancelled too.
+ */
+async function shared<T>(
+  key: string | undefined,
+  start: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (key === undefined) return abortable(start(), signal);
+  for (let tries = 0; ; tries += 1) {
+    signal?.throwIfAborted();
+    try {
+      return await abortable(cached(key, start), signal);
+    } catch (e) {
+      if (!cancelled(e) || signal?.aborted || tries >= 2) throw e;
+    }
+  }
+}
+
+/** A comparison side with its surface's fingerprint (a re-prepared surface is a new question). */
+export function pairKey(
+  surfaces: readonly Pick<HeightTiles, 'id' | 'fingerprint'>[],
+  pair: CutFillPair,
+): string {
+  const fp = (r: SurfaceRef) =>
+    'surface' in r ? (surfaces.find((s) => s.id === r.surface)?.fingerprint ?? '') : '';
+  return JSON.stringify([pair.from, pair.to, fp(pair.from), fp(pair.to)]);
+}
+
+/** What a pile's run reads of it: its ring and the date the ring is stored for. */
+export function pileRunKey(m: Pick<SurveyMeasurement, 'id' | 'points' | 'scope'>): string {
+  return JSON.stringify([
+    m.id,
+    m.points.map((p) => [p[0], p[1]]),
+    m.scope.kind === 'survey' ? m.scope.capture : null,
+  ]);
+}
+
+/**
+ * One row per pile, in the order given; a run that fails is a refused row with no figures. With
+ * `opts.pair` (the pair's `pairKey`) the answers are kept and shared (see `answers`).
+ */
 export async function cutFillByPile(
   piles: readonly SurveyMeasurement[],
   pair: CutFillPair,
   thresholdM: number,
   run: PileRun,
   signal?: AbortSignal,
+  opts: { pair?: string } = {},
 ): Promise<CutFillRow[]> {
   const item = cutFillItem(pair, thresholdM);
   const out: CutFillRow[] = [];
@@ -108,8 +212,12 @@ export async function cutFillByPile(
     const ring = m.points.map((p): [number, number] => [p[0], p[1]]);
     const capture = m.scope.kind === 'survey' ? m.scope.capture : undefined;
     const base = { id: m.id, label: shortPileLabel(m.label) };
+    const key =
+      opts.pair !== undefined
+        ? JSON.stringify(['pile', opts.pair, thresholdM, pileRunKey(m)])
+        : undefined;
     try {
-      const r = await run(ring, item, capture, m.id);
+      const r = await shared(key, () => run(ring, item, capture, m.id), signal);
       if (r.status === 'refused' || r.status === 'stale') {
         out.push({ ...base, cutM3: 0, fillM3: 0, netM3: 0, status: 'refused', ...why(r) });
       } else {
@@ -164,16 +272,27 @@ export function siteCellM(surfaces: readonly Pick<HeightTiles, 'cellM' | 'bounds
   return Math.max(finest, Math.sqrt(span / MAX_SITE_CELLS));
 }
 
-/** The whole site between the pair, with the threshold as deadband. */
+/**
+ * The whole site between the pair, with the threshold as deadband. With `opts.pair` (the pair's
+ * `pairKey`) the answer is kept and shared (see `answers`).
+ */
 export async function wholeSiteCutFill(
   pair: CutFillPair,
   thresholdM: number,
   cellM: number,
   site: SiteRun,
+  opts: { pair?: string; signal?: AbortSignal } = {},
 ): Promise<Omit<CutFillTotals, 'counted'> & { status: ComparisonResult['status'] }> {
-  const r = await site(
-    { from: pair.from, to: pair.to, cellM, deadbandM: Math.max(0, thresholdM) },
-    'cutfill-site',
+  const key =
+    opts.pair !== undefined ? JSON.stringify(['site', opts.pair, thresholdM, cellM]) : undefined;
+  const r = await shared(
+    key,
+    () =>
+      site(
+        { from: pair.from, to: pair.to, cellM, deadbandM: Math.max(0, thresholdM) },
+        'cutfill-site',
+      ),
+    opts.signal,
   );
   return {
     cutM3: r.result.cutM3,
@@ -185,19 +304,20 @@ export async function wholeSiteCutFill(
 
 /**
  * The inventory's change between the dates: the piles' figures on To minus on From, or null when
- * a pile has no counted figure on either date (the note then says nothing it cannot back).
+ * a pile has no counted figure on either date (the note then says nothing it cannot back). What is
+ * counted is the site inventory's rule (`isCounted`, `useCounted`), never a status alone.
  */
 export function inventoryChange(
   piles: readonly SurveyMeasurement[],
   from: string,
   to: string,
+  isCounted: IsCounted,
 ): number | null {
   let sum = 0;
   for (const m of piles) {
-    const a = figureOn(m, from);
-    const b = figureOn(m, to);
+    const a = countedFigureOn(m, from, isCounted);
+    const b = countedFigureOn(m, to, isCounted);
     if (!a || !b) return null;
-    if ([a.status, b.status].some((s) => s === 'refused' || s === 'stale')) return null;
     sum += b.netM3 - a.netM3;
   }
   return piles.length > 0 ? sum : null;
