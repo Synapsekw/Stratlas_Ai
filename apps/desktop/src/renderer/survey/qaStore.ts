@@ -18,6 +18,7 @@ import type {
 import { createStore, useStore } from 'zustand';
 import type { Jobs } from '../jobs';
 import { bridge, jobs } from '../shell';
+import { prepareRunningOn } from './surfaceStates';
 
 export type QaPanel = 'qa' | 'cleanup' | 'surveys' | null;
 
@@ -201,15 +202,43 @@ export function sourceOfCapture(
   return cloud ? { kind: 'cloud', layer: cloud.id } : null;
 }
 
-/** The id of the survey's prepared surface, preparing it first when it has none. */
+/** Resolves once no `survey.prepare` job is at work on the project in `root` any more. */
+function preparesEnded(root: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (!prepareRunningOn(jobs.getState().jobs, root)) {
+      resolve();
+      return;
+    }
+    const stop = jobs.subscribe((st) => {
+      if (prepareRunningOn(st.jobs, root)) return;
+      stop();
+      resolve();
+    });
+  });
+}
+
+/**
+ * The id of the survey's prepared surface, preparing it first when it has none. A prepare job
+ * already at work on the project (the one started in the background when it opened) is waited
+ * for, and the surface it made is used: one started beside it would write the same surface twice
+ * at once.
+ */
 async function ensureSurface(
   manifest: ProjectManifest,
   capture: string,
 ): Promise<{ id: string } | { error: string }> {
   const have = surfaceOfCapture(get().surfaces, capture);
   if (have) return { id: have.id };
-  const source = sourceOfCapture(manifest, capture);
   const label = manifest.captures.find((c) => c.id === capture)?.label ?? capture;
+  const root = get().root;
+  if (root && prepareRunningOn(jobs.getState().jobs, root)) {
+    set({ busy: 'Waiting for the surfaces being prepared' });
+    await preparesEnded(root);
+    await refreshQa();
+    const made = surfaceOfCapture(get().surfaces, capture);
+    if (made) return { id: made.id };
+  }
+  const source = sourceOfCapture(manifest, capture);
   if (!source) return { error: `${label} has no DSM or point cloud to check.` };
   set({ busy: `Preparing the surface of ${label}` });
   const id = `${source.kind}-${capture}`.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 80);
