@@ -174,6 +174,7 @@ describe('the view store', () => {
       order: 'file',
       severity: null,
       scope: null,
+      toReview: false,
     });
   });
 
@@ -369,5 +370,20 @@ describe('a filter that matches nothing', () => {
     expect(noPhotoMatches([{ id: 'thermal', items }, ...sets], index, view({ severity: 3 }))).toBe(
       false,
     );
+  });
+});
+
+describe('To review', () => {
+  it('keeps only photos with waiting drafts under To review', () => {
+    const withDrafts = new Map(index);
+    const key = photoKey('photos', 'p2');
+    const p2 = withDrafts.get(key);
+    if (!p2) throw new Error('p2 has findings');
+    withDrafts.set(key, { ...p2, drafts: 1 });
+    expect(ids(photosInView(items, 'photos', withDrafts, view({ toReview: true })))).toEqual([
+      'p2',
+    ]);
+    expect(ids(photosInView(items, 'photos', index, view({ toReview: true })))).toEqual([]);
+    expect(DEFAULT_MEDIA_VIEW.toReview).toBe(false);
   });
 });

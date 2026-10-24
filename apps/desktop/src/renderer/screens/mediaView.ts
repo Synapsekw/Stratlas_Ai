@@ -26,6 +26,8 @@ export interface MediaViewState {
   severity: number | 'uncertain' | null;
   /** Photo keys, `photoKey(layer, photo)`, with the label the chip shows. */
   scope: { label: string; ids: readonly string[] } | null;
+  /** Only photos with drafts waiting for review (Inspect's To review chip). */
+  toReview: boolean;
 }
 
 export const DEFAULT_MEDIA_VIEW: MediaViewState = {
@@ -33,6 +35,7 @@ export const DEFAULT_MEDIA_VIEW: MediaViewState = {
   order: 'file',
   severity: null,
   scope: null,
+  toReview: false,
 };
 
 export const mediaView: StoreApi<MediaViewState> = createStore<MediaViewState>(
@@ -75,7 +78,7 @@ export function useMediaRevealAsked(): number {
   return useStore(mediaReveal, (s) => s.asked);
 }
 
-/** The photos of a set the view shows, in order: scope, then level, then only-with-findings, then order. */
+/** The photos of a set the view shows, in order: scope, then level, then to-review, then only-with-findings, then order. */
 export function photosInView<T extends { id: string }>(
   items: readonly T[],
   layer: string,
@@ -91,6 +94,7 @@ export function photosInView<T extends { id: string }>(
     const rank = rankOfSeverity(v.severity);
     kept = kept.filter((p) => index.get(photoKey(layer, p.id))?.levels.includes(rank) === true);
   }
+  if (v.toReview) kept = kept.filter((p) => (index.get(photoKey(layer, p.id))?.drafts ?? 0) > 0);
   return orderPhotos(kept, layer, index, v.onlyFindings, v.order);
 }
 
