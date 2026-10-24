@@ -40,10 +40,11 @@
 }
 
 /* how far the follower's frame is from the lead's spot: a quiet chip on the picture that never
-   covers it, amber once the routes have parted */
+   covers it, amber once the routes have parted. It sits below the north tick (top 0, about 20 px
+   tall, anywhere along the top edge) so the two never overlap */
 .walk-dist-chip {
   position: absolute;
-  top: 10px;
+  top: 28px;
   left: 10px;
   display: inline-flex;
   align-items: center;
@@ -67,8 +68,9 @@
   background: var(--s3);
 }
 
-/* the scrubber with the detours shaded: stretches where the other walk took another way. The
-   bands sit behind the track, inset by half the thumb so they line up with its travel */
+/* the scrubber with the detours marked: stretches where the other walk took another way. Each is
+   an amber strip just under the track (the track would hide a band behind it), inset by half the
+   thumb so it lines up with the thumb's travel; the thumb passes over it */
 .walk-scrub {
   order: -1;
   flex: 1 0 100%;
@@ -89,12 +91,10 @@
 }
 .walk-detour {
   position: absolute;
-  top: 50%;
-  height: 10px;
-  transform: translateY(-50%);
-  border-radius: var(--r-2);
-  background: var(--s3-a);
-  box-shadow: inset 0 0 0 1px var(--warn-line);
+  top: calc(50% + 5px);
+  height: 3px;
+  border-radius: var(--r-pill);
+  background: var(--warn);
 }
 
 /* the corner map of the lead pane: both tracks and both cones */
