@@ -1149,3 +1149,46 @@ describe('the stockpile table and the volume over time section', () => {
     expect(a?.rows.map((r) => r.valueM3 === null)).toEqual([true, true, false]);
   });
 });
+
+describe("each survey date's own pile outline", () => {
+  // Stockpile A's box on the first two dates, Stockpile B's on the third: a pile whose toe line
+  // moved. Each date is worked out inside that date's outline, as the Volumes tab does.
+  const moved = vol(
+    'm-moved',
+    'Moved pile',
+    ring(60, 80),
+    [{ id: 'pile', from: { kind: 'fit-plane' }, to: { kind: 'current' }, useDeadband: false }],
+    {
+      outlines: [
+        { capture: 'c1', points: ring(15, 45) },
+        { capture: 'c2', points: ring(15, 45) },
+        { capture: 'c3', points: ring(60, 80) },
+      ],
+    },
+  );
+  const withMoved = () =>
+    buildSurveyData({ ...files, measurements: [...files.measurements, moved] }, reader.bytes, {
+      need: 'stockpile-csv',
+    });
+  const en = (r: [number, number, number][]) => r.map((q) => [q[0], q[1]]);
+
+  it("works each date out on that date's outline", async () => {
+    const p = (await withMoved()).volumes.piles.find((x) => x.id === 'm-moved');
+    expect(p?.rows.map((r) => r.capture)).toEqual(['c1', 'c2', 'c3']);
+    // the boxes' analytic volumes: 10 x 10 x 2, 10 x 10 x 3 under A's outline, 10 x 10 x 2 under B's
+    [200, 300, 200].forEach((want, i) => {
+      near(p?.rows[i]?.valueM3, want);
+    });
+  });
+
+  it('prints the outline of each date, the latest as the pile outline', async () => {
+    const d = await withMoved();
+    const p = d.volumes.piles.find((x) => x.id === 'm-moved');
+    expect(p?.outlines.c1).toEqual(en(ring(15, 45)));
+    expect(p?.outlines.c3).toEqual(en(ring(60, 80)));
+    expect(p?.outline).toEqual(en(ring(60, 80)));
+    // a pile without outlines has its drawn outline on every date
+    const a = d.volumes.piles.find((x) => x.id === 'm-pile');
+    expect(a?.outlines.c1).toEqual(en(ring(15, 45)));
+  });
+});

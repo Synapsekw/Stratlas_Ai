@@ -55,6 +55,7 @@ import {
   type ProjectManifest,
   type ReportSectionId,
   type SiteMaterial,
+  type SitePoint,
   type SurfaceRef,
   type SurveyMeasurement,
   type SurveyTemplate,
@@ -84,6 +85,7 @@ import {
   sampleSection,
   samplerOf,
   seriesApplies,
+  seriesRequests,
   sideLabel,
   surfaceOfCapture,
   toleranceShare,
@@ -549,8 +551,34 @@ export interface PileOverTime {
   carried: string | null;
   /** One row per survey date (`volumeRows` of `pileSeries`), stale rows marked. */
   rows: TimeRow[];
-  /** Its outline (E, N) in the project CRS, as drawn: the site page's stockpile map. */
+  /**
+   * Its outline (E, N) in the project CRS, as drawn, on the latest survey date: the site page's
+   * stockpile map.
+   */
   outline: [number, number][];
+  /** Its outline (E, N) as drawn on each survey date, by capture id (`outlineOn`). */
+  outlines: Record<string, [number, number][]>;
+}
+
+/**
+ * A measurement's drawn outline on each capture (one drawing per distinct outline) and the latest
+ * as its outline; `points` on every capture without one of its own.
+ */
+function outlinesOf(
+  m: SurveyMeasurement,
+  ids: readonly string[],
+  draw: (points: readonly SitePoint[]) => [number, number][],
+): Pick<PileOverTime, 'outline' | 'outlines'> {
+  const outlines: Record<string, [number, number][]> = {};
+  for (const sr of seriesRequests(m, ids)) {
+    const drawn = draw(sr.ring);
+    for (const c of sr.captures) outlines[c] = drawn;
+  }
+  const last = ids.at(-1);
+  return {
+    outline: (last !== undefined ? outlines[last] : undefined) ?? draw(m.points),
+    outlines,
+  };
 }
 
 /** The volume measurements over time and the site inventory (the Volumes view's rule). */
@@ -653,8 +681,8 @@ async function volumesOverTime(
   info: {
     ref: (m: SurveyMeasurement) => string;
     material: (m: SurveyMeasurement) => SiteMaterial | null;
-    /** The outline as drawn (E, N). */
-    outline: (m: SurveyMeasurement) => [number, number][];
+    /** An outline of the measurement as drawn (E, N). */
+    outline: (m: SurveyMeasurement, points: readonly SitePoint[]) => [number, number][];
     tick: () => void;
   },
 ): Promise<VolumesOverTime> {
@@ -668,26 +696,36 @@ async function volumesOverTime(
     let next = m;
     if (engine && it && m.points.length >= 3) {
       const scope = scopeOf(m);
-      const ring = ringOf(m);
       try {
         const [fp] = (await engine.prints(m)) ?? [];
         if (fp !== undefined) storedPrint.set(m.id, fp);
         if (seriesApplies(it) && !carriedItem(m, it.id)) {
-          const req = { ring, item: it, captures: ids, ...(scope !== undefined ? { scope } : {}) };
-          const fps = await engine.session.seriesFingerprints(req);
+          // each date on its own outline (`seriesRequests`, the Volumes tab's runs): one run per
+          // distinct outline, each date's fingerprint of the ring it is worked out on
           const prints: Record<string, string> = {};
-          ids.forEach((c, k) => {
-            const f = fps[k];
-            if (f !== undefined) prints[`${it.id} ${c}`] = f;
-          });
+          const fresh: ComparisonResult[] = [];
+          for (const sr of seriesRequests(m, ids)) {
+            const req = {
+              ring: sr.ring.map((p): [number, number] => [p[0], p[1]]),
+              item: it,
+              captures: sr.captures,
+              ...(scope !== undefined ? { scope } : {}),
+            };
+            const fps = await engine.session.seriesFingerprints(req);
+            sr.captures.forEach((c, k) => {
+              const f = fps[k];
+              if (f !== undefined) prints[`${it.id} ${c}`] = f;
+            });
+            const need = fill ? datesToRun(m, it.id, sr.captures, fps) : [];
+            if (need.length > 0)
+              fresh.push(...(await engine.session.series({ ...req, captures: need })));
+          }
           seriesPrints.set(m.id, prints);
-          const need = fill ? datesToRun(m, it.id, ids, fps) : [];
-          if (need.length > 0) {
-            const out = await engine.session.series({ ...req, captures: need });
-            const fresh = new Set(out.map(seriesKeyOf));
+          if (fresh.length > 0) {
+            const keys = new Set(fresh.map(seriesKeyOf));
             next = {
               ...m,
-              series: [...(m.series ?? []).filter((r) => !fresh.has(seriesKeyOf(r))), ...out],
+              series: [...(m.series ?? []).filter((r) => !keys.has(seriesKeyOf(r))), ...fresh],
             };
           }
         }
@@ -733,7 +771,7 @@ async function volumesOverTime(
           info.material(m),
           dateOf,
         ),
-        outline: info.outline(m),
+        ...outlinesOf(m, ids, (points) => info.outline(m, points)),
       };
     }),
   };
@@ -1012,7 +1050,10 @@ export async function buildSurveyData(
     {
       ref: refOf,
       material,
-      outline: (m) => drawnPoints(m, manifest).map((p): [number, number] => [p[0], p[1]]),
+      outline: (m, points) =>
+        drawnPoints({ scope: m.scope, points: [...points] }, manifest).map(
+          (p): [number, number] => [p[0], p[1]],
+        ),
       tick,
     },
   );
