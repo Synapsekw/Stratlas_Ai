@@ -51,7 +51,7 @@ Select several measurements in the list: the totals add their comparisons up. **
 
 A volume's card names its base in a chip, for example "Base: Triangulated toe". Click it to pick another:
 
-- **Triangulated toe**, the default: the surveying norm for piles on uneven ground;
+- **Triangulated toe**, the default: the surveying norm for piles on uneven ground. Where a pile's edge runs along another pile's, that stretch is the saddle between the two heaps, not the ground, so the base stands on the rest of the toe there (the edge-based bases below do the same);
 - **Lowest point**: bins, bunkers, piles against walls;
 - **Best-fit plane**: a flat, level pad;
 - **Fixed level**: a known floor height;

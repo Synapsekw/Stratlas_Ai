@@ -76,6 +76,7 @@ import {
   kitDensity,
   openWithKitPiles,
   pileMaterial,
+  pileNeighbours,
   repairKitHeights,
   type KitDensity,
   type KitHeightAt,
@@ -479,7 +480,12 @@ class Engine {
       ringOf(m),
       item,
       this.resolver(capture),
-      { site: this.ctx.site, shared: newShared(), ...this.ringShift(m) },
+      {
+        site: this.ctx.site,
+        shared: newShared(),
+        ...this.ringShift(m),
+        ...this.neighbours(m, m.points, capture),
+      },
       grid,
     ).catch((e: unknown) => {
       this.problems.set(key, e instanceof Error ? e.message : String(e));
@@ -494,6 +500,20 @@ class Engine {
     return this.problems.get(`${m.id}\u0000${item.id}\u0000${capture}`) ?? '';
   }
 
+  /**
+   * The other piles next to `ring` on `capture` (default: the date it is viewed on), as the app's
+   * `neighboursOf` finds them: an edge shared with one is left out of the perimeter base.
+   */
+  neighbours(m: SurveyMeasurement, ring: readonly SitePoint[], capture?: string) {
+    const date = capture ?? scopeOf(m) ?? this.ctx.captures.at(-1);
+    const nb = pileNeighbours(
+      { id: m.id, scope: m.scope, points: ring },
+      this.files.measurements,
+      date,
+    );
+    return nb.length > 0 ? { neighbours: nb } : {};
+  }
+
   /** The fingerprint each item of a measurement would have now (nothing computed), or null. */
   async prints(m: SurveyMeasurement): Promise<string[] | null> {
     if (m.family !== 'polygon' || m.items.length === 0 || m.points.length < 3) return null;
@@ -503,6 +523,7 @@ class Engine {
         ring: ringOf(m),
         items: m.items,
         ...(scope !== undefined ? { capture: scope } : {}),
+        ...this.neighbours(m, m.points),
       });
     } catch {
       return null;
@@ -723,12 +744,24 @@ async function volumesOverTime(
           // distinct outline, each date's fingerprint of the ring it is worked out on
           const prints: Record<string, string> = {};
           const fresh: ComparisonResult[] = [];
-          for (const sr of seriesRequests(m, ids)) {
+          // and with the piles next to it on each date (the Volumes tab's runs again)
+          const runs = seriesRequests(m, ids).flatMap((sr) => {
+            const by = new Map<string, { ring: readonly SitePoint[]; captures: string[] }>();
+            for (const c of sr.captures) {
+              const key = JSON.stringify(engine.neighbours(m, sr.ring, c));
+              const known = by.get(key);
+              if (known) known.captures.push(c);
+              else by.set(key, { ring: sr.ring, captures: [c] });
+            }
+            return [...by.values()];
+          });
+          for (const sr of runs) {
             const req = {
               ring: sr.ring.map((p): [number, number] => [p[0], p[1]]),
               item: it,
               captures: sr.captures,
               ...(scope !== undefined ? { scope } : {}),
+              ...engine.neighbours(m, sr.ring, sr.captures[0]),
             };
             const fps = await engine.session.seriesFingerprints(req);
             sr.captures.forEach((c, k) => {

@@ -76,6 +76,8 @@ interface FixtureCase {
     ring?: Turn;
     ringCurrent?: Turn;
   };
+  /** The other piles' outlines on the date, stored as `ring` is (`CompareOptions.neighbours`). */
+  neighbours?: [number, number][][];
   expected: Pick<
     ComparisonResult,
     | (typeof NUMBERS)[number]
@@ -193,6 +195,7 @@ describe('TypeScript executor against the Python core (shared fixtures)', () => 
       ...(c.lineUp?.ringCurrent ? { ringCurrent: c.lineUp.ringCurrent } : {}),
       ...(c.lineUpTurn?.ring ? { ringTurn: c.lineUpTurn.ring } : {}),
       ...(c.lineUpTurn?.ringCurrent ? { ringCurrentTurn: c.lineUpTurn.ringCurrent } : {}),
+      ...(c.neighbours ? { neighbours: c.neighbours } : {}),
       now: () => '2026-10-09T00:00:00Z',
     });
     const e = c.expected;

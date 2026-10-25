@@ -109,6 +109,7 @@ export class EngineSession {
           ...(signal ? { signal } : {}),
           shared,
           ...this.ringShifts(req.capture),
+          ...(req.neighbours ? { neighbours: req.neighbours } : {}),
         },
         out,
       );
@@ -128,7 +129,9 @@ export class EngineSession {
   async fingerprints(req: RunRequest): Promise<string[]> {
     const out: string[] = [];
     for (const item of req.items)
-      out.push(await this.print(req.ring, item, this.resolver(req.capture), req.capture));
+      out.push(
+        await this.print(req.ring, item, this.resolver(req.capture), req.capture, req.neighbours),
+      );
     return out;
   }
 
@@ -138,6 +141,7 @@ export class EngineSession {
     item: ComparisonItem,
     resolve: Resolve,
     scope: string | undefined,
+    neighbours?: SeriesRequest['neighbours'],
   ): Promise<string> {
     const side = async (ref: SurfaceRef): Promise<ResolvedSurface | null> => {
       if (!isSurface(ref)) return null;
@@ -156,6 +160,7 @@ export class EngineSession {
       this.ctx.site,
       shifts.ringCurrent,
       shifts.ringCurrentTurn,
+      neighbours,
     );
   }
 
@@ -166,6 +171,7 @@ export class EngineSession {
       site: this.ctx.site,
       ...(signal ? { signal } : {}),
       ...this.ringShifts(req.scope),
+      ...(req.neighbours ? { neighbours: req.neighbours } : {}),
     });
   }
 
@@ -174,7 +180,7 @@ export class EngineSession {
     if (!seriesApplies(req.item)) return [];
     const out: string[] = [];
     for (const c of req.captures)
-      out.push(await this.print(req.ring, req.item, this.resolver(c), req.scope));
+      out.push(await this.print(req.ring, req.item, this.resolver(c), req.scope, req.neighbours));
     return out;
   }
 
@@ -184,6 +190,7 @@ export class EngineSession {
       site: this.ctx.site,
       ...(signal ? { signal } : {}),
       ...this.ringShifts(req.capture),
+      ...(req.neighbours ? { neighbours: req.neighbours } : {}),
     });
   }
 

@@ -142,6 +142,15 @@ def surfaces() -> dict[str, Any]:
     s["pad/sub"] = tin("Pad design, Subgrade", "fp-pad-sub", v, t, offset=-0.3)
     v2, t2 = pad_tin(101.0, 4.0, 7.5, cx=10.5, cy=9.5)
     s["pad2/top"] = tin("Second pad, Top", "fp-pad2-top", v2, t2)
+    # two cones 10 m apart, radius 7 m, 4 m high: they merge in a saddle 1.14 m high at x = 14
+    s["two-heaps"] = grid(
+        "Two heaps",
+        "fp-two-heaps",
+        0.5,
+        60,
+        40,
+        lambda X, Y: np.maximum(cone(9, 10, 7, 4)(X, Y), cone(19, 10, 7, 4)(X, Y)),
+    )
     return s
 
 
@@ -149,6 +158,17 @@ def circle(cx, cy, r, n=24, rot=0.0):
     return [
         [E0 + cx + r * math.cos(rot + 2 * math.pi * k / n), N0 + cy + r * math.sin(rot + 2 * math.pi * k / n)]
         for k in range(n)
+    ]
+
+
+def half_disc(cx, cy, r, cut, side, n=32):
+    """The circle of radius r about (cx, cy) on one side of the line x = cut (side -1 west, 1
+    east): the arc, then the chord along the cut."""
+    t = math.acos((cut - cx) / r)
+    a0, a1 = (t, 2 * math.pi - t) if side < 0 else (-t, t)
+    return [
+        [E0 + cx + r * math.cos(a0 + (a1 - a0) * k / n), N0 + cy + r * math.sin(a0 + (a1 - a0) * k / n)]
+        for k in range(n + 1)
     ]
 
 
@@ -395,6 +415,52 @@ def cases() -> list[dict[str, Any]]:
         item("a", SV("flat"), SV("cone")),
         "A polygon that crosses itself is refused",
     )
+    # piles that touch: the west heap's edge along x = 14 is the saddle it shares with the east heap
+    west = half_disc(9, 10, 8, 14, -1)
+    east = half_disc(19, 10, 8, 14, 1)
+    far = [[e + 30, n] for e, n in east]
+    add(
+        "smart-shared-edge",
+        west,
+        item("a", {"kind": "smart"}, SV("two-heaps")),
+        "A smart base leaves out the edge it shares with the next pile (on the floor all round)",
+        neighbours=[far, east],
+    )
+    add(
+        "smart-shared-edge-alone",
+        west,
+        item("a", {"kind": "smart"}, SV("two-heaps")),
+        "The same pile without its neighbour: the base climbs to the saddle",
+    )
+    add(
+        "smart-far-neighbour",
+        west,
+        item("a", {"kind": "smart"}, SV("two-heaps")),
+        "A pile further than 0.5 m away changes nothing, the fingerprint included",
+        neighbours=[far],
+    )
+    add(
+        "plane-shared-edge",
+        west,
+        item("a", {"kind": "fit-plane"}, SV("two-heaps")),
+        "A best-fit plane leaves the shared edge out too",
+        neighbours=[east],
+    )
+    add(
+        "level-shared-edge",
+        west,
+        item("a", {"kind": "reference", "mode": "level", "levelM": 100.0}, SV("two-heaps")),
+        "A fixed level is not sampled on the edge: the neighbour neither changes it nor its print",
+        neighbours=[east],
+    )
+    add(
+        "smart-shared-edge-lined-up",
+        [[e - 2.0, n + 1.0] for e, n in west],
+        item("a", {"kind": "smart"}, SV("two-heaps")),
+        "A survey-scoped ring and its neighbour, both stored unshifted, placed together",
+        neighbours=[[[e - 2.0, n + 1.0] for e, n in east]],
+        lineUp={"ringShift": [2.0, -1.0]},
+    )
     return c
 
 
@@ -459,6 +525,7 @@ def run_case(surfs: dict[str, Any], case: dict[str, Any]) -> dict[str, Any]:
             if "ringCurrent" in up or "ringCurrent" in turn
             else None
         ),
+        neighbours=case.get("neighbours"),
     )
     r.pop("computedAt", None)
     r.pop("engine", None)

@@ -957,6 +957,11 @@ export const SurveyCompareParams = z
             item: ComparisonItem,
             /** The capture the measurement is viewed on (resolves `current` and `previous`). */
             capture: Id.optional(),
+            /**
+             * The other piles' outlines on that date, stored as `ring` is: an edge the ring
+             * shares with one is left out of its perimeter base (data-conventions section 26).
+             */
+            neighbours: z.array(SiteRing).max(5000).optional(),
           })
           .strict(),
       )

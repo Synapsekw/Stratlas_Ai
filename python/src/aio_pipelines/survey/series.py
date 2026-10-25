@@ -50,6 +50,7 @@ def compare_series(
     now: str | None = None,
     ring_shift: LineUp = ZERO,
     ring_current: LineUp | None = None,
+    neighbours: list[Any] | None = None,
 ) -> list[dict[str, Any]]:
     """One ``ComparisonResult`` per capture of ``captures``, in their order (see the module)."""
     out: list[dict[str, Any]] = []
@@ -62,6 +63,7 @@ def compare_series(
             now=now,
             ring_shift=ring_shift,
             ring_current=ring_current,
+            neighbours=neighbours,
         )
         if item["from"].get("kind") == "current":
             r["fromCapture"] = cap
@@ -99,6 +101,7 @@ def base_spread(
     now: str | None = None,
     ring_shift: LineUp = ZERO,
     ring_current: LineUp | None = None,
+    neighbours: list[Any] | None = None,
 ) -> dict[str, Any] | None:
     """``{"pct", "nets": [{"base", "netM3"}]}`` over ``SPREAD_BASES``, or ``None`` (see the module)."""
     if is_surface(item["from"]):
@@ -114,6 +117,7 @@ def base_spread(
             now=now,
             ring_shift=ring_shift,
             ring_current=ring_current,
+            neighbours=neighbours,
         )
         if r["status"] in ("ok", "partial"):
             totals.append(float(r["totalM3"]))

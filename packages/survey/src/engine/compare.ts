@@ -35,8 +35,10 @@ import {
   coverage,
   crossesItself,
   densify,
+  nearRings,
   normalRing,
   ringArea,
+  ringsWithin,
   signedArea,
   windowOver,
   type Window,
@@ -61,6 +63,11 @@ import {
 export const ENGINE_VERSION = 1;
 export const PARTIAL_SHARE = 0.02;
 export const REFUSE_SHARE = 0.2;
+/**
+ * A perimeter sample this close (metres) to another pile's edge is on the edge the two piles share
+ * (`CompareOptions.neighbours`): the saddle between two heaps, not the ground under either.
+ */
+export const NEIGHBOUR_M = 0.5;
 const BAND = 256;
 const BASE_BOTH_SIDES = 'At least one side must be a surface: a base is sampled on the other side.';
 const SURFACE_KINDS: readonly string[] = ['survey', 'current', 'previous', 'design'];
@@ -154,6 +161,35 @@ export interface CompareOptions {
    * its uncovered share (still reported in `uncoveredM2`); only for no common cell at all.
    */
   overlapOnly?: boolean;
+  /**
+   * The outlines of the other piles on the same date, `[E, N]`, stored as the ring is (the same
+   * frame, placed with it). Where the ring's edge comes within `NEIGHBOUR_M` of one, the two piles
+   * share that edge: it runs over the saddle between them, not over the ground, so the perimeter
+   * bases (smart, best-fit plane, mean, lowest and highest perimeter point) leave the samples
+   * there out and stand on the rest of the toe, as long as three samples remain (else every sample
+   * counts). The outlines that come that close join the fingerprint (`neighbours`, sorted, absent
+   * when none does, so a pile on its own keeps the fingerprint it had).
+   */
+  neighbours?: readonly (readonly (readonly number[])[])[];
+}
+
+/**
+ * The outlines of `neighbours` that come within `NEIGHBOUR_M` of `ring` (both as stored), each a
+ * normal ring, in canonical order (so the caller's order does not change the fingerprint).
+ */
+export function touchingRings(
+  ring: readonly XY[],
+  neighbours: CompareOptions['neighbours'],
+): [number, number][][] {
+  if (!neighbours?.length || ring.length < 3) return [];
+  const out: { key: string; ring: [number, number][] }[] = [];
+  for (const nb of neighbours) {
+    const r = normalRing(nb);
+    if (r.length < 2 || !ringsWithin(ring, r, NEIGHBOUR_M)) continue;
+    out.push({ key: canonical(r.map((p) => [p[0], p[1]])), ring: r });
+  }
+  out.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  return out.filter((x, i) => i === 0 || out[i - 1]?.key !== x.key).map((x) => x.ring);
 }
 
 /** Coverage and surface samples of one polygon, reused by its items (same grid, same cells). */
@@ -187,7 +223,9 @@ export async function fingerprint(
   site?: SiteContext,
   ringCurrent?: Shift,
   ringCurrentTurn?: Turn,
+  neighbours?: CompareOptions['neighbours'],
 ): Promise<string> {
+  const touching = onPerimeter(item) ? touchingRings(ring, neighbours) : [];
   const lineUp: Record<string, Json> = {};
   for (const [k, v] of [
     ['from', rf?.current],
@@ -216,9 +254,28 @@ export async function fingerprint(
     site: site as unknown as Json | undefined,
     lineUp: Object.keys(lineUp).length > 0 ? lineUp : undefined,
     lineUpTurn: Object.keys(lineUpTurn).length > 0 ? lineUpTurn : undefined,
+    neighbours: touching.length > 0 ? touching : undefined,
   };
   return `sha256:${await sha256Hex(canonical(obj))}`;
 }
+
+/** True for a base sampled along the polygon's edge (the ones a shared edge changes). */
+export function perimeterBase(spec: SurfaceRef | BaseSpec): boolean {
+  switch (spec.kind) {
+    case 'smart':
+    case 'fit-plane':
+    case 'perimeter-mean':
+      return true;
+    case 'reference':
+      return spec.mode === 'perimeter-min' || spec.mode === 'perimeter-max';
+    default:
+      return false;
+  }
+}
+
+/** The item stands one side on a perimeter base. */
+const onPerimeter = (item: ComparisonItem): boolean =>
+  perimeterBase(item.from) || perimeterBase(item.to);
 
 // ------------------------------------------------------------------------------------ labels
 
@@ -435,6 +492,7 @@ export async function compareItem(
       opts.ringCurrent !== undefined || opts.ringCurrentTurn !== undefined
         ? opts.ringCurrentTurn
         : opts.ringTurn,
+      opts.neighbours,
     ),
     computedAt: (opts.now ?? (() => new Date().toISOString()))(),
   };
@@ -485,6 +543,15 @@ export async function compareItem(
   const deadband = item.deadbandM ?? 0;
   const useDb = item.useDeadband;
   const surf = isSurface(to) && !isSurface(from) ? rt : !isSurface(to) ? rf : null;
+  // the piles this one shares an edge with, placed as the ring is, in the comparison's frame
+  const free: [number, number][][] = (
+    onPerimeter(item) ? touchingRings(storedRing, opts.neighbours) : []
+  ).map((r) =>
+    r.map((p) => {
+      const [e, n] = shiftEN<[number, number]>(p, placed);
+      return [e - le, n - ln];
+    }),
+  );
   let tot: Totals;
   let labels: { from?: string; to?: string };
   try {
@@ -496,7 +563,7 @@ export async function compareItem(
         rf,
         rt,
         surf,
-        { le, ln, cell, deadband, useDb },
+        { le, ln, cell, deadband, useDb, free },
         signal,
         opts.shared,
         gridOut,
@@ -512,6 +579,7 @@ export async function compareItem(
         ln,
         useDb ? deadband : 0,
         signal,
+        free,
       );
     }
   } catch (e) {
@@ -546,20 +614,31 @@ export async function compareItem(
   return res;
 }
 
+/**
+ * The perimeter samples a base stands on: every `step` along the ring, those with a height, less
+ * the ones within `NEIGHBOUR_M` of an edge shared with another pile (`free`), as long as three
+ * remain.
+ */
 function perimeterOf(
   lring: readonly XY[],
   step: number,
   points: (xs: Float64Array, ys: Float64Array) => Promise<Float64Array>,
+  free: readonly (readonly XY[])[] = [],
 ): () => Promise<Samples> {
   let cached: Promise<Samples> | null = null;
   return () => {
     cached ??= (async () => {
       const { xs, ys } = densify(lring, step);
       const zs = await points(xs, ys);
-      const keep: number[] = [];
+      let keep: number[] = [];
       zs.forEach((z, k) => {
         if (Number.isFinite(z)) keep.push(k);
       });
+      if (free.length > 0) {
+        const near = nearRings(xs, ys, free, NEIGHBOUR_M);
+        const ground = keep.filter((k) => near[k] === 0);
+        if (ground.length >= 3) keep = ground;
+      }
       return {
         xs: Float64Array.from(keep, (k) => xs[k] ?? 0),
         ys: Float64Array.from(keep, (k) => ys[k] ?? 0),
@@ -576,7 +655,14 @@ async function gridPath(
   rf: ResolvedSurface | null,
   rt: ResolvedSurface | null,
   surf: ResolvedSurface | null,
-  g: { le: number; ln: number; cell: number; deadband: number; useDb: boolean },
+  g: {
+    le: number;
+    ln: number;
+    cell: number;
+    deadband: number;
+    useDb: boolean;
+    free: readonly (readonly XY[])[];
+  },
   signal: AbortSignal | undefined,
   shared: Shared | undefined,
   gridOut: GridOut[] | undefined,
@@ -614,7 +700,7 @@ async function gridPath(
     const spec = item[name] as BaseSpec;
     const [base, label] = await buildBase(spec, {
       ring: lring,
-      perimeter: perimeterOf(lring, cell, (xs, ys) => s.points(xs, ys)),
+      perimeter: perimeterOf(lring, cell, (xs, ys) => s.points(xs, ys), g.free),
       interior,
       atPoints: (xs, ys) => s.points(xs, ys),
       toLocal: (e, n) => [e - le, n - ln],
@@ -699,6 +785,7 @@ async function exactPath(
   ln: number,
   db: number,
   signal: AbortSignal | undefined,
+  free: readonly (readonly XY[])[],
 ): Promise<[Totals, { from?: string; to?: string }]> {
   const ptris = earClip(lring);
   const sides: { from?: ExactSide; to?: ExactSide } = {};
@@ -713,7 +800,7 @@ async function exactPath(
       Promise.resolve(samplePoints(sTin, xs, ys));
     const [base, label] = await buildBase(item[name] as BaseSpec, {
       ring: lring,
-      perimeter: perimeterOf(lring, step, points),
+      perimeter: perimeterOf(lring, step, points, free),
       interior: () => Promise.resolve(tinExtremes(ptris, sTin)),
       atPoints: points,
       toLocal: (e, n) => [e - le, n - ln],

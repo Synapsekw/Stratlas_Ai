@@ -10,8 +10,9 @@ import type {
   SurveyMeasurement,
   VolumesFile,
 } from '@aio/schema';
-import { ringArea } from '../engine/geometry';
-import { applyEdits, drapeZ, overlapShare, type KitHeightAt } from './kitPiles';
+import { NEIGHBOUR_M } from '../engine/compare';
+import { ringArea, ringsWithin } from '../engine/geometry';
+import { applyEdits, drapeZ, overlapShare, SAME_PILE_SHARE, type KitHeightAt } from './kitPiles';
 
 /** The outline a measurement has on `capture`: that date's own, else `points`. */
 export function outlineOn(
@@ -19,6 +20,48 @@ export function outlineOn(
   capture: string,
 ): readonly SitePoint[] {
   return m.outlines?.find((o) => o.capture === capture)?.points ?? m.points;
+}
+
+/**
+ * The other piles next to `m` on `capture` (the engine's `CompareOptions.neighbours`): the outline
+ * on that date of every other volume polygon in the same frame (both site-wide, or both of the same
+ * survey) whose edge comes within `NEIGHBOUR_M` of `m`'s outline on that date. A pile with per-date
+ * outlines but none on `capture` is not on that date; one without any is on every date. A polygon
+ * sharing half the smaller outline or more with `m` (the same pile drawn again, or one holding it)
+ * is never a neighbour: its edge is not a saddle between two heaps. In the order of `all`.
+ */
+export function pileNeighbours(
+  m: {
+    id: string;
+    scope: SurveyMeasurement['scope'];
+    points: readonly SitePoint[];
+    outlines?: SurveyMeasurement['outlines'];
+  },
+  all: readonly SurveyMeasurement[],
+  capture: string | undefined,
+): [number, number][][] {
+  const ownPts =
+    (capture === undefined ? undefined : m.outlines?.find((o) => o.capture === capture)?.points) ??
+    m.points;
+  if (ownPts.length < 3) return [];
+  const own: [number, number][] = ownPts.map((p) => [p[0], p[1]]);
+  const frame = (x: { scope: SurveyMeasurement['scope'] }) =>
+    x.scope.kind === 'survey' ? `survey:${x.scope.capture}` : x.scope.kind;
+  const out: [number, number][][] = [];
+  for (const x of all) {
+    if (x.id === m.id || x.family !== 'polygon' || x.tool !== 'volume') continue;
+    if (frame(x) !== frame(m)) continue;
+    const pts =
+      capture === undefined || !x.outlines?.length
+        ? x.points
+        : x.outlines.find((o) => o.capture === capture)?.points;
+    if (!pts || pts.length < 3) continue;
+    const ring: [number, number][] = pts.map((p) => [p[0], p[1]]);
+    if (!ringsWithin(own, ring, NEIGHBOUR_M)) continue;
+    if (overlapShare(own, ring) >= SAME_PILE_SHARE) continue;
+    out.push(ring);
+  }
+  return out;
 }
 
 /** One series run: an outline and the captures worked out on it, in capture order. */

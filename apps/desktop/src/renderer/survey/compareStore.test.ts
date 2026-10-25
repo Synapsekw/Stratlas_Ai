@@ -500,6 +500,57 @@ describe('results over time and the spread across bases', () => {
     spy.mockRestore();
   });
 
+  it('runs a pile with the piles it shares an edge with, and a moved neighbour makes it stale', async () => {
+    // a second pile whose edge runs along the west side of m1's ring, and one far away
+    const west: SurveyMeasurement = {
+      ...pit,
+      id: 'm2',
+      label: 'West',
+      points: [
+        [302002, 2574005, 0],
+        [302002.2, 2574015, 0],
+        [301990, 2574015, 0],
+        [301990, 2574005, 0],
+      ],
+      results: [],
+    };
+    const far: SurveyMeasurement = {
+      ...west,
+      id: 'm3',
+      points: west.points.map((p): [number, number, number] => [p[0] - 100, p[1], 0]),
+    };
+    put({
+      items: [{ id: 'a', from: { kind: 'smart' }, to: { kind: 'current' }, useDeadband: false }],
+    });
+    const file = measureStore.getState().file;
+    measureStore.setState({ file: { ...file, measurements: [...file.measurements, west, far] } });
+    const run = vi.spyOn(engineClient(), 'run');
+    const series = vi.spyOn(engineClient(), 'series');
+    await compute('m1');
+    await computeSeries('m1');
+    const nb = run.mock.calls[0]?.[0].neighbours;
+    expect(nb).toEqual([west.points.map((p) => [p[0], p[1]])]);
+    expect(series.mock.calls[0]?.[0].neighbours).toEqual(nb);
+    const rows = must(stored()?.series);
+    expect(rows.some((r) => seriesStale(must(stored()), r))).toBe(false);
+
+    // the neighbour moves away: m1's dates are worked out on other inputs
+    measureStore.setState({
+      file: {
+        ...measureStore.getState().file,
+        measurements: measureStore
+          .getState()
+          .file.measurements.map((m) => (m.id === 'm2' ? { ...m, points: far.points } : m)),
+      },
+    });
+    series.mockClear();
+    await computeSeries('m1');
+    expect(series).toHaveBeenCalledTimes(1);
+    expect(series.mock.calls[0]?.[0].neighbours).toBeUndefined();
+    run.mockRestore();
+    series.mockRestore();
+  });
+
   it('a carried result is not stale', async () => {
     await computeSeries('m1');
     const m = must(stored());

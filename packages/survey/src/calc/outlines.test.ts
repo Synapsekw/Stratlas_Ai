@@ -2,7 +2,7 @@ import type { MeasurementsFile, SitePoint, SurveyMeasurement, VolumesFile } from
 import { MeasurementsFile as MeasurementsFileSchema } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { kitToSite, openWithKitPiles } from './kitPiles';
-import { addKitOutlines, kitOutlines, outlineOn, seriesRequests } from './outlines';
+import { addKitOutlines, kitOutlines, outlineOn, pileNeighbours, seriesRequests } from './outlines';
 
 const sq = (x0: number, z0: number, s: number): [number, number][] => [
   [x0, z0],
@@ -233,5 +233,72 @@ describe('openWithKitPiles adds the outlines once', () => {
     );
     expect(opened.measurements[0]?.outlines?.map((o) => o.capture)).toEqual(['c1', 'c2']);
     expect(opened.kitOutlinesAdded).toBeUndefined();
+  });
+});
+
+describe('pileNeighbours: the other piles a pile shares an edge with on a date', () => {
+  const box = (x0: number, y0: number, x1: number, y1: number): SitePoint[] => [
+    [x0, y0, 0],
+    [x1, y0, 0],
+    [x1, y1, 0],
+    [x0, y1, 0],
+  ];
+  const ringOfBox = (x0: number, y0: number, x1: number, y1: number): [number, number][] =>
+    box(x0, y0, x1, y1).map((p) => [p[0], p[1]]);
+  const vol = (id: string, points: SitePoint[], extra: Partial<SurveyMeasurement> = {}) =>
+    ({
+      id,
+      family: 'polygon',
+      tool: 'volume',
+      label: id,
+      scope: { kind: 'site' },
+      points,
+      items: [
+        { id: `${id}-i`, from: { kind: 'smart' }, to: { kind: 'current' }, useDeadband: false },
+      ],
+      results: [],
+      createdAt: 'now',
+      ...extra,
+    }) as SurveyMeasurement;
+  const a = vol('a', box(0, 0, 10, 10));
+
+  it('only a volume pile in the same frame whose edge comes near, never the same pile again', () => {
+    const all = [
+      a,
+      vol('b', box(10, 0, 20, 10)),
+      // too far, the same pile drawn twice, a polygon holding it, a section, another frame
+      vol('c', box(30, 0, 40, 10)),
+      vol('d', box(0.2, 0, 10, 10)),
+      vol('e', box(-5, -5, 50, 50)),
+      { ...vol('f', box(10, 0, 20, 10)), family: 'line', tool: 'section' } as SurveyMeasurement,
+      vol('g', box(10, 0, 20, 10), { scope: { kind: 'survey', capture: 'c1' } }),
+    ];
+    expect(pileNeighbours(a, all, 'c2')).toEqual([ringOfBox(10, 0, 20, 10)]);
+  });
+
+  it("each pile's own outline on the date; one with outlines but none that date is absent", () => {
+    const moved = vol('b', box(30, 0, 40, 10), {
+      outlines: [
+        { capture: 'c1', points: box(10, 0, 20, 10) },
+        { capture: 'c2', points: box(30, 0, 40, 10) },
+      ],
+    });
+    const gone = vol('h', box(0, 10, 10, 20), {
+      outlines: [{ capture: 'c1', points: box(0, 10, 10, 20) }],
+    });
+    expect(pileNeighbours(a, [a, moved, gone], 'c1')).toEqual([
+      ringOfBox(10, 0, 20, 10),
+      ringOfBox(0, 10, 10, 20),
+    ]);
+    expect(pileNeighbours(a, [a, moved, gone], 'c2')).toEqual([]);
+  });
+
+  it("the pile's own outline on the date is the one compared", () => {
+    const own = vol('a', box(50, 0, 60, 10), {
+      outlines: [{ capture: 'c1', points: box(0, 0, 10, 10) }],
+    });
+    const b = vol('b', box(10, 0, 20, 10));
+    expect(pileNeighbours(own, [own, b], 'c1')).toEqual([ringOfBox(10, 0, 20, 10)]);
+    expect(pileNeighbours(own, [own, b], 'c2')).toEqual([]);
   });
 });

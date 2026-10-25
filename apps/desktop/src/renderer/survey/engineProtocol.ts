@@ -52,6 +52,11 @@ export interface RunRequest {
   heat?: number;
   /** The tolerance of a design item without its own `deadbandM` (the site's default), metres. */
   toleranceM?: number;
+  /**
+   * The other piles' outlines on the date run (`CompareOptions.neighbours`): an edge this ring
+   * shares with one is left out of its perimeter base.
+   */
+  neighbours?: Ring[];
 }
 
 /** The in-tolerance share of a design item's area (compliance to design, DSN-3). */
@@ -99,6 +104,11 @@ export interface SeriesRequest {
    * site-wide ring. Not the date the item is run on: that is each of `captures`.
    */
   scope?: string;
+  /**
+   * The other piles' outlines on the date run (`CompareOptions.neighbours`): an edge this ring
+   * shares with one is left out of its perimeter base.
+   */
+  neighbours?: Ring[];
 }
 
 /** An item run with each of `SPREAD_BASES` in place of its `from` base (W3, `baseSpread`). */
@@ -107,6 +117,11 @@ export interface SpreadRequest {
   item: ComparisonItem;
   /** The survey the measurement is viewed on (resolves `current` and `previous`). */
   capture?: string;
+  /**
+   * The other piles' outlines on the date run (`CompareOptions.neighbours`): an edge this ring
+   * shares with one is left out of its perimeter base.
+   */
+  neighbours?: Ring[];
 }
 
 export type EngineRequest =

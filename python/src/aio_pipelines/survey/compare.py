@@ -55,10 +55,12 @@ from .grid import (
     coverage,
     crosses_itself,
     densify,
+    near_rings,
     normal_ring,
     prepared_line_up,
     read_tiles_json,
     ring_area,
+    rings_within,
     sample_cells,
     signed_area,
 )
@@ -80,6 +82,9 @@ SURFACE_KINDS = ("survey", "current", "previous", "design")
 PARTIAL_SHARE = 0.02
 REFUSE_SHARE = 0.20
 BAND = 256
+#: A perimeter sample this close (metres) to another pile's edge is on the edge the two piles
+#: share (``neighbours``): the saddle between two heaps, not the ground under either.
+NEIGHBOUR_M = 0.5
 BASE_BOTH_SIDES = "At least one side must be a surface: a base is sampled on the other side."
 
 Check = Callable[[], None]
@@ -192,6 +197,34 @@ def _side_fp(ref: dict[str, Any], r: Resolved | None) -> dict[str, Any]:
     return out
 
 
+def perimeter_base(spec: dict[str, Any]) -> bool:
+    """True for a base sampled along the polygon's edge (the ones a shared edge changes)."""
+    kind = spec.get("kind")
+    if kind in ("smart", "fit-plane", "perimeter-mean"):
+        return True
+    return kind == "reference" and spec.get("mode") in ("perimeter-min", "perimeter-max")
+
+
+def _on_perimeter(item: dict[str, Any]) -> bool:
+    return perimeter_base(item["from"]) or perimeter_base(item["to"])
+
+
+def touching_rings(
+    ring: list[tuple[float, float]], neighbours: list[Any] | None
+) -> list[list[tuple[float, float]]]:
+    """The outlines of ``neighbours`` within ``NEIGHBOUR_M`` of ``ring`` (both as stored), each a
+    normal ring, once each, in canonical order (the caller's order does not change the print)."""
+    if not neighbours or len(ring) < 3:
+        return []
+    found: dict[str, list[tuple[float, float]]] = {}
+    for nb in neighbours:
+        r = normal_ring(nb)
+        if len(r) < 2 or not rings_within(ring, r, NEIGHBOUR_M):
+            continue
+        found.setdefault(canonical([[p[0], p[1]] for p in r]), r)
+    return [found[k] for k in sorted(found)]
+
+
 def fingerprint(
     ring: list[tuple[float, float]],
     item: dict[str, Any],
@@ -199,7 +232,9 @@ def fingerprint(
     rt: Resolved | None,
     site: dict[str, Any] | None,
     ring_current: LineUp = ZERO,
+    neighbours: list[Any] | None = None,
 ) -> str:
+    touching = touching_rings(ring, neighbours) if _on_perimeter(item) else []
     obj: dict[str, Any] = {
         "engine": ENGINE_VERSION,
         "ring": [[p[0], p[1]] for p in ring],
@@ -225,6 +260,9 @@ def fingerprint(
     turns = {k: t for k, v in sides if (t := v.to_turn())}
     if turns:
         obj["lineUpTurn"] = turns
+    # the piles this one shares an edge with (absent when none: a pile on its own keeps its print)
+    if touching:
+        obj["neighbours"] = [[[p[0], p[1]] for p in r] for r in touching]
     return "sha256:" + hashlib.sha256(canonical(obj).encode("utf-8")).hexdigest()
 
 
@@ -406,6 +444,7 @@ def compare_item(
     grid_out: list[GridOut] | None = None,
     ring_shift: LineUp = ZERO,
     ring_current: LineUp | None = None,
+    neighbours: list[Any] | None = None,
 ) -> dict[str, Any]:
     """One ``ComparisonResult`` (``engine: 'py'``) of ``item`` over the polygon ``ring`` (E, N).
 
@@ -414,6 +453,12 @@ def compare_item(
     (that surface's ``dateShiftM``, turned by its ``dateTurn``) is put on it before sampling;
     ``ring_current`` (the date's line-up now, default ``ring_shift``) joins the fingerprint, so a
     result reads stale after a line-up. A site-wide ring is already in the lined-up frame (no shift).
+
+    ``neighbours``: the outlines of the other piles on the same date, stored as ``ring`` is (the
+    same frame, placed with it). Where the ring's edge comes within ``NEIGHBOUR_M`` of one, the two
+    piles share that edge (the saddle between them, not the ground), so the perimeter bases leave
+    the samples there out, as long as three remain; the outlines that come that close join the
+    fingerprint.
     """
     ring_n = normal_ring(ring)
     frm, to = item["from"], item["to"]
@@ -426,10 +471,14 @@ def compare_item(
             rt = resolve(to)
     except JobError as e:
         problem = str(e)
-    fp = fingerprint(ring_n, item, rf, rt, site, ring_shift if ring_current is None else ring_current)
+    fp = fingerprint(
+        ring_n, item, rf, rt, site, ring_shift if ring_current is None else ring_current, neighbours
+    )
+    touching = touching_rings(ring_n, neighbours) if _on_perimeter(item) else []
     placed = _line_up(ring_shift)
     if not placed.is_identity():
         ring_n = [placed.apply_en(e, n) for e, n in ring_n]
+        touching = [[placed.apply_en(e, n) for e, n in r] for r in touching]
     res = _result(item, side_label(frm, rf), side_label(to, rt), rf, rt, fp, now)
     if problem:
         return _refuse(res, problem)
@@ -457,14 +506,18 @@ def compare_item(
     deadband = float(item.get("deadbandM") or 0.0)
     use_db = bool(item.get("useDeadband"))
     surf = rt if is_surface(to) and not is_surface(frm) else rf if not is_surface(to) else None
+    # the piles this one shares an edge with, placed as the ring is, in the comparison's frame
+    free = [[(e - le, n - ln) for e, n in r] for r in touching]
     try:
         if grids:
             res["cellM"] = cell
             tot, labels = _grid_path(
-                lring, item, rf, rt, surf, le, ln, cell, deadband, use_db, check, grid_out
+                lring, item, rf, rt, surf, le, ln, cell, deadband, use_db, check, grid_out, free
             )
         else:
-            tot, labels = _exact_path(lring, item, rf, rt, surf, le, ln, deadband if use_db else 0.0, check)
+            tot, labels = _exact_path(
+                lring, item, rf, rt, surf, le, ln, deadband if use_db else 0.0, check, free
+            )
     except Refused as e:
         return _refuse(res, str(e))
     if labels.get("from"):
@@ -502,21 +555,28 @@ def _make_base(
     interior: Callable[[], tuple[float, float] | None],
     le: float,
     ln: float,
+    free: list[list[tuple[float, float]]] | None = None,
 ) -> tuple[Planar | Tin, str]:
     cache: dict[str, Samples] = {}
 
     def perimeter() -> Samples:
+        # every step along the ring, those with a height, less the ones within NEIGHBOUR_M of an
+        # edge shared with another pile (``free``), as long as three remain
         if "s" not in cache:
             xs, ys = densify(lring, step)
             zs = s_points(xs, ys)
             ok = np.isfinite(zs)
+            if free:
+                ground = ok & ~near_rings(xs, ys, free, NEIGHBOUR_M)
+                if int(ground.sum()) >= 3:
+                    ok = ground
             cache["s"] = Samples(xs[ok], ys[ok], zs[ok])
         return cache["s"]
 
     return build_base(spec, lring, perimeter, interior, s_points, lambda e, n: (e - le, n - ln))
 
 
-def _grid_path(lring, item, rf, rt, surf, le, ln, cell, deadband, use_db, check, grid_out):
+def _grid_path(lring, item, rf, rt, surf, le, ln, cell, deadband, use_db, check, grid_out, free=None):
     win = Window.over(lring, cell)
 
     def side_of(r: Resolved):
@@ -542,7 +602,7 @@ def _grid_path(lring, item, rf, rt, surf, le, ln, cell, deadband, use_db, check,
             return None if lo == math.inf else (lo, hi)
 
         side_name = "from" if surf is rt else "to"
-        base, label = _make_base(item[side_name], lring, s.points, cell, interior, le, ln)
+        base, label = _make_base(item[side_name], lring, s.points, cell, interior, le, ln, free)
         sides[side_name] = _PlanarSide(base) if isinstance(base, Planar) else _TinSide(base, extend=True)
         labels[side_name] = label
     tot = Totals()
@@ -576,7 +636,7 @@ def _grid_path(lring, item, rf, rt, surf, le, ln, cell, deadband, use_db, check,
     return tot, labels
 
 
-def _exact_path(lring, item, rf, rt, surf, le, ln, db, check):
+def _exact_path(lring, item, rf, rt, surf, le, ln, db, check, free=None):
     ptris = ear_clip(lring)
     sides: dict[str, Any] = {}
     labels: dict[str, str] = {}
@@ -596,6 +656,7 @@ def _exact_path(lring, item, rf, rt, surf, le, ln, db, check):
             lambda: tin_extremes(ptris, s_tin),
             le,
             ln,
+            free,
         )
         sides[side_name] = base
         labels[side_name] = label
@@ -878,6 +939,12 @@ class SurveyCompare:
                 if not isinstance(it, dict) or not isinstance(it.get("measurement"), str):
                     raise JobError(f"items[{k}] needs a measurement id.")
                 _check_ring(it.get("ring"), f"items[{k}].ring")
+                nbs = it.get("neighbours")
+                if nbs is not None:
+                    if not isinstance(nbs, list) or len(nbs) > 5000:
+                        raise JobError(f"items[{k}].neighbours must be a list of rings.")
+                    for j, nb in enumerate(nbs):
+                        _check_ring(nb, f"items[{k}].neighbours[{j}]")
                 item = it.get("item")
                 if not isinstance(item, dict) or not isinstance(item.get("id"), str):
                     raise JobError(f"items[{k}].item needs an id.")
@@ -937,6 +1004,7 @@ class SurveyCompare:
                     ctx.check,
                     ring_shift=prepared,
                     ring_current=current,
+                    neighbours=it.get("neighbours"),
                 )
                 counts[r["status"]] = counts.get(r["status"], 0) + 1
                 results.append({"measurement": it["measurement"], "result": r})

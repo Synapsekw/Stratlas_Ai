@@ -15,6 +15,8 @@
  */
 import { useEffect } from 'react';
 import {
+  outlineOn,
+  pileNeighbours,
   SPREAD_BASES,
   seriesApplies,
   seriesRequests,
@@ -221,6 +223,33 @@ const ringKey = (points: readonly SitePoint[]) => JSON.stringify(ringOf(points))
 export const captureOf = (m: SurveyMeasurement): string | undefined =>
   m.scope.kind === 'survey' ? m.scope.capture : undefined;
 
+/**
+ * The other piles' outlines next to `ring` on `capture` (the engine's `neighbours`: an edge shared
+ * with one is left out of the perimeter base), from the measurements as they are now. `capture`
+ * absent: the date the measurement is viewed on (its own survey, else the latest).
+ */
+export function neighboursOf(
+  m: SurveyMeasurement,
+  ring: readonly SitePoint[],
+  capture?: string,
+): [number, number][][] {
+  const date = capture ?? captureOf(m) ?? get().captures.at(-1)?.id;
+  const all = measureStore.getState().file.measurements;
+  return pileNeighbours({ id: m.id, scope: m.scope, points: ring }, all, date);
+}
+
+/** Only when there are any: a request without them is the one it always was. */
+const withNeighbours = (nb: [number, number][][]) => (nb.length > 0 ? { neighbours: nb } : {});
+
+/**
+ * What the pile's figures over time depend on beyond its own inputs: the outlines of the piles it
+ * shares an edge with on each date (a neighbour moved, its dates are worked out again).
+ */
+export function neighboursKey(m: SurveyMeasurement): string {
+  if (m.family !== 'polygon' || m.points.length < 3) return '';
+  return JSON.stringify(get().captures.map((c) => neighboursOf(m, outlineOn(m, c.id), c.id)));
+}
+
 /** Load the open project's surfaces and designs and hand them to the engine. */
 export async function loadCompare(
   project: { id: string; root: string; manifest: ProjectManifest } | null,
@@ -344,6 +373,7 @@ export async function checkFingerprints(ids?: readonly string[]): Promise<void> 
         ring: ringOf(m.points),
         items: m.items,
         ...(capture !== undefined ? { capture } : {}),
+        ...withNeighbours(neighboursOf(m, m.points)),
       });
     } catch {
       // the engine stopped: leave the stored status as it is
@@ -431,6 +461,7 @@ async function computeNow(
         ...(capture !== undefined ? { capture } : {}),
         heat: HEAT_CELLS,
         ...(toleranceM !== undefined ? { toleranceM } : {}),
+        ...withNeighbours(neighboursOf(m, points)),
       },
       id,
     );
@@ -712,7 +743,21 @@ async function computeSeriesNow(id: string, opts: { captures?: string[] }): Prom
   if (items.length === 0 || captures.length === 0) return false;
   const scope = captureOf(m);
   // each survey date is worked out inside that date's own outline (bug 1b): one run per outline
-  const runs = seriesRequests(m, captures);
+  // and with the piles next to it on that date: a run per outline and set of neighbours
+  const runs = seriesRequests(m, captures).flatMap((run) => {
+    const byKey = new Map<
+      string,
+      { ring: readonly SitePoint[]; captures: string[]; nb: [number, number][][] }
+    >();
+    for (const c of run.captures) {
+      const nb = neighboursOf(m, run.ring, c);
+      const key = JSON.stringify(nb);
+      const known = byKey.get(key);
+      if (known) known.captures.push(c);
+      else byKey.set(key, { ring: run.ring, captures: [c], nb });
+    }
+    return [...byKey.values()];
+  });
   const asked = inputsKey(m, true);
   const prints: Record<string, string> = {};
   const out: ComparisonResult[] = [];
@@ -725,6 +770,7 @@ async function computeSeriesNow(id: string, opts: { captures?: string[] }): Prom
           item,
           captures: run.captures,
           ...(scope !== undefined ? { scope } : {}),
+          ...withNeighbours(run.nb),
         };
         const fps = await client().seriesFingerprints(req);
         run.captures.forEach((c, j) => {
@@ -787,7 +833,10 @@ export async function computeSpread(id: string): Promise<BaseSpread | null> {
   if (!m || !item || m.points.length < 3) return null;
   const capture = captureOf(m);
   const ring = ringOf(m.points);
-  const at = capture !== undefined ? { capture } : {};
+  const at = {
+    ...(capture !== undefined ? { capture } : {}),
+    ...withNeighbours(neighboursOf(m, m.points)),
+  };
   let fp: string | undefined;
   try {
     [fp] = await client().fingerprints({ ring, items: [item], ...at });

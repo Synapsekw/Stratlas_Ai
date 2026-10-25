@@ -384,6 +384,72 @@ def crosses_itself(ring: list[tuple[float, float]]) -> bool:
     return False
 
 
+def segment_distance(x: float, y: float, ax: float, ay: float, bx: float, by: float) -> float:
+    """The distance from (x, y) to the segment a-b (a point when a and b are one)."""
+    dx = bx - ax
+    dy = by - ay
+    l2 = dx * dx + dy * dy
+    t = ((x - ax) * dx + (y - ay) * dy) / l2 if l2 > 0 else 0.0
+    if t < 0:
+        t = 0.0
+    elif t > 1:
+        t = 1.0
+    ex = ax + t * dx - x
+    ey = ay + t * dy - y
+    return math.sqrt(ex * ex + ey * ey)
+
+
+def _box(ring: list[tuple[float, float]]) -> tuple[float, float, float, float]:
+    xs = [p[0] for p in ring]
+    ys = [p[1] for p in ring]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def rings_within(a: list[tuple[float, float]], b: list[tuple[float, float]], d: float) -> bool:
+    """True when an edge of the closed ring ``b`` comes within ``d`` of an edge of the closed ring
+    ``a`` (they cross, or an end of one edge is within ``d`` of the other edge)."""
+    ax0, ay0, ax1, ay1 = _box(a)
+    bx0, by0, bx1, by1 = _box(b)
+    if bx0 > ax1 + d or bx1 < ax0 - d or by0 > ay1 + d or by1 < ay0 - d:
+        return False
+    na, nb = len(a), len(b)
+    for i in range(na):
+        p, q = a[i], a[(i + 1) % na]
+        for j in range(nb):
+            r, s = b[j], b[(j + 1) % nb]
+            if (
+                segment_distance(p[0], p[1], r[0], r[1], s[0], s[1]) <= d
+                or segment_distance(q[0], q[1], r[0], r[1], s[0], s[1]) <= d
+                or segment_distance(r[0], r[1], p[0], p[1], q[0], q[1]) <= d
+                or segment_distance(s[0], s[1], p[0], p[1], q[0], q[1]) <= d
+                or _segments_cross(p, q, r, s)
+            ):
+                return True
+    return False
+
+
+def near_rings(
+    xs: np.ndarray, ys: np.ndarray, rings: list[list[tuple[float, float]]], d: float
+) -> np.ndarray:
+    """True for each point within ``d`` of an edge of any of the closed ``rings``."""
+    out = np.zeros(len(xs), dtype=bool)
+    for ring in rings:
+        x0, y0, x1, y1 = _box(ring)
+        n = len(ring)
+        for k in range(len(xs)):
+            if out[k]:
+                continue
+            x, y = float(xs[k]), float(ys[k])
+            if x < x0 - d or x > x1 + d or y < y0 - d or y > y1 + d:
+                continue
+            for i in range(n):
+                p, q = ring[i], ring[(i + 1) % n]
+                if segment_distance(x, y, p[0], p[1], q[0], q[1]) <= d:
+                    out[k] = True
+                    break
+    return out
+
+
 def densify(ring: list[tuple[float, float]], step: float) -> tuple[np.ndarray, np.ndarray]:
     """Points every ``step`` (at most) along each edge of a closed ring, the vertices included."""
     xs: list[float] = []

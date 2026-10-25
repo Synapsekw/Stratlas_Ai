@@ -85,6 +85,101 @@ export function crossesItself(ring: readonly XY[]): boolean {
   return false;
 }
 
+/** The distance from (x, y) to the segment a-b (a point when a and b are one). */
+export function segmentDistance(
+  x: number,
+  y: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const l2 = dx * dx + dy * dy;
+  let t = l2 > 0 ? ((x - ax) * dx + (y - ay) * dy) / l2 : 0;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
+  const ex = ax + t * dx - x;
+  const ey = ay + t * dy - y;
+  return Math.sqrt(ex * ex + ey * ey);
+}
+
+/** The box of a ring, `[x0, y0, x1, y1]`. */
+function boxOf(ring: readonly XY[]): [number, number, number, number] {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const [x, y] of ring) {
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+  }
+  return [x0, y0, x1, y1];
+}
+
+/**
+ * True when an edge of the closed ring `b` comes within `d` of an edge of the closed ring `a`
+ * (they cross, or an end of one edge is within `d` of the other edge).
+ */
+export function ringsWithin(a: readonly XY[], b: readonly XY[], d: number): boolean {
+  const [ax0, ay0, ax1, ay1] = boxOf(a);
+  const [bx0, by0, bx1, by1] = boxOf(b);
+  if (bx0 > ax1 + d || bx1 < ax0 - d || by0 > ay1 + d || by1 < ay0 - d) return false;
+  const na = a.length;
+  const nb = b.length;
+  for (let i = 0; i < na; i++) {
+    const p = a[i];
+    const q = a[(i + 1) % na];
+    if (!p || !q) continue;
+    for (let j = 0; j < nb; j++) {
+      const r = b[j];
+      const s = b[(j + 1) % nb];
+      if (!r || !s) continue;
+      if (
+        segmentDistance(p[0], p[1], r[0], r[1], s[0], s[1]) <= d ||
+        segmentDistance(q[0], q[1], r[0], r[1], s[0], s[1]) <= d ||
+        segmentDistance(r[0], r[1], p[0], p[1], q[0], q[1]) <= d ||
+        segmentDistance(s[0], s[1], p[0], p[1], q[0], q[1]) <= d ||
+        crossProper(p, q, r, s)
+      )
+        return true;
+    }
+  }
+  return false;
+}
+
+/** 1 for each point within `d` of an edge of any of the closed `rings`, else 0. */
+export function nearRings(
+  xs: Float64Array,
+  ys: Float64Array,
+  rings: readonly (readonly XY[])[],
+  d: number,
+): Uint8Array {
+  const out = new Uint8Array(xs.length);
+  for (const ring of rings) {
+    const [x0, y0, x1, y1] = boxOf(ring);
+    const n = ring.length;
+    for (let k = 0; k < xs.length; k++) {
+      if (out[k]) continue;
+      const x = xs[k] ?? 0;
+      const y = ys[k] ?? 0;
+      if (x < x0 - d || x > x1 + d || y < y0 - d || y > y1 + d) continue;
+      for (let i = 0; i < n; i++) {
+        const p = ring[i];
+        const q = ring[(i + 1) % n];
+        if (p && q && segmentDistance(x, y, p[0], p[1], q[0], q[1]) <= d) {
+          out[k] = 1;
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+
 /** Points every `step` (at most) along each edge of a closed ring, the vertices included. */
 export function densify(ring: readonly XY[], step: number): { xs: Float64Array; ys: Float64Array } {
   const xs: number[] = [];
