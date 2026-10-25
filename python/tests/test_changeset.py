@@ -184,3 +184,148 @@ def test_long_ids_differing_only_past_the_cut_stay_distinct():
 def test_change_set_id_refuses_a_bad_scope_id():
     with pytest.raises(ValueError):
         change_set_id("c1", "c2", "change.raster", "pad a")
+
+
+# ------------------------------------------------------------- one layer per area, manifest lock
+
+
+def _project(tmp_path, layers=()):
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"schema": "aio.project/1", "layers": list(layers)}), "utf-8"
+    )
+    return tmp_path
+
+
+def _ids(project):
+    return [x["id"] for x in json.loads((project / "manifest.json").read_text("utf-8"))["layers"]]
+
+
+def _change_layer(lid, set_id="c1-c2-raster-area-pad-a", source=("ortho-a", "ortho-b"), **extra):
+    return {
+        "kind": "raster",
+        "id": lid,
+        "name": lid,
+        "visible": True,
+        "derived": {"kind": "change", "from": "c1", "to": "c2", "changeId": set_id, "source": list(source)},
+        "src": {"path": f"change/{set_id}/heat/tiles.json"},
+        **extra,
+    }
+
+
+def test_an_area_s_layer_id_is_shared_by_its_producers():
+    from aio_pipelines.change.derived import area_layer_id
+
+    assert area_layer_id("c1", "c2", "pad-a") == "c1-c2-change-area-pad-a"
+    assert area_layer_id("c1", "c2", "pad-a") != change_set_id("c1", "c2", "change.raster", "pad-a")
+
+
+def test_the_area_layer_is_added_once_and_a_later_producer_keeps_or_replaces_it():
+    from aio_pipelines.change.derived import place_area_layer
+
+    own = {"kind": "raster", "id": "ortho-a", "name": "Ortho", "visible": True}
+    m = {"layers": [own]}
+    imagery = _change_layer("L")
+    place_area_layer(m, imagery, replace=True)
+    m["layers"][1]["visible"] = False
+    volumes = _change_layer("L", "c1-c2-surface-area-pad-a", source=("dsm-a", "dsm-b"))
+    place_area_layer(m, volumes, replace=False)
+    [kept] = [x for x in m["layers"] if x["id"] == "L"]
+    # the imagery heat map stays, hidden as the person left it, and takes the volume sources too
+    assert kept["src"] == imagery["src"]
+    assert kept["visible"] is False
+    assert kept["derived"]["source"] == ["ortho-a", "ortho-b", "dsm-a", "dsm-b"]
+    place_area_layer(m, imagery, replace=True)
+    [again] = [x for x in m["layers"] if x["id"] == "L"]
+    assert again["visible"] is False
+    assert again["derived"]["source"] == ["ortho-a", "ortho-b", "dsm-a", "dsm-b"]
+    assert [x["id"] for x in m["layers"]] == ["ortho-a", "L"]
+    assert m["layers"][0] is own
+
+
+def test_the_area_layer_drops_the_set_s_old_heat_and_regions_rows_and_nothing_else():
+    from aio_pipelines.change.derived import place_area_layer
+
+    sid = "c1-c2-raster-area-pad-a"
+    m = {
+        "layers": [
+            {"kind": "raster", "id": "ortho-a", "name": "Ortho", "visible": True},
+            _change_layer(f"{sid}-heat", sid),
+            _change_layer(f"{sid}-regions", sid, kind="vector"),
+            _change_layer("c1-c2-raster-heat", "c1-c2-raster"),
+        ]
+    }
+    place_area_layer(m, _change_layer("L", sid), replace=True, drop=[f"{sid}-heat", f"{sid}-regions"])
+    assert [x["id"] for x in m["layers"]] == ["ortho-a", "c1-c2-raster-heat", "L"]
+
+
+def test_the_area_layer_never_replaces_a_layer_of_the_person_s_own():
+    from aio_pipelines.change.derived import place_area_layer
+
+    m = {"layers": [{"kind": "raster", "id": "L", "name": "Mine", "visible": True}]}
+    with pytest.raises(JobError, match="of its own"):
+        place_area_layer(m, _change_layer("L"), replace=True)
+
+
+def test_two_jobs_writing_the_manifest_at_once_both_keep_their_layer(tmp_path):
+    import threading
+
+    from aio_pipelines.change.derived import upsert_layer
+
+    project = _project(tmp_path, [{"kind": "raster", "id": "ortho-a", "name": "O", "visible": True}])
+    start = threading.Barrier(2)
+    errors: list[BaseException] = []
+
+    def write(prefix):
+        try:
+            start.wait()
+            for i in range(25):
+                upsert_layer(project, _change_layer(f"{prefix}-{i}"))
+        except BaseException as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=write, args=(p,)) for p in ("raster", "surface")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    ids = _ids(project)
+    assert len(ids) == 51
+    assert {f"{p}-{i}" for p in ("raster", "surface") for i in range(25)} <= set(ids)
+
+
+def test_the_manifest_lock_holds_across_processes_and_times_out(tmp_path):
+    import subprocess
+    import sys
+    import time
+
+    from aio_pipelines.runtime import manifest_lock
+
+    project = _project(tmp_path)
+    src = Path(__file__).resolve().parents[1] / "src"
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import sys, time; from pathlib import Path; sys.path.insert(0, sys.argv[1]);"
+            "from aio_pipelines.runtime import manifest_lock\n"
+            "with manifest_lock(Path(sys.argv[2])):\n"
+            "    print('held', flush=True); time.sleep(30)",
+            str(src),
+            str(project),
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout.readline().strip() == "held"
+        t0 = time.monotonic()
+        with pytest.raises(JobError, match="manifest"), manifest_lock(project, timeout_s=0.5):
+            pass
+        assert time.monotonic() - t0 >= 0.4
+    finally:
+        holder.kill()
+        holder.wait()
+    # the holder is gone: its lock went with it
+    with manifest_lock(project, timeout_s=5):
+        pass

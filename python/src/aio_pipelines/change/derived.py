@@ -6,20 +6,24 @@
 - The project local frame is x east, y up, z south from the manifest ``origin`` [E, N, H]
   (data-conventions section 1).
 - A derived layer is added to the manifest last, replacing an earlier one with the same id, with
-  ``manifest.json.bak`` kept as the app's own saves do (data-conventions section 14).
+  ``manifest.json.bak`` kept as the app's own saves do (data-conventions section 14). Every change
+  to the manifest goes through ``update_manifest``, under the project's manifest lock.
+- An area comparison (a run with a ``scope``) leaves one layer, ``area_layer_id``, whichever of
+  its producers ends first; each of its change sets lists it, so removing that row removes them.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 import numpy as np
 
-from ..runtime import JobError, atomic_write_json, safe_project_path
+from ..runtime import JobError, atomic_write_json, manifest_lock, safe_project_path
+from .changeset import change_set_id
 
 NO_DATES = (
     "Say which survey date each layer belongs to (Belongs to date... in the layer menu), "
@@ -123,23 +127,85 @@ def project_rel(path: str) -> str:
     return PurePosixPath(path.replace("\\", "/")).as_posix()
 
 
+def update_manifest(project: Path, change: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
+    """Read the manifest, apply ``change`` to it and write it back (with a .bak), all under the
+    project's manifest lock so that two jobs committing at once both keep what they added."""
+    mpath = safe_project_path(project, "manifest.json")
+    with manifest_lock(project):
+        manifest = read_manifest(project)
+        change(manifest)
+        shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
+        atomic_write_json(mpath, manifest, indent=2)
+    return manifest
+
+
+def _is_change(layer: Any) -> bool:
+    derived = layer.get("derived") if isinstance(layer, dict) else None
+    return isinstance(derived, dict) and derived.get("kind") == "change"
+
+
+def _own_layer(layer_id: str) -> JobError:
+    return JobError(f'The project already has a layer "{layer_id}" of its own; rename it first.')
+
+
 def upsert_layer(project: Path, layer: dict[str, Any]) -> None:
     """Add a derived layer to the manifest, replacing the one with the same id (with a .bak)."""
-    mpath = safe_project_path(project, "manifest.json")
-    manifest = read_manifest(project)
-    layers = manifest.setdefault("layers", [])
-    for i, existing in enumerate(layers):
-        if isinstance(existing, dict) and existing.get("id") == layer["id"]:
-            derived = existing.get("derived")
-            if not isinstance(derived, dict) or derived.get("kind") != "change":
-                raise JobError(
-                    f'The project already has a layer "{layer["id"]}" of its own; rename it first.'
-                )
-            # keep what the person set on it (shown or hidden, its date)
-            layer = {**layer, "visible": existing.get("visible", True)}
-            layers[i] = layer
-            break
-    else:
+
+    def change(manifest: dict[str, Any]) -> None:
+        layers = manifest.setdefault("layers", [])
+        for i, existing in enumerate(layers):
+            if isinstance(existing, dict) and existing.get("id") == layer["id"]:
+                if not _is_change(existing):
+                    raise _own_layer(layer["id"])
+                # keep what the person set on it (shown or hidden, its date)
+                layers[i] = {**layer, "visible": existing.get("visible", True)}
+                return
         layers.append(layer)
-    shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
-    atomic_write_json(mpath, manifest, indent=2)
+
+    update_manifest(project, change)
+
+
+def area_layer_id(from_capture: str, to_capture: str, scope_id: str) -> str:
+    """The one layer of an area's comparison of a date pair, shared by its producers."""
+    return change_set_id(from_capture, to_capture, "change.change", scope_id)
+
+
+def area_layer_name(scope_name: str, when: str) -> str:
+    return f"{scope_name}: change, {when}"
+
+
+def place_area_layer(
+    manifest: dict[str, Any], layer: dict[str, Any], *, replace: bool, drop: Iterable[str] = ()
+) -> None:
+    """Put an area comparison's one layer in ``manifest``.
+
+    The first producer to end adds it. A later one replaces it when ``replace`` (the imagery heat
+    map is the row's picture), else keeps it; either way the person's visibility stays and the
+    row's ``derived.source`` takes the later run's layers too, so removing any of them removes the
+    row and, through it, every set of the comparison. ``drop`` are the per-set rows that area runs
+    made before (``<set>-heat``, ``<set>-regions``): removed when they are change layers.
+    """
+    gone = set(drop)
+    layers = [
+        x
+        for x in manifest.get("layers") or []
+        if not (isinstance(x, dict) and x.get("id") in gone and _is_change(x))
+    ]
+    manifest["layers"] = layers
+    for i, existing in enumerate(layers):
+        if not (isinstance(existing, dict) and existing.get("id") == layer["id"]):
+            continue
+        if not _is_change(existing):
+            raise _own_layer(layer["id"])
+        source = list(existing["derived"].get("source") or [])
+        for s in layer.get("derived", {}).get("source") or []:
+            if s not in source:
+                source.append(s)
+        base = layer if replace else existing
+        layers[i] = {
+            **base,
+            "visible": existing.get("visible", True),
+            "derived": {**base["derived"], "source": source},
+        }
+        return
+    layers.append(layer)

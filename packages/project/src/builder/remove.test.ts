@@ -13,7 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readManifestFile } from './manifestFile';
+import { readManifestFile, writeManifestFile } from './manifestFile';
 import { MANIFEST_BEFORE, removeItems, stuckMessage } from './remove';
 import {
   FIXTURE_JOBS,
@@ -426,5 +426,78 @@ describe('removeItems', () => {
       await rm(at('.trash'), { force: true, recursive: false }).catch(() => undefined);
       await rm(outside, { recursive: true, force: true });
     }
+  });
+});
+
+describe("an area's comparison", () => {
+  // what change.raster and change.surface leave for one area compared with volumes: one row,
+  // the imagery heat map, that both change sets list (python change/derived.py place_area_layer)
+  const AREA = 'c1-c2-change-area-pad-a';
+  const SETS = ['c1-c2-raster-area-pad-a', 'c1-c2-surface-area-pad-a'];
+  const put = async (rel: string, text = 'x') => {
+    const f = at(...rel.split('/'));
+    await mkdir(join(f, '..'), { recursive: true });
+    await writeFile(f, text);
+  };
+
+  it('is one row, and removing it removes both sets and leaves every other layer as it was', async () => {
+    const before = await readManifestFile(root);
+    await writeManifestFile(root, {
+      ...before,
+      layers: [
+        ...before.layers,
+        {
+          kind: 'raster',
+          id: AREA,
+          name: 'Pad A: change, 2026-10-12 to 2026-10-26',
+          visible: true,
+          capture: 'c2',
+          role: 'plan',
+          format: 'kit-pyramid',
+          src: { path: `change/${SETS[0]}/heat/tiles.json` },
+          derived: {
+            kind: 'change',
+            from: 'c1',
+            to: 'c2',
+            changeId: SETS[0],
+            source: [`${RUN_DONE}-ortho`, 'dsm-b'],
+          },
+        },
+      ],
+    });
+    for (const id of SETS) {
+      await put(
+        `change/${id}.json`,
+        JSON.stringify({
+          schema: 'aio.change/1',
+          id,
+          from: 'c1',
+          to: 'c2',
+          producer: id.includes('raster') ? 'change.raster' : 'change.surface',
+          createdAt: '2026-10-25T00:00:00Z',
+          scope: { id: 'pad-a', name: 'Pad A' },
+          items: [{ kind: 'region', id: 'region:0001', verdict: 'changed', layer: AREA }],
+          layers: [AREA],
+          stats: {},
+        }),
+      );
+      await put(`change/${id}/heat/tiles.json`, '{}');
+      await put(`change/${id}/regions.geojson`, '{}');
+    }
+
+    const plan = await planRemoval(root, [{ layer: AREA }]);
+    expect(plan.refused).toBeUndefined();
+    expect(plan.layers.map((l) => l.id)).toEqual([AREA]);
+    expect(plan.changes.map((c) => c.id).sort()).toEqual(SETS);
+
+    await removeItems(root, [{ layer: AREA }], () => NOW);
+    expect(await readManifestFile(root)).toEqual(before);
+    for (const id of SETS) {
+      expect(await exists(at('change', `${id}.json`))).toBe(false);
+      expect(await exists(at('change', id))).toBe(false);
+    }
+    // what the project had before the comparison is still there
+    expect(await exists(at('change', 'chg-1', 'stats.json'))).toBe(true);
+    expect(await exists(at('rasters', `${RUN_DONE}-ortho`, 'tiles.json'))).toBe(true);
   });
 });

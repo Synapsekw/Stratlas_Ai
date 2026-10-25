@@ -194,9 +194,14 @@ def test_a_mask_keeps_only_the_regions_inside(tmp_path):
         assert -25 <= it["at"][0] <= 5 and -23 <= it["at"][2] <= 7
     assert not (tmp_path / "change" / "c1-c2-surface.json").exists()
     m = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
-    names = {x["id"]: x["name"] for x in m["layers"]}
-    assert names["c1-c2-surface-area-pile-heat"].startswith("Pile: surface change heat map, ")
-    assert names["c1-c2-surface-area-pile-regions"].startswith("Pile: cut and fill areas, ")
+    ls = {x["id"]: x for x in m["layers"]}
+    # one row for the area: with no imagery run it shows the cut and fill heat map
+    area = "c1-c2-change-area-pile"
+    assert [lid for lid in ls if "pile" in lid] == [area]
+    assert ls[area]["name"].startswith("Pile: change, ")
+    assert ls[area]["src"] == {"path": "change/c1-c2-surface-area-pile/heat/tiles.json"}
+    assert cs["layers"] == [area]
+    assert {it["layer"] for it in regions} == {area}
 
 
 def test_an_area_outside_the_surfaces_is_refused_not_an_all_clear(tmp_path):
@@ -258,7 +263,59 @@ def test_a_scoped_surface_run_leaves_the_whole_map_set(tmp_path):
     assert by_verdict(cs, "fill") and by_verdict(cs, "cut")
     m = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
     ids = {x["id"] for x in m["layers"]}
-    assert {"c1-c2-surface-heat", "c1-c2-surface-area-pile-heat"} <= ids
+    assert {"c1-c2-surface-heat", "c1-c2-surface-regions", "c1-c2-change-area-pile"} <= ids
+    assert "c1-c2-surface-area-pile-heat" not in ids
+
+
+def both_project(tmp_path):
+    """Orthos (``ortho-a``, ``ortho-b``) and surfaces (``surf-a``, ``surf-b``) of the same two dates."""
+    from imagery_synth import ground, noisy, ortho_project, paint
+
+    big = ground(704, 704, 1)
+    a = noisy(big[32:672, 32:672], 101)
+    b = paint(noisy(big[32:672, 32:672], 102), 200, 260, 160)
+    ortho_project(tmp_path, a, b, 0.25)
+    orthos = json.loads((tmp_path / "manifest.json").read_text("utf-8"))["layers"]
+    surface_project(tmp_path)
+    m = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
+    m["layers"] = orthos + m["layers"]
+    (tmp_path / "manifest.json").write_text(json.dumps(m, indent=1), "utf-8")
+    return [x["id"] for x in m["layers"]]
+
+
+def area_params(producer):
+    from imagery_synth import raster_params
+
+    extra = {"mask": local_ring(-10, -8, 15), "scope": SCOPE}
+    return raster_params(**extra) if producer == "change.raster" else surface_params(**extra)
+
+
+@pytest.mark.parametrize("order", [("change.raster", "change.surface"), ("change.surface", "change.raster")])
+def test_an_area_compare_with_volumes_leaves_one_layer_that_lists_both_sets(tmp_path, order):
+    before = both_project(tmp_path)
+    pipes = all_pipelines()
+    for i, producer in enumerate(order):
+        result, _ = run_job(pipes[producer], tmp_path, area_params(producer), job_id=f"j{i}")
+        assert result["status"] == "done", result
+        if i == 0:
+            # hidden by the person between the two runs: the later run keeps that
+            m = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
+            for x in m["layers"]:
+                if x["id"] == "c1-c2-change-area-pile":
+                    x["visible"] = False
+            (tmp_path / "manifest.json").write_text(json.dumps(m, indent=1), "utf-8")
+    m = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
+    area = "c1-c2-change-area-pile"
+    assert [x["id"] for x in m["layers"]] == [*before, area]
+    [layer] = [x for x in m["layers"] if x["id"] == area]
+    assert layer["visible"] is False
+    # the imagery heat map is the row's picture, whichever job ended first
+    assert layer["src"] == {"path": "change/c1-c2-raster-area-pile/heat/tiles.json"}
+    assert set(layer["derived"]["source"]) == {"ortho-a", "ortho-b", "surf-a", "surf-b"}
+    for sid in ("c1-c2-raster-area-pile", "c1-c2-surface-area-pile"):
+        cs = json.loads((tmp_path / "change" / f"{sid}.json").read_text("utf-8"))
+        assert cs["layers"] == [area]
+        assert (tmp_path / "change" / sid / "heat" / "tiles.json").is_file()
 
 
 def test_the_thresholds_are_honoured(tmp_path):

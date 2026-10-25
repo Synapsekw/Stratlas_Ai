@@ -37,6 +37,7 @@ from ..params import known_keys, number, text
 from ..runtime import JobError, Step, StepContext, input_fingerprint
 from ..survey.compare import ring_weights
 from .changeset import change_set, change_set_id, check_scope
+from .derived import area_layer_id, area_layer_name, place_area_layer
 from .imagery import (
     AREA_COVERAGE_WARN,
     Grid,
@@ -578,7 +579,8 @@ class ChangeSurface:
             min_cells = max(1, math.ceil(min_area / grid.cell**2 - 1e-9))
             regions = surface_regions(dod, min_depth, min_cells)
             ctx.progress(0.3, "Regions")
-            regions_layer = f"{sid}-regions"
+            # an area's run leaves one row, shared with its imagery run: its items and set name it
+            regions_layer = area_layer_id(a, b, scope["id"]) if scope else f"{sid}-regions"
             found = []
             for verdict, mask in regions:
                 polys = polygons(mask, grid, simplify=grid.cell * 0.5)
@@ -682,7 +684,7 @@ class ChangeSurface:
                 b,
                 PRODUCER,
                 items,
-                layers=[f"{sid}-heat", regions_layer],
+                layers=[regions_layer] if scope else [f"{sid}-heat", regions_layer],
                 stats=stats,
                 run={"jobId": ctx.job.job_id, "params": dict(params)},
                 registration=reg["registration"],
@@ -702,15 +704,36 @@ class ChangeSurface:
             cs = json.loads(ctx.stage("work/change-set.json").read_text("utf-8"))
             src = [params["from"]["layer"], params["to"]["layer"]]
             when = f"{capture_label(m, a)} to {capture_label(m, b)}"
-            lead = f"{scope['name']}: " if scope else ""
             prov = derived(a, b, sid, ctx.job.job_id, src)
+            if scope:
+                # the area's one row: added with the cut and fill heat map when the imagery run has
+                # not ended yet, else kept as the imagery run left it
+                one = {
+                    "kind": "raster",
+                    "id": area_layer_id(a, b, scope["id"]),
+                    "name": area_layer_name(scope["name"], when),
+                    "visible": True,
+                    "capture": b,
+                    "derived": prov,
+                    "src": {"path": f"{out_dir}/heat/tiles.json"},
+                    "role": "plan",
+                    "format": "kit-pyramid",
+                }
+                old = [f"{sid}-heat", f"{sid}-regions"]
+                return commit_run(
+                    ctx,
+                    sid,
+                    "out",
+                    out_dir,
+                    cs,
+                    [one],
+                    place=lambda mf: place_area_layer(mf, one, replace=False, drop=old),
+                )
             layers = [
                 {
                     "kind": "raster",
                     "id": f"{sid}-heat",
-                    "name": f"{lead}surface change heat map, {when}"
-                    if scope
-                    else f"Surface change heat map, {when}",
+                    "name": f"Surface change heat map, {when}",
                     "visible": True,
                     "capture": b,
                     "derived": prov,
@@ -721,7 +744,7 @@ class ChangeSurface:
                 {
                     "kind": "vector",
                     "id": f"{sid}-regions",
-                    "name": f"{lead}cut and fill areas, {when}" if scope else f"Cut and fill areas, {when}",
+                    "name": f"Cut and fill areas, {when}",
                     "visible": True,
                     "capture": b,
                     "derived": dict(prov),

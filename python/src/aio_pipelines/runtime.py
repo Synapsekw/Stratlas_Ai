@@ -27,7 +27,8 @@ import re
 import threading
 import time
 import traceback
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -172,6 +173,68 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
 
 def atomic_write_json(path: Path, data: Any, indent: int | None = 1) -> None:
     atomic_write_bytes(path, (json.dumps(data, indent=indent, ensure_ascii=False) + "\n").encode("utf-8"))
+
+
+#: The lock file jobs take around a read-modify-write of ``manifest.json`` (beside the job
+#: folders, which the app reads as directories only).
+MANIFEST_LOCK = "jobs/.manifest.lock"
+MANIFEST_LOCK_TIMEOUT_S = 60.0
+
+
+def _try_lock(fd: int) -> bool:
+    try:
+        if _WINDOWS:
+            import msvcrt
+
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return True
+    except OSError:
+        return False
+
+
+def _unlock(fd: int) -> None:
+    if _WINDOWS:
+        import msvcrt
+
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+@contextmanager
+def manifest_lock(project: Path, timeout_s: float = MANIFEST_LOCK_TIMEOUT_S) -> Iterator[None]:
+    """Hold the project's manifest lock: one job at a time reads, changes and writes the manifest.
+
+    Two jobs of one project committing at once (an area's imagery and volume runs) each read the
+    manifest, add their layer and write it back: without the lock the later write drops the
+    earlier job's layer. An operating system lock on ``jobs/.manifest.lock``, so it holds across
+    processes and threads (each holder opens the file anew) and goes with a process that dies.
+    """
+    path = Path(project) / MANIFEST_LOCK
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        deadline = time.monotonic() + timeout_s
+        while not _try_lock(fd):
+            if time.monotonic() >= deadline:
+                raise JobError(
+                    "Another job kept the project manifest busy for too long; start this job again."
+                )
+            time.sleep(0.02)
+        try:
+            yield
+        finally:
+            _unlock(fd)
+    finally:
+        os.close(fd)
 
 
 class AtomicPath:

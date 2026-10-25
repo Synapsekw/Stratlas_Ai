@@ -260,16 +260,17 @@ def test_a_scoped_run_keeps_its_own_set_beside_the_whole_map_one(tmp_path):
     assert len(scoped["items"]) == 1
     assert "scope" not in read_set(tmp_path)
     ls = layers(tmp_path)
-    for lid in (
-        "c1-c2-raster-heat",
-        "c1-c2-raster-regions",
-        "c1-c2-raster-area-pad-a-heat",
-        "c1-c2-raster-area-pad-a-regions",
-    ):
-        assert lid in ls
-    assert ls["c1-c2-raster-area-pad-a-heat"]["name"].startswith("Pad A: imagery change heat map")
-    assert ls["c1-c2-raster-area-pad-a-regions"]["name"].startswith("Pad A: imagery change areas")
+    assert {"c1-c2-raster-heat", "c1-c2-raster-regions"} <= set(ls)
     assert ls["c1-c2-raster-heat"]["name"].startswith("Imagery change heat map")
+    # the area's run leaves one row: its heat map, named for the area, that both its sets list
+    area = "c1-c2-change-area-pad-a"
+    assert [lid for lid in ls if "pad-a" in lid] == [area]
+    assert ls[area]["name"].startswith("Pad A: change, ")
+    assert ls[area]["kind"] == "raster"
+    assert ls[area]["src"] == {"path": "change/c1-c2-raster-area-pad-a/heat/tiles.json"}
+    assert ls[area]["derived"]["changeId"] == "c1-c2-raster-area-pad-a"
+    assert scoped["layers"] == [area]
+    assert {it["layer"] for it in scoped["items"]} == {area}
     assert (tmp_path / "change" / "c1-c2-raster-area-pad-a" / "heat" / "tiles.json").is_file()
 
 

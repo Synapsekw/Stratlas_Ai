@@ -26,12 +26,12 @@ from ..runtime import (
     JobError,
     StepContext,
     atomic_write_bytes,
-    atomic_write_json,
     commit_tree,
     replace_over,
     safe_project_path,
 )
 from .changeset import CHANGE_DIR, dump_change_set, merge_reviews, read_change_set
+from .derived import update_manifest
 
 #: The largest comparison grid (cells); finer inputs are compared at a coarser cell.
 MAX_CELLS = 2500 * 2500
@@ -634,8 +634,14 @@ def commit_run(
     out_dir: str,
     change_set: dict[str, Any],
     layers: list[dict[str, Any]],
+    place: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
-    """Move a run into the project: derived files, the change set, then the manifest."""
+    """Move a run into the project: derived files, the change set, then the manifest.
+
+    ``layers`` replace the manifest's layers with the same ids, unless ``place`` puts them in the
+    manifest itself (an area's one layer, ``derived.place_area_layer``). The manifest is changed
+    under the project's manifest lock (``derived.update_manifest``).
+    """
     old = ctx.out(out_dir)
     if old.exists() and not (ctx.job.dir / "steps" / ".committing").exists():
         # files of an earlier run of this pair: replaced whole (the change set keeps the reviews)
@@ -650,19 +656,19 @@ def commit_run(
         shutil.copy2(set_path, set_path.with_name(set_path.name + ".bak"))
     atomic_write_bytes(set_path, dump_change_set(merged))
     ctx.artifact(f"{CHANGE_DIR}/{set_id}.json")
-    mpath = ctx.out("manifest.json")
-    manifest = read_manifest(ctx.project)
     ids = {x["id"] for x in layers}
-    kept = list(manifest.get("layers") or [])
-    for x in layers:
-        at = next((i for i, k in enumerate(kept) if isinstance(k, dict) and k.get("id") == x["id"]), None)
-        if at is None:
-            kept.append(x)
-        else:
-            kept[at] = x
-    manifest["layers"] = kept
-    shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
-    atomic_write_json(mpath, manifest, indent=2)
+
+    def replace(manifest: dict[str, Any]) -> None:
+        kept = list(manifest.get("layers") or [])
+        for x in layers:
+            at = next((i for i, k in enumerate(kept) if isinstance(k, dict) and k.get("id") == x["id"]), None)
+            if at is None:
+                kept.append(x)
+            else:
+                kept[at] = x
+        manifest["layers"] = kept
+
+    update_manifest(ctx.project, place or replace)
     ctx.artifact("manifest.json")
     (ctx.job.dir / "steps" / ".committing").unlink(missing_ok=True)
     return {
