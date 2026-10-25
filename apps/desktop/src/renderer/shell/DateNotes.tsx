@@ -10,7 +10,8 @@ import { DatePrompt, type DatePromptNote } from './DatePrompt';
 export interface DateNote {
   text: string;
   danger: boolean;
-  undo?: { moved: MovedLayer[]; target: string | null };
+  /** `made`: the date made for the move, removed by Undo when it is left empty. */
+  undo?: { moved: MovedLayer[]; target: string | null; made?: string };
   measureUndo?: number;
   prepare?: boolean;
   /** The seq of the measurement store's note this line shows (`measureStore.note`). */

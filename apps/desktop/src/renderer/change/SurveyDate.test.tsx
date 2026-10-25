@@ -14,7 +14,12 @@ const { call, readOnly } = vi.hoisted(() => ({
 vi.mock('../shell', () => ({ bridge: { call } }));
 vi.mock('@aio/annotate', () => ({ isAnnotateReadOnly: () => readOnly.on }));
 
-import { newSurveyDate, removeEmptyCapture, SurveyDateSelect } from './SurveyDate';
+import {
+  newSurveyDate,
+  removeEmptyCapture,
+  setLayersCapture,
+  SurveyDateSelect,
+} from './SurveyDate';
 
 const cap = (date: string): Capture => ({ id: `capture-${date}`, label: 'Survey', date });
 const layer = (id: string, capture?: string): Layer =>
@@ -410,5 +415,58 @@ describe('LayerDatePicker moves announce themselves', () => {
     show({ createdHere: [] });
     await pick('capture-2024-11-07');
     expect(moveAnnounce.getState().last).toBe(before);
+  });
+});
+
+describe('LayerDatePicker: Undo of a move to a new survey date', () => {
+  it('names the date it made, and Undo removes that date once it is left empty', async () => {
+    open(manifest([cap('2024-11-06')], [layer('a', 'capture-2024-11-06')]));
+    fakeMain();
+    const { moveAnnounce } = await import('../shell/dateMoveNote');
+    show();
+    await addDay('2024-11-08');
+    const last = moveAnnounce.getState().last ?? expect.fail('no announcement');
+    expect(last).toMatchObject({
+      moved: [{ id: 'a', capture: 'capture-2024-11-06' }],
+      target: 'capture-2024-11-08',
+      made: 'capture-2024-11-08',
+    });
+    const { undoDateMove } = await import('../shell/dateFolders');
+    await act(async () => {
+      await expect(undoDateMove(last.moved, last.target, last.made)).resolves.toBeNull();
+    });
+    expect(disk.layers.find((l) => l.id === 'a')?.capture).toBe('capture-2024-11-06');
+    expect(disk.captures.map((c) => c.id)).toEqual(['capture-2024-11-06']);
+  });
+
+  it('keeps the date it made when something else was filed there since', async () => {
+    open(
+      manifest(
+        [cap('2024-11-06')],
+        [layer('a', 'capture-2024-11-06'), layer('b', 'capture-2024-11-06')],
+      ),
+    );
+    fakeMain();
+    const { moveAnnounce } = await import('../shell/dateMoveNote');
+    show();
+    await addDay('2024-11-08');
+    const last = moveAnnounce.getState().last ?? expect.fail('no announcement');
+    await act(async () => {
+      await setLayersCapture(['b'], 'capture-2024-11-08');
+    });
+    const { undoDateMove } = await import('../shell/dateFolders');
+    await act(async () => {
+      await expect(undoDateMove(last.moved, last.target, last.made)).resolves.toBeNull();
+    });
+    expect(disk.captures.map((c) => c.id)).toContain('capture-2024-11-08');
+  });
+
+  it('a date that was there before is not named', async () => {
+    open(manifest([cap('2024-11-06'), cap('2024-11-08')], [layer('a', 'capture-2024-11-06')]));
+    fakeMain();
+    const { moveAnnounce } = await import('../shell/dateMoveNote');
+    show();
+    await addDay('2024-11-08');
+    expect(moveAnnounce.getState().last?.made).toBeUndefined();
   });
 });

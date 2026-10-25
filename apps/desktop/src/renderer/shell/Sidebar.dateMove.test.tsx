@@ -118,6 +118,14 @@ describe('Datasets: re-filing one dataset', () => {
     expect(h.undo).toHaveBeenCalledWith([{ id: 'walk-b', capture: null }], 'c1');
   });
 
+  it('Undo of a move to a date made for it hands that date on, to go if left empty', () => {
+    act(() => {
+      announceDateMove([{ id: 'walk-b', capture: null }], 'c1', 'c1');
+    });
+    click('date-undo');
+    expect(h.undo).toHaveBeenCalledWith([{ id: 'walk-b', capture: null }], 'c1', 'c1');
+  });
+
   it('taking the date off says the layer no longer belongs to one', () => {
     act(() => {
       announceDateMove([{ id: 'walk-b', capture: 'c2' }], null);

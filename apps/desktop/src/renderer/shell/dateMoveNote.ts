@@ -15,6 +15,8 @@ export interface DateMoveAnnouncement {
   seq: number;
   moved: MovedLayer[];
   target: string | null;
+  /** The survey date made for this move (New survey date): Undo removes it when left empty. */
+  made?: string;
 }
 
 export const moveAnnounce = createStore<{ last: DateMoveAnnouncement | null }>(() => ({
@@ -22,11 +24,14 @@ export const moveAnnounce = createStore<{ last: DateMoveAnnouncement | null }>((
 }));
 let seq = 0;
 
-/** Tell the Datasets list that these layers were just filed under `target` (null: no date). */
-export function announceDateMove(moved: MovedLayer[], target: string | null) {
+/**
+ * Tell the Datasets list that these layers were just filed under `target` (null: no date);
+ * `made` when that date was made for the move.
+ */
+export function announceDateMove(moved: MovedLayer[], target: string | null, made?: string) {
   if (moved.length === 0) return;
   seq += 1;
-  moveAnnounce.setState({ last: { seq, moved, target } });
+  moveAnnounce.setState({ last: { seq, moved, target, ...(made ? { made } : {}) } });
 }
 
 export const useDateMoveAnnouncement = () => useStore(moveAnnounce, (s) => s.last);
@@ -39,11 +44,12 @@ export function moveNote(
   manifest: ProjectManifest | undefined,
   moved: readonly MovedLayer[],
   target: string | null,
+  made?: string,
 ): DateNote | null {
   const [first] = moved;
   if (!first) return null;
   const date = target ? manifest?.captures.find((c) => c.id === target)?.date : undefined;
-  const undo = { moved: [...moved], target };
+  const undo = { moved: [...moved], target, ...(made ? { made } : {}) };
   if (moved.length > 1)
     return {
       text: date

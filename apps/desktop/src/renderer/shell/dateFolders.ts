@@ -1,7 +1,7 @@
 import type { CapturePatch } from '@aio/schema';
 import { volumetric } from '@aio/volumetric';
 import { planDateMove, workspace } from '@aio/workspace';
-import { setLayersCapture } from '../change/SurveyDate';
+import { removeEmptyCapture, setLayersCapture } from '../change/SurveyDate';
 import { bridge } from '../shell';
 import { volumeHints } from '../workspace/compare';
 import { priorCaptures, undoBatches, type MovedLayer } from './dateUndo';
@@ -51,11 +51,13 @@ export async function moveLayersToDate(
  * Put the layers of a date move back under the `capture` each had before it, `target` being what
  * the move filed them under (null: no date). Only layers still filed there go back; one that was
  * filed elsewhere since keeps that later choice. Null when they are back, else why not; a write
- * that is refused stops there and the list shows the manifest as it is.
+ * that is refused stops there and the list shows the manifest as it is. `made`: the date made for
+ * the move (New survey date), removed once nothing is filed under it.
  */
 export async function undoDateMove(
   moved: readonly MovedLayer[],
   target: string | null,
+  made?: string,
 ): Promise<string | null> {
   const project = workspace.getState().project;
   if (!project) return 'No project is open.';
@@ -64,7 +66,8 @@ export async function undoDateMove(
     const error = await setLayersCapture(batch.layerIds, batch.capture);
     if (error) return error;
   }
-  return null;
+  // a date made for the move (New survey date) goes too once nothing is filed under it
+  return made ? removeEmptyCapture(made) : null;
 }
 
 /** Rename a survey date or set its folder's colour and icon; null when saved, else why not. */

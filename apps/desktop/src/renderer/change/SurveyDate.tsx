@@ -239,7 +239,11 @@ export function SurveyDateSelect({
   const value = values.size === 1 ? ([...values][0] ?? '') : '';
 
   /** File the layers under `capture`, then remove the dates made here that are left empty. */
-  const fileUnder = async (capture: string | null, made: readonly string[] = []) => {
+  const fileUnder = async (
+    capture: string | null,
+    made: readonly string[] = [],
+    created?: string,
+  ) => {
     // the Selection card (nothing tidied) leaves the same "Moved ... / Undo" note as a drag
     const moved = tidy
       ? []
@@ -249,7 +253,7 @@ export function SurveyDateSelect({
         );
     const err = await setLayersCapture(layerIds, capture);
     if (err) return err;
-    announceDateMove(moved, capture);
+    announceDateMove(moved, capture, created);
     if (!tidy) return null;
     for (const id of new Set([...tidy, ...made])) {
       if (id === capture) continue;
@@ -275,7 +279,7 @@ export function SurveyDateSelect({
       const made = r.created && tidy ? [r.captureId] : [];
       if (made.length) setMadeHere((m) => [...m, ...made]);
       setDay(null);
-      return fileUnder(r.captureId, made);
+      return fileUnder(r.captureId, made, r.created ? r.captureId : undefined);
     });
   };
   const close = () => {

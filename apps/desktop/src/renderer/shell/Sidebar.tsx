@@ -519,7 +519,15 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   }
   if (announced && announced.seq !== seenAnnounce) {
     setSeenAnnounce(announced.seq);
-    setNote(moveNote(t, workspace.getState().project?.manifest, announced.moved, announced.target));
+    setNote(
+      moveNote(
+        t,
+        workspace.getState().project?.manifest,
+        announced.moved,
+        announced.target,
+        announced.made,
+      ),
+    );
   }
   // A new note from the measurement store (a date move, its refusal, a backfill) takes the note
   // slot; the same note changed (a later edit took its Undo away) changes the slot only while it
@@ -1154,7 +1162,11 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
         onUndo={(pending) => {
           // the note goes first, so a second quick click has nothing to start again
           setNote(null);
-          void undoDateMove(pending.moved, pending.target).then(failed);
+          void (
+            pending.made
+              ? undoDateMove(pending.moved, pending.target, pending.made)
+              : undoDateMove(pending.moved, pending.target)
+          ).then(failed);
         }}
         onMeasureUndo={(seq) => {
           if (!canMeasureEdit || isAnnotateReadOnly()) return;
