@@ -50,9 +50,19 @@ export function groundUnder(
   return y === null ? { y: 0, source: 'project' } : { y, source: 'dsm' };
 }
 
-/** What Drop to ground moves: a cloud by its height offset, a model by its transform. */
+/**
+ * What Drop to ground moves: a cloud or a walk by its height offset, a model by its transform. A
+ * walk's `low` is 0 and the ground it is dropped onto the floor's median height over its ground
+ * (`walkFloorShift`): the shift itself.
+ */
 export type DropItem =
-  | { kind: 'pointcloud'; layerId: string; name: string; low: number; heightOffsetM: number }
+  | {
+      kind: 'pointcloud' | 'walk';
+      layerId: string;
+      name: string;
+      low: number;
+      heightOffsetM: number;
+    }
   | {
       kind: 'mesh';
       layerId: string;
@@ -82,7 +92,7 @@ export function planDrop(item: DropItem, groundY: number, project: ProjectGeo): 
   const shift = r3(groundY - item.low);
   if (!Number.isFinite(shift) || Math.abs(groundY - item.low) < MIN_DROP_M) return null;
   const head = { layerId: item.layerId, name: item.name, shift };
-  if (item.kind === 'pointcloud') {
+  if (item.kind !== 'mesh') {
     const cur = item.heightOffsetM;
     return {
       ...head,
@@ -107,9 +117,11 @@ export function formatShift(m: number): string {
 
 /**
  * Whether a dataset can be dropped: `ok` for a COPC or png-packed cloud and a model, not change
- * results or drafts; `kit` for a kit-packed cloud (it cannot take an offset); `no` otherwise.
+ * results or drafts, and a placed walk; `kit` for a kit-packed cloud (it cannot take an offset);
+ * `no` otherwise.
  */
 export function droppable(l: Layer): 'ok' | 'kit' | 'no' {
+  if (l.kind === 'walk') return l.place && l.place.quality !== 'unplaced' ? 'ok' : 'no';
   if (l.kind === 'pointcloud') {
     if (l.derived?.kind === 'change') return 'no';
     if (l.format === 'kit-packed') return 'kit';

@@ -73,6 +73,7 @@ import {
   type WalkNow,
 } from './walkOverlay';
 import { comparedWalks, walkCompare } from './walkCompare';
+import { walkFitSource } from './walkDrop';
 import { walkGround, type GroundAt } from './walkGround';
 import { walkViews, type WalkViewNow } from './walkView';
 import { jobForWalk, splitWithWalk } from './walkModel';
@@ -948,6 +949,16 @@ function sharedFits(
   lastFits = { m, projectId, loaded, placed, out };
   return out;
 }
+
+/**
+ * The placed walk's fit as the views drew it last (outside React: Drop to ground), null when it
+ * was not fitted for the manifest open now (not read yet, or the project changed since).
+ */
+export function placedWalkFitNow(m: ProjectManifest, layerId: string): SheetWalk | null {
+  const w = lastFits?.m === m ? lastFits.out.find((x) => x.layer.id === layerId) : undefined;
+  return w ?? null;
+}
+walkFitSource.now = placedWalkFitNow;
 
 // another project (or the same one opened again from another folder): read everything afresh
 let inputsProject: string | null = projectCacheKey(workspace.getState().project);

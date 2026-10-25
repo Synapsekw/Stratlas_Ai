@@ -95,6 +95,22 @@ afterEach(() => {
 });
 
 describe('actions per kind', () => {
+  it('offers Drop to ground on a placed walk, with a cloud too, and runs it on both', () => {
+    const both = item(on('walk', 'cloud'), 'layer.dropToGround');
+    expect(both).toBeDefined();
+    both?.run();
+    expect(drop).toHaveBeenCalledWith(['walk', 'cloud']);
+    const unplaced = makeActionCtx({
+      manifest: {
+        ...manifest,
+        layers: manifest.layers.map((l) =>
+          l.id === 'walk' ? ({ ...l, place: undefined } as unknown as typeof l) : l,
+        ),
+      },
+    });
+    expect(ids(on('walk'), unplaced)).not.toContain('layer.dropToGround');
+  });
+
   it('offers Drop to ground on clouds and models, also marked together', () => {
     expect(ids(on('cloud'))).toContain('layer.dropToGround');
     expect(ids(on('mesh'))).toContain('layer.dropToGround');
@@ -163,7 +179,12 @@ describe('actions per kind', () => {
       expect.arrayContaining(['video.calibrate', 'video.alignCamera', 'video.flightPath']),
     );
     expect(ids(on('walk'))).toEqual(
-      expect.arrayContaining(['walk.open', 'walk.place', 'walk.removePlacement']),
+      expect.arrayContaining([
+        'walk.open',
+        'walk.place',
+        'walk.removePlacement',
+        'layer.dropToGround',
+      ]),
     );
     expect(ids(on('panos'))).toEqual(expect.arrayContaining(['pano.open', 'pano.stitch']));
     expect(ids({ kind: 'annotations', row: 'issues' })).toEqual([
