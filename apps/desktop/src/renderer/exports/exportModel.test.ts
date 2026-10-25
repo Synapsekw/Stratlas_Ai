@@ -11,7 +11,7 @@ import {
 } from './exportModel';
 
 const manifest = {
-  name: 'HCl Tank 710',
+  name: 'Demo Yard 710',
   severityModels: [
     {
       id: 'sev',
@@ -70,8 +70,8 @@ describe('export actions', () => {
   });
 
   it('names snapshots after the project', () => {
-    expect(snapshotName('HCl Tank: 710', new Date('2026-10-04T08:09:10Z'))).toBe(
-      'HCl-Tank-710-3d-view-20261004-080910.png',
+    expect(snapshotName('Demo Yard: 710', new Date('2026-10-04T08:09:10Z'))).toBe(
+      'Demo-Yard-710-3d-view-20261004-080910.png',
     );
   });
 

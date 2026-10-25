@@ -7,8 +7,8 @@ function deps(over: Partial<ExportDeps> = {}) {
   const events: IpcEvent<'export:progress'>[] = [];
   const asked: string[] = [];
   const d: ExportDeps = {
-    projectRoot: (id) => (id === 'hcl' ? 'E:/data/hcl' : undefined),
-    projectName: () => Promise.resolve('HCl Tank'),
+    projectRoot: (id) => (id === 'demo' ? 'E:/data/demo' : undefined),
+    projectName: () => Promise.resolve('Demo Yard'),
     downloadsDir: 'C:/Users/me/Downloads',
     chooseSavePath: (p) => {
       asked.push(p);
@@ -25,13 +25,13 @@ function deps(over: Partial<ExportDeps> = {}) {
   return { d, events, asked };
 }
 
-const req = { jobId: 'j1', projectId: 'hcl', format: 'csv' as const };
+const req = { jobId: 'j1', projectId: 'demo', format: 'csv' as const };
 
 describe('export jobs', () => {
   it('asks where to save with a default name, runs the job and forwards progress', async () => {
     const { d, events, asked } = deps();
     const r = await createExportJobs(d).run(req);
-    expect(asked).toEqual(['C:\\Users\\me\\Downloads\\HCl-Tank-issues.csv'.replace(/\\/g, sep())]);
+    expect(asked).toEqual(['C:\\Users\\me\\Downloads\\Demo-Yard-issues.csv'.replace(/\\/g, sep())]);
     expect(r).toEqual({ ok: true, path: 'C:/out/file.csv', count: 13, bytes: 900 });
     expect(events).toEqual([{ jobId: 'j1', phase: 'Writing', done: 1, total: 2 }]);
   });
@@ -57,8 +57,8 @@ describe('export jobs', () => {
       ok: true,
       bytes: 4000,
     });
-    expect(asked[0]).toMatch(/HCl-Tank-accuracy-report\.pdf$/);
-    expect(printed).toEqual([expect.objectContaining({ projectId: 'hcl', kind: 'processing' })]);
+    expect(asked[0]).toMatch(/Demo-Yard-accuracy-report\.pdf$/);
+    expect(printed).toEqual([expect.objectContaining({ projectId: 'demo', kind: 'processing' })]);
   });
 
   it('makes the survey report and CSVs in the report window, refused first without a survey', async () => {
@@ -82,9 +82,9 @@ describe('export jobs', () => {
       expect(await jobs.run({ ...req, jobId: format, format })).toMatchObject({ ok: true });
     expect(printed.map((p) => p.kind)).toEqual(['survey', 'stockpile-csv', 'measurements-csv']);
     expect(asked.map((a) => basename(a))).toEqual([
-      'HCl-Tank-survey-report.pdf',
-      'HCl-Tank-stockpile-inventory.csv',
-      'HCl-Tank-measurements.csv',
+      'Demo-Yard-survey-report.pdf',
+      'Demo-Yard-stockpile-inventory.csv',
+      'Demo-Yard-measurements.csv',
     ]);
   });
 
