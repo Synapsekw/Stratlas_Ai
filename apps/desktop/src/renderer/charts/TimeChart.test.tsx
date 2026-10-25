@@ -514,7 +514,10 @@ describe('TimeChart fits its frame (folded fixes)', () => {
     // the end labels stay inside the frame
     const half = widest / 2;
     expect((xs[0] ?? 0) - half).toBeGreaterThanOrEqual(0);
-    expect((xs.at(-1) ?? 0) + half).toBeLessThanOrEqual(width + 1e-9);
+    const lastLabel = labels.at(-1);
+    const lastEnd =
+      lastLabel?.getAttribute('text-anchor') === 'end' ? (xs.at(-1) ?? 0) : (xs.at(-1) ?? 0) + half;
+    expect(lastEnd).toBeLessThanOrEqual(width + 1e-9);
   });
 
   it('stack parts take material colours', () => {
@@ -581,6 +584,24 @@ describe('TimeChart fits its frame (folded fixes)', () => {
         280,
       );
       expect(axis(h)).toEqual(['31 Jan', '28 Feb', '31 Mar']);
+    });
+
+    it("the last date's label ends at the plot's right edge, never past it", () => {
+      const width = 315;
+      const h = renderSized(
+        { kind: 'volume', rows: [row('a', '2020-12-31', 9519), row('b', '2021-01-10', 6505)] },
+        width,
+      );
+      const labels = [...h.querySelectorAll('[data-axis="t"] text')];
+      expect(labels.map((l) => l.textContent)).toEqual(['31 Dec 2020', '10 Jan 2021']);
+      const last = labels.at(-1);
+      // anchored at its end, the label cannot run past the plot whatever the font's real width
+      expect(last?.getAttribute('text-anchor')).toBe('end');
+      const plotRight = width - 14;
+      expect(Number(last?.getAttribute('x'))).toBeLessThanOrEqual(plotRight);
+      // still under its own date: it ends to the right of the last dot
+      const dot = h.querySelector('[data-dot="b"]');
+      expect(Number(last?.getAttribute('x'))).toBeGreaterThan(Number(dot?.getAttribute('cx')));
     });
 
     it('says the year when the dates span more than one', () => {

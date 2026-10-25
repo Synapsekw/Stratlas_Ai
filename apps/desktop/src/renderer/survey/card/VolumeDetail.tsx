@@ -6,7 +6,15 @@
  * a chart and a table. Volumes come from the survey engine (`compareStore.ts`).
  */
 import { useAnnotateReadOnly } from '@aio/annotate';
-import { formatQuantity, fromSI, localeOf, toSI, unitLabel } from '@aio/geo';
+import {
+  formatNumber,
+  formatQuantity,
+  fromSI,
+  localeOf,
+  toSI,
+  unitFactor,
+  unitLabel,
+} from '@aio/geo';
 import type { ComparisonItem, ComparisonResult, SurfaceRef, SurveyMeasurement } from '@aio/schema';
 import {
   deadbandFromStops,
@@ -481,7 +489,7 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
       )}
 
       {rows.some((r) => r.valueM3 !== null) && (
-        <OverTime rows={rows} m={m} tonnage={density !== undefined} signed={signed} v={v} />
+        <OverTime rows={rows} m={m} tonnage={density !== undefined} />
       )}
       {(material !== null || rows.some((r) => r.latest && r.changeM3 !== null)) && (
         <Facts rows={rows} material={material?.name ?? null} signed={signed} />
@@ -855,14 +863,10 @@ function OverTime({
   rows,
   m,
   tonnage,
-  signed,
-  v,
 }: {
   rows: readonly TimeRow[];
   m: SurveyMeasurement;
   tonnage: boolean;
-  signed: (x: number) => string;
-  v: (x: number) => string;
 }) {
   const t = useT();
   const settings = useMeasure((s) => s.settings);
@@ -878,6 +882,11 @@ function OverTime({
     t(emptyReason([states.get(capture) ?? { kind: 'ready' }], soon));
   // the narrow panel: the date as the chart's axis names it, the survey's own label on hover
   const short = shortDates(rows.map((r) => r.date));
+  // and the volume unit once, in the column heads: the figures alone keep the table to the card
+  const per = unitFactor('volume', units.volume);
+  const num = (x: number) => formatNumber(x / per, settings.precision.volume, locale);
+  const numSigned = (x: number) => `${x > 0 && num(x) !== num(0) ? '+' : ''}${num(x)}`;
+  const head = (label: string) => t('chart.axisTitle', { label, unit: unitLabel(units.volume) });
   return (
     <section className="vd-time" aria-label={t('vol.overTime')}>
       <h3 className="vd-sub">{t('vol.overTime')}</h3>
@@ -888,38 +897,41 @@ function OverTime({
         locale={locale}
         gapReason={gapReason}
       />
-      <table className="vd-time-table" data-testid="vol-time-table">
-        <caption className="sr-only">{t('vol.card.overTimeTable')}</caption>
-        <thead>
-          <tr>
-            <th scope="col">{t('chart.date')}</th>
-            <th scope="col">{t('chart.volume')}</th>
-            <th scope="col">{t('vol.change')}</th>
-            {tonnage && <th scope="col">{t('vol.tonnage')}</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr
-              key={r.capture}
-              data-latest={r.latest ? '' : undefined}
-              data-stale={r.stale ? '' : undefined}
-              aria-current={r.latest ? 'date' : undefined}
-            >
-              <th scope="row" title={r.label}>
-                {short(r.date)}
-              </th>
-              {r.valueM3 !== null ? (
-                <td>{v(r.valueM3)}</td>
-              ) : (
-                <td className="vd-gap">{gapReason(r.capture)}</td>
-              )}
-              <td>{r.changeM3 !== null ? signed(r.changeM3) : ''}</td>
-              {tonnage && <td>{r.tonnes !== null ? mass(r.tonnes) : ''}</td>}
+      {/* a table wider than the card scrolls in its own box, never widening the chart above */}
+      <div className="vd-time-scroll">
+        <table className="vd-time-table" data-testid="vol-time-table">
+          <caption className="sr-only">{t('vol.card.overTimeTable')}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{t('chart.date')}</th>
+              <th scope="col">{head(t('chart.volume'))}</th>
+              <th scope="col">{head(t('vol.change'))}</th>
+              {tonnage && <th scope="col">{t('vol.tonnage')}</th>}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr
+                key={r.capture}
+                data-latest={r.latest ? '' : undefined}
+                data-stale={r.stale ? '' : undefined}
+                aria-current={r.latest ? 'date' : undefined}
+              >
+                <th scope="row" title={r.label}>
+                  {short(r.date)}
+                </th>
+                {r.valueM3 !== null ? (
+                  <td>{num(r.valueM3)}</td>
+                ) : (
+                  <td className="vd-gap">{gapReason(r.capture)}</td>
+                )}
+                <td>{r.changeM3 !== null ? numSigned(r.changeM3) : ''}</td>
+                {tonnage && <td>{r.tonnes !== null ? mass(r.tonnes) : ''}</td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

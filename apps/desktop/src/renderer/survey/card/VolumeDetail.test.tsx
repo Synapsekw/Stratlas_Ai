@@ -122,6 +122,8 @@ const settings = (): SurveySettings => ({
   materials: [{ id: 'mat1', name: '20 mm aggregate', densityTPerM3: 1.7 }],
 });
 const v = (x: number) => formatQuantity(x, 'volume', settings().units, settings().precision);
+/** A figure in the over-time table: the number alone, its unit in the column's head. */
+const bare = (x: number) => v(x).replace(/\s*m³$/, '');
 
 beforeEach(() => {
   s.prepareRunning = false;
@@ -372,6 +374,28 @@ describe('VolumeDetail', () => {
     expect(css).toMatch(rule('.vd-time-table td'));
   });
 
+  it('a wide over-time table scrolls in its own box and never widens the chart', () => {
+    const series = [
+      result({ toCapture: 'c1', netM3: 9519.8, totalM3: 9519.8, fingerprint: 'f1' }),
+      result({ toCapture: 'c2', netM3: 6505.9, totalM3: 6505.9, fingerprint: 'f2' }),
+    ];
+    show(pile({ material: 'mat1', series }));
+    const table = host.querySelector('[data-testid="vol-time-table"]');
+    const box = table?.parentElement;
+    expect(box?.classList.contains('vd-time-scroll')).toBe(true);
+    // the box is the section's own child, beside the chart: the chart takes the section's width
+    expect(box?.parentElement?.classList.contains('vd-time')).toBe(true);
+    const css = readFileSync(join(__dirname, '..', 'compare.css'), 'utf8');
+    const block = (sel: string) =>
+      new RegExp(`(^|[},])\\s*${sel.replace(/[.[\]]/g, '\\$&')}\\s*\\{([^}]*)\\}`, 'm').exec(
+        css,
+      )?.[2] ?? '';
+    expect(block('.vd-time-scroll')).toMatch(/overflow-x:\s*auto/);
+    expect(block('.vd-time-scroll')).toMatch(/min-width:\s*0/);
+    // one column no wider than the card: a table's min-content never stretches it
+    expect(block('.vd-time')).toMatch(/grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  });
+
   it('over-time table shows change and tonnage', () => {
     const series = [
       result({ toCapture: 'c1', netM3: 3070, totalM3: 3070, fingerprint: 'f1' }),
@@ -381,15 +405,16 @@ describe('VolumeDetail', () => {
     const table = host.querySelector('[data-testid="vol-time-table"]');
     expect(
       [...(table?.querySelectorAll('th[scope="col"]') ?? [])].map((x) => x.textContent),
-    ).toEqual(['Date', 'Volume', 'Change', 'Tonnage']);
+    ).toEqual(['Date', 'Volume (m³)', 'Change (m³)', 'Tonnage']);
     const rows = [...(table?.querySelectorAll('tbody tr') ?? [])];
     expect(rows).toHaveLength(2);
     const latest = rows[1];
     expect(latest?.hasAttribute('data-latest')).toBe(true);
     expect(rows[0]?.hasAttribute('data-latest')).toBe(false);
     const cells = [...(latest?.querySelectorAll('td') ?? [])].map((c) => c.textContent);
-    expect(cells[0]).toBe(v(3482));
-    expect(cells[1]).toBe(`+${v(412)}`);
+    // the unit once, in the head: the figures keep the card's width (the narrow panel)
+    expect(cells[0]).toBe(bare(3482));
+    expect(cells[1]).toBe(`+${bare(412)}`);
     // tonnes shown as tonnes (the formatter's mass is SI kilograms)
     expect(cells[2]).toBe('5 919.4 t');
     expect(byTestId('time-chart')).toHaveLength(1);
@@ -405,7 +430,7 @@ describe('VolumeDetail', () => {
     host.remove();
     show(pile({ series }));
     const heads = [...host.querySelectorAll('[data-testid="vol-time-table"] th[scope="col"]')];
-    expect(heads.map((x) => x.textContent)).toEqual(['Date', 'Volume', 'Change']);
+    expect(heads.map((x) => x.textContent)).toEqual(['Date', 'Volume (m³)', 'Change (m³)']);
   });
 
   it('each date weighs at the density on that date (review finding 2)', () => {
@@ -485,7 +510,7 @@ describe('VolumeDetail', () => {
       }),
     );
     const rows = [...host.querySelectorAll('[data-testid="vol-time-table"] tbody tr')];
-    expect(rows.map((r) => r.querySelector('td')?.textContent)).toEqual([v(-20), v(-35)]);
+    expect(rows.map((r) => r.querySelector('td')?.textContent)).toEqual([bare(-20), bare(-35)]);
   });
 
   it('a pile absent on the latest date shows as absent', () => {
@@ -559,7 +584,7 @@ describe('VolumeDetail', () => {
     const net = host.querySelector('[data-testid="survey-cmp-result"] tr[data-key="net"] td');
     expect(net?.textContent).toBe(v(3482));
     const latest = host.querySelector('[data-testid="vol-time-table"] tr[data-latest] td');
-    expect(latest?.textContent).toBe(v(3482));
+    expect(latest?.textContent).toBe(bare(3482));
     expect(host.querySelector('[data-testid="vol-since"] dd')?.textContent).toBe(`+${v(412)}`);
   });
 
@@ -765,7 +790,7 @@ describe('VolumeDetail', () => {
     expect(figures?.hasAttribute('data-stale')).toBe(true);
     expect(figures?.querySelector('tr[data-key="net"] td')?.textContent).toBe(v(3482));
     const latest = host.querySelector('[data-testid="vol-time-table"] tr[data-latest]');
-    expect(latest?.querySelector('td')?.textContent).toBe(v(3482));
+    expect(latest?.querySelector('td')?.textContent).toBe(bare(3482));
     expect(latest?.hasAttribute('data-stale')).toBe(true);
     expect(host.querySelector('[data-testid="vol-since"] dd')?.textContent).toBe(`+${v(412)}`);
     // the older figure for that date is nowhere on the card

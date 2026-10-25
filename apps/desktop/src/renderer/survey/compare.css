@@ -301,8 +301,15 @@
 }
 .vd-time {
   display: grid;
+  /* one column no wider than the card: the table's min-content never stretches the chart */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-4);
   min-width: 0;
+}
+/* the per-date table scrolls sideways inside its box when its columns outgrow the card */
+.vd-time-scroll {
+  min-width: 0;
+  overflow-x: auto;
 }
 .vd-sub {
   margin: 0;

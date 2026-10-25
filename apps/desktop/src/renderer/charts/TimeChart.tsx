@@ -288,13 +288,19 @@ export function TimeChart(p: TimeChartProps): ReactElement {
 
   // date labels in the short form ("13 Apr"; the survey's own label is the read-out's), left to
   // right, at least their own width (and 56 px) apart, the end ones pulled inside the frame; when
-  // they would collide they drop to every other (then every third), the first and last kept
+  // they would collide they drop to every other (then every third), the first and last kept. A
+  // label that would run past the plot's right edge ends there (anchored at its end), so it stays
+  // inside whatever the font's real width
   const dateLabels = useMemo(() => {
     const short = shortDates(cols.map((c) => c.date));
     const all = cols.map((c) => {
       const text = short(c.date);
       const half = textW(text) / 2;
-      return { c, text, lx: Math.min(w - half, Math.max(half, x(c.t))) };
+      const at = x(c.t);
+      if (at + half > right)
+        return { c, text, lx: right - half, tx: right, anchor: 'end' as const };
+      const lx = Math.max(half, at);
+      return { c, text, lx, tx: lx, anchor: 'middle' as const };
     });
     const widest = Math.max(0, ...all.map((a) => textW(a.text)));
     const gap = Math.max(MIN_LABEL_GAP, widest + LABEL_SPACE);
@@ -303,7 +309,7 @@ export function TimeChart(p: TimeChartProps): ReactElement {
       gap,
     ).flatMap((i) => all[i] ?? []);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- x is derived from cols, w, left and span
-  }, [cols, w, left, span]);
+  }, [cols, w, left, right, span]);
 
   const stackIds = useMemo(() => {
     const ids: string[] = [];
@@ -524,8 +530,8 @@ export function TimeChart(p: TimeChartProps): ReactElement {
             ))}
           </g>
           <g className="pc-grid" data-axis="t">
-            {dateLabels.map(({ c, lx, text }) => (
-              <text key={c.capture} x={lx} y={bottom + 14} textAnchor="middle">
+            {dateLabels.map(({ c, tx, anchor, text }) => (
+              <text key={c.capture} x={tx} y={bottom + 14} textAnchor={anchor}>
                 {text}
               </text>
             ))}
