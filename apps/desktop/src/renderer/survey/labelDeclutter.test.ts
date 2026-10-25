@@ -9,6 +9,7 @@ const box = (id: string, x: number, y: number, more: Partial<LabelBox> = {}): La
   h: 20,
   selected: false,
   weight: 0,
+  pile: true,
   ...more,
 });
 
@@ -55,5 +56,47 @@ describe('declutter', () => {
     );
     expect(only.get('small')).toEqual({ dy: 0, hidden: false });
     expect(only.get('big')?.dy).toBe(-(20 + LABEL_GAP));
+  });
+
+  describe('labels that are not pile labels (distances, areas) and the picked ones', () => {
+    const NUDGE = -(20 + LABEL_GAP);
+
+    it('a distance label is never hidden: it keeps its place and the piles give way', () => {
+      const out = declutter([
+        box('big', 0, 100, { weight: 900 }),
+        box('mid', 0, 100, { weight: 300 }),
+        box('line', 0, 100, { pile: false }),
+      ]);
+      expect(out.get('line')).toEqual({ dy: 0, hidden: false });
+      expect(out.get('big')).toEqual({ dy: NUDGE, hidden: false });
+      expect(out.get('mid')?.hidden).toBe(true);
+    });
+
+    it('labels that are not pile labels are only ever moved, however many share a place', () => {
+      const out = declutter([
+        box('a', 0, 100, { pile: false }),
+        box('b', 0, 100, { pile: false }),
+        box('c', 0, 100, { pile: false }),
+        box('pile', 0, 100, { weight: 900 }),
+      ]);
+      for (const id of ['a', 'b', 'c']) expect(out.get(id)?.hidden).toBe(false);
+      expect(new Set(['a', 'b', 'c'].map((id) => out.get(id)?.dy)).size).toBe(3);
+      expect(out.get('pile')?.hidden).toBe(true);
+    });
+
+    it('a selected or hovered pile always shows, even among labels that are not piles', () => {
+      const boxes = [
+        box('line', 0, 100, { pile: false }),
+        box('area', 0, 100, { pile: false }),
+        box('picked', 0, 100, { weight: 1, selected: true }),
+        box('under', 200, 100, { weight: 1 }),
+        box('other', 200, 100, { pile: false }),
+        box('other2', 200, 100, { pile: false }),
+      ];
+      const out = declutter(boxes, { x: 250, y: 110 });
+      expect(out.get('picked')?.hidden).toBe(false);
+      expect(out.get('under')?.hidden).toBe(false);
+      for (const id of ['line', 'area', 'other', 'other2']) expect(out.get(id)?.hidden).toBe(false);
+    });
   });
 });

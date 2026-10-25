@@ -1,9 +1,11 @@
 /**
  * Keeps the 3D view's measurement labels apart (volumetric report, bug 5): piles that sit close
  * together put their labels on top of each other. In priority order (the label under the pointer,
- * then the selected ones, then the larger volume) each label keeps its place when it is free, is
- * nudged up by its own height plus a gap when that spot is free, or is hidden until the pointer
- * rests on it.
+ * the selected ones, the labels that are not pile labels, then the larger volume) each label keeps
+ * its place when it is free, is nudged up by its own height plus a gap when that spot is free, or
+ * is hidden until the pointer rests on it. Only a pile label that is neither selected nor under
+ * the pointer is ever hidden: any other label (a distance, an area, the picked one) is moved up
+ * as far as it takes, never hidden.
  */
 
 /** A label's box on screen, at the place its anchor puts it. */
@@ -16,6 +18,8 @@ export interface LabelBox {
   selected: boolean;
   /** Bigger first among equals: a pile's volume on the date in focus (0 for other labels). */
   weight: number;
+  /** A stockpile's label: the only kind that may be hidden (when neither selected nor hovered). */
+  pile: boolean;
 }
 
 /** Where a label goes: moved up by `dy` pixels (zero or negative), or hidden. */
@@ -48,7 +52,8 @@ export function declutter(
   boxes: readonly LabelBox[],
   hover: { x: number; y: number } | null = null,
 ): Map<string, LabelPlacement> {
-  const rank = (b: LabelBox) => (hover && contains(b, hover) ? 2 : 0) + (b.selected ? 1 : 0);
+  const hovered = (b: LabelBox) => hover !== null && contains(b, hover);
+  const rank = (b: LabelBox) => (hovered(b) ? 4 : 0) + (b.selected ? 2 : 0) + (b.pile ? 0 : 1);
   const order = boxes
     .map((b, i) => ({ b, i }))
     .sort((p, q) => rank(q.b) - rank(p.b) || q.b.weight - p.b.weight || p.i - q.i);
@@ -60,7 +65,10 @@ export function declutter(
       return placed.some((p) => overlaps(p, r)) ? null : r;
     };
     const nudge = -(b.h + LABEL_GAP);
-    const at = free(0) ? 0 : free(nudge) ? nudge : null;
+    let at: number | null = free(0) ? 0 : free(nudge) ? nudge : null;
+    // a label that must show climbs over the ones placed before it until it finds room
+    if (at === null && (!b.pile || b.selected || hovered(b)))
+      for (let k = 2; at === null; k++) if (free(k * nudge) || k > boxes.length) at = k * nudge;
     if (at === null) {
       out.set(b.id, { dy: 0, hidden: true });
       continue;

@@ -63,11 +63,15 @@ async function outline(p: SurveyDemoProject, id: string): Promise<[number, numbe
 
 /**
  * The page point of a measurement's label anchor in the 3D view (a closed shape's centroid, a
- * line's last point): the label's own translate, read off its layer.
+ * line's last point): the label's own translate, read off its layer. The anchor is there while the
+ * label is in view, also when a closer label has it waiting for hover (`labelDeclutter`).
  */
 async function labelAnchor3d(win: Page, id: string): Promise<Pt> {
   const label = win.locator(`[data-scene-view] .sv-labels .sv-label[data-id="${id}"]`).first();
-  await expect(label).toBeVisible({ timeout: 30_000 });
+  await expect(label).toBeAttached({ timeout: 30_000 });
+  await expect
+    .poll(() => label.evaluate((el) => (el as HTMLElement).style.display), { timeout: 30_000 })
+    .not.toBe('none');
   const at = await label.evaluate((el) => {
     const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec((el as HTMLElement).style.transform);
     const r = el.parentElement?.getBoundingClientRect();

@@ -789,6 +789,7 @@ export function attach3d(
             size: sh.labelSize,
             selected: sh.selected,
             weight: sh.weight,
+            pile: sh.pile,
             at: inView ? { x: Math.round(p.x - hr.left), y: Math.round(p.y - hr.top) } : null,
           },
         ];
@@ -1006,8 +1007,13 @@ interface LabelItem {
   size: number;
   selected: boolean;
   weight: number;
+  /** A stockpile's label: the only kind `declutter` may hide. */
+  pile: boolean;
   at: { x: number; y: number } | null;
 }
+
+/** A label chip's top margin in measure.css (`.sv-label`): the chip sits above its anchor. */
+const LABEL_TOP = -24;
 
 /**
  * The measurement labels over a view (`.sv-label` chips in an `.sv-labels` layer of `host`), the
@@ -1059,14 +1065,18 @@ function labelChips(host: HTMLElement): {
           h: size.h,
           selected: it.selected,
           weight: it.weight,
+          pile: it.pile,
         });
       });
-      // close piles: the larger keeps its label in place, the next moves up, the rest wait for hover
+      // close labels: the picked ones and those that are not piles first, never hidden; then the
+      // larger pile keeps its place, the next moves up, the rest wait for hover
       const placed = declutter(boxes, pointer);
       for (const b of boxes) {
         const at = placed.get(b.id);
         b.el.style.visibility = at?.hidden === true ? 'hidden' : '';
-        b.el.style.transform = `translate(${String(b.x)}px, ${String(b.y + (at?.dy ?? 0))}px)`;
+        // the transform stays the anchor; a nudge moves the chip by its top margin
+        b.el.style.transform = `translate(${String(b.x)}px, ${String(b.y)}px)`;
+        b.el.style.marginTop = at && at.dy !== 0 ? `${String(LABEL_TOP + at.dy)}px` : '';
       }
     },
     remove() {
@@ -1180,6 +1190,7 @@ export function attachMap(
           size: sh.labelSize,
           selected: sh.selected,
           weight: sh.weight,
+          pile: sh.pile,
           at: inView ? { x: Math.round(p.x), y: Math.round(p.y) } : null,
         };
       }),
