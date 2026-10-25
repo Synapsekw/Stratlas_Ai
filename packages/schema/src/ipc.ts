@@ -47,7 +47,15 @@ import {
 import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './package';
 import { BoundaryEditsFile, VolumesFile } from './volumes';
 import { DetectionsFile } from './detections';
-import { NarrativeFile, ReportContentsSettings } from './report';
+import {
+  NarrativeFile,
+  REPORT_VIEWS_MAX,
+  ReportContentsSettings,
+  ReportTextFile,
+  ReportTypeId,
+  ReportViewFileName,
+  ReportViewsFrame,
+} from './report';
 import { ReportTemplateFile } from './reportTemplate';
 import { OrientationFile } from './orientation';
 import { ReleaseNotes, UpdateStatus } from './update';
@@ -748,6 +756,10 @@ export const EXPORT_FORMATS = [
   'measurements-csv',
   'stockpile-csv',
   'survey-report-pdf',
+  // The volumetric customer report: pages A, B, C as a PDF, and one offline HTML file (the
+  // interactive view D with A, B, C for printing), both under the kind `report-pdf`
+  'volumetric-pdf',
+  'volumetric-html',
 ] as const;
 export const ExportFormat = z.enum(EXPORT_FORMATS);
 
@@ -769,6 +781,8 @@ export const EXPORT_FORMAT_KIND = {
   'measurements-csv': 'files',
   'stockpile-csv': 'files',
   'survey-report-pdf': 'report-pdf',
+  'volumetric-pdf': 'report-pdf',
+  'volumetric-html': 'report-pdf',
 } as const satisfies Record<z.infer<typeof ExportFormat>, ExportKind>;
 
 export const ReportFile = z.object({
@@ -1587,6 +1601,54 @@ export const ipc = {
   'report:writeNarrative': {
     request: z.object({ projectId: z.string().min(1), file: NarrativeFile }).strict(),
     response: z.object({ ok: z.boolean(), error: z.string().optional() }),
+  },
+  /**
+   * A customer report's saved edits (`report/<report>.json`, `aio.report-text/1`): null when none
+   * were saved. `readOnly` for a package, whose edits can be read but not changed.
+   */
+  'report:readText': {
+    request: z.object({ projectId: z.string().min(1), report: ReportTypeId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: ReportTextFile.nullable(), readOnly: z.boolean() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /** Replace `report/<report>.json` atomically, keeping a `.bak` of the previous file. */
+  'report:writeText': {
+    request: z
+      .object({ projectId: z.string().min(1), report: ReportTypeId, file: ReportTextFile })
+      .strict(),
+    response: z.object({ ok: z.boolean(), error: z.string().optional() }),
+  },
+  /**
+   * Save a customer report's pictures taken from the stage: the JPEGs and their `frame.json`
+   * (`aio.report-views/1`) in `report/views/<report>/`, replacing the previous set.
+   */
+  'report:saveViews': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        report: ReportTypeId,
+        frame: ReportViewsFrame,
+        files: z
+          .array(z.object({ name: ReportViewFileName, data: z.instanceof(Uint8Array) }).strict())
+          .max(REPORT_VIEWS_MAX),
+      })
+      .strict(),
+    response: z.object({ ok: z.boolean(), error: z.string().optional() }),
+  },
+  /**
+   * The volumetric report's model, computed by the same hidden report page as the export, for the
+   * editor's preview. `model` is typed in `@aio/project` (`VolumetricModel`).
+   */
+  'report:volumetricModel': {
+    request: z
+      .object({ projectId: z.string().min(1), compareWith: z.string().min(1).max(128).optional() })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), model: z.unknown() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
   },
   /**
    * One text completion on a task route (the report narrative, BLD-7), without tools. The

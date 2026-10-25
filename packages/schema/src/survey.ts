@@ -525,6 +525,30 @@ export const MeasurementOrigin = z.looseObject({
 });
 export type MeasurementOrigin = z.infer<typeof MeasurementOrigin>;
 
+/**
+ * The outline a measurement has on one survey date (`capture`), when it differs from `points`:
+ * a kit pile's toe line per epoch. A series run uses the date's own outline and falls back to
+ * `points`. Loose, absent on every older file.
+ */
+export const MeasurementOutline = z.looseObject({
+  capture: Id,
+  points: z.array(SitePoint).min(3).max(100_000),
+});
+export type MeasurementOutline = z.infer<typeof MeasurementOutline>;
+
+/** At most one outline per capture. */
+const MeasurementOutlines = z
+  .array(MeasurementOutline)
+  .max(1000)
+  .superRefine((list, ctx) => {
+    const seen = new Set<string>();
+    for (const o of list) {
+      if (seen.has(o.capture))
+        ctx.addIssue({ code: 'custom', message: `Two outlines for capture "${o.capture}"` });
+      seen.add(o.capture);
+    }
+  });
+
 export const SurveyMeasurement = z.looseObject({
   id: SurveyId,
   family: MeasurementFamily,
@@ -553,6 +577,8 @@ export const SurveyMeasurement = z.looseObject({
   series: z.array(ComparisonResult).max(1000).optional(),
   /** Results a recompute replaced. Absent on every older file. */
   previousResults: z.array(PreviousResult).max(20).optional(),
+  /** Outlines per survey date, one per capture; `points` is used on any other date. */
+  outlines: MeasurementOutlines.optional(),
   createdAt: IsoTime,
   createdBy: z.string().max(200).optional(),
   updatedAt: IsoTime.optional(),
@@ -600,6 +626,12 @@ const MeasurementsFileStrict = z
      * surface, so the one-time repair never runs twice. Absent on every older file.
      */
     kitHeightsRepaired: z.array(Id).max(5000).optional(),
+    /**
+     * Ids of the measurements converted from kit piles before per-date outlines existed that got
+     * their outlines from `volumes.json` once, so the fill never runs twice. Absent on every older
+     * file.
+     */
+    kitOutlinesAdded: z.array(SurveyId).max(5000).optional(),
   })
   .superRefine((f, ctx) => {
     const seen = new Set<string>();

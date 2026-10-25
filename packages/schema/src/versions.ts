@@ -648,6 +648,21 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'report/template.json',
     since: '0.25',
   },
+  // Customer reports (report.ts): the person's edits per report type and the stage pictures
+  {
+    family: 'aio.report-text',
+    version: 1,
+    home: 'project',
+    where: 'report/<report>.json',
+    since: '0.26',
+  },
+  {
+    family: 'aio.report-views',
+    version: 1,
+    home: 'project',
+    where: 'report/views/<report>/frame.json',
+    since: '0.26',
+  },
   // Thermal analysis (thermal.ts): a new folder, so older builds never read it
   {
     family: 'aio.thermal',

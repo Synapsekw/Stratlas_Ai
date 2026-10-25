@@ -235,7 +235,17 @@ The house-format project report (`house-pdf`, BLD-8) is printed from `apps/deskt
 <project>/report/
   narrative.json        aio.narrative/1: every saved version of the report text
   narrative.json.bak    the previous file
+  volumetric.json       aio.report-text/1: the edits of the volumetric customer report
+  volumetric.json.bak   the previous file
+  views/volumetric/     the report's pictures, taken from the app's own stage
+    frame.json          aio.report-views/1: their framing, 3D marker pixels and fingerprint
+    <name>.jpg          one picture per view (photo, elevation, cut and fill, 3D)
 ```
+
+**Customer reports.** A customer report type (today only `volumetric`, `ReportTypeId`) keeps its edits in `report/<report>.json` and its pictures in `report/views/<report>/`. Both are siblings of `narrative.json`, never part of it: `NarrativeFile` is strict over a fixed part enum, so older builds would refuse it whole if it gained parts.
+
+- `report/<report>.json` (`ReportTextFile`, loose): `parts` by text id (`title`, `preparedFor`, `preparedBy`, `summary`, `intro`, `method`, `closing` for `volumetric`), `pileNotes` by measurement id, each a narrative part of versions, newest last, at most 50; `pages` (`cover`, `piles`, `change`, a missing page is on) and `compareWith` (a capture id). A part whose newest version is `template` follows the figures and is regenerated at every preview and export; a `user` one is kept as written; **Reset to generated** adds a `template` version; a part with no versions is generated. Written only through IPC `report:writeText` (atomic replace with `.bak`, journaled like the narrative); read with `report:readText`, read only in a package.
+- `report/views/<report>/frame.json` (`ReportViewsFrame`, loose): `extent` `[e0, n0, e1, n1]` in the project CRS, `widthPx`, `heightPx`, `mPerPx` (a top-down pixel is `px = (e - e0) / mPerPx`, `py = (n1 - n) / mPerPx`), `views[]` (`name`, `kind` `photo | elevation | cutfill | 3d`, `capture`, `pair` for cut and fill, `file` matching `^[a-z0-9-]{1,80}\.jpg$`, at most 64), `markers3d` (by capture, then measurement id: the pile centre's pixel on the 3D shot) and `fingerprint` of the inputs, which tells the editor the pictures are stale. Written only through `report:saveViews`, replacing the previous set; a package keeps its pictures in memory for the session.
 
 - `parts.summary`, `parts.method` and `parts.findings` hold `versions`, newest last; the report prints the newest version of each part, or a text filled from the statistics when none was saved. Restoring an old version saves it again as the newest; nothing is deleted (at most 50 versions per part are kept).
 - `source` says where a version came from: `ai` (with `provider` and `model`), `template` (cloud AI off: statistics filled in, judgement left as `[bracketed]` prompts the report highlights) or `user`.

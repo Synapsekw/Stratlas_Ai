@@ -112,12 +112,13 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
   });
 
   it('adds exactly the three G9 export formats, under existing package export kinds', () => {
-    expect(EXPORT_FORMATS.slice(-3)).toEqual([
+    // the two volumetric report formats come after them
+    expect(EXPORT_FORMATS.slice(-5, -2)).toEqual([
       'measurements-csv',
       'stockpile-csv',
       'survey-report-pdf',
     ]);
-    expect(EXPORT_FORMATS).toHaveLength(13);
+    expect(EXPORT_FORMATS).toHaveLength(15);
     expect(EXPORT_FORMAT_KIND['measurements-csv']).toBe('files');
     expect(EXPORT_FORMAT_KIND['stockpile-csv']).toBe('files');
     expect(EXPORT_FORMAT_KIND['survey-report-pdf']).toBe('report-pdf');

@@ -270,8 +270,15 @@ describe('ipc contracts', () => {
       'house-pdf': 'pdf',
       'photo-report-pdf': 'pdf',
       'survey-report-pdf': 'pdf',
+      'volumetric-pdf': 'pdf',
     } as const;
     for (const format of EXPORT_FORMATS) {
+      // The volumetric report's offline HTML file is a report export: a package that forbids
+      // report exports forbids it too, so it is checked by format, never by name.
+      if (format === 'volumetric-html') {
+        expect(EXPORT_FORMAT_KIND[format]).toBe('report-pdf');
+        continue;
+      }
       // M9 audit and M11 survey CSV exports fall under `files` (no new ExportKind for older
       // players); their CSV and JSON names would read as issue exports, so they are checked by
       // format, never by name.

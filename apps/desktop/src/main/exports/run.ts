@@ -56,6 +56,8 @@ const SUFFIX: Record<ExportFormat, string> = {
   'measurements-csv': '-measurements.csv',
   'stockpile-csv': '-stockpile-inventory.csv',
   'survey-report-pdf': '-survey-report.pdf',
+  'volumetric-pdf': '-volume-report.pdf',
+  'volumetric-html': '-volume-report.html',
 };
 
 /** Save dialog filter per format. */
@@ -73,6 +75,8 @@ export const EXPORT_FILTERS: Record<ExportFormat, { name: string; extensions: st
   'measurements-csv': { name: 'CSV', extensions: ['csv'] },
   'stockpile-csv': { name: 'CSV', extensions: ['csv'] },
   'survey-report-pdf': { name: 'PDF', extensions: ['pdf'] },
+  'volumetric-pdf': { name: 'PDF', extensions: ['pdf'] },
+  'volumetric-html': { name: 'HTML', extensions: ['html'] },
 };
 
 /** File name offered in the save dialog: the project name made file safe, plus the format. */
