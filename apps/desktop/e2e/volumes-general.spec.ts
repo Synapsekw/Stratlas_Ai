@@ -218,6 +218,31 @@ test.describe('volumes and comparisons', () => {
     await settled(panel, 3);
     pit = await saved(win, dir, 'm-pit');
     expect(result(pit, id3).netM3).toBeLessThan(rc.netM3 - 1);
+    // right-click the raised vertex, Interpolate between: back on the line between its two
+    // neighbours (both at the level), so the base is flat again
+    await editor.getByTestId('survey-base-row').first().click({ button: 'right' });
+    const vertexMenu = win.getByTestId('survey-base-menu');
+    await expect(vertexMenu.getByRole('menuitem')).toHaveText([
+      'Use ground here',
+      'Interpolate between',
+    ]);
+    await vertexMenu.getByRole('menuitem', { name: 'Interpolate between' }).click();
+    await settled(panel, 3);
+    pit = await saved(win, dir, 'm-pit');
+    expect(Math.abs(result(pit, id3).netM3 - rc.netM3) / Math.abs(rc.netM3)).toBeLessThan(0.002);
+    // Use ground here on the second vertex: it follows the surface under it (an offset of 0)
+    await editor.getByRole('button', { name: 'Select vertex 2', exact: true }).click();
+    await editor.getByTestId('survey-base-ground').click();
+    await settled(panel, 3);
+    pit = await saved(win, dir, 'm-pit');
+    const customOf = pit.items.find((i) => i.id === id3)?.from;
+    if (customOf?.kind !== 'custom') throw new Error('the custom base');
+    expect(customOf.vertices[1]).toEqual({
+      e: customOf.vertices[1]?.e,
+      n: customOf.vertices[1]?.n,
+      offsetM: 0,
+    });
+    expect(customOf.vertices[0]?.z).toBeCloseTo(level, 6);
 
     await expectAccessible(win, 'Survey comparisons panel', {
       include: '[data-testid="survey-side"]',

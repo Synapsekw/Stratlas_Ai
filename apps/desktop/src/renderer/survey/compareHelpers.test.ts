@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../shell', () => ({ bridge: { call: vi.fn() } }));
 vi.mock('../author', () => ({ authorName: () => '' }));
 
-const { levelVertices, moveVertices } = await import('./BaseEditor');
+const { groundVertices, interpolateRun, levelVertices, moveVertices, runOf } =
+  await import('./BaseEditor');
 const { prepareParams } = await import('./compareStore');
 
 type Custom = Extract<BaseSpec, { kind: 'custom' }>;
@@ -35,6 +36,69 @@ describe('custom base edits', () => {
       { e: 10, n: 0, z: 9 },
       { e: 10, n: 10, z: 9 },
     ]);
+  });
+});
+
+describe('custom base: ground and interpolate', () => {
+  // a 4 m by 4 m square traced with 8 vertices, 2 m apart along the edge
+  const ring: [number, number][] = [
+    [0, 0],
+    [2, 0],
+    [4, 0],
+    [4, 2],
+    [4, 4],
+    [2, 4],
+    [0, 4],
+    [0, 2],
+  ];
+  const base: Custom = {
+    kind: 'custom',
+    vertices: ring.map(([e, n], k) => (k === 4 ? { e, n, offsetM: 0.5 } : { e, n, z: 100 + k })),
+  };
+  // the height under each vertex as drawn (the polygon's own Z)
+  const drawn = (k: number) => 200 + k;
+
+  it('Use ground here makes the selected vertices follow the surface under them', () => {
+    const g = groundVertices(base, new Set([1, 4]));
+    expect(g.vertices[1]).toEqual({ e: 2, n: 0, offsetM: 0 });
+    expect(g.vertices[4]).toEqual({ e: 4, n: 4, offsetM: 0 });
+    expect(g.vertices[0]).toEqual(base.vertices[0]);
+  });
+
+  it('finds one run of selected vertices and its neighbours outside it, round the ring', () => {
+    expect(runOf(new Set([2, 3]), 8)).toEqual({ before: 1, run: [2, 3], after: 4 });
+    // a run across the ring's start
+    expect(runOf(new Set([7, 0, 1]), 8)).toEqual({ before: 6, run: [7, 0, 1], after: 2 });
+    // two runs, nothing, everything, or all but one: no straight line to draw
+    expect(runOf(new Set([1, 3]), 8)).toBeNull();
+    expect(runOf(new Set(), 8)).toBeNull();
+    expect(runOf(new Set([0, 1, 2, 3, 4, 5, 6, 7]), 8)).toBeNull();
+    expect(runOf(new Set([0, 1, 2, 3, 4, 5, 6]), 8)).toBeNull();
+  });
+
+  it('Interpolate between puts the run on a straight line between its two neighbours', () => {
+    const out = interpolateRun(base, new Set([2, 3]), drawn);
+    if (!out) throw new Error('no run');
+    // vertex 1 (z 101) to vertex 4 (offset 0.5 over 204, so 204.5), 6 m along the edge
+    expect(out.vertices[2]?.z).toBeCloseTo(101 + (204.5 - 101) / 3, 9);
+    expect(out.vertices[3]?.z).toBeCloseTo(101 + ((204.5 - 101) * 2) / 3, 9);
+    expect(out.vertices[2]?.offsetM).toBeUndefined();
+    // the neighbours and the rest stay as they were
+    expect(out.vertices[1]).toEqual(base.vertices[1]);
+    expect(out.vertices[4]).toEqual(base.vertices[4]);
+    expect(out.vertices[0]).toEqual(base.vertices[0]);
+  });
+
+  it('interpolates a run across the ring start by the distance along the edge', () => {
+    const out = interpolateRun(base, new Set([7, 0]), drawn);
+    if (!out) throw new Error('no run');
+    // vertex 6 (z 106) to vertex 1 (z 101): 7 at 2 m of 6, 0 at 4 m of 6
+    expect(out.vertices[7]?.z).toBeCloseTo(106 - 5 / 3, 9);
+    expect(out.vertices[0]?.z).toBeCloseTo(106 - 10 / 3, 9);
+  });
+
+  it('refuses a selection that is not one run', () => {
+    expect(interpolateRun(base, new Set([1, 3]), drawn)).toBeNull();
   });
 });
 

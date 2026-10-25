@@ -1,14 +1,19 @@
 /**
  * The custom base editor (M11 G4, PRD SRV-2): a TIN of the polygon's vertices with heights a person
- * edits. Each vertex has an absolute elevation or an offset from the surface side at that vertex
- * (never both, data-conventions section 26). Rows are selected by click, a range with Shift; the
- * selection moves up or down together or is set to one level. Values show in the measurement's
- * distance unit and are stored in metres.
+ * edits, as Virtual Surveyor's and Propeller's custom bases. Each vertex has an absolute elevation
+ * or an offset from the surface side at that vertex (never both, data-conventions section 26).
+ * Rows are selected by click, a range with Shift; the selection moves up or down together, is set
+ * to one level, follows the ground under it ("Use ground here", an offset of 0) or, as one run, is
+ * put on a straight line between the vertices either side ("Interpolate between": a toe against a
+ * wall, or the edge two touching piles share). Use ground here and Interpolate between are also on
+ * the rows' right-click menu. Values show in the measurement's distance unit and are stored in
+ * metres.
  */
 import { fromSI, toSI, unitLabel } from '@aio/geo';
 import type { BaseSpec, CustomBaseVertex, SurveyMeasurement } from '@aio/schema';
 import { customBase, effectiveUnits } from '@aio/survey';
-import { useState } from 'react';
+import { Menu, Tip, type MenuEntry } from '@aio/ui';
+import { useRef, useState } from 'react';
 import { useMeasure } from './measureStore';
 
 type Custom = Extract<BaseSpec, { kind: 'custom' }>;
@@ -33,6 +38,81 @@ export function levelVertices(base: Custom, which: ReadonlySet<number>, z: numbe
   return {
     ...base,
     vertices: base.vertices.map((v, k) => (which.has(k) ? { e: v.e, n: v.n, z } : v)),
+  };
+}
+
+/**
+ * "Use ground here": the chosen vertices follow the surface under them (an offset of 0), on
+ * whichever date the volume is computed.
+ */
+export function groundVertices(base: Custom, which: ReadonlySet<number>): Custom {
+  return {
+    ...base,
+    vertices: base.vertices.map((v, k) => (which.has(k) ? { e: v.e, n: v.n, offsetM: 0 } : v)),
+  };
+}
+
+/**
+ * The chosen vertices as one run round the ring, with the vertex before it and the one after it
+ * (both outside the run, and not the same vertex). Null when the choice is empty, is not one run,
+ * or leaves fewer than two vertices outside it.
+ */
+export function runOf(
+  which: ReadonlySet<number>,
+  n: number,
+): { before: number; run: number[]; after: number } | null {
+  const has = (k: number) => which.has(((k % n) + n) % n);
+  const inRing = [...which].filter((k) => k >= 0 && k < n);
+  if (inRing.length === 0 || n - inRing.length < 2) return null;
+  const starts = inRing.filter((k) => !has(k - 1));
+  const [start] = starts;
+  if (starts.length !== 1 || start === undefined) return null;
+  const run: number[] = [];
+  for (let k = start; has(k) && run.length < n; k++) run.push(k % n);
+  if (run.length !== inRing.length) return null;
+  return { before: (start - 1 + n) % n, run, after: (start + run.length) % n };
+}
+
+/**
+ * "Interpolate between": the chosen run of vertices on a straight line between the two vertices
+ * either side of it, by the distance along the outline (as Virtual Surveyor's Interpolate Z), each
+ * set to an absolute level. A neighbour that is an offset is taken at `drawnZ` (the outline's own
+ * height there) plus its offset. Null when the choice is not one run (`runOf`).
+ */
+export function interpolateRun(
+  base: Custom,
+  which: ReadonlySet<number>,
+  drawnZ: (k: number) => number,
+): Custom | null {
+  const n = base.vertices.length;
+  const r = runOf(which, n);
+  if (!r) return null;
+  const at = (k: number) => base.vertices[k] ?? { e: 0, n: 0, z: 0 };
+  const zOf = (k: number) => {
+    const v = at(k);
+    return v.z ?? drawnZ(k) + (v.offsetM ?? 0);
+  };
+  const path = [r.before, ...r.run, r.after];
+  const along = [0];
+  for (let i = 1; i < path.length; i++) {
+    const a = at(path[i - 1] ?? 0);
+    const b = at(path[i] ?? 0);
+    along.push((along[i - 1] ?? 0) + Math.hypot(b.e - a.e, b.n - a.n));
+  }
+  const total = along.at(-1) ?? 0;
+  const z0 = zOf(r.before);
+  const z1 = zOf(r.after);
+  const next = new Map<number, number>();
+  r.run.forEach((k, i) => {
+    const f = total > 0 ? (along[i + 1] ?? 0) / total : (i + 1) / (r.run.length + 1);
+    next.set(k, z0 + (z1 - z0) * f);
+  });
+  return {
+    ...base,
+    vertices: base.vertices.map((v, k) => {
+      const z = next.get(k);
+      return z === undefined ? v : { e: v.e, n: v.n, z };
+    }),
   };
 }
 
@@ -80,6 +160,32 @@ export function BaseEditor({
   };
   const which = sel.size > 0 ? sel : new Set(base.vertices.map((_, k) => k));
   const scope = sel.size > 0 ? `${String(sel.size)} selected` : 'all';
+  // an offset neighbour is interpolated from the outline's own height under it
+  const drawnZ = (k: number) => m.points[k]?.[2] ?? 0;
+  const NOT_A_RUN = 'Select a run of vertices (Shift+click) with a vertex either side of it.';
+  const [menu, setMenu] = useState<ReadonlySet<number> | null>(null);
+  const menuOpener = useRef<HTMLElement | null>(null);
+  const menuItems = (chosen: ReadonlySet<number>): MenuEntry[] => {
+    const line = interpolateRun(base, chosen, drawnZ);
+    return [
+      {
+        id: 'ground',
+        label: 'Use ground here',
+        onSelect: () => {
+          onChange(groundVertices(base, chosen));
+        },
+      },
+      {
+        id: 'interpolate',
+        label: 'Interpolate between',
+        ...(line ? {} : { disabledReason: NOT_A_RUN }),
+        onSelect: () => {
+          if (line) onChange(line);
+        },
+      },
+    ];
+  };
+  const interpolated = sel.size > 0 ? interpolateRun(base, sel, drawnZ) : null;
   return (
     <fieldset className="sv-sub sv-base" disabled={disabled} data-testid="survey-base-editor">
       <legend>Custom base vertices</legend>
@@ -100,7 +206,8 @@ export function BaseEditor({
       )}
       <p className="small faint">
         Click a vertex number to select it, Shift+click for a range. A vertex holds an elevation or
-        an offset from the surface under it.
+        an offset from the surface under it. Interpolate between puts a run of vertices on a
+        straight line between the vertices either side, for a toe against a wall or a shared edge.
       </p>
       <div className="sv-scroll sv-base-rows">
         <table className="sv-verts">
@@ -123,6 +230,18 @@ export function BaseEditor({
                   aria-selected={on}
                   className={on ? 'on' : undefined}
                   data-testid="survey-base-row"
+                  onContextMenu={(e) => {
+                    if (disabled) return;
+                    e.preventDefault();
+                    // a right-click outside the selection selects that vertex alone
+                    const chosen = on ? sel : new Set([k]);
+                    if (!on) {
+                      setSel(new Set(chosen));
+                      setAnchor(k);
+                    }
+                    menuOpener.current = e.currentTarget.querySelector('button');
+                    setMenu(chosen);
+                  }}
                 >
                   <td>
                     <button
@@ -230,7 +349,49 @@ export function BaseEditor({
         >
           Set
         </button>
+        <Tip content="The vertices follow the surface under them on each date (an offset of 0).">
+          <button
+            type="button"
+            className="btn sm"
+            data-testid="survey-base-ground"
+            aria-label={`Use the ground under ${scope} vertices`}
+            onClick={() => {
+              onChange(groundVertices(base, which));
+            }}
+          >
+            Use ground here
+          </button>
+        </Tip>
+        <Tip
+          content={
+            interpolated === null
+              ? NOT_A_RUN
+              : 'Puts the selected run on a straight line between the vertices either side.'
+          }
+        >
+          <button
+            type="button"
+            className="btn sm"
+            data-testid="survey-base-interpolate"
+            aria-disabled={interpolated === null ? true : undefined}
+            onClick={() => {
+              if (interpolated) onChange(interpolated);
+            }}
+          >
+            Interpolate between
+          </button>
+        </Tip>
       </div>
+      <Menu
+        open={menu !== null}
+        onClose={() => {
+          setMenu(null);
+        }}
+        opener={menuOpener}
+        label="Custom base vertices"
+        items={menu ? menuItems(menu) : []}
+        testId="survey-base-menu"
+      />
       {base.vertices.length > MAX_ROWS && (
         <p className="small faint">
           The first {MAX_ROWS} of {base.vertices.length} vertices; Move and Set apply to all.
