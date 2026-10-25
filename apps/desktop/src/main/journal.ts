@@ -7,7 +7,8 @@
  * content (a snapshot in `userData/journal-cache/<key>/`, rebuildable, never the truth):
  *
  * - writers (`project:writeIssues`, `change:write`, `detections:write`, `model:write`,
- *   `project:writeBoundaries`, `report:writeNarrative`) are wrapped: ops first, then the write;
+ *   `project:writeBoundaries`, `report:writeNarrative`, `report:writeText`, `report:saveViews`)
+ *   are wrapped: ops first, then the write;
  *   a write the handler refuses is undone by ops, never by editing the journal;
  * - `tilesets:write` and `photo:writeGcp` are wrapped too (one `record.external` op per save);
  * - `builder:recentre` is diffed after it writes too, but as ONE `record.external` step for
@@ -78,6 +79,7 @@ import {
   PHOTO_DIR,
   PHOTO_RUN_FILES,
   photoRunDir,
+  reportTextPath,
   segmentFileName,
   TILESETS_FILE,
   type AuditEntry,
@@ -104,6 +106,7 @@ import { type Handle } from './notYet';
 import { ISSUES_SCHEMA } from './project';
 import { createJournalStore, type JournalStore } from './sync/journalStore';
 import { journaledRemovals } from './removal';
+import { viewsFramePath, viewsRecord } from './reportViews';
 
 /** Who signs the journal on this machine: T2's identity service (`identityPorts.ts`). */
 export interface JournalIdentity {
@@ -206,6 +209,21 @@ const WRITERS: Partial<
     rel: 'report/narrative.json',
     after: r.file,
   }),
+  // customer report edits (aio.report-text/1): one record.external op per save
+  'report:writeText': (r: IpcRequest<'report:writeText'>) => ({
+    projectId: r.projectId,
+    rel: reportTextPath(r.report),
+    after: r.file,
+    commands: [{ label: 'Report text edited', ids: ['file'] }],
+  }),
+  // customer report pictures: one record.external op on frame.json, which lists each picture's
+  // name and size (never the bytes)
+  'report:saveViews': (r: IpcRequest<'report:saveViews'>) => ({
+    projectId: r.projectId,
+    rel: viewsFramePath(r.report),
+    after: viewsRecord(r.frame, r.files),
+    commands: [{ label: 'Report pictures taken', ids: ['file'] }],
+  }),
   // M11 G6: design.add, design.patch and design.archive (packages/journal diff.ts)
   'survey:writeDesigns': (r: IpcRequest<'survey:writeDesigns'>) => ({
     projectId: r.projectId,
@@ -279,6 +297,9 @@ const READS: ReadonlySet<IpcChannel> = new Set<IpcChannel>([
   'detections:maskAssistStatus',
   'report:list',
   'report:readNarrative',
+  'report:readText',
+  // the volumetric report's model: computed from the project, never written to it
+  'report:volumetricModel',
   'walks:list',
   // stops a running import; it writes nothing itself and must never wait behind one
   'builder:cancelImport',

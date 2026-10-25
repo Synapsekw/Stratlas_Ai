@@ -55,6 +55,8 @@ import { createExportJobs } from './exports/jobs';
 import { printReport } from './exports/reportWindow';
 import { hasSurveyMeasurements, surveyRunIds, surveySurfaceIds } from './exports/survey';
 import { readNarrative, readPackageNarrative, writeNarrative } from './narrative';
+import { readPackageReportText, readReportText, writeReportText } from './reportText';
+import { saveReportViews } from './reportViews';
 import { readOrientation, readPackageOrientation, writeOrientation } from './orientation';
 import { writeSelection } from './selection';
 import { listReports } from './exports/reports';
@@ -1730,6 +1732,33 @@ function registerIpc(): void {
       };
     const r = openRoot(projectId);
     return 'error' in r ? { ok: false, error: r.error } : writeNarrative(r.root, file);
+  });
+  handle('report:readText', ({ projectId, report }) => {
+    const root = registry.root(projectId);
+    if (root !== undefined) return readReportText(root, report);
+    const pkg = registry.package(projectId);
+    if (pkg) return readPackageReportText(pkg.archive, report);
+    return { ok: false, error: `Project "${projectId}" is not open.` };
+  });
+  handle('report:writeText', ({ projectId, report, file }) => {
+    if (registry.package(projectId))
+      return {
+        ok: false,
+        error: 'This project is a read-only package. Its report text cannot be changed.',
+      };
+    const r = openRoot(projectId);
+    return 'error' in r ? { ok: false, error: r.error } : writeReportText(r.root, report, file);
+  });
+  handle('report:saveViews', ({ projectId, report, frame, files }) => {
+    if (registry.package(projectId))
+      return {
+        ok: false,
+        error: 'This project is a read-only package. Its report pictures are not saved.',
+      };
+    const r = openRoot(projectId);
+    return 'error' in r
+      ? { ok: false, error: r.error }
+      : saveReportViews(r.root, report, frame, files);
   });
   handle('orientation:read', ({ projectId }) => {
     const root = registry.root(projectId);

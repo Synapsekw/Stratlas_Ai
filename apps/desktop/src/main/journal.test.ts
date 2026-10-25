@@ -32,6 +32,7 @@ import {
   type JournalService,
 } from './journal';
 import { collectHandlers } from './notYet';
+import { viewsRecord } from './reportViews';
 
 const signer = signerFromKey(generateKeyPairSync('ed25519').privateKey);
 const identity: JournalIdentity = {
@@ -523,6 +524,58 @@ describe('journal service', () => {
       expect(e).toHaveLength(1);
       expect(e[0]).toMatchObject({ kind: 'record.external' });
       expect(JSON.stringify(e[0])).toContain('thermal/thermal.json');
+    });
+
+    it('journals report:writeText against report/<report>.json', async () => {
+      const { root, userData } = setup();
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const write = s.journal.wrap('report:writeText', ({ file }) => {
+        put(root, 'report/volumetric.json', file);
+        return { ok: true as const };
+      });
+      const file = { schema: 'aio.report-text/1', report: 'volumetric', parts: {} } as never;
+      expect(await write({ projectId: 'p', report: 'volumetric', file })).toEqual({ ok: true });
+      const e = await hist(s);
+      expect(e).toHaveLength(1);
+      expect(e[0]).toMatchObject({ kind: 'record.external', label: 'Report text edited' });
+      expect(JSON.stringify(e[0])).toContain('report/volumetric.json');
+    });
+
+    it('journals report:saveViews as one op with the picture names and sizes, not bytes', async () => {
+      const { root, userData } = setup();
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const frame = {
+        schema: 'aio.report-views/1',
+        extent: [0, 0, 10, 10],
+        widthPx: 10,
+        heightPx: 10,
+        mPerPx: 1,
+        views: [{ name: 'map', kind: 'photo', capture: 'c1', file: 'map.jpg' }],
+        markers3d: {},
+        fingerprint: 'fp',
+      } as never;
+      const files = [{ name: 'map.jpg', data: new Uint8Array(1234).fill(7) }];
+      const save = s.journal.wrap('report:saveViews', (req) => {
+        put(root, 'report/views/volumetric/frame.json', viewsRecord(req.frame, req.files));
+        return { ok: true as const };
+      });
+      expect(await save({ projectId: 'p', report: 'volumetric', frame, files })).toEqual({
+        ok: true,
+      });
+      const e = await hist(s);
+      expect(e).toHaveLength(1);
+      expect(e[0]).toMatchObject({ kind: 'record.external', label: 'Report pictures taken' });
+      expect(JSON.stringify(e[0])).toContain('report/views/volumetric/frame.json');
+      // the op names frame.json (which lists the names and sizes), never the picture bytes
+      const ops = join(root, 'journal', 'ops');
+      const text = readdirSync(ops, { recursive: true, withFileTypes: true })
+        .filter((d) => d.isFile())
+        .map((d) => readFileSync(join(d.parentPath, d.name), 'utf8'))
+        .join('\n');
+      expect(text).toContain('report/views/volumetric/frame.json');
+      expect(text).not.toContain('7,7,7');
     });
 
     it('records a photo:writeGcp as one op on the run gcp.json', async () => {
@@ -1169,6 +1222,8 @@ describe('journal service', () => {
       'project:readVolumes',
       'change:list',
       'report:list',
+      'report:readText',
+      'report:volumetricModel',
       'walks:list',
       'builder:cancelImport',
       'panos:scan',
