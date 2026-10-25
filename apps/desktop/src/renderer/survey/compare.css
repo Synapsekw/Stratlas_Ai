@@ -272,6 +272,14 @@
   font-weight: 400;
   color: var(--fg-2);
 }
+/* the volume over time keeps each row on one line at the panel's narrowest width */
+.vd-time-table th {
+  white-space: nowrap;
+}
+/* a date without a figure says why in words: that cell may wrap */
+.vd-time-table td.vd-gap {
+  white-space: normal;
+}
 .vd-res td,
 .vd-time-table td {
   padding: var(--sp-1) 0 var(--sp-1) var(--sp-4);

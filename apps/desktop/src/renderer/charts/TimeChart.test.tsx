@@ -503,15 +503,18 @@ describe('TimeChart fits its frame (folded fixes)', () => {
     const labels = [...h.querySelectorAll('[data-axis="t"] text')];
     expect(labels.length).toBeGreaterThan(1);
     const xs = labels.map((l) => Number(l.getAttribute('x')));
+    // the short form, one year: "31 Dec"
+    const widest = Math.max(...labels.map((l) => l.textContent.length * CHAR));
+    expect(widest).toBe('31 Dec'.length * CHAR);
     for (let i = 1; i < xs.length; i++) {
       const gap = (xs[i] ?? 0) - (xs[i - 1] ?? 0);
       expect(gap).toBeGreaterThanOrEqual(56);
-      expect(gap).toBeGreaterThanOrEqual('31 Dec 2020'.length * CHAR);
+      expect(gap).toBeGreaterThanOrEqual(widest);
     }
     // the end labels stay inside the frame
-    const half = ('31 Dec 2020'.length * CHAR) / 2;
+    const half = widest / 2;
     expect((xs[0] ?? 0) - half).toBeGreaterThanOrEqual(0);
-    expect((xs.at(-1) ?? 0) + half).toBeLessThanOrEqual(width);
+    expect((xs.at(-1) ?? 0) + half).toBeLessThanOrEqual(width + 1e-9);
   });
 
   it('stack parts take material colours', () => {
@@ -543,5 +546,71 @@ describe('TimeChart fits its frame (folded fixes)', () => {
       (i) => (i as HTMLElement).style.background,
     );
     expect(keys).toEqual(['var(--mat-1)', 'rgb(170, 85, 0)']);
+  });
+
+  describe('the date axis on a narrow card (bug 6)', () => {
+    const axis = (h: HTMLElement) =>
+      [...h.querySelectorAll('[data-axis="t"] text')].map((l) => l.textContent);
+    const survey = (capture: string, date: string, label: string) =>
+      row(capture, date, 100, { label });
+
+    it('labels both of two dates with long survey names, in the short form', () => {
+      const h = renderSized(
+        {
+          kind: 'volume',
+          rows: [
+            survey('a', '2026-03-02', 'Survey 2 March 2026'),
+            survey('b', '2026-04-13', 'Survey 13 April 2026'),
+          ],
+        },
+        280,
+      );
+      expect(axis(h)).toEqual(['2 Mar', '13 Apr']);
+    });
+
+    it('labels every one of three monthly dates', () => {
+      const h = renderSized(
+        {
+          kind: 'volume',
+          rows: [
+            survey('a', '2026-01-31', 'Survey 31 January 2026'),
+            survey('b', '2026-02-28', 'Survey 28 February 2026'),
+            survey('c', '2026-03-31', 'Survey 31 March 2026'),
+          ],
+        },
+        280,
+      );
+      expect(axis(h)).toEqual(['31 Jan', '28 Feb', '31 Mar']);
+    });
+
+    it('says the year when the dates span more than one', () => {
+      const h = renderSized(
+        { kind: 'volume', rows: [row('a', '2025-12-01', 1), row('b', '2026-06-01', 2)] },
+        280,
+      );
+      expect(axis(h)).toEqual(['1 Dec 2025', '1 Jun 2026']);
+    });
+
+    it('labels that would collide drop to every other, the first and the last always shown', () => {
+      const dates = Array.from(
+        { length: 9 },
+        (_, i) => `2026-05-${String(1 + i).padStart(2, '0')}`,
+      );
+      const h = renderSized(
+        { kind: 'volume', rows: dates.map((d, i) => row(`c${String(i)}`, d, 100 + i)) },
+        300,
+      );
+      const shown = axis(h);
+      expect(shown[0]).toBe('1 May');
+      expect(shown.at(-1)).toBe('9 May');
+      expect(shown.length).toBeLessThan(9);
+      expect(shown.length).toBeGreaterThan(2);
+      // every other (or every third...) date: an even stride from the first
+      const days = shown.map((s) => Number(s.split(' ')[0]));
+      const stride = (days[1] ?? 0) - (days[0] ?? 0);
+      expect(stride).toBeGreaterThanOrEqual(2);
+      for (let i = 1; i < days.length - 1; i++)
+        expect((days[i] ?? 0) - (days[i - 1] ?? 0)).toBe(stride);
+    });
   });
 });

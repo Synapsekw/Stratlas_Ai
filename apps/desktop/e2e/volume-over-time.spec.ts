@@ -79,6 +79,10 @@ test('a volume measurement shows a bar per survey date with the latest highlight
   await expect(chart.locator('circle[data-latest]')).toHaveAttribute('data-dot', 'm3');
   // no date is missing or stale
   await expect(chart.locator('[data-gap], [data-stale]')).toHaveCount(0);
+  // every date names itself on the card's axis, in the short form (only the first used to)
+  const ticks = chart.locator('[data-axis="t"] text');
+  await expect(ticks).toHaveText(['31 Jan', '28 Feb', '31 Mar']);
+  for (const tick of await ticks.all()) await expect(tick).toBeVisible();
 
   // the table: a row per date, oldest first, the latest highlighted, the change from the date before
   const table = card.getByTestId('vol-time-table');

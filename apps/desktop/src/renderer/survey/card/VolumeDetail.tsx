@@ -33,6 +33,7 @@ import { Button, EmptyState, t, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { TimeChart } from '../../charts/TimeChart';
+import { shortDates } from '../../charts/dateTicks';
 import {
   compute,
   computeSeries,
@@ -875,6 +876,8 @@ function OverTime({
   const soon = usePreparingSoon();
   const gapReason = (capture: string) =>
     t(emptyReason([states.get(capture) ?? { kind: 'ready' }], soon));
+  // the narrow panel: the date as the chart's axis names it, the survey's own label on hover
+  const short = shortDates(rows.map((r) => r.date));
   return (
     <section className="vd-time" aria-label={t('vol.overTime')}>
       <h3 className="vd-sub">{t('vol.overTime')}</h3>
@@ -903,8 +906,14 @@ function OverTime({
               data-stale={r.stale ? '' : undefined}
               aria-current={r.latest ? 'date' : undefined}
             >
-              <th scope="row">{r.label}</th>
-              <td>{r.valueM3 !== null ? v(r.valueM3) : gapReason(r.capture)}</td>
+              <th scope="row" title={r.label}>
+                {short(r.date)}
+              </th>
+              {r.valueM3 !== null ? (
+                <td>{v(r.valueM3)}</td>
+              ) : (
+                <td className="vd-gap">{gapReason(r.capture)}</td>
+              )}
               <td>{r.changeM3 !== null ? signed(r.changeM3) : ''}</td>
               {tonnage && <td>{r.tonnes !== null ? mass(r.tonnes) : ''}</td>}
             </tr>

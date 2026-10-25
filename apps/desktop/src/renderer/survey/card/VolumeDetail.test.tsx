@@ -7,6 +7,8 @@ import {
   type SurveyMeasurement,
   type SurveySettings,
 } from '@aio/schema';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -343,6 +345,31 @@ describe('VolumeDetail', () => {
     const rows = [...host.querySelectorAll('[data-testid="vol-time-table"] tbody tr')];
     expect(rows[0]?.querySelector('td')?.textContent).toBe('Surface preparing');
     expect(host.textContent).not.toContain('No survey data');
+  });
+
+  it('the over-time table names each date in the short form and never wraps (bug 6)', () => {
+    s.compare.captures = [
+      { id: 'c1', label: 'Survey 5 September 2026', date: '2026-09-05' },
+      { id: 'c2', label: 'Survey 5 October 2026', date: '2026-10-05' },
+    ];
+    const series = [
+      result({ toCapture: 'c1', netM3: 3070, totalM3: 3070, fingerprint: 'f1' }),
+      result({ toCapture: 'c2', netM3: 3482, totalM3: 3482, fingerprint: 'f2' }),
+    ];
+    show(pile({ series }));
+    const dates = [...host.querySelectorAll('[data-testid="vol-time-table"] tbody th')];
+    expect(dates.map((d) => d.textContent)).toEqual(['5 Sep', '5 Oct']);
+    // the survey's own label stays on hand
+    expect(dates[0]?.getAttribute('title')).toBe('Survey 5 September 2026');
+    // the date, head and figure cells keep to one line at the panel's narrowest width
+    const css = readFileSync(join(__dirname, '..', 'compare.css'), 'utf8');
+    const rule = (sel: string) =>
+      new RegExp(
+        `(^|[},])\\s*${sel.replace(/[.[\]]/g, '\\$&')}\\s*[,{][^}]*white-space:\\s*nowrap`,
+        'm',
+      );
+    expect(css).toMatch(rule('.vd-time-table th'));
+    expect(css).toMatch(rule('.vd-time-table td'));
   });
 
   it('over-time table shows change and tonnage', () => {

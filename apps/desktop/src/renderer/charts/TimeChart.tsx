@@ -16,6 +16,7 @@ import {
 import type { SurveyPrecision, SurveyUnits } from '@aio/schema';
 import { niceStep, type StackRow, type TimeRow } from '@aio/survey';
 import { Tip, useT } from '@aio/ui';
+import { shortDates, thinLabels } from './dateTicks';
 import {
   useId,
   useLayoutEffect,
@@ -285,22 +286,22 @@ export function TimeChart(p: TimeChartProps): ReactElement {
   const barW = Math.max(MIN_BAR, Math.min(MAX_BAR, (gapPx ?? MAX_BAR) * 0.6));
   const columnW = Math.max(MIN_BAR, Math.min(MAX_COLUMN, (gapPx ?? MAX_COLUMN) * 0.35));
 
-  // date labels, left to right, at least their own width (and 56 px) apart, the end ones pulled
-  // inside the frame; a label that would come too close to the last one drawn is skipped
+  // date labels in the short form ("13 Apr"; the survey's own label is the read-out's), left to
+  // right, at least their own width (and 56 px) apart, the end ones pulled inside the frame; when
+  // they would collide they drop to every other (then every third), the first and last kept
   const dateLabels = useMemo(() => {
-    const widest = Math.max(0, ...cols.map((c) => textW(c.label)));
+    const short = shortDates(cols.map((c) => c.date));
+    const all = cols.map((c) => {
+      const text = short(c.date);
+      const half = textW(text) / 2;
+      return { c, text, lx: Math.min(w - half, Math.max(half, x(c.t))) };
+    });
+    const widest = Math.max(0, ...all.map((a) => textW(a.text)));
     const gap = Math.max(MIN_LABEL_GAP, widest + LABEL_SPACE);
-    const keep: { c: Col; lx: number }[] = [];
-    let last = -Infinity;
-    for (const c of cols) {
-      const half = textW(c.label) / 2;
-      const lx = Math.min(w - half, Math.max(half, x(c.t)));
-      if (lx - last >= gap) {
-        keep.push({ c, lx });
-        last = lx;
-      }
-    }
-    return keep;
+    return thinLabels(
+      all.map((a) => a.lx),
+      gap,
+    ).flatMap((i) => all[i] ?? []);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- x is derived from cols, w, left and span
   }, [cols, w, left, span]);
 
@@ -523,9 +524,9 @@ export function TimeChart(p: TimeChartProps): ReactElement {
             ))}
           </g>
           <g className="pc-grid" data-axis="t">
-            {dateLabels.map(({ c, lx }) => (
+            {dateLabels.map(({ c, lx, text }) => (
               <text key={c.capture} x={lx} y={bottom + 14} textAnchor="middle">
-                {c.label}
+                {text}
               </text>
             ))}
           </g>
