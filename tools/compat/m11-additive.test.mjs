@@ -120,6 +120,8 @@ describe('existing files 0.11 writes stay readable by 0.10', () => {
       'measurements-csv',
       'stockpile-csv',
       'survey-report-pdf',
+      'volumetric-pdf',
+      'volumetric-html',
     ]);
   });
 
