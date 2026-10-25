@@ -20,6 +20,7 @@ import {
   MeshBasicMaterial,
   type Material,
 } from 'three';
+import { volumetric, type Volumetric } from '@aio/volumetric';
 import { assetUrl } from '@aio/workspace';
 import { compareStore, type CompareState, type SiteTiles } from './compareStore';
 import type { HeatGrid } from './engineProtocol';
@@ -39,6 +40,34 @@ export function activeHeat(
   return focusHeat(c, s) ?? c.siteHeat ?? null;
 }
 
+/** A difference grid the map can place: the cells' dz from the west and south edges. */
+export type MapGrid = Pick<HeatGrid, 'x0' | 'y0' | 'cellM' | 'nx' | 'ny'> & {
+  dz: ArrayLike<number>;
+};
+
+/** What the map reads of the stockpile kit's Cut & fill. */
+export type KitChange = Pick<Volumetric, 'status' | 'surface' | 'change' | 'changeGrid'>;
+
+/**
+ * The grid to draw on the map now: the survey heat map while the map's heat is on, else, in a
+ * project with the stockpile kit loaded on Cut & fill, the engine's whole-site difference the kit
+ * drapes on its 3D terrain (`changeGrid`, for the pair it compares). The kit draws only in 3D, so
+ * without this its Cut & fill left the map bare.
+ */
+export function mapHeat(
+  c: Pick<CompareState, 'computed' | 'heat'> & { siteHeat?: HeatGrid | null },
+  s: MeasureState,
+  kit: KitChange,
+): MapGrid | null {
+  const survey = c.heat.show2d ? activeHeat(c, s) : null;
+  if (survey) return survey;
+  if (kit.status === 'none' || kit.status === 'idle' || kit.surface !== 'change') return null;
+  const g = kit.changeGrid;
+  const pair = kit.change;
+  if (!g || !pair) return null;
+  return g.from === pair.from && g.to === pair.to ? g.grid : null;
+}
+
 function focusHeat(c: Pick<CompareState, 'computed' | 'heat'>, s: MeasureState): HeatGrid | null {
   if (!s.focus) return null;
   const done = c.computed[s.focus];
@@ -51,10 +80,10 @@ function focusHeat(c: Pick<CompareState, 'computed' | 'heat'>, s: MeasureState):
 }
 
 /** Contour interval for a difference grid: a round step giving about ten levels. */
-export function contourInterval(h: HeatGrid): number {
+export function contourInterval(h: { dz: ArrayLike<number> }): number {
   let lo = Infinity;
   let hi = -Infinity;
-  for (const v of h.dz)
+  for (const v of Array.from(h.dz))
     if (Number.isFinite(v)) {
       lo = Math.min(lo, v);
       hi = Math.max(hi, v);
@@ -208,7 +237,7 @@ const SRC = 'aio-survey-heat';
 const CONTOURS = 'aio-survey-heat-contours';
 
 /** A grid's image as a data URL (north up). */
-function imageOf(h: HeatGrid, s: MeasureState): string | null {
+function imageOf(h: MapGrid, s: MeasureState): string | null {
   const ramp = heatRamp(s.settings.heatmap, 210);
   const px = new Uint8ClampedArray(colourGrid(h.dz, h.nx, h.ny, ramp));
   const canvas = document.createElement('canvas');
@@ -238,15 +267,28 @@ export function attachHeatMap(ctl: MapController, frame: Frame): () => void {
     }
   };
   let last: unknown[] = [];
+  // a style still loading (rasters' tiles arriving) cannot take the image: draw again once the map
+  // has settled, or a grid that arrived meanwhile would never be drawn
+  let waiting = false;
+  const whenIdle = () => {
+    waiting = false;
+    draw(true);
+  };
   const draw = (force = false) => {
     const c = compareStore.getState();
     const s = measureStore.getState();
-    const h = c.heat.show2d ? activeHeat(c, s) : null;
+    const h = mapHeat(c, s, volumetric.getState());
     const key = [h, c.heat.contours, s.settings.heatmap];
     if (!force && key.every((k, i) => k === last[i])) return;
-    last = key;
     try {
-      if (!map.isStyleLoaded()) return;
+      if (!map.isStyleLoaded()) {
+        if (!waiting) {
+          waiting = true;
+          map.once('idle', whenIdle);
+        }
+        return;
+      }
+      last = key;
       remove();
       if (!h) return;
       const url = imageOf(h, s);
@@ -308,11 +350,16 @@ export function attachHeatMap(ctl: MapController, frame: Frame): () => void {
   const offB = measureStore.subscribe((s, p) => {
     if (s.focus !== p.focus || s.settings !== p.settings) draw();
   });
+  const offC = volumetric.subscribe((s, p) => {
+    if (s.status !== p.status || s.surface !== p.surface || s.changeGrid !== p.changeGrid) draw();
+  });
   draw(true);
   return () => {
     offA();
     offB();
+    offC();
     map.off('styledata', onStyle);
+    map.off('idle', whenIdle);
     remove();
   };
 }
