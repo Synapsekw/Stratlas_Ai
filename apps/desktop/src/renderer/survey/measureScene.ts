@@ -114,6 +114,10 @@ interface Shape {
   /** Its line and fill are drawn (a pile's not, with the Show control's Outlines off). */
   outline: boolean;
   label: string | null;
+  /** The measurement's name: a pile's whole label on the map. */
+  name: string;
+  /** A stockpile (`isPile`), not being edited. */
+  pile: boolean;
   labelSize: number;
   /** Which label gives way when two collide in 3D: a pile's volume on the date in focus. */
   weight: number;
@@ -204,6 +208,8 @@ export function shapesOf(
       borderWidth: style?.borderWidth,
       selected,
       label,
+      name: m.label,
+      pile,
       labelSize: style?.labelSize ?? 12,
       weight: label && pile ? pileWeight(m, capture) : 0,
     };
@@ -501,10 +507,7 @@ export function attach3d(
   stage.scene.add(group);
   const canvas = stage.renderer.domElement;
   const host = canvas.parentElement ?? canvas;
-  const labels = document.createElement('div');
-  labels.className = 'sv-labels';
-  labels.setAttribute('aria-hidden', 'true');
-  host.appendChild(labels);
+  const chips = labelChips(host);
   const tmp = new Vector3();
   const endInput = () => {
     // Clear all input together so the store subscriber cannot reselect a tool while editing.
@@ -770,60 +773,29 @@ export function attach3d(
   // -------------------------------------------------- labels
   // the pointer over the view, in the labels' coordinates: a hidden label shows under it
   let pointer: { x: number; y: number } | null = null;
-  const labelSizes = new WeakMap<HTMLElement, { key: string; w: number; h: number }>();
   const placeLabels = () => {
-    const want = shapes.filter((s) => s.label);
-    while (labels.children.length > want.length) labels.lastChild?.remove();
-    while (labels.children.length < want.length) {
-      const el = document.createElement('span');
-      el.className = 'sv-label';
-      labels.appendChild(el);
-    }
     const r = canvas.getBoundingClientRect();
     const hr = host.getBoundingClientRect();
-    // a label's size is read from the page only when its text, font size or the view changes
-    const view = `${String(r.width)}x${String(r.height)}`;
-    const boxes: (LabelBox & { el: HTMLElement })[] = [];
-    want.forEach((sh, i) => {
-      const el = labels.children[i] as HTMLElement;
-      const anchor = anchorOf(sh.points, sh.closed);
-      const p = anchor ? toScreen(anchor) : null;
-      if (el.textContent !== sh.label) el.textContent = sh.label;
-      el.dataset.id = sh.id;
-      el.style.fontSize = `${String(sh.labelSize)}px`;
-      el.classList.toggle('sel', sh.selected);
-      if (!p || p.x < r.left || p.x > r.right || p.y < r.top || p.y > r.bottom) {
-        el.style.display = 'none';
-        return;
-      }
-      el.style.display = '';
-      const x = Math.round(p.x - hr.left);
-      const y = Math.round(p.y - hr.top);
-      const key = `${view}|${String(sh.labelSize)}|${sh.label ?? ''}`;
-      let size = labelSizes.get(el);
-      if (size?.key !== key) {
-        const b = el.getBoundingClientRect();
-        size = { key, w: b.width, h: b.height };
-        labelSizes.set(el, size);
-      }
-      boxes.push({
-        el,
-        id: sh.id,
-        x,
-        y,
-        w: size.w,
-        h: size.h,
-        selected: sh.selected,
-        weight: sh.weight,
-      });
-    });
-    // close piles: the larger keeps its label in place, the next moves up, the rest wait for hover
-    const placed = declutter(boxes, pointer);
-    for (const b of boxes) {
-      const at = placed.get(b.id);
-      b.el.style.visibility = at?.hidden === true ? 'hidden' : '';
-      b.el.style.transform = `translate(${String(b.x)}px, ${String(b.y + (at?.dy ?? 0))}px)`;
-    }
+    chips.place(
+      shapes.flatMap((sh) => {
+        if (!sh.label) return [];
+        const anchor = anchorOf(sh.points, sh.closed);
+        const p = anchor ? toScreen(anchor) : null;
+        const inView = p && p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
+        return [
+          {
+            id: sh.id,
+            text: sh.label,
+            size: sh.labelSize,
+            selected: sh.selected,
+            weight: sh.weight,
+            at: inView ? { x: Math.round(p.x - hr.left), y: Math.round(p.y - hr.top) } : null,
+          },
+        ];
+      }),
+      `${String(r.width)}x${String(r.height)}`,
+      pointer,
+    );
   };
   const onHover = (e: PointerEvent) => {
     const hr = host.getBoundingClientRect();
@@ -1022,8 +994,84 @@ export function attach3d(
     stage.scene.remove(group);
     canvas.removeEventListener('pointermove', onHover);
     canvas.removeEventListener('pointerleave', onLeave);
-    labels.remove();
+    chips.remove();
     stage.requestRender();
+  };
+}
+
+/** A label to place over a view: its anchor in the host's pixels, null when out of view. */
+interface LabelItem {
+  id: string;
+  text: string;
+  size: number;
+  selected: boolean;
+  weight: number;
+  at: { x: number; y: number } | null;
+}
+
+/**
+ * The measurement labels over a view (`.sv-label` chips in an `.sv-labels` layer of `host`), the
+ * same in the 3D view and on the map: close ones kept apart (`declutter`), a hidden one shown while
+ * the pointer rests on its place. `view` names the view's size: a label is measured again only
+ * when its text, font size or the view changes.
+ */
+function labelChips(host: HTMLElement): {
+  place(items: readonly LabelItem[], view: string, pointer: { x: number; y: number } | null): void;
+  remove(): void;
+} {
+  const layer = document.createElement('div');
+  layer.className = 'sv-labels';
+  layer.setAttribute('aria-hidden', 'true');
+  host.appendChild(layer);
+  const sizes = new WeakMap<HTMLElement, { key: string; w: number; h: number }>();
+  return {
+    place(items, view, pointer) {
+      while (layer.children.length > items.length) layer.lastChild?.remove();
+      while (layer.children.length < items.length) {
+        const el = document.createElement('span');
+        el.className = 'sv-label';
+        layer.appendChild(el);
+      }
+      const boxes: (LabelBox & { el: HTMLElement })[] = [];
+      items.forEach((it, i) => {
+        const el = layer.children[i] as HTMLElement;
+        if (el.textContent !== it.text) el.textContent = it.text;
+        el.dataset.id = it.id;
+        el.style.fontSize = `${String(it.size)}px`;
+        el.classList.toggle('sel', it.selected);
+        if (!it.at) {
+          el.style.display = 'none';
+          return;
+        }
+        el.style.display = '';
+        const key = `${view}|${String(it.size)}|${it.text}`;
+        let size = sizes.get(el);
+        if (size?.key !== key) {
+          const b = el.getBoundingClientRect();
+          size = { key, w: b.width, h: b.height };
+          sizes.set(el, size);
+        }
+        boxes.push({
+          el,
+          id: it.id,
+          ...it.at,
+          w: size.w,
+          h: size.h,
+          selected: it.selected,
+          weight: it.weight,
+        });
+      });
+      // close piles: the larger keeps its label in place, the next moves up, the rest wait for hover
+      const placed = declutter(boxes, pointer);
+      for (const b of boxes) {
+        const at = placed.get(b.id);
+        b.el.style.visibility = at?.hidden === true ? 'hidden' : '';
+        b.el.style.transform = `translate(${String(b.x)}px, ${String(b.y + (at?.dy ?? 0))}px)`;
+      }
+    },
+    remove() {
+      layer.remove();
+    },
   };
 }
 
@@ -1064,7 +1112,7 @@ interface MapMouse {
 }
 
 const SRC = 'aio-survey';
-const LAYERS = ['aio-survey-fill', 'aio-survey-line', 'aio-survey-pt', 'aio-survey-label'] as const;
+const LAYERS = ['aio-survey-fill', 'aio-survey-line', 'aio-survey-pt'] as const;
 
 /**
  * Draw the measurements on the map and drive the active tool there. Returns the detach. With
@@ -1114,9 +1162,45 @@ export function attachMap(
     return [e, n, fallbackZ(surfaceZ(e, n), prev, openManifest()?.origin[2] ?? 0)];
   };
 
+  // the labels are the 3D view's chips over the map: a symbol layer needs glyph files (not in
+  // every build) and drops the labels that collide
+  const chips = labelChips(map.getContainer());
+  let labelled: { sh: Shape; text: string; at: [number, number] }[] = [];
+  let pointer: { x: number; y: number } | null = null;
+  const placeLabels = () => {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    chips.place(
+      labelled.map(({ sh, text, at }) => {
+        const p = map.project(at);
+        const inView = p.x >= 0 && p.x <= w && p.y >= 0 && p.y <= h;
+        return {
+          id: sh.id,
+          text,
+          size: sh.labelSize,
+          selected: sh.selected,
+          weight: sh.weight,
+          at: inView ? { x: Math.round(p.x), y: Math.round(p.y) } : null,
+        };
+      }),
+      `${String(w)}x${String(h)}`,
+      pointer,
+    );
+  };
+  const onHover = (e: PointerEvent) => {
+    const r = map.getContainer().getBoundingClientRect();
+    // the label's CSS margin puts it 24 px above and 6 px right of its anchor
+    pointer = { x: e.clientX - r.left - 6, y: e.clientY - r.top + 24 };
+    placeLabels();
+  };
+  const onLeave = () => {
+    pointer = null;
+    placeLabels();
+  };
   const data = () => {
     const s = measureStore.getState();
     const features: unknown[] = [];
+    labelled = [];
     for (const sh of shapesOf(
       s,
       dates.getState(),
@@ -1133,12 +1217,17 @@ export function attachMap(
         id: sh.id,
       };
       const anchor = sh.label ? anchorOf(sh.points, sh.closed) : null;
-      if (anchor && sh.label)
+      // on the map a pile is named only: its figures are on its card and in the Volumes tab
+      const text = sh.pile && sh.name ? sh.name : sh.label;
+      if (anchor && text) {
+        const at = toLngLat(anchor);
         features.push({
           type: 'Feature',
-          properties: { kind: 'label', id: sh.id, label: sh.label, size: sh.labelSize },
-          geometry: { type: 'Point', coordinates: toLngLat(anchor) },
+          properties: { kind: 'label', id: sh.id, label: text, size: sh.labelSize },
+          geometry: { type: 'Point', coordinates: at },
         });
+        labelled.push({ sh, text, at });
+      }
       if (!sh.outline) continue;
       if (coords.length === 1)
         features.push({
@@ -1205,6 +1294,7 @@ export function attachMap(
       const src = map.getSource(SRC) as { setData?: (d: unknown) => void } | undefined;
       if (src?.setData) src.setData(data());
       else map.addSource(SRC, { type: 'geojson', data: data() as never });
+      placeLabels();
       if (!map.getLayer(LAYERS[0]))
         map.addLayer({
           id: LAYERS[0],
@@ -1232,27 +1322,6 @@ export function attachMap(
             'circle-color': ['get', 'color'],
             'circle-stroke-color': '#000000',
             'circle-stroke-width': 1,
-          },
-        });
-      if (!map.getLayer(LAYERS[3]))
-        map.addLayer({
-          id: LAYERS[3],
-          type: 'symbol',
-          source: SRC,
-          filter: ['==', ['get', 'kind'], 'label'],
-          // the 3D view's label: the name and the primary value, at the label size saved
-          layout: {
-            'text-field': ['get', 'label'],
-            'text-font': ['Noto Sans Medium'],
-            'text-size': ['get', 'size'],
-            'text-anchor': 'left',
-            'text-offset': [0.6, 0],
-            'text-padding': 4,
-          },
-          paint: {
-            'text-color': '#ffffff',
-            'text-halo-color': '#000000',
-            'text-halo-width': 1.5,
           },
         });
     } catch {
@@ -1310,6 +1379,10 @@ export function attachMap(
     map.on('dblclick', onDbl as never);
   }
   map.on('styledata', onStyle);
+  map.on('move', placeLabels);
+  map.on('resize', placeLabels);
+  canvas.addEventListener('pointermove', onHover, { passive: true });
+  canvas.addEventListener('pointerleave', onLeave);
   const offStore = measureStore.subscribe((s, prev) => {
     if (
       s.file !== prev.file ||
@@ -1339,6 +1412,11 @@ export function attachMap(
     }
     map.off('styledata', onStyle);
     map.off('idle', whenIdle);
+    map.off('move', placeLabels);
+    map.off('resize', placeLabels);
+    canvas.removeEventListener('pointermove', onHover);
+    canvas.removeEventListener('pointerleave', onLeave);
+    chips.remove();
     try {
       for (const id of [...LAYERS].reverse()) if (map.getLayer(id)) map.removeLayer(id);
       if (map.getSource(SRC)) map.removeSource(SRC);

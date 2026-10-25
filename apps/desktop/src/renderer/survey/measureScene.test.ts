@@ -483,9 +483,13 @@ function fakeMap() {
     }
   >();
   let added = false;
+  const container = document.createElement('div');
   const canvas = document.createElement('canvas');
+  container.appendChild(canvas);
+  document.body.appendChild(container);
   const map = {
     getCanvas: () => canvas,
+    getContainer: () => container,
     project: () => ({ x: 0, y: 0 }),
     isStyleLoaded: () => true,
     getSource: (id: string) =>
@@ -512,6 +516,9 @@ function fakeMap() {
   };
   return {
     ctl: { map } as unknown as MapController,
+    container,
+    /** The label chips over the map, as the person reads them. */
+    chips: () => [...container.querySelectorAll<HTMLElement>('.sv-labels .sv-label')],
     features: () => data.features,
     layer: (type: string) => [...layers.values()].find((l) => l.type === type),
   };
@@ -562,15 +569,25 @@ it('map labels show the name and the primary value', () => {
   const label = m.features().find((f) => f.properties.kind === 'label');
   expect(label?.geometry.type).toBe('Point');
   expect(label?.properties.label).toBe(labelText(pad(), defaultSurveySettings(), []));
-  expect(m.layer('symbol')?.layout?.['text-field']).toEqual(['get', 'label']);
   // the label point is not drawn as a vertex dot
   expect(m.layer('circle')?.filter).toEqual([
     'all',
     ['==', ['geometry-type'], 'Point'],
     ['!=', ['get', 'kind'], 'label'],
   ]);
-  expect(m.layer('symbol')?.filter).toEqual(['==', ['get', 'kind'], 'label']);
   m.detach();
+});
+
+it('map labels are the 3D view’s label chips over the map, not a glyph layer (bug 4)', () => {
+  const m = mapOf(pad());
+  // a MapLibre symbol layer draws nothing without the glyph files, and drops colliding labels
+  expect(m.layer('symbol')).toBeUndefined();
+  expect(m.chips().map((el) => el.textContent)).toEqual([
+    labelText(pad(), defaultSurveySettings(), []),
+  ]);
+  expect(m.chips()[0]?.style.display).toBe('');
+  m.detach();
+  expect(m.container.querySelector('.sv-labels')).toBeNull();
 });
 
 it('map labels follow a change of the site units', () => {
@@ -819,13 +836,16 @@ describe('piles follow the date in focus and the Show control', () => {
     m.detach();
   });
 
-  it('a map label reads the figure on the date in focus, and follows it', () => {
+  it('a pile’s map label is its name only, on every date (bug 4)', () => {
     timeline.setState({ focus: 'c1' });
-    const m = mapOf(stockpile());
-    const label = () => m.features().find((f) => f.properties.kind === 'label')?.properties.label;
-    expect(label()).toMatch(/^Pile 01 · 800/);
+    const m = mapOf(stockpile(), pad());
+    const text = () => m.chips().map((el) => el.textContent);
+    expect(text()).toEqual(['Pile 01', labelText(pad(), defaultSurveySettings(), [])]);
     timeline.setState({ focus: 'c2' });
-    expect(label()).toMatch(/^Pile 01 · 1\D?200/);
+    expect(text()).toEqual(['Pile 01', labelText(pad(), defaultSurveySettings(), [])]);
+    // Labels off takes the pile's chip away, not the other measurement's
+    stageShow.getState().setLabels(false);
+    expect(text()).toEqual([labelText(pad(), defaultSurveySettings(), [])]);
     m.detach();
   });
 
