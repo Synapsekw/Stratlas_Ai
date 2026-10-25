@@ -10,9 +10,17 @@ import {
   type SurveyMeasurement,
   type VolumetricTextId,
 } from '@aio/schema';
-import { Icon, t } from '@aio/ui';
+import { Icon, Tip, t } from '@aio/ui';
 import { assetUrl } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { useStore } from 'zustand';
 import { runExportAction } from '../../exports/exports';
 import { reportViews, volumetricTemplate, type ResolvedText } from '../../reportPage/types';
@@ -252,21 +260,22 @@ function Preview(props: {
   return (
     <div ref={ref} className="vre-preview" aria-label={t('vreport.preview')}>
       {/* a click on a text focuses its field; the fields are the keyboard route */}
-      <div
-        className="vre-pages"
-        style={{ zoom }}
-        data-testid="volumetric-preview"
-        title={t('vreport.preview.focusField')}
-        onClick={(e) => {
-          props.onPick(e.target);
-        }}
-      >
-        {pages.map((p, i) => (
-          <div key={`${p.page}-${String(i)}`} className="vre-page">
-            {p.element}
-          </div>
-        ))}
-      </div>
+      <Tip content={t('vreport.preview.focusField')} placement="top">
+        <div
+          className="vre-pages"
+          style={{ zoom }}
+          data-testid="volumetric-preview"
+          onClick={(e) => {
+            props.onPick(e.target);
+          }}
+        >
+          {pages.map((p, i) => (
+            <div key={`${p.page}-${String(i)}`} className="vre-page">
+              {p.element}
+            </div>
+          ))}
+        </div>
+      </Tip>
     </div>
   );
 }
@@ -543,12 +552,8 @@ export function VolumetricEditor(props: VolumetricEditorProps) {
                     {PAGE_IDS.map((id) => {
                       const on = ed.pages[id] && !pageOff(id);
                       const last = on && pagesOn.filter((p) => !pageOff(p)).length <= 1;
-                      return (
-                        <label
-                          key={id}
-                          className="rep-check"
-                          title={last ? t('vreport.pages.keepOne') : undefined}
-                        >
+                      const row = (
+                        <label className="rep-check">
                           <input
                             type="checkbox"
                             checked={on}
@@ -559,6 +564,13 @@ export function VolumetricEditor(props: VolumetricEditorProps) {
                           />
                           {tk(`vreport.pages.${id}`)}
                         </label>
+                      );
+                      return last ? (
+                        <Tip key={id} content={t('vreport.pages.keepOne')} placement="top">
+                          {row}
+                        </Tip>
+                      ) : (
+                        <Fragment key={id}>{row}</Fragment>
                       );
                     })}
                   </div>

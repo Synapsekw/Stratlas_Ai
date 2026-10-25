@@ -37,7 +37,7 @@ import {
   pileMaterial,
 } from '@aio/survey';
 import { kitBaseName } from './baseNames';
-import { Button, EmptyState, t, useT } from '@aio/ui';
+import { Button, EmptyState, Tip, t, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { TimeChart } from '../../charts/TimeChart';
@@ -917,8 +917,10 @@ function OverTime({
                 data-stale={r.stale ? '' : undefined}
                 aria-current={r.latest ? 'date' : undefined}
               >
-                <th scope="row" title={r.label}>
-                  {short(r.date)}
+                <th scope="row">
+                  <Tip content={r.label} placement="top">
+                    <span>{short(r.date)}</span>
+                  </Tip>
                 </th>
                 {r.valueM3 !== null ? (
                   <td>{num(r.valueM3)}</td>

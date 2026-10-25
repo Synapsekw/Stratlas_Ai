@@ -122,7 +122,7 @@
   cursor: text;
 }
 .vre-page {
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+  box-shadow: var(--el-1);
 }
 .vre-page .vr-page {
   break-after: auto;
@@ -130,7 +130,7 @@
 
 /* the progress card while the pictures are taken: over the whole window, the stage included */
 .vre-progress-scrim {
-  z-index: 1000;
+  z-index: var(--z-top);
 }
 .vre-progress .bar {
   display: block;
