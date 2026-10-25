@@ -287,7 +287,13 @@ test.describe('survey date folders', () => {
     // place while a row is dragged (by hand here, as the place only shows during the drag),
     // pinned to the foot of the list so it is in view however far the list is scrolled
     await expect(every).toHaveCount(0);
-    await startDrag(win, nov.getByTestId('tree-row-design'));
+    // the Moved note above the list pushes the row to the list's foot, where the pinned place
+    // would open under the pressed pointer and the drag would never start: centre the row first
+    const designRow = nov.getByTestId('tree-row-design');
+    await designRow.evaluate((el) => {
+      el.scrollIntoView({ block: 'center' });
+    });
+    await startDrag(win, designRow);
     await expect(every).toBeVisible();
     await expect(every).toContainText('Drop for no date');
     await expect(every).toBeInViewport({ ratio: 1 });
