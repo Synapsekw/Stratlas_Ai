@@ -1,6 +1,7 @@
-import type { Issue, ProjectManifest } from '@aio/schema';
+import type { Issue, PackageInfo, ProjectManifest } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
+  actionAllowed,
   createToastStore,
   doneMessage,
   EXPORT_ACTIONS,
@@ -40,8 +41,24 @@ describe('export actions', () => {
       'survey-report-pdf',
       'stockpile-csv',
       'measurements-csv',
+      'volumetric-pdf',
+      'volumetric-html',
       'snapshot',
     ]);
+  });
+
+  it('offers the volumetric report as PDF and HTML, under the report-pdf package kind', () => {
+    const pdf = EXPORT_ACTIONS.find((a) => a.id === 'volumetric-pdf');
+    const html = EXPORT_ACTIONS.find((a) => a.id === 'volumetric-html');
+    expect(pdf).toMatchObject({ label: 'Volumetric report (PDF)', hint: 'Customer report' });
+    expect(pdf?.title).toBe('Export the volumetric report as PDF');
+    expect(html).toMatchObject({ label: 'Volumetric report (HTML)', hint: 'Opens offline' });
+    expect(html?.title).toBe('Export the volumetric report as one offline HTML file');
+    const pkg = (exports: string[]) => ({ header: { exports } }) as unknown as PackageInfo;
+    expect(actionAllowed('volumetric-pdf', pkg(['report-pdf']))).toBe(true);
+    expect(actionAllowed('volumetric-html', pkg(['report-pdf']))).toBe(true);
+    expect(actionAllowed('volumetric-html', pkg(['issues-csv']))).toBe(false);
+    expect(actionAllowed('volumetric-pdf', null)).toBe(true);
   });
 
   it('builds the legend worst first, with counts, skipping empty levels', () => {

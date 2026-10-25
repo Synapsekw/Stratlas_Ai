@@ -8,10 +8,12 @@ import {
   type ReportContentsSettings,
   type ReportFile,
   type ReportSectionId,
+  type SurveyMeasurement,
 } from '@aio/schema';
 import { Button, formatBytes, Icon, SevChip, t } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useRef, useState } from 'react';
+import { useStore } from 'zustand';
 import { FocusZone } from '../FocusZone';
 import { actionAllowed, exportUnavailable } from '../exports/exportModel';
 import { runExportAction } from '../exports/exports';
@@ -19,6 +21,13 @@ import { AuditScreen } from '../audit/AuditScreen';
 import { closeAuditTrail, openAuditTrail, useAuditOpen } from '../audit/auditView';
 import { NarrativeEditor } from '../report/NarrativeEditor';
 import { PdfViewer } from '../report/PdfViewer';
+import {
+  closeVolumetricEditor,
+  openVolumetricEditor,
+  reportPiles,
+  volumetricView,
+} from '../report/volumetric/editorView';
+import { VolumetricEditor } from '../report/volumetric/VolumetricEditor';
 import { TemplateNote } from '../report/TemplateNote';
 import { ExtractPackage } from '../shell/ExtractPackage';
 import { shell, useCall, useShell } from '../shell';
@@ -125,6 +134,29 @@ function ProjectReport(props: {
   );
 }
 
+/** Customer reports: the volumetric report, offered when the project has stockpile volumes. */
+function CustomerReports(props: { open: boolean; onOpen: () => void }) {
+  return (
+    <section className="sblock" data-testid="customer-reports">
+      <h2>{t('vreport.block')}</h2>
+      <h3 className="caps rep-sub">{t('vreport.title')}</h3>
+      <p className="muted rep-note">{t('vreport.text')}</p>
+      <div className="rep-acts">
+        <button
+          type="button"
+          className="btn"
+          aria-pressed={props.open}
+          data-testid="open-volumetric-report"
+          onClick={props.onOpen}
+        >
+          <Icon name="report" size={14} />
+          {t('vreport.open')}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function ReportList(props: {
   files: ReportFile[] | null;
   selected: string | null;
@@ -157,29 +189,36 @@ function ReportList(props: {
 
 /**
  * The survey and run sections the open project has data for (null while they are read), so the
- * Reports screen offers no landfill, haul-road or hydrology section to a project without any.
+ * Reports screen offers no landfill, haul-road or hydrology section to a project without any; and
+ * the project's survey measurements (for the customer reports).
  */
-function useSectionsWithData(projectId: string | null): ReportSectionId[] | null {
+function useSurveyData(projectId: string | null): {
+  sections: ReportSectionId[] | null;
+  measurements: SurveyMeasurement[];
+} {
   const req = { projectId: projectId ?? '' };
   const measurements = useCall('survey:readMeasurements', req, projectId);
   const settings = useCall('survey:readSettings', req, projectId);
   const templates = useCall('survey:readTemplates', req, projectId);
   const haul = useCall('survey:readHaulRuns', req, projectId);
   const hydro = useCall('survey:readHydroRuns', req, projectId);
-  if (!measurements || !settings || !templates || !haul || !hydro) return null;
   const ok = <T,>(r: { ok: true; value: T } | { ok: false }) => (r.ok ? r.value : null);
-  const m = ok(measurements);
+  const read = measurements ? ok(measurements) : null;
+  const list = read?.ok ? read.file.measurements : [];
+  if (!measurements || !settings || !templates || !haul || !hydro)
+    return { sections: null, measurements: list };
   const s = ok(settings);
   const tpl = ok(templates);
   const h = ok(haul);
   const y = ok(hydro);
-  return sectionsWithData({
-    measurements: m?.ok ? m.file.measurements : [],
+  const sections = sectionsWithData({
+    measurements: list,
     settings: s?.ok ? s.settings : defaultSurveySettings(),
     templates: tpl?.ok ? tpl.project : null,
     haulRuns: h?.ok ? h.runs.length : 0,
     hydroRuns: y?.ok ? y.runs.length : 0,
   });
+  return { sections, measurements: list };
 }
 
 export function ReportsScreen() {
@@ -188,7 +227,10 @@ export function ReportsScreen() {
   const pkg = useShell((s) => s.pkg);
   const roadOpen = useRoad((s) => s.status === 'ready' || s.status === 'setup');
   const listed = useCall('report:list', { projectId: project?.id ?? '' }, project?.id ?? null);
-  const withData = useSectionsWithData(project?.id ?? null);
+  const survey = useSurveyData(project?.id ?? null);
+  const withData = survey.sections;
+  const companyName = useShell((s) => s.settings.reportBranding?.companyName);
+  const volumetricFor = useStore(volumetricView, (s) => s.openFor);
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [textOpen, setTextOpen] = useState(false);
   const auditOpen = useAuditOpen();
@@ -203,6 +245,9 @@ export function ReportsScreen() {
   const selected = picked[project.id] ?? files?.[0]?.path ?? null;
   const file = files?.find((f) => f.path === selected) ?? null;
   const models = project.manifest.severityModels;
+  // the volumetric report: offered for stockpile volumes; its editor stays open across screens
+  const volumetricOffered = reportPiles(survey.measurements).length > 0;
+  const volumetricOpen = volumetricOffered && volumetricFor === project.id;
 
   const page = (
     <FocusZone kind="report" className="screen reports" aria-label="Reports">
@@ -235,9 +280,20 @@ export function ReportsScreen() {
             )}
             onText={() => {
               closeAuditTrail();
+              closeVolumetricEditor();
               setTextOpen(true);
             }}
           />
+          {volumetricOffered && (
+            <CustomerReports
+              open={volumetricOpen}
+              onOpen={() => {
+                closeAuditTrail();
+                setTextOpen(false);
+                openVolumetricEditor(project.id);
+              }}
+            />
+          )}
           <section className="sblock" data-testid="audit-trail-section">
             <h2>{t('audit.title')}</h2>
             <p className="muted rep-note">{t('audit.reports.text')}</p>
@@ -248,6 +304,7 @@ export function ReportsScreen() {
               data-testid="open-audit-trail"
               onClick={() => {
                 setTextOpen(false);
+                closeVolumetricEditor();
                 openAuditTrail();
               }}
             >
@@ -355,6 +412,16 @@ export function ReportsScreen() {
       <section className="rep-view" aria-label="Report viewer">
         {auditOpen ? (
           <AuditScreen key={project.id} projectId={project.id} onClose={closeAuditTrail} />
+        ) : volumetricOpen ? (
+          <VolumetricEditor
+            key={project.id}
+            projectId={project.id}
+            customer={project.manifest.customer}
+            companyName={companyName}
+            measurements={survey.measurements}
+            exportsAllowed={actionAllowed('volumetric-pdf', pkg)}
+            onClose={closeVolumetricEditor}
+          />
         ) : textOpen ? (
           <NarrativeEditor
             key={project.id}

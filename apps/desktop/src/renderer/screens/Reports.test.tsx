@@ -5,6 +5,7 @@ import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { volumetricView } from '../report/volumetric/editorView';
 import { bridge } from '../shell';
 import { ReportsScreen } from './Reports';
 
@@ -55,8 +56,39 @@ afterEach(() => {
   root = undefined;
   host.remove();
   workspace.setState(original, true);
+  volumetricView.setState({ openFor: null, taken: {}, pictureError: null });
+  REPLIES['survey:readMeasurements'] = NO_MEASUREMENTS;
   vi.restoreAllMocks();
 });
+
+const NO_MEASUREMENTS = REPLIES['survey:readMeasurements'];
+const stockpile = {
+  id: 'm1',
+  family: 'polygon',
+  tool: 'polygon',
+  label: 'SP1',
+  scope: 'site',
+  points: [
+    [0, 0, 0],
+    [10, 0, 0],
+    [10, 10, 0],
+  ],
+  items: [{ from: { kind: 'lowest' }, to: { kind: 'current' } }],
+  results: [],
+  createdAt: '2026-10-01T00:00:00.000Z',
+};
+
+async function remount() {
+  act(() => root?.unmount());
+  root = createRoot(host);
+  await act(async () => {
+    root?.render(<ReportsScreen />);
+    await Promise.resolve();
+  });
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
 
 describe('Reports screen', () => {
   it('says what to export when there is no report to read yet', () => {
@@ -83,5 +115,27 @@ describe('Reports screen', () => {
     expect(exportBtn?.getAttribute('aria-disabled')).toBe('true');
     const reason = exportBtn?.getAttribute('aria-describedby') ?? '';
     expect(document.getElementById(reason)?.textContent).toBe('Add data to the project first.');
+  });
+
+  it('offers no customer report to a project without stockpile volumes', () => {
+    expect(host.querySelector('[data-testid="customer-reports"]')).toBeNull();
+  });
+
+  it('offers the volumetric report for stockpile volumes and opens its editor', async () => {
+    REPLIES['survey:readMeasurements'] = {
+      ok: true,
+      file: { version: 1, measurements: [stockpile] },
+      readOnly: false,
+    };
+    await remount();
+    const block = host.querySelector('[data-testid="customer-reports"]');
+    expect(block?.textContent).toContain('Customer reports');
+    expect(block?.textContent).toContain('Volumetric report');
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[data-testid="open-volumetric-report"]')?.click();
+      await Promise.resolve();
+    });
+    expect(host.querySelector('[data-testid="volumetric-editor"]')).not.toBeNull();
+    expect(volumetricView.getState().openFor).toBe('tank');
   });
 });

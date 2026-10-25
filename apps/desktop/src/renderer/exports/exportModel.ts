@@ -99,6 +99,21 @@ export const EXPORT_ACTIONS: readonly ExportAction[] = [
     hint: 'Every item',
     icon: 'download',
   },
+  // the volumetric customer report (Reports, Customer reports), under the package kind report-pdf
+  {
+    id: 'volumetric-pdf',
+    label: t('vreport.action.pdf'),
+    title: t('vreport.action.pdf.title'),
+    hint: t('vreport.action.pdf.hint'),
+    icon: 'report',
+  },
+  {
+    id: 'volumetric-html',
+    label: t('vreport.action.html'),
+    title: t('vreport.action.html.title'),
+    hint: t('vreport.action.html.hint'),
+    icon: 'report',
+  },
   {
     id: 'snapshot',
     label: '3D view snapshot (PNG)',

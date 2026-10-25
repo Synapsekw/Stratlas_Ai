@@ -1,0 +1,153 @@
+/* The volumetric report editor: the narrative editor's panel styles (.nar, .nar-h, .nar-text),
+   a fields column of 360 px beside the preview of the printed pages, scaled to the pane. */
+.vre-in {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+.vre-side {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
+  border-right: 1px solid var(--line-soft);
+  background: var(--bg-1);
+}
+.vre-fields {
+  overflow-y: auto;
+  padding: 14px 16px 24px;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+.vre-fields > .notice {
+  margin: 0;
+}
+.vre-field {
+  display: grid;
+  gap: 6px;
+}
+.vre-field-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+.vre-field-h label {
+  color: var(--fg-0);
+}
+.vre-field-h .grow,
+.vre-pictures .grow {
+  flex: 1;
+}
+.vre-source {
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.vre-source.edited {
+  color: var(--acc);
+}
+.vre-input {
+  width: 100%;
+}
+.vre-text.nar-text {
+  min-height: 0;
+}
+.vre-hint {
+  margin: 0;
+}
+.vre-notes,
+.vre-pages-on {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.vre-notes legend,
+.vre-pages-on legend {
+  padding: 0;
+  margin-bottom: 6px;
+  color: var(--fg-0);
+}
+.vre-note {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 0.8fr) minmax(0, 2fr);
+  align-items: center;
+  gap: 8px;
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.vre-note-n {
+  color: var(--fg-3);
+  text-align: right;
+}
+.vre-note-l {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vre-pages-list {
+  display: grid;
+  gap: 4px;
+}
+.vre-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line-soft);
+  background: var(--bg-chrome);
+}
+.vre-pictures {
+  margin: 0;
+}
+
+/* the preview: the printed pages on the app's background, scaled with zoom so layout follows */
+.vre-preview {
+  overflow: auto;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg-0);
+}
+.vre-preview-empty {
+  display: grid;
+  place-items: center;
+}
+.vre-pages {
+  display: grid;
+  justify-content: center;
+  gap: 18px;
+  padding: 16px;
+  cursor: text;
+}
+.vre-page {
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+}
+.vre-page .vr-page {
+  break-after: auto;
+}
+
+/* the progress card while the pictures are taken: over the whole window, the stage included */
+.vre-progress-scrim {
+  z-index: 1000;
+}
+.vre-progress .bar {
+  display: block;
+  margin-top: 8px;
+}
+.vre-progress .bar i {
+  background: var(--acc);
+}
+
+@media (max-width: 900px) {
+  .vre-in {
+    grid-template-columns: 300px minmax(0, 1fr);
+  }
+}
+
+/* the Reports screen's Customer reports block: the report's name under the block heading */
+.rep-sub {
+  margin: 2px 0 4px;
+  color: var(--fg-0);
+}
