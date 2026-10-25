@@ -230,7 +230,7 @@ export interface KitConversionOptions {
    * (kit figures carried). Absent means no evidence (journal off, a package, a failed read): a
    * converted pile with no measurement stays gone, as before.
    */
-  deletedKitPiles?: ReadonlySet<string>;
+  deletedKitPiles?: KeptGoneKitPiles;
 }
 
 /**
@@ -490,11 +490,11 @@ export interface KitOpenOptions {
   /** The kit's DSM heights: converted outlines are draped on them (`KitConversionOptions`). */
   heightAt?: KitHeightAt;
   /**
-   * The journal was read: the kit piles deliberately deleted (`KitConversionOptions`). Only the
+   * The journal was read: the kit piles that stay gone (`KitConversionOptions`). Only the
    * app's own open passes it; the report and the assistant keep the old rule (a vanished pile
    * stays gone) and read the file the app repaired.
    */
-  deletedKitPiles?: ReadonlySet<string>;
+  deletedKitPiles?: KeptGoneKitPiles;
 }
 
 // ---------------------------------------------------------------- the kit's density
@@ -655,27 +655,19 @@ export function restorableKitPiles(entries: readonly KitJournalEntry[]): Set<str
   return restorable;
 }
 
-/** The "stays gone" side of `restorableKitPiles`: `has` is true for every pile not restorable. */
-class KeptGoneKitPiles extends Set<string> {
-  private readonly restorable: ReadonlySet<string>;
-  constructor(restorable: ReadonlySet<string>) {
-    super();
-    this.restorable = restorable;
-  }
-  override has(pile: string): boolean {
-    return !this.restorable.has(pile);
-  }
+/** The piles that stay gone: only `has` is offered, as no list of them exists. */
+export interface KeptGoneKitPiles {
+  has(id: string): boolean;
 }
 
 /**
  * The kit piles that stay gone, for `ConvertKitPilesOptions.deletedKitPiles`: every pile except
  * those with positive evidence of an accidental loss (`restorableKitPiles`). Only `has` is
- * meaningful (the set cannot list piles it never saw); a missing journal passes no set at all.
+ * offered (the piles are never listed); a missing journal passes none at all.
  */
-export function deliberatelyDeletedKitPiles(
-  entries: readonly KitJournalEntry[],
-): ReadonlySet<string> {
-  return new KeptGoneKitPiles(restorableKitPiles(entries));
+export function deliberatelyDeletedKitPiles(entries: readonly KitJournalEntry[]): KeptGoneKitPiles {
+  const restorable = restorableKitPiles(entries);
+  return { has: (id) => !restorable.has(id) };
 }
 
 /**

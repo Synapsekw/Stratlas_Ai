@@ -842,7 +842,7 @@ describe('a converted kit pile whose measurement vanished (the journal decides)'
       file: { ...all, measurements: all.measurements.filter((m) => m !== gone) },
     };
   };
-  const later = (deletedKitPiles?: ReadonlySet<string>) => {
+  const later = (deletedKitPiles?: { has(id: string): boolean }) => {
     let n = 100;
     return {
       ...opts(false),

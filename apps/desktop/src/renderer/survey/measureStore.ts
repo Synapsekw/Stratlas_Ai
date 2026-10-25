@@ -26,6 +26,7 @@ import {
 import {
   changesFile,
   deliberatelyDeletedKitPiles,
+  type KeptGoneKitPiles,
   kitDensity,
   type KitJournalEntry,
   vanishedKitPiles,
@@ -576,7 +577,7 @@ function openedWithKitPiles(
   materials: readonly SiteMaterial[],
   readOnly: boolean,
   heightAt?: KitHeightAt,
-  deletedKitPiles?: ReadonlySet<string>,
+  deletedKitPiles?: KeptGoneKitPiles,
 ): MeasurementsFile {
   if (!read) return file;
   if (read.volumes && !manifest) return file;
@@ -593,9 +594,9 @@ const JOURNAL_PAGE = 5000;
 
 /**
  * The journal's evidence about converted kit piles whose measurement vanished
- * (`vanishedKitPiles`): the piles the person deliberately deleted (`deliberatelyDeletedKitPiles`)
- * and the vanished ones to restore. Undefined, and no journal read, when no converted pile
- * vanished; undefined too without evidence (the journal off, the read failed, a history too long
+ * (`vanishedKitPiles`): the piles that stay gone (`deliberatelyDeletedKitPiles`: every pile
+ * without journal evidence of an accidental loss) and the vanished ones to restore. Undefined, and
+ * no journal read, when no converted pile vanished; undefined too without evidence (the journal off, the read failed, a history too long
  * to read): then a vanished pile stays gone, the rule before the journal was asked.
  */
 async function vanishedKitEvidence(
@@ -604,7 +605,7 @@ async function vanishedKitEvidence(
   volumes: VolumesFile,
   edits: BoundaryEditsFile | null,
   manifest: ProjectManifest,
-): Promise<{ deleted: ReadonlySet<string>; restore: string[] } | undefined> {
+): Promise<{ deleted: KeptGoneKitPiles; restore: string[] } | undefined> {
   const vanished = vanishedKitPiles(file, volumes, edits, manifest.origin);
   if (vanished.length === 0) return undefined;
   const entries: KitJournalEntry[] = [];
