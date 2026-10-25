@@ -135,7 +135,9 @@ export function createDropStore(deps: DropDeps): StoreApi<DropStore> {
           const hiddenNames: string[] = [];
           for (const id of layerIds) {
             const l = layerOf(first.manifest, id);
-            if (l && hiddenNow[id] && droppable(l) === 'ok') hiddenNames.push(l.name);
+            // a walk is measured on the floor drawn under it, not on itself: hidden is fine
+            if (l && l.kind !== 'walk' && hiddenNow[id] && droppable(l) === 'ok')
+              hiddenNames.push(l.name);
           }
           if (hiddenNames.length > 0) {
             say(t('drop.hidden', { count: hiddenNames.length, names: hiddenNames.join(', ') }));

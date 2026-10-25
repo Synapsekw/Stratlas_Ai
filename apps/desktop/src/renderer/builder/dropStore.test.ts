@@ -116,6 +116,13 @@ describe('drop store for walks', () => {
     expect(layerOf(ws, 'walk-w1').heightOffsetM).toBe(1.25);
   });
 
+  it('drops a walk that is switched off: the floor under it is what is measured', async () => {
+    const { store, saved, ws } = setup([placedWalk()], { walkFloor: () => ({ shift: 1.25 }) });
+    ws.setState({ hidden: { 'walk-w1': true } });
+    await store.getState().drop(['walk-w1']);
+    expect(saved).toEqual([{ layerId: 'walk-w1', patch: { heightOffsetM: 1.25 } }]);
+  });
+
   it('lowers a walk that has an offset by the floor below it', async () => {
     const { store, saved } = setup([placedWalk({ heightOffsetM: 2 })], {
       walkFloor: () => ({ shift: -6 }),
