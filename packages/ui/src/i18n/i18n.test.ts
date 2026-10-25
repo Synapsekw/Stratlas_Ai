@@ -615,3 +615,66 @@ describe('Inspect strings', () => {
     expect(t('askAi.reason.walkLocal')).toBe('Walk frames need the local model.');
   });
 });
+
+describe('volumetric report strings', () => {
+  it('has the editor, page, viewer, Reports and export strings under vreport.*', () => {
+    const want: Record<string, string[]> = {
+      'vreport.block': [],
+      'vreport.title': [],
+      'vreport.field.title.default': [],
+      'vreport.reset': [],
+      'vreport.pictures.take': [],
+      'vreport.pictures.stale': [],
+      'vreport.export.pdf': [],
+      'vreport.export.html': [],
+      'vreport.pages.cover': [],
+      'vreport.pages.piles': [],
+      'vreport.pages.change': [],
+      'vreport.readOnly': [],
+      'vreport.oneDate': [],
+      'vreport.inShort': [],
+      'vreport.page.coverContinued': [],
+      'vreport.footer': ['company', 'product'],
+      'vreport.page.number': ['n'],
+      'vreport.key.grey': ['deadband'],
+      'vreport.viewer.savePdf': [],
+      'vreport.viewer.csv': [],
+      'vreport.short.fell': ['date', 'pct', 'volume'],
+      'vreport.short.rose': ['date', 'pct', 'volume'],
+      'vreport.short.steady': ['date'],
+      'vreport.action.pdf': [],
+      'vreport.action.html': [],
+      'vreport.error.budget': ['limit'],
+      'vreport.error.noPictures': [],
+      'vreport.error.notOffered': [],
+    };
+    for (const [k, p] of Object.entries(want)) {
+      const v = (en as Record<string, string>)[k] ?? '';
+      expect(v, k).toBeTruthy();
+      expect([...new Set(placeholders(v))].sort(), k).toEqual(p);
+    }
+    // no dashes and no minus signs in front of a number anywhere in the report's text
+    for (const [k, v] of Object.entries(en))
+      if (k.startsWith('vreport.')) expect(v, k).not.toMatch(/[–—]|-\d|−/);
+    expect(t('vreport.field.title.default')).toBe('Stockpile volume report');
+    expect(t('vreport.block')).toBe('Customer reports');
+    expect(t('vreport.action.pdf')).toBe('Volumetric report (PDF)');
+    expect(t('vreport.action.html')).toBe('Volumetric report (HTML)');
+    expect(t('vreport.page.coverContinued')).toBe('A, continued');
+    expect(t('vreport.footer', { company: 'Acme Survey', product: 'P' })).toBe(
+      'Prepared by Acme Survey with P',
+    );
+    expect(t('vreport.page.number', { n: 2 })).toBe('Page 2');
+    expect(t('vreport.band.piles', { count: 1 })).toBe('1 pile');
+    expect(t('vreport.band.piles', { count: 19 })).toBe('19 piles');
+    expect(t('vreport.short.fell', { volume: '12,499 m³', pct: '8 %', date: '3 September' })).toBe(
+      'Stock on hand fell by 12,499 m³ (8 %) since 3 September',
+    );
+    expect(t('vreport.short.pileLess', { pile: 'P04', volume: '4,100 m³' })).toBe(
+      'P04 (4,100 m³ less)',
+    );
+    expect(t('vreport.short.oneDate', { volume: '9,000 m³', count: 3, date: '3 June' })).toBe(
+      'Stock on hand is 9,000 m³ across 3 piles on 3 June.',
+    );
+  });
+});
