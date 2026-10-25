@@ -12,7 +12,7 @@ import {
   makeRemoveProject,
 } from './removeFixture';
 import { readManifestFile, writeManifestFile } from './create';
-import { namesAny, ownedPaths, planRemoval, valuesUnder } from './removePlan';
+import { areaLayerId, namesAny, ownedPaths, planRemoval, valuesUnder } from './removePlan';
 
 let dir: string;
 let root: string;
@@ -240,6 +240,81 @@ describe('planRemoval', () => {
     ];
     const p = await planRemoval(root, [{ layer: 'dsm-b' }], { jobs });
     expect(p.refused).toMatch(/still running\. Cancel it first\./);
+  });
+
+  describe("an area comparison's row while its other job still runs", () => {
+    const AREA = 'c1-c2-change-area-pad-a';
+    const scope = { id: 'pad-a', name: 'Pad A' };
+    const mask = [
+      [55.1, 25.1],
+      [55.2, 25.1],
+      [55.2, 25.2],
+      [55.1, 25.1],
+    ];
+    const row: Layer = {
+      kind: 'raster',
+      id: AREA,
+      name: 'Pad A: change, 2026-10-12 to 2026-10-26',
+      visible: true,
+      capture: 'c2',
+      role: 'plan',
+      format: 'kit-pyramid',
+      src: { path: 'change/c1-c2-raster-area-pad-a/heat/tiles.json' },
+      derived: { kind: 'change', changeId: 'c1-c2-raster-area-pad-a', from: 'c1', to: 'c2' },
+    };
+    const surface = (params: Record<string, unknown>) => ({
+      id: 'j9',
+      pipeline: 'change.surface',
+      status: 'running',
+      params: {
+        from: { layer: `${RUN_DONE}-dsm`, kind: 'dsm' },
+        to: { layer: 'dsm-b', kind: 'dsm' },
+        mask,
+        ...params,
+      },
+    });
+
+    it('is refused while a scoped volume job of that area runs: it would add the row back', async () => {
+      await addLayers(row);
+      const p = await planRemoval(root, [{ layer: AREA }], { jobs: [surface({ scope })] });
+      expect(p.refused).toBe(
+        'Comparing the surfaces uses "Pad A: change, 2026-10-12 to 2026-10-26" and is still running. Cancel it first.',
+      );
+    });
+
+    it('is refused while a scoped imagery job of that area runs, its dates from its params', async () => {
+      await addLayers(row);
+      const raster = {
+        id: 'j8',
+        pipeline: 'change.raster',
+        status: 'starting',
+        params: { from: 'c1', to: 'c2', layerFrom: 'x', layerTo: 'y', mask, scope },
+      };
+      const p = await planRemoval(root, [{ layer: AREA }], { jobs: [raster] });
+      expect(p.refused).toMatch(/^Comparing the imagery uses .* Cancel it first.$/);
+    });
+
+    it('goes when the job is of another area, of the whole map or has ended', async () => {
+      await addLayers(row);
+      for (const job of [
+        surface({ scope: { id: 'pad-b', name: 'Pad B' } }),
+        surface({}),
+        { ...surface({ scope }), status: 'done' },
+        surface({ scope, captures: { from: 'c2', to: 'c3' } }),
+      ]) {
+        const p = await planRemoval(root, [{ layer: AREA }], { jobs: [job] });
+        expect(p.refused, JSON.stringify(job.params)).toBeUndefined();
+      }
+    });
+  });
+
+  it('names an area comparison row as the Python pipelines do (change/derived.py area_layer_id)', () => {
+    // the values python's area_layer_id gives for the same arguments
+    expect(areaLayerId('c1', 'c2', 'pad-a')).toBe('c1-c2-change-area-pad-a');
+    expect(areaLayerId('capture 1/x', 'c2', 'pad-a')).toBe('capture-1-x-c2-change-area-pad-a');
+    expect(areaLayerId('d'.repeat(70), 'e'.repeat(60), 'zone.7')).toBe(
+      `${'d'.repeat(70)}-${'e'.repeat(31)}-area-b9d93a1b3114`,
+    );
   });
 
   it('refuses while walk.process runs on a removed walk, naming the walk', async () => {

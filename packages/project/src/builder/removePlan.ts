@@ -17,6 +17,7 @@ import {
   type RemoveTarget,
   type RemoveWhy,
 } from '@aio/schema';
+import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative } from 'node:path';
 import { readManifestFile } from './manifestFile';
@@ -61,6 +62,8 @@ const JOB_WORDS: Readonly<Record<string, string>> = {
   'tiles.cloud': 'Making 3D tiles',
   'opf.export': 'Exporting as OPF',
   'walk.process': 'Processing the walk',
+  'change.raster': 'Comparing the imagery',
+  'change.surface': 'Comparing the surfaces',
 };
 /** Never moved, whatever names them. */
 const NEVER = ['manifest.json', TRASH_DIR, 'assets', 'journal'];
@@ -108,6 +111,39 @@ async function names(dir: string): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * The one layer an area's comparison of two dates leaves, shared by its imagery and volume runs:
+ * `area_layer_id` in python change/derived.py (`change_set_id(from, to, "change.change", scope)`).
+ */
+export function areaLayerId(from: string, to: string, scopeId: string): string {
+  const base = `${from}-${to}-change`
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^[-._]+|[-._]+$/g, '');
+  const safe = `${base}-area-${scopeId}`;
+  if (safe.length <= 120) return safe;
+  const tag = createHash('sha1').update(safe, 'utf8').digest('hex').slice(0, 12);
+  return `${base.slice(0, 120 - 18)}-area-${tag}`;
+}
+
+/**
+ * The area row a live scoped `change.raster` or `change.surface` job will add or keep when it
+ * commits, or undefined. Its dates are the params' `captures`, else the imagery run's `from` and
+ * `to`, else the dates of the volume run's two layers (as the pipelines read them).
+ */
+function areaRowOfJob(j: PlanJob, captureOf: (layer: string) => string | undefined) {
+  if (j.pipeline !== 'change.raster' && j.pipeline !== 'change.surface') return undefined;
+  const scope = str(asRecord(j.params.scope)?.id);
+  if (scope === undefined) return undefined;
+  const given = asRecord(j.params.captures);
+  const side = (k: 'from' | 'to') => {
+    const v = j.params[k];
+    return str(given?.[k]) ?? str(v) ?? captureOf(str(asRecord(v)?.layer) ?? '');
+  };
+  const from = side('from');
+  const to = side('to');
+  return from !== undefined && to !== undefined ? areaLayerId(from, to, scope) : undefined;
 }
 
 /** Every string found under one of `keys`, anywhere in `v`. */
@@ -433,8 +469,11 @@ export async function planRemoval(
     if (run !== undefined && runIds.has(run))
       return refuse(`${words} for run ${run} is still running. Cancel it first.`);
     const walk = j.pipeline === 'walk.process' ? str(j.params.walk) : undefined;
+    const area = areaRowOfJob(j, (id) => byId.get(id)?.capture);
     const hit =
-      (walk === undefined ? undefined : walkLayers.get(walk)) ?? namesAny(j.params, layerIds);
+      (walk === undefined ? undefined : walkLayers.get(walk)) ??
+      (area !== undefined && layerIds.has(area) ? area : null) ??
+      namesAny(j.params, layerIds);
     if (hit !== null)
       return refuse(
         `${words} uses "${byId.get(hit)?.name ?? hit}" and is still running. Cancel it first.`,
