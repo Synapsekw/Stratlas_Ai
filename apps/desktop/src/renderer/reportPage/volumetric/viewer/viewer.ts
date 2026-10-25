@@ -234,7 +234,7 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
   const markerButtons = new Map<string, HTMLButtonElement>();
   for (const p of data.piles) {
     if (!p.marker || !data.frame) continue;
-    const b = makeButton(doc, 'vr-d-marker', String(p.number));
+    const b = makeButton(doc, 'vr-d-marker', p.tag);
     b.setAttribute('aria-label', s('vreport.viewer.select', { pile: p.label }));
     b.title = p.label;
     b.style.left = `${String(round((p.marker[0] / data.frame.widthPx) * 100))}%`;
@@ -306,7 +306,7 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
     const amount = el(doc, 'span', 'vr-d-row-amount');
     const ch = el(doc, 'span', 'vr-d-row-change');
     b.append(
-      el(doc, 'span', 'vr-d-num', String(p.number)),
+      el(doc, 'span', 'vr-d-num', p.tag),
       el(doc, 'span', 'vr-d-row-name', p.label),
       amount,
       ch,
@@ -337,7 +337,7 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
     }
     const head = el(doc, 'div', 'vr-d-card-head');
     const h2 = el(doc, 'h2');
-    h2.append(el(doc, 'span', 'vr-d-num', String(p.number)), doc.createTextNode(p.label));
+    h2.append(el(doc, 'span', 'vr-d-num', p.tag), doc.createTextNode(p.label));
     head.append(h2);
     const ch = changeOf(p);
     if (ch !== null) {

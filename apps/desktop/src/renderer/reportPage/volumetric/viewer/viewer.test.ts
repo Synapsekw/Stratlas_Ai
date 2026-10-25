@@ -58,6 +58,7 @@ function data(): ViewerData {
       {
         id: 'a',
         number: 1,
+        tag: 'S1',
         label: 'Sand',
         marker: [100, 50],
         crop: { x: 50, y: 0, size: 100 },
@@ -72,6 +73,7 @@ function data(): ViewerData {
       {
         id: 'b',
         number: 2,
+        tag: 'G2',
         label: 'Gravel',
         marker: [500, 250],
         crop: { x: 450, y: 200, size: 100 },
@@ -260,6 +262,9 @@ describe('volumetric interactive viewer', () => {
       expect(['true', 'false']).toContain(el.getAttribute('aria-pressed'));
     }
     expect(document.querySelectorAll('.vr-d-markers button')).toHaveLength(2);
+    expect(
+      [...document.querySelectorAll('.vr-d-markers button')].map((b) => b.textContent),
+    ).toEqual(['S1', 'G2']);
   });
 
   it('keeps focus on a toggle across a re-render', () => {

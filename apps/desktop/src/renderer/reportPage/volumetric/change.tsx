@@ -94,7 +94,7 @@ function ChangeChart({
         return (
           <div className="vr-c-row" key={p.id} data-pile={p.id}>
             <span className="vr-c-name">
-              <span className="vr-num">{String(p.number)}</span>
+              <span className="vr-num">{p.tag}</span>
               <span>{p.label}</span>
             </span>
             <span className="vr-c-bar">

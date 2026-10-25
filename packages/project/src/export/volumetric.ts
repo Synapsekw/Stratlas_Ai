@@ -88,6 +88,8 @@ export interface VolumetricPile {
   id: string;
   /** Its number on the map and in the tables: 1 for the largest latest volume. */
   number: number;
+  /** The short label for its map marker and badges: "Pile 10" is "10", else up to 4 characters. */
+  tag: string;
   label: string;
   material: string | null;
   base: string;
@@ -242,6 +244,18 @@ export function pileCrop(
 }
 
 /**
+ * The short label a pile shows on the map and in its badge: the number in its name ("Pile 10" is
+ * "10", "P08" is "08"), else the name cut to 4 characters, else its rank.
+ */
+export function pileTag(name: string, rank: number): string {
+  const n = name.trim();
+  const digits = /\d+(?!.*\d)/.exec(n);
+  if (digits) return digits[0].slice(-4);
+  const compact = n.replace(/\s+/g, '');
+  return compact === '' ? String(rank) : compact.slice(0, 4);
+}
+
+/**
  * The volumetric report's model: the dates (the newest with figures, compared with the person's
  * pick when it is an earlier date with figures, else the one before), each pile's figures on both,
  * the piles ranked by latest volume, the KPIs, the share of stock, the cards and the change order.
@@ -250,14 +264,16 @@ export function volumetricModel(input: VolumetricInput): VolumetricModel {
   const captures = [...input.captures].sort(byDate);
   const figure = (p: VolumetricPileInput, c: string) =>
     p.dates.find((d) => d.capture === c && d.volumeM3 !== null) ?? null;
-  const dates = captures.filter((c) => input.piles.some((p) => figure(p, c.id)));
+  // Only piles with a volume on some date are reported; the rest (never computed) are left out.
+  const piles0 = input.piles.filter((p) => captures.some((c) => figure(p, c.id)));
+  const dates = captures.filter((c) => piles0.some((p) => figure(p, c.id)));
   const latest = dates.at(-1) ?? null;
   const earlier = dates.slice(0, -1);
   const compared = earlier.find((c) => c.id === input.compareWith) ?? earlier.at(-1) ?? null;
   const frame = input.frame;
   const notes = input.pileNotes ?? {};
 
-  const rows = input.piles.map((p) => {
+  const rows = piles0.map((p) => {
     const cur = latest ? figure(p, latest.id) : null;
     const prev = compared ? figure(p, compared.id) : null;
     const latestM3 = cur?.volumeM3 ?? null;
@@ -275,6 +291,7 @@ export function volumetricModel(input: VolumetricInput): VolumetricModel {
     return {
       id: p.id,
       number: 0,
+      tag: '',
       label: p.label,
       material: p.material?.name ?? null,
       base: p.base,
@@ -306,7 +323,7 @@ export function volumetricModel(input: VolumetricInput): VolumetricModel {
         return a.latestM3 === b.latestM3 ? natural(a.label, b.label) : a.latestM3 === null ? 1 : -1;
       return b.latestM3 - a.latestM3 || natural(a.label, b.label);
     })
-    .map((p, k) => ({ ...p, number: k + 1 }));
+    .map((p, k) => ({ ...p, number: k + 1, tag: pileTag(p.label, k + 1) }));
 
   // ------------------------------------------------ KPIs
   const counted = piles.filter((p) => p.latestM3 !== null);
@@ -350,9 +367,9 @@ export function volumetricModel(input: VolumetricInput): VolumetricModel {
     .map((p) => p.id);
 
   // ------------------------------------------------ method
-  const bases = [...new Set(input.piles.map((p) => p.base.trim()).filter((b) => b !== ''))];
+  const bases = [...new Set(piles0.map((p) => p.base.trim()).filter((b) => b !== ''))];
   const withDensity = counted.filter((p) => p.densityTPerM3 !== null);
-  const kitOnly = input.piles.every((p) => !p.material || p.material.id === 'kit');
+  const kitOnly = piles0.every((p) => !p.material || p.material.id === 'kit');
   const density: VolumetricModel['method']['density'] =
     withDensity.length === 0
       ? 'none'
@@ -389,6 +406,8 @@ export function volumetricModel(input: VolumetricInput): VolumetricModel {
 export type VolumetricKey =
   | 'vreport.short.rose'
   | 'vreport.short.fell'
+  | 'vreport.short.roseNoPct'
+  | 'vreport.short.fellNoPct'
   | 'vreport.short.steady'
   | 'vreport.short.mostFrom'
   | 'vreport.short.pileLess'

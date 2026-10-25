@@ -222,6 +222,7 @@ function viewerDataOf(prepared: VolumetricPrepared, want: (w: Wanted) => string)
   const piles: ViewerPile[] = model.piles.map((p) => ({
     id: p.id,
     number: p.number,
+    tag: p.tag,
     label: p.label,
     marker: p.marker,
     crop: p.crop,

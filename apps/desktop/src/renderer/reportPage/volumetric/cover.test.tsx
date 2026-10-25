@@ -174,7 +174,7 @@ describe('page A, the cover and summary', () => {
     const d = render(model);
     const rows = [...d.querySelectorAll('.vr-table tbody tr')];
     expect(rows).toHaveLength(12);
-    expect(rows[0]?.querySelector('.vr-num')?.textContent).toBe('1');
+    expect(rows[0]?.querySelector('.vr-num')?.textContent).toBe('01');
     expect(rows[0]?.textContent).toContain('P01');
     // P01: 14,000 latest, 14,100 previous
     expect(rows[0]?.textContent).toContain('14,100');
@@ -214,7 +214,7 @@ describe('page A, the cover and summary', () => {
     const markers = [...d.querySelectorAll<HTMLElement>('.vr-marker')];
     expect(markers).toHaveLength(14);
     // P01 sits at E 60, N 400: px 120 of 2000, py 800 of 1600
-    expect(markers[0]?.textContent).toBe('1');
+    expect(markers[0]?.textContent).toBe('01');
     expect(markers[0]?.style.left).toBe('6%');
     expect(markers[0]?.style.top).toBe('50%');
     expect(d.querySelector('.vr-scale')).not.toBeNull();

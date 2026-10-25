@@ -16,6 +16,7 @@ import {
   methodNote,
   pagePlan,
   pileCrop,
+  pileTag,
   volumetricCsv,
   volumetricModel,
   type VolumetricInput,
@@ -133,6 +134,34 @@ const input = (over: Partial<VolumetricInput> = {}): VolumetricInput => ({
 
 const totalPrev = Array.from({ length: 19 }, (_, k) => previousOf(k + 1)).reduce((a, b) => a + b);
 const totalChange = Array.from({ length: 19 }, (_, k) => deltaOf(k + 1)).reduce((a, b) => a + b);
+
+describe('pileTag', () => {
+  it('takes the number in the name, else a short form, else the rank', () => {
+    expect(pileTag('Pile 10', 3)).toBe('10');
+    expect(pileTag('P08', 3)).toBe('08');
+    expect(pileTag('North heap', 3)).toBe('Nort');
+    expect(pileTag('Ab', 3)).toBe('Ab');
+    expect(pileTag('  ', 3)).toBe('3');
+  });
+});
+
+describe('volumetricModel selection and tags', () => {
+  it('leaves out piles with no volume on any date, and counts only the rest', () => {
+    const bare = pile(30, {
+      dates: pile(30).dates.map((d) => ({ ...d, volumeM3: null })),
+    });
+    const none = pile(31, { dates: [] });
+    const m = volumetricModel(input({ piles: [...ORDER.map((i) => pile(i)), bare, none] }));
+    expect(m.piles).toHaveLength(19);
+    expect(m.kpis.piles).toBe(19);
+    expect(m.piles.some((p) => p.label === 'P30' || p.label === 'P31')).toBe(false);
+  });
+
+  it('gives each pile its own short label, not its rank', () => {
+    const m = volumetricModel(input());
+    for (const p of m.piles) expect(p.tag).toBe(p.label.slice(1));
+  });
+});
 
 describe('volumetricModel', () => {
   it('ranks the piles by latest volume, largest first, and numbers them in that order', () => {

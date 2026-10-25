@@ -210,7 +210,7 @@ function Card({
   return (
     <article className="vr-card">
       <header className="vr-card-head">
-        <span className="vr-num">{String(pile.number)}</span>
+        <span className="vr-num">{pile.tag}</span>
         <span className="vr-card-name">{pile.label}</span>
         {c !== null ? (
           <span className={`vr-chip ${way(c)}`}>
@@ -295,7 +295,7 @@ function Smaller({
           const note = noted[i] ?? null;
           return (
             <li key={p.id} className="vr-smaller-row">
-              <span className="vr-smaller-no">{String(p.number)}</span>
+              <span className="vr-smaller-no">{p.tag}</span>
               <span className="vr-smaller-name">{p.label}</span>
               {note ? (
                 <span

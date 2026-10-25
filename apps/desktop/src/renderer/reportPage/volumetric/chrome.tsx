@@ -224,7 +224,7 @@ export function SitePicture({
                 top: pct(p.marker[1] / frame.heightPx),
               }}
             >
-              {String(p.number)}
+              {p.tag}
             </span>
           ) : null,
         )}

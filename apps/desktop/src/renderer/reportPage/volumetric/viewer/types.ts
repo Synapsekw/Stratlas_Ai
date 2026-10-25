@@ -74,6 +74,8 @@ export interface ViewerPile {
   id: string;
   /** Its number on the map: 1 for the largest latest volume. */
   number: number;
+  /** Its short label on the map pin and in the list. */
+  tag: string;
   label: string;
   /** Where its centre falls on the top-down pictures, in frame pixels. */
   marker: [number, number] | null;

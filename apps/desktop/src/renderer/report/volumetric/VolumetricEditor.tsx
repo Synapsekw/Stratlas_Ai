@@ -516,7 +516,7 @@ export function VolumetricEditor(props: VolumetricEditorProps) {
                       const label = t('vreport.field.pileNote', { pile: p.label });
                       return (
                         <label key={p.id} className="vre-note">
-                          <span className="vre-note-n mono">{p.number}</span>
+                          <span className="vre-note-n mono">{p.tag}</span>
                           <span className="vre-note-l">{p.label}</span>
                           <input
                             type="text"

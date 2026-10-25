@@ -137,7 +137,7 @@ function RankedTable({
           return (
             <tr key={p.id}>
               <td className="vr-col-pile">
-                <span className="vr-num">{String(p.number)}</span>
+                <span className="vr-num">{p.tag}</span>
                 <span className="vr-pile-name">{p.label}</span>
               </td>
               {compared ? (
