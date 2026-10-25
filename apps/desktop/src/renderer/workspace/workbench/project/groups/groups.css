@@ -4,13 +4,20 @@
 .pl-rows.pl-measure-rows {
   max-height: calc(8 * var(--pl-row-h) + var(--pl-details-h, 0px));
 }
+/* an open panel is part of the tab's column: at the rows' end the wheel goes on to the tab, which
+   scrolls the rest of the panel into view (the rows otherwise hold it, rowList.css) */
+.pl-rows.pl-measure-rows.has-panel {
+  overscroll-behavior: auto;
+}
 .pl-row-sub {
   margin-inline-start: var(--sp-3);
   color: var(--fg-3);
   font-size: var(--t-11);
 }
+/* padding, not margin: the measured height (--pl-details-h) holds it, so the rows never overflow
+   by it */
 .pl-measure-panel {
-  margin-block: var(--sp-2) var(--sp-3);
+  padding-block: var(--sp-2) var(--sp-3);
 }
 /* the panel's card sits in the column as the bench's Selected card did */
 .pl-measure-panel .sv-card {
