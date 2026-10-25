@@ -2878,9 +2878,12 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
 }
 
 /* right panel */
-/* its segmented switches (Inventory, Cut & fill, Materials; Shade vs) read as its body text and
-   buttons, at 13 px as in the section window; the stage's own switches keep the smaller size */
-:is(.right, .sec-window) .seg button {
+/* The side panels and the pop-ups set their buttons and segmented switches (Inventory, Cut &
+   fill, Materials; Shade vs) as their body text, 13 px. The stage's chrome (the island, the Show
+   strip, the timeline's bar) keeps its compact sizes: at 1100 px the island would grow over the
+   Show strip. */
+:is(.sidebar, .right, .wb-drawer, .sec-window, .surface-pop) :is(.btn, .btn.sm),
+:is(.right, .wb-drawer, .sec-window) .seg button {
   font-size: var(--t-13);
 }
 .right {

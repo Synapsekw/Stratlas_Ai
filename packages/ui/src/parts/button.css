@@ -9,7 +9,7 @@
   border: 1px solid var(--line);
   background: var(--bg-2);
   color: var(--fg-0);
-  font-size: var(--t-13);
+  font-size: var(--t-12);
   font-weight: 500;
   white-space: nowrap;
   transition:
@@ -52,7 +52,7 @@
 .btn.sm {
   height: var(--sp-7);
   padding: 0 var(--sp-4);
-  font-size: var(--t-13);
+  font-size: var(--t-11);
 }
 .btn.md {
   height: calc(var(--sp-7) + var(--sp-2));
