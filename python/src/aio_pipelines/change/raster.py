@@ -620,7 +620,8 @@ class ChangeRaster:
                 "format": "kit-pyramid",
             }
             if scope:
-                # one row for the area's comparison; its imagery heat map is the row's picture
+                # one row for the area's comparison: added with the imagery heat map, else kept as
+                # the volume run of the same area left it (with volumes its cut and fill is shown)
                 one = {
                     "id": area_layer_id(a, b, scope["id"]),
                     "name": area_layer_name(scope["name"], when),
@@ -634,7 +635,7 @@ class ChangeRaster:
                     out_dir,
                     cs,
                     [one],
-                    place=lambda mf: place_area_layer(mf, one, replace=True, drop=old),
+                    place=lambda mf: place_area_layer(mf, one, replace=False, drop=old),
                 )
             layers = [
                 {"id": f"{set_id}-heat", "name": f"{label} heat map, {when}", **heat},

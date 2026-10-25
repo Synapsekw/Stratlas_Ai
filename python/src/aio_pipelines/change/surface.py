@@ -706,8 +706,8 @@ class ChangeSurface:
             when = f"{capture_label(m, a)} to {capture_label(m, b)}"
             prov = derived(a, b, sid, ctx.job.job_id, src)
             if scope:
-                # the area's one row: added with the cut and fill heat map when the imagery run has
-                # not ended yet, else kept as the imagery run left it
+                # the area's one row, shared with its imagery run: a run with volumes shows the cut
+                # and fill heat map, whichever run ended first
                 one = {
                     "kind": "raster",
                     "id": area_layer_id(a, b, scope["id"]),
@@ -727,7 +727,7 @@ class ChangeSurface:
                     out_dir,
                     cs,
                     [one],
-                    place=lambda mf: place_area_layer(mf, one, replace=False, drop=old),
+                    place=lambda mf: place_area_layer(mf, one, replace=True, drop=old),
                 )
             layers = [
                 {

@@ -189,8 +189,8 @@ def place_area_layer(
 ) -> None:
     """Put an area comparison's one layer in ``manifest``.
 
-    The first producer to end adds it. A later one replaces it when ``replace`` (the imagery heat
-    map is the row's picture), else keeps it; either way its name, date and visibility stay as the
+    The first producer to end adds it. A later one replaces it when ``replace`` (a volume run: with
+    volumes the cut and fill heat map is the row's picture), else keeps it; either way its name, date and visibility stay as the
     person left them, and its ``derived.source`` takes the later run's layers too, so removing any
     of them removes the row and, through it, every set of the comparison. ``drop`` are the per-set rows that area runs
     made before (``<set>-heat``, ``<set>-regions``): removed when they are change layers.

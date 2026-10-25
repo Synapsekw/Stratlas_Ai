@@ -309,8 +309,9 @@ def test_an_area_compare_with_volumes_leaves_one_layer_that_lists_both_sets(tmp_
     assert [x["id"] for x in m["layers"]] == [*before, area]
     [layer] = [x for x in m["layers"] if x["id"] == area]
     assert layer["visible"] is False
-    # the imagery heat map is the row's picture, whichever job ended first
-    assert layer["src"] == {"path": "change/c1-c2-raster-area-pile/heat/tiles.json"}
+    # with volumes the cut and fill heat map is the row's picture, whichever job ended first
+    assert layer["src"] == {"path": "change/c1-c2-surface-area-pile/heat/tiles.json"}
+    assert layer["derived"]["changeId"] == "c1-c2-surface-area-pile"
     assert set(layer["derived"]["source"]) == {"ortho-a", "ortho-b", "surf-a", "surf-b"}
     for sid in ("c1-c2-raster-area-pile", "c1-c2-surface-area-pile"):
         cs = json.loads((tmp_path / "change" / f"{sid}.json").read_text("utf-8"))
