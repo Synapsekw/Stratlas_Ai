@@ -26,7 +26,7 @@ import {
   type ReportTextFile as ReportTextFileT,
   type ReportViewsFrame as ReportViewsFrameT,
 } from '@aio/schema';
-import { densityOn, surfaceOfCapture } from '@aio/survey';
+import { densityOn, pileSeries, surfaceOfCapture } from '@aio/survey';
 import { t } from '@aio/ui';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
@@ -112,7 +112,8 @@ export function volumetricInputOf(
   const byId = new Map(files.measurements.map((m) => [m.id, m]));
   const piles = survey.volumes.piles.map((p) => {
     const m = byId.get(p.id);
-    const results = m ? [...(m.series ?? []), ...m.results] : [];
+    // the figure's own result per date: the Volumes view's choice (`pileSeries`, the first item)
+    const series = m ? pileSeries(m).series : [];
     return {
       id: p.id,
       label: p.label,
@@ -120,9 +121,11 @@ export function volumetricInputOf(
       base: p.base,
       dates: p.rows.map((r) => {
         const outline = p.outlines[r.capture] ?? p.outline;
-        const stored = results.find(
-          (x) => x.toCapture === r.capture && (x.status === 'ok' || x.status === 'partial'),
-        );
+        const found = series.find((x) => x.toCapture === r.capture);
+        const stored =
+          found && !r.stale && (found.status === 'ok' || found.status === 'partial')
+            ? found
+            : undefined;
         const volumeM3 = r.stale ? null : r.valueM3;
         return {
           capture: r.capture,

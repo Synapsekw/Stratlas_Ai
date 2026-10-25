@@ -2,14 +2,26 @@ import { REPORT_VIEWS_SCHEMA, type ReportViewsFrame } from '@aio/schema';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as fsutil from './fsutil';
 import { saveReportViews, viewsRecord } from './reportViews';
+
+const failFrame = vi.hoisted(() => ({ on: false }));
+vi.mock('./fsutil', async (orig) => {
+  const real = await orig<typeof fsutil>();
+  return {
+    ...real,
+    writeJsonAtomic: (...a: Parameters<typeof real.writeJsonAtomic>) =>
+      failFrame.on ? Promise.reject(new Error('disk full')) : real.writeJsonAtomic(...a),
+  };
+});
 
 let root = '';
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'aio-report-views-'));
 });
 afterEach(async () => {
+  failFrame.on = false;
   await rm(root, { recursive: true, force: true });
 });
 
@@ -71,6 +83,22 @@ describe('report pictures store', () => {
     expect(r).toEqual({ ok: true });
     expect(await list()).toEqual(['a.jpg', 'c.jpg', 'frame.json']);
     expect([...(await readFile(join(root, ...DIR, 'a.jpg')))][0]).toBe(5);
+  });
+
+  it('keeps the whole previous set when the frame cannot be written', async () => {
+    const old = frame(['a.jpg', 'old.jpg']);
+    await saveReportViews(root, 'volumetric', old, [jpg('a.jpg', 1), jpg('old.jpg', 9)]);
+    const before = await readFile(join(root, ...DIR, 'frame.json'), 'utf8');
+    failFrame.on = true;
+    const r = await saveReportViews(root, 'volumetric', frame(['a.jpg', 'c.jpg']), [
+      jpg('a.jpg', 5),
+      jpg('c.jpg', 6),
+    ]);
+    expect(r.ok).toBe(false);
+    expect(await list()).toEqual(['a.jpg', 'frame.json', 'old.jpg']);
+    expect(await readFile(join(root, ...DIR, 'frame.json'), 'utf8')).toBe(before);
+    expect([...(await readFile(join(root, ...DIR, 'a.jpg')))][0]).toBe(1);
+    expect([...(await readFile(join(root, ...DIR, 'old.jpg')))][0]).toBe(9);
   });
 
   it('refuses names outside the pattern and paths outside the folder, touching nothing', async () => {

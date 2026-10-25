@@ -103,6 +103,7 @@ describe('export jobs', () => {
     const filters: string[][] = [];
     const { d, asked } = deps({
       hasVolumes: () => Promise.resolve(true),
+      projectName: () => Promise.resolve('Demo Yard'),
       now: () => new Date(2026, 9, 25, 9, 30),
       chooseSavePath: (p, filter) => {
         asked.push(p);
@@ -121,8 +122,8 @@ describe('export jobs', () => {
     expect(printed.map((p) => p.kind)).toEqual(['volumetric-pdf', 'volumetric-html']);
     expect(filters).toEqual([['pdf'], ['html']]);
     expect(asked.map((a) => basename(a))).toEqual([
-      'HCl-Tank-volumetric-report-2026-10-25.pdf',
-      'HCl-Tank-volumetric-report-2026-10-25.html',
+      'Demo-Yard-volumetric-report-2026-10-25.pdf',
+      'Demo-Yard-volumetric-report-2026-10-25.html',
     ]);
   });
 

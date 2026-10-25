@@ -209,6 +209,36 @@ describe("the model's input from the app's figures", () => {
     });
   });
 
+  it("reads a date's area and survey error from the pile's own current result", () => {
+    const f = files();
+    const m = f.measurements[1];
+    if (!m) throw new Error('no measurement');
+    const res = (item: string, area: number, pm: number) =>
+      ({
+        item,
+        toCapture: 'c2',
+        status: 'ok',
+        areaM2: area,
+        netM3: 210,
+        uncertainty: { plusMinusM3: pm },
+      }) as unknown as SurveyMeasurement['results'][number];
+    m.items = [...m.items, { id: 'i2', from: { kind: 'smart' }, to: { kind: 'current' } } as never];
+    // another item's row, and a superseded per-date row of the pile's own item
+    m.series = [res('i2', 999, 9), res('i1', 111, 1)];
+    m.results = [res('i1', 150, 5)];
+    const input = volumetricInputOf(f, survey(), { compareWith: null, frame: null });
+    const d = input.piles[1]?.dates[1];
+    expect(d?.areaM2).toBe(150);
+    expect(d?.plusMinusM3).toBe(5);
+    // a stale date falls back to the outline's area
+    const s = survey();
+    const row = s.volumes.piles[1]?.rows[1];
+    if (row) row.stale = true;
+    expect(
+      volumetricInputOf(f, s, { compareWith: null, frame: null }).piles[1]?.dates[1]?.areaM2,
+    ).toBe(144);
+  });
+
   it('leaves out a stale date', () => {
     const s = survey();
     const row = s.volumes.piles[1]?.rows[0];
