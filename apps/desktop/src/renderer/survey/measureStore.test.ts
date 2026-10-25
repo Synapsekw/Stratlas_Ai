@@ -823,6 +823,34 @@ describe('a new measurement takes its source layer and date', () => {
     expect(io.saved.measurements[0]?.pickedOn).toHaveLength(3);
   });
 
+  it('a vertex edit with no date in focus moves the latest outline with the points', () => {
+    const m = triangle([on('dsm-jan', 'ground'), on('dsm-jan', 'ground'), on('dsm-jan', 'ground')]);
+    const earlier = m.points.map((p): SitePoint => [p[0] + 100, p[1], p[2]]);
+    measureStore.setState((s) => ({
+      file: {
+        ...s.file,
+        measurements: s.file.measurements.map((x) =>
+          x.id === m.id
+            ? {
+                ...x,
+                outlines: [
+                  { capture: 'jan', points: earlier },
+                  { capture: 'jun', points: x.points },
+                ],
+              }
+            : x,
+        ),
+      },
+    }));
+    select([m.id], m.id);
+    startEditing();
+    editEvent({ type: 'set', vertex: 0, coords: { e: 5 } });
+    const now = measureStore.getState().file.measurements[0];
+    expect(now?.points[0]?.[0]).toBe(5);
+    expect(now?.outlines?.[0]?.points).toEqual(earlier);
+    expect(now?.outlines?.[1]?.points).toEqual(now?.points);
+  });
+
   it('Flip keeps pickedOn aligned', () => {
     startTool('azimuth');
     clickOn([0, 0, 0], on('dsm-jan', 'model'));

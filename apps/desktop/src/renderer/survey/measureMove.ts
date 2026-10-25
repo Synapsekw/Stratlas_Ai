@@ -97,6 +97,28 @@ function rewriteRef(
 const sameBefore = (it: SurveyMeasurement['items'][number] | undefined): boolean =>
   it?.from.kind === 'survey' && it.to.kind === 'survey' && it.from.surface === it.to.surface;
 
+/**
+ * A measurement's per-date outlines re-stored under `target`: each drawn where it was (its old
+ * date's shift added) and saved in the target's frame, as `points` are; each keeps its capture.
+ */
+function movedOutlines(
+  m: SurveyMeasurement,
+  target: SurveyMeasurement['scope'],
+  manifest: MoveEnv['manifest'],
+): Pick<SurveyMeasurement, 'outlines'> {
+  if (!m.outlines) return {};
+  return {
+    outlines: m.outlines.map((o) => ({
+      ...o,
+      points: storedPoints(
+        drawnPoints({ points: o.points, scope: m.scope }, manifest),
+        target,
+        manifest,
+      ),
+    })),
+  };
+}
+
 interface Remeasure {
   m: SurveyMeasurement;
   from: string;
@@ -205,6 +227,7 @@ export async function planMoveToDate(
       scope: target,
       source: { layer: r.layer },
       points: storedPoints(drawn, target, manifest),
+      ...movedOutlines(r.m, target, manifest),
       items,
       results: r.m.results.map((x) => ({ ...x, status: 'stale' as const })),
     };
@@ -224,6 +247,7 @@ export async function planMoveToDate(
       scope: target,
       // a site-wide measurement is drawn where it is stored: re-stored, it stays there
       points: storedPoints(m.points, target, manifest),
+      ...movedOutlines(m, target, manifest),
       results: m.results.map((x) => ({ ...x, status: 'stale' as const })),
     };
     if (layer) out.source = { layer };
@@ -262,13 +286,20 @@ export function editedOutline(
 /**
  * Where an edited outline goes (stored frame). The focused date's entry when it has one; `points`
  * as well when that entry is the outline `points` holds (the latest date's). With no date in
- * focus, or none with an entry, `points` alone.
+ * focus, `points` and the entry it holds (the latest date's, which the report draws); with a date
+ * that has no entry, or no entries at all, `points` alone.
  */
 export function outlineEdit(
   m: Pick<SurveyMeasurement, 'points' | 'outlines'>,
   focus: string | null,
   edited: SitePoint[],
 ): Partial<Pick<SurveyMeasurement, 'points' | 'outlines'>> {
+  if (focus === null && m.outlines?.some((o) => sameRing(o.points, m.points))) {
+    const outlines = m.outlines.map((o) =>
+      sameRing(o.points, m.points) ? { ...o, points: edited } : o,
+    );
+    return { outlines, points: edited };
+  }
   const entry = entryOn(m, focus);
   if (!entry || !m.outlines) return { points: edited };
   const outlines = m.outlines.map((o) => (o === entry ? { ...o, points: edited } : o));

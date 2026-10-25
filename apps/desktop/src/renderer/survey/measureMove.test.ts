@@ -367,6 +367,68 @@ describe('planMoveToDate', () => {
     expect(repick.ground.mock.calls[0]?.[1]).toEqual(pts);
   });
 
+  it("converts every per-date outline to the target's frame, keeping each capture", async () => {
+    const repick = fakeRepick();
+    const ring = (e: number): SitePoint[] => [
+      [e, 0, 1],
+      [e + 4, 0, 1],
+      [e + 4, 3, 1],
+    ];
+    const plan = await planMoveToDate(
+      [
+        m('a', {
+          outlines: [
+            { capture: 'jan', points: ring(0) },
+            { capture: 'jun', points: ring(10) },
+          ],
+        }),
+      ],
+      'jun',
+      envOf(LAYERS, repick, { junEastM: 2 }),
+    );
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    // stored on June: the 2 m east shift taken off every outline, like the points
+    expect(plan.next[0]?.outlines).toEqual([
+      { capture: 'jan', points: ring(-2) },
+      { capture: 'jun', points: ring(8) },
+    ]);
+  });
+
+  it("converts a Needs a date measurement's outlines when it is filed", async () => {
+    const plan = await planMoveToDate(
+      [
+        m('a', {
+          scope: { kind: 'site' },
+          outlines: [
+            {
+              capture: 'jan',
+              points: [
+                [10, 0, 1],
+                [14, 0, 1],
+                [14, 3, 1],
+              ],
+            },
+          ],
+        }),
+      ],
+      'jun',
+      envOf(LAYERS, fakeRepick(), { junEastM: 2, surfaces: [] }),
+    );
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.next[0]?.outlines).toEqual([
+      {
+        capture: 'jan',
+        points: [
+          [8, 0, 1],
+          [12, 0, 1],
+          [12, 3, 1],
+        ],
+      },
+    ]);
+  });
+
   it('files a Needs a date measurement without a re-pick', async () => {
     const repick = fakeRepick();
     const plan = await planMoveToDate(
@@ -510,9 +572,20 @@ describe('an outline edit with a survey date in focus', () => {
     expect(patch.points).toEqual(tri(11));
   });
 
-  it('no date in focus, or one without an entry, edits points alone', () => {
-    expect(outlineEdit(pile(), null, tri(12))).toEqual({ points: tri(12) });
+  it('no date in focus edits points and the latest outline it holds', () => {
+    const patch = outlineEdit(pile(), null, tri(12));
+    expect(patch.points).toEqual(tri(12));
+    expect(patch.outlines).toEqual([
+      { capture: 'jan', points: tri(0) },
+      { capture: 'jun', points: tri(12) },
+    ]);
+  });
+
+  it('a date without an entry, or a pile without outlines, edits points alone', () => {
     expect(outlineEdit(pile(), 'other', tri(12))).toEqual({ points: tri(12) });
+    expect(outlineEdit(pile({ outlines: undefined }), null, tri(12))).toEqual({
+      points: tri(12),
+    });
     expect(outlineEdit(pile({ outlines: undefined }), 'jan', tri(12))).toEqual({
       points: tri(12),
     });
