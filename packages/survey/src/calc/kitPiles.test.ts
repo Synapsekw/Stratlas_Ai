@@ -626,8 +626,9 @@ describe('kit pile heights: drape at conversion, one-time repair', () => {
     expect(c.added).toHaveLength(2);
     for (const m of c.added)
       for (const p of m.points) expect(p[2]).toBeCloseTo(100 + p[0] * 0.01, 9);
-    // each outline is draped with the epoch whose toe line it is (both piles' latest: e2)
-    expect([...asked]).toEqual(['e2']);
+    // `points` is draped with the epoch whose toe line it is (both piles' latest: e2), and each
+    // date's outline with its own epoch
+    expect([...asked]).toEqual(['e2', 'e1']);
   });
 
   it('conversion drapes an edited outline with the epoch of the edit', () => {
@@ -636,14 +637,16 @@ describe('kit pile heights: drape at conversion, one-time repair', () => {
     const asked = new Set<string>();
     const heightAt = (epoch: string) => {
       asked.add(epoch);
-      return 7;
+      return epoch === 'e1' ? 7 : 9;
     };
     const plain = kitConversion(empty(), v, null, true, openOpts(heightAt));
     expect([...asked]).toEqual(['e1']);
     expect(at(plain.added, 0).points.every((p) => p[2] === 7)).toBe(true);
     asked.clear();
-    kitConversion(empty(), v, edits, true, openOpts(heightAt));
-    expect([...asked]).toEqual(['e2']);
+    const edited = kitConversion(empty(), v, edits, true, openOpts(heightAt));
+    // the edit adds an e2 toe line: `points` is draped on e2, the outlines on their own dates
+    expect(at(edited.added, 0).points.every((p) => p[2] === 9)).toBe(true);
+    expect([...asked]).toEqual(['e2', 'e1']);
   });
 
   it('conversion without heightAt keeps Z 0', () => {
@@ -762,5 +765,48 @@ describe('kit pile heights: drape at conversion, one-time repair', () => {
     const once = repairKitHeights(file, new Map([[m.id, z]]));
     const twice = repairKitHeights(once.file, new Map([[m.id, z]]));
     expect(twice.file.kitHeightsRepaired).toEqual([m.id]);
+  });
+});
+
+describe('kit piles: each date keeps its own toe line', () => {
+  const origin = [1000, 2000, 51];
+  const moved: [number, number][] = [
+    [10, 10],
+    [16, 10],
+    [16, 14],
+    [10, 14],
+  ];
+  const twoRings = (): VolumesFile => {
+    const v = volumes();
+    const p = at(v.piles, 0);
+    v.piles = [{ ...p, epochs: { e1: { ...ep('c1', 100), ring: moved }, e2: ep('c2', 50) } }];
+    return v;
+  };
+
+  it('converts a two-epoch pile with an outline per epoch, each draped on its date', () => {
+    let n = 0;
+    const c = kitConversion(empty(), twoRings(), null, true, {
+      origin,
+      materials: [],
+      now: NOW,
+      newId: () => `id-${String(++n)}`,
+      heightAt: (epoch) => (epoch === 'e1' ? 40 : 45),
+    });
+    const m = at(c.added, 0);
+    // `points` is still the latest toe line (e2)
+    expect(m.points).toEqual(ring.map(([x, z]) => [1000 + x, 2000 - z, 45]));
+    expect(m.outlines).toEqual([
+      { capture: 'c1', points: moved.map(([x, z]) => [1000 + x, 2000 - z, 40]) },
+      { capture: 'c2', points: ring.map(([x, z]) => [1000 + x, 2000 - z, 45]) },
+    ]);
+    expect(MeasurementsFileSchema.safeParse(empty({ measurements: c.added })).success).toBe(true);
+  });
+
+  it("an edited toe line is that date's outline", () => {
+    const c = convertKitPiles(twoRings(), edits, empty(), opts(false));
+    const m = at(c.added, 0);
+    expect(m.outlines?.map((o) => o.capture)).toEqual(['c1', 'c2']);
+    expect(must(m.outlines?.[1]).points).toEqual(m.points);
+    expect(must(m.outlines?.[1]).points).toHaveLength(4);
   });
 });

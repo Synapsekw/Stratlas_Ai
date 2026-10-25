@@ -16,6 +16,7 @@ import type {
   VolumeBaseId,
   VolumesFile,
 } from '@aio/schema';
+import { addKitOutlines, kitOutlines } from './outlines';
 
 /** The Datasets folder converted kit piles land in. */
 export const KIT_FOLDER = 'Stockpiles';
@@ -227,7 +228,9 @@ export interface KitConversionOptions {
  * date's result from the kit figure of `volumes.defaultBase` (series) and, only when the pile is
  * on the file's last capture, that date as results[0] (the kit's register showed a pile gone by
  * then as absent, so it gets no headline); carry=false adds the item only (the engine computes).
- * The outline is the latest non-empty toe line. A duplicate pile id converts once, the first.
+ * The outline (`points`) is the latest non-empty toe line, and `outlines` holds each date's own
+ * (`kitOutlines`), so every date's figure is worked out inside that date's toe line. A duplicate
+ * pile id converts once, the first.
  * A pile that overlaps an existing kit-pile measurement (`matchPiles`) is that measurement: it is
  * relinked to the pile's new id, never added again.
  */
@@ -337,6 +340,7 @@ export function convertKitPiles(
     const last = series[series.length - 1];
     const headline = last?.carried?.epoch === lastEpoch ? last : undefined;
     const material = pile.material ? opts.materialId(pile.material) : undefined;
+    const outlines = kitOutlines(pile, volumes, opts.toSite, heightAt);
 
     const m: SurveyMeasurement = {
       id: opts.newId(),
@@ -346,6 +350,7 @@ export function convertKitPiles(
       folder: KIT_FOLDER,
       scope: { kind: 'site' },
       points: site,
+      ...(outlines.length > 0 ? { outlines } : {}),
       ...(material ? { material } : {}),
       items: [{ id: itemId, from: { kind: 'smart' }, to: { kind: 'current' }, useDeadband: false }],
       results: headline ? [headline] : [],
@@ -577,6 +582,10 @@ export function openWithKitPiles(
   }
   const carry = file.kitPilesConverted === undefined;
   const c = kitConversion(file, kit.volumes, kit.edits, carry, opts);
-  if (!changesFile(c) && !carry) return file;
-  return withKitConversion(file, c);
+  const converted = !changesFile(c) && !carry ? file : withKitConversion(file, c);
+  // piles converted before per-date outlines get theirs once (read-only: in memory only)
+  return addKitOutlines(converted, kit.volumes, kit.edits, {
+    toSite: (xz) => kitToSite(opts.origin, xz),
+    ...(opts.heightAt ? { heightAt: opts.heightAt } : {}),
+  }).file;
 }
