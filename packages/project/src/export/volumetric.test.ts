@@ -10,6 +10,7 @@ import {
   type SurveyReportData,
 } from './surveyCsv';
 import {
+  changeShare,
   formatVolumeM3,
   inShortSentence,
   methodNote,
@@ -507,5 +508,20 @@ describe('volumetricCsv', () => {
     expect(volumetricCsv(data, 'c0')).toBe(expected);
     expect(expected).toContain('2026-08-01');
     expect(expected).not.toContain('2026-09-03_volume_m3');
+  });
+});
+
+describe('changeShare', () => {
+  it('is the change against the previous magnitude', () => {
+    expect(changeShare(-4100, 6000)).toBeCloseTo(-68.33, 1);
+    expect(changeShare(-50, -200)).toBeCloseTo(-25, 5);
+    expect(changeShare(50, -200)).toBeCloseTo(25, 5);
+  });
+
+  it('is null when the previous volume is about zero or the share runs away', () => {
+    expect(changeShare(1131, 0.0004)).toBeNull();
+    expect(changeShare(1131, 0.9)).toBeNull();
+    expect(changeShare(5000, 4)).toBeNull();
+    expect(changeShare(10, null)).toBeNull();
   });
 });

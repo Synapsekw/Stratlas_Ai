@@ -21,8 +21,8 @@ import './volumetric.css';
 
 const MINUS = '−';
 
-/** A volume or tonnage figure without its unit: grouped, no decimals from 100 (one below). */
-export function num(v: number): string {
+/** The magnitude of a figure: grouped, no decimals from 100 (one below). */
+function magnitude(v: number): string {
   const decimals = Math.abs(v) >= 100 ? 0 : 1;
   return Math.abs(v).toLocaleString('en-US', {
     minimumFractionDigits: decimals,
@@ -30,10 +30,15 @@ export function num(v: number): string {
   });
 }
 
+/** A volume or tonnage figure without its unit: grouped, no decimals from 100 (one below), the Unicode minus when negative. */
+export function num(v: number): string {
+  return `${v < 0 ? MINUS : ''}${magnitude(v)}`;
+}
+
 /** A signed figure: the Unicode minus for less, a plus for more, none for zero. */
 export function signed(v: number, unit = ''): string {
   const sign = v < 0 ? MINUS : v > 0 ? '+' : '';
-  return `${sign}${num(v)}${unit}`;
+  return `${sign}${magnitude(v)}${unit}`;
 }
 
 /** A signed share: "−5.2 %". */

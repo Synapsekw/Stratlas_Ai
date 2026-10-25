@@ -44,9 +44,10 @@ const figure = (text: string): number => {
  */
 function same(report: number, app: number, what: string): void {
   const step = Math.abs(app) >= 100 ? 0.5 : 0.05;
-  expect
-    .soft(Math.abs(report - app), `${what}: report ${String(report)}, app ${String(app)}`)
-    .toBeLessThanOrEqual(step + 0.051);
+  expect(
+    Math.abs(report - app),
+    `${what}: report ${String(report)}, app ${String(app)}`,
+  ).toBeLessThanOrEqual(step + 0.051);
 }
 
 /** Text without spaces, lower case: pdfjs splits the report's runs. */
@@ -199,15 +200,17 @@ test('the volumetric report shows the Volumes tab figures, prints them to PDF an
   const kpiStock = figure(
     await preview.locator('.vr-kpi-stock .vr-kpi-figure').first().innerText(),
   );
-  expect
-    .soft(Math.abs(kpiStock - stock), `stock ${String(kpiStock)} against ${String(stock)}`)
-    .toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(kpiStock - stock),
+    `stock ${String(kpiStock)} against ${String(stock)}`,
+  ).toBeLessThanOrEqual(1);
   const kpiChange = figure(
     await preview.locator('.vr-kpi').nth(1).locator('.vr-kpi-figure').innerText(),
   );
-  expect
-    .soft(Math.abs(kpiChange - change), `change ${String(kpiChange)} against ${String(change)}`)
-    .toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(kpiChange - change),
+    `change ${String(kpiChange)} against ${String(change)}`,
+  ).toBeLessThanOrEqual(1);
   await expect(preview.locator('.vr-kpi').nth(1)).toContainText(/28 Feb/);
 
   // ---- Take pictures: the progress card over the stage, then the preview shows the photo
@@ -244,7 +247,7 @@ test('the volumetric report shows the Volumes tab figures, prints them to PDF an
   expect(page(2)).toContain(flat('Stock inventory'));
   expect(page(2)).toContain(flat('Share of stock on hand'));
   // a change share is a plausible percentage (none from a previous volume of about zero)
-  expect.soft(page(2), 'no runaway change share on page B').not.toMatch(/[-+−]\d{4,}(\.\d+)?%/);
+  expect(page(2), 'no runaway change share on page B').not.toMatch(/[-+−]\d{4,}(\.\d+)?%/);
   expect(page(3)).toContain(flat(': what moved'));
   expect(page(3)).toContain(flat('Where the ground went up or down'));
   for (const r of shown) {

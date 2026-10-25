@@ -283,3 +283,30 @@ describe('page B, the pile cards', () => {
     expect(cropHeightMm({ cardRows: 1, compactRows: 0, notes: false })).toBeLessThanOrEqual(41);
   });
 });
+
+describe('page B, a pile that was about empty', () => {
+  it('shows "new" instead of a runaway share', () => {
+    const base = input(3);
+    const first = base.piles[0];
+    if (!first) throw new Error('no pile');
+    const [d1, d2] = first.dates;
+    if (!d1 || !d2) throw new Error('no dates');
+    const grown: VolumetricInput = {
+      ...base,
+      piles: [
+        {
+          ...first,
+          dates: [
+            { ...d1, volumeM3: 0.0004 },
+            { ...d2, volumeM3: 1131 },
+          ],
+        },
+        ...base.piles.slice(1),
+      ],
+    };
+    const d = render(volumetricModel(grown));
+    const chips = [...d.querySelectorAll('.vr-chip')].map((c) => c.textContent).join(' | ');
+    expect(chips).toContain('+1,131 m³ · new');
+    expect(chips).not.toMatch(/\d{4,}(\.\d)? ?%/);
+  });
+});

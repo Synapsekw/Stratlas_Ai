@@ -6729,6 +6729,9 @@ export const en = {
   // "In short": pieces the sentence is built from (no minus signs: changes are said in words)
   'vreport.short.rose': 'Stock on hand rose by {volume} ({pct}) since {date}',
   'vreport.short.fell': 'Stock on hand fell by {volume} ({pct}) since {date}',
+  'vreport.short.roseNoPct': 'Stock on hand rose by {volume} since {date}',
+  'vreport.short.fellNoPct': 'Stock on hand fell by {volume} since {date}',
+  'vreport.change.new': 'new',
   'vreport.short.steady': 'Stock on hand held steady since {date}',
   'vreport.short.mostFrom': 'most of it from {piles}',
   'vreport.short.pileLess': '{pile} ({volume} less)',

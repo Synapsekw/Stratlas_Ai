@@ -26,7 +26,7 @@ export interface ViewerHandle {
 
 const UNIT_SUFFIX: Record<ViewerUnit, string> = { m3: 'm³', t: 't' };
 
-/** An amount as the app formats volumes: thousands grouped, one decimal under 100, no sign. */
+/** An amount as the app formats volumes: thousands grouped, one decimal under 100, a minus if negative. */
 export function formatAmount(value: number, unit: ViewerUnit): string {
   const v = Math.abs(value);
   const decimals = v >= 100 ? 0 : 1;
@@ -34,7 +34,7 @@ export function formatAmount(value: number, unit: ViewerUnit): string {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
-  return `${text} ${UNIT_SUFFIX[unit]}`;
+  return `${value < 0 ? '−' : ''}${text} ${UNIT_SUFFIX[unit]}`;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -124,7 +124,7 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
     if (v === null) return '';
     if (Math.abs(v) < 0.05) return s('vreport.piles.same');
     return s(v < 0 ? 'vreport.piles.less' : 'vreport.piles.more', {
-      volume: formatAmount(v, state.unit),
+      volume: formatAmount(Math.abs(v), state.unit),
     });
   };
   const changeTone = (v: number | null) =>

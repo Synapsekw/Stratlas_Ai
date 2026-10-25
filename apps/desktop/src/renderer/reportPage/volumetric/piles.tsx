@@ -214,7 +214,14 @@ function Card({
         <span className="vr-card-name">{pile.label}</span>
         {c !== null ? (
           <span className={`vr-chip ${way(c)}`}>
-            {[signed(c, ' m³'), pile.changePct !== null ? signedPct(pile.changePct) : null]
+            {[
+              signed(c, ' m³'),
+              pile.changePct !== null
+                ? signedPct(pile.changePct)
+                : pile.previousM3 !== null
+                  ? t('vreport.change.new')
+                  : null,
+            ]
               .filter((s): s is string => s !== null)
               .join(' · ')}
           </span>

@@ -281,10 +281,7 @@ export function volumetricModel(input: VolumetricInput): VolumetricModel {
       latestM3,
       previousM3,
       changeM3,
-      changePct:
-        changeM3 !== null && previousM3 !== null && previousM3 !== 0
-          ? (changeM3 / previousM3) * 100
-          : null,
+      changePct: changeShare(changeM3, previousM3),
       tonnes: tonnesOf(cur),
       previousTonnes: tonnesOf(prev),
       densityTPerM3: cur?.densityTPerM3 ?? null,
@@ -328,7 +325,7 @@ export function volumetricModel(input: VolumetricInput): VolumetricModel {
     tonnes: weighed.length > 0 ? sum(weighed.map((p) => p.tonnes ?? 0)) : null,
     tonnesPiles: weighed.length,
     changeM3,
-    changePct: changeM3 !== null && bothPrev !== 0 ? (changeM3 / bothPrev) * 100 : null,
+    changePct: changeShare(changeM3, bothPrev),
     errorM3,
     errorPct: errorM3 !== null && stockM3 > 0 ? (errorM3 / stockM3) * 100 : null,
   };
@@ -443,6 +440,23 @@ export function formatReportDate(iso: string): string {
   });
 }
 
+/** A previous volume under this (m³) is about zero: a share of it means nothing. */
+const SHARE_MIN_PREVIOUS_M3 = 1;
+/** A share beyond this (per cent) is a new or collapsed pile, not a percentage worth printing. */
+const SHARE_MAX_PCT = 999;
+
+/**
+ * A change in per cent of the previous volume's magnitude. Null when there is no previous volume,
+ * when it is under 1 m³ (a pile that is new) or when the share would exceed 999 %.
+ */
+export function changeShare(change: number | null, previous: number | null): number | null {
+  if (change === null || previous === null || Math.abs(previous) < SHARE_MIN_PREVIOUS_M3) {
+    return null;
+  }
+  const pct = (change / Math.abs(previous)) * 100;
+  return Math.abs(pct) > SHARE_MAX_PCT ? null : pct;
+}
+
 /** A share in whole per cent, at least 1 %: "8 %". */
 const pctText = (pct: number) => `${String(Math.max(1, Math.round(Math.abs(pct))))} %`;
 
@@ -476,11 +490,17 @@ export function inShortSentence(
   if (Math.abs(total) < STEADY_SHARE * kpis.stockM3 || total === 0)
     return t('vreport.short.end', { text: t('vreport.short.steady', { date: since }) });
   const up = total > 0;
-  let text = t(up ? 'vreport.short.rose' : 'vreport.short.fell', {
-    volume: vol(Math.abs(total)),
-    pct: pctText(kpis.changePct ?? 0),
-    date: since,
-  });
+  let text =
+    kpis.changePct === null
+      ? t(up ? 'vreport.short.roseNoPct' : 'vreport.short.fellNoPct', {
+          volume: vol(Math.abs(total)),
+          date: since,
+        })
+      : t(up ? 'vreport.short.rose' : 'vreport.short.fell', {
+          volume: vol(Math.abs(total)),
+          pct: pctText(kpis.changePct),
+          date: since,
+        });
   const moved = model.piles.filter((p) => p.changeM3 !== null && p.changeM3 !== 0);
   const bySize = (a: VolumetricPile, b: VolumetricPile) =>
     Math.abs(b.changeM3 ?? 0) - Math.abs(a.changeM3 ?? 0) || a.number - b.number;
