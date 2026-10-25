@@ -1,0 +1,465 @@
+/* The volumetric customer report: A4 portrait pages drawn by the page itself (printToPDF with no
+   margins), printed by the hidden report window and shown by the editor's preview. Every rule is
+   scoped to .vr-page so the preview never restyles the app around it. Pages B and C keep their
+   own rules in piles.css and change.css. The fonts are the app's IBM Plex files (@aio/ui
+   fonts.css in the report window; data: URIs in the HTML file). */
+@page {
+  size: A4;
+  margin: 0;
+}
+
+.vr-page {
+  /* brand: ink and teal on light, mint on dark */
+  --vr-ink: #11161c;
+  --vr-ink-2: #46515e;
+  --vr-ink-3: #7b8592;
+  --vr-rule: #dde2e7;
+  --vr-paper: #fdfefe;
+  --vr-on-dark: #eef2f5;
+  --vr-teal: #1a8c70;
+  --vr-mint: #5ed1b3;
+  --vr-mint-soft: #e8f6f1;
+  --vr-mint-ink: #0d4f3f;
+  /* change: the app's heat ramp, red lower or taken away, blue higher or added */
+  --vr-down: #c9413a;
+  --vr-down-ink: #b3261e;
+  --vr-down-soft: #fbedec;
+  --vr-up: #2f6fd0;
+  --vr-up-ink: #1f56a8;
+  --vr-up-soft: #ebf2fc;
+  --vr-quiet-soft: #f1f3f5;
+  --vr-f-ui: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  --vr-f-mono: 'IBM Plex Mono', Consolas, monospace;
+  --vr-gutter: 14mm;
+
+  position: relative;
+  box-sizing: border-box;
+  width: 210mm;
+  height: 297mm;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--vr-paper);
+  color: var(--vr-ink);
+  font-family: var(--vr-f-ui);
+  font-size: 9pt;
+  line-height: 1.42;
+  font-variant-numeric: tabular-nums;
+  break-after: page;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.vr-page:last-child {
+  break-after: auto;
+}
+.vr-page *,
+.vr-page *::before,
+.vr-page *::after {
+  box-sizing: border-box;
+}
+.vr-page h1,
+.vr-page h2,
+.vr-page p,
+.vr-page figure {
+  margin: 0;
+}
+
+/* ------------------------------------------------------------------ band */
+.vr-band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 21mm;
+  padding: 0 var(--vr-gutter);
+  background: var(--vr-ink);
+  color: var(--vr-on-dark);
+}
+.vr-lockup {
+  display: block;
+  height: 9.5mm;
+  width: auto;
+}
+.vr-band-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.8mm;
+}
+.vr-band-type {
+  color: var(--vr-mint);
+  font-size: 7.5pt;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.vr-band-tagline {
+  color: var(--vr-on-dark);
+  opacity: 0.72;
+  font-size: 8.5pt;
+}
+.vr-rule {
+  height: 4px;
+  background: var(--vr-mint);
+}
+
+/* ------------------------------------------------------------------ body and footer */
+.vr-body {
+  flex: 1;
+  min-height: 0;
+  padding: 7mm var(--vr-gutter) 0;
+}
+.vr-foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10mm;
+  padding: 4mm var(--vr-gutter) 8mm;
+  border-top: 0.5pt solid var(--vr-rule);
+  margin: 0 var(--vr-gutter);
+  padding-left: 0;
+  padding-right: 0;
+}
+.vr-method {
+  max-width: 112mm;
+  color: var(--vr-ink-3);
+  font-size: 7pt;
+  line-height: 1.45;
+}
+.vr-method strong {
+  color: var(--vr-ink-2);
+  font-weight: 600;
+}
+.vr-foot-right {
+  display: flex;
+  align-items: center;
+  gap: 2.2mm;
+  flex-shrink: 0;
+  color: var(--vr-teal);
+  font-size: 7.5pt;
+  font-weight: 600;
+}
+.vr-foot .vr-symbol {
+  width: 5mm;
+  height: 5mm;
+}
+
+/* ------------------------------------------------------------------ title block (page A) */
+.vr-title {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8mm;
+  margin-bottom: 6mm;
+}
+.vr-title h1 {
+  font-size: 20pt;
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+}
+.vr-title-meta {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 1.6mm;
+  color: var(--vr-ink-2);
+  font-size: 9pt;
+}
+.vr-title-meta span + span::before {
+  content: '';
+  display: inline-block;
+  width: 1px;
+  height: 0.8em;
+  margin: 0 2.4mm;
+  background: var(--vr-rule);
+  vertical-align: -0.05em;
+}
+.vr-for {
+  flex-shrink: 0;
+  color: var(--vr-ink-2);
+  font-size: 9pt;
+  text-align: right;
+}
+
+/* ------------------------------------------------------------------ pictures */
+.vr-picture {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vr-quiet-soft);
+}
+.vr-picture-inner {
+  position: relative;
+}
+.vr-picture-inner img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.vr-picture.is-empty {
+  border: 0.75pt dashed var(--vr-rule);
+}
+.vr-photo-none {
+  color: var(--vr-ink-3);
+  font-size: 9pt;
+}
+.vr-marker {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 5.2mm;
+  height: 5.2mm;
+  border: 0.5mm solid #fdfefe;
+  border-radius: 50%;
+  background: var(--vr-ink);
+  color: var(--vr-on-dark);
+  font-family: var(--vr-f-mono);
+  font-size: 6.5pt;
+  font-weight: 600;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0.2mm 0.6mm rgb(17 22 28 / 0.35);
+}
+.vr-north {
+  position: absolute;
+  top: 2.5mm;
+  right: 2.5mm;
+  display: flex;
+  align-items: center;
+  gap: 0.8mm;
+  padding: 0.8mm 1.6mm;
+  border-radius: 1mm;
+  background: rgb(253 254 254 / 0.9);
+  color: var(--vr-ink);
+  font-size: 7pt;
+  font-weight: 600;
+}
+.vr-north svg {
+  width: 2.4mm;
+  height: 2.9mm;
+  fill: var(--vr-ink);
+}
+.vr-scale {
+  position: absolute;
+  left: 2.5mm;
+  bottom: 2.5mm;
+  display: flex;
+  align-items: center;
+  gap: 1.6mm;
+  padding: 1mm 1.6mm;
+  border-radius: 1mm;
+  background: rgb(253 254 254 / 0.9);
+  font-size: 6.5pt;
+}
+.vr-scale-bar {
+  height: 1.2mm;
+  border: 0.4pt solid var(--vr-ink);
+  border-top: 0;
+}
+.vr-scale-label {
+  font-family: var(--vr-f-mono);
+}
+
+/* ------------------------------------------------------------------ lead row: photo and KPIs */
+.vr-lead {
+  display: flex;
+  gap: 4mm;
+  height: 80mm;
+}
+.vr-kpis {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5mm;
+}
+.vr-kpi {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.8mm;
+  padding: 3mm 4mm;
+  border-radius: 1.5mm;
+  background: var(--vr-quiet-soft);
+}
+.vr-kpi-label {
+  color: var(--vr-ink-2);
+  font-size: 7.5pt;
+  font-weight: 600;
+}
+.vr-kpi-figure {
+  font-family: var(--vr-f-mono);
+  font-size: 15pt;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.vr-kpi-sub {
+  color: var(--vr-ink-2);
+  font-size: 8pt;
+}
+.vr-kpi-stock {
+  background: var(--vr-ink);
+  color: var(--vr-on-dark);
+}
+.vr-kpi-stock .vr-kpi-label {
+  color: var(--vr-mint);
+}
+.vr-kpi-stock .vr-kpi-figure {
+  font-size: 19pt;
+}
+.vr-kpi-stock .vr-kpi-sub {
+  color: var(--vr-on-dark);
+  opacity: 0.75;
+}
+.vr-kpi-change.is-down {
+  background: var(--vr-down-soft);
+}
+.vr-kpi-change.is-down .vr-kpi-figure {
+  color: var(--vr-down-ink);
+}
+.vr-kpi-change.is-up {
+  background: var(--vr-up-soft);
+}
+.vr-kpi-change.is-up .vr-kpi-figure {
+  color: var(--vr-up-ink);
+}
+.vr-kpi-error .vr-kpi-figure {
+  font-family: var(--vr-f-ui);
+  font-size: 12pt;
+  letter-spacing: 0;
+}
+
+/* ------------------------------------------------------------------ In short and intro */
+.vr-short {
+  display: flex;
+  align-items: flex-start;
+  gap: 3.5mm;
+  margin-top: 5mm;
+  padding: 3.5mm 5mm;
+  border-radius: 1.5mm;
+  background: var(--vr-mint-soft);
+  color: var(--vr-mint-ink);
+}
+.vr-short .vr-symbol {
+  width: 7mm;
+  height: 7mm;
+  flex-shrink: 0;
+  margin-top: 0.5mm;
+}
+.vr-short h2 {
+  margin-bottom: 0.6mm;
+  font-size: 7.5pt;
+  font-weight: 600;
+  color: var(--vr-teal);
+}
+.vr-short p {
+  max-width: 150mm;
+  font-size: 10.5pt;
+  line-height: 1.4;
+}
+.vr-intro {
+  max-width: 160mm;
+  margin-top: 3.5mm;
+  color: var(--vr-ink-2);
+  font-size: 9pt;
+}
+
+/* ------------------------------------------------------------------ ranked table */
+.vr-continued {
+  margin-bottom: 4mm;
+  font-size: 13pt;
+  font-weight: 600;
+}
+.vr-table {
+  width: 100%;
+  margin-top: 5mm;
+  border-collapse: collapse;
+  font-size: 8.5pt;
+}
+.vr-continued + .vr-table {
+  margin-top: 0;
+}
+.vr-table th {
+  padding: 0 2mm 1.6mm;
+  border-bottom: 0.75pt solid var(--vr-ink);
+  color: var(--vr-ink-2);
+  font-size: 7.5pt;
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+.vr-table td {
+  height: 6.1mm;
+  padding: 0 2mm;
+  border-bottom: 0.5pt solid var(--vr-rule);
+  text-align: right;
+  white-space: nowrap;
+}
+.vr-table .vr-col-pile {
+  padding-left: 0;
+  text-align: left;
+}
+td.vr-col-n,
+.vr-change {
+  font-family: var(--vr-f-mono);
+}
+.vr-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 4.6mm;
+  height: 4.6mm;
+  margin-right: 2.2mm;
+  border-radius: 50%;
+  background: var(--vr-ink);
+  color: var(--vr-on-dark);
+  font-family: var(--vr-f-mono);
+  font-size: 6pt;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.vr-pile-name {
+  font-weight: 600;
+  vertical-align: middle;
+}
+.vr-table .vr-col-change {
+  width: 52mm;
+  padding-right: 0;
+}
+.vr-change-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2.5mm;
+}
+.vr-change {
+  min-width: 14mm;
+}
+.vr-bar {
+  position: relative;
+  width: 30mm;
+  height: 3mm;
+  flex-shrink: 0;
+}
+.vr-bar::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -0.6mm;
+  bottom: -0.6mm;
+  width: 0.5pt;
+  background: var(--vr-ink-3);
+}
+.vr-bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.vr-bar-fill.is-down {
+  right: 50%;
+  background: var(--vr-down);
+}
+.vr-bar-fill.is-up {
+  left: 50%;
+  background: var(--vr-up);
+}
