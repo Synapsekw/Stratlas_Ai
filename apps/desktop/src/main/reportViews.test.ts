@@ -1,10 +1,10 @@
 import { REPORT_VIEWS_SCHEMA, type ReportViewsFrame } from '@aio/schema';
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as fsutil from './fsutil';
-import { saveReportViews, viewsRecord } from './reportViews';
+import { recoverReportViews, saveReportViews, viewsRecord } from './reportViews';
 
 const failFrame = vi.hoisted(() => ({ on: false }));
 vi.mock('./fsutil', async (orig) => {
@@ -51,6 +51,38 @@ const jpg = (name: string, fill: number, size = 16) => ({
 const list = async () => (await readdir(join(root, ...DIR))).sort();
 
 describe('report pictures store', () => {
+  it('puts back pictures a crash left set aside as .old, then clears stray .old files', async () => {
+    await saveReportViews(root, 'volumetric', frame(['a.jpg', 'b.jpg']), [
+      jpg('a.jpg', 1),
+      jpg('b.jpg', 2),
+    ]);
+    const dir = join(root, ...DIR);
+    await rename(join(dir, 'a.jpg'), join(dir, 'a.jpg.1.2.old'));
+    await writeFile(join(dir, 'z.jpg.1.1.old'), 'x');
+    await recoverReportViews(root, 'volumetric');
+    expect(await list()).toEqual(['a.jpg', 'b.jpg', 'frame.json']);
+    expect([...(await readFile(join(dir, 'a.jpg')))][0]).toBe(1);
+  });
+
+  it('keeps stray .old files while a named picture is still missing', async () => {
+    await saveReportViews(root, 'volumetric', frame(['a.jpg']), [jpg('a.jpg', 1)]);
+    const dir = join(root, ...DIR);
+    await rm(join(dir, 'a.jpg'));
+    await writeFile(join(dir, 'z.jpg.1.1.old'), 'x');
+    await recoverReportViews(root, 'volumetric');
+    expect(await list()).toEqual(['frame.json', 'z.jpg.1.1.old']);
+  });
+
+  it('recovers before a save, so a crashed save does not lose the old picture', async () => {
+    await saveReportViews(root, 'volumetric', frame(['a.jpg']), [jpg('a.jpg', 1)]);
+    const dir = join(root, ...DIR);
+    await rename(join(dir, 'a.jpg'), join(dir, 'a.jpg.1.2.old'));
+    failFrame.on = true;
+    const r = await saveReportViews(root, 'volumetric', frame(['a.jpg']), [jpg('a.jpg', 5)]);
+    expect(r.ok).toBe(false);
+    expect([...(await readFile(join(dir, 'a.jpg')))][0]).toBe(1);
+  });
+
   it('writes the pictures and frame.json, with the names and sizes in the frame', async () => {
     const r = await saveReportViews(root, 'volumetric', frame(['a.jpg', 'b-2.jpg']), [
       jpg('a.jpg', 1),

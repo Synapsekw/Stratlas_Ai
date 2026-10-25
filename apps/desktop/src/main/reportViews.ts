@@ -18,7 +18,7 @@ import {
   type ReportTypeId,
   type ReportViewsFrame,
 } from '@aio/schema';
-import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
 import { renameRetrying, writeJsonAtomic } from './fsutil';
 import { newerOnDisk } from './newer';
@@ -70,6 +70,35 @@ function refusal(dir: string, frame: ReportViewsFrame, files: readonly ViewFile[
 
 let parts = 0;
 
+/**
+ * Finishes what a crash mid-save left: pictures `frame.json` names that exist only as
+ * `<name>.<...>.old` are renamed back; stray `.old` files are removed only once every named
+ * picture is present. Never throws: a report with no frame, or an unreadable one, is left alone.
+ */
+export async function recoverReportViews(root: string, report: ReportTypeId): Promise<void> {
+  const dir = resolve(root, ...reportViewsDir(report).split('/'));
+  try {
+    const frame = JSON.parse(await readFile(join(dir, 'frame.json'), 'utf8')) as {
+      views?: { file?: unknown }[];
+    };
+    const named = (frame.views ?? []).map((v) => v.file).filter((f) => typeof f === 'string');
+    const names = await readdir(dir);
+    const present = new Set(names);
+    for (const file of named) {
+      if (present.has(file)) continue;
+      const kept = names.find((n) => n.startsWith(`${file}.`) && n.endsWith('.old'));
+      if (kept === undefined) continue;
+      await renameRetrying(join(dir, kept), join(dir, file));
+      present.add(file);
+    }
+    if (named.every((f) => present.has(f)))
+      for (const n of names) if (n.endsWith('.old')) await rm(join(dir, n), { force: true });
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT')
+      console.warn(`Report pictures: could not recover ${dir} (${String(e)}).`);
+  }
+}
+
 export async function saveReportViews(
   root: string,
   report: ReportTypeId,
@@ -79,6 +108,7 @@ export async function saveReportViews(
   const dir = resolve(root, ...reportViewsDir(report).split('/'));
   const bad = refusal(dir, frame, files);
   if (bad) return { ok: false, error: `The report pictures were not saved: ${bad}` };
+  await recoverReportViews(root, report);
   const rel = viewsFramePath(report);
   const newer = await newerOnDisk(join(dir, 'frame.json'), FAMILY, rel);
   if (newer) return { ok: false, error: newer };
