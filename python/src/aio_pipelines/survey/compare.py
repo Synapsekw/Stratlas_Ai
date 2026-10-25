@@ -335,6 +335,9 @@ class Totals:
     area_cut: float = 0.0
     area_unchanged: float = 0.0
     uncovered: float = 0.0
+    #: The greatest and least ``dz`` over the covered cells or pieces (±inf when none).
+    dz_max: float = -math.inf
+    dz_min: float = math.inf
 
 
 @dataclass
@@ -377,6 +380,7 @@ def _result(item: dict[str, Any], lf: str, lt: str, rf, rt, fp: str, now: str | 
 
 
 def _refuse(res: dict[str, Any], reason: str) -> dict[str, Any]:
+    res.pop("peakM", None)
     res.update(
         status="refused",
         reason=reason[:300],
@@ -478,6 +482,9 @@ def compare_item(
         areaUnchangedM2=tot.area_unchanged,
         uncoveredM2=tot.uncovered,
     )
+    # peak height: the surface above its base (dz when the base is From, -dz when it is To)
+    if surf is not None and math.isfinite(tot.dz_max):
+        res["peakM"] = max(tot.dz_max if surf is rt else -tot.dz_min, 0.0)
     pct = math.floor(share * 100 + 0.5)
     if share > REFUSE_SHARE:
         return _refuse(res, f"{pct}% outside the survey") | {"uncoveredM2": tot.uncovered}
@@ -559,6 +566,9 @@ def _grid_path(lring, item, rf, rt, surf, le, ln, cell, deadband, use_db, check,
         tot.area_fill += float(w[fm].sum()) * a2
         tot.area_cut += float(w[cm].sum()) * a2
         tot.area_unchanged += float(w[ok & ~fm & ~cm].sum()) * a2
+        if ok.any():
+            tot.dz_max = max(tot.dz_max, float(dz[ok].max()))
+            tot.dz_min = min(tot.dz_min, float(dz[ok].min()))
         if out is not None:
             out.bands.append((sub, np.where(m, dz, np.nan), w))
     if out is not None and grid_out is not None:
@@ -598,6 +608,8 @@ def _exact_path(lring, item, rf, rt, surf, le, ln, db, check):
         area_cut=ex.area_cut,
         area_unchanged=ex.area_unchanged,
         uncovered=max(area - ex.covered, 0.0),
+        dz_max=ex.dz_max,
+        dz_min=ex.dz_min,
     )
     return tot, labels
 

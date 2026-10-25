@@ -558,6 +558,25 @@ export interface PileOverTime {
   outline: [number, number][];
   /** Its outline (E, N) as drawn on each survey date, by capture id (`outlineOn`). */
   outlines: Record<string, [number, number][]>;
+  /**
+   * Its peak height (`ComparisonResult.peakM`, metres above its base) by capture id: only dates
+   * whose figure is current (not stale or refused) and whose result has one.
+   */
+  peaks?: Record<string, number>;
+}
+
+/** The peak height on each date of `rows`, from the result each row was read from (`toCapture`). */
+export function peaksOf(
+  series: readonly ComparisonResult[],
+  rows: readonly TimeRow[],
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const row of rows) {
+    if (row.stale || row.valueM3 === null) continue;
+    const r = series.find((x) => x.toCapture === row.capture);
+    if (r && r.status !== 'refused' && r.peakM !== undefined) out[row.capture] = r.peakM;
+  }
+  return out;
 }
 
 /**
@@ -757,6 +776,11 @@ async function volumesOverTime(
       const { series, stored } = pileSeries(m);
       const carried = series.find((r) => r.carried)?.carried;
       const it = m.items[0];
+      const rows = weighRows(
+        volumeRows(series, captures, { isStale: (r) => isStale(m, r, r === stored) }),
+        info.material(m),
+        dateOf,
+      );
       return {
         id: m.id,
         ref: info.ref(m),
@@ -766,11 +790,8 @@ async function volumesOverTime(
         base: it ? standardBaseName(it.from) : '',
         carried: carried ? tk('vol.status.carried', { base: kitBaseName(carried.base, tk) }) : null,
         // each date weighs at the material's density on that date (`densityOn`)
-        rows: weighRows(
-          volumeRows(series, captures, { isStale: (r) => isStale(m, r, r === stored) }),
-          info.material(m),
-          dateOf,
-        ),
+        rows,
+        peaks: peaksOf(series, rows),
         ...outlinesOf(m, ids, (points) => info.outline(m, points)),
       };
     }),

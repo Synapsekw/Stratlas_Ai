@@ -381,6 +381,12 @@ export const ComparisonResult = z.looseObject({
   carried: CarriedResult.optional(),
   /** Absent on every older file; W6 fills it, wave 1 never writes it. */
   uncertainty: VolumeUncertainty.optional(),
+  /**
+   * Peak height, metres: the greatest height of the surface above its base inside the polygon,
+   * on the base the volume uses (0 when the surface sits wholly below it). Only a surface against
+   * a base has one; absent between two surfaces, on a refused result and on every older file.
+   */
+  peakM: z.number().nonnegative().optional(),
 });
 
 /**

@@ -73,7 +73,8 @@
           "usedDeadband": false,
           "cellM": 0.5,
           "fingerprint": "sha256:f290886035869b4debdf373cc8b485b31dfdcd700ecd08666b325116a54827c8",
-          "toCapture": "c1"
+          "toCapture": "c1",
+          "peakM": 1.4210854715202004e-14
         },
         {
           "item": "a",
@@ -93,7 +94,8 @@
           "usedDeadband": false,
           "cellM": 0.5,
           "fingerprint": "sha256:1f4c21af7f197e54afaf4383c79dfe8c863f1a3a018a1a23762609743b436a71",
-          "toCapture": "c2"
+          "toCapture": "c2",
+          "peakM": 3.7978515625
         }
       ]
     },
@@ -180,7 +182,8 @@
           "usedDeadband": false,
           "cellM": 0.5,
           "fingerprint": "sha256:37f834a03548ce4547ecd458197e15b43565a2441f566b9fee5f31f01da403a6",
-          "toCapture": "c1"
+          "toCapture": "c1",
+          "peakM": 1.4210854715202004e-14
         },
         {
           "item": "a",
@@ -200,7 +203,8 @@
           "usedDeadband": false,
           "cellM": 0.5,
           "fingerprint": "sha256:417029ade879344603e73179cd123fb8379b22a21433f15c55c065b5a4985bc2",
-          "toCapture": "c2"
+          "toCapture": "c2",
+          "peakM": 4.744035636351057
         },
         {
           "item": "a",
@@ -220,7 +224,8 @@
           "usedDeadband": false,
           "cellM": 0.5,
           "fingerprint": "sha256:665f14dd5cb662da3b561e76603de4599288274711e89d3a0d538018ba66532c",
-          "toCapture": "c3"
+          "toCapture": "c3",
+          "peakM": 3.659732736871945
         }
       ]
     },
@@ -431,7 +436,8 @@
           "usedDeadband": false,
           "cellM": 0.5,
           "fingerprint": "sha256:cf86dbfdf95e8e0e8f585413f962c84875f14945e28863113bb7bb5700921f1f",
-          "toCapture": "c1"
+          "toCapture": "c1",
+          "peakM": 3.659732736871945
         },
         {
           "item": "a",
@@ -472,7 +478,8 @@
           "usedDeadband": false,
           "cellM": 0.5,
           "fingerprint": "sha256:797988b5ac7725d6fcd96cf54f25b7eec4bcab089787751dda1fa088bde70ee9",
-          "toCapture": "c3"
+          "toCapture": "c3",
+          "peakM": 4.744035636351057
         }
       ]
     },

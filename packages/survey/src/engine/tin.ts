@@ -662,6 +662,9 @@ export interface ExactTotals {
   areaCut: number;
   areaUnchanged: number;
   covered: number;
+  /** The greatest and least `to - from` over the covered pieces (±Infinity when none). */
+  dzMax: number;
+  dzMin: number;
 }
 
 /** Cut and fill of `to - from` over the polygon's triangles, exactly (no grid). */
@@ -679,6 +682,8 @@ export function exactCompare(
     areaCut: 0,
     areaUnchanged: 0,
     covered: 0,
+    dzMax: -Infinity,
+    dzMin: Infinity,
   };
   ptris.forEach(([a, b, c], k) => {
     if (k % 16 === 0) checkSignal(signal);
@@ -688,6 +693,11 @@ export function exactCompare(
         const [area] = integral(r, dz);
         if (area <= 0) continue;
         out.covered += area;
+        // linear on the piece: its extremes are at its vertices
+        for (const v of dz) {
+          if (v > out.dzMax) out.dzMax = v;
+          if (v < out.dzMin) out.dzMin = v;
+        }
         if (dz.every((v) => v === 0)) {
           out.areaUnchanged += area;
           continue;

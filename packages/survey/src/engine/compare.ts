@@ -11,6 +11,8 @@
  * - Exact path (both sides TINs, levels or planes): the polygon is integrated piece by piece;
  *   `cellM` is 0 in the result.
  * - The deadband only when `useDeadband`; above 2% uncovered `partial`, above 20% `refused`.
+ * - `peakM` (a surface against a base only): the largest height of the surface above the base over
+ *   the covered cells (exact path: the pieces' vertices), at least 0; absent when refused.
  * - The fingerprint hashes every input (see `fingerprint.ts`); results carry `engine: 'ts'`.
  *
  * Pure and worker-friendly: surfaces come from a `Resolve` function (prepared tiles fetched
@@ -359,6 +361,9 @@ interface Totals {
   areaCut: number;
   areaUnchanged: number;
   uncovered: number;
+  /** The greatest and least `dz` over the covered cells or pieces (±Infinity when none). */
+  dzMax: number;
+  dzMin: number;
 }
 
 /** The difference on the comparison grid, band by band (for heat maps and the kit's bodies). */
@@ -435,8 +440,9 @@ export async function compareItem(
   };
   if (rf?.capture !== undefined) res.fromCapture = rf.capture;
   if (rt?.capture !== undefined) res.toCapture = rt.capture;
-  const refuse = (reason: string, uncovered?: number): ComparisonResult =>
-    Object.assign(res, {
+  const refuse = (reason: string, uncovered?: number): ComparisonResult => {
+    delete res.peakM;
+    return Object.assign(res, {
       status: 'refused' as const,
       reason: reason.slice(0, 300),
       cutM3: 0,
@@ -448,6 +454,7 @@ export async function compareItem(
       areaUnchangedM2: 0,
       uncoveredM2: uncovered ?? res.areaM2,
     });
+  };
   if (problem) return refuse(problem);
   if (ringN.length < 3) return refuse('The polygon needs three or more points.');
   if (!isSurface(from) && !isSurface(to)) return refuse(BASE_BOTH_SIDES);
@@ -524,6 +531,9 @@ export async function compareItem(
     areaUnchangedM2: tot.areaUnchanged,
     uncoveredM2: tot.uncovered,
   });
+  // peak height: the surface above its base (dz when the base is From, -dz when it is To)
+  if (surf && Number.isFinite(tot.dzMax))
+    res.peakM = Math.max(surf === rt ? tot.dzMax : -tot.dzMin, 0);
   const pct = Math.floor(share * 100 + 0.5);
   if (opts.overlapOnly) {
     return tot.uncovered >= area ? refuse('The two surfaces do not overlap.', tot.uncovered) : res;
@@ -615,7 +625,16 @@ async function gridPath(
   const sf = sides.from;
   const st = sides.to;
   if (!sf || !st) throw new Error('A side is missing');
-  const tot: Totals = { fill: 0, cut: 0, areaFill: 0, areaCut: 0, areaUnchanged: 0, uncovered: 0 };
+  const tot: Totals = {
+    fill: 0,
+    cut: 0,
+    areaFill: 0,
+    areaCut: 0,
+    areaUnchanged: 0,
+    uncovered: 0,
+    dzMax: -Infinity,
+    dzMin: Infinity,
+  };
   const out: GridOut | null = gridOut ? { win, le, ln, bands: [] } : null;
   let fill = 0;
   let cut = 0;
@@ -623,6 +642,8 @@ async function gridPath(
   let aCut = 0;
   let aUn = 0;
   let unc = 0;
+  let dzMax = -Infinity;
+  let dzMin = Infinity;
   for (const sub of bands(win)) {
     checkSignal(signal);
     const w = coverOf(lring, sub, le, ln, shared);
@@ -642,6 +663,8 @@ async function gridPath(
       }
       const dz = b - a;
       if (dzOut) dzOut[k] = dz;
+      if (dz > dzMax) dzMax = dz;
+      if (dz < dzMin) dzMin = dz;
       const counts = !useDb || Math.abs(dz) >= deadband;
       if (counts && dz > 0) {
         fill += wk * dz;
@@ -660,6 +683,8 @@ async function gridPath(
   tot.areaCut = aCut * a2;
   tot.areaUnchanged = aUn * a2;
   tot.uncovered = unc * a2;
+  tot.dzMax = dzMax;
+  tot.dzMin = dzMin;
   if (out && gridOut) gridOut.push(out);
   return [tot, labels];
 }
@@ -707,6 +732,8 @@ async function exactPath(
       areaCut: ex.areaCut,
       areaUnchanged: ex.areaUnchanged,
       uncovered: Math.max(area - ex.covered, 0),
+      dzMax: ex.dzMax,
+      dzMin: ex.dzMin,
     },
     labels,
   ];

@@ -56,7 +56,7 @@ interface FixtureDate {
 }
 
 /** The Python core's result without `engine` and `computedAt`. */
-type Expected = Pick<ComparisonResult, (typeof NUMBERS)[number] | (typeof TEXT)[number]>;
+type Expected = Pick<ComparisonResult, (typeof NUMBERS)[number] | (typeof TEXT)[number] | 'peakM'>;
 
 interface SeriesCase {
   id: string;
@@ -218,6 +218,10 @@ describe('volume per survey date against the Python core (series.json)', () => {
       for (const n of NUMBERS)
         if (!close(r[n], e[n], scale))
           expect.fail(`date ${k} ${n}: TypeScript ${r[n]}, Python ${e[n]}`);
+      // peak height: on both or neither, then within 1e-6
+      expect(r.peakM === undefined).toBe(e.peakM === undefined);
+      if (!close(r.peakM ?? 0, e.peakM ?? 0, 1))
+        expect.fail(`date ${k} peakM: TypeScript ${r.peakM}, Python ${e.peakM}`);
     });
   });
 });

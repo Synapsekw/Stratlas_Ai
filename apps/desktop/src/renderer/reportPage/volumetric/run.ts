@@ -129,8 +129,8 @@ export function volumetricInputOf(
           volumeM3,
           densityTPerM3: p.material ? densityOn(p.material, r.capture, dateOf) : null,
           areaM2: stored ? stored.areaM2 : outline.length >= 3 ? ringArea(outline) : null,
-          // the engine reports no peak height yet: the cards leave it blank
-          peakM: null,
+          // the engine's peak height above the base on that date (none when stale)
+          peakM: volumeM3 !== null ? (p.peaks?.[r.capture] ?? null) : null,
           plusMinusM3: volumeM3 !== null ? (stored?.uncertainty?.plusMinusM3 ?? null) : null,
           outline,
         };

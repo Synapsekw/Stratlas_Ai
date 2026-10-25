@@ -216,6 +216,17 @@ describe("the model's input from the app's figures", () => {
     const input = volumetricInputOf(files(), s, { compareWith: null, frame: null });
     expect(input.piles[1]?.dates[0]?.volumeM3).toBeNull();
   });
+
+  it("carries each date's peak height, none on a stale date or a date without one", () => {
+    const s = survey();
+    const pile = s.volumes.piles[1];
+    if (pile) pile.peaks = { c1: 3.25, c2: 4.5 };
+    const row = s.volumes.piles[1]?.rows[0];
+    if (row) row.stale = true;
+    const input = volumetricInputOf(files(), s, { compareWith: null, frame: null });
+    expect(input.piles[1]?.dates.map((d) => d.peakM)).toEqual([null, 4.5]);
+    expect(input.piles[0]?.dates.map((d) => d.peakM)).toEqual([null, null]);
+  });
 });
 
 describe('the volumetric run', () => {

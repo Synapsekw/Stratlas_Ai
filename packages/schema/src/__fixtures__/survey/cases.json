@@ -612,7 +612,8 @@
         "deadbandM": 0.0,
         "usedDeadband": false,
         "cellM": 0.5,
-        "fingerprint": "sha256:8ec6fcbfaed852ffb7b702cc60e7ab4bedb14331de77b35149c9cd6ddbdc4682"
+        "fingerprint": "sha256:8ec6fcbfaed852ffb7b702cc60e7ab4bedb14331de77b35149c9cd6ddbdc4682",
+        "peakM": 4.744035636351057
       }
     },
     {
@@ -683,7 +684,8 @@
         "deadbandM": 0.0,
         "usedDeadband": false,
         "cellM": 0.5,
-        "fingerprint": "sha256:077c8d2b98464b293c0548ea009db193dae3b39b27107b79ab21349d3f475fae"
+        "fingerprint": "sha256:077c8d2b98464b293c0548ea009db193dae3b39b27107b79ab21349d3f475fae",
+        "peakM": 4.744147955140619
       }
     },
     {
@@ -754,7 +756,8 @@
         "deadbandM": 0.0,
         "usedDeadband": false,
         "cellM": 0.5,
-        "fingerprint": "sha256:c7ab1dae2f35cae2948d5ac8898076a601592a2b14c28b742524daa017f6c52b"
+        "fingerprint": "sha256:c7ab1dae2f35cae2948d5ac8898076a601592a2b14c28b742524daa017f6c52b",
+        "peakM": 4.763797464724419
       }
     },
     {
@@ -826,7 +829,8 @@
         "deadbandM": 0.0,
         "usedDeadband": false,
         "cellM": 0.5,
-        "fingerprint": "sha256:a824c36fbcee3ec0507ad10473989bbb8f7fe3709065d3d6c8f154b3132d2266"
+        "fingerprint": "sha256:a824c36fbcee3ec0507ad10473989bbb8f7fe3709065d3d6c8f154b3132d2266",
+        "peakM": 5.181984569239603
       }
     },
     {
@@ -898,7 +902,8 @@
         "deadbandM": 0.0,
         "usedDeadband": false,
         "cellM": 0.5,
-        "fingerprint": "sha256:2cc87f297c9a952a514f8fb4b31225f1cd126c2a5c864fb04a765835720b76dc"
+        "fingerprint": "sha256:2cc87f297c9a952a514f8fb4b31225f1cd126c2a5c864fb04a765835720b76dc",
+        "peakM": 4.345530060177339
       }
     },
     {
@@ -970,7 +975,8 @@
         "deadbandM": 0.0,
         "usedDeadband": false,
         "cellM": 0.5,
-        "fingerprint": "sha256:497c23f21e4f97e65d9a577254831209ba4c1b5d37c9f15ffa7870b275cfdba7"
+        "fingerprint": "sha256:497c23f21e4f97e65d9a577254831209ba4c1b5d37c9f15ffa7870b275cfdba7",
+        "peakM": 5.19921875
       }
     },
     {
@@ -1042,7 +1048,8 @@
         "deadbandM": 0.0,
         "usedDeadband": false,
         "cellM": 0.5,
-        "fingerprint": "sha256:ed6e3343b2f2a6da4cd628402b6337d7063894346050fc05e7fe218caf0008c1"
+        "fingerprint": "sha256:ed6e3343b2f2a6da4cd628402b6337d7063894346050fc05e7fe218caf0008c1",
+        "peakM": 0.0
       }
     },
     {
@@ -1115,7 +1122,8 @@
         "deadbandM": 0.0,
         "usedDeadband": false,
         "cellM": 0.5,
-        "fingerprint": "sha256:94025c96177519bf84b9034f70246123d6b2c700264650c283e498be628ed364"
+        "fingerprint": "sha256:94025c96177519bf84b9034f70246123d6b2c700264650c283e498be628ed364",
+        "peakM": 3.6337890625
       }
     },
     {
@@ -1186,7 +1194,8 @@
         "deadbandM": 0.0,
         "usedDeadband": false,
         "cellM": 0.5,
-        "fingerprint": "sha256:b0e5b5278dbc4fb3243c9bd6782365a42c015a6a8b2b60befe02935fdeec2f98"
+        "fingerprint": "sha256:b0e5b5278dbc4fb3243c9bd6782365a42c015a6a8b2b60befe02935fdeec2f98",
+        "peakM": 4.744147955140619
       }
     },
     {
@@ -1231,7 +1240,8 @@
         "deadbandM": 0.0,
         "usedDeadband": false,
         "cellM": 0.5,
-        "fingerprint": "sha256:623abf39179fe0f0f5f5daf5270e2eebcaaeff13e848c83059bcab3c7a420e0c"
+        "fingerprint": "sha256:623abf39179fe0f0f5f5daf5270e2eebcaaeff13e848c83059bcab3c7a420e0c",
+        "peakM": 4.74410807291666
       }
     },
     {
@@ -1276,7 +1286,8 @@
         "deadbandM": 0.0,
         "usedDeadband": false,
         "cellM": 0.5,
-        "fingerprint": "sha256:7c66d3fba10370d55cdf43aac0c8474f65701a1fa17172f11d301f990cdfefa5"
+        "fingerprint": "sha256:7c66d3fba10370d55cdf43aac0c8474f65701a1fa17172f11d301f990cdfefa5",
+        "peakM": 2.095499800246742
       }
     },
     {
@@ -1403,7 +1414,8 @@
         "deadbandM": 0.0,
         "usedDeadband": false,
         "cellM": 0.5,
-        "fingerprint": "sha256:c4c3ec8abe2c8896c34bd4ebed3097081d03ca602794a078908f82b8c8fc905f"
+        "fingerprint": "sha256:c4c3ec8abe2c8896c34bd4ebed3097081d03ca602794a078908f82b8c8fc905f",
+        "peakM": 3.7572265624999943
       }
     },
     {
@@ -2099,7 +2111,8 @@
         "deadbandM": 0.0,
         "usedDeadband": false,
         "cellM": 0.0,
-        "fingerprint": "sha256:8f23536249c62c20a094884b83c2cf2f29326ecfea29a2a183fb9a16cb3beb23"
+        "fingerprint": "sha256:8f23536249c62c20a094884b83c2cf2f29326ecfea29a2a183fb9a16cb3beb23",
+        "peakM": 2.000000000000014
       }
     },
     {
@@ -2250,7 +2263,8 @@
         "deadbandM": 0.0,
         "usedDeadband": false,
         "cellM": 0.0,
-        "fingerprint": "sha256:c0fd945a9dcbe62d8c5f1e5df09dc28b5448bdcab5741cba21c197662dc1dba0"
+        "fingerprint": "sha256:c0fd945a9dcbe62d8c5f1e5df09dc28b5448bdcab5741cba21c197662dc1dba0",
+        "peakM": 1.1100423396470802
       }
     },
     {

@@ -849,6 +849,9 @@ class ExactTotals:
     area_cut: float = 0.0
     area_unchanged: float = 0.0
     covered: float = 0.0
+    #: The greatest and least ``to - from`` over the covered pieces (±inf when none).
+    dz_max: float = -math.inf
+    dz_min: float = math.inf
 
 
 def exact_compare(
@@ -866,6 +869,9 @@ def exact_compare(
                 if area <= 0:
                     continue
                 out.covered += area
+                # linear on the piece: its extremes are at its vertices
+                out.dz_max = max(out.dz_max, *dz)
+                out.dz_min = min(out.dz_min, *dz)
                 if all(v == 0 for v in dz):
                     out.area_unchanged += area
                     continue

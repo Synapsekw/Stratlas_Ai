@@ -87,6 +87,7 @@ interface FixtureCase {
     | 'toCapture'
     | 'usedDeadband'
     | 'fingerprint'
+    | 'peakM'
   >;
 }
 
@@ -222,6 +223,10 @@ describe('TypeScript executor against the Python core (shared fixtures)', () => 
           `${k}: TypeScript ${r[k]}, Python ${e[k]} (relative ${Math.abs(r[k] - e[k]) / Math.max(Math.abs(e[k]), 1e-12)})`,
         );
     }
+    // peak height: on both or neither, then within 1e-6
+    expect(r.peakM === undefined).toBe(e.peakM === undefined);
+    if (!close(r.peakM ?? 0, e.peakM ?? 0, 1))
+      expect.fail(`peakM: TypeScript ${r.peakM}, Python ${e.peakM}`);
   });
 });
 
