@@ -160,9 +160,9 @@ function reader(): SurveyReader {
 /** A fake JPEG: its source and request in the payload, padded to `bytes(maxPx)`. */
 function encoder(bytes: (req: PictureRequest) => number = () => 0) {
   return vi.fn<PictureEncoder>((src, req) => {
-    const tag = Buffer.from(`${src}|${String(req.maxPx)}|${String(req.quality)}`).toString(
-      'base64url',
-    );
+    const tag = Buffer.from(
+      `${src}|${String(req.maxPx)}|${String(req.quality)}|${JSON.stringify(req.crop ?? null)}`,
+    ).toString('base64url');
     return Promise.resolve(
       `data:image/jpeg;base64,${tag.replace(/[-_]/g, 'A')}${'A'.repeat(bytes(req))}`,
     );
@@ -232,6 +232,8 @@ describe('the offline volumetric HTML file', () => {
     expect(outsideXmlns).not.toMatch(/https?:/i);
     expect(outsideXmlns).not.toMatch(/["'(=\s]\/\/[a-z0-9-]+\.[a-z]/i);
     const doc = parse(html);
+    // the printed pages' shared pictures get their source from the data block at boot
+    bootViewer(doc);
     const imgs = [...doc.querySelectorAll('img')];
     expect(imgs.length).toBeGreaterThan(0);
     for (const img of imgs) expect(img.getAttribute('src') ?? '').toMatch(/^data:/);
@@ -244,6 +246,37 @@ describe('the offline volumetric HTML file', () => {
     expect(faces.length).toBeGreaterThanOrEqual(3);
     for (const f of faces) expect(f).toMatch(/url\(data:font\/woff2;base64,/);
     expect(html).not.toContain('aio://');
+  });
+
+  it('holds each picture once: the pages take the shared ones from the data block', async () => {
+    const html = await exportHtml(encoder());
+    const uris = [...html.matchAll(/data:image\/jpeg;base64,[A-Za-z0-9+/=]+/g)].map((m) => m[0]);
+    expect(uris.length).toBeGreaterThan(0);
+    const counts = new Map<string, number>();
+    for (const u of uris) counts.set(u, (counts.get(u) ?? 0) + 1);
+    for (const [u, n] of counts) expect(n, u.slice(0, 60)).toBe(1);
+
+    const doc = parse(html);
+    const shared = [...doc.querySelectorAll<HTMLImageElement>('.vr-print img[data-vr-pic]')];
+    // A's latest photo, C's before and after photos and the cut and fill map
+    expect(shared.length).toBeGreaterThanOrEqual(4);
+    for (const img of shared) expect(img.hasAttribute('src')).toBe(false);
+    bootViewer(doc);
+    const data = JSON.parse(doc.getElementById('vr-data')?.textContent ?? '') as ViewerData;
+    for (const img of shared) {
+      const [kind, capture] = (img.dataset.vrPic ?? '').split(':');
+      const pic = data.pictures.find((p) => p.kind === kind && p.capture === capture);
+      expect(pic).toBeDefined();
+      expect(img.getAttribute('src')).toBe(pic?.src);
+    }
+    const pages = [...doc.querySelectorAll('.vr-print .vr-page')];
+    expect(pages).toHaveLength(3);
+    expect(pages[0]?.querySelector('img[data-vr-pic="photo:c2"]')?.getAttribute('src')).toMatch(
+      /^data:image\/jpeg/,
+    );
+    expect(pages[2]?.querySelector('img[data-vr-pic="cutfill:c2"]')?.getAttribute('src')).toMatch(
+      /^data:image\/jpeg/,
+    );
   });
 
   it('carries pages A to C for print, hidden on screen, and D for the screen only', async () => {

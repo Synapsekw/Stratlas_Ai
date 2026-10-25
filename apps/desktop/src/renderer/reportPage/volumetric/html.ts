@@ -314,8 +314,23 @@ export async function volumetricHtmlFile(
     }
     return TOKEN(i);
   };
-  const { markup } = printPages(prepared, want);
-  const data = scriptJson(viewerDataOf(prepared, want));
+  const { markup: pagesMarkup } = printPages(prepared, want);
+  const viewer = viewerDataOf(prepared, want);
+  const data = scriptJson(viewer);
+  // a picture the view also shows is held once, in the data block: the page's <img> names it
+  // (`data-vr-pic="kind:capture"`) and the viewer script gives it that source at boot
+  const shared = new Map<string, string>();
+  for (const p of viewer.pictures) {
+    const i = /VRPIC(\d+)END$/.exec(p.src)?.[1];
+    if (i !== undefined) shared.set(i, `${p.kind}:${p.capture}`);
+  }
+  const markup = pagesMarkup.replace(
+    /src="data:image\/jpeg;base64,VRPIC(\d+)END"/g,
+    (whole, i: string) => {
+      const key = shared.get(i);
+      return key ? `data-vr-pic="${escapeHtml(key)}"` : whole;
+    },
+  );
 
   const script = viewerScript.replace(/<\/(script)/gi, '<\\/$1');
   const hash = await sha256Base64(script);

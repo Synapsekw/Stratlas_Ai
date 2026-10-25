@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { VIEWER_STRING_KEYS, type ViewerData, type ViewerStringKey } from './types';
-import { bootViewer, formatAmount } from './viewer';
+import { bootViewer, fillSharedPictures, formatAmount } from './viewer';
 
 const strings = Object.fromEntries(VIEWER_STRING_KEYS.map((k) => [k, k])) as Record<
   ViewerStringKey,
@@ -119,6 +119,20 @@ describe('volumetric interactive viewer', () => {
   it('returns null without a data block', () => {
     document.body.innerHTML = '<div id="vr-app"></div>';
     expect(bootViewer(document)).toBeNull();
+  });
+
+  it('gives the printed pages their shared pictures from the data block', () => {
+    const block = document.createElement('div');
+    block.innerHTML =
+      '<img data-vr-pic="photo:c1" alt=""><img data-vr-pic="cutfill:c2" alt=""><img data-vr-pic="3d:c1" alt="">';
+    document.body.append(block);
+    fillSharedPictures(document, data());
+    const imgs = [...block.querySelectorAll('img')];
+    expect(imgs.map((i) => i.getAttribute('src'))).toEqual([
+      'data:image/jpeg;base64,P1',
+      'data:image/jpeg;base64,CF',
+      null,
+    ]);
   });
 
   it('boots from the data block with the band, the latest date and the photo', () => {

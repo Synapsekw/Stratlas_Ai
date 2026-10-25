@@ -66,12 +66,25 @@ function readData(doc: Document): ViewerData | null {
   }
 }
 
+/**
+ * The printed pages' pictures that the view also shows are held once, in the data block: each
+ * such `<img data-vr-pic="kind:capture">` gets that picture's source here, so print shows it.
+ */
+export function fillSharedPictures(doc: Document, data: ViewerData): void {
+  for (const img of doc.querySelectorAll<HTMLImageElement>('img[data-vr-pic]')) {
+    const [kind, capture] = (img.dataset.vrPic ?? '').split(':');
+    const pic = data.pictures.find((p) => p.kind === kind && p.capture === capture);
+    if (pic) img.src = pic.src;
+  }
+}
+
 /** Boots the view from the document's data block; null when there is none. */
 export function bootViewer(doc: Document = document): ViewerHandle | null {
   const read = readData(doc);
   const lastDate = read?.dates[read.dates.length - 1];
   if (!read || !lastDate) return null;
   const data: ViewerData = read;
+  fillSharedPictures(doc, data);
   const mount = doc.getElementById('vr-app') ?? doc.body;
 
   const s = (key: ViewerStringKey, vars: Record<string, string | number> = {}) =>
