@@ -383,3 +383,32 @@ describe('SurveyDateSelect', () => {
     expect(select()?.disabled).toBe(true);
   });
 });
+
+describe('LayerDatePicker moves announce themselves', () => {
+  it('a re-file from the Selection card is announced with the date it left', async () => {
+    open(manifest([cap('2024-11-06'), cap('2024-11-07')], [layer('a', 'capture-2024-11-06')]));
+    fakeMain();
+    const seen: unknown[] = [];
+    const { moveAnnounce } = await import('../shell/dateMoveNote');
+    const off = moveAnnounce.subscribe((s) => seen.push(s.last));
+    show();
+    await pick('capture-2024-11-07');
+    off();
+    expect(seen).toEqual([
+      expect.objectContaining({
+        moved: [{ id: 'a', capture: 'capture-2024-11-06' }],
+        target: 'capture-2024-11-07',
+      }),
+    ]);
+  });
+
+  it('the import card (dates made there) announces nothing', async () => {
+    open(manifest([cap('2024-11-06'), cap('2024-11-07')], [layer('a', 'capture-2024-11-06')]));
+    fakeMain();
+    const { moveAnnounce } = await import('../shell/dateMoveNote');
+    const before = moveAnnounce.getState().last;
+    show({ createdHere: [] });
+    await pick('capture-2024-11-07');
+    expect(moveAnnounce.getState().last).toBe(before);
+  });
+});

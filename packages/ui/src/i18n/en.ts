@@ -543,6 +543,8 @@ export const en = {
     '{count} datasets carry a date in their names, so they stay filed under it. Move them to another date to override the names.',
   'tree.dates.move.done': '{count} datasets moved to {date}.',
   'tree.dates.move.doneNone': '{count} datasets no longer belong to a date.',
+  'tree.dates.move.doneOne': 'Moved {name} to {date}.',
+  'tree.dates.move.doneOneNone': '{name} no longer belongs to a date.',
   'tree.dates.move.undo': 'Undo',
   'tree.dates.dismiss': 'Dismiss',
   'tree.eye.all': 'All layers',

@@ -98,6 +98,7 @@ import { flightPathShown, toggleFlightPath } from '../workspace/flightPaths';
 import { updateFlightPaths, useFlightPathModel } from '../workspace/pathModel';
 import { selectClip } from '../workspace/pickClip';
 import { timeline, useTimeline } from '../workspace/timeline';
+import { moveNote, useDateMoveAnnouncement } from './dateMoveNote';
 import { moveLayersToDate, undoDateMove, updateCapture } from './dateFolders';
 import { AddSurveyDateButton } from './AddSurveyDate';
 import { registerSidebarActions } from './actions';
@@ -494,6 +495,9 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const [unplace, setUnplace] = useState<{ id: string; seq: number } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [note, setNote] = useState<DateNote | null>(null);
+  // a re-file made elsewhere (the Selection card) shows the same note and Undo
+  const announced = useDateMoveAnnouncement();
+  const [seenAnnounce, setSeenAnnounce] = useState(announced?.seq ?? 0);
   // rows marked with Ctrl or Shift for one Delete
   const [marks, setMarks] = useState<Marks>(NO_MARKS);
   const removed = useRemoval((s) => s.removed);
@@ -512,6 +516,10 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     setMarks(NO_MARKS);
     setEmptying(false);
     setMeasureQuery('');
+  }
+  if (announced && announced.seq !== seenAnnounce) {
+    setSeenAnnounce(announced.seq);
+    setNote(moveNote(t, workspace.getState().project?.manifest, announced.moved, announced.target));
   }
   // A new note from the measurement store (a date move, its refusal, a backfill) takes the note
   // slot; the same note changed (a later edit took its Undo away) changes the slot only while it
@@ -675,8 +683,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
         return;
       }
       const manifest = workspace.getState().project?.manifest;
-      // one dataset is put back by dragging it back; a group or a flight needs Undo
-      const undo = moved.length > 1 ? { undo: { moved, target: capture } } : {};
+      const filed = moveNote(t, manifest, moved, capture);
       const kept = Object.entries(stays);
       const [first] = kept;
       if (first) {
@@ -689,22 +696,11 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
             date: date ? formatDate(date) : first[1],
           }),
           danger: false,
-          ...undo,
+          ...(filed?.undo ? { undo: filed.undo } : {}),
         });
         return;
       }
-      if (moved.length > 1) {
-        const date = capture ? manifest?.captures.find((c) => c.id === capture)?.date : undefined;
-        setNote({
-          text: date
-            ? t('tree.dates.move.done', { count: moved.length, date: formatDate(date) })
-            : t('tree.dates.move.doneNone', { count: moved.length }),
-          danger: false,
-          undo: { moved, target: capture },
-        });
-        return;
-      }
-      setNote(null);
+      setNote(filed);
     });
   };
 

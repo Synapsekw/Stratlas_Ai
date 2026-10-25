@@ -4,6 +4,8 @@ import { formatDate, useT } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useState } from 'react';
 import { bridge } from '../shell';
+import { announceDateMove } from '../shell/dateMoveNote';
+import { priorCaptures } from '../shell/dateUndo';
 
 /**
  * The survey date layers belong to (M8, `Layer.capture`): wins over the date in their names
@@ -238,8 +240,16 @@ export function SurveyDateSelect({
 
   /** File the layers under `capture`, then remove the dates made here that are left empty. */
   const fileUnder = async (capture: string | null, made: readonly string[] = []) => {
+    // the Selection card (nothing tidied) leaves the same "Moved ... / Undo" note as a drag
+    const moved = tidy
+      ? []
+      : priorCaptures(
+          { layers: mine.filter((l) => (l.capture ?? null) !== capture) },
+          mine.filter((l) => (l.capture ?? null) !== capture).map((l) => l.id),
+        );
     const err = await setLayersCapture(layerIds, capture);
     if (err) return err;
+    announceDateMove(moved, capture);
     if (!tidy) return null;
     for (const id of new Set([...tidy, ...made])) {
       if (id === capture) continue;

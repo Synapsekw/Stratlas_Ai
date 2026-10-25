@@ -41,11 +41,12 @@ export type MenuTarget =
   /** The Issues and Drafts rows of the Annotations group (they carry no layer). */
   | { kind: 'annotations'; row: 'issues' | 'drafts' };
 
-export type ActionSection = 'open' | 'view' | 'edit' | 'compare' | 'file' | 'danger';
+export type ActionSection = 'open' | 'view' | 'edit' | 'date' | 'compare' | 'file' | 'danger';
 export const SECTION_ORDER: readonly ActionSection[] = [
   'open',
   'view',
   'edit',
+  'date',
   'compare',
   'file',
   'danger',

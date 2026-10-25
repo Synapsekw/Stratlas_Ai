@@ -339,7 +339,9 @@ test.describe('survey date folders', () => {
       win.getByTestId('date-name-nov'),
     );
     await expect(nov.getByTestId('tree-row-design')).toBeVisible();
-    await expect(win.getByTestId('date-note')).toHaveCount(0);
+    // one dataset leaves the same note and Undo as a group
+    await expect(win.getByTestId('date-note')).toContainText('Moved');
+    await expect(win.getByTestId('date-undo')).toBeVisible();
     const before = await captureOf();
     expect(before).toMatchObject({ 'site-nov': 'nov', design: 'nov' });
 
@@ -388,11 +390,12 @@ test.describe('survey date folders', () => {
     expect(await captureOf()).toEqual(before);
     expect(await dataHashes(dataRoot, id)).toEqual(files);
 
-    // a single dataset still drags on its own, with no note
+    // a single dataset drags on its own, and says where it went, with Undo
     await dragOntoClear(nov.getByTestId('tree-row-quad-nov'), win.getByTestId('date-name-oct'));
     await expect(oct.getByTestId('tree-row-quad-nov')).toBeVisible();
     expect((await captureOf())['quad-nov']).toBe('oct');
-    await expect(win.getByTestId('date-note')).toHaveCount(0);
+    await expect(win.getByTestId('date-note')).toContainText('Moved');
+    await expect(win.getByTestId('date-undo')).toBeVisible();
   });
 
   test('Move to date on a group header moves the whole group', async ({

@@ -124,6 +124,11 @@ describe('dataset actions', () => {
       (i) => i.id === 'layer.moveToDate',
     );
     expect(move?.present).toBe('inline');
+    // its own group: never glued to Rename above or Compare with another date below
+    expect(move?.section).toBe('date');
+    const order = items(['v']).map((i) => i.id);
+    expect(order.indexOf('layer.moveToDate')).toBeGreaterThan(order.indexOf('layer.rename'));
+    expect(order.indexOf('layer.moveToDate')).toBeLessThan(order.indexOf('layer.compare'));
     expect(move?.sub.map((s) => [s.testId, Boolean(s.disabled)])).toEqual([
       ['move-to-every', false],
       ['move-to-oct', true],

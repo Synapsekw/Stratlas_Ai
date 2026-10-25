@@ -201,7 +201,7 @@ export function registerLayerActions(): () => void {
     defineAction<'layers' | 'group'>({
       id: 'layer.moveToDate',
       label: 'tree.dates.move.fileUnder',
-      section: 'edit',
+      section: 'date',
       targets: ['layers', 'group'],
       multi: true,
       present: 'inline',
