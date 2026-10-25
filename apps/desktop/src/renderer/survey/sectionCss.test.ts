@@ -19,7 +19,7 @@ const container = (query: string) => {
 
 describe('the larger section window over a narrow stage (472 px with both sidebars open)', () => {
   it('lays itself out by its own width, not the window', () => {
-    expect(rule('.sec-window')).toMatch(/container-type: inline-size/);
+    expect(rule('.sec-window')).toMatch(/container-type: size/);
   });
 
   it('below 640 px the controls stack above a chart of the full width, the pins below', () => {

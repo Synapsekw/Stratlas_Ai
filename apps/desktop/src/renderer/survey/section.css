@@ -33,9 +33,10 @@
   gap: var(--sp-3);
   min-width: 0;
 }
-/* the chart is the shared profile chart (charts/charts.css); the window gives it the room left */
+/* the chart is the shared profile chart (charts/charts.css); the window gives it the room its
+   title, chips and footer leave (cqh: the window is its size container) */
 .sec-body.big .pc-plot {
-  block-size: clamp(140px, calc(40vh - 170px), 420px);
+  block-size: clamp(120px, calc(100cqh - 120px), 420px);
 }
 .sec-empty {
   display: grid;
@@ -76,8 +77,8 @@
    marker on it stay in sight beside and above it and the views stay usable. The title and the
    export buttons stay in view; the body between them scrolls. */
 .sec-window {
-  /* laid out by its own width: the stage narrows as the sidebars open */
-  container-type: inline-size;
+  /* laid out by its own size: the stage narrows as the sidebars open */
+  container-type: size;
   position: absolute;
   inset-inline-start: var(--sp-4);
   inset-block-end: var(--sp-4);
@@ -117,6 +118,10 @@
 @container (max-width: 640px) {
   .sec-body.big {
     grid-template-columns: minmax(0, 1fr);
+  }
+  /* stacked, the chart comes first, in view as the window opens */
+  .sec-body.big .sec-main {
+    order: -1;
   }
 }
 
