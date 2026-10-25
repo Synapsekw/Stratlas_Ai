@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { buildModel, buildPage, inline, scriptJson } from './build.mjs';
+import { buildModel, buildPage, contentJson, inline, scriptJson } from './build.mjs';
 
 const config = {
   source: 'docs/TESTING.md',
@@ -237,5 +237,37 @@ Draft lines.
     expect(new Set(lines(model).map((i) => i.id)).size).toBe(flat.length);
     expect(model.stages.map((v) => v.short)).toEqual(['SETUP', 'SURVEY', 'APP']);
     expect(model.stages[0].groups[0].title).toBe('Project packages');
+  });
+
+  it('keeps plain text and sub-step text only when asked', () => {
+    const plain = lines(buildModel(doc, config));
+    expect(plain.every((i) => !('plain' in i) && !('subPlain' in i))).toBe(true);
+    const kept = lines(buildModel(doc, config, '', '', { keepPlain: true }));
+    expect(kept.map((i) => i.id)).toEqual(plain.map((i) => i.id));
+    expect(kept.every((i) => typeof i.plain === 'string' && Array.isArray(i.subPlain))).toBe(true);
+    expect(kept[1].subPlain).toEqual(['the camera stays still']);
+    expect(kept[1].plain).toContain('the profile appears');
+  });
+
+  it('writes the content format with testers and every line once', () => {
+    const model = buildModel(doc, config, '', '', { keepPlain: true });
+    const out = contentJson(model, new Date('2026-10-25T10:00:00Z'));
+    expect(out.format).toBe('quadrion-test-content/1');
+    expect(out.builtAt).toBe('2026-10-25T10:00:00.000Z');
+    expect(out.testers).toEqual(config.testers);
+    expect(Object.keys(out)).toEqual([
+      'format',
+      'builtAt',
+      'title',
+      'source',
+      'owner',
+      'unit',
+      'guide',
+      'testers',
+      'stages',
+    ]);
+    const ids = out.stages.flatMap((s) => s.groups.flatMap((g) => g.items.map((i) => i.id)));
+    expect(ids).toHaveLength(3);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });

@@ -224,6 +224,40 @@ test('Report a problem saves problem.md in the bundle and shows where it is', as
   await expect(dialog).toBeHidden();
 });
 
+test('Send to Quadrion opens the portal report form with the build and screen', async ({
+  app,
+  win,
+}) => {
+  await app.evaluate(({ shell }) => {
+    const seen = globalThis as { __e2eOpened?: string[] };
+    seen.__e2eOpened = [];
+    shell.openExternal = (url: string) => {
+      seen.__e2eOpened?.push(url);
+      return Promise.resolve();
+    };
+  });
+  await win.keyboard.press('Control+K');
+  await expect(win.getByRole('dialog', { name: 'Command search' })).toBeVisible();
+  await win.keyboard.type('Report a problem');
+  await win.keyboard.press('Enter');
+  const dialog = win.getByTestId('report-problem');
+  await expect(dialog).toBeVisible();
+
+  await dialog.getByTestId('problem-send').click();
+  await expect
+    .poll(() =>
+      app.evaluate(() => (globalThis as { __e2eOpened?: string[] }).__e2eOpened?.length ?? 0),
+    )
+    .toBe(1);
+  const urls = await app.evaluate(
+    () => (globalThis as { __e2eOpened?: string[] }).__e2eOpened ?? [],
+  );
+  expect(urls[0]).toMatch(
+    /^https:\/\/quadrion\.ai\/portal\/report\/\?build=[^&]+&screen=[a-z:-]+$/,
+  );
+  await expect(dialog).toBeVisible();
+});
+
 /** Run a script in the app window through main (works after the window was reloaded). */
 function inWindow(app: ElectronApplication, script: string): Promise<string> {
   return app.evaluate(async ({ BrowserWindow }, js) => {

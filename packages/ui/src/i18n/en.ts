@@ -1410,6 +1410,9 @@ export const en = {
   'diag.problem.steps': 'Steps to make it happen again',
   'diag.problem.stepsHint': '1. Open the project  2. Switch to Map  3. ...',
   'diag.problem.save': 'Save report',
+  'diag.problem.send': 'Send to Quadrion',
+  'diag.problem.sendHelp':
+    'Opens the report form on quadrion.ai in your browser. Save the report first to attach its file.',
   'diag.problem.cancel': 'Cancel',
   'diag.problem.done': 'Done',
   'diag.problem.needWhat': 'Write a sentence about what happened first.',

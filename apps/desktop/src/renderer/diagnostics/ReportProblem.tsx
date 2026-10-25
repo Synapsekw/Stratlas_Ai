@@ -1,7 +1,9 @@
 import { Icon, t, useFocusTrap } from '@aio/ui';
 import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
-import { bridge } from '../shell';
+import { build } from '../buildStamp';
+import { bridge, shell } from '../shell';
 import './diagnostics.css';
+import { portalReportUrl, screenId } from './portalReport';
 import { SavedPath } from './SavedPath';
 import { diagnostics, saveDiagnostics, useDiagnostics } from './state';
 
@@ -84,6 +86,7 @@ export function ReportProblemDialog() {
           </div>
           <div className="dlg-b">
             <p className="help diag-flush">{t('diag.problem.intro')}</p>
+            <p className="help diag-flush">{t('diag.problem.sendHelp')}</p>
             <label className="diag-field">
               <span>{t('diag.problem.what')}</span>
               <textarea
@@ -128,6 +131,20 @@ export function ReportProblemDialog() {
             )}
           </div>
           <div className="dlg-f">
+            <button
+              type="button"
+              className="btn ghost"
+              data-testid="problem-send"
+              onClick={() => {
+                window.open(
+                  portalReportUrl(build.version, screenId(shell.getState())),
+                  '_blank',
+                  'noopener',
+                );
+              }}
+            >
+              {t('diag.problem.send')}
+            </button>
             <span className="grow" />
             {saved ? (
               <button type="button" className="btn primary" onClick={close}>
