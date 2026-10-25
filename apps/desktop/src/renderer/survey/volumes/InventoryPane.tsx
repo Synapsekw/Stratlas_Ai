@@ -32,7 +32,7 @@ import { useTimelapsePlaying } from '../../workspace/dates/timelapse';
 import { useTimeline } from '../../workspace/timeline';
 import { notCountedReason } from '../BulkTotals';
 import { BASES, baseIdOf } from '../card/baseNames';
-import { computeSeries, useCompare } from '../compareStore';
+import { computeSeries, hasCarried, neighboursKey, useCompare } from '../compareStore';
 import { captureInFocus } from '../measureRows';
 import { startTool, useMeasure } from '../measureStore';
 import { massParts, volumeParts } from '../pile/PileHeader';
@@ -45,9 +45,14 @@ import './volumes.css';
 /** The stockpile job file the pile detection runs from (written by the new project wizard). */
 export const PILE_JOB = 'volumetric/job.json';
 
-/** What a pile's dates were last worked out for: its edits and its comparisons. */
+/**
+ * What a pile's dates were last worked out for: its edits, its comparisons, whether it still holds
+ * a carried kit figure (a carried pile has no dates to work out; the app's quiet acceptance changes
+ * nothing else, so without this its dates were never worked out) and the piles next to it (an edge
+ * shared with one is left out of its base).
+ */
 const stampOf = (m: SurveyMeasurement) =>
-  `${m.updatedAt ?? m.createdAt}|${JSON.stringify(m.items)}|${String(m.points.length)}`;
+  `${m.updatedAt ?? m.createdAt}|${JSON.stringify(m.items)}|${String(m.points.length)}|${String(hasCarried(m))}|${neighboursKey(m)}`;
 
 /**
  * Each pile's volume per survey date, worked out while the Volumes tab shows (carried piles keep

@@ -41,7 +41,10 @@ const calls = vi.hoisted(() => ({
 // which figures the fingerprint checks call stale: stored ones and per-date ones, by pile id
 const stale = vi.hoisted(() => ({ stored: new Set<string>(), series: new Set<string>() }));
 const job = vi.hoisted(() => ({ exists: true }));
+// what the piles next to each pile look like (`neighboursKey`), the same for every pile here
+const neighbours = vi.hoisted(() => ({ key: '' }));
 vi.mock('../compareStore', () => ({
+  neighboursKey: () => neighbours.key,
   useCompare: (sel: (x: unknown) => unknown) => sel(s.compare),
   isStale: (_s: unknown, m: { id: string }) => stale.stored.has(m.id),
   seriesStale: (m: { id: string }) => stale.series.has(m.id),
@@ -573,6 +576,44 @@ describe('the piles worked out per date', () => {
     render();
     await flush();
     expect(calls.computeSeries.mock.calls.map((c) => c[0])).toEqual(['a', 'b']);
+  });
+
+  it('works a pile out again once its carried kit figure is accepted', async () => {
+    // the app's own acceptance swaps the figures and drops the carried dates, as a migration: the
+    // pile's edit time, items and points stay as they were
+    const kit = {
+      item: 'a',
+      status: 'ok',
+      netM3: 10,
+      carried: { from: 'kit', base: 'tin', pile: 'P01', epoch: 'e2' },
+    } as unknown as ComparisonResult;
+    s.measure.file.measurements = [pile('a', { results: [kit], series: [kit] })];
+    render();
+    await flush();
+    expect(calls.computeSeries.mock.calls.map((c) => c[0])).toEqual(['a']);
+    calls.computeSeries.mockClear();
+    const accepted: ComparisonResult = { ...kit };
+    delete accepted.carried;
+    s.measure.file = { measurements: [pile('a', { results: [accepted] })] };
+    render();
+    await flush();
+    expect(calls.computeSeries.mock.calls.map((c) => c[0])).toEqual(['a']);
+  });
+
+  it('works a pile out again when a pile next to it changes', async () => {
+    neighbours.key = 'one';
+    s.measure.file.measurements = [pile('a')];
+    render();
+    await flush();
+    calls.computeSeries.mockClear();
+    render();
+    await flush();
+    expect(calls.computeSeries).not.toHaveBeenCalled();
+    neighbours.key = 'two';
+    s.measure.file = { measurements: [pile('a')] };
+    render();
+    await flush();
+    expect(calls.computeSeries.mock.calls.map((c) => c[0])).toEqual(['a']);
   });
 
   it('keeps working them out on the other panes', async () => {
