@@ -7,6 +7,8 @@
 //
 //   node tools/test-board/build.mjs                        the tool's own defaults
 //   node tools/test-board/build.mjs --private <folder>     with a private folder
+//   node tools/test-board/build.mjs --json                 also dist/test-content.json, the file the
+//                                                          website's "Upload test content" takes
 //
 // Both write tools/test-board/dist (git-ignored). The private folder holds what must stay out of
 // the repository: who tests, the verticals with their client projects, the setup steps and
@@ -81,7 +83,13 @@ function stagesOf(doc, config) {
       for (const g of s.groups) {
         const items = g.items
           .filter((i) => i.kind === 'check')
-          .map((i) => ({ id: i.id, html: inline(i.md), sub: i.sub.map(inline), plain: i.plain }));
+          .map((i) => ({
+            id: i.id,
+            html: inline(i.md),
+            sub: i.sub.map(inline),
+            plain: i.plain,
+            subPlain: i.sub,
+          }));
         if (items.length) groups.push({ title: g.title, notes: notes(g), items });
         else intro += (g.title ? `<h4>${inline(g.title)}</h4>` : '') + notes(g);
       }
@@ -152,7 +160,13 @@ function byVertical(stages, config) {
  * setup document (what a tester does once before the first line) comes first; an extra document
  * (lines the testing document does not have yet) comes last.
  */
-export function buildModel(text, config, setupText = '', extraText = '') {
+export function buildModel(
+  text,
+  config,
+  setupText = '',
+  extraText = '',
+  { keepPlain = false } = {},
+) {
   const doc = parseDoc(text, 'testing', 'testing');
   const guide = doc.sections.find((s) => s.title === config.guide);
   let stages = [
@@ -169,7 +183,14 @@ export function buildModel(text, config, setupText = '', extraText = '') {
   // sort is stable: stages the order does not name keep the document's order, after the named ones
   stages.sort((a, b) => rank(a) - rank(b));
   if (config.verticals) stages = byVertical(stages, config);
-  for (const s of stages) for (const g of s.groups) for (const i of g.items) delete i.plain;
+  // the plain text and the sub-steps' markdown only go out when asked (the portal's content JSON)
+  if (!keepPlain)
+    for (const s of stages)
+      for (const g of s.groups)
+        for (const i of g.items) {
+          delete i.plain;
+          delete i.subPlain;
+        }
 
   return {
     title: config.title,
@@ -181,6 +202,24 @@ export function buildModel(text, config, setupText = '', extraText = '') {
     stages,
   };
 }
+
+/** The model as the portal's test content file (format quadrion-test-content/1). */
+export function contentJson(model, now) {
+  return {
+    format: 'quadrion-test-content/1',
+    builtAt: now.toISOString(),
+    title: model.title,
+    source: model.source,
+    owner: model.owner,
+    unit: model.unit,
+    guide: model.guide,
+    testers: model.testers,
+    stages: model.stages,
+  };
+}
+
+const countLines = (model) =>
+  model.stages.reduce((n, st) => n + st.groups.reduce((m, g) => m + g.items.length, 0), 0);
 
 /** JSON that is safe inside a <script> element. */
 export const scriptJson = (value) =>
@@ -232,10 +271,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     join(here, 'dist', 'Quadrion-Test-Run.html'),
     `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0}[hidden]{display:none!important}</style></head><body>${html}</body></html>`,
   );
-  const lines = model.stages.reduce(
-    (n, st) => n + st.groups.reduce((m, g) => m + g.items.length, 0),
-    0,
-  );
+  if (process.argv.includes('--json')) {
+    const full = buildModel(text, config, read('setup'), read('extra'), { keepPlain: true });
+    const file = join(here, 'dist', 'test-content.json');
+    writeFileSync(file, `${JSON.stringify(contentJson(full, new Date()), null, 2)}\n`);
+    console.log(`${countLines(full)} lines: ${file}`);
+  }
+  const lines = countLines(model);
   for (const st of model.stages) {
     const n = st.groups.reduce((m, g) => m + g.items.length, 0);
     console.log(`  ${st.short.padEnd(8)} ${String(n).padStart(4)}  ${st.name}`);
