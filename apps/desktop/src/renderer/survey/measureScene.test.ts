@@ -861,3 +861,46 @@ describe('piles follow the date in focus and the Show control', () => {
     s.detach();
   });
 });
+
+describe('3D pile labels keep apart (bug 5)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('nudges the smaller pile label up when two piles share a place, the larger one stays', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const label = this.classList.contains('sv-label');
+      const [w, h] = label ? [80, 20] : [400, 400];
+      return { x: 0, y: 0, left: 0, top: 0, right: w, bottom: h, width: w, height: h } as DOMRect;
+    });
+    const s = scene();
+    const local = frameOf({
+      origin: [100, 200, 300],
+      crs: { wkt: 'LOCAL_CS["Synthetic"]' },
+    }).toLocal([105, 205, 300]);
+    s.stage.camera.position.set(local[0], local[1], local[2] + 50);
+    s.stage.camera.updateMatrixWorld();
+    const small: SurveyMeasurement = {
+      ...stockpile(),
+      id: 'small',
+      label: 'Pile 02',
+      results: [figure(300, 'c2')],
+      series: [figure(300, 'c2')],
+    };
+    measureStore.setState({
+      file: { schema: 'aio.measurements/1', measurements: [small, stockpile()] },
+    });
+    s.render();
+    const at = (id: string) => {
+      const el = document.querySelector<HTMLElement>(`.sv-label[data-id="${id}"]`);
+      const m = /translate\((-?\d+)px, (-?\d+)px\)/.exec(el?.style.transform ?? '');
+      return { y: Number(m?.[2]), hidden: el?.style.visibility === 'hidden' };
+    };
+    expect(at('pile').hidden).toBe(false);
+    expect(at('small').hidden).toBe(false);
+    expect(at('pile').y - at('small').y).toBe(24);
+    s.detach();
+  });
+});

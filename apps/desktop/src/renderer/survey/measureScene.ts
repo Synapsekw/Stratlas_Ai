@@ -77,6 +77,7 @@ import {
 import { fallbackZ, type MapHeights } from './mapHeights';
 import { mapPickLayer, type VertexPick } from './measureSource';
 import { materialOf, materialsDraft } from './volumes/materialsDraft';
+import { declutter, type LabelBox } from './labelDeclutter';
 
 const DRAFT_COLOR = '#4cc9f0';
 const SNAP_COLOR = '#ff5ccd';
@@ -114,6 +115,8 @@ interface Shape {
   outline: boolean;
   label: string | null;
   labelSize: number;
+  /** Which label gives way when two collide in 3D: a pile's volume on the date in focus. */
+  weight: number;
   tool: SurveyMeasurement['tool'];
 }
 
@@ -202,8 +205,15 @@ export function shapesOf(
       selected,
       label,
       labelSize: style?.labelSize ?? 12,
+      weight: label && pile ? pileWeight(m, capture) : 0,
     };
   });
+}
+
+/** A pile's size for its label's place among close labels: its volume figure, as an amount. */
+function pileWeight(m: SurveyMeasurement, capture: string | undefined): number {
+  const row = primaryRow(m, capture !== undefined ? { capture } : {});
+  return Math.abs(row?.value ?? 0);
 }
 
 /** A stockpile as the Show control's Outlines and Labels see it: a volume polygon. */
@@ -758,6 +768,9 @@ export function attach3d(
   };
 
   // -------------------------------------------------- labels
+  // the pointer over the view, in the labels' coordinates: a hidden label shows under it
+  let pointer: { x: number; y: number } | null = null;
+  const labelSizes = new WeakMap<HTMLElement, { key: string; w: number; h: number }>();
   const placeLabels = () => {
     const want = shapes.filter((s) => s.label);
     while (labels.children.length > want.length) labels.lastChild?.remove();
@@ -768,6 +781,9 @@ export function attach3d(
     }
     const r = canvas.getBoundingClientRect();
     const hr = host.getBoundingClientRect();
+    // a label's size is read from the page only when its text, font size or the view changes
+    const view = `${String(r.width)}x${String(r.height)}`;
+    const boxes: (LabelBox & { el: HTMLElement })[] = [];
     want.forEach((sh, i) => {
       const el = labels.children[i] as HTMLElement;
       const anchor = anchorOf(sh.points, sh.closed);
@@ -781,9 +797,44 @@ export function attach3d(
         return;
       }
       el.style.display = '';
-      el.style.transform = `translate(${String(Math.round(p.x - hr.left))}px, ${String(Math.round(p.y - hr.top))}px)`;
+      const x = Math.round(p.x - hr.left);
+      const y = Math.round(p.y - hr.top);
+      const key = `${view}|${String(sh.labelSize)}|${sh.label ?? ''}`;
+      let size = labelSizes.get(el);
+      if (size?.key !== key) {
+        const b = el.getBoundingClientRect();
+        size = { key, w: b.width, h: b.height };
+        labelSizes.set(el, size);
+      }
+      boxes.push({
+        el,
+        id: sh.id,
+        x,
+        y,
+        w: size.w,
+        h: size.h,
+        selected: sh.selected,
+        weight: sh.weight,
+      });
     });
+    // close piles: the larger keeps its label in place, the next moves up, the rest wait for hover
+    const placed = declutter(boxes, pointer);
+    for (const b of boxes) {
+      const at = placed.get(b.id);
+      b.el.style.visibility = at?.hidden === true ? 'hidden' : '';
+      b.el.style.transform = `translate(${String(b.x)}px, ${String(b.y + (at?.dy ?? 0))}px)`;
+    }
   };
+  const onHover = (e: PointerEvent) => {
+    const hr = host.getBoundingClientRect();
+    // the label's CSS margin puts it 24 px above and 6 px right of its anchor
+    pointer = { x: e.clientX - hr.left - 6, y: e.clientY - hr.top + 24 };
+  };
+  const onLeave = () => {
+    pointer = null;
+  };
+  canvas.addEventListener('pointermove', onHover, { passive: true });
+  canvas.addEventListener('pointerleave', onLeave);
   const offFrame = stage.onFrame(() => {
     const s = measureStore.getState();
     if (!display && stage.tool !== 'select' && (s.draw || s.editing)) {
@@ -969,6 +1020,8 @@ export function attach3d(
     if (dragging) stage.controls.enabled = true;
     disposeGroup();
     stage.scene.remove(group);
+    canvas.removeEventListener('pointermove', onHover);
+    canvas.removeEventListener('pointerleave', onLeave);
     labels.remove();
     stage.requestRender();
   };
