@@ -26,6 +26,7 @@ Object.assign(strings, {
   'vreport.piles.after': 'After, {date}',
   'vreport.piles.less': '{volume} less',
   'vreport.piles.more': '{volume} more',
+  'vreport.piles.base': 'Base',
 });
 
 function data(): ViewerData {
@@ -64,6 +65,7 @@ function data(): ViewerData {
         crop: { x: 50, y: 0, size: 100 },
         areaM2: 400,
         peakM: 5.5,
+        base: 'Triangulated toe',
         note: 'Wet',
         byDate: [
           { capture: 'c1', m3: 1000, t: 1600 },
@@ -79,6 +81,7 @@ function data(): ViewerData {
         crop: { x: 450, y: 200, size: 100 },
         areaM2: 300,
         peakM: 4,
+        base: 'Previous survey',
         note: null,
         byDate: [
           { capture: 'c1', m3: 3000, t: null },
@@ -190,6 +193,11 @@ describe('volumetric interactive viewer', () => {
     expect(marker.getAttribute('aria-pressed')).toBe('true');
     expect(q('.vr-d-card h2').textContent).toContain('Gravel');
     expect(q('.vr-d-card .vr-d-chip').textContent).toBe('1,500 m³ less');
+    const facts = [...document.querySelectorAll('.vr-d-facts > div')].map((r) => [
+      r.querySelector('dt')?.textContent,
+      r.querySelector('dd')?.textContent,
+    ]);
+    expect(facts).toContainEqual(['Base', 'Previous survey']);
     const crops = document.querySelectorAll<HTMLElement>('.vr-d-crop-img');
     expect(crops).toHaveLength(2);
     const [before, after] = [...crops];

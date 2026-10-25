@@ -122,6 +122,7 @@ function RankedTable({
       <thead>
         <tr>
           <th className="vr-col-pile">{t('vreport.table.pile')}</th>
+          <th className="vr-col-base">{t('vreport.table.base')}</th>
           {compared ? <th className="vr-col-n">{t('vreport.table.previous')}</th> : null}
           <th className="vr-col-n">{t('vreport.table.latest')}</th>
           <th className="vr-col-n">{t('vreport.table.tonnes')}</th>
@@ -140,6 +141,7 @@ function RankedTable({
                 <span className="vr-num">{p.tag}</span>
                 <span className="vr-pile-name">{p.label}</span>
               </td>
+              <td className="vr-col-base">{p.base}</td>
               {compared ? (
                 <td className="vr-col-n">{p.previousM3 !== null ? num(p.previousM3) : ''}</td>
               ) : null}

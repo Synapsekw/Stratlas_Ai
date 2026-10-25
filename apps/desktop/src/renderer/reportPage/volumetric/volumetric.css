@@ -399,6 +399,11 @@
   padding-left: 0;
   text-align: left;
 }
+.vr-table .vr-col-base {
+  color: var(--vr-ink-2);
+  text-align: left;
+  white-space: nowrap;
+}
 td.vr-col-n,
 .vr-change {
   font-family: var(--vr-f-mono);

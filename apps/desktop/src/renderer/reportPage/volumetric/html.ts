@@ -228,6 +228,7 @@ function viewerDataOf(prepared: VolumetricPrepared, want: (w: Wanted) => string)
     crop: p.crop,
     areaM2: p.areaM2,
     peakM: p.peakM,
+    base: p.base,
     note: p.note,
     byDate: p.byDate
       .filter((d) => shownIds.has(d.capture))

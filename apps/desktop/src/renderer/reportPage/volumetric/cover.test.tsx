@@ -154,7 +154,7 @@ describe('page A, the cover and summary', () => {
     const d = render(one);
     expect(d.querySelector('.vr-kpi-change')).toBeNull();
     expect(text(d, '.vr-title-meta')).not.toContain('Compared with');
-    expect(d.querySelectorAll('.vr-table thead th')).toHaveLength(4);
+    expect(d.querySelectorAll('.vr-table thead th')).toHaveLength(5);
   });
 
   it('says it in short, the generated sentence unless the person wrote one, then the intro', () => {
@@ -189,6 +189,18 @@ describe('page A, the cover and summary', () => {
     expect(bar(rows[2])?.style.width).toBe(`${String((900 / 1400) * 50)}%`);
     expect(rows[2]?.querySelector('.vr-change')?.textContent).toBe('+900');
     expect(rows[11]?.querySelector('.vr-change')?.textContent).toBe('−1,200');
+  });
+
+  it("names each pile's base by its picker name in the table", () => {
+    const own = piles(true).map((p, i) => (i === 0 ? { ...p, base: 'Previous survey' } : p));
+    const d = render(volumetricModel(input({ piles: own })));
+    const head = [...d.querySelectorAll('.vr-table thead th')].map((th) => th.textContent);
+    expect(head[1]).toBe(t('vreport.table.base'));
+    const rows = [...d.querySelectorAll('.vr-table tbody tr')];
+    expect(rows[0]?.querySelector('.vr-col-base')?.textContent).toBe('Previous survey');
+    expect(rows[1]?.querySelector('.vr-col-base')?.textContent).toBe('Lowest point on the outline');
+    // mixed bases: the method note points at the table
+    expect(text(d, '.vr-method')).toContain(t('vreport.method.basePerPile'));
   });
 
   it('prints the method note and the footer with the page number', () => {

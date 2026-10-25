@@ -30,6 +30,16 @@ test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`
 const PILES = ['Stockpile SP1', 'Stockpile SP2', 'Stockpile SP3'] as const;
 /** The planned page count for three piles: A, B and C on one page each. */
 const PAGES = 3;
+/** The base picker's names (`base.*` in en.ts), and a survey or design side's. */
+const BASE_NAMES = [
+  'Triangulated toe',
+  'Lowest point',
+  'Best-fit plane',
+  'Fixed level',
+  'Average edge level',
+  'Previous survey',
+  'Custom',
+];
 const HTML_BUDGET = 15 * 1024 * 1024;
 
 /** The first figure of a text the app shows ("1,234.5 m³", "−56.7"), signed; NaN for none. */
@@ -167,6 +177,7 @@ test('the volumetric report shows the Volumes tab figures, prints them to PDF an
   await expect(table.locator('tbody tr')).toHaveCount(listed.length, { timeout: 120_000 });
   await expect(table.locator('thead th')).toHaveText([
     'Pile',
+    'Base',
     'Previous m³',
     'Latest m³',
     'Latest t',
@@ -181,19 +192,21 @@ test('the volumetric report shows the Volumes tab figures, prints them to PDF an
   );
   expect(shown.map((r) => r.label).sort()).toEqual(listed);
   // sorted by latest volume, largest first
-  const latestShown = shown.map((r) => figure(r.cells[2] ?? ''));
+  const latestShown = shown.map((r) => figure(r.cells[3] ?? ''));
   expect(latestShown).toEqual([...latestShown].sort((a, b) => b - a));
   let stock = 0;
   let change = 0;
   for (const r of shown) {
     const app = { now: latest[r.label], before: previous[r.label] };
     if (!app.now || !app.before) throw new Error(`no inventory row for ${r.label}`);
-    same(figure(r.cells[1] ?? ''), app.before.volume, `${r.label} previous m³`);
-    same(figure(r.cells[2] ?? ''), app.now.volume, `${r.label} latest m³`);
+    // each pile's base by the base picker's name
+    expect(BASE_NAMES, `${r.label} base`).toContain(r.cells[1] ?? '');
+    same(figure(r.cells[2] ?? ''), app.before.volume, `${r.label} previous m³`);
+    same(figure(r.cells[3] ?? ''), app.now.volume, `${r.label} latest m³`);
     if (Number.isFinite(app.now.tonnes))
-      same(figure(r.cells[3] ?? ''), app.now.tonnes, `${r.label} latest t`);
-    else expect(r.cells[3] ?? '', `${r.label} has no tonnes`).toBe('');
-    same(figure(r.cells[5] ?? ''), app.now.volume - app.before.volume, `${r.label} change m³`);
+      same(figure(r.cells[4] ?? ''), app.now.tonnes, `${r.label} latest t`);
+    else expect(r.cells[4] ?? '', `${r.label} has no tonnes`).toBe('');
+    same(figure(r.cells[6] ?? ''), app.now.volume - app.before.volume, `${r.label} change m³`);
     stock += app.now.volume;
     change += app.now.volume - app.before.volume;
   }
@@ -212,6 +225,14 @@ test('the volumetric report shows the Volumes tab figures, prints them to PDF an
     `change ${String(kpiChange)} against ${String(change)}`,
   ).toBeLessThanOrEqual(1);
   await expect(preview.locator('.vr-kpi').nth(1)).toContainText(/28 Feb/);
+  // the method note states the one base every pile shares, else points at the table
+  const bases = [...new Set(shown.map((r) => r.cells[1] ?? ''))];
+  const [onlyBase] = bases;
+  await expect(preview.locator('.vr-method').first()).toContainText(
+    bases.length === 1 && onlyBase !== undefined
+      ? `Base: ${onlyBase}.`
+      : 'Base per pile, see table.',
+  );
 
   // ---- Take pictures: the progress card over the stage, then the preview shows the photo
   const bar = editor.getByTestId('volumetric-pictures');
@@ -252,10 +273,13 @@ test('the volumetric report shows the Volumes tab figures, prints them to PDF an
   expect(page(3)).toContain(flat('Where the ground went up or down'));
   for (const r of shown) {
     expect(page(1), `${r.label} on page A`).toContain(flat(r.label));
-    expect(page(1)).toContain(flat(r.cells[2] ?? '-'));
+    expect(page(1)).toContain(flat(r.cells[1] ?? '-'));
     expect(page(1)).toContain(flat(r.cells[3] ?? '-'));
+    expect(page(1)).toContain(flat(r.cells[4] ?? '-'));
   }
   for (const p of PILES) expect(page(2), `${p} on page B`).toContain(flat(p));
+  // each card names its pile's base
+  for (const b of bases) expect(page(2), `base ${b} on page B`).toContain(flat(b));
 
   // ---- Export HTML: one file under the budget, opened offline
   await editor.getByRole('button', { name: 'Export HTML' }).click();
@@ -282,6 +306,12 @@ test('the volumetric report shows the Volumes tab figures, prints them to PDF an
     await marker.click();
     await expect(marker).toHaveAttribute('aria-pressed', 'true');
     await expect(d.locator('.vr-d-card h2')).toContainText(pile);
+    // the card names the pile's base
+    await expect(
+      d
+        .locator('.vr-d-card .vr-d-facts > div')
+        .filter({ has: d.locator('dt', { hasText: 'Base' }) }),
+    ).toContainText(shown[0]?.cells[1] ?? 'no base');
     // the units toggle shows tonnes
     const totalValue = d.locator('.vr-d-kpi-total .vr-d-kpi-value');
     await expect(totalValue).toContainText('m³');
@@ -322,6 +352,9 @@ test('the volumetric report shows the Volumes tab figures, prints them to PDF an
     await writeFile(join(downloads, csv.name), csvText);
     expect(csvText.split('\n')[0]).toContain('current_volume_m3');
     for (const p of PILES) expect(csvText).toContain(p);
+    // the CSV's base column names each pile's base
+    expect(csvText.split('\n')[0]?.split(',')).toContain('base');
+    for (const b of bases) expect(csvText, `base ${b} in the CSV`).toContain(b);
     // printing the file gives the PDF's pages (the print CSS hides the viewer)
     const printed = join(out, 'printed.pdf');
     await offline.printToPdf(printed);

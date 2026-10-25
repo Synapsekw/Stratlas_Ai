@@ -202,7 +202,7 @@ describe('page B, the pile cards', () => {
     expect(crop?.querySelector('img')).toBeNull();
   });
 
-  it('puts the change chip, tonnes, footprint and peak height on each card', () => {
+  it('puts the change chip, tonnes, footprint, peak height and base on each card', () => {
     const d = render(model);
     const cards = [...d.querySelectorAll('.vr-card')];
     const p1 = model.piles[0];
@@ -216,11 +216,13 @@ describe('page B, the pile cards', () => {
       t('vreport.piles.tonnes'),
       t('vreport.piles.footprint'),
       t('vreport.piles.peak'),
+      t('vreport.piles.base'),
     ]);
     expect(stats.map((s) => text(s, '.vr-stat-value'))).toEqual([
       (p1?.tonnes ?? 0).toLocaleString('en-US', { maximumFractionDigits: 0 }),
       String(Math.round(p1?.areaM2 ?? 0)),
       (p1?.peakM ?? 0).toFixed(1),
+      'Lowest point on the outline',
     ]);
     expect(p3).toBeDefined();
   });

@@ -258,6 +258,12 @@ function Card({
           <dt className="vr-stat-label">{t('vreport.piles.peak')}</dt>
           <dd className="vr-stat-value">{pile.peakM !== null ? pile.peakM.toFixed(1) : ''}</dd>
         </div>
+        <div className="vr-stat vr-stat-base">
+          <dt className="vr-stat-label">{t('vreport.piles.base')}</dt>
+          <dd className="vr-stat-value" title={pile.base}>
+            {pile.base}
+          </dd>
+        </div>
       </dl>
       {note ? <p className="vr-card-note">{note}</p> : null}
     </article>

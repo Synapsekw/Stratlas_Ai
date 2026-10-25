@@ -42,6 +42,7 @@ const STRINGS: Record<string, string> = {
   'vreport.short.oneDate_one': 'Stock on hand is {volume} across {count} pile on {date}.',
   'vreport.short.oneDate_other': 'Stock on hand is {volume} across {count} piles on {date}.',
   'vreport.method.base': 'Base: {base}.',
+  'vreport.method.basePerPile': 'Base per pile, see table.',
   'vreport.method.cell': 'Surface cell size {cell} m.',
   'vreport.method.gsd': 'Orthophoto ground sample distance {gsd} cm.',
   'vreport.method.crs': 'Coordinate system {crs}.',
@@ -391,6 +392,13 @@ describe('methodNote', () => {
     expect(methodNote(m, t)).toBe(
       'Base: Smart base. Coordinate system EPSG:32639. Tonnes at the site-wide density of 1.60 t/m³.',
     );
+  });
+
+  it('says the base per pile when the piles do not share one', () => {
+    const piles = ORDER.map((i) => pile(i, i === 4 ? { base: 'Previous survey' } : {}));
+    const note = methodNote(volumetricModel(input({ piles })), t);
+    expect(note).toContain('Base per pile, see table.');
+    expect(note).not.toContain('Base: ');
   });
 
   it('says there are no tonnes without a density', () => {

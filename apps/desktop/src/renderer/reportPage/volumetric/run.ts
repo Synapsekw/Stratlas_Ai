@@ -36,7 +36,13 @@ import {
   resolveTexts,
 } from '../../report/volumetric/editorModel';
 import { captureDateOf } from '../../survey/volumes/surveyDates';
-import type { ReportSurveyData, SurveyFiles, SurveyReader } from '../house/surveyData';
+import { kitBaseName } from '../../survey/card/baseNames';
+import {
+  standardBaseName,
+  type ReportSurveyData,
+  type SurveyFiles,
+  type SurveyReader,
+} from '../house/surveyData';
 import { reportViews, volumetricTemplate, type ResolvedText, type ReportViews } from '../types';
 import { browserEncoder, volumetricHtmlFile, type PictureEncoder } from './html';
 
@@ -97,6 +103,21 @@ function ringArea(ring: readonly (readonly [number, number])[]): number {
 }
 
 /**
+ * A pile's base by the base picker's name, from its measurement's base spec (the first item's
+ * `from`, as the Volumes view reads it); a figure carried over from the kit is named by the kit
+ * base it was computed on.
+ */
+function baseOf(
+  m: SurveyFiles['measurements'][number],
+  series: ReturnType<typeof pileSeries>['series'],
+): string {
+  const carried = series.find((r) => r.carried)?.carried;
+  if (carried) return kitBaseName(carried.base, t);
+  const it = m.items[0];
+  return it ? standardBaseName(it.from) : '';
+}
+
+/**
  * The model's input from the survey data: every volume measurement with its figures on each
  * date (a stale date has none), on that date's own outline, at its material's density on that date.
  * The footprint and survey error are the stored result's for that date, else the outline's area.
@@ -118,7 +139,7 @@ export function volumetricInputOf(
       id: p.id,
       label: p.label,
       material: p.material ? { id: p.material.id, name: p.material.name } : null,
-      base: p.base,
+      base: m ? baseOf(m, series) : p.base,
       dates: p.rows.map((r) => {
         const outline = p.outlines[r.capture] ?? p.outline;
         const found = series.find((x) => x.toCapture === r.capture);

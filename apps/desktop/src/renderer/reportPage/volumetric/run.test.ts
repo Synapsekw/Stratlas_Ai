@@ -239,6 +239,29 @@ describe("the model's input from the app's figures", () => {
     ).toBe(144);
   });
 
+  it("names each pile's base from its measurement's base spec, by the picker's name", () => {
+    const f = files();
+    const [a, b, c] = f.measurements;
+    if (!a || !b || !c) throw new Error('no measurements');
+    b.items = [{ id: 'i1', from: { kind: 'previous' }, to: { kind: 'current' } } as never];
+    // a figure carried over from the kit is named by the kit base it was computed on
+    c.results = [
+      {
+        item: 'i1',
+        toCapture: 'c2',
+        status: 'ok',
+        netM3: 1,
+        carried: { from: 'kit', base: 'plane', pile: 'p3', epoch: 'c2' },
+      } as unknown as SurveyMeasurement['results'][number],
+    ];
+    const input = volumetricInputOf(f, survey(), { compareWith: null, frame: null });
+    expect(input.piles.map((p) => p.base)).toEqual([
+      t('base.smart'),
+      'Previous survey',
+      t('base.plane'),
+    ]);
+  });
+
   it('leaves out a stale date', () => {
     const s = survey();
     const row = s.volumes.piles[1]?.rows[0];

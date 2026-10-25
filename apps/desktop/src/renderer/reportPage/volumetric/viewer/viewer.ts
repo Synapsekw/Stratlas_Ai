@@ -387,6 +387,7 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
     );
     if (p.areaM2 !== null) fact(s('vreport.piles.footprint'), formatPlain(p.areaM2, 0));
     if (p.peakM !== null) fact(s('vreport.piles.peak'), formatPlain(p.peakM, 1));
+    if (p.base !== '') fact(s('vreport.piles.base'), p.base);
     if (amount !== null && site)
       fact(s('vreport.piles.share'), `${String(Math.round((amount / site) * 100))} %`);
     card.append(facts);

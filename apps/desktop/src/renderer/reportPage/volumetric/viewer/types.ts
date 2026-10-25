@@ -32,6 +32,7 @@ export const VIEWER_STRING_KEYS = [
   'vreport.piles.after',
   'vreport.piles.footprint',
   'vreport.piles.peak',
+  'vreport.piles.base',
   'vreport.piles.share',
   'vreport.piles.note',
   'vreport.piles.less',
@@ -83,6 +84,8 @@ export interface ViewerPile {
   crop: { x: number; y: number; size: number } | null;
   areaM2: number | null;
   peakM: number | null;
+  /** The base in words, as the base picker names it ("Triangulated toe"); empty when unknown. */
+  base: string;
   note: string | null;
   /** Its figures on the shown dates (any order; a missing date counts as no figure). */
   byDate: ViewerPileDate[];

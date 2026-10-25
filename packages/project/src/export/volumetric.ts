@@ -39,7 +39,7 @@ export interface VolumetricPileInput {
   label: string;
   /** Its material (`pileMaterial`; the kit's site-wide one has id `kit`), or null. */
   material: { id: string; name: string } | null;
-  /** The base in words (its standard name). */
+  /** The base in words: the base picker's name ("Triangulated toe", "Previous survey"). */
   base: string;
   dates: VolumetricPileDateInput[];
 }
@@ -420,6 +420,7 @@ export type VolumetricKey =
   | 'vreport.short.end'
   | 'vreport.short.oneDate'
   | 'vreport.method.base'
+  | 'vreport.method.basePerPile'
   | 'vreport.method.cell'
   | 'vreport.method.gsd'
   | 'vreport.method.crs'
@@ -556,14 +557,19 @@ export function inShortSentence(
 const trim = (n: number, decimals: number) => String(Number(n.toFixed(decimals)));
 
 /**
- * The method note: the base (its standard name), the surface cell size, the orthophoto ground
+ * The method note: the base (its picker name when every pile shares it, else "Base per pile, see
+ * table"), the surface cell size, the orthophoto ground
  * sample distance, the CRS and how tonnes were weighed (each pile's material density, the site-wide
  * kit density, or none). A part the project does not know is left out.
  */
 export function methodNote(model: VolumetricModel, t: VolumetricT): string {
   const m = model.method;
   const parts: string[] = [];
-  if (m.bases.length > 0) parts.push(t('vreport.method.base', { base: m.bases.join(', ') }));
+  // one base for every pile is stated; mixed bases are named per pile in the table and cards
+  const [only] = m.bases;
+  if (m.bases.length === 1 && only !== undefined)
+    parts.push(t('vreport.method.base', { base: only }));
+  else if (m.bases.length > 1) parts.push(t('vreport.method.basePerPile'));
   if (m.cellM !== null) parts.push(t('vreport.method.cell', { cell: trim(m.cellM, 3) }));
   if (m.gsdCm !== null) parts.push(t('vreport.method.gsd', { gsd: trim(m.gsdCm, 1) }));
   if (model.project.crs !== '') parts.push(t('vreport.method.crs', { crs: model.project.crs }));

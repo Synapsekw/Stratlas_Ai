@@ -248,7 +248,8 @@
 
 .vr-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* tonnes, footprint and peak are figures; the base is words and takes the wider column */
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.6fr);
   gap: 2mm;
   height: 6.4mm;
   margin: 1.6mm 0 0;
@@ -271,6 +272,13 @@
   font-family: var(--vr-f-mono);
   font-size: 8.5pt;
   line-height: 3mm;
+}
+.vr-stat-base .vr-stat-value {
+  overflow: hidden;
+  font-family: inherit;
+  font-size: 7.5pt;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .vr-card-note {
   height: 3.8mm;
