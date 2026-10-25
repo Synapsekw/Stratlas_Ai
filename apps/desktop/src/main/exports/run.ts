@@ -56,8 +56,8 @@ const SUFFIX: Record<ExportFormat, string> = {
   'measurements-csv': '-measurements.csv',
   'stockpile-csv': '-stockpile-inventory.csv',
   'survey-report-pdf': '-survey-report.pdf',
-  'volumetric-pdf': '-volume-report.pdf',
-  'volumetric-html': '-volume-report.html',
+  'volumetric-pdf': '-volumetric-report.pdf',
+  'volumetric-html': '-volumetric-report.html',
 };
 
 /** Save dialog filter per format. */
@@ -79,14 +79,31 @@ export const EXPORT_FILTERS: Record<ExportFormat, { name: string; extensions: st
   'volumetric-html': { name: 'HTML', extensions: ['html'] },
 };
 
-/** File name offered in the save dialog: the project name made file safe, plus the format. */
-export function defaultExportName(projectName: string, format: ExportFormat): string {
+/** Formats whose file name carries the day of the export (a customer report per survey). */
+const DATED: ReadonlySet<ExportFormat> = new Set(['volumetric-pdf', 'volumetric-html']);
+
+/** The local day as YYYY-MM-DD. */
+const localDay = (d: Date) =>
+  `${String(d.getFullYear())}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/**
+ * File name offered in the save dialog: the project name made file safe, plus the format; the
+ * volumetric report also carries the day of the export (`<project>-volumetric-report-<day>.pdf`).
+ */
+export function defaultExportName(
+  projectName: string,
+  format: ExportFormat,
+  today: Date = new Date(),
+): string {
   const base =
     projectName
       .normalize('NFKD')
       .replace(/[^\p{L}\p{N}]+/gu, '-')
       .replace(/^-+|-+$/g, '') || 'project';
-  return `${base}${SUFFIX[format]}`;
+  const suffix = SUFFIX[format];
+  if (!DATED.has(format)) return `${base}${suffix}`;
+  const dot = suffix.lastIndexOf('.');
+  return `${base}${suffix.slice(0, dot)}-${localDay(today)}${suffix.slice(dot)}`;
 }
 
 class Cancelled extends Error {
@@ -269,6 +286,9 @@ export async function runExport(
     job.format === 'survey-report-pdf'
   ) {
     throw new Error('Survey reports and CSVs are made by the report window, not here.');
+  }
+  if (job.format === 'volumetric-pdf' || job.format === 'volumetric-html') {
+    throw new Error('The volumetric report is made by the report window, not here.');
   }
   const part = `${job.outPath}.part`;
   try {

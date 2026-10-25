@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { sampleIssue, sampleManifest, writeProject } from '../testing';
-import { defaultExportName, runExport, type ExportProgress } from './run';
+import { defaultExportName, EXPORT_FILTERS, runExport, type ExportProgress } from './run';
 
 let dir = '';
 beforeEach(async () => {
@@ -76,6 +76,22 @@ describe('defaultExportName', () => {
     expect(defaultExportName('x', 'kit-json')).toBe('x-assessment.json');
     expect(defaultExportName('x', 'masks-zip')).toBe('x-masks.zip');
     expect(defaultExportName('x', 'report-pdf')).toBe('x-issue-register.pdf');
+  });
+
+  it('dates the volumetric report with the local day of the export', () => {
+    const day = new Date(2026, 0, 5, 23, 59);
+    expect(defaultExportName('Yard 2', 'volumetric-pdf', day)).toBe(
+      'Yard-2-volumetric-report-2026-01-05.pdf',
+    );
+    expect(defaultExportName('Yard 2', 'volumetric-html', day)).toBe(
+      'Yard-2-volumetric-report-2026-01-05.html',
+    );
+    expect(defaultExportName('Yard 2', 'csv', day)).toBe('Yard-2-issues.csv');
+  });
+
+  it('offers a .pdf and an .html filter for the volumetric report', () => {
+    expect(EXPORT_FILTERS['volumetric-pdf']).toEqual({ name: 'PDF', extensions: ['pdf'] });
+    expect(EXPORT_FILTERS['volumetric-html']).toEqual({ name: 'HTML', extensions: ['html'] });
   });
 });
 
@@ -236,5 +252,14 @@ describe('runExport', () => {
     await expect(
       runExport({ root, format: 'report-pdf', outPath: join(dir, 'r.pdf') }),
     ).rejects.toThrow(/window/);
+  });
+
+  it('refuses the volumetric report, which the report window makes', async () => {
+    const root = await project();
+    for (const format of ['volumetric-pdf', 'volumetric-html'] as const)
+      await expect(runExport({ root, format, outPath: join(dir, 'v.out') })).rejects.toThrow(
+        /report window/,
+      );
+    expect(await readdir(dir)).toEqual(['project']);
   });
 });

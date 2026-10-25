@@ -1,4 +1,10 @@
-import type { IpcEvent, IpcRequest, IpcResponse } from '@aio/schema';
+import {
+  isSurfaceSide,
+  type IpcEvent,
+  type IpcRequest,
+  type IpcResponse,
+  type SurveyMeasurement,
+} from '@aio/schema';
 import { join } from 'node:path';
 import type { ReportKind } from './reportWindow';
 import {
@@ -17,7 +23,31 @@ const SURVEY_KIND = {
   'survey-report-pdf': 'survey',
   'measurements-csv': 'measurements-csv',
   'stockpile-csv': 'stockpile-csv',
+  // the volumetric customer report, laid out by the same page (pages A, B, C; one offline HTML)
+  'volumetric-pdf': 'volumetric-pdf',
+  'volumetric-html': 'volumetric-html',
 } as const satisfies Record<string, ReportKind>;
+
+/** Why the volumetric report is refused before the save dialog. */
+export const VOLUMETRIC_NONE =
+  'This project has no stockpile volume measurements. Measure a stockpile volume first, then make the report.';
+
+/**
+ * Does the project have a stockpile volume for the volumetric report: a polygon whose first item
+ * is a base to a survey (not a design), as the report page's `stockpileItem` reads it.
+ */
+export function hasStockpileVolume(measurements: readonly SurveyMeasurement[]): boolean {
+  return measurements.some((m) => {
+    const it = m.items[0];
+    return (
+      m.family === 'polygon' &&
+      it !== undefined &&
+      !isSurfaceSide(it.from) &&
+      isSurfaceSide(it.to) &&
+      it.to.kind !== 'design'
+    );
+  });
+}
 
 /** A temporary project folder for an export (a package's manifest and issues). */
 export interface StagedRoot {
@@ -65,6 +95,10 @@ export interface ExportDeps {
   processingRun?: (projectId: string) => Promise<string | null>;
   /** M11: does the project have saved survey measurements (the survey report and CSVs)? */
   hasSurvey?: (projectId: string) => Promise<boolean>;
+  /** Does the project have a stockpile volume measurement (the volumetric report)? */
+  hasVolumes?: (projectId: string) => Promise<boolean>;
+  /** The clock for dated file names; the system clock when absent. */
+  now?: () => Date;
   /** M9 T1: `audit-csv` and `audit-json` through the journal's audit export. */
   audit?: (
     projectId: string,
@@ -133,12 +167,19 @@ export function createExportJobs(deps: ExportDeps): ExportJobs {
       };
     const survey: ReportKind | undefined =
       req.format in SURVEY_KIND ? SURVEY_KIND[req.format as keyof typeof SURVEY_KIND] : undefined;
-    if (survey && deps.hasSurvey && !(await deps.hasSurvey(req.projectId)))
+    const volumetric = req.format === 'volumetric-pdf' || req.format === 'volumetric-html';
+    if (volumetric && deps.hasVolumes && !(await deps.hasVolumes(req.projectId)))
+      return { ok: false, error: VOLUMETRIC_NONE };
+    if (survey && !volumetric && deps.hasSurvey && !(await deps.hasSurvey(req.projectId)))
       return {
         ok: false,
         error: 'This project has no saved survey measurements. Measure and save them first.',
       };
-    const name = defaultExportName(await deps.projectName(root), req.format);
+    const name = defaultExportName(
+      await deps.projectName(root),
+      req.format,
+      deps.now?.() ?? new Date(),
+    );
     const outPath = await deps.chooseSavePath(
       join(deps.downloadsDir, name),
       EXPORT_FILTERS[req.format],

@@ -1,7 +1,7 @@
-import type { IpcEvent } from '@aio/schema';
+import type { IpcEvent, SurveyMeasurement } from '@aio/schema';
 import { basename } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createExportJobs, type ExportDeps } from './jobs';
+import { createExportJobs, hasStockpileVolume, VOLUMETRIC_NONE, type ExportDeps } from './jobs';
 
 function deps(over: Partial<ExportDeps> = {}) {
   const events: IpcEvent<'export:progress'>[] = [];
@@ -86,6 +86,61 @@ describe('export jobs', () => {
       'HCl-Tank-stockpile-inventory.csv',
       'HCl-Tank-measurements.csv',
     ]);
+  });
+
+  it('makes the volumetric report in the report window, refused first without a stockpile volume', async () => {
+    const none = deps({
+      hasSurvey: () => Promise.resolve(true),
+      hasVolumes: () => Promise.resolve(false),
+    });
+    for (const format of ['volumetric-pdf', 'volumetric-html'] as const)
+      expect(await createExportJobs(none.d).run({ ...req, format })).toEqual({
+        ok: false,
+        error: VOLUMETRIC_NONE,
+      });
+    expect(none.asked).toEqual([]);
+    const printed: { kind: string }[] = [];
+    const filters: string[][] = [];
+    const { d, asked } = deps({
+      hasVolumes: () => Promise.resolve(true),
+      now: () => new Date(2026, 9, 25, 9, 30),
+      chooseSavePath: (p, filter) => {
+        asked.push(p);
+        filters.push(filter.extensions);
+        return Promise.resolve('C:/out/file');
+      },
+      runFile: () => Promise.reject(new Error('not the export process')),
+      printReport: (args) => {
+        printed.push(args);
+        return Promise.resolve({ count: 3, bytes: 700 });
+      },
+    });
+    const jobs = createExportJobs(d);
+    for (const format of ['volumetric-pdf', 'volumetric-html'] as const)
+      expect(await jobs.run({ ...req, jobId: format, format })).toMatchObject({ ok: true });
+    expect(printed.map((p) => p.kind)).toEqual(['volumetric-pdf', 'volumetric-html']);
+    expect(filters).toEqual([['pdf'], ['html']]);
+    expect(asked.map((a) => basename(a))).toEqual([
+      'HCl-Tank-volumetric-report-2026-10-25.pdf',
+      'HCl-Tank-volumetric-report-2026-10-25.html',
+    ]);
+  });
+
+  it('counts only a polygon whose first item is a base to a survey as a stockpile volume', () => {
+    const m = (over: Record<string, unknown>) =>
+      ({ family: 'polygon', items: [], ...over }) as unknown as SurveyMeasurement;
+    const pile = m({ items: [{ from: { kind: 'smart' }, to: { kind: 'current' } }] });
+    const design = m({
+      items: [{ from: { kind: 'smart' }, to: { kind: 'design', design: 'd', layer: 'l' } }],
+    });
+    const line = m({
+      family: 'line',
+      items: [{ from: { kind: 'smart' }, to: { kind: 'current' } }],
+    });
+    const lift = m({ items: [{ from: { kind: 'previous' }, to: { kind: 'current' } }] });
+    expect(hasStockpileVolume([pile])).toBe(true);
+    expect(hasStockpileVolume([design, line, lift, m({})])).toBe(false);
+    expect(hasStockpileVolume([])).toBe(false);
   });
 
   it('refuses a format the open package does not allow before asking where to save', async () => {

@@ -17,6 +17,7 @@ import {
   type IpcChannel,
   type IpcEvent,
   type IpcRequest,
+  type IpcResponse,
   type LibraryEntry,
   type ReportBrandingSettings,
   type Settings,
@@ -51,8 +52,8 @@ import {
   findDemos,
   markDemoEntries,
 } from './demo';
-import { createExportJobs } from './exports/jobs';
-import { printReport } from './exports/reportWindow';
+import { createExportJobs, hasStockpileVolume, VOLUMETRIC_NONE } from './exports/jobs';
+import { printReport, reportModel } from './exports/reportWindow';
 import { hasSurveyMeasurements, surveyRunIds, surveySurfaceIds } from './exports/survey';
 import { readNarrative, readPackageNarrative, writeNarrative } from './narrative';
 import { readPackageReportText, readReportText, writeReportText } from './reportText';
@@ -182,7 +183,7 @@ import { registerTilesetsIpc } from './tilesets';
 import type { DraftOp } from '@aio/journal';
 import { registerGeodesyIpc } from './geodesy';
 import { geoidJobEnv, packGeoidDirsOf, registerGeoidPacksIpc } from './packs/geoid';
-import { registerSurveyIpc } from './survey';
+import { readMeasurements, registerSurveyIpc } from './survey';
 import { registerTelecomIpc } from './telecom';
 import { telecomLabelHost } from './telecomAi';
 import { antennaPackRefusal, readAntennaDeletions, readAntennaInventory } from './telecomPack';
@@ -913,8 +914,43 @@ const exportJobs = createExportJobs({
   },
   processingRun: (projectId) => latestAccuracyRun(registry, projectId),
   hasSurvey: (projectId) => hasSurveyMeasurements(registry, projectId),
+  hasVolumes: (projectId) => hasStockpileVolumes(projectId),
   emit: emitExportProgress,
 });
+
+/** Does the project have a stockpile volume measurement (the volumetric report is offered)? */
+async function hasStockpileVolumes(projectId: string): Promise<boolean> {
+  const r = await readMeasurements(registry, projectId);
+  return r.ok && hasStockpileVolume(r.file.measurements);
+}
+
+/**
+ * `report:volumetricModel`: the editor's model from the same hidden house page as the
+ * volumetric export (`only=volumetric-model`), refused first without a stockpile volume.
+ */
+async function volumetricModel(
+  req: IpcRequest<'report:volumetricModel'>,
+): Promise<IpcResponse<'report:volumetricModel'>> {
+  if (registry.root(req.projectId) === undefined && !registry.package(req.projectId))
+    return { ok: false, error: `Project "${req.projectId}" is not open.` };
+  if (!(await hasStockpileVolumes(req.projectId))) return { ok: false, error: VOLUMETRIC_NONE };
+  const current = await settings.get();
+  try {
+    const model = await reportModel(
+      { projectId: req.projectId, compareWith: req.compareWith },
+      new AbortController().signal,
+      {
+        devUrl,
+        devTools: dev,
+        branding: current.reportBranding,
+        surveySurfaces: await surveySurfaceIds(registry, req.projectId),
+      },
+    );
+    return { ok: true, model };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
 
 // M11 G8: a survey.qa job that holds a survey is journaled as `survey.hold` when it finishes
 const surveyQaJobs = qaJobEvents({ journal: (root, drafts) => journal.appendEdits(root, drafts) });
@@ -1760,6 +1796,7 @@ function registerIpc(): void {
       ? { ok: false, error: r.error }
       : saveReportViews(r.root, report, frame, files);
   });
+  handle('report:volumetricModel', (req) => volumetricModel(req));
   handle('orientation:read', ({ projectId }) => {
     const root = registry.root(projectId);
     if (root !== undefined) return readOrientation(root);
