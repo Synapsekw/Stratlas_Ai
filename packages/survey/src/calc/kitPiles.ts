@@ -3,6 +3,7 @@
 // <base>)"; nothing here recomputes a volume. A build numbers its piles afresh, so a pile already
 // converted is found again by its outline (`matchPiles`) and its measurement follows the new id.
 import type {
+  AuditEntry,
   BoundaryEdit,
   BoundaryEditsFile,
   ComparisonResult,
@@ -221,6 +222,15 @@ export interface KitConversionOptions {
    * moving a pile's outline never brings the pile back.
    */
   rebuilt?: boolean;
+  /**
+   * On opening only (not `rebuilt`): the project journal was read, and these are the kit piles
+   * whose measurement the person deleted on purpose (`deliberatelyDeletedKitPiles`). A converted
+   * pile no kit-pile measurement holds (no link to its number, no outline match) whose id is not
+   * here vanished without a person deleting it, and is converted again, exactly as a first
+   * conversion does (kit figures carried). Absent means no evidence (journal off, a package, a
+   * failed read): a converted pile with no measurement stays gone, as before.
+   */
+  deletedKitPiles?: ReadonlySet<string>;
 }
 
 /**
@@ -296,19 +306,27 @@ export function convertKitPiles(
       done.add(pile.id);
       continue;
     }
-    // converted before and its number not freed: on opening, its measurement was deleted, so it
-    // stays gone; after a build, only a pile an existing kit-pile measurement overlaps is skipped
-    // (a pile the person deleted can come back, never a new pile under an old number)
+    // converted before and its number not freed: on opening, its measurement is gone. It stays
+    // gone unless the journal was read (`deletedKitPiles`) and shows no deliberate deletion of it
+    // and no measurement holds its number: then it vanished (a lost write, an old build's bug)
+    // and is restored, with its kit figures carried as at a first conversion. After a build, only
+    // a pile an existing kit-pile measurement overlaps is skipped (a pile the person deleted can
+    // come back, never a new pile under an old number).
+    let restored = false;
     if (done.has(pile.id) && !freed.has(pile.id)) {
-      if (!opts.rebuilt) continue;
-      if (links.some((l) => overlapShare(ring, l.ring) >= SAME_PILE_SHARE)) continue;
+      if (!opts.rebuilt) {
+        const evidence = opts.deletedKitPiles;
+        if (!evidence || evidence.has(pile.id) || links.some((l) => l.pile === pile.id)) continue;
+        restored = true;
+      } else if (links.some((l) => overlapShare(ring, l.ring) >= SAME_PILE_SHARE)) continue;
     }
+    const carry = opts.carry || restored;
 
     const heightAt = opts.heightAt;
     const z = heightAt ? drapeZ(flat, (e, n) => heightAt(epoch, e, n)) : null;
     const site: SitePoint[] = z ? flat.map((p, i): SitePoint => [p[0], p[1], z[i] ?? p[2]]) : flat;
     const itemId = opts.newId();
-    const series: ComparisonResult[] = opts.carry
+    const series: ComparisonResult[] = carry
       ? dates.map(({ capture, ep }) => {
           const v = ep.volumes[base];
           return {
@@ -354,7 +372,7 @@ export function convertKitPiles(
       ...(material ? { material } : {}),
       items: [{ id: itemId, from: { kind: 'smart' }, to: { kind: 'current' }, useDeadband: false }],
       results: headline ? [headline] : [],
-      ...(opts.carry ? { series } : {}),
+      ...(carry ? { series } : {}),
       origin: { kind: 'kit-pile', pile: pile.id },
       createdAt: opts.now,
     };
@@ -471,6 +489,12 @@ export interface KitOpenOptions {
   rebuilt?: boolean;
   /** The kit's DSM heights: converted outlines are draped on them (`KitConversionOptions`). */
   heightAt?: KitHeightAt;
+  /**
+   * The journal was read: the kit piles deliberately deleted (`KitConversionOptions`). Only the
+   * app's own open passes it; the report and the assistant keep the old rule (a vanished pile
+   * stays gone) and read the file the app repaired.
+   */
+  deletedKitPiles?: ReadonlySet<string>;
 }
 
 // ---------------------------------------------------------------- the kit's density
@@ -538,7 +562,100 @@ export function kitConversion(
     materialId: (name) => byName.get(name.trim().toLowerCase()),
     ...(opts.rebuilt ? { rebuilt: true } : {}),
     ...(opts.heightAt ? { heightAt: opts.heightAt } : {}),
+    ...(opts.deletedKitPiles ? { deletedKitPiles: opts.deletedKitPiles } : {}),
   });
+}
+
+/**
+ * The converted kit piles (`kitPilesConverted`) of this build that no kit-pile measurement holds
+ * (no link to the pile's number and no outline match, `matchPiles`): on opening they would stay
+ * gone without journal evidence, so only when this is not empty is the journal worth reading
+ * (`deliberatelyDeletedKitPiles`). Cheap when every converted pile's number is held.
+ */
+export function vanishedKitPiles(
+  file: MeasurementsFile,
+  volumes: VolumesFile,
+  edits: BoundaryEditsFile | null,
+  origin: readonly number[],
+): string[] {
+  const listed = new Set(file.kitPilesConverted ?? []);
+  if (listed.size === 0) return [];
+  const held = new Set(
+    file.measurements.flatMap((m) => (m.origin?.kind === 'kit-pile' ? [m.origin.pile] : [])),
+  );
+  if (volumes.piles.every((p) => !listed.has(p.id) || held.has(p.id))) return [];
+  let n = 0;
+  const probe = convertKitPiles(volumes, edits, file, {
+    carry: false,
+    now: '1970-01-01T00:00:00.000Z',
+    newId: () => `probe-${String(++n)}`,
+    toSite: (xz) => kitToSite(origin, xz),
+    materialId: () => undefined,
+    deletedKitPiles: new Set(),
+  });
+  return probe.added.flatMap((m) =>
+    m.origin?.kind === 'kit-pile' && listed.has(m.origin.pile) ? [m.origin.pile] : [],
+  );
+}
+
+/** The journal entry fields `deliberatelyDeletedKitPiles` reads (`journal:history` rows). */
+export type KitJournalEntry = Pick<
+  AuditEntry,
+  'op' | 'hlc' | 'kind' | 'target' | 'how' | 'label' | 'changes'
+>;
+
+const isObj = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** The kit pile a measurement's `origin` names, if it is a kit pile's. */
+const kitPileOf = (origin: unknown): string | undefined =>
+  isObj(origin) && origin.kind === 'kit-pile' && typeof origin.pile === 'string'
+    ? origin.pile
+    : undefined;
+
+/**
+ * A deletion the person made on purpose: by hand or through the assistant, and unlabelled. The
+ * app labels its automatic writes (its migrations `audit.migration.*`, a refused write's undo
+ * "Not saved, change undone"), and a file changed outside the app reads `external`.
+ */
+const deliberate = (e: KitJournalEntry): boolean =>
+  (e.how === 'hand' || e.how === 'agent') && e.label === undefined;
+
+/**
+ * The kit piles whose measurement the person deliberately deleted, from the project journal's
+ * measurement entries (any order; `journal:history` gives them newest first). A measurement is
+ * the kit pile its create entry's record names (`origin` kit-pile), as later patches setting
+ * `origin` relink it (a rebuild renumbers piles), as it stood just before the delete. A pile a
+ * later entry links a measurement to again (a build added it back) is held again, not deleted.
+ * A measurement whose create the journal does not hold names no pile.
+ */
+export function deliberatelyDeletedKitPiles(entries: readonly KitJournalEntry[]): Set<string> {
+  const ordered = entries
+    .filter((e) => e.target.rec === 'measurement')
+    .sort((a, b) =>
+      a.hlc < b.hlc ? -1 : a.hlc > b.hlc ? 1 : a.op < b.op ? -1 : a.op > b.op ? 1 : 0,
+    );
+  const pileOf = new Map<string, string | undefined>();
+  const deleted = new Set<string>();
+  const link = (id: string, pile: string | undefined) => {
+    pileOf.set(id, pile);
+    if (pile !== undefined) deleted.delete(pile);
+  };
+  for (const e of ordered) {
+    const id = e.target.id;
+    if (e.kind === 'measurement.create') {
+      const record = e.changes?.find((c) => c.field === 'record')?.after;
+      link(id, isObj(record) ? kitPileOf(record.origin) : undefined);
+    } else if (e.kind === 'measurement.patch') {
+      const change = e.changes?.find((c) => c.field === 'origin');
+      if (change) link(id, kitPileOf(change.after));
+    } else if (e.kind === 'measurement.delete') {
+      const pile = pileOf.get(id);
+      pileOf.delete(id);
+      if (pile !== undefined && deliberate(e)) deleted.add(pile);
+    }
+  }
+  return deleted;
 }
 
 /**
@@ -568,7 +685,9 @@ export function withKitConversion(file: MeasurementsFile, c: KitConversion): Mea
  * converted yet added, their kit figures carried only when the file has never been converted
  * (`kitPilesConverted` absent: an old project). A writable project with no kit figures yet (the
  * wizard's, before its build) is marked converted, so a build run on it later is never taken for
- * an old project's kit data; a read-only one is left as it is. The same file when nothing changes.
+ * an old project's kit data; a read-only one is left as it is. With `deletedKitPiles` (the app's
+ * open, the journal read), a converted pile whose measurement vanished without a deliberate
+ * deletion is converted again. The same file when nothing changes.
  */
 export function openWithKitPiles(
   file: MeasurementsFile,

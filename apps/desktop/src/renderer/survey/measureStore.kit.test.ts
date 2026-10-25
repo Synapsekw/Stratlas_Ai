@@ -53,6 +53,10 @@ const io = vi.hoisted(() => {
     dsmDir: 'legacy/data',
     /** The prepared surface's height under every point (null: no surface). */
     ground: null as number | null,
+    /** The journal's measurement history, page by page (null: `journal:history` fails). */
+    journal: null as null | { pages: unknown[][]; off?: boolean },
+    /** The `journal:history` requests made. */
+    journalReads: [] as unknown[],
   };
 });
 
@@ -108,6 +112,22 @@ function answer(
     return { ok: true, value: { ok: true, file: io.saved, readOnly: io.readOnly } };
   if (channel === 'project:readVolumes')
     return { ok: true, value: { ok: true, volumes: io.volumes, edits: null } };
+  if (channel === 'journal:history') {
+    io.journalReads.push(payload);
+    if (!io.journal) return { ok: true, value: { ok: false, error: 'No journal' } };
+    if (io.journal.off)
+      return { ok: true, value: { ok: true, entries: [], cursor: null, off: true } };
+    const page = Number((payload as { cursor?: string }).cursor ?? '0');
+    const more = page + 1 < io.journal.pages.length;
+    return {
+      ok: true,
+      value: {
+        ok: true,
+        entries: io.journal.pages[page] ?? [],
+        cursor: more ? String(page + 1) : null,
+      },
+    };
+  }
   return { ok: false, error: 'Not configured' };
 }
 
@@ -219,6 +239,8 @@ beforeEach(() => {
   io.dsm = new Map();
   io.dsmDir = 'legacy/data';
   io.ground = null;
+  io.journal = null;
+  io.journalReads = [];
   dsmFetch.mockClear();
   vi.stubGlobal('fetch', dsmFetch);
   forgetMeasureWrites();
@@ -365,6 +387,97 @@ describe('kit piles on load', () => {
     expect(kitMeasurements()[0]?.results).toEqual([]);
     expect(io.saved.measurements).toHaveLength(1);
     expect(io.saved.kitPilesConverted).toEqual(['P01']);
+  });
+});
+
+describe('a converted kit pile whose measurement vanished', () => {
+  let clock = 0;
+  const entry = (kind: string, id: string, over: Record<string, unknown> = {}) => ({
+    op: `op${String(++clock)}`,
+    chain: 'chain',
+    seq: clock,
+    hlc: `${String(1_800_000_000_000 + clock)}.0000.chain`,
+    at: '2026-10-20T00:00:00.000Z',
+    actor: { id: 'actor' },
+    device: 'device',
+    kind,
+    target: { rec: 'measurement', id },
+    how: 'hand',
+    state: 'unsigned',
+    ...over,
+  });
+  /** Converted once, then the pile's measurement left the file without a trace on screen. */
+  async function vanished(): Promise<{ file: MeasurementsFile; gone: SurveyMeasurement }> {
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [drawn] });
+    const gone = kitMeasurements()[0];
+    if (!gone) throw new Error('not converted');
+    const file = {
+      ...io.saved,
+      measurements: io.saved.measurements.filter((m) => m.id !== gone.id),
+    };
+    io.writes = 0;
+    io.labels = new Map();
+    return { file, gone };
+  }
+  const created = (m: SurveyMeasurement) =>
+    entry('measurement.create', m.id, {
+      label: 'Stockpile kit piles converted to volume measurements',
+      changes: [{ field: 'record', after: m }],
+    });
+
+  it('the journal shows no deliberate deletion: it comes back with its kit figures, as a migration', async () => {
+    const { file, gone } = await vanished();
+    // newest first, over two pages: the delete came from a file changed outside the app
+    const create = created(gone);
+    io.journal = {
+      pages: [[entry('measurement.delete', gone.id, { how: 'external' })], [create]],
+    };
+    await open(file);
+    const [m] = kitMeasurements();
+    expect(m?.origin).toEqual({ kind: 'kit-pile', pile: 'P01' });
+    expect(m?.results[0]?.netM3).toBe(60);
+    expect(m?.series).toHaveLength(2);
+    expect(io.journalReads).toHaveLength(2);
+    expect(io.journalReads[0]).toMatchObject({ projectId: 'p1', limit: 5000 });
+    expect(io.writes).toBe(1);
+    expect(io.saved.kitPilesConverted).toEqual(['P01']);
+    expect(io.saved.measurements.map((x) => x.id)).toEqual(['mine', m?.id]);
+    expect(io.labels.get(m?.id ?? '')).toBe('Stockpile kit piles converted to volume measurements');
+    expect(isDirty(measureStore.getState())).toBe(false);
+  });
+
+  it('the person deleted it: it stays gone and nothing is written', async () => {
+    const { file, gone } = await vanished();
+    const create = created(gone);
+    io.journal = { pages: [[entry('measurement.delete', gone.id), create]] };
+    await open(file);
+    expect(kitMeasurements()).toHaveLength(0);
+    expect(io.writes).toBe(0);
+  });
+
+  it('without journal evidence (switched off, or the read failed) it stays gone', async () => {
+    const { file } = await vanished();
+    io.journal = { pages: [], off: true };
+    await open(file);
+    expect(kitMeasurements()).toHaveLength(0);
+    io.journal = null;
+    await open(file);
+    expect(kitMeasurements()).toHaveLength(0);
+    expect(io.writes).toBe(0);
+  });
+
+  it('a read-only project, or one whose piles are all held, never reads the journal', async () => {
+    const { file } = await vanished();
+    io.journal = { pages: [[]] };
+    io.readOnly = true;
+    await open(file);
+    expect(io.journalReads).toHaveLength(0);
+    io.readOnly = false;
+    io.journalReads = [];
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    await open(io.saved);
+    expect(io.journalReads).toHaveLength(0);
   });
 });
 

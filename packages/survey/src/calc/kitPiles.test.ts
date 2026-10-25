@@ -15,6 +15,8 @@ import {
   kitDensity,
   pileMaterial,
   convertKitPiles,
+  deliberatelyDeletedKitPiles,
+  vanishedKitPiles,
   drapeZ,
   kitConversion,
   kitEpochOf,
@@ -808,5 +810,231 @@ describe('kit piles: each date keeps its own toe line', () => {
     expect(m.outlines?.map((o) => o.capture)).toEqual(['c1', 'c2']);
     expect(must(m.outlines?.[1]).points).toEqual(m.points);
     expect(must(m.outlines?.[1]).points).toHaveLength(4);
+  });
+});
+
+describe('a converted kit pile whose measurement vanished (the journal decides)', () => {
+  const sq = (x: number, size = 10): [number, number][] => [
+    [x, 0],
+    [x + size, 0],
+    [x + size, size],
+    [x, size],
+  ];
+  const onRing = (id: string, r: [number, number][]) => ({
+    id,
+    name: `Pile ${id}`,
+    zoneRing: r,
+    change: fc(0),
+    epochs: { e1: { ...ep('c1', 100), ring: r }, e2: { ...ep('c2', 50), ring: r } },
+  });
+  const kit = (): VolumesFile => ({
+    ...volumes(),
+    piles: [onRing('P01', sq(0)), onRing('P02', sq(100)), onRing('P03', sq(200))],
+  });
+  /** Opened once as an old project, then P01's measurement left the file. */
+  const vanished = () => {
+    const start = empty();
+    const all = withKitConversion(start, convertKitPiles(kit(), null, start, opts(true)));
+    const gone = all.measurements.find((m) => m.origin?.pile === 'P01');
+    return {
+      gone: must(gone),
+      file: { ...all, measurements: all.measurements.filter((m) => m !== gone) },
+    };
+  };
+  const later = (deletedKitPiles?: ReadonlySet<string>) => {
+    let n = 100;
+    return {
+      ...opts(false),
+      newId: () => `n${String(++n)}`,
+      ...(deletedKitPiles ? { deletedKitPiles } : {}),
+    };
+  };
+
+  let clock = 0;
+  type Entry = Parameters<typeof deliberatelyDeletedKitPiles>[0][number];
+  const entry = (kind: string, id: string, over: Partial<Entry> = {}): Entry => ({
+    op: `op${String(++clock)}`,
+    hlc: `${String(1_800_000_000_000 + clock)}.0000.chain`,
+    kind,
+    target: { rec: 'measurement', id },
+    how: 'hand',
+    ...over,
+  });
+  const created = (m: SurveyMeasurement, over: Partial<Entry> = {}) =>
+    entry('measurement.create', m.id, {
+      label: 'Stockpile kit piles converted to volume measurements',
+      changes: [{ field: 'record', after: m }],
+      ...over,
+    });
+  const deleted = (id: string, over: Partial<Entry> = {}) => entry('measurement.delete', id, over);
+  /** History, newest first, as `journal:history` returns it. */
+  const history = (...oldestFirst: Entry[]) => [...oldestFirst].reverse();
+
+  it('without journal evidence, the pile stays gone (the old rule)', () => {
+    const { file } = vanished();
+    const c = convertKitPiles(kit(), null, file, later());
+    expect(c).toEqual({ added: [], converted: [], relinked: [], detached: [] });
+  });
+
+  it('with the journal read and no deliberate deletion, the pile comes back with its kit figures', () => {
+    const { file, gone } = vanished();
+    const c = convertKitPiles(kit(), null, file, later(new Set()));
+    expect(c.added).toHaveLength(1);
+    const m = at(c.added, 0);
+    expect(m.origin).toEqual({ kind: 'kit-pile', pile: 'P01' });
+    expect(m.label).toBe('Pile P01');
+    expect(m.folder).toBe(KIT_FOLDER);
+    // converted exactly as a first conversion does: carried figures, outlines, the same points
+    expect(m.points).toEqual(gone.points);
+    expect(m.series?.map((r) => r.fingerprint)).toEqual(['kit:P01:e1:plane', 'kit:P01:e2:plane']);
+    expect(at(m.results, 0).netM3).toBe(v4(50).plane.net);
+    expect(m.outlines?.map((o) => o.capture)).toEqual(['c1', 'c2']);
+    // listed once already: not listed again
+    expect(c.converted).toEqual([]);
+    const after = withKitConversion(file, c);
+    expect(after.kitPilesConverted).toEqual(['P01', 'P02', 'P03']);
+    expect(MeasurementsFileSchema.safeParse(after).success).toBe(true);
+    // opening again changes nothing
+    const again = convertKitPiles(kit(), null, after, later(new Set()));
+    expect(again).toEqual({ added: [], converted: [], relinked: [], detached: [] });
+  });
+
+  it('a pile still held by a measurement (its outline moved) is not added again', () => {
+    const { file } = vanished();
+    const moved = {
+      ...file,
+      measurements: file.measurements.map((m) =>
+        m.origin?.pile === 'P02'
+          ? { ...m, points: m.points.map((p): SitePoint => [p[0] + 40, p[1], p[2]]) }
+          : m,
+      ),
+    };
+    const c = convertKitPiles(kit(), null, moved, later(new Set()));
+    expect(c.added.map((m) => m.origin?.pile)).toEqual(['P01']);
+  });
+
+  it('a pile the journal shows deliberately deleted stays gone', () => {
+    const { file } = vanished();
+    const c = convertKitPiles(kit(), null, file, later(new Set(['P01'])));
+    expect(c).toEqual({ added: [], converted: [], relinked: [], detached: [] });
+  });
+
+  it('right after a build the rule is unchanged: the evidence is not read', () => {
+    const { file } = vanished();
+    const without = convertKitPiles(kit(), null, file, { ...later(), rebuilt: true });
+    const withIt = convertKitPiles(kit(), null, file, {
+      ...later(new Set(['P01'])),
+      rebuilt: true,
+    });
+    expect(withIt).toEqual(without);
+  });
+
+  it('openWithKitPiles restores through the same option', () => {
+    const { file } = vanished();
+    const o = (deletedKitPiles?: ReadonlySet<string>) => {
+      let n = 0;
+      return {
+        origin: [1000, 2000, 0],
+        materials: [],
+        now: NOW,
+        newId: () => `o${String(++n)}`,
+        readOnly: false,
+        ...(deletedKitPiles ? { deletedKitPiles } : {}),
+      };
+    };
+    const k = { volumes: kit(), edits: null };
+    expect(openWithKitPiles(file, k, o())).toBe(file);
+    const restored = openWithKitPiles(file, k, o(new Set()));
+    expect(restored.measurements.filter((m) => m.origin?.pile === 'P01')).toHaveLength(1);
+    expect(restored.kitPilesConverted).toEqual(['P01', 'P02', 'P03']);
+  });
+
+  describe('vanishedKitPiles: whether the journal needs reading', () => {
+    it('lists converted piles no kit-pile measurement holds', () => {
+      const { file } = vanished();
+      expect(vanishedKitPiles(file, kit(), null, [1000, 2000, 0])).toEqual(['P01']);
+    });
+
+    it('is empty when every converted pile is held, or nothing was converted yet', () => {
+      const start = empty();
+      const all = withKitConversion(start, convertKitPiles(kit(), null, start, opts(true)));
+      expect(vanishedKitPiles(all, kit(), null, [1000, 2000, 0])).toEqual([]);
+      expect(vanishedKitPiles(empty(), kit(), null, [1000, 2000, 0])).toEqual([]);
+      // a pile not converted yet is a first conversion, not a vanished one
+      expect(
+        vanishedKitPiles(empty({ kitPilesConverted: ['P02'] }), kit(), null, [1000, 2000, 0]),
+      ).toEqual(['P02']);
+    });
+  });
+
+  describe('deliberatelyDeletedKitPiles: the journal read', () => {
+    it('a hand delete with no label is deliberate', () => {
+      const { gone } = vanished();
+      const entries = history(created(gone), deleted(gone.id));
+      expect([...deliberatelyDeletedKitPiles(entries)]).toEqual(['P01']);
+    });
+
+    it("the assistant's delete is deliberate too", () => {
+      const { gone } = vanished();
+      const entries = history(created(gone), deleted(gone.id, { how: 'agent' }));
+      expect([...deliberatelyDeletedKitPiles(entries)]).toEqual(['P01']);
+    });
+
+    it('a file changed outside the app, a migration, or an undone refused write is not', () => {
+      const { gone } = vanished();
+      for (const d of [
+        deleted(gone.id, { how: 'external' }),
+        deleted(gone.id, { label: 'Stockpile piles recomputed with the standard base' }),
+        deleted(gone.id, { label: 'Not saved, change undone' }),
+        deleted(gone.id, { how: 'pipeline' }),
+        deleted(gone.id, { how: 'import' }),
+      ])
+        expect(deliberatelyDeletedKitPiles(history(created(gone), d)).size).toBe(0);
+    });
+
+    it('a delete of a measurement that was not a kit pile names no pile', () => {
+      const drawn: SurveyMeasurement = { ...vanished().gone, id: 'drawn' };
+      delete drawn.origin;
+      expect(deliberatelyDeletedKitPiles(history(created(drawn), deleted('drawn'))).size).toBe(0);
+    });
+
+    it('a patch that relinks the pile before the delete names the pile it had then', () => {
+      const { gone } = vanished();
+      const entries = history(
+        created(gone),
+        entry('measurement.patch', gone.id, {
+          label: 'Stockpile piles renumbered by a build',
+          changes: [
+            { field: 'origin', before: gone.origin, after: { kind: 'kit-pile', pile: 'P03' } },
+          ],
+        }),
+        deleted(gone.id),
+      );
+      expect([...deliberatelyDeletedKitPiles(entries)]).toEqual(['P03']);
+    });
+
+    it('a patch that drops the link leaves the delete naming no pile', () => {
+      const { gone } = vanished();
+      const entries = history(
+        created(gone),
+        entry('measurement.patch', gone.id, {
+          changes: [{ field: 'origin', before: gone.origin }],
+        }),
+        deleted(gone.id),
+      );
+      expect(deliberatelyDeletedKitPiles(entries).size).toBe(0);
+    });
+
+    it('a pile that came back after its deletion (a build added it again) is held again', () => {
+      const { gone } = vanished();
+      const again = { ...gone, id: 'again' };
+      const entries = history(
+        created(gone),
+        deleted(gone.id),
+        created(again, { label: 'Stockpile piles added by a build' }),
+        deleted('again', { how: 'external' }),
+      );
+      expect(deliberatelyDeletedKitPiles(entries).size).toBe(0);
+    });
   });
 });

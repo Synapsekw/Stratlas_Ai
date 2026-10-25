@@ -25,7 +25,10 @@ import {
 } from '@aio/schema';
 import {
   changesFile,
+  deliberatelyDeletedKitPiles,
   kitDensity,
+  type KitJournalEntry,
+  vanishedKitPiles,
   openWithKitPiles,
   type KitDensity,
   withKitConversion,
@@ -399,13 +402,29 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
   const materials = s.ok && s.value.ok ? s.value.settings.materials : [];
   const read = v.ok && v.value.ok ? v.value : null;
   const manifest = manifestOf(projectId);
+  // a converted kit pile whose measurement vanished comes back unless the journal shows the
+  // person deleted it; the journal is read only for a writable project with such a pile
+  const evidence =
+    read?.volumes && manifest && !readOnly
+      ? await vanishedKitEvidence(projectId, m.value.file, read.volumes, read.edits, manifest)
+      : undefined;
+  if (loadEpoch !== epoch) return;
+  // the piles to restore are converted afresh, so their dates' DSMs are read too
+  const toConvert = evidence?.restore.length
+    ? {
+        ...m.value.file,
+        kitPilesConverted: (m.value.file.kitPilesConverted ?? []).filter(
+          (p) => !evidence.restore.includes(p),
+        ),
+      }
+    : m.value.file;
   // the kit's DSMs, read only when a pile is to convert or still lies at Z 0, and only those of
   // their dates (decoded once per project, `kitDsmCache`)
   const heightAt =
-    read?.volumes && manifest && wantsKitHeights(m.value.file, read.volumes)
+    read?.volumes && manifest && wantsKitHeights(toConvert, read.volumes)
       ? await kitDsmHeightAt(
           projectId,
-          kitEpochsWanted(m.value.file, read.volumes, read.edits),
+          kitEpochsWanted(toConvert, read.volumes, read.edits),
           fetchKitText,
           { volumes: read.volumes, cache: kitDsmCache(projectId) },
         )
@@ -413,7 +432,15 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
   if (loadEpoch !== epoch) return;
   // old stockpile kit piles open as volume measurements with their figures (W3): a conversion,
   // not an edit, so the baseline takes it too and nothing shows as unsaved
-  const opened = openedWithKitPiles(m.value.file, read, manifest, materials, readOnly, heightAt);
+  const opened = openedWithKitPiles(
+    m.value.file,
+    read,
+    manifest,
+    materials,
+    readOnly,
+    heightAt,
+    evidence?.deleted,
+  );
   const converted = opened !== m.value.file;
   // kit piles a build before per-date outlines converted take theirs once (`kitOutlinesAdded`
   // grew); a new conversion always lists its piles afresh (`kitPilesConverted`)
@@ -549,13 +576,55 @@ function openedWithKitPiles(
   materials: readonly SiteMaterial[],
   readOnly: boolean,
   heightAt?: KitHeightAt,
+  deletedKitPiles?: ReadonlySet<string>,
 ): MeasurementsFile {
   if (!read) return file;
   if (read.volumes && !manifest) return file;
   return openWithKitPiles(file, read, {
     ...kitOptions(manifest?.origin ?? [0, 0, 0], materials, heightAt),
+    ...(deletedKitPiles ? { deletedKitPiles } : {}),
     readOnly,
   });
+}
+
+/** `journal:history` pages read at most for the evidence; a longer history is no evidence. */
+const JOURNAL_PAGES_MAX = 40;
+const JOURNAL_PAGE = 5000;
+
+/**
+ * The journal's evidence about converted kit piles whose measurement vanished
+ * (`vanishedKitPiles`): the piles the person deliberately deleted (`deliberatelyDeletedKitPiles`)
+ * and the vanished ones to restore. Undefined, and no journal read, when no converted pile
+ * vanished; undefined too without evidence (the journal off, the read failed, a history too long
+ * to read): then a vanished pile stays gone, the rule before the journal was asked.
+ */
+async function vanishedKitEvidence(
+  projectId: string,
+  file: MeasurementsFile,
+  volumes: VolumesFile,
+  edits: BoundaryEditsFile | null,
+  manifest: ProjectManifest,
+): Promise<{ deleted: ReadonlySet<string>; restore: string[] } | undefined> {
+  const vanished = vanishedKitPiles(file, volumes, edits, manifest.origin);
+  if (vanished.length === 0) return undefined;
+  const entries: KitJournalEntry[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < JOURNAL_PAGES_MAX; page++) {
+    const r = await bridge.call('journal:history', {
+      projectId,
+      filter: { kinds: ['measurement'] },
+      limit: JOURNAL_PAGE,
+      ...(cursor !== undefined ? { cursor } : {}),
+    });
+    if (!r.ok || !r.value.ok || r.value.off) return undefined;
+    entries.push(...r.value.entries);
+    if (r.value.cursor === null) {
+      const deleted = deliberatelyDeletedKitPiles(entries);
+      return { deleted, restore: vanished.filter((p) => !deleted.has(p)) };
+    }
+    cursor = r.value.cursor;
+  }
+  return undefined;
 }
 
 /**
