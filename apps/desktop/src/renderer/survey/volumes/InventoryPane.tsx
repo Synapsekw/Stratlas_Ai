@@ -97,12 +97,14 @@ export function useSeriesRun(piles: readonly SurveyMeasurement[]): void {
 export function useInventoryModel(piles: readonly SurveyMeasurement[]): InventoryModel | null {
   const rows = useInventory(piles);
   const materials = useMeasure((s) => s.settings.materials);
+  // a converted kit pile with no site material weighs by the kit's site-wide density
+  const kit = useMeasure((s) => s.kitDensity);
   const captures = useCompare((s) => s.captures);
   const focus = useTimeline((s) => s.focus);
   const inFocus = captureInFocus(focus, { captures });
   return useMemo(
-    () => inventoryModel(piles, rows, inFocus, materials, captureDateOf(captures)),
-    [piles, rows, inFocus, materials, captures],
+    () => inventoryModel(piles, rows, inFocus, materials, captureDateOf(captures), kit),
+    [piles, rows, inFocus, materials, captures, kit],
   );
 }
 

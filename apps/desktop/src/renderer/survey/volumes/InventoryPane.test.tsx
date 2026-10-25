@@ -22,6 +22,7 @@ const s = vi.hoisted(() => ({
     focus: string | null;
     templates: { project: never[] };
     file: { measurements: SurveyMeasurement[] };
+    kitDensity?: { densityTPerM3: number; names: Record<string, string> } | null;
   },
 }));
 const calls = vi.hoisted(() => ({
@@ -351,6 +352,20 @@ describe('Inventory', () => {
     // No material has no tonnes; the site total adds every counted pile
     expect(pileRow('n')).toEqual(['Pile n', num(5), '-', '']);
     expect(total()).toEqual(['Site total', num(615), '1 020', '']);
+  });
+
+  it('weighs converted kit piles by the site-wide density when no site material is set', () => {
+    s.measure.kitDensity = { densityTPerM3: 1.6, names: {} };
+    const kit = (id: string, net: number) =>
+      pile(id, { origin: { kind: 'kit-pile', pile: id }, results: [result(net, 'c2')] });
+    s.measure.file.measurements = [kit('k1', 100), kit('k2', 50)];
+    render();
+    const group = q('[data-testid="volumes-group"][data-material="kit"]');
+    expect(group?.textContent).toContain('Stockpile material');
+    expect(group?.textContent).toContain('1.60 t/m³');
+    expect(pileRow('k1')).toEqual(['Pile k1', num(100), '160', '']);
+    expect(pileRow('k2')).toEqual(['Pile k2', num(50), '80', '']);
+    expect(total()).toEqual(['Site total', num(150), '240', '']);
   });
 
   it('says during playback that the figures are the last survey passed', async () => {

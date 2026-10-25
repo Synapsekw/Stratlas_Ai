@@ -144,3 +144,41 @@ describe('inventoryModel', () => {
     expect(inventoryModel(piles, [], null, MATERIALS, dateOf)).toBeNull();
   });
 });
+
+describe('inventoryModel with the stockpile kit density (a converted kit project)', () => {
+  /** A pile converted from the stockpile kit: no site material, the kit's density instead. */
+  const kitPile = (id: string, by: Record<string, number>, material?: string) => ({
+    ...pile(id, by, material),
+    origin: { kind: 'kit-pile' as const, pile: id },
+  });
+  const KIT = { densityTPerM3: 1.6, names: {} };
+
+  it('weighs kit piles with no site material by the site-wide density', () => {
+    const piles = [kitPile('k1', { d1: 90, d2: 100 }), kitPile('k2', { d1: 40, d2: 50 })];
+    const rows = [row('d1', { k1: 90, k2: 40 }), row('d2', { k1: 100, k2: 50 })];
+    const m = inventoryModel(piles, rows, 'd2', [], dateOf, KIT);
+    expect(m?.tonnes).toBeCloseTo(150 * 1.6, 9);
+    expect(m?.tonnesComplete).toBe(true);
+    expect(m?.groups).toHaveLength(1);
+    expect(m?.groups[0]?.material?.name).toBe('Stockpile material');
+    expect(m?.groups[0]?.densityTPerM3).toBe(1.6);
+    expect(m?.groups[0]?.tonnes).toBeCloseTo(240, 9);
+    expect(m?.groups[0]?.piles.map((p) => p.tonnes)).toEqual([160, 80]);
+  });
+
+  it('a site material the person picked wins over the kit density; other piles have none', () => {
+    const piles = [kitPile('k1', { d2: 100 }, 'sand'), pile('s', { d2: 10 })];
+    const m = inventoryModel(piles, [row('d2', { k1: 100, s: 10 })], 'd2', MATERIALS, dateOf, KIT);
+    expect(m?.groups.map((g) => g.material?.id ?? null)).toEqual(['sand', null]);
+    expect(m?.tonnes).toBeCloseTo(150, 9);
+    expect(m?.tonnesComplete).toBe(false);
+  });
+
+  it('kit piles of different kit materials stay in their own groups', () => {
+    const piles = [kitPile('k1', { d2: 100 }), kitPile('k2', { d2: 50 })];
+    const kit = { densityTPerM3: 1.6, names: { k1: 'Gravel', k2: 'Sand fill' } };
+    const m = inventoryModel(piles, [row('d2', { k1: 100, k2: 50 })], 'd2', [], dateOf, kit);
+    expect(m?.groups.map((g) => g.material?.name)).toEqual(['Gravel', 'Sand fill']);
+    expect(m?.groups.map((g) => g.tonnes)).toEqual([160, 80]);
+  });
+});

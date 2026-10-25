@@ -90,6 +90,10 @@ export const NO_MATERIAL_COLOUR = 'var(--mat-none)';
  * at the material's density on that date (`densityOn`) and change since `previous`. Only counted
  * figures are added (stale, refused and absent ones are left out, never as zero). Groups are
  * sorted by volume, largest first, with "No material" last; piles by volume, largest first.
+ *
+ * `materialOf` says which material a pile weighs by (default: its site material). A converted
+ * kit pile with none weighs by the kit's site-wide density (`pileMaterial`), a material that is
+ * not among the site's: it is grouped by its name and coloured after the site's materials.
  */
 export function inventoryByMaterial(
   piles: readonly SurveyMeasurement[],
@@ -97,20 +101,34 @@ export function inventoryByMaterial(
   previous: string | null,
   materials: readonly SiteMaterial[],
   dateOf: CaptureDateOf,
+  materialOf?: (m: SurveyMeasurement) => SiteMaterial | null,
 ): MaterialGroup[] {
   const index = new Map(materials.map((m, i) => [m.id, i]));
   const groups = new Map<string | null, MaterialGroup>();
+  const own = (m: SurveyMeasurement): SiteMaterial | null => {
+    const at = m.material !== undefined ? index.get(m.material) : undefined;
+    return at !== undefined ? (materials[at] ?? null) : null;
+  };
+  /** Materials outside the site's list, by name, in the order met (their colour slot). */
+  const others = new Map<string, number>();
   for (const m of piles) {
     const f = figureOn(m, capture);
     if (!counted(f)) continue;
-    const at = m.material !== undefined ? index.get(m.material) : undefined;
-    const material = at !== undefined ? (materials[at] ?? null) : null;
-    const key = material?.id ?? null;
+    const material = materialOf ? materialOf(m) : own(m);
+    const site = material ? index.get(material.id) : undefined;
+    const isSite = site !== undefined && materials[site]?.name === material?.name;
+    let slot = site;
+    if (material && !isSite) {
+      slot = others.get(material.name) ?? materials.length + others.size;
+      others.set(material.name, slot);
+    }
+    const key = material ? (isSite ? material.id : `\u0000${material.id}:${material.name}`) : null;
     let g = groups.get(key);
     if (!g) {
       g = {
         material,
-        colour: material && at !== undefined ? materialColour(material, at) : NO_MATERIAL_COLOUR,
+        colour:
+          material && slot !== undefined ? materialColour(material, slot) : NO_MATERIAL_COLOUR,
         volumeM3: 0,
         tonnes: null,
         deltaM3: null,

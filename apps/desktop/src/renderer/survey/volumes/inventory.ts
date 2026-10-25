@@ -13,13 +13,24 @@ import {
   densityOn,
   figureOn,
   inventoryByMaterial,
+  pileMaterial,
   type CaptureDateOf,
   type FigureSource,
+  type KitDensity,
   type MaterialGroup,
   type NotCounted,
   type PileFigure,
   type StackRow,
 } from '@aio/survey';
+
+/**
+ * The material a pile weighs by: its site material, else for a converted kit pile the kit's
+ * site-wide density (`pileMaterial`, as the pile's card and the Volumes header weigh it).
+ */
+export const weighsBy =
+  (materials: readonly SiteMaterial[], kit: KitDensity | null | undefined) =>
+  (m: SurveyMeasurement): SiteMaterial | null =>
+    pileMaterial(m, materials, kit);
 
 // ---------------------------------------------------------------- the one counting rule
 
@@ -57,10 +68,18 @@ export function countedGroups(
   materials: readonly SiteMaterial[],
   dateOf: CaptureDateOf,
   isCounted: IsCounted,
+  kit?: KitDensity | null,
 ): MaterialGroup[] {
   const here = piles.filter((m) => isCounted(m.id, capture));
   const byId = new Map(here.map((m) => [m.id, m]));
-  return inventoryByMaterial(here, capture, previous, materials, dateOf).map((g) => {
+  return inventoryByMaterial(
+    here,
+    capture,
+    previous,
+    materials,
+    dateOf,
+    weighsBy(materials, kit),
+  ).map((g) => {
     const ps = g.piles.map((p) => {
       const m = byId.get(p.id);
       const was = m && previous !== null ? countedFigureOn(m, previous, isCounted) : null;
@@ -116,7 +135,8 @@ const dateOfRow = (r: StackRow): InventoryDate => ({
 
 /**
  * The figures on `capture` (the date in focus; the latest date when it has no row), or null when
- * the project has no survey date.
+ * the project has no survey date. `kit` (the stockpile kit's density) weighs the converted kit
+ * piles that have no site material.
  */
 export function inventoryModel(
   piles: readonly SurveyMeasurement[],
@@ -124,6 +144,7 @@ export function inventoryModel(
   capture: string | null,
   materials: readonly SiteMaterial[],
   dateOf: CaptureDateOf,
+  kit?: KitDensity | null,
 ): InventoryModel | null {
   let at = rows.findIndex((r) => r.capture === capture);
   if (at < 0) at = rows.length - 1;
@@ -146,6 +167,7 @@ export function inventoryModel(
     prev?.capture ?? null,
     materials,
     dateOf,
+    weighsBy(materials, kit),
   ).map((g) => {
     // the change by the inventory's rule: counted on both dates
     const ps = g.piles.map((p) => {

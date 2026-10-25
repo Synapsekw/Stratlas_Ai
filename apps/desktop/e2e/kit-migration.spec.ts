@@ -586,7 +586,14 @@ test('the Volumes view lists the kit piles; picking one opens its pile panel wit
     }));
   expect(heights.list).toBeGreaterThanOrEqual(heights.rows - 0.5);
   for (const row of await piles.all()) await expect(row).toBeVisible();
-  await piles.filter({ hasText: 'Pile North' }).click({ timeout: 15_000 });
+  // no site material: the Tonnes column weighs the pile by the kit's site-wide density
+  const north = piles.filter({ hasText: 'Pile North' });
+  await expect(north.locator('td').nth(1)).not.toHaveText('-');
+  expect(figure(await north.locator('td').nth(1).innerText())).toBeCloseTo(
+    NORTH_E2_EDITED * VOLUMES.densityTPerM3,
+    0,
+  );
+  await north.click({ timeout: 15_000 });
   // the pile panel: its carried figure in the Volume tile, its status said beside it
   const panel = view.getByTestId('pile-panel');
   await expect(panel).toBeVisible();
