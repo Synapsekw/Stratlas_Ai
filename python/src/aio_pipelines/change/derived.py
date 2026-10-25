@@ -144,6 +144,16 @@ def _is_change(layer: Any) -> bool:
     return isinstance(derived, dict) and derived.get("kind") == "change"
 
 
+def _kept(layer: dict[str, Any], existing: dict[str, Any]) -> dict[str, Any]:
+    """``layer`` with what the person set on ``existing``: its name, date and visibility."""
+    out = {**layer, "name": existing.get("name", layer["name"]), "visible": existing.get("visible", True)}
+    if "capture" in existing:
+        out["capture"] = existing["capture"]
+    else:
+        out.pop("capture", None)
+    return out
+
+
 def _own_layer(layer_id: str) -> JobError:
     return JobError(f'The project already has a layer "{layer_id}" of its own; rename it first.')
 
@@ -157,8 +167,8 @@ def upsert_layer(project: Path, layer: dict[str, Any]) -> None:
             if isinstance(existing, dict) and existing.get("id") == layer["id"]:
                 if not _is_change(existing):
                     raise _own_layer(layer["id"])
-                # keep what the person set on it (shown or hidden, its date)
-                layers[i] = {**layer, "visible": existing.get("visible", True)}
+                # keep what the person set on it (its name, shown or hidden, its date)
+                layers[i] = _kept(layer, existing)
                 return
         layers.append(layer)
 
@@ -180,9 +190,9 @@ def place_area_layer(
     """Put an area comparison's one layer in ``manifest``.
 
     The first producer to end adds it. A later one replaces it when ``replace`` (the imagery heat
-    map is the row's picture), else keeps it; either way the person's visibility stays and the
-    row's ``derived.source`` takes the later run's layers too, so removing any of them removes the
-    row and, through it, every set of the comparison. ``drop`` are the per-set rows that area runs
+    map is the row's picture), else keeps it; either way its name, date and visibility stay as the
+    person left them, and its ``derived.source`` takes the later run's layers too, so removing any
+    of them removes the row and, through it, every set of the comparison. ``drop`` are the per-set rows that area runs
     made before (``<set>-heat``, ``<set>-regions``): removed when they are change layers.
     """
     gone = set(drop)
@@ -202,10 +212,6 @@ def place_area_layer(
             if s not in source:
                 source.append(s)
         base = layer if replace else existing
-        layers[i] = {
-            **base,
-            "visible": existing.get("visible", True),
-            "derived": {**base["derived"], "source": source},
-        }
+        layers[i] = {**_kept(base, existing), "derived": {**base["derived"], "source": source}}
         return
     layers.append(layer)

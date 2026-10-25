@@ -242,6 +242,34 @@ def test_the_area_layer_is_added_once_and_a_later_producer_keeps_or_replaces_it(
     assert m["layers"][0] is own
 
 
+def test_a_replaced_area_layer_keeps_the_name_date_and_visibility_the_person_gave_it():
+    from aio_pipelines.change.derived import place_area_layer
+
+    m = {"layers": []}
+    place_area_layer(m, _change_layer("L", capture="c2"), replace=True)
+    m["layers"][0].update(name="North pad, March", visible=False)
+    del m["layers"][0]["capture"]  # taken off its date
+    place_area_layer(m, _change_layer("L", "c1-c2-surface-area-pad-a", capture="c2"), replace=True)
+    [row] = m["layers"]
+    assert row["name"] == "North pad, March"
+    assert row["visible"] is False
+    assert "capture" not in row
+    assert row["derived"]["changeId"] == "c1-c2-surface-area-pad-a"
+
+
+def test_upsert_layer_keeps_the_name_date_and_visibility_the_person_gave_it(tmp_path):
+    from aio_pipelines.change.derived import upsert_layer
+
+    project = _project(tmp_path, [_change_layer("L", capture="c2")])
+    m = json.loads((project / "manifest.json").read_text("utf-8"))
+    m["layers"][0].update(name="Renamed", visible=False, capture="c1")
+    (project / "manifest.json").write_text(json.dumps(m), "utf-8")
+    upsert_layer(project, _change_layer("L", "c1-c2-cloud", capture="c2"))
+    [row] = json.loads((project / "manifest.json").read_text("utf-8"))["layers"]
+    assert (row["name"], row["visible"], row["capture"]) == ("Renamed", False, "c1")
+    assert row["derived"]["changeId"] == "c1-c2-cloud"
+
+
 def test_the_area_layer_drops_the_set_s_old_heat_and_regions_rows_and_nothing_else():
     from aio_pipelines.change.derived import place_area_layer
 
