@@ -1,0 +1,370 @@
+/* Page B of the volumetric report: the pile cards. Scoped to .vr-page-piles; the tokens, band,
+   footer and pile number badge come from volumetric.css. The heights here are the budget
+   `cropHeightMm` in piles.tsx counts on, so change both together. */
+.vr-page-piles {
+  --vr-b-ground: #f3f4f2;
+  --vr-chip-down-bg: #fbedec;
+  --vr-chip-down-ink: #b3261e;
+  --vr-chip-up-bg: #e5eefb;
+  --vr-chip-up-ink: #1f5fbf;
+  --vr-card-bg: #fdfefd;
+  background: var(--vr-b-ground);
+}
+.vr-page-piles .vr-body {
+  display: flex;
+  flex-direction: column;
+  padding-top: 5mm;
+}
+.vr-page-piles h2 {
+  margin: 0;
+}
+
+/* ------------------------------------------------------------------ header (14.5mm) */
+.vr-piles-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8mm;
+  height: 11mm;
+  margin-bottom: 3.5mm;
+}
+.vr-piles-head h1 {
+  font-size: 14pt;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+.vr-piles-site {
+  margin-top: 0.6mm;
+  color: var(--vr-ink-2);
+  font-size: 8.5pt;
+}
+.vr-piles-figures {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.vr-piles-total {
+  font-family: var(--vr-f-mono);
+  font-size: 16pt;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+.vr-piles-sub {
+  display: flex;
+  gap: 2.5mm;
+  margin-top: 0.4mm;
+  font-size: 8pt;
+}
+.vr-piles-tonnes {
+  color: var(--vr-ink-2);
+  font-family: var(--vr-f-mono);
+}
+.vr-piles-change {
+  font-family: var(--vr-f-mono);
+  font-weight: 600;
+}
+.vr-piles-change.is-down {
+  color: var(--vr-chip-down-ink);
+}
+.vr-piles-change.is-up {
+  color: var(--vr-chip-up-ink);
+}
+
+/* ------------------------------------------------------------------ share of stock (13.5mm) */
+.vr-share {
+  height: 10mm;
+  margin-bottom: 3.5mm;
+}
+.vr-share h2 {
+  height: 3.4mm;
+  margin-bottom: 1.1mm;
+  color: var(--vr-ink-2);
+  font-size: 7pt;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.vr-share-bar {
+  display: flex;
+  height: 5.5mm;
+  overflow: hidden;
+  border-radius: 1.2mm;
+  background: #d9dcdb;
+}
+.vr-share-seg {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0 1.4mm;
+  overflow: hidden;
+  color: var(--vr-ink);
+  font-size: 6.5pt;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.vr-share-seg + .vr-share-seg {
+  border-left: 0.4pt solid rgb(253 254 253 / 0.7);
+}
+.vr-share-seg.is-dark {
+  color: #f6fbf9;
+}
+.vr-share-0 {
+  background: #0d4f3f;
+}
+.vr-share-1 {
+  background: #136a55;
+}
+.vr-share-2 {
+  background: #1a8c70;
+}
+.vr-share-3 {
+  background: #2fa98a;
+}
+.vr-share-4 {
+  background: #5ed1b3;
+}
+.vr-share-5 {
+  background: #8edfc9;
+}
+.vr-share-6 {
+  background: #b5eadb;
+}
+.vr-share-7 {
+  background: #d3f3ea;
+}
+.vr-share-seg.is-others {
+  background: #d9dcdb;
+  color: var(--vr-ink-2);
+}
+
+/* ------------------------------------------------------------------ cards */
+.vr-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2.6mm 4mm;
+}
+.vr-card {
+  padding: 2.6mm;
+  border-radius: 8px;
+  background: var(--vr-card-bg);
+  box-shadow:
+    0 0.2mm 0.5mm rgb(17 22 28 / 0.08),
+    0 0.8mm 2.4mm rgb(17 22 28 / 0.06);
+}
+.vr-card-head {
+  display: flex;
+  align-items: center;
+  height: 4.8mm;
+  margin-bottom: 1.6mm;
+}
+.vr-card-head .vr-num {
+  margin-right: 1.8mm;
+}
+.vr-card-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 9pt;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vr-chip {
+  flex-shrink: 0;
+  padding: 0.5mm 1.8mm;
+  border-radius: 99px;
+  background: var(--vr-quiet-soft);
+  color: var(--vr-ink-2);
+  font-family: var(--vr-f-mono);
+  font-size: 7pt;
+  font-weight: 600;
+}
+.vr-chip.is-down {
+  background: var(--vr-chip-down-bg);
+  color: var(--vr-chip-down-ink);
+}
+.vr-chip.is-up {
+  background: var(--vr-chip-up-bg);
+  color: var(--vr-chip-up-ink);
+}
+
+.vr-crops {
+  display: flex;
+  gap: 2mm;
+}
+.vr-crop {
+  width: 40mm;
+}
+.vr-crop-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40mm;
+  overflow: hidden;
+  border-radius: 1mm;
+  background: var(--vr-quiet-soft);
+}
+.vr-crop.is-empty .vr-crop-box {
+  border: 0.75pt dashed var(--vr-rule);
+}
+.vr-crop.is-empty .vr-photo-none {
+  font-size: 7pt;
+}
+.vr-crop-sq {
+  position: absolute;
+  left: 0;
+  width: 40mm;
+  height: 40mm;
+  overflow: hidden;
+}
+.vr-crop-sq img {
+  position: absolute;
+  display: block;
+  max-width: none;
+  height: auto;
+}
+.vr-crop-box img.is-file {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.vr-crop figcaption {
+  height: 3.2mm;
+  margin-top: 0.8mm;
+  color: var(--vr-ink-3);
+  font-family: var(--vr-f-mono);
+  font-size: 6.5pt;
+  line-height: 3.2mm;
+  white-space: nowrap;
+}
+.vr-crop.is-latest figcaption {
+  color: var(--vr-ink);
+  font-weight: 600;
+}
+
+.vr-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2mm;
+  height: 6.4mm;
+  margin: 1.6mm 0 0;
+  padding-top: 1.2mm;
+  border-top: 0.5pt solid var(--vr-rule);
+}
+.vr-stat {
+  min-width: 0;
+}
+.vr-stat-label {
+  overflow: hidden;
+  color: var(--vr-ink-3);
+  font-size: 5.8pt;
+  line-height: 2.2mm;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.vr-stat-value {
+  margin: 0;
+  font-family: var(--vr-f-mono);
+  font-size: 8.5pt;
+  line-height: 3mm;
+}
+.vr-card-note {
+  height: 3.8mm;
+  padding-top: 1mm;
+  overflow: hidden;
+  color: var(--vr-ink-2);
+  font-size: 7pt;
+  font-style: italic;
+  line-height: 2.8mm;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ smaller piles */
+.vr-smaller {
+  margin-top: 3mm;
+  padding: 2.6mm 3.5mm;
+  border-radius: 8px;
+  background: var(--vr-card-bg);
+  box-shadow: 0 0.2mm 0.5mm rgb(17 22 28 / 0.08);
+}
+.vr-continued + .vr-smaller {
+  margin-top: 0;
+}
+.vr-smaller h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 4mm;
+  margin-bottom: 1.2mm;
+  font-size: 8pt;
+  font-weight: 600;
+}
+.vr-smaller-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.2mm;
+  color: var(--vr-ink-3);
+  font-size: 6.5pt;
+  font-weight: 400;
+}
+.vr-smaller-list {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 8mm;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vr-smaller-row {
+  display: flex;
+  align-items: center;
+  gap: 1.6mm;
+  height: 3.4mm;
+  border-bottom: 0.4pt solid var(--vr-rule);
+  font-size: 7.5pt;
+}
+.vr-smaller-no {
+  width: 4.5mm;
+  color: var(--vr-ink-3);
+  font-family: var(--vr-f-mono);
+  font-size: 6.5pt;
+}
+.vr-smaller-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vr-smaller-m3,
+.vr-smaller-change {
+  font-family: var(--vr-f-mono);
+  text-align: right;
+}
+.vr-smaller-m3 {
+  width: 20mm;
+}
+.vr-smaller-change {
+  width: 14mm;
+  color: var(--vr-ink-3);
+}
+.vr-smaller-change.is-down {
+  color: var(--vr-chip-down-ink);
+}
+.vr-smaller-change.is-up {
+  color: var(--vr-chip-up-ink);
+}
+.vr-note-mark {
+  flex-shrink: 0;
+  width: 1.6mm;
+  height: 1.6mm;
+  border-radius: 50%;
+  background: var(--vr-teal);
+}
