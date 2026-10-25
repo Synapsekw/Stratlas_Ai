@@ -8,6 +8,7 @@ import { dirname, join, normalize, resolve } from 'node:path';
 import { minify, type Plugin } from 'vite';
 import { offlineSource } from '../../packages/globe/src/offline';
 import { esmShimPlacement } from './src/build/esmShim';
+import { inlineImports } from './src/build/inlineImports';
 import { APP_CSP, cspMetaTag, inlineScripts } from './src/main/csp';
 import { licenseEntries } from './src/main/licenses';
 
@@ -312,7 +313,8 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(import.meta.dirname, 'src/renderer'),
-    plugins: [react(), pdfjsAssets(), cesiumAssets(), cesiumOffline(), cspMeta()],
+    // inlineImports: `?script` and `?datauri` for the offline volumetric HTML report
+    plugins: [react(), inlineImports(), pdfjsAssets(), cesiumAssets(), cesiumOffline(), cspMeta()],
     define: { __QUADRION_BUILD__: JSON.stringify(buildStamp()) },
     resolve: { noExternal: bundled },
     build: {

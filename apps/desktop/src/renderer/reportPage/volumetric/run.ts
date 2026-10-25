@@ -11,7 +11,7 @@
 // - `volumetric-pdf`: the pages the text file turns on, one `.vr-page` per printed page, for main's
 //   printToPDF (`window.__report.pages`).
 // - `volumetric-html`: the offline file (`window.__report.html`), built from `prepareVolumetric`'s
-//   result (see `volumetricHtml` below, the HTML task's hook).
+//   result (`html.ts`: pages A to C for print, view D, everything inside the file).
 import {
   volumetricModel,
   type VolumetricInput,
@@ -38,6 +38,7 @@ import {
 import { captureDateOf } from '../../survey/volumes/surveyDates';
 import type { ReportSurveyData, SurveyFiles, SurveyReader } from '../house/surveyData';
 import { reportViews, volumetricTemplate, type ResolvedText, type ReportViews } from '../types';
+import { browserEncoder, volumetricHtmlFile, type PictureEncoder } from './html';
 
 export const VOLUMETRIC_KINDS = ['volumetric-pdf', 'volumetric-html', 'volumetric-model'] as const;
 export type VolumetricKind = (typeof VOLUMETRIC_KINDS)[number];
@@ -76,6 +77,8 @@ export interface VolumetricRun {
   set: (patch: VolumetricPublish) => void;
   /** Fonts loaded and pictures decoded before the page says it is ready to print. */
   settle?: (root: HTMLElement) => Promise<void>;
+  /** `volumetric-html`: makes each picture a JPEG `data:` URI (default: the canvas). */
+  encode?: PictureEncoder;
 }
 
 const words = t as VolumetricT;
@@ -183,11 +186,13 @@ export interface VolumetricPrepared {
 }
 
 /**
- * The offline HTML file (`only=volumetric-html`). The HTML task fills this in from `html.ts`
- * (pages A to C for print, the interactive view D, pictures as `data:` URLs).
+ * The offline HTML file (`only=volumetric-html`, `html.ts`): pages A to C for print, the
+ * interactive view D, the pictures as `data:` URIs made by `encode` (the canvas by default).
  */
-export const volumetricHtml: (prepared: VolumetricPrepared) => Promise<string> = () =>
-  Promise.reject(new Error('The offline HTML report is not in this build yet.'));
+export const volumetricHtml = (
+  prepared: VolumetricPrepared,
+  encode: PictureEncoder = browserEncoder(),
+): Promise<string> => volumetricHtmlFile(prepared, encode);
 
 async function settleDefault(root: HTMLElement): Promise<void> {
   await Promise.all(
@@ -236,7 +241,7 @@ export async function runVolumetric(r: VolumetricRun): Promise<void> {
 
   if (r.kind === 'volumetric-html') {
     r.set({ phase: 'Writing the offline file' });
-    const html = await volumetricHtml(prepared);
+    const html = await volumetricHtml(prepared, r.encode);
     r.set({ state: 'ready', phase: 'Ready', count: model.piles.length, html });
     return;
   }
