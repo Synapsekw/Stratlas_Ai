@@ -247,7 +247,8 @@ export const LayerPatch = z.union([
   z.object({ corners: RasterCorners }).strict(),
   /**
    * The height offset of a point cloud (metres added to the file's Z; point clouds other than
-   * kit-packed); `null` clears it.
+   * kit-packed) or of a placed walk (metres added to its ground; its pose file is rewritten);
+   * `null` clears it.
    */
   z.object({ heightOffsetM: z.number().min(-2000).max(2000).nullable() }).strict(),
   /** A new name for any layer kind (the Datasets menu's Rename, F2). Nothing else changes. */

@@ -21,6 +21,35 @@ describe('point cloud height offset', () => {
   });
 });
 
+describe('walk height offset', () => {
+  const walk = {
+    kind: 'walk',
+    id: 'walk-w1',
+    name: 'W',
+    visible: true,
+    record: { path: 'walks/w1/walk.json' },
+    src: { path: 'walks/w1/playback.mp4' },
+    durationS: 10,
+    place: {
+      pins: [{ t: 1, surface: '@model', at: [0, 0], y: 0 }],
+      yawOffsetDeg: 0,
+      heightM: 1.7,
+      quality: 'good',
+    },
+  };
+  it('reads a walk saved before the offset unchanged, with no offset', () => {
+    const l = Layer.parse(walk);
+    expect(l).toEqual(walk);
+    expect('heightOffsetM' in l).toBe(false);
+  });
+  it('keeps a walk height offset beside its placement', () => {
+    expect(Layer.parse({ ...walk, heightOffsetM: 1.25 })).toMatchObject({ heightOffsetM: 1.25 });
+  });
+  it('refuses a walk height offset beyond 2000 m', () => {
+    expect(Layer.safeParse({ ...walk, heightOffsetM: -2500 }).success).toBe(false);
+  });
+});
+
 const georef = {
   schema: 'aio.georef/1',
   crs: { epsg: 32633 },
