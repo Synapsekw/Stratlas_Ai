@@ -104,9 +104,9 @@
   font-size: var(--t-12);
   color: var(--fg-2);
 }
+/* inside the card's box: a host that clips at its padding (the panel) cuts nothing off */
 .mc .mc-more {
   align-self: flex-start;
-  margin-inline-start: calc(-1 * var(--sp-2));
 }
 .mc-readout {
   width: 100%;
@@ -150,7 +150,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-2);
-  margin-inline-start: calc(-1 * var(--sp-2));
 }
 .mc-notes {
   width: 100%;
