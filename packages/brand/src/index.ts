@@ -70,6 +70,7 @@ export function privacyPolicyLink(b: Brand = brand): string | null {
 export { aliasLegacyEnv, ENV_PREFIX, envVar, LEGACY_ENV_PREFIX } from './env';
 export { WORDMARK } from './marks';
 export { SYMBOL } from './symbol';
+export { lockupSvg, MARK_COLOURS, symbolSvg, type MarkSide } from './lockup';
 export * from './quarter';
 
 /** Report brand themes a project can use (wizard, PDF reports). The first is the default. */
