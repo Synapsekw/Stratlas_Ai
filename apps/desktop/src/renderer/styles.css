@@ -922,9 +922,10 @@ button.chip-status:hover {
   align-items: center;
   gap: 2px;
   min-width: 0;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .sb-status-row .chip-status {
+  font-size: inherit;
   border-color: transparent;
   background: none;
   height: 24px;
@@ -943,7 +944,7 @@ button.chip-status:hover {
 }
 .sb-status-row > .foot-cloud,
 .sb-status-row > .proc-chip {
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 /* "1 job" needs no clock beside it in the row; a warning keeps its mark */
 .sb-status-row > .proc-chip:not([data-state='attention']) > svg {
@@ -2877,6 +2878,11 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
 }
 
 /* right panel */
+/* its segmented switches (Inventory, Cut & fill, Materials; Shade vs) read as its body text and
+   buttons, at 13 px as in the section window; the stage's own switches keep the smaller size */
+:is(.right, .sec-window) .seg button {
+  font-size: var(--t-13);
+}
 .right {
   grid-area: right;
   /* the size the auto context shares are taken of (cqh in .rp-split.auto) */

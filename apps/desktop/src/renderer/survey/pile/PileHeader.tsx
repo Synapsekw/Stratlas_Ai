@@ -194,10 +194,13 @@ export function PileHeader({
           {m.label}
         </h2>
         <MaterialChip data={data} />
-        <DensityField data={data} />
-        {/* the card's "⋯": the measurement's right-click actions (rename, colour, fly to, …) */}
-        <span className="pp-menu" style={{ marginInlineStart: 'auto' }}>
-          <CardMenu id={m.id} />
+        {/* the density and the menu wrap together, never the "⋯" alone on a line */}
+        <span className="pp-end">
+          <DensityField data={data} />
+          {/* the card's "⋯": the measurement's right-click actions (rename, colour, fly to, …) */}
+          <span className="pp-menu">
+            <CardMenu id={m.id} />
+          </span>
         </span>
       </div>
 

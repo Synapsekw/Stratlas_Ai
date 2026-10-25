@@ -84,11 +84,16 @@
   background: transparent;
   box-shadow: var(--el-1);
 }
+.pp-end {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+  margin-inline-start: auto;
+}
 .pp-density {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-3);
-  margin-inline-start: auto;
   color: var(--fg-3);
   font-size: var(--t-13);
 }

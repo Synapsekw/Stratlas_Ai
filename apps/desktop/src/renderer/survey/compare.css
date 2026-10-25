@@ -109,7 +109,7 @@
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-2);
 }
 .vd-dot {
@@ -132,7 +132,7 @@
 }
 .vd-was {
   font-family: var(--f-mono);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   font-variant-numeric: tabular-nums;
   color: var(--fg-3);
 }
@@ -140,7 +140,7 @@
 .vd-method,
 .vd-share {
   margin: 0;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   font-variant-numeric: tabular-nums;
   color: var(--fg-2);
 }
@@ -165,7 +165,7 @@
 .vd-to {
   gap: var(--sp-2);
   padding-inline-start: var(--sp-4);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .vd-to-name {
   color: var(--fg-3);
@@ -194,12 +194,12 @@
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .bp-level-name,
 .bp-unit,
 .vd-unit {
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-3);
 }
 .bp-level .sv-input,
@@ -254,7 +254,7 @@
 .bp-none {
   margin: 0;
   padding: var(--sp-3) var(--sp-4);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-3);
 }
 
@@ -263,7 +263,7 @@
 .vd-time-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .vd-res th,
 .vd-time-table th {
@@ -298,7 +298,7 @@
 }
 .vd-sub {
   margin: 0;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   font-weight: var(--fw-title);
   color: var(--fg-1);
 }
@@ -322,7 +322,7 @@
 .vd-facts {
   display: grid;
   margin: 0;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .vd-facts > div {
   display: flex;
@@ -347,6 +347,6 @@
   align-items: center;
   flex-wrap: wrap;
   gap: var(--sp-3);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-2);
 }

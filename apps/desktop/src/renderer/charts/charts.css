@@ -113,7 +113,8 @@
   outline-offset: -2px;
 }
 .pc-chip-label {
-  max-inline-size: 18ch;
+  /* two chips to a line in the right panel at the CI window */
+  max-inline-size: 16ch;
   overflow: hidden;
   text-overflow: ellipsis;
 }
