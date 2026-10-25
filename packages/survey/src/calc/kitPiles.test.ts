@@ -16,6 +16,7 @@ import {
   pileMaterial,
   convertKitPiles,
   deliberatelyDeletedKitPiles,
+  restorableKitPiles,
   vanishedKitPiles,
   drapeZ,
   kitConversion,
@@ -967,74 +968,94 @@ describe('a converted kit pile whose measurement vanished (the journal decides)'
     });
   });
 
-  describe('deliberatelyDeletedKitPiles: the journal read', () => {
-    it('a hand delete with no label is deliberate', () => {
+  describe('restorableKitPiles: only positive evidence restores', () => {
+    const list = (e: Entry[]) => [...restorableKitPiles(e)];
+
+    it('a clean accidental loss (create entry, no delete) is restorable', () => {
       const { gone } = vanished();
-      const entries = history(created(gone), deleted(gone.id));
-      expect([...deliberatelyDeletedKitPiles(entries)]).toEqual(['P01']);
+      expect(list(history(created(gone)))).toEqual(['P01']);
+      const stay = deliberatelyDeletedKitPiles(history(created(gone)));
+      expect(stay.has('P01')).toBe(false);
+      expect(stay.has('P02')).toBe(true);
     });
 
-    it("the assistant's delete is deliberate too", () => {
+    it('a delete by hand or by the assistant is not restorable', () => {
       const { gone } = vanished();
-      const entries = history(created(gone), deleted(gone.id, { how: 'agent' }));
-      expect([...deliberatelyDeletedKitPiles(entries)]).toEqual(['P01']);
+      for (const how of ['hand', 'agent'] as const) {
+        const entries = history(created(gone), deleted(gone.id, { how }));
+        expect(list(entries)).toEqual([]);
+        expect(deliberatelyDeletedKitPiles(entries).has('P01')).toBe(true);
+      }
     });
 
-    it('a file changed outside the app, a migration, or an undone refused write is not', () => {
+    it('a delete of any origin (external, migration, refused write, pipeline, import) is not', () => {
       const { gone } = vanished();
-      for (const d of [
-        deleted(gone.id, { how: 'external' }),
-        deleted(gone.id, { label: 'Stockpile piles recomputed with the standard base' }),
-        deleted(gone.id, { label: 'Not saved, change undone' }),
-        deleted(gone.id, { how: 'pipeline' }),
-        deleted(gone.id, { how: 'import' }),
-      ])
-        expect(deliberatelyDeletedKitPiles(history(created(gone), d)).size).toBe(0);
+      const overs: Partial<Entry>[] = [
+        { how: 'external' },
+        { label: 'Stockpile piles recomputed with the standard base' },
+        { label: 'Not saved, change undone' },
+        { how: 'pipeline' },
+        { how: 'import' },
+      ];
+      for (const over of overs)
+        expect(list(history(created(gone), deleted(gone.id, over)))).toEqual([]);
+    });
+
+    it('no create entry in the journal: not restorable, with or without a delete', () => {
+      const { gone } = vanished();
+      expect(list([])).toEqual([]);
+      expect(list(history(deleted(gone.id)))).toEqual([]);
+      expect(list(history(deleted(gone.id, { how: 'external' })))).toEqual([]);
+      const patch = entry('measurement.patch', gone.id, {
+        changes: [{ field: 'origin', after: { kind: 'kit-pile', pile: 'P01' } }],
+      });
+      expect(list(history(patch))).toEqual([]);
+      expect(deliberatelyDeletedKitPiles([]).has('P01')).toBe(true);
+      // end to end: such a journal leaves the vanished pile gone
+      const { file } = vanished();
+      const c = convertKitPiles(kit(), null, file, later(deliberatelyDeletedKitPiles([])));
+      expect(c.added).toEqual([]);
+    });
+
+    it('journal absent: no set is passed and the pile is not restored', () => {
+      const { file } = vanished();
+      expect(convertKitPiles(kit(), null, file, later()).added).toEqual([]);
     });
 
     it('a delete of a measurement that was not a kit pile names no pile', () => {
       const drawn: SurveyMeasurement = { ...vanished().gone, id: 'drawn' };
       delete drawn.origin;
-      expect(deliberatelyDeletedKitPiles(history(created(drawn), deleted('drawn'))).size).toBe(0);
+      expect(list(history(created(drawn), deleted('drawn')))).toEqual([]);
     });
 
-    it('a patch that relinks the pile before the delete names the pile it had then', () => {
+    it('a patch that relinks the pile follows it; a delete after it blocks the new pile', () => {
       const { gone } = vanished();
-      const entries = history(
-        created(gone),
+      const relink = () =>
         entry('measurement.patch', gone.id, {
           label: 'Stockpile piles renumbered by a build',
           changes: [
             { field: 'origin', before: gone.origin, after: { kind: 'kit-pile', pile: 'P03' } },
           ],
-        }),
-        deleted(gone.id),
-      );
-      expect([...deliberatelyDeletedKitPiles(entries)]).toEqual(['P03']);
+        });
+      expect(list(history(created(gone), relink()))).toEqual(['P03']);
+      expect(list(history(created(gone), relink(), deleted(gone.id)))).toEqual([]);
     });
 
-    it('a patch that drops the link leaves the delete naming no pile', () => {
+    it('a patch that drops the link names no pile', () => {
       const { gone } = vanished();
-      const entries = history(
-        created(gone),
+      const drop = () =>
         entry('measurement.patch', gone.id, {
           changes: [{ field: 'origin', before: gone.origin }],
-        }),
-        deleted(gone.id),
-      );
-      expect(deliberatelyDeletedKitPiles(entries).size).toBe(0);
+        });
+      expect(list(history(created(gone), drop()))).toEqual([]);
     });
 
-    it('a pile that came back after its deletion (a build added it again) is held again', () => {
+    it('a pile added again after a delete is judged by the new measurement', () => {
       const { gone } = vanished();
       const again = { ...gone, id: 'again' };
-      const entries = history(
-        created(gone),
-        deleted(gone.id),
-        created(again, { label: 'Stockpile piles added by a build' }),
-        deleted('again', { how: 'external' }),
-      );
-      expect(deliberatelyDeletedKitPiles(entries).size).toBe(0);
+      const base = [created(gone), deleted(gone.id), created(again, { label: 'added by a build' })];
+      expect(list(history(...base))).toEqual(['P01']);
+      expect(list(history(...base, deleted('again', { how: 'external' })))).toEqual([]);
     });
   });
 });

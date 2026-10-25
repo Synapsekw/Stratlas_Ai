@@ -224,11 +224,11 @@ export interface KitConversionOptions {
   rebuilt?: boolean;
   /**
    * On opening only (not `rebuilt`): the project journal was read, and these are the kit piles
-   * whose measurement the person deleted on purpose (`deliberatelyDeletedKitPiles`). A converted
-   * pile no kit-pile measurement holds (no link to its number, no outline match) whose id is not
-   * here vanished without a person deleting it, and is converted again, exactly as a first
-   * conversion does (kit figures carried). Absent means no evidence (journal off, a package, a
-   * failed read): a converted pile with no measurement stays gone, as before.
+   * that stay gone (`deliberatelyDeletedKitPiles`: all but those it shows lost by accident,
+   * `restorableKitPiles`). A converted pile no kit-pile measurement holds (no link to its number,
+   * no outline match) whose id is not here is converted again, exactly as a first conversion does
+   * (kit figures carried). Absent means no evidence (journal off, a package, a failed read): a
+   * converted pile with no measurement stays gone, as before.
    */
   deletedKitPiles?: ReadonlySet<string>;
 }
@@ -307,8 +307,8 @@ export function convertKitPiles(
       continue;
     }
     // converted before and its number not freed: on opening, its measurement is gone. It stays
-    // gone unless the journal was read (`deletedKitPiles`) and shows no deliberate deletion of it
-    // and no measurement holds its number: then it vanished (a lost write, an old build's bug)
+    // gone unless the journal was read (`deletedKitPiles`) and shows positive evidence it was lost by
+    // accident, and no measurement holds its number: then it vanished (a lost write, an old build's bug)
     // and is restored, with its kit figures carried as at a first conversion. After a build, only
     // a pile an existing kit-pile measurement overlaps is skipped (a pile the person deleted can
     // come back, never a new pile under an old number).
@@ -598,7 +598,7 @@ export function vanishedKitPiles(
   );
 }
 
-/** The journal entry fields `deliberatelyDeletedKitPiles` reads (`journal:history` rows). */
+/** The journal entry fields `restorableKitPiles` reads (`journal:history` rows). */
 export type KitJournalEntry = Pick<
   AuditEntry,
   'op' | 'hlc' | 'kind' | 'target' | 'how' | 'label' | 'changes'
@@ -614,32 +614,28 @@ const kitPileOf = (origin: unknown): string | undefined =>
     : undefined;
 
 /**
- * A deletion the person made on purpose: by hand or through the assistant, and unlabelled. The
- * app labels its automatic writes (its migrations `audit.migration.*`, a refused write's undo
- * "Not saved, change undone"), and a file changed outside the app reads `external`.
+ * The kit piles whose measurement the journal shows was lost by accident: the pile is the
+ * `origin` of a create entry's record (as later patches setting `origin` relinked it) and no
+ * delete of that measurement follows, whoever made it (by hand, the assistant, a file changed
+ * outside the app, a migration). Only this positive evidence allows a restore: a delete record
+ * of any origin, or no create entry at all (the journal was switched on after the conversion,
+ * delete entries carry no record), names no pile and restores nothing. Entries come in any
+ * order (`journal:history` gives them newest first). A pile a later create links again (a build
+ * added it back) is judged by that measurement.
  */
-const deliberate = (e: KitJournalEntry): boolean =>
-  (e.how === 'hand' || e.how === 'agent') && e.label === undefined;
-
-/**
- * The kit piles whose measurement the person deliberately deleted, from the project journal's
- * measurement entries (any order; `journal:history` gives them newest first). A measurement is
- * the kit pile its create entry's record names (`origin` kit-pile), as later patches setting
- * `origin` relink it (a rebuild renumbers piles), as it stood just before the delete. A pile a
- * later entry links a measurement to again (a build added it back) is held again, not deleted.
- * A measurement whose create the journal does not hold names no pile.
- */
-export function deliberatelyDeletedKitPiles(entries: readonly KitJournalEntry[]): Set<string> {
+export function restorableKitPiles(entries: readonly KitJournalEntry[]): Set<string> {
   const ordered = entries
     .filter((e) => e.target.rec === 'measurement')
     .sort((a, b) =>
       a.hlc < b.hlc ? -1 : a.hlc > b.hlc ? 1 : a.op < b.op ? -1 : a.op > b.op ? 1 : 0,
     );
   const pileOf = new Map<string, string | undefined>();
-  const deleted = new Set<string>();
+  const restorable = new Set<string>();
   const link = (id: string, pile: string | undefined) => {
+    const was = pileOf.get(id);
+    if (was !== undefined) restorable.delete(was);
     pileOf.set(id, pile);
-    if (pile !== undefined) deleted.delete(pile);
+    if (pile !== undefined) restorable.add(pile);
   };
   for (const e of ordered) {
     const id = e.target.id;
@@ -648,14 +644,38 @@ export function deliberatelyDeletedKitPiles(entries: readonly KitJournalEntry[])
       link(id, isObj(record) ? kitPileOf(record.origin) : undefined);
     } else if (e.kind === 'measurement.patch') {
       const change = e.changes?.find((c) => c.field === 'origin');
-      if (change) link(id, kitPileOf(change.after));
+      // a patch of a measurement whose create the journal does not hold proves nothing
+      if (change && pileOf.has(id)) link(id, kitPileOf(change.after));
     } else if (e.kind === 'measurement.delete') {
-      const pile = pileOf.get(id);
+      const was = pileOf.get(id);
+      if (was !== undefined) restorable.delete(was);
       pileOf.delete(id);
-      if (pile !== undefined && deliberate(e)) deleted.add(pile);
     }
   }
-  return deleted;
+  return restorable;
+}
+
+/** The "stays gone" side of `restorableKitPiles`: `has` is true for every pile not restorable. */
+class KeptGoneKitPiles extends Set<string> {
+  private readonly restorable: ReadonlySet<string>;
+  constructor(restorable: ReadonlySet<string>) {
+    super();
+    this.restorable = restorable;
+  }
+  override has(pile: string): boolean {
+    return !this.restorable.has(pile);
+  }
+}
+
+/**
+ * The kit piles that stay gone, for `ConvertKitPilesOptions.deletedKitPiles`: every pile except
+ * those with positive evidence of an accidental loss (`restorableKitPiles`). Only `has` is
+ * meaningful (the set cannot list piles it never saw); a missing journal passes no set at all.
+ */
+export function deliberatelyDeletedKitPiles(
+  entries: readonly KitJournalEntry[],
+): ReadonlySet<string> {
+  return new KeptGoneKitPiles(restorableKitPiles(entries));
 }
 
 /**
