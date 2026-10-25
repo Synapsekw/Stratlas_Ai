@@ -136,6 +136,15 @@ let queue: Promise<void> = Promise.resolve();
 // ---------------------------------------------------------------- loading
 
 /**
+ * Drop the inventory, the selection and the run (a project the runner reads no inventory for), so
+ * the last project's antennas never show in the next one. A read still on its way is dropped.
+ */
+export function resetAntennas(): void {
+  loadSeq++;
+  set({ ...initial(), reveal: get().reveal, labelMode: get().labelMode });
+}
+
+/**
  * Read the project's antenna file. Safe to call again for the same project (reloads) and when the
  * project changes (the old inventory, selection and run are dropped).
  */

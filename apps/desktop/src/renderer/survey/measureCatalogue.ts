@@ -7,6 +7,7 @@ import type { MeasurementTool } from '@aio/schema';
 import { t, type ShortcutId } from '@aio/ui';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import type { ProjectKind } from '../builder/model';
 import { browserStorage } from '../workspace/stagePrefs';
 
 /**
@@ -110,12 +111,22 @@ export const entryOf = (tool: CatalogueTool): CatalogueEntry | undefined =>
 export const familyOf = (tool: CatalogueTool): FamilyId | undefined =>
   FAMILIES.find((f) => f.tools.some((e) => e.tool === tool))?.id;
 
-/** The families a read-only package offers: only the tools that read without saving (D6). */
-export function familiesFor(readOnly: boolean): Family[] {
-  return FAMILIES.map((f) => ({
-    ...f,
-    tools: readOnly ? f.tools.filter((e) => !e.saves) : [...f.tools],
-  })).filter((f) => f.tools.length > 0);
+/** The project kinds with no tower to measure: their catalogue has no Telecom family. */
+const TOWERLESS: ReadonlySet<ProjectKind> = new Set(['survey', 'construction']);
+
+/**
+ * The families the open project offers: a read-only package only the tools that read without
+ * saving (D6), a survey or construction project no Telecom family. Any other kind, or none known,
+ * keeps it.
+ */
+export function familiesFor(readOnly: boolean, kind: ProjectKind | null = null): Family[] {
+  const towerless = kind !== null && TOWERLESS.has(kind);
+  return FAMILIES.filter((f) => !(towerless && f.id === 'telecom'))
+    .map((f) => ({
+      ...f,
+      tools: readOnly ? f.tools.filter((e) => !e.saves) : [...f.tools],
+    }))
+    .filter((f) => f.tools.length > 0);
 }
 
 /** A tool's name matches the search (case-insensitive, on the name only, not the hint). */

@@ -152,10 +152,10 @@ describe('ProjectList', () => {
       expect(order()).toEqual(['antennas', 'sectors', 'coverage', 'measurements', 'issues']);
     });
 
-    it('orders the groups for a survey project, leaving out what is not built', () => {
+    it('orders the groups for a survey project, leaving out what is not built and the antennas', () => {
       openWith('survey');
       render(all);
-      expect(order()).toEqual(['measurements', 'issues', 'antennas']);
+      expect(order()).toEqual(['measurements', 'issues']);
     });
 
     it('opens only the first group by default; the rest start folded', () => {

@@ -38,6 +38,7 @@ import {
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
+import { projectKind } from '../../../builder/model';
 import { useShell } from '../../../shell';
 import { cardModel, MeasureCard, TOOL_ICON } from '../../../survey/card';
 import { useCardTerrain } from '../../../survey/card/slots';
@@ -877,7 +878,11 @@ export function MeasureBench() {
   const stage = useEngineStage();
   const readOnly = useReadOnly();
   const live = useMeasure((s) => s.tool !== null && s.draw !== null);
-  const families = useMemo(() => familiesFor(readOnly), [readOnly]);
+  const kind = useWorkspace((s) => {
+    const manifest = s.project?.manifest;
+    return manifest ? projectKind(manifest) : null;
+  });
+  const families = useMemo(() => familiesFor(readOnly, kind), [readOnly, kind]);
   const [query, setQuery] = useState('');
   const searching = !live && query.trim() !== '';
   useCollapseEndsSearch(setQuery);

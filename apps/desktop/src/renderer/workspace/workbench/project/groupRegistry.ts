@@ -1,10 +1,10 @@
 // The content groups the "In this project" list shows (ProjectList.tsx). Each group registers
 // here: its title, its count and whether it applies to the open project (hooks, called on every
 // render in registry order, so the list is static), its body and its header actions.
-import { projectPurpose } from '@aio/schema';
 import type { MessageKey } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import type { ComponentType } from 'react';
+import { projectKind } from '../../../builder/model';
 import { useRf } from '../../../rf/rfStore';
 import { useAntennas } from '../../../telecom/antennaStore';
 import { antennasGroup } from '../../../telecom/AntennasGroup';
@@ -47,9 +47,10 @@ export const PROJECT_GROUPS: readonly ProjectGroupDef[] = [
 export function useOrderedGroups(
   groups: readonly ProjectGroupDef[] = PROJECT_GROUPS,
 ): ProjectGroupDef[] {
-  const purpose = useWorkspace((s) => {
+  // the purpose, else the older type: a volumetric project from before the purpose is a survey
+  const kind = useWorkspace((s) => {
     const manifest = s.project?.manifest;
-    return manifest ? projectPurpose(manifest) : undefined;
+    return manifest ? projectKind(manifest) : null;
   });
   const hasAntennas = useAntennas((s) => s.file !== null);
   const hasRfPlan = useRf((s) => s.hasFile);
@@ -60,7 +61,7 @@ export function useOrderedGroups(
     count: def.useCount(),
     applies: def.useApplies(),
   }));
-  const category = projectCategory({ purpose, hasAntennas, hasRfPlan, hasVolumes });
+  const category = projectCategory({ kind, hasAntennas, hasRfPlan, hasVolumes });
   return orderGroups(category, facts).flatMap((id, i) => {
     const def = groups.find((g) => g.id === id);
     return def ? [{ ...def, defaultOpen: i === 0 }] : [];

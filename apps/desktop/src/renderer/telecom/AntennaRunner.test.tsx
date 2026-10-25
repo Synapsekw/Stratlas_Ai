@@ -289,4 +289,13 @@ describe('AntennaRunner', () => {
     });
     expect(document.querySelector('[data-testid="antenna-menu"]')).toBeNull();
   });
+
+  it('drops the last project inventory when the next project reads none (no point cloud)', () => {
+    const next = project('p2');
+    next.manifest.layers = [];
+    act(() => {
+      workspace.setState({ project: next });
+    });
+    expect(antennaStore.getState()).toMatchObject({ file: null, projectId: null, status: 'idle' });
+  });
 });

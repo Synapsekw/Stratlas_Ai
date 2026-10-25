@@ -41,6 +41,7 @@ import {
   closeAntennaMenu,
   loadAntennas,
   openAntennaMenu,
+  resetAntennas,
   sendAiLabels,
   useAntennas,
 } from './antennaStore';
@@ -88,9 +89,11 @@ export function AntennaRunner(): ReactElement | null {
   // the labels read the spots on every frame: computed once per drawn state
   const spotsOf = useMemo(() => (frame ? labelSpotsCache(frame) : null), [frame]);
 
-  // P8: the inventory is read on mount and when the project root changes
+  // P8: the inventory is read on mount and when the project root changes; a project it is not read
+  // for (no cloud, a package, none open) drops the last project's
   useEffect(() => {
     if (projectId && root && hasCloud) void loadAntennas(projectId, root);
+    else if (antennaStore.getState().projectId !== projectId) resetAntennas();
   }, [projectId, root, hasCloud]);
 
   // the boxes and their labels in the 3D view, where their survey date is drawn: a new manifest

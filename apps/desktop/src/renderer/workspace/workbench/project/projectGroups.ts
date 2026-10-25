@@ -1,5 +1,5 @@
 // The "In this project" list's content groups (right sidebar, Project tab). Pure: no React.
-import type { ProjectPurpose } from '@aio/schema';
+import type { ProjectKind } from '../../../builder/model';
 
 /** Every content group the list knows; groups with no registered body are skipped. */
 export type GroupId =
@@ -20,6 +20,9 @@ export const groupSectionId = (group: GroupId): string => `project-${group}`;
  * (`useOrderedGroups` sets `defaultOpen` on it). A fold the person changes is remembered.
  */
 export const GROUP_DEFAULT_OPEN = false;
+
+/** The tower groups: only a telecom or vertical asset project names them. */
+const TELECOM_GROUPS: ReadonlySet<GroupId> = new Set(['antennas', 'sectors', 'coverage']);
 
 /** What the project is mainly about; it orders the list. */
 export type Category = 'telecom' | 'survey' | 'construction' | 'vertical-asset' | 'default';
@@ -45,22 +48,25 @@ export const CATEGORY_ORDER: Record<Category, readonly { id: GroupId; onlyIfAny?
 };
 
 /**
- * The project's category: a known purpose (telecom, survey, construction, vertical asset) maps to
- * itself and any other purpose is the default; with no purpose the contents decide.
+ * The project's category from its kind (`projectKind`: the purpose, else the older type): a known
+ * kind (telecom, survey, construction, vertical asset) maps to itself, an older inspection or twin
+ * or no kind at all lets the contents decide, and any other kind is the default.
  */
 export function projectCategory(input: {
-  purpose: ProjectPurpose | undefined;
+  kind: ProjectKind | null;
   hasAntennas: boolean;
   hasRfPlan: boolean;
   hasVolumes: boolean;
 }): Category {
-  switch (input.purpose) {
+  switch (input.kind) {
     case 'telecom':
     case 'survey':
     case 'construction':
     case 'vertical-asset':
-      return input.purpose;
-    case undefined:
+      return input.kind;
+    case null:
+    case 'inspection':
+    case 'twin':
       if (input.hasAntennas || input.hasRfPlan) return 'telecom';
       return input.hasVolumes ? 'survey' : 'default';
     default:
@@ -70,7 +76,9 @@ export function projectCategory(input: {
 
 /**
  * The ids to show, in order: the category's registered groups that apply (an `onlyIfAny` one only
- * with items), then every other registered group that has items, in registry order. `groups` is
+ * with items), then every other registered group that has items, in registry order, except the
+ * tower groups in a survey or construction project (an inventory left from another project, or
+ * one a survey never asked for, is not part of it). `groups` is
  * the registered groups in registry order; an id the category names but nobody registered is
  * skipped.
  */
@@ -86,7 +94,9 @@ export function orderGroups(
     if (entry.onlyIfAny && g.count <= 0) continue;
     out.push(entry.id);
   }
+  const towerless = category === 'survey' || category === 'construction';
   for (const g of groups) {
+    if (towerless && TELECOM_GROUPS.has(g.id)) continue;
     if (g.applies && g.count > 0 && !out.includes(g.id)) out.push(g.id);
   }
   return out;

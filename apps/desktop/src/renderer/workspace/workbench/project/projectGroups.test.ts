@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { projectKind } from '../../../builder/model';
 import { orderGroups, projectCategory, type GroupId } from './projectGroups';
 
 const all = (over: Partial<Record<GroupId, { count?: number; applies?: boolean }>> = {}) =>
@@ -55,40 +56,54 @@ describe('orderGroups', () => {
   });
 
   it('puts a group with items that the category does not name after the named ones', () => {
-    expect(orderGroups('survey', all({ sectors: { count: 1 } }))).toEqual([
+    expect(orderGroups('default', all({ sectors: { count: 1 } }))).toEqual([
       'measurements',
       'issues',
       'sectors',
     ]);
   });
+
+  it('never shows the telecom groups in a survey or construction project, items or not', () => {
+    const items = all({ antennas: { count: 3 }, sectors: { count: 2 }, coverage: { count: 1 } });
+    expect(orderGroups('survey', items)).toEqual(['measurements', 'issues']);
+    expect(orderGroups('construction', items)).toEqual(['measurements', 'issues']);
+  });
 });
 
 describe('projectCategory', () => {
-  const none = { purpose: undefined, hasAntennas: false, hasRfPlan: false, hasVolumes: false };
+  const none = { kind: null, hasAntennas: false, hasRfPlan: false, hasVolumes: false };
 
   it('maps the four known purposes to themselves', () => {
-    for (const purpose of ['telecom', 'survey', 'construction', 'vertical-asset'] as const) {
-      expect(projectCategory({ ...none, purpose })).toBe(purpose);
+    for (const kind of ['telecom', 'survey', 'construction', 'vertical-asset'] as const) {
+      expect(projectCategory({ ...none, kind })).toBe(kind);
     }
   });
 
-  it('maps another purpose to the default', () => {
-    expect(projectCategory({ ...none, purpose: 'road' })).toBe('default');
-    expect(projectCategory({ ...none, purpose: 'confined-space', hasAntennas: true })).toBe(
-      'default',
-    );
+  it('maps another kind to the default', () => {
+    expect(projectCategory({ ...none, kind: 'road' })).toBe('default');
+    expect(projectCategory({ ...none, kind: 'confined-space', hasAntennas: true })).toBe('default');
   });
 
-  it('lets a purpose win over the contents', () => {
-    expect(projectCategory({ ...none, purpose: 'survey', hasAntennas: true })).toBe('survey');
+  it('lets a kind win over the contents', () => {
+    expect(projectCategory({ ...none, kind: 'survey', hasAntennas: true })).toBe('survey');
   });
 
-  it('with no purpose, antennas or an RF plan make it telecom', () => {
+  it('takes the kind from an older type without a purpose: a volumetric project is a survey', () => {
+    const kind = projectKind({ type: 'volumetric' });
+    expect(projectCategory({ ...none, kind, hasAntennas: true, hasRfPlan: true })).toBe('survey');
+  });
+
+  it('lets the contents decide for an older inspection or twin, which says nothing more', () => {
+    expect(projectCategory({ ...none, kind: 'inspection', hasAntennas: true })).toBe('telecom');
+    expect(projectCategory({ ...none, kind: 'twin', hasVolumes: true })).toBe('survey');
+  });
+
+  it('with no kind, antennas or an RF plan make it telecom', () => {
     expect(projectCategory({ ...none, hasAntennas: true })).toBe('telecom');
     expect(projectCategory({ ...none, hasRfPlan: true, hasVolumes: true })).toBe('telecom');
   });
 
-  it('with no purpose, volumes make it a survey and nothing makes it the default', () => {
+  it('with no kind, volumes make it a survey and nothing makes it the default', () => {
     expect(projectCategory({ ...none, hasVolumes: true })).toBe('survey');
     expect(projectCategory(none)).toBe('default');
   });

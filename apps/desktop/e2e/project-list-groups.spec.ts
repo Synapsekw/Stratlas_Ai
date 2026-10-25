@@ -1,20 +1,20 @@
 /**
  * The groups of the Project tab's "In this project" list in the real app, and the order a
  * project's category gives them: a telecom project lists Antennas, Sectors, Coverage plan,
- * Measurements, Issues; a survey project Measurements then Issues, with Antennas at the end once
- * some are detected. A measurement picked in the left tree is the selected row in Measurements
- * with its panel under it, an issue row opens the issue's card in Selection, a saved sector shows
- * its bearing and opens in Coverage, and the new project wizard offers Telecom towers. The
- * inventory is the synthetic RF fixture; only the survey order's detection runs the pipeline.
+ * Measurements, Issues; a survey project Measurements then Issues, with no tower group or
+ * Telecom tool even with an antenna inventory and an RF plan on disk. A measurement picked in the
+ * left tree is the selected row in Measurements with its panel under it, an issue row opens the
+ * issue's card in Selection, a saved sector shows its bearing and opens in Coverage, and the new
+ * project wizard offers Telecom towers. The inventory is the synthetic RF fixture; nothing here
+ * runs the pipeline.
  */
 import { MeasurementsFile, ProjectManifest, RfSectorsFile } from '@aio/schema';
 import type { Page } from '@playwright/test';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { PIPELINE_ENV, expect, hasPipelinePython, test } from './fixtures';
-import { measureBench, measureControl, measureTree, selectMeasure } from './island';
+import { expect, test } from './fixtures';
+import { measureBench, measureTree, selectMeasure } from './island';
 import { writeRfProject } from './rfFixtures';
-import { writeTelecomTower } from './telecomFixtures';
 
 /**
  * Screenshots for a person to look at, only when AIO_EVIDENCE_DIR names a folder (never on CI);
@@ -149,31 +149,20 @@ test.describe('project list: groups and category order', () => {
     await evidence(win, 'a-telecom-order', true);
   });
 
-  test.describe('with the pipeline', () => {
-    test.use({ appEnv: PIPELINE_ENV });
-    test.skip(!hasPipelinePython(), 'needs the pipeline Python (uv sync --frozen in python/)');
-
-    test('a survey project lists Measurements then Issues, and Antennas appears at the end once detected', async ({
-      win,
-      dataRoot,
-    }) => {
-      test.setTimeout(300_000);
-      await writeTelecomTower(dataRoot.projectDir);
-      await setPurpose(dataRoot.projectDir, 'survey');
-      await openTiny(win);
-      const before = await groups(win);
-      expect(before.order).toEqual(['Measurements', 'Issues']);
-      expect(before.open).toEqual(['Measurements']);
-
-      await measureControl(win, 'telecom-tool-clearance');
-      const detect = win.getByTestId('detect-antennas');
-      await expect(detect).toBeEnabled({ timeout: 60_000 });
-      await detect.click();
-      await expect
-        .poll(async () => (await groups(win)).order, { timeout: 180_000 })
-        .toEqual(['Measurements', 'Issues', 'Antennas']);
-      await evidence(win, 'b-survey-order', true);
-    });
+  test('a survey project lists Measurements then Issues and offers no Telecom tools, antennas on disk or not', async ({
+    win,
+    dataRoot,
+  }) => {
+    await writeRfProject(dataRoot.projectDir, { cloud: true });
+    await setPurpose(dataRoot.projectDir, 'survey');
+    await openTiny(win);
+    const { order, open } = await groups(win);
+    expect(order).toEqual(['Measurements', 'Issues']);
+    expect(open).toEqual(['Measurements']);
+    // the catalogue is there (Polygon), only its Telecom family is not
+    await expect(win.getByTestId('wb-section-polygon')).toHaveCount(1);
+    await expect(win.getByTestId('wb-section-telecom')).toHaveCount(0);
+    await evidence(win, 'b-survey-order', true);
   });
 
   test('a measurement picked in the left tree is the selected row in Measurements with its panel inline', async ({
