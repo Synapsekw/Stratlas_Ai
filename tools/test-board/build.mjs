@@ -12,8 +12,9 @@
 //
 // Both write tools/test-board/dist (git-ignored). The private folder holds what must stay out of
 // the repository: who tests, the verticals with their client projects, the setup steps and
-// drafted lines. Its config.json overrides tools/test-board/config.json key by key, and its
-// `setup` and `extra` documents are read from that folder. Without --private the build uses
+// drafted lines. Its config.json overrides tools/test-board/config.json key by key, and the
+// `source`, `setup` and `extra` documents it names are read from that folder (a private
+// `source` replaces docs/TESTING.md, for a checklist written in another order). Without --private the build uses
 // QUADRION_TEST_BOARD_PRIVATE, then tools/test-board/local (git-ignored) when it exists.
 //
 // Design: docs/plans/2026-10-10-team-test-board-design.md
@@ -238,6 +239,16 @@ export function buildPage(text, config, template, setupText = '', extraText = ''
   };
 }
 
+/**
+ * Where a document the config names lies: in the private folder when the private config names it
+ * (the source too, so a private folder can bring a testing document of its own), else in the
+ * repository. Null when the config names none.
+ */
+export function docPath(key, config, theirs, folder, repo = root) {
+  if (!config[key]) return null;
+  return join(folder && key in theirs ? folder : repo, config[key]);
+}
+
 /** The private folder to build with, if any: --private, the environment, then the local folder. */
 function privateFolder(argv) {
   const k = argv.indexOf('--private');
@@ -257,9 +268,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const theirs = folder ? JSON.parse(readFileSync(join(folder, 'config.json'), 'utf8')) : {};
   const config = { ...own, ...theirs };
   // a document named by the private config lies in the private folder
-  const read = (key) =>
-    config[key] ? readFileSync(join(key in theirs ? folder : root, config[key]), 'utf8') : '';
-  const text = readFileSync(join(root, config.source), 'utf8');
+  const read = (key) => {
+    const file = docPath(key, config, theirs, folder);
+    return file ? readFileSync(file, 'utf8') : '';
+  };
+  const text = read('source');
   const template = readFileSync(join(here, 'page.html'), 'utf8');
   const { model, html } = buildPage(text, config, template, read('setup'), read('extra'));
   const out = join(here, 'dist', 'test-board.html');

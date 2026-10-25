@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { buildModel, buildPage, contentJson, inline, scriptJson } from './build.mjs';
+import { join } from 'node:path';
+import { buildModel, buildPage, contentJson, docPath, inline, scriptJson } from './build.mjs';
 
 const config = {
   source: 'docs/TESTING.md',
@@ -269,5 +270,55 @@ Draft lines.
     const ids = out.stages.flatMap((s) => s.groups.flatMap((g) => g.items.map((i) => i.id)));
     expect(ids).toHaveLength(3);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe('test board documents', () => {
+  const own = { source: 'docs/TESTING.md', title: 'Test run' };
+
+  it('reads a document the private config names from the private folder, the source too', () => {
+    const theirs = { source: 'journey.md', setup: 'setup.md' };
+    const config = { ...own, ...theirs, extra: 'docs/extra.md' };
+    expect(docPath('source', config, theirs, 'private', 'repo')).toBe(
+      join('private', 'journey.md'),
+    );
+    expect(docPath('setup', config, theirs, 'private', 'repo')).toBe(join('private', 'setup.md'));
+    expect(docPath('extra', config, theirs, 'private', 'repo')).toBe(join('repo', 'docs/extra.md'));
+    expect(docPath('tours', config, theirs, 'private', 'repo')).toBeNull();
+  });
+
+  it('reads the source from the repository without a private source or folder', () => {
+    expect(docPath('source', own, {}, 'private', 'repo')).toBe(join('repo', 'docs/TESTING.md'));
+    expect(docPath('source', own, {}, null, 'repo')).toBe(join('repo', 'docs/TESTING.md'));
+  });
+
+  it('builds a step-ordered document as steps with plain group titles', () => {
+    const journey = `# Journey
+
+## Stage 2: Projects and the Globe
+
+### Globe
+
+- [ ] Sidebar **Globe**: a chip per project.
+
+## Stage 1: Install and first launch
+
+Have the installer at hand.
+
+### Install
+
+- [ ] Run the installer: it starts.
+`;
+    const model = buildModel(journey, { ...own, guide: '', unit: 'step', testers: [] });
+    expect(model.unit).toBe('step');
+    expect(model.stages.map((s) => s.title)).toEqual([
+      'Stage 2: Projects and the Globe',
+      'Stage 1: Install and first launch',
+    ]);
+    expect(model.stages[1].intro).toContain('Have the installer at hand.');
+    expect(model.stages.map((s) => s.groups[0].title)).toEqual(['Globe', 'Install']);
+    expect(model.stages[1].groups[0].items[0].id).toMatch(
+      /^testing:stage-1-install-and-first-launch:[0-9a-f]{10}$/,
+    );
   });
 });
