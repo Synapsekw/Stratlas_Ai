@@ -23,8 +23,11 @@ export interface BoundsDeps {
   sceneBox(layerId: string): Box | null;
   /** What main reads from the files (`layer:info` extent), or null. */
   fileExtent(layerId: string): Promise<Box | null>;
-  /** Height of the layer's surface straight down at (x, z) in the 3D view, or null. */
-  rayDown(x: number, z: number, layerId: string): number | null;
+  /**
+   * Height of the layer's surface straight down at (x, z) in the 3D view, or null: the first
+   * under `fromY` when given (a walker's head), else the top.
+   */
+  rayDown(x: number, z: number, layerId: string, fromY?: number): number | null;
 }
 
 export function boxOfPoints(points: readonly Vec3[]): Box | null {

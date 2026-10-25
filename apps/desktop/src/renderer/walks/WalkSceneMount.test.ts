@@ -18,6 +18,7 @@ vi.mock('../builder/state', () => ({
 const {
   drapePlaced,
   LOADED_SETTLE_MS,
+  pickedHeight,
   placedReach,
   resampleWhenSettled,
   sceneMarkers,
@@ -167,7 +168,6 @@ describe('sceneMarkers', () => {
     expect(a?.at[1]).toBe(-3);
     expect(a?.lookHeadingRad).toBeCloseTo(-Math.PI / 2, 9);
     expect(a?.halfRad).toBeCloseTo(Math.PI / 4, 9);
-    expect(a?.ground).toBe(ground);
     expect(a?.colour).toBe('#abcdef');
     expect(b?.lookHeadingRad).toBeNull();
     // nothing drawn below: the stored pin height
@@ -180,6 +180,22 @@ describe('sceneMarkers', () => {
       () => null,
     );
     expect(bare[0]?.at[1]).toBeCloseTo(0, 9);
+  });
+
+  it("asks the ground near the walk's stored height, under the spot and under its cone", () => {
+    const asked = vi.fn<(x: number, z: number, near?: number) => number | null>(() => 1);
+    const [m] = sceneMarkers(
+      [walk('walk-a')],
+      { 'walk-a': view(5, 90) },
+      new Set(),
+      null,
+      () => '#fff',
+      asked,
+    );
+    expect(m?.at[1]).toBe(1);
+    expect(asked).toHaveBeenLastCalledWith(expect.closeTo(5, 6), expect.closeTo(0, 6), 0);
+    expect(m?.ground?.(6, 1)).toBe(1);
+    expect(asked).toHaveBeenLastCalledWith(6, 1, 0);
   });
 
   it('a walk of a turned date turns its look and its way with its track', () => {
@@ -215,6 +231,19 @@ describe('sceneMarkers', () => {
     const views = { 'walk-a': view(5, 0), 'walk-c': view(5, 0), 'walk-z': view(5, 0) };
     expect(sceneMarkers(fits, views, new Set(['walk-a']), null, () => '#fff', ground)).toEqual([]);
     expect(sceneMarkers(fits, views, new Set(), 'walk-a', () => '#fff', ground)).toEqual([]);
+  });
+});
+
+describe('pickedHeight', () => {
+  it('a pin picked in 3D stands on the ground the walks drape onto near the pick', () => {
+    // picked on the ortho plane at 0; the floor in the cloud 1.25 m up
+    const ground = vi.fn(() => 1.25);
+    expect(pickedHeight([3, 4], 0, ground)).toBe(1.25);
+    expect(ground).toHaveBeenCalledWith(3, 4, 0);
+  });
+
+  it('keeps the picked height where the ground answers nothing', () => {
+    expect(pickedHeight([3, 4], 2, () => null)).toBe(2);
   });
 });
 

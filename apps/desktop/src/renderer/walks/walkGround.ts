@@ -1,5 +1,5 @@
 import { getActiveScene } from '@aio/engine';
-import type { Layer } from '@aio/schema';
+import { WALK_HEIGHT_M, type Layer } from '@aio/schema';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { appBoundsDeps } from '../shell/appBounds';
 import type { BoundsDeps } from '../shell/layerBounds';
@@ -10,13 +10,20 @@ import type { BoundsDeps } from '../shell/layerBounds';
  * map before its pins took the 3D ground stored ground 0 while the ortho sits at the DSM's height).
  * So the 3D line, the Beam and the spot history track all ask one sampler: the DSM straight down first, then the ground
  * imagery (ortho, street map drape), then the top of the visible models and clouds; where nothing
- * is drawn the caller keeps the stored pin height (`fit.ts` groundAt). Only what the 3D view shows
+ * is drawn the caller keeps the stored pin height (`fit.ts` groundAt). Asked near the walk's own
+ * height (its pins' ground there), the ray starts a head's height over the walker instead, so a
+ * roof, canopy or tower over the walk is skipped, and a model's or cloud's floor answers before
+ * the flat imagery under it (the ortho plane); with nothing under that start it asks from the top
+ * as before (pins stored far below the ground drawn). Only what the 3D view shows
  * counts (`raycastRay` skips hidden layers), so it is asked again when layers load, the date on
  * screen changes or a layer is switched on or off (`walkGround.resample`).
  */
 
-/** Scene x/z to the ground's y there, null where nothing is drawn. */
-export type GroundAt = (x: number, z: number) => number | null;
+/**
+ * Scene x/z to the ground's y there, null where nothing is drawn. `near`, when given, is the
+ * walk's stored ground there: the ground is looked for under the walker standing on it.
+ */
+export type GroundAt = (x: number, z: number, near?: number) => number | null;
 /** The height straight down onto one layer (the shell's `rayDown`), null off it. */
 export type RayDown = BoundsDeps['rayDown'];
 
@@ -27,6 +34,16 @@ export const DRAPE_STEP_M = 1;
  * and the marker find most of their ground already asked by the line.
  */
 export const GROUND_CELL_M = DRAPE_STEP_M;
+/**
+ * Answers asked near a walk's height are remembered per band of that height this tall, metres:
+ * two walks over one spot, floors apart, are each told their own floor.
+ */
+export const GROUND_BAND_M = 2;
+/**
+ * Asked near a walk's stored ground, the ray down starts this far over it, metres: the camera's
+ * height and a metre more (pins stored a little under the floor drawn).
+ */
+export const WALK_HEADROOM_M = WALK_HEIGHT_M + 1;
 /** Ground asks per frame while a long walk is draped (raycasts down a heavy model are not cheap). */
 export const DRAPE_BUDGET = 300;
 
@@ -45,44 +62,71 @@ export function groundTiers(layers: readonly Layer[]): string[][] {
 
 /**
  * The ground over `layers` through `rayDown`: the first tier (`groundTiers`) with a hit answers,
- * with the highest of its hits (the top of the model, not a floor inside it). `live`, when it
- * answers, names the layers a ray can hit now; the others are not asked.
+ * with the highest of its hits (the top of the model, not a floor inside it). Asked `near` a
+ * walk's stored ground, the rays start `WALK_HEADROOM_M` over it and the models and clouds come
+ * first, then the DSM, then the imagery: the first surface under the walker's head, so the floor
+ * under a roof and not the roof, a cloud's floor and not the ortho plane under it; nothing there,
+ * it is asked from the top. `live`, when it answers, names the layers a ray can hit now; the
+ * others are not asked.
  */
 export function layerGround(
   layers: readonly Layer[],
   rayDown: RayDown,
   live: () => ReadonlySet<string> | undefined = () => undefined,
 ): GroundAt {
-  const tiers = groundTiers(layers);
-  return (x, z) => {
-    const can = live();
+  const [dsm = [], imagery = [], models = []] = groundTiers(layers);
+  const fromTop = [dsm, imagery, models];
+  const underWalker = [models, dsm, imagery];
+  const first = (
+    tiers: readonly string[][],
+    can: ReadonlySet<string> | undefined,
+    x: number,
+    z: number,
+    fromY?: number,
+  ): number | null => {
     for (const ids of tiers) {
       let top: number | null = null;
       for (const id of ids) {
         if (can && !can.has(id)) continue;
-        const y = rayDown(x, z, id);
+        const y = fromY === undefined ? rayDown(x, z, id) : rayDown(x, z, id, fromY);
         if (y !== null && Number.isFinite(y) && (top === null || y > top)) top = y;
       }
       if (top !== null) return top;
     }
     return null;
   };
+  return (x, z, near) => {
+    const can = live();
+    if (near !== undefined && Number.isFinite(near)) {
+      const y = first(underWalker, can, x, z, near + WALK_HEADROOM_M);
+      if (y !== null) return y;
+    }
+    return first(fromTop, can, x, z);
+  };
 }
 
 /** What a remembering ground already knows at x/z: its answer, or undefined when not asked yet. */
-export type KnownAt = (x: number, z: number) => number | null | undefined;
+export type KnownAt = (x: number, z: number, near?: number) => number | null | undefined;
 
-/** A ground that remembers its answer (a miss too) per `cellM` square cell, until `clear`. */
+/**
+ * A ground that remembers its answer (a miss too) per `cellM` square cell, and per
+ * `GROUND_BAND_M` band of the walk's height when asked near one, until `clear`.
+ */
 export function cachedGround(
   ground: GroundAt,
   cellM: number = GROUND_CELL_M,
 ): GroundAt & { clear(): void; known: KnownAt } {
   const answers = new Map<string, number | null>();
-  const keyOf = (x: number, z: number) => `${Math.floor(x / cellM)},${Math.floor(z / cellM)}`;
-  const g = (x: number, z: number) => {
-    const key = keyOf(x, z);
+  const keyOf = (x: number, z: number, near?: number) => {
+    const cell = `${Math.floor(x / cellM)},${Math.floor(z / cellM)}`;
+    return near !== undefined && Number.isFinite(near)
+      ? `${cell},${Math.floor(near / GROUND_BAND_M)}`
+      : cell;
+  };
+  const g = (x: number, z: number, near?: number) => {
+    const key = keyOf(x, z, near);
     if (answers.has(key)) return answers.get(key) ?? null;
-    const y = ground(x, z);
+    const y = ground(x, z, near);
     answers.set(key, y);
     return y;
   };
@@ -90,8 +134,8 @@ export function cachedGround(
     clear: () => {
       answers.clear();
     },
-    known: (x: number, z: number) => {
-      const key = keyOf(x, z);
+    known: (x: number, z: number, near?: number) => {
+      const key = keyOf(x, z, near);
       return answers.has(key) ? (answers.get(key) ?? null) : undefined;
     },
   });
@@ -117,7 +161,8 @@ export function drapeStations(pts: readonly Pt[], stepM: number = DRAPE_STEP_M):
 }
 
 /**
- * A run moved onto the ground: `heights[k]` is the ground at point `stations[k]` (null: keep that
+ * A run moved onto the ground: `heights[k]` is the ground at point `stations[k]`, asked near
+ * the point's stored height, its y (null: keep that
  * point's stored height, its y), the points between interpolated, all lifted by `lift`.
  */
 export function drapeRun(
@@ -161,7 +206,7 @@ export function drapePoints(
     stations,
     stations.map((i) => {
       const p = pts[i];
-      return p ? ground(p[0], p[2]) : null;
+      return p ? ground(p[0], p[2], p[1]) : null;
     }),
     lift,
   );
@@ -211,7 +256,7 @@ export function drapeRunsInFrames(
         continue;
       }
       const p = runs[run]?.[at[k] ?? -1];
-      heights[run]?.push(p ? ground(p[0], p[2]) : null);
+      heights[run]?.push(p ? ground(p[0], p[2], p[1]) : null);
       k++;
       asked++;
     }
@@ -251,15 +296,15 @@ export function createWalkGround(source: () => GroundAt | null): WalkGround {
   let cache: ReturnType<typeof cachedGround> | null = null;
   const store = createStore<{ version: number }>(() => ({ version: 0 }));
   return {
-    ground: (x, z) => {
+    ground: (x, z, near) => {
       if (!cache) {
         const g = source();
         if (!g) return null;
         cache = cachedGround(g);
       }
-      return cache(x, z);
+      return cache(x, z, near);
     },
-    known: (x, z) => cache?.known(x, z),
+    known: (x, z, near) => cache?.known(x, z, near),
     resample: () => {
       cache = null;
       store.setState((s) => ({ version: s.version + 1 }));
@@ -280,15 +325,15 @@ export function budgetedGround(
 ): GroundAt & { starved(): boolean } {
   let left = budget;
   let short = false;
-  const at = (x: number, z: number): number | null => {
-    const k = g.known(x, z);
+  const at = (x: number, z: number, near?: number): number | null => {
+    const k = g.known(x, z, near);
     if (k !== undefined) return k;
     if (left <= 0) {
       short = true;
       return null;
     }
     left--;
-    return g.ground(x, z);
+    return g.ground(x, z, near);
   };
   return Object.assign(at, { starved: () => short });
 }
@@ -300,7 +345,7 @@ export const walkGround = createWalkGround(() => {
   const deps = appBoundsDeps();
   return layerGround(
     deps.manifest.layers,
-    (x, z, id) => deps.rayDown(x, z, id),
+    (x, z, id, fromY) => deps.rayDown(x, z, id, fromY),
     () => getActiveScene()?.rayLayers?.(),
   );
 });

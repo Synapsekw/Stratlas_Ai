@@ -620,7 +620,7 @@ export function followMap(
   session: StoreApi<PlaceState>,
   ui: StoreApi<PlaceUi>,
   project: () => OpenProject | null,
-  ground: GroundAt = (x, z) => walkGround.ground(x, z),
+  ground: GroundAt = (x, z, near) => walkGround.ground(x, z, near),
 ): () => void {
   let pathFor: {
     fit: WalkFit | null;
@@ -638,8 +638,11 @@ export function followMap(
     const p = unshiftLocal(local, sessionShift(session.getState().layerId));
     return [p[0], p[2]];
   };
-  /** The height of a pin picked at `local`: the ground under it in the scene, else the map's. */
-  const pickedY = (local: Vec3): number => ground(local[0], local[2]) ?? local[1];
+  /**
+   * The height of a pin picked at `local`: the ground under it in the scene, asked near the
+   * map's height (a floor under a roof), else the map's.
+   */
+  const pickedY = (local: Vec3): number => ground(local[0], local[2], local[1]) ?? local[1];
   // one object for the life of the session: the map cancels a drag when its session is replaced
   const pointer: MapPointerSession = {
     // the map shows the walk where its date lies: a pick is saved without the shift, a handle

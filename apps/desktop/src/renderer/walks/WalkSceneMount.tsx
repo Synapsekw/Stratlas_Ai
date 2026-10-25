@@ -88,15 +88,30 @@ const picked = (at: [number, number]): [number, number] => {
   return [p[0], p[2]];
 };
 
+/**
+ * The height of a pin picked on the 3D view at scene x/z `at`: the ground the walks drape onto,
+ * asked near the picked height `y` (a cloud's floor rather than the ortho plane the pick went
+ * through to; a roof picked stays the roof), else `y`.
+ */
+export function pickedHeight(
+  at: [number, number],
+  y: number,
+  ground: GroundAt = (x, z, near) => walkGround.ground(x, z, near),
+): number {
+  return ground(at[0], at[1], y) ?? y;
+}
+
 const INPUT: WalkSceneInput = {
   hover: (at, y) => {
-    placeSession.getState().hover(at ? picked(at) : null, y);
+    placeSession
+      .getState()
+      .hover(at ? picked(at) : null, at && y !== undefined ? pickedHeight(at, y) : y);
   },
   click: (at, y) => {
-    placeSession.getState().click(picked(at), y);
+    placeSession.getState().click(picked(at), pickedHeight(at, y));
   },
   drag: (h, at, y) => {
-    placeSession.getState().dragHandle(h, picked(at), y);
+    placeSession.getState().dragHandle(h, picked(at), pickedHeight(at, y));
   },
   endDrag: () => {
     placeSession.getState().endDrag();
@@ -174,7 +189,7 @@ export function resampleWhenSettled(
  */
 export function drapePlaced(
   placed: readonly WalkSceneWalk[],
-  ground: (x: number, z: number) => number | null,
+  ground: GroundAt,
   done: (walks: WalkSceneWalk[]) => void,
   opts?: Parameters<typeof drapeRunsInFrames>[4],
 ): () => void {
@@ -263,16 +278,18 @@ export function sceneMarkers(
     if (!a) continue;
     const shift = w.shift ?? null;
     const p = shiftLocal([a.xz[0], a.groundY, a.xz[1]], shift);
+    // the spot and its cone are asked near the walk's stored ground: a roof over it is skipped
+    const near = p[1];
     // a turned date turns the look and the walk's way with its track
     out.push({
       id,
       colour: colourOf(w),
-      at: [p[0], ground(p[0], p[2]) ?? p[1], p[2]],
+      at: [p[0], ground(p[0], p[2], near) ?? p[1], p[2]],
       lookHeadingRad:
         now.lookDeg === null ? null : shiftHeadingRad(headingFromBearingDeg(now.lookDeg), shift),
       halfRad: beamHalfRad(now.hfovDeg),
       walkHeadingRad: shiftHeadingRad(a.headingRad, shift),
-      ground,
+      ground: (x, z) => ground(x, z, near),
     });
   }
   return out;

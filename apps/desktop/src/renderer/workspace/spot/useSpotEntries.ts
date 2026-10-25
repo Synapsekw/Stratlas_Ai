@@ -66,9 +66,9 @@ function cachedTrack(
     layer.durationS,
     layer.place?.heightM ?? WALK_HEIGHT_M,
     (t) => viewHeading(fit, orientation, yaw, t),
-    (x, z) => {
-      const p = shiftLocal([x, 0, z], shift);
-      return walkGround.ground(p[0], p[2]);
+    (x, z, near) => {
+      const p = shiftLocal([x, near, z], shift);
+      return walkGround.ground(p[0], p[2], p[1]);
     },
   );
   tracked.set(key, { fit, ground, shift: shiftKey, samples });

@@ -1,5 +1,5 @@
 import type { WalkFit } from '@aio/geo';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { bearingFromHeadingRad, walkTrack } from './spotWalk';
 
 /** A walk heading east along x at 1 m/s on ground 2 m high, fitted from 0 to `end` seconds. */
@@ -60,6 +60,12 @@ describe('walkTrack', () => {
       expect(x.groundY).toBeCloseTo(ground, 9);
       expect(x.pos[1]).toBeCloseTo(ground + 1.7, 9);
     }
+  });
+
+  it("asks the ground near the walk's fitted height, so a roof over it is skipped", () => {
+    const groundAt = vi.fn(() => 1);
+    walkTrack(fakeFit(), 1, 1.7, () => null, groundAt);
+    expect(groundAt).toHaveBeenCalledWith(0, 0, 2);
   });
 
   it('steps at the given step', () => {

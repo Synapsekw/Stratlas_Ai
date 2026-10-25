@@ -9,7 +9,9 @@ import {
   drapeStations,
   groundTiers,
   layerGround,
+  WALK_HEADROOM_M,
   type FrameScheduler,
+  type RayDown,
 } from './walkGround';
 
 const layer = (id: string, kind: string, role?: string) =>
@@ -84,7 +86,60 @@ describe('layerGround', () => {
   });
 });
 
+/**
+ * Layers drawn as surfaces at heights (a roof over a floor, say): a ray down from `fromY` (the
+ * top without it) meets the highest one below its start.
+ */
+const surfaces =
+  (by: Record<string, number[]>): RayDown =>
+  (_x, _z, id, fromY = Infinity) => {
+    const below = (by[id] ?? []).filter((y) => y < fromY);
+    return below.length > 0 ? Math.max(...below) : null;
+  };
+
+describe('layerGround near a walk', () => {
+  it("skips a roof over the walker: the floor under the walk's own height", () => {
+    // a shelter: its roof 6 m up, its floor 1 m up, the ortho at 0
+    const ray = vi.fn(surfaces({ mesh: [1, 6], ortho: [0] }));
+    const g = layerGround(LAYERS, ray);
+    expect(g(0, 0, 1)).toBe(1);
+    expect(ray).toHaveBeenCalledWith(0, 0, 'mesh', 1 + WALK_HEADROOM_M);
+  });
+
+  it('prefers the floor of a model or cloud over the flat imagery under it', () => {
+    // pins on the ortho plane at 0, the floor in the cloud 1.25 m up
+    const g = layerGround(LAYERS, surfaces({ cloud: [1.25], ortho: [0], streets: [0] }));
+    expect(g(0, 0, 0)).toBe(1.25);
+    // the imagery still answers where no model is drawn
+    expect(layerGround(LAYERS, surfaces({ ortho: [0] }))(0, 0, 0)).toBe(0);
+  });
+
+  it('an open site stands where it did', () => {
+    const open = surfaces({ dsm: [4], ortho: [4], streets: [0] });
+    expect(layerGround(LAYERS, open)(0, 0, 4)).toBe(layerGround(LAYERS, open)(0, 0));
+    expect(layerGround(LAYERS, open)(0, 0, 4)).toBe(4);
+  });
+
+  it("nothing under the walk's height (its pins stored far below): the top, as without it", () => {
+    // a walk placed on the map stored ground 0 while the DSM sits 50 m up
+    const g = layerGround(LAYERS, surfaces({ dsm: [50], mesh: [50, 58] }));
+    expect(g(0, 0, 0)).toBe(50);
+  });
+});
+
 describe('cachedGround', () => {
+  it("remembers answers per band of the walk's height too (two floors over one spot)", () => {
+    const ground = vi.fn((_x: number, _z: number, near?: number) => near ?? -1);
+    const g = cachedGround(ground, 1);
+    expect(g(0.1, 0.1, 0)).toBe(0);
+    expect(g(0.2, 0.2, 0.3)).toBe(0);
+    expect(g(0.1, 0.1, 10)).toBe(10);
+    expect(g(0.1, 0.1)).toBe(-1);
+    expect(ground).toHaveBeenCalledTimes(3);
+    expect(g.known(0.5, 0.5, 10)).toBe(10);
+    expect(g.known(0.5, 0.5, 20)).toBeUndefined();
+  });
+
   it('asks once per cell until cleared', () => {
     const ground = vi.fn(() => 3);
     const g = cachedGround(ground, 1);
@@ -126,6 +181,20 @@ describe('drapePoints', () => {
       expect(out[i]?.[1]).toBeCloseTo(y, 9);
     });
     expect(out.map((p) => p[0])).toEqual([0, 0.5, 1]);
+  });
+
+  it("asks the ground near each point's stored height", () => {
+    const ground = vi.fn(() => 1);
+    drapePoints(
+      [
+        [0, 3, 0],
+        [1, 3, 0],
+      ],
+      ground,
+      0,
+    );
+    expect(ground).toHaveBeenCalledWith(0, 0, 3);
+    expect(ground).toHaveBeenCalledWith(1, 0, 3);
   });
 
   it('keeps the stored (pin) height where the ground answers nothing', () => {
