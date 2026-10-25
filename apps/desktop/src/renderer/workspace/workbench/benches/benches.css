@@ -39,7 +39,7 @@
 .wb-note {
   margin: 0;
   color: var(--fg-3);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 /* a layer row's eye is always there, not only on hover: it says what is shown */
 .wb-eye-row .row-acts {
@@ -98,7 +98,7 @@
 .vb-pick {
   margin: 0;
   color: var(--fg-3);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .vb-card {
   display: grid;
@@ -126,7 +126,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-0);
 }
 .vb-scrub {
@@ -174,7 +174,7 @@
   justify-content: space-between;
   gap: var(--sp-4);
   padding: var(--sp-2) var(--sp-4);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-1);
 }
 
@@ -203,7 +203,7 @@
 .ab-note {
   margin: 0;
   padding: var(--sp-2) var(--sp-4);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-3);
 }
 .ab-drafts {
@@ -275,7 +275,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-1);
 }
 .jb-steps li {
@@ -336,7 +336,7 @@
 }
 .jb-err {
   margin: 0;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--danger-ink);
 }
 .jb-acts {

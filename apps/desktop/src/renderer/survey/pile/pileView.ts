@@ -126,6 +126,25 @@ export function largestDrop(
   return best;
 }
 
+/**
+ * A sentence's parts with its figures marked, so the words are set in the UI font and only the
+ * figures in mono ("Largest drop −0.96 m at 22 m"). `template` is the message with its
+ * placeholders left in (`{value}`), `figures` what each one stands for.
+ */
+export function figureParts(
+  template: string,
+  figures: Readonly<Record<string, string>>,
+): { text: string; figure: boolean }[] {
+  return template
+    .split(/(\{\w+\})/)
+    .filter((p) => p !== '')
+    .map((p) => {
+      const name = /^\{(\w+)\}$/.exec(p)?.[1];
+      const value = name === undefined ? undefined : figures[name];
+      return value === undefined ? { text: p, figure: false } : { text: value, figure: true };
+    });
+}
+
 /** A series' height at a chainage, linear between its stations; null outside or over a gap. */
 function interpolate(s: ChartSeries, c: number): number | null {
   for (let i = 1; i < s.chainage.length; i++) {

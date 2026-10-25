@@ -46,7 +46,7 @@
   block-size: 100%;
   padding-inline: var(--sp-4);
   border-radius: var(--r-4);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: inherit;
   white-space: nowrap;
 }
@@ -101,7 +101,7 @@
   margin-inline-end: var(--sp-1);
   padding-inline: var(--sp-3);
   border-radius: var(--r-4);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--acc);
   white-space: nowrap;
 }
@@ -130,7 +130,7 @@
   padding-inline: var(--sp-4);
   border: 1px dashed var(--line);
   border-radius: var(--r-4);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-2);
   white-space: nowrap;
   transition:
@@ -165,7 +165,7 @@
   gap: var(--sp-4);
 }
 .pc-shade-label {
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-3);
   white-space: nowrap;
 }
@@ -348,7 +348,7 @@
   display: inline-flex;
   gap: var(--sp-5);
   margin: 0;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   font-variant-numeric: tabular-nums;
   color: var(--fg-1);
 }
@@ -425,7 +425,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-2);
 }
 .tc-missing-names {
@@ -440,7 +440,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: var(--t-12);
+  font-size: var(--t-11);
   color: var(--fg-1);
 }
 .tc-legend li {

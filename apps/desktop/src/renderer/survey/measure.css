@@ -27,7 +27,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-1);
 }
 
@@ -132,7 +132,7 @@
   border-radius: var(--r-6);
   background: var(--bg-1);
   color: var(--fg-0);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   box-shadow: 0 12px 32px oklch(0.08 0.01 250 / 0.5);
 }
 @position-try --sv-drawbar-on-stage {
@@ -192,7 +192,7 @@
 .sv-head h2 {
   flex: 1;
   margin: 0;
-  font-size: var(--t-14);
+  font-size: var(--t-title);
   font-weight: 600;
 }
 .sv-row {
@@ -211,7 +211,7 @@
   border-radius: var(--r-4);
   background: var(--bg-2);
   color: var(--fg-0);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 textarea.sv-input {
   height: auto;
@@ -220,13 +220,13 @@ textarea.sv-input {
 }
 .sv-title {
   flex: 1;
-  font-size: var(--t-14);
+  font-size: var(--t-title);
   font-weight: 600;
 }
 .sv-field {
   display: grid;
   gap: 4px;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .sv-field > span {
   font-size: var(--t-11);
@@ -278,7 +278,7 @@ fieldset:disabled .sv-pick {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-1);
 }
 .sv-filters,
@@ -320,7 +320,7 @@ fieldset:disabled .sv-pick {
 .sv-verts {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .sv-readout th,
 .sv-verts th {
@@ -352,7 +352,7 @@ fieldset:disabled .sv-pick {
 }
 .sv-sec > summary {
   cursor: pointer;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   font-weight: 600;
   color: var(--fg-1);
 }
@@ -385,7 +385,7 @@ fieldset:disabled .sv-pick {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 
 /* dialogs */
@@ -446,7 +446,7 @@ fieldset:disabled .sv-pick {
   border-radius: var(--r-4);
   text-align: left;
   color: var(--fg-0);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .sv-tpl-list li button small {
   margin-left: auto;
@@ -472,14 +472,14 @@ fieldset:disabled .sv-pick {
   padding: 2px 4px;
   border: 1px solid var(--line-soft);
   border-radius: var(--r-4);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   cursor: grab;
 }
 .sv-problems {
   margin: 0;
   padding-left: 18px;
   color: var(--s5);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .sv-sets {
   display: grid;
@@ -566,7 +566,7 @@ fieldset:disabled .sv-pick {
   background: var(--scrim);
   box-shadow: var(--el-2);
   color: var(--fg-1);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .prep-head {
   display: flex;

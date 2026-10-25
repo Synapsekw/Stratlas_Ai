@@ -73,6 +73,7 @@
   --t-12: 12px;
   --t-13: 13px;
   --t-14: 14px;
+  --t-15: 15px;
   --t-16: 16px;
   --t-20: 20px;
   --t-24: 24px;
@@ -123,8 +124,9 @@
   --d-1: 120ms;
   --d-2: 180ms;
   --d-3: 260ms;
-  /* type roles */
-  --t-title: var(--t-13);
+  /* type roles: one scale for the sidebar, the right panel and the pop-ups. Titles 15, body
+     text and buttons 13 (figures 13 in mono, a big figure 16), small caps and chart labels 11 */
+  --t-title: var(--t-15);
   --fw-title: 600;
   /* prettier-ignore */
   --caps-ls: .06em;

@@ -106,7 +106,7 @@
   padding: 16px;
 }
 .small {
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .nowrap {
   white-space: nowrap;
@@ -704,9 +704,9 @@ button.chip-status:hover {
 }
 .proj-switch .pt b {
   display: block;
-  font-weight: 500;
+  font-weight: var(--fw-title);
   color: var(--fg-0);
-  font-size: var(--t-13);
+  font-size: var(--t-title);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2584,7 +2584,7 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
   margin-inline-start: auto;
 }
 .pop-row .mono {
-  font-size: 11px;
+  font-size: var(--t-13);
   color: var(--fg-2);
   min-width: 48px;
   text-align: end;
@@ -2997,7 +2997,7 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
 }
 .ent-h .et b {
   display: block;
-  font-size: var(--t-14);
+  font-size: var(--t-title);
   color: var(--fg-0);
   font-weight: 600;
   line-height: 1.25;

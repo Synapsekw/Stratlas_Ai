@@ -25,7 +25,7 @@
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
-  font-size: var(--t-14);
+  font-size: var(--t-title);
   font-weight: var(--fw-title);
   color: var(--fg-0);
   overflow: hidden;
@@ -77,7 +77,7 @@
 }
 .mc-value {
   font-family: var(--f-mono);
-  font-size: var(--t-20);
+  font-size: var(--t-16);
   font-weight: var(--fw-title);
   font-variant-numeric: tabular-nums;
   line-height: 1.15;
@@ -89,19 +89,19 @@
   color: var(--fg-1);
 }
 .mc-what {
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-3);
 }
 
 /* 3. secondary line, and "More" */
 .mc-secondary {
   margin: 0;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   font-variant-numeric: tabular-nums;
   color: var(--fg-2);
 }
 .mc-status {
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-2);
 }
 /* inside the card's box: a host that clips at its padding (the panel) cuts nothing off */
@@ -111,7 +111,7 @@
 .mc-readout {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .mc-readout th {
   padding: var(--sp-1) var(--sp-3) var(--sp-1) 0;
@@ -155,7 +155,7 @@
   width: 100%;
   box-sizing: border-box;
   resize: vertical;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 
 /* the report prints the values and the chart, nothing to press */

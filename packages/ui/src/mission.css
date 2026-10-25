@@ -125,7 +125,7 @@ svg.i {
 
 /* ---------- controls ---------- */
 .kbd {
-  font: 500 10.5px/1 var(--f-mono);
+  font: 500 var(--t-11) / 1 var(--f-mono);
   color: var(--fg-2);
   border: 1px solid var(--line);
   border-bottom-width: 2px;
@@ -140,7 +140,7 @@ svg.i {
   background: var(--bg-1);
   padding: 0 8px;
   color: var(--fg-0);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   min-width: 0;
 }
 .input::placeholder {
@@ -278,7 +278,7 @@ select.input option {
   display: grid;
   grid-template-columns: 92px 1fr;
   gap: 6px 12px;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   margin: 0;
 }
 .kv dt {
@@ -843,7 +843,7 @@ select.input option {
   padding-inline: 6px;
   border-radius: var(--r-2);
   color: var(--fg-2);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   white-space: nowrap;
 }
 .tree-h .tree-add:hover,
@@ -945,7 +945,7 @@ select.input option {
   padding-block: 0;
   padding-inline: 30px 4px;
   border-radius: var(--r-4);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-2);
   white-space: nowrap;
   position: relative;
@@ -981,7 +981,7 @@ select.input option {
 }
 .titem .tm {
   margin-inline-start: auto;
-  font: 400 11px/1 var(--f-mono);
+  font: 400 var(--t-13) / 1 var(--f-mono);
   color: var(--fg-3);
   flex: none;
   /* a long value (a measurement's) never takes the name's room: past half the row it ellipsizes */
@@ -1035,7 +1035,7 @@ select.input option {
 .titem-extra {
   padding-block: 4px 8px;
   padding-inline: 30px 8px;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-2);
 }
 .titem .eye-sp {
@@ -1080,7 +1080,7 @@ select.input option {
   align-items: center;
   border: 1px solid var(--line);
   border-radius: 3px;
-  font-size: 10.5px;
+  font-size: var(--t-11);
   line-height: 1;
   color: var(--fg-2);
 }
@@ -1149,7 +1149,7 @@ select.input option {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-0);
 }
 .dfolder .dname:focus-visible,
@@ -1202,7 +1202,7 @@ select.input option {
 }
 .dempty {
   margin: 2px 0 6px 28px;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-2);
 }
 .tree-nested {
@@ -1241,7 +1241,7 @@ select.input option {
   min-width: 0;
   height: 22px;
   padding: 0 6px;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 /* dragging a dataset row or a group header onto a date folder: folders that take the drop, and the one under it */
 .dtree .titem[draggable='true'],
@@ -1299,7 +1299,7 @@ select.input option {
   border-radius: var(--r-4);
   border: 1px solid var(--line);
   background: var(--bg-2);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-1);
   /* stays at the top of the scrolling sidebar, so a drop far down the list still shows its Undo;
      the fills are opaque so the rows scrolling under it do not show through */
@@ -1598,7 +1598,7 @@ select.input option {
 .tfilter-none {
   margin: 2px 6px 6px 30px;
   color: var(--fg-3);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 
 .cal {

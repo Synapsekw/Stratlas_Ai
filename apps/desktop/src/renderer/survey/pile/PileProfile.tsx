@@ -42,7 +42,7 @@ import { useQa } from '../qaStore';
 import { openSection, sectionStore, setWindow, type SectionSource } from '../sectionStore';
 import { usePreparingSoon } from '../surfaceStates';
 import { useLinkedChart } from '../useLinkedChart';
-import { largestDrop, minusSigned, pileView, usePileView } from './pileView';
+import { figureParts, largestDrop, minusSigned, pileView, usePileView } from './pileView';
 import '../../charts/charts.css';
 
 /** What the person chose on this pile's chips (kept while the panel is open on the pile). */
@@ -425,12 +425,21 @@ export function PileProfile({ m }: { m: SurveyMeasurement }): ReactElement {
             </>
           )}
           {drop && (
-            <div data-testid="pile-drop">
+            <div className="pp-drop" data-testid="pile-drop">
+              {/* a sentence in the UI font, its figures in mono */}
               <dd>
-                {t('pile.largestDrop', {
+                {figureParts(t('pile.largestDrop', { value: '{value}', chainage: '{chainage}' }), {
                   value: minusSigned(d(drop.dz), drop.dz),
                   chainage: `${formatNumber(drop.chainageM, 0, locale)} ${unitLabel(units.distance)}`,
-                })}
+                }).map((part, i) =>
+                  part.figure ? (
+                    <span key={i} className="mono">
+                      {part.text}
+                    </span>
+                  ) : (
+                    part.text
+                  ),
+                )}
               </dd>
             </div>
           )}

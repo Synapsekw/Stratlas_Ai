@@ -26,7 +26,7 @@
   border-radius: var(--r-6);
   background: var(--bg-2);
   color: var(--fg-1);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   white-space: nowrap;
   transition: border-color var(--d-1) var(--ease);
 }
@@ -43,7 +43,7 @@
   align-items: center;
   gap: var(--sp-2);
   color: var(--fg-3);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   white-space: nowrap;
 }
 .pp-pos > span {
@@ -62,9 +62,8 @@
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;
-  font-family: var(--f-mono);
-  font-size: var(--t-20);
-  font-weight: 500;
+  font-size: var(--t-title);
+  font-weight: var(--fw-title);
   color: var(--fg-0);
 }
 .pp-material {
@@ -91,7 +90,7 @@
   gap: var(--sp-3);
   margin-inline-start: auto;
   color: var(--fg-3);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .pp-density .sv-input {
   inline-size: 7ch;
@@ -162,7 +161,7 @@
 
 .pp-status {
   margin: 0;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 
 .pp-facts {
@@ -189,7 +188,8 @@
 .pp-facts dd[data-sign='gain'] {
   color: var(--fill);
 }
-.pp-base dd {
+.pp-base dd,
+.pp-drop dd {
   font-family: var(--f-ui);
   font-weight: 400;
 }
@@ -226,7 +226,7 @@
 }
 .pp-method {
   margin: 0;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-3);
 }
 .pp-split {
@@ -273,7 +273,7 @@
   border: 0;
   background: none;
   color: var(--fg-2);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .pp-shade b {
   font-weight: 500;
@@ -297,7 +297,7 @@
 }
 .pp-line {
   color: var(--fg-3);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .pp-building {
   margin: 0;
@@ -307,7 +307,7 @@
 .pp-table {
   inline-size: 100%;
   border-collapse: collapse;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .pp-table th,
 .pp-table td {
@@ -350,7 +350,7 @@
 }
 .pp-note {
   margin: 0;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-3);
   max-inline-size: 65ch;
 }
@@ -430,7 +430,7 @@
 .pa-handle[data-handle='turn'] {
   border-color: var(--acc);
   color: var(--acc);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .pa-handle[hidden] {
   display: none;

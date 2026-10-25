@@ -243,7 +243,7 @@
     "title": 3
   },
   "apps/desktop/src/renderer/styles.css": {
-    "fontPx": 25,
+    "fontPx": 24,
     "colour": 24,
     "shadow": 11,
     "zIndex": 12
@@ -383,7 +383,7 @@
     "title": 1
   },
   "packages/ui/src/mission.css": {
-    "fontPx": 10,
+    "fontPx": 9,
     "colour": 2,
     "shadow": 11,
     "zIndex": 6

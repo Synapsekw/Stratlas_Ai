@@ -238,6 +238,9 @@ describe('PileProfile', () => {
     // in the project's distance precision
     const drop = formatQuantity(2.96, 'distance', settings.units, settings.precision);
     expect(text('[data-testid="pile-drop"]')).toBe(`Largest drop −${drop} at 22 m`);
+    // a sentence in the UI font: only its figures are set in mono
+    const figures = [...(q('[data-testid="pile-drop"]')?.querySelectorAll('.mono') ?? [])];
+    expect(figures.map((f) => f.textContent)).toEqual([`−${drop}`, '22 m']);
   });
 
   it('while a date prepares the placeholder names it and the ready line still draws', async () => {

@@ -8,7 +8,7 @@
   color: var(--fg-0);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-4);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   font-weight: 400;
   padding: 4px 8px;
   white-space: nowrap;
@@ -39,7 +39,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--r-4);
   box-shadow: var(--el-2);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   padding: 4px 8px;
   pointer-events: none;
   animation: tip-pop-in var(--d-1) var(--ease);

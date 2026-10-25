@@ -113,7 +113,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-4);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .meb-live-acts {
   display: flex;

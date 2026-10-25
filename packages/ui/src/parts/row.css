@@ -19,7 +19,7 @@
 }
 .row[data-kind='tree'] {
   height: 26px;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .row[data-kind='menu'] {
   height: 30px;

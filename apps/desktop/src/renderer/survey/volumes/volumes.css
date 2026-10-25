@@ -51,12 +51,12 @@
 }
 .vh-date {
   margin: var(--sp-1) 0 0;
-  font-size: var(--t-14);
+  font-size: var(--t-title);
   font-weight: 500;
   color: var(--fg-0);
 }
 .vh-src {
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   font-weight: 400;
   color: var(--fg-3);
 }
@@ -118,7 +118,7 @@
 .vh-status {
   display: grid;
   gap: var(--sp-1);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-2);
 }
 .vh-status p {
@@ -139,13 +139,13 @@
   display: flex;
   justify-content: space-between;
   gap: var(--sp-4);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-3);
 }
 .vi-table {
   inline-size: 100%;
   border-collapse: collapse;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   font-variant-numeric: tabular-nums;
 }
 .vi-table th,
@@ -264,7 +264,7 @@
 /* during playback: the figures are the last survey passed's (board 6) */
 .vi-note {
   margin: var(--sp-3) 0 0;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-3);
 }
 .vi-why::first-letter {

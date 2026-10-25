@@ -92,7 +92,7 @@ describe('design tokens', () => {
       '--d-1': '120ms',
       '--d-2': '180ms',
       '--d-3': '260ms',
-      '--t-title': 'var(--t-13)',
+      '--t-title': 'var(--t-15)',
       '--fw-title': '600',
       '--caps-ls': '.06em',
       '--r-pill': '999px',

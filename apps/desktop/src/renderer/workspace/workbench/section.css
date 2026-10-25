@@ -9,7 +9,8 @@
   border: 0;
   background: transparent;
   color: var(--fg-0);
-  font-size: var(--t-title);
+  /* a group's head reads as body text in weight, under the panel's 15 px titles */
+  font-size: var(--t-13);
   font-weight: var(--fw-title);
   text-align: start;
   cursor: pointer;

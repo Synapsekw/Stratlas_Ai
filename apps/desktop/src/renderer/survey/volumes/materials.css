@@ -16,7 +16,7 @@
 }
 .mp-title {
   margin: 0;
-  font-size: var(--t-14);
+  font-size: var(--t-title);
   font-weight: 500;
   color: var(--fg-0);
 }
@@ -25,7 +25,7 @@
 .mp-table {
   inline-size: 100%;
   border-collapse: collapse;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .mp-table thead th {
   padding: var(--sp-2) var(--sp-2);
@@ -163,7 +163,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-3) var(--sp-4);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .mp-old {
   font-family: var(--f-mono);
@@ -184,7 +184,7 @@
 .mp-history {
   display: grid;
   gap: var(--sp-2);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .mp-history ul {
   display: grid;
@@ -200,7 +200,7 @@
 
 .mp-impact {
   margin: 0;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   line-height: 1.45;
   color: var(--fg-2);
 }
@@ -223,7 +223,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--r-pill);
   background: var(--bg-1);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   color: var(--fg-0);
 }
 .mp-chip button {
@@ -253,7 +253,7 @@
   border: 1px solid var(--line-soft);
   border-radius: var(--r-6);
   background: var(--bg-1);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .mp-checklist label {
   display: inline-flex;

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createPileView,
   footprintM2,
+  figureParts,
   largestDrop,
   minusSigned,
   parseDecimal,
@@ -209,5 +210,26 @@ describe('parseDecimal', () => {
     expect(parseDecimal(' 2 ', 'imperial')).toBe(2);
     expect(parseDecimal('abc', 'metric')).toBeNull();
     expect(parseDecimal('', 'metric')).toBeNull();
+  });
+});
+
+describe('figureParts', () => {
+  it('marks the figures of a sentence and keeps its words, in the message order', () => {
+    expect(
+      figureParts('Largest drop {value} at {chainage}', { value: '−0.96 m', chainage: '22 m' }),
+    ).toEqual([
+      { text: 'Largest drop ', figure: false },
+      { text: '−0.96 m', figure: true },
+      { text: ' at ', figure: false },
+      { text: '22 m', figure: true },
+    ]);
+  });
+
+  it('leaves a placeholder it has no figure for as written', () => {
+    expect(figureParts('{a} and {b}', { a: '1' })).toEqual([
+      { text: '1', figure: true },
+      { text: ' and ', figure: false },
+      { text: '{b}', figure: false },
+    ]);
   });
 });

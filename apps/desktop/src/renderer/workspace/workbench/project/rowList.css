@@ -49,7 +49,7 @@
   margin: 0;
   padding: var(--sp-2) 8px;
   color: var(--fg-3);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   line-height: 1.4;
 }
 /* a row's name as a field while it is renamed in place: the app's input, compact to the row */
@@ -63,7 +63,7 @@
   border-radius: var(--r-4);
   background: var(--bg-1);
   color: var(--fg-0);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .pl-rename:hover {
   border-color: var(--line-strong);

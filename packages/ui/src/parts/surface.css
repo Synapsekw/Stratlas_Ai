@@ -6,7 +6,7 @@
   box-shadow: var(--el-2);
   z-index: var(--z-pop);
   color: var(--fg-1);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 /* a menu or popover opened inside a dialog renders above it (PortalRoot sets data-layer) */
 [data-layer='top'] > .surface-pop {
@@ -108,7 +108,7 @@
   border: 1px solid var(--line);
   border-radius: var(--r-6);
   box-shadow: var(--el-2);
-  font-size: var(--t-12);
+  font-size: var(--t-13);
 }
 .dmenu-h {
   padding: 4px 8px 6px;
