@@ -32,7 +32,7 @@ import { onlineSatelliteSwitch, pickBase } from '../workspace/onlineSatellite';
 import { rasterPacks } from '../workspace/siteTiles';
 import { toggleTelemetry } from '../workspace/telemetryPref';
 import { timeline, useTimeline } from '../workspace/timeline';
-import { toggleTimeline } from '../workspace/timelinePref';
+import { hasTimeline, toggleTimeline } from '../workspace/timelinePref';
 import { farNotice } from '../builder/farSession';
 import { addDateMenu } from './AddSurveyDate';
 import { panelHandleLabel } from './PanelHandle';
@@ -398,15 +398,17 @@ export function Palette() {
         }),
         'I',
       );
-      action(
-        'timeline',
-        t('timeline.toggle'),
-        'clock',
-        scene(() => {
-          toggleTimeline(project);
-        }),
-        'T',
-      );
+      // no video and one survey date: no timeline to show (the View tile says why)
+      if (hasTimeline(project))
+        action(
+          'timeline',
+          t('timeline.toggle'),
+          'clock',
+          scene(() => {
+            toggleTimeline(project);
+          }),
+          'T',
+        );
       const clouds = layers.filter((l) => l.kind === 'pointcloud');
       if (clouds.length > 0) {
         const rgb = clouds.some((l) => l.format === 'png-packed');

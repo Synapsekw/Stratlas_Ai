@@ -233,6 +233,7 @@ export const en = {
   'timeline.hide': 'Hide the timeline',
   'timeline.toggle': 'Show or hide the timeline',
   'timeline.noVideo': 'No video in this project',
+  'timeline.needsDates': 'Add a second survey date to see the dates timeline',
   'timeline.clips_one': '{count} clip',
   'timeline.clips_other': '{count} clips',
   'timeline.utc': 'UTC',
