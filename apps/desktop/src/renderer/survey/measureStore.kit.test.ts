@@ -426,12 +426,12 @@ describe('a converted kit pile whose measurement vanished', () => {
       changes: [{ field: 'record', after: m }],
     });
 
-  it('the journal shows no deliberate deletion: it comes back with its kit figures, as a migration', async () => {
+  it('the journal shows it created and never deleted: it comes back with its kit figures, as a migration', async () => {
     const { file, gone } = await vanished();
-    // newest first, over two pages: the delete came from a file changed outside the app
+    // newest first, over two pages: only another measurement's edit follows the conversion
     const create = created(gone);
     io.journal = {
-      pages: [[entry('measurement.delete', gone.id, { how: 'external' })], [create]],
+      pages: [[entry('measurement.edit', 'mine')], [create]],
     };
     await open(file);
     const [m] = kitMeasurements();
@@ -445,6 +445,17 @@ describe('a converted kit pile whose measurement vanished', () => {
     expect(io.saved.measurements.map((x) => x.id)).toEqual(['mine', m?.id]);
     expect(io.labels.get(m?.id ?? '')).toBe('Stockpile kit piles converted to volume measurements');
     expect(isDirty(measureStore.getState())).toBe(false);
+  });
+
+  it('a delete from a file changed outside the app also keeps it gone', async () => {
+    const { file, gone } = await vanished();
+    const create = created(gone);
+    io.journal = {
+      pages: [[entry('measurement.delete', gone.id, { how: 'external' })], [create]],
+    };
+    await open(file);
+    expect(kitMeasurements()).toHaveLength(0);
+    expect(io.writes).toBe(0);
   });
 
   it('the person deleted it: it stays gone and nothing is written', async () => {
