@@ -361,8 +361,24 @@ describe('VolumeDetail', () => {
     show(pile({ series }));
     const dates = [...host.querySelectorAll('[data-testid="vol-time-table"] tbody th')];
     expect(dates.map((d) => d.textContent)).toEqual(['5 Sep', '5 Oct']);
-    // the survey's own label stays on hand
-    expect(dates[0]?.getAttribute('title')).toBe('Survey 5 September 2026');
+    // the survey's own label stays on hand, in the app's tip on hover
+    vi.useFakeTimers();
+    try {
+      const date = dates[0]?.querySelector('span');
+      act(() => {
+        date?.dispatchEvent(
+          new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }),
+        );
+      });
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+      expect(document.body.querySelector('[role="tooltip"]')?.textContent).toContain(
+        'Survey 5 September 2026',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
     // the date, head and figure cells keep to one line at the panel's narrowest width
     const css = readFileSync(join(__dirname, '..', 'compare.css'), 'utf8');
     const rule = (sel: string) =>
