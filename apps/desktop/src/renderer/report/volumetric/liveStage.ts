@@ -12,7 +12,7 @@ import { bridge, shell } from '../../shell';
 import { compareStore, engineClient, setHeat } from '../../survey/compareStore';
 import { measureStore } from '../../survey/measureStore';
 import { cutFillPrefs, wholeSiteHeat } from '../../survey/volumes/cutFill';
-import { siteCutFillQuestion } from '../../workspace/stageCutFill';
+import { legendRangeM, siteCutFillQuestion } from '../../workspace/stageCutFill';
 import { rasterSwap, stageShow } from '../../workspace/StageShow';
 import { timeline } from '../../workspace/timeline';
 import {
@@ -139,6 +139,9 @@ export async function liveStage(): Promise<CaptureStage | null> {
     if (heat.show3d !== on || heat.show2d !== on) setHeat({ show3d: on, show2d: on });
   };
 
+  // the deadband the last whole-site heat map was asked with (null: none drawn by the capture)
+  let heatThresholdM: number | null = null;
+
   return {
     origin,
     get view() {
@@ -229,6 +232,7 @@ export async function liveStage(): Promise<CaptureStage | null> {
       });
       if (!question) return false;
       heatOn(true);
+      heatThresholdM = question.thresholdM;
       stageShow.setState({ surface: 'change' });
       const grid = await wholeSiteHeat(
         question.refs,
@@ -263,6 +267,13 @@ export async function liveStage(): Promise<CaptureStage | null> {
     async shoot(camera, w, h, quality) {
       if (stage.contextLost) throw new Error('The 3D view lost its graphics context.');
       return jpeg(renderInto(stage, camera, w, h), quality);
+    },
+    cutFillSettings() {
+      if (kitLoaded() || heatThresholdM === null || compareStore.getState().siteHeat === null)
+        return null;
+      const { stops, stepped, inverted } = measureStore.getState().settings.heatmap;
+      const style = { stops, stepped, inverted };
+      return { thresholdM: heatThresholdM, rangeM: legendRangeM(style), style };
     },
     heightAt(e, n) {
       const [x, , z] = [e - origin[0], 0, 0 - (n - origin[1])];

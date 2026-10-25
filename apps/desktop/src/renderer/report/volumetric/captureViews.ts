@@ -15,6 +15,7 @@ import {
   type ReportViewsFrame,
   type SurveyMeasurement,
   type Vec3,
+  type HeatmapStyle,
 } from '@aio/schema';
 import { projectToLocal } from '@aio/geo';
 import { outlineOn } from '@aio/survey';
@@ -64,6 +65,18 @@ export interface CaptureStage {
   ): Promise<Uint8Array<ArrayBuffer>>;
   /** The drawn ground height under a site point, when the stage can say it. */
   heightAt?(e: number, n: number): number | null;
+  /**
+   * The cut and fill settings the heat map on the stage is drawn with now (read right after the
+   * Cut & fill shot), saved on the frame as `cutFill` for page C's key and legend.
+   */
+  cutFillSettings?(): FrameCutFill | null;
+}
+
+/** The stage heat map's "Ignore under" deadband, legend half span and colours (`frame.cutFill`). */
+export interface FrameCutFill {
+  thresholdM: number;
+  rangeM: number;
+  style?: Pick<HeatmapStyle, 'stops' | 'stepped' | 'inverted'>;
 }
 
 export interface CaptureRequest {
@@ -233,6 +246,7 @@ export async function captureViews(
   const files: { name: string; data: Uint8Array<ArrayBuffer> }[] = [];
   const markers3d: Record<string, Record<string, [number, number]>> = {};
   let failed: string | null = null;
+  let cutFill: FrameCutFill | null = null;
   try {
     await stage.prepare();
     let date: string | null = null;
@@ -267,6 +281,7 @@ export async function captureViews(
           file: s.file,
         });
         files.push({ name: s.file, data });
+        if (s.kind === 'cutfill') cutFill = stage.cutFillSettings?.() ?? null;
         if (is3d) markers3d[s.capture] = pileMarkers(req, s.capture, stage, angled, w3, h3);
       }
       pictureRun.setState({ done: i + 1 });
@@ -293,6 +308,7 @@ export async function captureViews(
     views,
     markers3d,
     fingerprint: req.fingerprint,
+    ...(cutFill ? { cutFill } : {}),
   };
   const saved = await opts.save(out, files);
   return saved.ok ? { ok: true, frame: out } : { ok: false, error: saved.error ?? 'Not saved.' };

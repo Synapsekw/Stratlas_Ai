@@ -247,6 +247,44 @@ describe('captureViews', () => {
     expect(f.markers3d['c-jan']?.['m-a']?.[1]).toBeCloseTo(want?.[1] ?? NaN, 6);
   });
 
+  it('saves the cut and fill settings the heat map was drawn with, read at the shot', async () => {
+    const style = { stops: [{ value: -1, color: '#ff0000' }], stepped: true, inverted: false };
+    let read: string | null = null;
+    const { stage, state } = fakeStage({
+      cutFillSettings: () => {
+        read = state.surface;
+        return { thresholdM: 0.25, rangeM: 3, style };
+      },
+    });
+    let frame: ReportViewsFrame | null = null;
+    await captureViews(REQ, stage, {
+      save: (f) => {
+        frame = f;
+        return Promise.resolve({ ok: true });
+      },
+    });
+    expect(read).toBe('change');
+    expect((frame as unknown as { cutFill: unknown }).cutFill).toEqual({
+      thresholdM: 0.25,
+      rangeM: 3,
+      style,
+    });
+  });
+
+  it('saves no cut and fill settings without a cut and fill picture', async () => {
+    const { stage } = fakeStage({
+      cutFillSettings: () => ({ thresholdM: 0.25, rangeM: 3 }),
+    });
+    let frame: ReportViewsFrame | null = null;
+    await captureViews({ ...REQ, pair: null }, stage, {
+      save: (f) => {
+        frame = f;
+        return Promise.resolve({ ok: true });
+      },
+    });
+    expect(frame).not.toHaveProperty('cutFill');
+  });
+
   it('skips a surface a date does not have', async () => {
     const { stage } = fakeStage({
       showSurface: (s, at) => Promise.resolve(!(s === 'elev' && at.capture === 'c-jan')),
