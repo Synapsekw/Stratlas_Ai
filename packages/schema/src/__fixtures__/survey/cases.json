@@ -3037,6 +3037,148 @@
         "fingerprint": "sha256:a0451d6e3b5e6cf508be13e60e3a9dfb0b492973388b7bef64ff55ca51086e39",
         "peakM": 3.7978515625
       }
+    },
+    {
+      "id": "site-overlap-only",
+      "note": "The whole site over two round surveys: the empty corners are outside the comparison",
+      "ring": [
+        [302000.0, 2574000.0],
+        [302020.0, 2574000.0],
+        [302020.0, 2574020.0],
+        [302000.0, 2574020.0]
+      ],
+      "item": {
+        "id": "site",
+        "from": {
+          "kind": "survey",
+          "surface": "disc-flat"
+        },
+        "to": {
+          "kind": "survey",
+          "surface": "disc-cone"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "overlapOnly": true,
+      "expected": {
+        "item": "site",
+        "status": "ok",
+        "cutM3": 0.0,
+        "fillM3": 205.296875,
+        "netM3": 205.296875,
+        "totalM3": 205.296875,
+        "areaM2": 400.0,
+        "areaCutM2": 0.0,
+        "areaFillM2": 154.0,
+        "areaUnchangedM2": 127.0,
+        "uncoveredM2": 119.0,
+        "fromLabel": "Round survey, flat",
+        "toLabel": "Round survey, cone",
+        "deadbandM": 0.0,
+        "usedDeadband": false,
+        "cellM": 0.5,
+        "fingerprint": "sha256:b49f71e2a1fe85a1fdc77432e8a139ac94f0bd5eee18e301787e4ac79dd11eee"
+      }
+    },
+    {
+      "id": "site-box-drawn",
+      "note": "The same box drawn as a boundary: over 20 % without data, refused",
+      "ring": [
+        [302000.0, 2574000.0],
+        [302020.0, 2574000.0],
+        [302020.0, 2574020.0],
+        [302000.0, 2574020.0]
+      ],
+      "item": {
+        "id": "site",
+        "from": {
+          "kind": "survey",
+          "surface": "disc-flat"
+        },
+        "to": {
+          "kind": "survey",
+          "surface": "disc-cone"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "expected": {
+        "item": "site",
+        "status": "refused",
+        "cutM3": 0.0,
+        "fillM3": 0.0,
+        "netM3": 0.0,
+        "totalM3": 0.0,
+        "areaM2": 400.0,
+        "areaCutM2": 0.0,
+        "areaFillM2": 0.0,
+        "areaUnchangedM2": 0.0,
+        "uncoveredM2": 119.0,
+        "fromLabel": "Round survey, flat",
+        "toLabel": "Round survey, cone",
+        "deadbandM": 0.0,
+        "usedDeadband": false,
+        "cellM": 0.5,
+        "fingerprint": "sha256:49eaf88b9228e79651c720a24b34704a9d7f1611d35ada4ca36f721281875bbf",
+        "reason": "30% outside the survey"
+      }
+    },
+    {
+      "id": "site-overlap-only-no-common-cell",
+      "note": "An overlap box where the surveys share no cell is refused",
+      "ring": [
+        [302017.5, 2574017.5],
+        [302020.0, 2574017.5],
+        [302020.0, 2574020.0],
+        [302017.5, 2574020.0]
+      ],
+      "item": {
+        "id": "site",
+        "from": {
+          "kind": "survey",
+          "surface": "disc-flat"
+        },
+        "to": {
+          "kind": "survey",
+          "surface": "disc-cone"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "overlapOnly": true,
+      "expected": {
+        "item": "site",
+        "status": "refused",
+        "cutM3": 0.0,
+        "fillM3": 0.0,
+        "netM3": 0.0,
+        "totalM3": 0.0,
+        "areaM2": 6.25,
+        "areaCutM2": 0.0,
+        "areaFillM2": 0.0,
+        "areaUnchangedM2": 0.0,
+        "uncoveredM2": 6.25,
+        "fromLabel": "Round survey, flat",
+        "toLabel": "Round survey, cone",
+        "deadbandM": 0.0,
+        "usedDeadband": false,
+        "cellM": 0.5,
+        "fingerprint": "sha256:3e3ca48b06d3e852fb4d3b81e959b21ec14fe1ca04f84b10f5dfc2b531fd8023",
+        "reason": "The two surfaces do not overlap."
+      }
     }
   ]
 }

@@ -151,6 +151,26 @@ def surfaces() -> dict[str, Any]:
         40,
         lambda X, Y: np.maximum(cone(9, 10, 7, 4)(X, Y), cone(19, 10, 7, 4)(X, Y)),
     )
+    # drone surveys of a round area: no height in the corners of their 20 m box (about 22 %), and
+    # the two discs are not the same, so some cells hold a height on one date only
+    s["disc-flat"] = grid(
+        "Round survey, flat",
+        "fp-disc-flat",
+        0.5,
+        40,
+        40,
+        lambda X, Y: 100.0 + 0 * X,
+        hole=lambda X, Y: np.hypot(X - 10, Y - 10) > 10,
+    )
+    s["disc-cone"] = grid(
+        "Round survey, cone",
+        "fp-disc-cone",
+        0.5,
+        40,
+        40,
+        cone(10, 10, 7, 4),
+        hole=lambda X, Y: np.hypot(X - 10.5, Y - 10) > 9.5,
+    )
     return s
 
 
@@ -461,6 +481,28 @@ def cases() -> list[dict[str, Any]]:
         neighbours=[[[e - 2.0, n + 1.0] for e, n in east]],
         lineUp={"ringShift": [2.0, -1.0]},
     )
+    # the whole site: the ring is the box around the overlap of two round surveys (overlapOnly)
+    box = rect(0, 0, 20, 20)
+    add(
+        "site-overlap-only",
+        box,
+        item("site", SV("disc-flat"), SV("disc-cone")),
+        "The whole site over two round surveys: the empty corners are outside the comparison",
+        overlapOnly=True,
+    )
+    add(
+        "site-box-drawn",
+        box,
+        item("site", SV("disc-flat"), SV("disc-cone")),
+        "The same box drawn as a boundary: over 20 % without data, refused",
+    )
+    add(
+        "site-overlap-only-no-common-cell",
+        rect(17.5, 17.5, 20, 20),
+        item("site", SV("disc-flat"), SV("disc-cone")),
+        "An overlap box where the surveys share no cell is refused",
+        overlapOnly=True,
+    )
     return c
 
 
@@ -526,6 +568,7 @@ def run_case(surfs: dict[str, Any], case: dict[str, Any]) -> dict[str, Any]:
             else None
         ),
         neighbours=case.get("neighbours"),
+        overlap_only=bool(case.get("overlapOnly")),
     )
     r.pop("computedAt", None)
     r.pop("engine", None)

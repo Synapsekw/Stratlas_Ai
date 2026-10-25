@@ -7,6 +7,7 @@ The TypeScript executor's parity test reads the same files; regenerate them with
 from __future__ import annotations
 
 import json
+import math
 
 import numpy as np
 import pytest
@@ -64,3 +65,20 @@ def test_the_prepared_cone_tile_holds_the_fixture_heights():
     h = cone.grid.read(0, 0, 40, 40)
     assert np.array_equal(tile[:40, :40], h)
     assert np.isnan(tile[40:, :]).all() and np.isnan(tile[:, 40:]).all()
+
+
+def test_an_overlap_box_is_not_refused_for_the_corners_without_data():
+    """Two round surveys in a 20 m box: about 22 % of it has no height on one date or both."""
+    surfs = json.loads(json.dumps(surfaces()))
+    by_id = {c["id"]: json.loads(json.dumps(c)) for c in cases()}
+    site = run_case(surfs, by_id["site-overlap-only"])
+    drawn = run_case(surfs, by_id["site-box-drawn"])
+    assert site["status"] == "ok" and "reason" not in site
+    assert site["uncoveredM2"] / site["areaM2"] > 0.2
+    # the cone (radius 7 m, 4 m high) lies inside both discs: its whole volume, pi r^2 h / 3
+    assert site["fillM3"] == pytest.approx(math.pi * 49 * 4 / 3, rel=0.02) and site["cutM3"] < 1e-9
+    assert drawn["status"] == "refused" and drawn["reason"].endswith("% outside the survey")
+    # overlapOnly joins the fingerprint only when set
+    assert site["fingerprint"] != drawn["fingerprint"]
+    none = run_case(surfs, by_id["site-overlap-only-no-common-cell"])
+    assert none["status"] == "refused" and none["reason"] == "The two surfaces do not overlap."

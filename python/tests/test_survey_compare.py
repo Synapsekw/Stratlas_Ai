@@ -419,6 +419,30 @@ def test_bad_parameters_are_refused(params, message):
         pipeline().validate(params)
 
 
+@pytest.mark.parametrize("ring", [None, "drawn"])
+def test_the_whole_site_job_compares_the_overlap_only_without_a_boundary(tmp_path, monkeypatch, ring):
+    """Without a ring the site job builds the overlap box itself and compares the overlap only (as
+    the TypeScript engine's whole-site run does); a drawn boundary keeps the uncovered checks."""
+    import aio_pipelines.survey.compare as core
+
+    prepared(tmp_path)
+    seen: list[bool] = []
+    real = core.compare_item
+
+    def spy(*a, **kw):
+        seen.append(kw.get("overlap_only", False))
+        return real(*a, **kw)
+
+    monkeypatch.setattr(core, "compare_item", spy)
+    spec = {"from": {"kind": "previous"}, "to": {"kind": "current"}}
+    if ring:
+        spec["ring"] = PILE
+    result, _ = run_job(pipeline(), tmp_path, {"site": spec})
+    assert seen == [ring is None]
+    out = tmp_path / result["outputs"]["commit"]["out"] / "result.json"
+    assert json.loads(out.read_text("utf-8"))["result"]["status"] == "ok"
+
+
 def test_a_whole_site_base_needs_a_ring(tmp_path):
     prepared(tmp_path)
     with pytest.raises(JobError, match="needs a boundary"):

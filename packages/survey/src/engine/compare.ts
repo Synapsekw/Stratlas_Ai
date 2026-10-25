@@ -158,7 +158,8 @@ export interface CompareOptions {
    * The ring is only the box around the overlap of two surveys (the whole site), not an area the
    * person drew: a survey covers an irregular area, so cells where either date has no height are
    * outside the comparison, not missing from it. The result is then never partial or refused for
-   * its uncovered share (still reported in `uncoveredM2`); only for no common cell at all.
+   * its uncovered share (still reported in `uncoveredM2`); only for no common cell at all. It
+   * joins the fingerprint (`overlapOnly: true`, absent when false). Python: `overlap_only`.
    */
   overlapOnly?: boolean;
   /**
@@ -224,6 +225,7 @@ export async function fingerprint(
   ringCurrent?: Shift,
   ringCurrentTurn?: Turn,
   neighbours?: CompareOptions['neighbours'],
+  overlapOnly?: boolean,
 ): Promise<string> {
   const touching = onPerimeter(item) ? touchingRings(ring, neighbours) : [];
   const lineUp: Record<string, Json> = {};
@@ -255,6 +257,8 @@ export async function fingerprint(
     lineUp: Object.keys(lineUp).length > 0 ? lineUp : undefined,
     lineUpTurn: Object.keys(lineUpTurn).length > 0 ? lineUpTurn : undefined,
     neighbours: touching.length > 0 ? touching : undefined,
+    // the whole site's overlap box (absent otherwise, so every other result keeps its print)
+    overlapOnly: overlapOnly ? true : undefined,
   };
   return `sha256:${await sha256Hex(canonical(obj))}`;
 }
@@ -493,6 +497,7 @@ export async function compareItem(
         ? opts.ringCurrentTurn
         : opts.ringTurn,
       opts.neighbours,
+      opts.overlapOnly,
     ),
     computedAt: (opts.now ?? (() => new Date().toISOString()))(),
   };

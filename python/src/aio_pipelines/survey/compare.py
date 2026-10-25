@@ -233,6 +233,7 @@ def fingerprint(
     site: dict[str, Any] | None,
     ring_current: LineUp = ZERO,
     neighbours: list[Any] | None = None,
+    overlap_only: bool = False,
 ) -> str:
     touching = touching_rings(ring, neighbours) if _on_perimeter(item) else []
     obj: dict[str, Any] = {
@@ -263,6 +264,9 @@ def fingerprint(
     # the piles this one shares an edge with (absent when none: a pile on its own keeps its print)
     if touching:
         obj["neighbours"] = [[[p[0], p[1]] for p in r] for r in touching]
+    # the whole site's overlap box (absent otherwise, so every other result keeps its print)
+    if overlap_only:
+        obj["overlapOnly"] = True
     return "sha256:" + hashlib.sha256(canonical(obj).encode("utf-8")).hexdigest()
 
 
@@ -445,6 +449,7 @@ def compare_item(
     ring_shift: LineUp = ZERO,
     ring_current: LineUp | None = None,
     neighbours: list[Any] | None = None,
+    overlap_only: bool = False,
 ) -> dict[str, Any]:
     """One ``ComparisonResult`` (``engine: 'py'``) of ``item`` over the polygon ``ring`` (E, N).
 
@@ -459,6 +464,12 @@ def compare_item(
     piles share that edge (the saddle between them, not the ground), so the perimeter bases leave
     the samples there out, as long as three remain; the outlines that come that close join the
     fingerprint.
+
+    ``overlap_only``: the ring is only the box around the overlap of two surveys (the whole site),
+    not an area the person drew. A survey covers an irregular area, so cells where either date has
+    no height are outside the comparison, not missing from it: the result is never partial or
+    refused for its uncovered share (still reported in ``uncoveredM2``), only for no common cell at
+    all. It joins the fingerprint (absent when false).
     """
     ring_n = normal_ring(ring)
     frm, to = item["from"], item["to"]
@@ -472,7 +483,14 @@ def compare_item(
     except JobError as e:
         problem = str(e)
     fp = fingerprint(
-        ring_n, item, rf, rt, site, ring_shift if ring_current is None else ring_current, neighbours
+        ring_n,
+        item,
+        rf,
+        rt,
+        site,
+        ring_shift if ring_current is None else ring_current,
+        neighbours,
+        overlap_only,
     )
     touching = touching_rings(ring_n, neighbours) if _on_perimeter(item) else []
     placed = _line_up(ring_shift)
@@ -539,6 +557,10 @@ def compare_item(
     if surf is not None and math.isfinite(tot.dz_max):
         res["peakM"] = max(tot.dz_max if surf is rt else -tot.dz_min, 0.0)
     pct = math.floor(share * 100 + 0.5)
+    if overlap_only:
+        if tot.uncovered >= area:
+            return _refuse(res, "The two surfaces do not overlap.") | {"uncoveredM2": tot.uncovered}
+        return res
     if share > REFUSE_SHARE:
         return _refuse(res, f"{pct}% outside the survey") | {"uncoveredM2": tot.uncovered}
     if share > PARTIAL_SHARE:
@@ -1050,7 +1072,17 @@ class SurveyCompare:
                 **({"cellM": spec["cellM"]} if spec.get("cellM") is not None else {}),
             }
             outs: list[GridOut] = []
-            res = compare_item(ring, item, ps.resolve, ps.site(), ctx.check, grid_out=outs)
+            # without a boundary the ring is the box around the overlap of the two surveys: cells
+            # only one date covers are outside the comparison, never a reason to refuse it
+            res = compare_item(
+                ring,
+                item,
+                ps.resolve,
+                ps.site(),
+                ctx.check,
+                grid_out=outs,
+                overlap_only=not spec.get("ring"),
+            )
             ctx.progress(0.6, "Difference")
             files = _site_outputs(ctx, ps, outs[0] if outs else None, spec, res)
             atomic_write_json(ctx.stage("out/result.json"), {"ring": ring, "result": res})

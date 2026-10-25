@@ -78,6 +78,8 @@ interface FixtureCase {
   };
   /** The other piles' outlines on the date, stored as `ring` is (`CompareOptions.neighbours`). */
   neighbours?: [number, number][][];
+  /** The ring is the whole site's overlap box (`CompareOptions.overlapOnly`). */
+  overlapOnly?: boolean;
   expected: Pick<
     ComparisonResult,
     | (typeof NUMBERS)[number]
@@ -196,6 +198,7 @@ describe('TypeScript executor against the Python core (shared fixtures)', () => 
       ...(c.lineUpTurn?.ring ? { ringTurn: c.lineUpTurn.ring } : {}),
       ...(c.lineUpTurn?.ringCurrent ? { ringCurrentTurn: c.lineUpTurn.ringCurrent } : {}),
       ...(c.neighbours ? { neighbours: c.neighbours } : {}),
+      ...(c.overlapOnly ? { overlapOnly: true } : {}),
       now: () => '2026-10-09T00:00:00Z',
     });
     const e = c.expected;
