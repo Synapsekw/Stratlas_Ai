@@ -125,7 +125,7 @@ describe('page B, the pile cards', () => {
   it('heads the page with the stock on the latest date, its tonnes and its change', () => {
     const d = render(model);
     expect(d.querySelector('.vr-band')).not.toBeNull();
-    expect(text(d, '.vr-piles-head h1')).toContain('1 October 2026');
+    expect(text(d, '.vr-piles-head h1')).toBe('Stock inventory · 1 October 2026');
     expect(text(d, '.vr-piles-head .vr-piles-site')).toBe('The demo yard');
     expect(text(d, '.vr-piles-total')).toBe(
       `${model.kpis.stockM3.toLocaleString('en-US', { maximumFractionDigits: 0 })} m³`,
@@ -137,6 +137,7 @@ describe('page B, the pile cards', () => {
 
   it('splits the share-of-stock bar into the 8 largest and the Others, summing to 100 %', () => {
     const d = render(model);
+    expect(text(d, '.vr-share h2')).toBe('Share of stock on hand');
     const segs = [...d.querySelectorAll<HTMLElement>('.vr-share-seg')];
     expect(segs).toHaveLength(9);
     const widths = segs.map((s) => Number.parseFloat(s.style.width));
@@ -162,7 +163,7 @@ describe('page B, the pile cards', () => {
     );
     const rows = [...d.querySelectorAll('.vr-smaller-row')];
     expect(rows).toHaveLength(11);
-    expect(text(d, '.vr-smaller h2')).toBe(t('vreport.piles.smaller'));
+    expect(text(d, '.vr-smaller h2')).toBe('Smaller piles');
     expect(text(rows[0], '.vr-smaller-name')).toBe('P09');
   });
 

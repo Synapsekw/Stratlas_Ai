@@ -6669,7 +6669,9 @@ export const en = {
   'vreport.page.of': 'Page {n} of {total}',
   // Page B: pile cards
   'vreport.piles.title': 'Pile cards',
-  'vreport.piles.share': 'Share of stock',
+  'vreport.piles.heading': 'Stock inventory',
+  'vreport.piles.headingOn': 'Stock inventory · {date}',
+  'vreport.piles.share': 'Share of stock on hand',
   'vreport.piles.others': 'Others',
   'vreport.piles.before': 'Before, {date}',
   'vreport.piles.after': 'After, {date}',

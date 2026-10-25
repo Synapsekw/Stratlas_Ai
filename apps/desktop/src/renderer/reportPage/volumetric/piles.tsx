@@ -82,8 +82,8 @@ function noteOf(p: VolumetricPile, text: ResolvedText): string | null {
 function Header({ model }: { model: VolumetricModel }): ReactElement {
   const k = model.kpis;
   const title = model.latest
-    ? `${t('vreport.kpi.stock')} · ${dateText(model.latest.date)}`
-    : t('vreport.kpi.stock');
+    ? t('vreport.piles.headingOn', { date: dateText(model.latest.date) })
+    : t('vreport.piles.heading');
   return (
     <header className="vr-piles-head">
       <div>
