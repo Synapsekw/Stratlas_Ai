@@ -116,8 +116,13 @@ describe('page C, what changed', () => {
     const d = render(model);
     expect(d.querySelector('.vr-band')).not.toBeNull();
     expect(text(d, '.vr-c-dates')).toBe(`${dateText('2026-09-03')} → ${dateText('2026-10-01')}`);
-    expect(text(d, '.vr-c-head h1')).toContain('The demo yard');
-    expect(d.querySelectorAll('.vr-c-keys > span')).toHaveLength(3);
+    expect(text(d, '.vr-c-head h1')).toBe(t('vreport.change.siteTitle', { site: 'The demo yard' }));
+    const keys = [...d.querySelectorAll('.vr-c-keys > span')].map((k) => k.textContent);
+    expect(keys).toEqual([
+      t('vreport.change.keyBefore'),
+      t('vreport.change.keyAfter'),
+      t('vreport.piles.change'),
+    ]);
   });
 
   it('shows the before and after orthophotos on the same frame, captioned with their dates', () => {
@@ -149,6 +154,11 @@ describe('page C, what changed', () => {
 
   it('explains the colours in plain words with the deadband the pictures were taken with', () => {
     const d = render(model);
+    expect(text(d, '.vr-c-heat h2')).toBe(t('vreport.change.heatTitle'));
+    expect(text(d, '.vr-c-heat-dates')).toBe(
+      t('vreport.change.heat', { from: dateText('2026-09-03'), to: dateText('2026-10-01') }),
+    );
+    expect(text(d, '.vr-c-heat-explain')).toBe(t('vreport.change.heatExplain'));
     expect(text(d, '.vr-c-key')).toContain(t('vreport.key.red'));
     expect(text(d, '.vr-c-key')).toContain(t('vreport.key.blue'));
     expect(text(d, '.vr-c-key')).toContain(t('vreport.key.grey', { deadband: '0.10' }));
@@ -176,6 +186,9 @@ describe('page C, what changed', () => {
     const ups = rows.filter((r) => r.querySelector('.vr-c-fill.is-up'));
     expect(ups.length).toBeGreaterThan(0);
     expect(d.querySelector('.vr-c-axis')).not.toBeNull();
+    expect(text(d, '.vr-c-piles h2')).toBe(t('vreport.change.chart'));
+    const hints = [...d.querySelectorAll('.vr-c-axis-hint > span')].map((h) => h.textContent);
+    expect(hints).toEqual([t('vreport.change.axisLess'), t('vreport.change.axisMore')]);
   });
 
   it('prints the change method note in the footer', () => {

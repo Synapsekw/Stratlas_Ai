@@ -13,7 +13,7 @@
 import { useAnnotateReadOnly } from '@aio/annotate';
 import { formatNumber, localeOf } from '@aio/geo';
 import type { SurveyMeasurement } from '@aio/schema';
-import { effectiveUnits, surfacesStamp, type NotCounted } from '@aio/survey';
+import { effectiveUnits, KIT_MATERIAL_NAME, surfacesStamp, type NotCounted } from '@aio/survey';
 import { Button, EmptyState, formatDate, useT, type MessageKey } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import {
@@ -314,7 +314,9 @@ export function InventoryPane({ model, piles, onPile }: InventoryPaneProps): Rea
                 <tr className="vi-group" data-testid="volumes-group" data-material={key}>
                   <th scope="rowgroup" className="vi-name">
                     <span className="vi-sq" style={{ background: g.colour }} aria-hidden="true" />
-                    {g.material?.name ?? t('volumes.noMaterial')}
+                    {g.material?.id === 'kit' && g.material.name === KIT_MATERIAL_NAME
+                      ? t('volumes.kitSiteDensity')
+                      : (g.material?.name ?? t('volumes.noMaterial'))}
                     {g.densityTPerM3 !== null && (
                       <span className="vi-dens">{dens(g.densityTPerM3)}</span>
                     )}

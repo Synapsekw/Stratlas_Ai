@@ -46,11 +46,10 @@ export function frameCutFill(frame: ReportViewsFrame | null): FrameCutFill {
 
 const way = (c: number | null) => (c === null || c === 0 ? 'is-flat' : c < 0 ? 'is-down' : 'is-up');
 
-/** "What changed" in the title's own case after the site: "The yard: what changed". */
+/** "The yard: what moved", or "What changed" when the project names no site. */
 function heading(site: string | null): string {
-  const title = t('vreport.change.title');
-  if (!site?.trim()) return title;
-  return `${site.trim()}: ${title.charAt(0).toLowerCase()}${title.slice(1)}`;
+  const name = site?.trim();
+  return name ? t('vreport.change.siteTitle', { site: name }) : t('vreport.change.title');
 }
 
 function Head({ model }: { model: VolumetricModel }): ReactElement {
@@ -63,8 +62,8 @@ function Head({ model }: { model: VolumetricModel }): ReactElement {
         <h1>{heading(model.project.site)}</h1>
       </div>
       <p className="vr-c-keys">
-        <span>{t('lineUp.before')}</span>
-        <span>{t('lineUp.after')}</span>
+        <span>{t('vreport.change.keyBefore')}</span>
+        <span>{t('vreport.change.keyAfter')}</span>
         <span className="is-change">{t('vreport.piles.change')}</span>
       </p>
     </div>
@@ -84,8 +83,8 @@ function ChangeChart({
       <div className="vr-c-axis" aria-hidden="true">
         <span />
         <span className="vr-c-axis-hint">
-          <span>{`← ${t('vreport.piles.less', { volume: '' }).trim()}`}</span>
-          <span>{`${t('vreport.piles.more', { volume: '' }).trim()} →`}</span>
+          <span>{t('vreport.change.axisLess')}</span>
+          <span>{t('vreport.change.axisMore')}</span>
         </span>
         <span className="vr-c-axis-unit">m³</span>
       </div>
@@ -168,12 +167,14 @@ export function ChangePage({
         ))}
       </div>
       <section className="vr-c-heat">
-        <h2>
+        <h2>{t('vreport.change.heatTitle')}</h2>
+        <p className="vr-c-heat-dates">
           {t('vreport.change.heat', {
             from: before ? dateText(before.date) : '',
             to: after ? dateText(after.date) : '',
           })}
-        </h2>
+        </p>
+        <p className="vr-c-heat-explain">{t('vreport.change.heatExplain')}</p>
         <div className="vr-c-heat-body">
           <SitePicture
             className="vr-c-heatmap"

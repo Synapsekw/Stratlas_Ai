@@ -676,5 +676,16 @@ describe('volumetric report strings', () => {
     expect(t('vreport.short.oneDate', { volume: '9,000 m³', count: 3, date: '3 June' })).toBe(
       'Stock on hand is 9,000 m³ across 3 piles on 3 June.',
     );
+    // page C in the mock-up's words, the journal label of the outline fill, the kit group name
+    expect(t('vreport.change.before', { date: '3 June' })).toBe('Before · drone survey 3 June');
+    expect(t('vreport.change.after', { date: '1 July' })).toBe('After · drone survey 1 July');
+    expect(t('vreport.change.siteTitle', { site: 'The yard' })).toBe('The yard: what moved');
+    expect(t('vreport.change.heatTitle')).toBe('Where the ground went up or down');
+    expect(t('vreport.change.heatExplain')).toBeTruthy();
+    expect(t('vreport.change.chart')).toBe('Change in each pile');
+    expect(t('vreport.change.axisLess')).toBe('← less stock');
+    expect(t('vreport.change.axisMore')).toBe('more →');
+    expect(t('audit.migration.kitOutlines')).toBe("Added each survey date's pile outline");
+    expect(t('volumes.kitSiteDensity')).toBe('Stockpile material (site density)');
   });
 });

@@ -464,17 +464,14 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
         : [
             ...(repaired.length > 0 ? migrationCommands(file, 'audit.migration.kitHeights') : []),
             ...(outlinesAdded.length > 0
-              ? [{ label: KIT_OUTLINES_LABEL, ids: outlinesAdded.slice(0, COMMAND_IDS_MAX) }]
+              ? [{ label: kitOutlinesLabel(), ids: outlinesAdded.slice(0, COMMAND_IDS_MAX) }]
               : []),
           ],
     );
 }
 
-/**
- * The journal label of the one-time fill of per-date outlines (volumetric report, bug 1).
- * English until the strings task gives it an `audit.migration.*` key.
- */
-const KIT_OUTLINES_LABEL = "Added each survey date's pile outline";
+/** The journal label of the one-time fill of per-date outlines (volumetric report, bug 1). */
+const kitOutlinesLabel = (): string => t('audit.migration.kitOutlines');
 
 const folderKey = (root: string) => root.replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase();
 

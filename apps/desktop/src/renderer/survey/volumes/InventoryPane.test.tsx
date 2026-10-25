@@ -361,7 +361,7 @@ describe('Inventory', () => {
     s.measure.file.measurements = [kit('k1', 100), kit('k2', 50)];
     render();
     const group = q('[data-testid="volumes-group"][data-material="kit"]');
-    expect(group?.textContent).toContain('Stockpile material');
+    expect(group?.textContent).toContain('Stockpile material (site density)');
     expect(group?.textContent).toContain('1.60 t/m³');
     expect(pileRow('k1')).toEqual(['Pile k1', num(100), '160', '']);
     expect(pileRow('k2')).toEqual(['Pile k2', num(50), '80', '']);
