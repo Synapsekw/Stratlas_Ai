@@ -1,0 +1,232 @@
+/* Page C of the volumetric report: what changed. Scoped to .vr-page-change; the tokens, the band,
+   the footer, the pictures and the markers come from volumetric.css. */
+
+/* ------------------------------------------------------------------ header */
+.vr-page-change .vr-c-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8mm;
+  margin-bottom: 4.5mm;
+}
+.vr-page-change .vr-c-dates {
+  color: var(--vr-teal);
+  font-family: var(--vr-f-mono);
+  font-size: 8.5pt;
+  font-weight: 600;
+}
+.vr-page-change .vr-c-head h1 {
+  margin-top: 0.8mm;
+  font-size: 18pt;
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+}
+.vr-page-change .vr-c-keys {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4mm;
+  color: var(--vr-ink-2);
+  font-family: var(--vr-f-mono);
+  font-size: 7.5pt;
+}
+.vr-page-change .vr-c-keys .is-change {
+  color: var(--vr-down-ink);
+}
+
+/* ------------------------------------------------------------------ before and after */
+.vr-page-change .vr-c-pair {
+  display: flex;
+  justify-content: space-between;
+  gap: 4mm;
+}
+.vr-page-change .vr-c-shot figcaption {
+  margin-top: 1.4mm;
+  color: var(--vr-ink-2);
+  font-size: 7.5pt;
+}
+
+/* ------------------------------------------------------------------ cut and fill */
+.vr-page-change h2 {
+  margin-bottom: 2mm;
+  font-size: 10.5pt;
+  font-weight: 600;
+}
+.vr-page-change .vr-c-heat {
+  margin-top: 5mm;
+}
+.vr-page-change .vr-c-heat-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 6mm;
+}
+.vr-page-change .vr-c-heatmap {
+  flex-shrink: 0;
+}
+/* the heat map's markers stand out white on the red and blue */
+.vr-page-change .vr-c-heatmap .vr-marker {
+  border-color: var(--vr-ink);
+  background: #fdfefe;
+  color: var(--vr-ink);
+  box-shadow: 0 0.3mm 1mm rgb(17 22 28 / 0.45);
+}
+.vr-page-change .vr-c-key {
+  display: grid;
+  gap: 1.6mm;
+  min-width: 0;
+  font-size: 8.5pt;
+  color: var(--vr-ink-2);
+}
+.vr-page-change .vr-c-key h3 {
+  margin: 0;
+  color: var(--vr-ink);
+  font-size: 8.5pt;
+  font-weight: 600;
+}
+.vr-page-change .vr-c-key-row {
+  display: flex;
+  align-items: baseline;
+  gap: 2mm;
+}
+.vr-page-change .vr-c-key-row::before {
+  content: '';
+  flex-shrink: 0;
+  width: 2.6mm;
+  height: 2.6mm;
+  border-radius: 0.6mm;
+  transform: translateY(0.3mm);
+}
+.vr-page-change .vr-c-key-row.is-down::before {
+  background: var(--vr-down);
+}
+.vr-page-change .vr-c-key-row.is-up::before {
+  background: var(--vr-up);
+}
+.vr-page-change .vr-c-key-row.is-flat::before {
+  background: #c4cad1;
+}
+/* the app's legend (survey/heatLegend.tsx), set on paper: its own tokens mapped to the report's */
+.vr-page-change .vr-c-legend {
+  --cut: var(--vr-down);
+  --fill: var(--vr-up);
+  --bg-3: #c4cad1;
+  --fg-0: var(--vr-ink);
+  --fg-2: var(--vr-ink-2);
+  --f-mono: var(--vr-f-mono);
+  --t-11: 7pt;
+  --r-2: 0.6mm;
+
+  position: static;
+  display: grid;
+  gap: 1.4mm;
+  inline-size: auto;
+  margin-top: 2mm;
+  padding: 2.4mm 3mm;
+  border: 0.5pt solid var(--vr-rule);
+  border-radius: 1.2mm;
+  background: var(--vr-paper);
+  box-shadow: none;
+  font-size: 7.5pt;
+}
+.vr-page-change .vr-c-legend .cf-legend-ramp {
+  block-size: 2.4mm;
+}
+
+/* ------------------------------------------------------------------ change in each pile */
+.vr-page-change .vr-c-piles {
+  margin-top: 5mm;
+}
+.vr-page-change .vr-c-axis,
+.vr-page-change .vr-c-row {
+  display: grid;
+  grid-template-columns: 32mm 1fr 20mm;
+  align-items: center;
+  column-gap: 3mm;
+}
+.vr-page-change .vr-c-axis {
+  padding-bottom: 1mm;
+  border-bottom: 0.75pt solid var(--vr-ink);
+  color: var(--vr-ink-3);
+  font-size: 7pt;
+}
+.vr-page-change .vr-c-axis-hint {
+  display: flex;
+  justify-content: space-between;
+}
+.vr-page-change .vr-c-axis-unit {
+  text-align: right;
+  font-family: var(--vr-f-mono);
+}
+.vr-page-change .vr-c-row {
+  height: 2.95mm;
+  border-bottom: 0.4pt solid var(--vr-rule);
+  font-size: 7.5pt;
+  line-height: 1;
+}
+.vr-page-change .vr-c-name {
+  display: flex;
+  align-items: center;
+  gap: 1.6mm;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.vr-page-change .vr-c-name .vr-num {
+  width: 3.4mm;
+  height: 2.6mm;
+  font-size: 6pt;
+}
+.vr-page-change .vr-c-bar {
+  position: relative;
+  height: 1.9mm;
+}
+/* the centre tick: no change */
+.vr-page-change .vr-c-bar::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -0.5mm;
+  bottom: -0.5mm;
+  width: 0.5pt;
+  background: var(--vr-ink-3);
+}
+.vr-page-change .vr-c-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 0.4mm;
+}
+.vr-page-change .vr-c-fill.is-down {
+  right: 50%;
+  background: var(--vr-down);
+}
+.vr-page-change .vr-c-fill.is-up {
+  left: 50%;
+  background: var(--vr-up);
+}
+.vr-page-change .vr-c-value {
+  text-align: right;
+  font-family: var(--vr-f-mono);
+  font-weight: 600;
+}
+.vr-page-change .vr-c-value.is-down {
+  color: var(--vr-down-ink);
+}
+.vr-page-change .vr-c-value.is-up {
+  color: var(--vr-up-ink);
+}
+.vr-page-change .vr-c-value.is-flat {
+  color: var(--vr-ink-3);
+}
+
+/* ------------------------------------------------------------------ closing remarks */
+.vr-page-change .vr-c-closing {
+  max-width: 160mm;
+  margin-top: 5mm;
+}
+.vr-page-change .vr-c-closing h2 {
+  margin-bottom: 1mm;
+  font-size: 8.5pt;
+}
+.vr-page-change .vr-c-closing p {
+  color: var(--vr-ink-2);
+}
