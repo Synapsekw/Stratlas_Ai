@@ -72,7 +72,7 @@ import { measureStore, updateMeasurement, useMeasure } from '../measureStore';
 import { useFocusCapture } from '../qaHelpers';
 import { surfaceOfCapture, useQa } from '../qaStore';
 import { pointAt } from '../linkedHoverGeom';
-import { openSection, setWindow } from '../sectionStore';
+import { openSectionWindow } from '../sectionStore';
 import { useLinkedChart } from '../useLinkedChart';
 import {
   usePrepareRunning,
@@ -1035,7 +1035,7 @@ function OpenSection({ m }: { m: SurveyMeasurement }): ReactElement | null {
       icon="section"
       data-testid="card-open-section"
       onClick={() => {
-        openSection(
+        openSectionWindow(
           pts.map((p) => [p[0], p[1]] as [number, number]),
           {
             kind: 'measurement',
@@ -1044,7 +1044,6 @@ function OpenSection({ m }: { m: SurveyMeasurement }): ReactElement | null {
             ...(m.scope.kind === 'survey' ? { capture: m.scope.capture } : {}),
           },
         );
-        setWindow(true);
       }}
     >
       {t('mcard.openSection')}

@@ -30,8 +30,8 @@ const calls = vi.hoisted(() => ({
     Promise.resolve({ results: [{ cutM3: 4403.1, fillM3: 19.6 }], heat: [], shares: [], ms: 1 }),
   ),
   openSection: vi.fn(),
+  openSectionWindow: vi.fn(),
   sample: vi.fn(),
-  setWindow: vi.fn(),
   addToReport: vi.fn(() => Promise.resolve('added')),
 }));
 
@@ -81,7 +81,7 @@ vi.mock('../compareStore', () => ({
 }));
 vi.mock('../sectionStore', () => ({
   openSection: calls.openSection,
-  setWindow: calls.setWindow,
+  openSectionWindow: calls.openSectionWindow,
   sectionStore: { getState: () => s.section },
 }));
 vi.mock('../../report/templateStore', () => ({ addToReport: calls.addToReport }));
@@ -274,11 +274,11 @@ describe('PileProfile', () => {
       open?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     const axis = pileAxis(m.points);
-    expect(calls.openSection).toHaveBeenCalledWith(
+    // in the window on its own: closing it leaves no dock behind
+    expect(calls.openSectionWindow).toHaveBeenCalledWith(
       [axis.a, axis.b],
       expect.objectContaining({ kind: 'measurement', id: '02' }),
     );
-    expect(calls.setWindow).toHaveBeenCalledWith(true);
   });
 
   it('a line dragged in the scene keeps the chart and its link, and is read again once it rests', async () => {
@@ -334,15 +334,15 @@ describe('PileProfile', () => {
       act(() => {
         open?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       });
-      expect(calls.openSection).toHaveBeenCalledTimes(1);
-      const source = calls.openSection.mock.calls[0]?.[1] as never;
+      expect(calls.openSectionWindow).toHaveBeenCalledTimes(1);
+      const source = calls.openSectionWindow.mock.calls[0]?.[1] as never;
       s.section = { window: true, source };
       const turned = pileAxis(m.points, { angleDeg: 45 });
       act(() => {
         pileView.getState().setAxis('02', turned);
         vi.advanceTimersByTime(200);
       });
-      expect(calls.openSection).toHaveBeenCalledTimes(2);
+      expect(calls.openSection).toHaveBeenCalledTimes(1);
       expect(calls.openSection).toHaveBeenLastCalledWith([turned.a, turned.b], source);
       // closed: the pile no longer leads it
       s.section = { window: false, source };
@@ -350,7 +350,7 @@ describe('PileProfile', () => {
         pileView.getState().setAxis('02', pileAxis(m.points, { angleDeg: 60 }));
         vi.advanceTimersByTime(200);
       });
-      expect(calls.openSection).toHaveBeenCalledTimes(2);
+      expect(calls.openSection).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }

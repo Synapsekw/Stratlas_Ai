@@ -426,6 +426,26 @@ test('a distance line across a pile: the line picks the line, the body beside it
   ).toHaveValue('Line across SP1');
 });
 
+test('Open larger opens one section window, and closing it leaves none', async ({
+  quarryProject,
+  win,
+}) => {
+  test.setTimeout(600_000);
+  const view = await opened(win, quarryProject);
+  await view.getByTestId('volumes-pile').filter({ hasText: SP1 }).click();
+  const panel = view.getByTestId('pile-panel');
+  await figuresIn(panel);
+  await panel.getByTestId('pile-tab-profile').click();
+  await expect(panel.getByTestId('pile-profile-chart')).toBeVisible({ timeout: 120_000 });
+  await panel.getByTestId('pile-open-larger').click();
+  await expect(win.locator('.sec-window')).toHaveCount(1);
+  // the window alone: the dock does not wait under it to show once the window closes
+  await expect(win.getByTestId('section-dock')).toHaveCount(0);
+  await win.getByTestId('section-window-close').click();
+  await expect(win.locator('.sec-window')).toHaveCount(0);
+  await expect(win.getByTestId('section-dock')).toHaveCount(0);
+});
+
 test.describe('in the smallest window', () => {
   test.use({ appEnv: { ...PIPELINE_ENV, QUADRION_WINDOW_SIZE: '1100x700' } });
 
