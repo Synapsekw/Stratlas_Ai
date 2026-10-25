@@ -3,7 +3,9 @@
  * truth's imagery changes, right-clicked in the Datasets tree, "Compare with previous survey",
  * Compare in the confirm box (volumes off). The imagery change runs for that area only: its own
  * set beside the whole-map one (`<pair>-raster-area-area-a`), every region inside the polygon,
- * none from the rest of the site, and the Changes tab shows the area's entry. Both dates are lined
+ * none from the rest of the site, and the Changes tab shows the area's entry. The comparison
+ * leaves one row in the Datasets tree (`<pair>-change-area-area-a`); deleting that row puts
+ * the project's layers and change sets back as they were. Both dates are lined
  * up 5 m east (past the polygon's 3 m margin), so the mask must follow the polygon where its date
  * draws it. After that line-up the area's set reads stale, and its Run again replays the area
  * (still scoped, still chosen, cut where the polygon is drawn now) while the whole-map set stays
@@ -132,6 +134,44 @@ async function askCompare(win: Page) {
   return dialog;
 }
 
+/** An area's one comparison row, by the pair and the polygon's id. */
+const areaLayerId = (pair: string, area: string) => `${pair}-change-area-${area}`;
+
+/** Wait for an area comparison's one row in the reloaded manifest: no heat or regions rows. */
+async function areaLayerOf(win: Page, pair: string, setId: string): Promise<void> {
+  await expect
+    .poll(() => layerIds(win), { timeout: 240_000, intervals: [1000] })
+    .toContain(areaLayerId(pair, 'area-a'));
+  const ids = await layerIds(win);
+  expect(ids).not.toContain(`${setId}-heat`);
+  expect(ids).not.toContain(`${setId}-regions`);
+}
+
+/**
+ * Right-click a layer's row in its survey date's Maps and rasters group, Delete…, and confirm:
+ * the row and everything made with it go to the project trash.
+ */
+async function deleteRow(win: Page, layer: string, capture: string): Promise<void> {
+  const handle = win.getByTestId('panel-handle-left');
+  if ((await handle.getAttribute('aria-expanded')) !== 'true') await handle.click();
+  const folder = win.getByTestId(`date-folder-${capture}`);
+  if ((await folder.getAttribute('aria-expanded')) !== 'true')
+    await folder.getByRole('button', { name: /^Expand/ }).click();
+  await expect(folder).toHaveAttribute('aria-expanded', 'true');
+  const toggle = folder.getByTestId('tree-group-toggle-maps');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  const row = win.getByTestId(`tree-row-${layer}`);
+  await row.scrollIntoViewIfNeeded();
+  await expect(row).toBeVisible();
+  // at 1100 px a long name squeezes the row: right-click its icon
+  await row.click({ button: 'right', position: { x: 24, y: 13 } });
+  await win.getByTestId('menu-delete').click();
+  const confirm = win.getByTestId('remove-dialog');
+  await expect(confirm).toBeVisible();
+  await confirm.getByTestId('remove-dialog-confirm').click();
+  await expect(confirm).toHaveCount(0, { timeout: 30_000 });
+}
+
 /** Wait for a set's heat and regions layers in the reloaded manifest. */
 async function layersOf(win: Page, setId: string): Promise<void> {
   await expect
@@ -225,6 +265,7 @@ test('compare one area with the previous survey', async ({ demoProject }, testIn
   // on R where the lined-up orthos show it
   await lineUpBoth(win, root, truth, EAST);
   const { area, s } = await seedArea(win, root, truth);
+  const before = await layerIds(win);
 
   // 2. and 3. right-click Area A; the confirm box: both dates and the polygon, volumes off
   const dialog = await askCompare(win);
@@ -235,8 +276,8 @@ test('compare one area with the previous survey', async ({ demoProject }, testIn
   await expect(dialog.getByTestId('area-compare-volumes')).not.toBeChecked();
   await dialog.getByTestId('area-compare-run').click();
 
-  // 4. the area's layers in the reloaded manifest
-  await layersOf(win, setId);
+  // 4. the area's one row in the reloaded manifest
+  await areaLayerOf(win, pair, setId);
   await expect(dialog).toHaveCount(0);
 
   // 5. the area's set holds the area only, cut where the polygon is drawn; no whole-map run started
@@ -253,6 +294,12 @@ test('compare one area with the previous survey', async ({ demoProject }, testIn
 
   // 7. the picture, checked by eye
   await win.screenshot({ path: testInfo.outputPath('change-area.png') });
+
+  // 8. deleting the area's row leaves the project as it was before the comparison
+  await deleteRow(win, areaLayerId(pair, 'area-a'), to);
+  await expect.poll(() => layerIds(win), { timeout: 30_000 }).toEqual(before);
+  expect(existsSync(join(root, 'change', `${setId}.json`))).toBe(false);
+  expect(existsSync(join(root, 'change', setId))).toBe(false);
   expect(errors).toEqual([]);
 });
 
@@ -279,7 +326,7 @@ test('Run again on a stale area replays the area; the whole-map set stays as it 
   const { area, s } = await seedArea(win, root, truth);
   const dialog = await askCompare(win);
   await dialog.getByTestId('area-compare-run').click();
-  await layersOf(win, setId);
+  await areaLayerOf(win, pair, setId);
   await expect(dialog).toHaveCount(0);
   const first = await readSet(root, setId);
   expectScoped(first, area, s);
