@@ -431,8 +431,9 @@ function overlay(host: HTMLElement, className: string) {
         if (tag.textContent !== view.tag) tag.textContent = view.tag;
         tag.dataset.key = view.key;
         tag.dataset.chainage = view.chainageM.toFixed(2);
-        tag.classList.toggle('cut', view.deltaM !== null && view.deltaM < 0);
-        tag.classList.toggle('fill', view.deltaM !== null && view.deltaM > 0);
+        // `is-` names: the bare `fill` is the global layout helper (styles.css)
+        tag.classList.toggle('is-cut', view.deltaM !== null && view.deltaM < 0);
+        tag.classList.toggle('is-fill', view.deltaM !== null && view.deltaM > 0);
         tag.classList.toggle('pinned', pinned);
         tag.style.transform = `translate(${String(Math.round(at[0]))}px, ${String(Math.round(at[1]))}px)`;
       }

@@ -157,7 +157,11 @@ describe('3D', () => {
     expect(tag?.textContent).toBe('42.3 m · −1.63');
     expect(tag?.dataset.key).toBe('measure:m');
     expect(tag?.dataset.chainage).toBe('42.30');
-    expect(tag?.classList.contains('cut')).toBe(true);
+    // not the bare `cut` / `fill`: the global `.fill` helper (styles.css) would stretch the tag
+    // over the whole view
+    expect(tag?.classList.contains('is-cut')).toBe(true);
+    expect(tag?.classList.contains('fill')).toBe(false);
+    expect(tag?.classList.contains('cut')).toBe(false);
     expect(s.pin()?.hidden).toBe(true);
     s.detach();
     expect(s.stage.scene.getObjectByName('aio-link')).toBeUndefined();

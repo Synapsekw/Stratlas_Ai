@@ -77,10 +77,10 @@
   font: 500 12px/1.3 var(--f-mono);
   white-space: nowrap;
 }
-.link-tag.cut {
+.link-tag.is-cut {
   color: var(--cut);
 }
-.link-tag.fill {
+.link-tag.is-fill {
   color: var(--fill);
 }
 .link-tag.pinned {
