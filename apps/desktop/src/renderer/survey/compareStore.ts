@@ -14,7 +14,13 @@
  * Recompute (`recomputeStandard`) replaces it, keeping the old figure as "was".
  */
 import { useEffect } from 'react';
-import { SPREAD_BASES, seriesApplies, type BaseSpread, type DraftRegion } from '@aio/survey';
+import {
+  SPREAD_BASES,
+  seriesApplies,
+  seriesRequests,
+  type BaseSpread,
+  type DraftRegion,
+} from '@aio/survey';
 import type {
   ComparisonItem,
   ComparisonResult,
@@ -705,21 +711,32 @@ async function computeSeriesNow(id: string, opts: { captures?: string[] }): Prom
   const wanted = new Set(opts.captures ?? captures);
   if (items.length === 0 || captures.length === 0) return false;
   const scope = captureOf(m);
-  const ring = ringOf(m.points);
+  // each survey date is worked out inside that date's own outline (bug 1b): one run per outline
+  const runs = seriesRequests(m, captures);
   const asked = inputsKey(m, true);
   const prints: Record<string, string> = {};
   const out: ComparisonResult[] = [];
   try {
     for (const item of items) {
-      const req = { ring, item, captures, ...(scope !== undefined ? { scope } : {}) };
-      const fps = await client().seriesFingerprints(req);
-      captures.forEach((c, k) => {
-        const fp = fps[k];
-        if (fp !== undefined) prints[`${item.id} ${c}`] = fp;
-      });
-      const need = datesToRun(m, item.id, captures, fps, wanted);
-      if (need.length > 0)
-        out.push(...(await client().series({ ...req, captures: need }, `series:${id}:${item.id}`)));
+      for (const run of runs) {
+        const ring = ringOf(run.ring);
+        const req = {
+          ring,
+          item,
+          captures: run.captures,
+          ...(scope !== undefined ? { scope } : {}),
+        };
+        const fps = await client().seriesFingerprints(req);
+        run.captures.forEach((c, j) => {
+          const fp = fps[j];
+          if (fp !== undefined) prints[`${item.id} ${c}`] = fp;
+        });
+        const need = datesToRun(m, item.id, run.captures, fps, wanted);
+        if (need.length > 0)
+          out.push(
+            ...(await client().series({ ...req, captures: need }, `series:${id}:${item.id}`)),
+          );
+      }
     }
   } catch (e) {
     // replaced by a newer run of the same item: that one stores its dates

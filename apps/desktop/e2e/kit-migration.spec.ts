@@ -57,6 +57,13 @@ const NORTH_RING: [number, number][] = [
   [0.4, -0.9],
   [0.1, -0.9],
 ];
+/** The north pile's toe line on the first survey: smaller, 5 cm further west (it grew since). */
+const NORTH_RING_E1: [number, number][] = [
+  [0.05, -0.62],
+  [0.32, -0.62],
+  [0.32, -0.86],
+  [0.05, -0.86],
+];
 const NORTH_RING_EDITED: [number, number][] = [
   [0.08, -0.58],
   [0.42, -0.58],
@@ -103,7 +110,7 @@ const VOLUMES = VolumesFile.parse({
       zoneRing: NORTH_RING,
       change: fc(NORTH_E2_AUTO - NORTH_E1),
       epochs: {
-        e1: epoch('capture-1', NORTH_E1, NORTH_RING),
+        e1: epoch('capture-1', NORTH_E1, NORTH_RING_E1),
         e2: epoch('capture-2', NORTH_E2_AUTO, NORTH_RING),
       },
     },
@@ -346,6 +353,18 @@ test('an old stockpile project opens with its kit figures labelled and no unsave
   );
   // on the ground of its survey, not at height 0
   for (const d of offDsm('Pile North', north?.points ?? [])) expect(d).toBeLessThan(0.05);
+  // one outline per survey date (volumetric report, bug 1): each date's own toe line, the hand
+  // corrected one on the second, each draped on that date's DSM
+  const toSite = (ring: [number, number][]) => ring.map(([x, z]) => [500000 + x, 3200000 - z]);
+  expect(north?.outlines?.map((o) => o.capture)).toEqual(['capture-1', 'capture-2']);
+  expect(north?.outlines?.map((o) => o.points.map((p) => [p[0], p[1]]))).toEqual([
+    toSite(NORTH_RING_E1),
+    toSite(NORTH_RING_EDITED),
+  ]);
+  for (const [k, ep] of ['e1', 'e2'].entries())
+    for (const p of north?.outlines?.[k]?.points ?? [])
+      expect(Math.abs(p[2] - dsmZ(ep, p[0], p[1]))).toBeLessThan(0.05);
+  expect(file.measurements[1]?.outlines?.map((o) => o.capture)).toEqual(['capture-1']);
   expect(file.measurements[1]?.results).toEqual([]);
   expect(await readFile(join(dir, 'volumes.json'))).toEqual(kitBefore);
 });

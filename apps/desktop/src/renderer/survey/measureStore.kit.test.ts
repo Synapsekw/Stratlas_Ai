@@ -368,6 +368,84 @@ describe('kit piles on load', () => {
   });
 });
 
+describe('each survey date keeps its own pile outline', () => {
+  const early: [number, number][] = [
+    [1, 1],
+    [6, 1],
+    [6, 5],
+  ];
+  /** A pile whose toe line moved between the dates (e1 `early`, e2 `ring`). */
+  const moving = () =>
+    volumes([pile('P01', { e1: { ...ep('c1', 100), ring: early }, e2: ep('c2', 50) })]);
+  /** The file as a build before per-date outlines wrote it: no `outlines`, no list of them. */
+  const beforeOutlines = (file: MeasurementsFile): MeasurementsFile => {
+    const rest = { ...file };
+    delete rest.kitOutlinesAdded;
+    return {
+      ...rest,
+      measurements: file.measurements.map((m) => {
+        const out = { ...m };
+        delete out.outlines;
+        return out;
+      }),
+    };
+  };
+
+  it('a fresh conversion carries one outline per date', async () => {
+    io.volumes = moving();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    const [m] = kitMeasurements();
+    expect(m?.outlines?.map((o) => o.capture)).toEqual(['c1', 'c2']);
+    expect(m?.outlines?.[0]?.points[1]?.slice(0, 2)).toEqual([1006, 1999]);
+  });
+
+  it('a project converted before this build takes them once, named in the journal', async () => {
+    io.volumes = moving();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    const old = beforeOutlines(io.saved);
+    io.writes = 0;
+    await open(old);
+    const [m] = kitMeasurements();
+    expect(m?.outlines?.map((o) => o.capture)).toEqual(['c1', 'c2']);
+    expect(io.writes).toBe(1);
+    expect(io.saved.kitOutlinesAdded).toEqual([m?.id]);
+    expect(io.labels.get(m?.id ?? '')).toBe("Added each survey date's pile outline");
+    // a migration, not an edit
+    expect(isDirty(measureStore.getState())).toBe(false);
+    // and not again on the next open
+    await open(io.saved);
+    expect(io.writes).toBe(1);
+  });
+
+  it('a pile the person moved takes none', async () => {
+    io.volumes = moving();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    const old = beforeOutlines(io.saved);
+    const moved: MeasurementsFile = {
+      ...old,
+      measurements: old.measurements.map((m) => ({
+        ...m,
+        points: m.points.map(([e, n, z]): [number, number, number] => [e + 50, n, z]),
+      })),
+    };
+    io.writes = 0;
+    await open(moved);
+    expect(kitMeasurements()[0]?.outlines).toBeUndefined();
+    expect(io.writes).toBe(0);
+  });
+
+  it('a read-only project takes them in memory only', async () => {
+    io.volumes = moving();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    const old = beforeOutlines(io.saved);
+    io.writes = 0;
+    io.readOnly = true;
+    await open(old);
+    expect(kitMeasurements()[0]?.outlines).toHaveLength(2);
+    expect(io.writes).toBe(0);
+  });
+});
+
 const zs = (m: SurveyMeasurement | undefined) => m?.points.map((p) => p[2]);
 
 describe('kit pile heights', () => {

@@ -7,7 +7,14 @@ import type {
   SurveyMeasurement,
 } from '@aio/schema';
 import { captureIndex } from '@aio/workspace';
-import { planMoveToDate, type ModelPick, type MoveEnv, type Repicker } from './measureMove';
+import {
+  editedOutline,
+  outlineEdit,
+  planMoveToDate,
+  type ModelPick,
+  type MoveEnv,
+  type Repicker,
+} from './measureMove';
 
 const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 const raster = (id: string, capture: string, name = 'DSM'): Layer => ({
@@ -458,5 +465,56 @@ describe('planMoveToDate', () => {
     );
     expect(plan.ok).toBe(false);
     expect(plan).not.toHaveProperty('next');
+  });
+});
+
+describe('an outline edit with a survey date in focus', () => {
+  const tri = (e: number): SitePoint[] => [
+    [e, 0, 0],
+    [e + 4, 0, 0],
+    [e + 4, 3, 0],
+  ];
+  const pile = (patch: Partial<SurveyMeasurement> = {}): SurveyMeasurement => ({
+    id: 'p',
+    family: 'polygon',
+    tool: 'volume',
+    label: 'Pile',
+    scope: { kind: 'site' },
+    points: tri(10),
+    outlines: [
+      { capture: 'jan', points: tri(0) },
+      { capture: 'jun', points: tri(10) },
+    ],
+    items: [],
+    results: [],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...patch,
+  });
+
+  it('edits the outline of the date in focus, else points', () => {
+    expect(editedOutline(pile(), 'jan')).toEqual(tri(0));
+    expect(editedOutline(pile(), 'jun')).toEqual(tri(10));
+    expect(editedOutline(pile(), null)).toEqual(tri(10));
+    expect(editedOutline(pile(), 'other')).toEqual(tri(10));
+  });
+
+  it("an earlier date's outline changes only that entry", () => {
+    const patch = outlineEdit(pile(), 'jan', tri(1));
+    expect(patch.outlines?.map((o) => o.points)).toEqual([tri(1), tri(10)]);
+    expect(patch.points).toBeUndefined();
+  });
+
+  it('the date whose outline is the points updates that entry and points', () => {
+    const patch = outlineEdit(pile(), 'jun', tri(11));
+    expect(patch.outlines?.map((o) => o.points)).toEqual([tri(0), tri(11)]);
+    expect(patch.points).toEqual(tri(11));
+  });
+
+  it('no date in focus, or one without an entry, edits points alone', () => {
+    expect(outlineEdit(pile(), null, tri(12))).toEqual({ points: tri(12) });
+    expect(outlineEdit(pile(), 'other', tri(12))).toEqual({ points: tri(12) });
+    expect(outlineEdit(pile({ outlines: undefined }), 'jan', tri(12))).toEqual({
+      points: tri(12),
+    });
   });
 });

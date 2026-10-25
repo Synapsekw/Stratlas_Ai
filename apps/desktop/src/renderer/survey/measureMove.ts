@@ -238,3 +238,39 @@ export async function planMoveToDate(
   next.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   return { ok: true, next };
 }
+
+// ---------------------------------------------------------------- outlines per date
+
+const sameRing = (a: readonly SitePoint[], b: readonly SitePoint[]): boolean =>
+  a.length === b.length && a.every((p, i) => p[0] === b[i]?.[0] && p[1] === b[i][1]);
+
+/** The focused date's own outline entry, when the measurement has one for it. */
+const entryOn = (m: Pick<SurveyMeasurement, 'outlines'>, focus: string | null) =>
+  focus === null ? undefined : m.outlines?.find((o) => o.capture === focus);
+
+/**
+ * The outline a vertex edit works on (stored frame): the focused survey date's own
+ * (`outlines`) when it has one, else `points`.
+ */
+export function editedOutline(
+  m: Pick<SurveyMeasurement, 'points' | 'outlines'>,
+  focus: string | null,
+): readonly SitePoint[] {
+  return entryOn(m, focus)?.points ?? m.points;
+}
+
+/**
+ * Where an edited outline goes (stored frame). The focused date's entry when it has one; `points`
+ * as well when that entry is the outline `points` holds (the latest date's). With no date in
+ * focus, or none with an entry, `points` alone.
+ */
+export function outlineEdit(
+  m: Pick<SurveyMeasurement, 'points' | 'outlines'>,
+  focus: string | null,
+  edited: SitePoint[],
+): Partial<Pick<SurveyMeasurement, 'points' | 'outlines'>> {
+  const entry = entryOn(m, focus);
+  if (!entry || !m.outlines) return { points: edited };
+  const outlines = m.outlines.map((o) => (o === entry ? { ...o, points: edited } : o));
+  return sameRing(entry.points, m.points) ? { outlines, points: edited } : { outlines };
+}

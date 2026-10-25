@@ -89,6 +89,7 @@ import {
   type DsmCache,
 } from './kitHeights';
 import { drawnPoints, scopeShift, storedPoints } from './measureDates';
+import { editedOutline, outlineEdit } from './measureMove';
 import { alignPicks, creationDating, realignPickedOn, type VertexPick } from './measureSource';
 import {
   createMeasureVisibilityMemory,
@@ -414,6 +415,12 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
   // not an edit, so the baseline takes it too and nothing shows as unsaved
   const opened = openedWithKitPiles(m.value.file, read, manifest, materials, readOnly, heightAt);
   const converted = opened !== m.value.file;
+  // kit piles a build before per-date outlines converted take theirs once (`kitOutlinesAdded`
+  // grew); a new conversion always lists its piles afresh (`kitPilesConverted`)
+  const newlyConverted = opened.kitPilesConverted !== m.value.file.kitPilesConverted;
+  const outlinesAdded = (opened.kitOutlinesAdded ?? []).slice(
+    m.value.file.kitOutlinesAdded?.length ?? 0,
+  );
   // piles converted at Z 0 before heights take them once (a migration, like the conversion); the
   // prepared surfaces are not read yet: `repairKitHeightsNow` asks them once they exist
   const { file, repaired } =
@@ -452,9 +459,22 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
       projectId,
       file,
       epoch,
-      converted && kitRead ? 'audit.migration.kitConverted' : 'audit.migration.kitHeights',
+      newlyConverted && kitRead
+        ? migrationCommands(file, 'audit.migration.kitConverted')
+        : [
+            ...(repaired.length > 0 ? migrationCommands(file, 'audit.migration.kitHeights') : []),
+            ...(outlinesAdded.length > 0
+              ? [{ label: KIT_OUTLINES_LABEL, ids: outlinesAdded.slice(0, COMMAND_IDS_MAX) }]
+              : []),
+          ],
     );
 }
+
+/**
+ * The journal label of the one-time fill of per-date outlines (volumetric report, bug 1).
+ * English until the strings task gives it an `audit.migration.*` key.
+ */
+const KIT_OUTLINES_LABEL = "Added each survey date's pile outline";
 
 const folderKey = (root: string) => root.replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase();
 
@@ -545,15 +565,17 @@ function openedWithKitPiles(
  * Write a converted file: the baseline as saved plus the conversion, never a person's unsaved
  * edits. `saving` holds while it is in flight, so no save starts and lands before it. A refused
  * write says so as a refused save does, and the conversion stays to be written by the next save.
+ * `label` names every record the write changes; labelled commands name only theirs.
  */
 async function writeConversion(
   projectId: string,
   file: MeasurementsFile,
   epoch: number,
-  label: MigrationLabel,
+  label: MigrationLabel | { label: string; ids: string[] }[],
 ): Promise<void> {
   set({ saving: true });
-  const r = await writeFile(projectId, file, migrationCommands(file, label));
+  const commands = typeof label === 'string' ? migrationCommands(file, label) : label;
+  const r = await writeFile(projectId, file, commands);
   if (r.ok && r.value.ok && file.kitPilesConverted !== undefined) markUnwritten.delete(projectId);
   if (loadEpoch !== epoch || get().projectId !== projectId) return;
   const ok = r.ok && r.value.ok;
@@ -748,13 +770,18 @@ function withAccepted(m: SurveyMeasurement, a: SurveyMeasurement): SurveyMeasure
 
 /**
  * What a measurement's figures are computed from: its items (their labels aside), the survey it is
- * scoped to and, with `withRing`, its outline. Figures computed for one key belong to no other.
+ * scoped to and, with `withRing`, its outline and each survey date's own (`outlines`). Figures
+ * computed for one key belong to no other.
  */
 export const measureInputsKey = (m: SurveyMeasurement, withRing = true): string =>
   JSON.stringify([
     m.items.map((it) => ({ ...it, label: undefined })),
     m.scope.kind === 'survey' ? m.scope.capture : null,
     withRing ? m.points.map((p) => [p[0], p[1]]) : null,
+    // only when there are any, so a measurement without them keeps the key it had
+    ...(withRing && m.outlines?.length
+      ? [m.outlines.map((o) => [o.capture, o.points.map((p) => [p[0], p[1]])])]
+      : []),
   ]);
 
 /** A pile the app accepted, with the inputs (`measureInputsKey`) its figures were computed from. */
@@ -1635,13 +1662,24 @@ export function drawEvent(e: DrawEvent, env: DrawEnv, pick?: VertexPick): void {
 
 // ---------------------------------------------------------------- vertex editing
 
+/** The survey date whose own outline (`outlines`) the edit under way works on, if any. */
+let editingDate: string | null = null;
+
+/** The measurement with the outline an edit on `date` works on as its points. */
+const asEdited = (m: SurveyMeasurement, date: string | null): SurveyMeasurement => ({
+  ...m,
+  points: [...editedOutline(m, date)],
+});
+
 export function startEditing(): void {
   const s = get();
   const m = s.file.measurements.find((x) => x.id === s.focus);
   if (!m || s.readOnly) return;
+  // a pile with an outline per date is edited on the date in focus (volumetric report, bug 1)
+  editingDate = timeline.getState().focus;
   // vertices are edited where they are drawn: a survey's own shift added
   set({
-    editing: initialEdit(drawnPoints(m, openManifest())),
+    editing: initialEdit(drawnPoints(asEdited(m, editingDate), openManifest())),
     tool: null,
     draw: null,
   });
@@ -1661,16 +1699,19 @@ export function editEvent(e: EditEvent): void {
   set({ editing: next });
   if (e.type === 'up' || e.type === 'delete' || e.type === 'set' || e.type === 'escape') {
     const manifest = openManifest();
-    const was = drawnPoints(m, manifest);
-    if (JSON.stringify(next.points) !== JSON.stringify(was))
+    const edited = asEdited(m, editingDate);
+    const was = drawnPoints(edited, manifest);
+    if (JSON.stringify(next.points) !== JSON.stringify(was)) {
+      const patch = outlineEdit(m, editingDate, savedEdit(next.points, edited, manifest));
       patchMeasurement(m.id, {
-        points: savedEdit(next.points, m, manifest),
+        ...patch,
         // vertices dragged or typed keep their kind; inserted and deleted ones realign it
-        ...(m.pickedOn && next.points.length !== was.length
+        ...(patch.points && m.pickedOn && next.points.length !== was.length
           ? { pickedOn: realignPickedOn(was, next.points, m.pickedOn) }
           : {}),
         results: m.results.map((r) => ({ ...r, status: 'stale' as const })),
       });
+    }
   }
 }
 

@@ -571,6 +571,28 @@ describe('results over time and the spread across bases', () => {
     expect(stored()?.series?.some((x) => seriesStale(must(stored()), x))).toBe(false);
   });
 
+  it("works each date out on that date's own outline; a changed outline makes it stale", async () => {
+    const moved = ring.map(([e, n, z]): [number, number, number] => [e + 2, n, z]);
+    put({ outlines: [{ capture: 'c1', points: moved }] });
+    const series = vi.spyOn(engineClient(), 'series');
+    const prints = vi.spyOn(engineClient(), 'seriesFingerprints');
+    expect(await computeSeries('m1')).toBe(true);
+    const asked = series.mock.calls.map(([req]) => ({ ring: req.ring, captures: req.captures }));
+    expect(asked).toEqual([
+      { ring: moved.map(([e, n]) => [e, n]), captures: ['c1'] },
+      { ring: ring.map(([e, n]) => [e, n]), captures: ['c2'] },
+    ]);
+    expect(prints.mock.calls.map(([req]) => req.captures)).toEqual([['c1'], ['c2']]);
+    expect(stored()?.series?.map((r) => r.toCapture)).toEqual(['c1', 'c2']);
+    const row = must(stored()?.series?.[0]);
+    expect(seriesStale(must(stored()), row)).toBe(false);
+    // one date's outline edited: the dates are stale until computed again
+    put({ outlines: [{ capture: 'c1', points: ring.map(([e, n, z]) => [e + 3, n, z]) }] });
+    expect(seriesStale(must(stored()), row)).toBe(true);
+    series.mockRestore();
+    prints.mockRestore();
+  });
+
   it('no mixed series: an item with carried figures is not computed over time', async () => {
     const r = await compute('m1', { live: true });
     const fresh = must(r?.results[0]);
