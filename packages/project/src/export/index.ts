@@ -8,3 +8,4 @@ export * from './report';
 export * from './house';
 export * from './processing';
 export * from './surveyCsv';
+export * from './volumetric';
