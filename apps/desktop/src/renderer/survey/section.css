@@ -35,7 +35,7 @@
 }
 /* the chart is the shared profile chart (charts/charts.css); the window gives it the room left */
 .sec-body.big .pc-plot {
-  block-size: clamp(160px, calc(55vh - 200px), 520px);
+  block-size: clamp(140px, calc(40vh - 170px), 420px);
 }
 .sec-empty {
   display: grid;
@@ -67,28 +67,48 @@
 .sec-stations .sv-field input {
   width: 64px;
 }
-/* the larger window: a panel over the lower 55 % of the stage, no scrim, so the linked hover
-   marker on the line stays in sight above it and the views stay usable */
+/* Previous, Section at stations and Next wrap in a narrow column rather than cut "Next" */
+.sec-stations .sv-row {
+  flex-wrap: wrap;
+}
+/* the larger window: a panel docked at the bottom of the stage from its start edge, at most
+   880 px wide and 40 % of its height, no scrim, so the pile or the line and the linked hover
+   marker on it stay in sight beside and above it and the views stay usable. The title and the
+   export buttons stay in view; the body between them scrolls. */
 .sec-window {
   /* laid out by its own width: the stage narrows as the sidebars open */
   container-type: inline-size;
   position: absolute;
-  inset-inline: var(--sp-4);
+  inset-inline-start: var(--sp-4);
   inset-block-end: var(--sp-4);
   z-index: var(--z-panel);
-  block-size: calc(55% - var(--sp-4));
-  overflow: auto;
+  inline-size: calc(100% - 2 * var(--sp-4));
+  max-inline-size: 880px;
+  block-size: calc(40% - var(--sp-4));
+  overflow: hidden;
   box-shadow: var(--el-2);
 }
 .sec-window.is-floating {
   position: fixed;
-  block-size: 55vh;
+  block-size: 40vh;
+}
+.sec-window > .sec-body.big {
+  overflow: auto;
+}
+.sec-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  flex: none;
+  padding-block-start: var(--sp-4);
+  border-block-start: 1px solid var(--line-soft);
 }
 /* a narrower window: the pins go under the controls and the chart, then the controls stack
    above a chart of the full width, so the chart never runs past the window's edge */
 @container (max-width: 960px) {
   .sec-body.big {
-    grid-template-columns: minmax(160px, 200px) minmax(0, 1fr);
+    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
   }
   .sec-body.big .sec-pins {
     grid-column: 1 / -1;

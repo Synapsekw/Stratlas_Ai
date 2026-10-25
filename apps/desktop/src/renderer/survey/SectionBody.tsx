@@ -10,6 +10,7 @@ import { formatQuantity, localeOf } from '@aio/geo';
 import {
   DEFAULT_ANGLES,
   type AngleSettings,
+  type SurveyMeasurement,
   type SurveyPrecision,
   type SurveyUnits,
 } from '@aio/schema';
@@ -28,6 +29,7 @@ import { useDesigns } from './designsStore';
 import { useLinkedHover } from './linkedHover';
 import { fileBase } from './exportHelpers';
 import { useMeasure } from './measureStore';
+import { isPile } from './pile/openPile';
 import {
   addPin,
   addSurface,
@@ -49,8 +51,25 @@ import {
   toggleShown,
   useSection,
   type SectionFormat,
+  type SectionSource,
 } from './sectionStore';
 import { useLinkedChart } from './useLinkedChart';
+
+/**
+ * Sections at the active alignment's stations are a road's: offered while an alignment is active,
+ * but never on a pile's section (the profile line across it, opened from the pile panel), where
+ * they mean nothing.
+ */
+export function offersStations(
+  alignmentActive: boolean,
+  source: SectionSource | null,
+  measurements: readonly Pick<SurveyMeasurement, 'id' | 'tool' | 'family'>[],
+): boolean {
+  if (!alignmentActive) return false;
+  if (source?.kind !== 'measurement') return true;
+  const m = measurements.find((x) => x.id === source.id);
+  return !m || !isPile(m);
+}
 
 /** Below this a grade reads flat (a plane's rounding, not a slope). */
 const FLAT = 1e-6;
@@ -115,6 +134,7 @@ export function SectionBody({ big = false }: { big?: boolean }) {
   const lookOnly = useAnnotateReadOnly();
   const manifest = useWorkspace((w) => w.project?.manifest ?? null);
   const activeAlignment = useDesigns((d) => d.active);
+  const measurements = useMeasure((m) => m.file.measurements);
   const root = useRef<HTMLDivElement>(null);
   const [dxfOpen, setDxfOpen] = useState(false);
 
@@ -254,7 +274,7 @@ export function SectionBody({ big = false }: { big?: boolean }) {
     </>
   );
 
-  return (
+  const body = (
     <div ref={root} className={`sec-body${big ? ' big' : ''}`} data-measure-id={measureId}>
       <div className="sec-side">
         {s.sourcesError && <p className="small danger">{s.sourcesError}</p>}
@@ -297,7 +317,7 @@ export function SectionBody({ big = false }: { big?: boolean }) {
             }}
           />
         </label>
-        {activeAlignment && <StationControls />}
+        {offersStations(activeAlignment !== null, source, measurements) && <StationControls />}
       </div>
       <div className="sec-main">
         <div className="pc-head">
@@ -345,7 +365,7 @@ export function SectionBody({ big = false }: { big?: boolean }) {
               </Button>
             }
             testId={big ? 'section-window-chart' : 'section-chart'}
-            actions={actions}
+            {...(big ? {} : { actions })}
           />
         ) : (
           <p className="small faint sec-empty">
@@ -366,7 +386,7 @@ export function SectionBody({ big = false }: { big?: boolean }) {
         )}
       </div>
       <div className="sec-pins">
-        <span className="pop-title">Pins</span>
+        <span className="caps faint">Pins</span>
         {!pins.length && <p className="small faint">{tr('section.addPinHint')}</p>}
         {pins.map((p, i) => (
           <table
@@ -446,6 +466,18 @@ export function SectionBody({ big = false }: { big?: boolean }) {
         )}
     </div>
   );
+  // the window keeps the exports in its footer, always in view while its body scrolls; the dock
+  // sets them under the chart
+  return big ? (
+    <>
+      {body}
+      <footer className="sec-foot" data-testid="section-window-actions">
+        {actions}
+      </footer>
+    </>
+  ) : (
+    body
+  );
 }
 
 function StationControls() {
@@ -462,7 +494,7 @@ function StationControls() {
   };
   return (
     <div className="sec-stations" role="group" aria-label="Sections at stations">
-      <span className="pop-title">Stations of the active alignment</span>
+      <span className="caps faint">Stations of the active alignment</span>
       <div className="sv-row">
         <label className="sv-field">
           <span>Every (m)</span>

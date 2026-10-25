@@ -30,9 +30,29 @@ describe('the larger section window over a narrow stage (472 px with both sideba
 
   it('up to 960 px the pins go under the controls and the chart', () => {
     const mid = container('(max-width: 960px)');
+    // the controls' column wide enough for Previous, Section at stations and Next
     expect(mid).toMatch(
-      /\.sec-body\.big \{[^}]*grid-template-columns: minmax\(160px, 200px\) minmax\(0, 1fr\)/,
+      /\.sec-body\.big \{[^}]*grid-template-columns: minmax\(220px, 260px\) minmax\(0, 1fr\)/,
     );
     expect(mid).toMatch(/\.sec-body\.big \.sec-pins \{[^}]*grid-column: 1 \/ -1/);
+  });
+});
+
+describe('the larger section window docked on the stage', () => {
+  it('sits at the bottom from the start edge, at most 880 px wide and 40 % high', () => {
+    const w = rule('.sec-window');
+    expect(w).toMatch(/inset-inline-start: var\(--sp-4\)/);
+    expect(w).not.toMatch(/inset-inline:/);
+    expect(w).toMatch(/inset-block-end: var\(--sp-4\)/);
+    expect(w).toMatch(/max-inline-size: 880px/);
+    expect(w).toMatch(/block-size: calc\(40% - var\(--sp-4\)\)/);
+    // floating on the window (no stage), in the same proportion
+    expect(rule('.sec-window.is-floating')).toMatch(/block-size: 40vh/);
+  });
+
+  it('scrolls its body, never the footer with the exports', () => {
+    expect(rule('.sec-window')).toMatch(/overflow: hidden/);
+    expect(rule('.sec-window > .sec-body.big')).toMatch(/overflow: auto/);
+    expect(rule('.sec-foot')).toMatch(/flex: none/);
   });
 });

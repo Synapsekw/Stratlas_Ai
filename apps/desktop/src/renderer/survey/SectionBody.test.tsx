@@ -31,7 +31,7 @@ vi.mock('../charts/exportChart', async (orig) => ({
 const report = vi.hoisted(() => ({ addToReport: vi.fn(() => Promise.resolve('added')) }));
 vi.mock('../report/templateStore', () => report);
 
-const { SectionBody } = await import('./SectionBody');
+const { SectionBody, offersStations } = await import('./SectionBody');
 const { sectionStore } = await import('./sectionStore');
 const { measureStore } = await import('./measureStore');
 const { linkedHover } = await import('./linkedHover');
@@ -243,7 +243,9 @@ describe('the section body on the profile chart', () => {
       ),
     );
     const window = host.querySelector('[data-testid="section-window-chart"]');
-    const png = window?.querySelector<HTMLButtonElement>('[data-testid="section-png"]');
+    // the window's exports sit in its footer, outside the chart and the scrolling body
+    const foot = host.querySelector('[data-testid="section-window-actions"]');
+    const png = foot?.querySelector<HTMLButtonElement>('[data-testid="section-png"]');
     await act(async () => {
       png?.click();
       await Promise.resolve();
@@ -253,5 +255,36 @@ describe('the section body on the profile chart', () => {
     expect(pngMock.chartPng).toHaveBeenCalledTimes(1);
     expect(pngMock.chartPng.mock.calls[0]?.[0]).toBe(drawn);
     expect(pngMock.savePng.mock.calls[0]?.[1]).toBe('Section-1.png');
+  });
+});
+
+describe('the larger window', () => {
+  it('pins the exports in a footer after the body, not under the chart', () => {
+    root = createRoot(host);
+    act(() => root?.render(<SectionBody big />));
+    const body = host.querySelector('.sec-body.big');
+    const foot = host.querySelector('footer.sec-foot');
+    expect(foot?.previousElementSibling).toBe(body);
+    expect(
+      Array.from(foot?.querySelectorAll('button') ?? []).map((b) => b.textContent.trim()),
+    ).toEqual(['PNG', 'DXF…', 'CSV', 'Add to report']);
+    expect(body?.querySelector('.pc-actions')).toBeNull();
+  });
+});
+
+describe('sections at stations', () => {
+  const pile = { id: 'pile', tool: 'volume', family: 'polygon' } as const;
+  const line = { id: 'line', tool: 'distance', family: 'line' } as const;
+  const of = (id: string) => ({ kind: 'measurement', id, label: id }) as const;
+
+  it('are offered while an alignment is active, on a line or a station section', () => {
+    expect(offersStations(true, of('line'), [pile, line])).toBe(true);
+    expect(offersStations(true, { kind: 'station', label: '0+100' }, [pile, line])).toBe(true);
+    expect(offersStations(true, null, [])).toBe(true);
+  });
+
+  it("are a road's: never on a pile's section, nor without an active alignment", () => {
+    expect(offersStations(true, of('pile'), [pile, line])).toBe(false);
+    expect(offersStations(false, of('line'), [pile, line])).toBe(false);
   });
 });
