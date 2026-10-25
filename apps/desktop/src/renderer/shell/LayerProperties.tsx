@@ -66,7 +66,7 @@ function parseOffset(text: string): number | null {
   return Number.isFinite(v) && Math.abs(v) <= MAX_OFFSET_M ? v : null;
 }
 
-/** The height offset row of a point cloud: a number in metres, saved through Drop to ground's undo. */
+/** The height offset row of a point cloud or a placed walk: a number in metres, saved through Drop to ground's undo. */
 function OffsetRow({
   layerId,
   current,
@@ -230,9 +230,11 @@ function PropsDialog({ open }: { open: NonNullable<Open> }) {
         <Row label={t('layerProps.date')}>
           {capture ? formatDate(capture.date) : t('actions.noDate')}
         </Row>
-        {layer.kind === 'pointcloud' && droppable(layer) === 'ok' && !pkg && (
-          <OffsetRow layerId={layer.id} current={layer.heightOffsetM ?? 0} locked={readOnly} />
-        )}
+        {(layer.kind === 'pointcloud' || layer.kind === 'walk') &&
+          droppable(layer) === 'ok' &&
+          !pkg && (
+            <OffsetRow layerId={layer.id} current={layer.heightOffsetM ?? 0} locked={readOnly} />
+          )}
         {reading ? (
           <Row label={t('layerProps.files')}>{t('layerProps.reading')}</Row>
         ) : info ? (

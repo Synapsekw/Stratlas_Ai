@@ -250,7 +250,12 @@ export async function stageWalkPose(
   if (!cal) return removal('unplaced', []);
   const { raw, rows, problems } = await readWalkInputs(root, layer);
   const surfaces = surfacesOf(m, await readDrawingSizes(root, m));
-  const fit = fitWalk(raw, cal, surfaces, layer.durationS);
+  const fit = fitWalk(
+    raw,
+    { ...cal, heightOffsetM: layer.heightOffsetM ?? 0 },
+    surfaces,
+    layer.durationS,
+  );
   const quality = walkQuality(fit);
   const samples =
     quality === 'unplaced' ? [] : walkPoseSamples(fit, raw, rows, cal, layer.durationS);

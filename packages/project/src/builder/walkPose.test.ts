@@ -206,6 +206,44 @@ describe('walk pose file', () => {
     expect(await exists(join(root, 'walks', 'w', 'pose.json'))).toBe(false);
   });
 
+  it('a height offset moves every pose sample up by it, and clearing it moves them back', async () => {
+    await setUp();
+    await updateLayers(root, ['walk-w'], { walk: cal() });
+    const before = await readPose();
+    const r = await updateLayers(root, ['walk-w'], { heightOffsetM: 1.25 });
+    expect(walkOf(r.manifest).heightOffsetM).toBe(1.25);
+    expect(walkOf(r.manifest).flight?.src).toEqual({ path: 'walks/w/pose.json' });
+    const up = await readPose();
+    expect(up.samples).toHaveLength(before.samples.length);
+    for (let i = 0; i < up.samples.length; i += 41) {
+      const a = up.samples[i]?.pos;
+      const b = before.samples[i]?.pos;
+      expect(a?.[0]).toBeCloseTo(b?.[0] ?? NaN, 6);
+      expect(a?.[1]).toBeCloseTo((b?.[1] ?? NaN) + 1.25, 6);
+      expect(a?.[2]).toBeCloseTo(b?.[2] ?? NaN, 6);
+    }
+    const cleared = await updateLayers(root, ['walk-w'], { heightOffsetM: null });
+    expect('heightOffsetM' in walkOf(cleared.manifest)).toBe(false);
+    expect((await readPose()).samples).toEqual(before.samples);
+  });
+
+  it('keeps the offset when the walk is placed again, and clears it with the placement', async () => {
+    await setUp();
+    await updateLayers(root, ['walk-w'], { walk: cal() });
+    await updateLayers(root, ['walk-w'], { heightOffsetM: -2 });
+    const again = await updateLayers(root, ['walk-w'], { walk: cal() });
+    expect(walkOf(again.manifest).heightOffsetM).toBe(-2);
+    const gone = await updateLayers(root, ['walk-w'], { walk: null });
+    expect('heightOffsetM' in walkOf(gone.manifest)).toBe(false);
+  });
+
+  it('refuses a height offset for a walk that is not placed', async () => {
+    await setUp();
+    await expect(updateLayers(root, ['walk-w'], { heightOffsetM: 1 })).rejects.toThrow(
+      /not placed/,
+    );
+  });
+
   it('leaves the old pose.json when the manifest save is refused', async () => {
     await setUp();
     await updateLayers(root, ['walk-w'], { walk: cal() });

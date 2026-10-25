@@ -27,13 +27,25 @@ export function timelineByDefault(
   return layers.some((l) => l.kind === 'video') || datedCount(captures) >= 2;
 }
 
-/** The user's choice for the project, else the default for its data. */
+/**
+ * Whether the project has a timeline to show at all: video clips for the footage timeline, or two
+ * or more dated surveys for the dates strip. Without either the Timeline tile waits, greyed.
+ */
+export function timelineAvailable(
+  layers: readonly Pick<Layer, 'kind'>[],
+  captures?: readonly SlotCapture[],
+): boolean {
+  return timelineByDefault(layers, captures);
+}
+
+/** The user's choice for the project, else the default for its data; never with nothing to show. */
 export function timelineShown(
   saved: boolean | undefined,
   layers: readonly Pick<Layer, 'kind'>[],
   captures?: readonly SlotCapture[],
 ): boolean {
-  return saved ?? timelineByDefault(layers, captures);
+  // with something to show, the default is shown
+  return timelineAvailable(layers, captures) && (saved ?? true);
 }
 
 /** What the bottom slot under the stage shows. */
@@ -43,7 +55,7 @@ export type BottomPref = 'dates' | 'footage';
 
 /**
  * The bottom slot (spec section 5, "Coexistence with the video timeline"): hidden, nothing; no
- * video, the dates strip with two or more dates (else the footage timeline the user asked for);
+ * video, the dates strip with two or more dates (else nothing: the tile waits for a second date);
  * video with fewer than two dates, the footage; video and two or more dates, the switch's choice,
  * by default Dates when the project has volume measurements and Footage otherwise.
  */
@@ -56,7 +68,7 @@ export function bottomSlot(x: {
 }): BottomSlot {
   if (!x.shown) return 'none';
   const dates = x.datedCaptures >= 2;
-  if (!x.hasVideo) return dates ? 'dates' : 'footage';
+  if (!x.hasVideo) return dates ? 'dates' : 'none';
   if (!dates) return 'footage';
   return x.pref ?? (x.hasVolumes ? 'dates' : 'footage');
 }
@@ -144,12 +156,17 @@ export function useTimelineShown(project: PrefProject | null): boolean {
   return project ? timelineShown(saved, project.manifest.layers, project.manifest.captures) : false;
 }
 
-/** Show or hide the open project's timeline (the View tile, the palette). */
+/** Whether the open project has a timeline to show (the View tile greys out without one). */
+export function hasTimeline(project: PrefProject | null): boolean {
+  return project ? timelineAvailable(project.manifest.layers, project.manifest.captures) : false;
+}
+
+/** Show or hide the open project's timeline (the View tile, the palette); nothing to show, nothing. */
 export function toggleTimeline(
   project: PrefProject | null,
   store: StoreApi<TimelinePrefState> = timelinePref,
 ): void {
-  if (!project) return;
+  if (!project || !hasTimeline(project)) return;
   const now = timelineShown(
     store.getState().byProject[project.id],
     project.manifest.layers,

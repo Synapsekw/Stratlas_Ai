@@ -18,13 +18,16 @@ const {
   addSurface,
   currentKey,
   exportSection,
+  isDismissed,
   kindOf,
   loadSectionSources,
   openSection,
+  openSectionWindow,
   removeSurface,
   sectionSeries,
   sectionStore,
   setShadeVs,
+  setWindow,
   toggleShown,
 } = await import('./sectionStore');
 
@@ -314,5 +317,51 @@ describe('section store on the profile chart', () => {
       { kind: 'design', design: 'd', layer: 'pad' },
       { kind: 'survey', surface: 'jun-dsm' },
     ]);
+  });
+});
+
+describe('the larger window', () => {
+  const pile = { kind: 'measurement' as const, id: 'sp1', label: 'SP1' };
+  const line: [number, number][] = [
+    [0, 0],
+    [10, 0],
+  ];
+  const shown = () => {
+    const s = sectionStore.getState();
+    return { dock: s.line !== null && !isDismissed(s) && !s.window, window: s.window };
+  };
+  afterEach(() => {
+    sectionStore.setState({ window: false, windowAlone: false, dismissed: null });
+  });
+
+  it('opened on its own (a pile, a card) it closes with the section: no dock is left', () => {
+    openSectionWindow(line, pile);
+    expect(shown()).toEqual({ dock: false, window: true });
+    setWindow(false);
+    expect(shown()).toEqual({ dock: false, window: false });
+  });
+
+  it('popped out of the dock it returns to the dock', () => {
+    openSection(line, pile);
+    setWindow(true);
+    expect(shown()).toEqual({ dock: false, window: true });
+    setWindow(false);
+    expect(shown()).toEqual({ dock: true, window: false });
+  });
+
+  it('opened for the section the dock shows, it returns to the dock', () => {
+    openSection(line, pile);
+    openSectionWindow(line, pile);
+    setWindow(false);
+    expect(shown()).toEqual({ dock: true, window: false });
+  });
+
+  it('opened on its own again after closing, it still opens alone', () => {
+    openSectionWindow(line, pile);
+    setWindow(false);
+    openSectionWindow(line, pile);
+    expect(shown()).toEqual({ dock: false, window: true });
+    setWindow(false);
+    expect(shown()).toEqual({ dock: false, window: false });
   });
 });

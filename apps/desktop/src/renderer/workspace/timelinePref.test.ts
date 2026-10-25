@@ -12,6 +12,7 @@ import {
   isBottomPref,
   offersSwitch,
   TIMELINE_SHOWN_KEY,
+  timelineAvailable,
   timelineByDefault,
   timelineShown,
   toggleTimeline,
@@ -31,33 +32,38 @@ function memory() {
 
 describe('timeline visibility', () => {
   it('shows by default only for projects with video clips', () => {
-    // HCl, Al-Zour: clips (with photos, clouds)
+    // a plant inspection: clips (with photos, clouds)
     expect(timelineByDefault(kinds('mesh', 'video', 'video', 'photos'))).toBe(true);
-    // DAMAC: a model and timed photos, no video
+    // a facade survey: a model and timed photos, no video
     expect(timelineByDefault(kinds('mesh', 'photos', 'photos', 'raster'))).toBe(false);
-    // Masafi: two surveys, nothing to play
+    // a quarry: two surveys, nothing to play
     expect(timelineByDefault(kinds('mesh', 'mesh', 'raster', 'legacy'))).toBe(false);
   });
 
   it("follows the user's choice over the default", () => {
-    expect(timelineShown(undefined, kinds('mesh'))).toBe(false);
-    expect(timelineShown(true, kinds('mesh'))).toBe(true);
+    const two = [{ date: '2020-12-31' }, { date: '2021-01-10' }];
+    expect(timelineShown(undefined, kinds('video'))).toBe(true);
     expect(timelineShown(false, kinds('video'))).toBe(false);
+    expect(timelineShown(false, kinds('mesh'), two)).toBe(false);
+    expect(timelineShown(true, kinds('mesh'), two)).toBe(true);
+    // nothing to show: no choice opens it
+    expect(timelineShown(true, kinds('mesh'))).toBe(false);
   });
 
   it('toggles per project and remembers the choice', () => {
     const storage = memory();
     const store = createTimelinePref(storage);
-    const damac = { id: 'damac', manifest: { layers: kinds('mesh', 'photos') } };
-    const hcl = { id: 'hcl', manifest: { layers: kinds('mesh', 'video') } };
-    toggleTimeline(damac, store);
-    expect(store.getState().byProject).toEqual({ damac: true });
-    toggleTimeline(hcl, store);
-    expect(store.getState().byProject).toEqual({ damac: true, hcl: false });
-    toggleTimeline(damac, store);
+    const captures = [{ date: '2020-12-31' }, { date: '2021-01-10' }];
+    const dates = { id: 'dates', manifest: { layers: kinds('mesh', 'photos'), captures } };
+    const clips = { id: 'clips', manifest: { layers: kinds('mesh', 'video') } };
+    toggleTimeline(dates, store);
+    expect(store.getState().byProject).toEqual({ dates: false });
+    toggleTimeline(clips, store);
+    expect(store.getState().byProject).toEqual({ dates: false, clips: false });
+    toggleTimeline(dates, store);
     expect(createTimelinePref(storage).getState().byProject).toEqual({
-      damac: false,
-      hcl: false,
+      dates: true,
+      clips: false,
     });
     toggleTimeline(null, store);
     expect(Object.keys(store.getState().byProject)).toHaveLength(2);
@@ -75,8 +81,8 @@ describe('timeline visibility', () => {
     const storage = memory();
     storage.setItem('stratlas.timeline', JSON.stringify({ p: { focus: 's1' } }));
     const store = createTimelinePref(storage);
-    toggleTimeline({ id: 'p', manifest: { layers: kinds('mesh') } }, store);
-    expect(JSON.parse(storage.getItem(TIMELINE_SHOWN_KEY) ?? '{}')).toEqual({ p: true });
+    toggleTimeline({ id: 'p', manifest: { layers: kinds('video') } }, store);
+    expect(JSON.parse(storage.getItem(TIMELINE_SHOWN_KEY) ?? '{}')).toEqual({ p: false });
     expect(JSON.parse(storage.getItem('stratlas.timeline') ?? '{}')).toEqual({
       p: { focus: 's1' },
     });
@@ -119,7 +125,7 @@ describe('timeline visibility', () => {
     } as Storage;
     storage.setItem(TIMELINE_KEY, JSON.stringify({ p: { focus: 's1' } }));
     const pref = createTimelinePref(storage);
-    toggleTimeline({ id: 'p', manifest: { layers: kinds('mesh') } }, pref);
+    toggleTimeline({ id: 'p', manifest: { layers: kinds('video') } }, pref);
     const again = createTimelineStore(createWorkspace(), storage, () => undefined);
     expect(again.getState().byProject.p?.focus).toBe('s1');
   });
@@ -136,6 +142,34 @@ describe('timeline visibility', () => {
   });
 });
 
+describe('a timeline to show', () => {
+  it('needs video or a second dated survey', () => {
+    expect(timelineAvailable(kinds('mesh', 'video'))).toBe(true);
+    expect(timelineAvailable(kinds('mesh'), [{ date: '2020-12-31' }, { date: '2021-01-10' }])).toBe(
+      true,
+    );
+    expect(timelineAvailable(kinds('mesh', 'photos'), [{ date: '2020-12-31' }])).toBe(false);
+    expect(timelineAvailable(kinds('mesh'), [{ date: '2020-12-31' }, { date: 'soon' }])).toBe(
+      false,
+    );
+    expect(timelineAvailable(kinds('mesh'))).toBe(false);
+  });
+
+  it('closes a timeline left open, and the toggle does nothing, without one', () => {
+    const store = createTimelinePref(memory());
+    const one = {
+      id: 'p',
+      manifest: { layers: kinds('mesh'), captures: [{ date: '2020-12-31' }] },
+    };
+    store.getState().set('p', true);
+    expect(
+      timelineShown(store.getState().byProject.p, one.manifest.layers, one.manifest.captures),
+    ).toBe(false);
+    toggleTimeline(one, store);
+    expect(store.getState().byProject).toEqual({ p: true });
+  });
+});
+
 describe('the bottom slot', () => {
   const base = { hasVideo: false, datedCaptures: 2, hasVolumes: true, pref: null, shown: true };
   it.each([
@@ -145,11 +179,8 @@ describe('the bottom slot', () => {
       { ...base, datedCaptures: 1, shown: false },
       'none',
     ],
-    [
-      'no video, one date, shown on request: the footage timeline',
-      { ...base, datedCaptures: 1 },
-      'footage',
-    ],
+    ['no video and one date, even shown: nothing', { ...base, datedCaptures: 1 }, 'none'],
+    ['no video and no dates, even shown: nothing', { ...base, datedCaptures: 0 }, 'none'],
     ['hidden: nothing', { ...base, shown: false }, 'none'],
     ['video and one date: footage', { ...base, hasVideo: true, datedCaptures: 1 }, 'footage'],
     ['video, two dates, volumes: dates by default', { ...base, hasVideo: true }, 'dates'],

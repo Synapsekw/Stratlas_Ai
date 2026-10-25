@@ -73,6 +73,7 @@ import {
   type WalkNow,
 } from './walkOverlay';
 import { comparedWalks, walkCompare } from './walkCompare';
+import { walkFitSource } from './walkDrop';
 import { walkGround, type GroundAt } from './walkGround';
 import { walkViews, type WalkViewNow } from './walkView';
 import { jobForWalk, splitWithWalk } from './walkModel';
@@ -578,16 +579,21 @@ export function wantsSurfaceClick(s: Pick<PlaceState, 'step' | 'armed'>): boolea
  * pin by time, at their model x/z, with the pin's height when it has one. Empty otherwise.
  */
 export function sessionHandles(
-  s: Pick<PlaceState, 'step' | 'fit' | 'pins'>,
+  s: Pick<PlaceState, 'step' | 'fit' | 'pins'> & { heightOffsetM?: number },
 ): { handle: PlaceHandle; xz: XZ; y: number | null }[] {
   if ((s.step !== 'placed' && s.step !== 'fine-tune') || !s.fit) return [];
   const shown = handlePins(s.fit);
   if (!shown) return [];
-  const at = (handle: PlaceHandle, pin: typeof shown.start) => ({
-    handle,
-    xz: [pin.target[0], pin.target[1]] as XZ,
-    y: s.pins[pin.index]?.y ?? null,
-  });
+  // the pin's stored height plus the walk's offset: where the fit draws the ground
+  const off = s.heightOffsetM ?? 0;
+  const at = (handle: PlaceHandle, pin: typeof shown.start) => {
+    const y = s.pins[pin.index]?.y;
+    return {
+      handle,
+      xz: [pin.target[0], pin.target[1]] as XZ,
+      y: y === undefined ? null : y + off,
+    };
+  };
   return [at('start', shown.start), at('end', shown.end)];
 }
 
@@ -944,6 +950,16 @@ function sharedFits(
   return out;
 }
 
+/**
+ * The placed walk's fit as the views drew it last (outside React: Drop to ground), null when it
+ * was not fitted for the manifest open now (not read yet, or the project changed since).
+ */
+export function placedWalkFitNow(m: ProjectManifest, layerId: string): SheetWalk | null {
+  const w = lastFits?.m === m ? lastFits.out.find((x) => x.layer.id === layerId) : undefined;
+  return w ?? null;
+}
+walkFitSource.now = placedWalkFitNow;
+
 // another project (or the same one opened again from another folder): read everything afresh
 let inputsProject: string | null = projectCacheKey(workspace.getState().project);
 workspace.subscribe((s) => {
@@ -998,8 +1014,10 @@ export function placedWalkFits(
     const sheets = [...new Set(place.pins.map((p) => p.surface))].filter(
       (id) => id !== MODEL_SURFACE,
     );
+    const heightOffsetM = layer.heightOffsetM ?? 0;
     const key = JSON.stringify([
       place,
+      heightOffsetM,
       layer.durationS,
       shift,
       sheets.map((id) => frames.drawing(id)),
@@ -1011,7 +1029,7 @@ export function placedWalkFits(
       reuse?.set(layer.id, { ...kept, walk });
       return [walk];
     }
-    const fit = fitWalk(inputs.raw, place, frames, layer.durationS);
+    const fit = fitWalk(inputs.raw, { ...place, heightOffsetM }, frames, layer.durationS);
     if (fit.error) {
       reuse?.delete(layer.id);
       return [];

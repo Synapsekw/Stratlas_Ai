@@ -105,6 +105,16 @@ describe('measurementsGroup', () => {
     expect(host.querySelectorAll('[data-testid="survey-side"]')).toHaveLength(1);
   });
 
+  it('with a panel open the rows hand the wheel on to the tab (they no longer hold it)', () => {
+    mount();
+    const rows = host.querySelector('[data-testid="project-measurements"]')!;
+    expect(rows.classList.contains('has-panel')).toBe(false);
+    act(() => {
+      measureStore.setState({ selected: ['b'], focus: 'b' });
+    });
+    expect(rows.classList.contains('has-panel')).toBe(true);
+  });
+
   it('right-click gives the measurement actions', () => {
     mount();
     act(() => {

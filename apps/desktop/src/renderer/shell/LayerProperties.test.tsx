@@ -364,6 +364,22 @@ describe('LayerProperties', () => {
       expect(save()?.disabled).toBe(false);
     });
 
+    it('edits the height offset of a placed walk', async () => {
+      const place = { pins: [], yawOffsetDeg: 0, heightM: 1.7, quality: 'good' };
+      withCloud({ kind: 'walk', format: undefined, place, heightOffsetM: 1.25 });
+      await openC();
+      expect(field()?.value).toBe('1.25');
+      type('-0.5');
+      act(() => save()?.click());
+      expect(setOffset).toHaveBeenCalledWith('c', -0.5);
+    });
+
+    it('shows no height offset for a walk that is not placed', async () => {
+      withCloud({ kind: 'walk', format: undefined });
+      await openC();
+      expect(field()).toBeNull();
+    });
+
     it('shows no height offset for a model or in a package', async () => {
       await openM();
       expect(field()).toBeNull();

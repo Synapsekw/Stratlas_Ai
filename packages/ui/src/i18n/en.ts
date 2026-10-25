@@ -233,6 +233,7 @@ export const en = {
   'timeline.hide': 'Hide the timeline',
   'timeline.toggle': 'Show or hide the timeline',
   'timeline.noVideo': 'No video in this project',
+  'timeline.needsDates': 'Add a second survey date to see the dates timeline',
   'timeline.clips_one': '{count} clip',
   'timeline.clips_other': '{count} clips',
   'timeline.utc': 'UTC',
@@ -4318,6 +4319,9 @@ export const en = {
   'drop.many_other': 'Moved {count} datasets onto the ground (largest move {distance}).',
   'drop.onDsm': 'on the DSM',
   'drop.onProject': 'to the project ground level',
+  'drop.onFloor': 'onto the floor in 3D',
+  'drop.noFloor':
+    'Nothing is drawn in 3D under {name}. Show a model, a cloud or a DSM under it, then try again.',
   'drop.inPlace': 'Already on the ground',
   'drop.notLoaded': '{name} has not loaded yet. Show it, let it load, then try again.',
   'drop.hidden_one': '{names} is hidden. Show it, then try again.',

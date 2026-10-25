@@ -47,7 +47,17 @@ export interface DropDeps {
   footprint(layerId: string): Promise<Box | null>;
   /** The DSM's height straight down at (x, z), or null where there is none. */
   ground(x: number, z: number): number | null;
+  /** How far the floor drawn in 3D lies over a placed walk's ground (`walkFloorShift`). */
+  walkFloor(layerId: string): Promise<WalkFloor>;
 }
+
+/**
+ * A walk's floor: the median shift onto it; `notLoaded` while the walk has no fit drawn yet;
+ * `noFloor` when nothing drawn in 3D answers under its path.
+ */
+export type WalkFloor = { shift: number } | 'notLoaded' | 'noFloor';
+
+type GroundSource = 'dsm' | 'project' | 'floor';
 
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
 
@@ -60,9 +70,9 @@ const layerOf = (m: ProjectManifest | undefined, id: string): Layer | undefined 
 
 /** What the planner needs of a layer as it stands, with its measured low point. */
 function itemOf(l: Layer, low: number): DropItem | null {
-  if (l.kind === 'pointcloud')
+  if (l.kind === 'pointcloud' || l.kind === 'walk')
     return {
-      kind: 'pointcloud',
+      kind: l.kind,
       layerId: l.id,
       name: l.name,
       low,
@@ -115,14 +125,19 @@ export function createDropStore(deps: DropDeps): StoreApi<DropStore> {
         try {
           const first = deps.workspace.getState().project;
           if (!first) return;
-          const measured: { id: string; low: number; ground: ReturnType<typeof groundUnder> }[] =
-            [];
+          const measured: {
+            id: string;
+            low: number;
+            ground: { y: number; source: GroundSource };
+          }[] = [];
           // a hidden dataset draws nothing to measure: say so, and write nothing
           const hiddenNow = deps.workspace.getState().hidden;
           const hiddenNames: string[] = [];
           for (const id of layerIds) {
             const l = layerOf(first.manifest, id);
-            if (l && hiddenNow[id] && droppable(l) === 'ok') hiddenNames.push(l.name);
+            // a walk is measured on the floor drawn under it, not on itself: hidden is fine
+            if (l && l.kind !== 'walk' && hiddenNow[id] && droppable(l) === 'ok')
+              hiddenNames.push(l.name);
           }
           if (hiddenNames.length > 0) {
             say(t('drop.hidden', { count: hiddenNames.length, names: hiddenNames.join(', ') }));
@@ -137,6 +152,20 @@ export function createDropStore(deps: DropDeps): StoreApi<DropStore> {
               return;
             }
             if (can !== 'ok') continue;
+            if (l.kind === 'walk') {
+              // a walk moves by the floor's median height over its ground along its path
+              const floor = await deps.walkFloor(id);
+              if (floor === 'notLoaded') {
+                say(t('drop.notLoaded', { name: l.name }));
+                return;
+              }
+              if (floor === 'noFloor') {
+                say(t('drop.noFloor', { name: l.name }));
+                return;
+              }
+              measured.push({ id, low: 0, ground: { y: floor.shift, source: 'floor' } });
+              continue;
+            }
             const low = await deps.low(id);
             if (low === null) {
               say(t('drop.notLoaded', { name: l.name }));
@@ -153,7 +182,7 @@ export function createDropStore(deps: DropDeps): StoreApi<DropStore> {
           const ws = deps.workspace.getState();
           if (ws.project?.id !== first.id) return;
           const project = { crs: ws.project.manifest.crs, origin: ws.project.manifest.origin };
-          const plans: { step: DropStep; source: 'dsm' | 'project' }[] = [];
+          const plans: { step: DropStep; source: GroundSource }[] = [];
           for (const m of measured) {
             const l = layerOf(ws.project.manifest, m.id);
             const item = l ? itemOf(l, m.low) : null;
@@ -183,7 +212,13 @@ export function createDropStore(deps: DropDeps): StoreApi<DropStore> {
               ? t(one.step.shift < 0 ? 'drop.lowered' : 'drop.raised', {
                   name: one.step.name,
                   distance: formatShift(one.step.shift),
-                  ground: t(one.source === 'dsm' ? 'drop.onDsm' : 'drop.onProject'),
+                  ground: t(
+                    one.source === 'dsm'
+                      ? 'drop.onDsm'
+                      : one.source === 'floor'
+                        ? 'drop.onFloor'
+                        : 'drop.onProject',
+                  ),
                 })
               : t('drop.many', {
                   count: plans.length,
@@ -202,7 +237,8 @@ export function createDropStore(deps: DropDeps): StoreApi<DropStore> {
         try {
           const project = deps.workspace.getState().project;
           const l = layerOf(project?.manifest, layerId);
-          if (!project || l?.kind !== 'pointcloud') return;
+          if (!project || !l || (l.kind !== 'pointcloud' && l.kind !== 'walk')) return;
+          if (l.kind === 'walk' && droppable(l) !== 'ok') return;
           if (droppable(l) === 'kit') {
             say(t('actions.reason.kitCloud'));
             return;

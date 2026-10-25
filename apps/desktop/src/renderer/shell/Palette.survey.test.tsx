@@ -115,3 +115,27 @@ describe('palette survey date commands', () => {
     expect(find('add-survey-date')).toBeUndefined();
   });
 });
+
+describe('palette timeline command', () => {
+  it('waits for a second survey date in a project without video', () => {
+    render();
+    expect(find('timeline')).toBeUndefined();
+    act(() => root?.unmount());
+    workspace.setState({
+      project: {
+        id: 'p',
+        manifest: {
+          layers: [],
+          captures: [
+            { id: 'a', label: 'A', date: '2024-09-04' },
+            { id: 'b', label: 'B', date: '2024-10-02' },
+          ],
+          crs: { epsg: 32639 },
+          origin: [0, 0, 0],
+        },
+      },
+    } as never);
+    render();
+    expect(find('timeline')).toBeDefined();
+  });
+});

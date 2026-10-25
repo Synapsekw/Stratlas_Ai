@@ -273,6 +273,12 @@ export const Layer = z.discriminatedUnion('kind', [
     durationS: z.number().nonnegative(),
     path: WalkPathRefs.optional(),
     place: WalkCalibration.optional(),
+    /**
+     * Metres added to the walk's ground (its pins' heights) wherever it is drawn and in its pose
+     * file; set by Drop to ground or typed in Properties. Absent means 0. On the layer, not in the
+     * strict `place`, so an older build still reads the walk and drops only this field on save.
+     */
+    heightOffsetM: z.number().min(-2000).max(2000).optional(),
     flight: FlightRef.optional(),
   }),
   /**

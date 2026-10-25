@@ -76,6 +76,11 @@ export interface PlaceState {
   /** Sorted by `t`. */
   pins: WalkPin[];
   yawOffsetDeg: number;
+  /**
+   * The walk layer's height offset (0 when none): the fit adds it to the pins' heights, and a
+   * height picked in 3D is stored without it, so the pin lands where it was picked.
+   */
+  heightOffsetM: number;
   armed: PlaceArmed;
   /** The pin the next click moves (`armed` 'move'), by index in `pins`; null otherwise. */
   moving: number | null;
@@ -188,6 +193,7 @@ const idle = {
   surface: null,
   pins: [] as WalkPin[],
   yawOffsetDeg: 0,
+  heightOffsetM: 0,
   armed: null as PlaceArmed,
   moving: null as number | null,
   timeS: 0,
@@ -218,8 +224,19 @@ export function createPlaceStore(deps: {
   let onPath = false;
 
   return createStore<PlaceState>()((set, get) => {
+    /** The walk's height offset: added by the fit, taken off a height picked in 3D. */
+    const offset = (): number => walk?.heightOffsetM ?? 0;
     const fitOf = (pins: readonly WalkPin[], yawOffsetDeg: number): WalkFit | null =>
-      walk ? deps.fit(raw, { pins: [...pins], yawOffsetDeg }, frames, walk.durationS) : null;
+      walk
+        ? deps.fit(
+            raw,
+            { pins: [...pins], yawOffsetDeg, heightOffsetM: offset() },
+            frames,
+            walk.durationS,
+          )
+        : null;
+    /** A height picked in the scene as a pin stores it (the offset taken off). */
+    const stored = (y: number): number => (offset() === 0 ? y : y - offset());
 
     /** New pins: sorted, refitted, the session marked changed. */
     const setPins = (pins: readonly WalkPin[], extra: Partial<PlaceState> = {}): void => {
@@ -254,7 +271,7 @@ export function createPlaceStore(deps: {
       const s = get().surface;
       if (!s) return null;
       const pin: WalkPin = { t, surface: surfaceKey(s), at: [at[0], at[1]] };
-      if (s.kind !== 'drawing' && y !== undefined && Number.isFinite(y)) pin.y = y;
+      if (s.kind !== 'drawing' && y !== undefined && Number.isFinite(y)) pin.y = stored(y);
       return pin;
     };
 
@@ -344,6 +361,7 @@ export function createPlaceStore(deps: {
           step: !ready && pins.length < 2 ? 'check' : 'start',
           pins,
           yawOffsetDeg,
+          heightOffsetM: offset(),
           fit: fitOf(pins, yawOffsetDeg),
         });
       },
@@ -418,7 +436,7 @@ export function createPlaceStore(deps: {
         const xz = outline
           ? previewPath(outline, startT(), endT(), from.xz, cursor)
           : [from.xz, cursor];
-        const y0 = from.y;
+        const y0 = from.y === null ? null : from.y + offset();
         set({
           preview: previewOf(xz, false, false, y0 !== null && yy !== null ? [y0, yy] : null),
         });
@@ -524,7 +542,8 @@ export function createPlaceStore(deps: {
         const old = st.pins[i];
         if (st.layerId === null || !old) return;
         const moved: WalkPin = { ...old, at: [at[0], at[1]] };
-        if (old.surface === MODEL_SURFACE && y !== undefined && Number.isFinite(y)) moved.y = y;
+        if (old.surface === MODEL_SURFACE && y !== undefined && Number.isFinite(y))
+          moved.y = stored(y);
         setPins(st.pins.map((p, k) => (k === i ? moved : p)));
       },
 

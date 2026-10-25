@@ -169,3 +169,65 @@ describe('droppable', () => {
     expect(droppable({ kind: 'photos', ...base, items: [] } as unknown as Layer)).toBe('no');
   });
 });
+
+describe('Drop to ground for a walk', () => {
+  // a walk's measure: `low` 0 and the ground the median floor shift (walkFloorShift)
+  const walk = (heightOffsetM = 0): DropItem => ({
+    kind: 'walk',
+    layerId: 'walk-w1',
+    name: 'Walk',
+    low: 0,
+    heightOffsetM,
+  });
+
+  it('raises a walk placed on the ortho plane (ground 0) onto a floor 1.25 m up', () => {
+    expect(planDrop(walk(), 1.25, PROJECT)).toEqual({
+      layerId: 'walk-w1',
+      name: 'Walk',
+      shift: 1.25,
+      patch: { heightOffsetM: 1.25 },
+      undo: { heightOffsetM: null },
+    });
+  });
+
+  it('lowers a walk whose pins sat on a roof: a negative offset', () => {
+    const s = planDrop(walk(), -6.2, PROJECT);
+    expect(s?.patch).toEqual({ heightOffsetM: -6.2 });
+    expect(s?.shift).toBe(-6.2);
+  });
+
+  it('adds to the offset it has, and leaves a walk already on the floor', () => {
+    const s = planDrop(walk(1.25), -0.5, PROJECT);
+    expect(s?.patch).toEqual({ heightOffsetM: 0.75 });
+    expect(s?.undo).toEqual({ heightOffsetM: 1.25 });
+    expect(planDrop(walk(1.25), 0.02, PROJECT)).toBeNull();
+  });
+
+  it('drops a placed walk, not one without a placement', () => {
+    const w = (extra: object = {}) =>
+      ({
+        kind: 'walk',
+        id: 'walk-w1',
+        name: 'W',
+        visible: true,
+        record: { path: 'walks/w1/walk.json' },
+        src: { path: 'walks/w1/playback.mp4' },
+        durationS: 10,
+        ...extra,
+      }) as unknown as Layer;
+    const place = (quality: string) => ({
+      place: {
+        pins: [
+          { t: 1, surface: '@model', at: [0, 0] },
+          { t: 9, surface: '@model', at: [9, 0] },
+        ],
+        yawOffsetDeg: 0,
+        heightM: 1.7,
+        quality,
+      },
+    });
+    expect(droppable(w(place('good')))).toBe('ok');
+    expect(droppable(w())).toBe('no');
+    expect(droppable(w(place('unplaced')))).toBe('no');
+  });
+});

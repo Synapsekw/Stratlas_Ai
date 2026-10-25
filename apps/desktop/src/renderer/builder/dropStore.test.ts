@@ -2,7 +2,7 @@ import type { Layer, LayerPatch, ProjectManifest } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it, vi } from 'vitest';
 import type { Box } from '../shell/layerBounds';
-import { createDropStore } from './dropStore';
+import { createDropStore, type WalkFloor } from './dropStore';
 
 const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
@@ -39,6 +39,7 @@ function setup(
     lows?: Record<string, number | null>;
     ground?: (x: number, z: number) => number | null;
     fail?: (layerId: string, n: number) => string | null;
+    walkFloor?: (layerId: string) => WalkFloor;
   } = {},
 ) {
   const ws = createWorkspace();
@@ -70,6 +71,7 @@ function setup(
     low: (id) => Promise.resolve(lows[id] ?? null),
     footprint: () => Promise.resolve(BOX),
     ground: opts.ground ?? (() => null),
+    walkFloor: (id) => Promise.resolve(opts.walkFloor?.(id) ?? 'notLoaded'),
   });
   return { store, save, saved, ws };
 }
@@ -79,6 +81,82 @@ const layerOf = (ws: ReturnType<typeof createWorkspace>, id: string) =>
     string,
     unknown
   >;
+
+const placedWalk = (extra: object = {}) => ({
+  kind: 'walk',
+  id: 'walk-w1',
+  name: 'Walk 1',
+  visible: true,
+  record: { path: 'walks/w1/walk.json' },
+  src: { path: 'walks/w1/playback.mp4' },
+  durationS: 10,
+  place: {
+    pins: [
+      { t: 1, surface: '@model', at: [0, 0], y: 0 },
+      { t: 9, surface: '@model', at: [9, 0], y: 0 },
+    ],
+    yawOffsetDeg: 0,
+    heightM: 1.7,
+    quality: 'good',
+  },
+  ...extra,
+});
+
+describe('drop store for walks', () => {
+  it('raises a walk onto the floor drawn in 3D, with Undo and Redo', async () => {
+    const { store, saved, ws } = setup([placedWalk()], { walkFloor: () => ({ shift: 1.25 }) });
+    await store.getState().drop(['walk-w1']);
+    expect(saved).toEqual([{ layerId: 'walk-w1', patch: { heightOffsetM: 1.25 } }]);
+    expect(store.getState().notice?.text).toBe('Raised Walk 1 1.3 m (onto the floor in 3D).');
+    expect(layerOf(ws, 'walk-w1').heightOffsetM).toBe(1.25);
+    await store.getState().apply();
+    expect(saved[1]).toEqual({ layerId: 'walk-w1', patch: { heightOffsetM: null } });
+    expect(layerOf(ws, 'walk-w1').heightOffsetM).toBeUndefined();
+    await store.getState().apply();
+    expect(layerOf(ws, 'walk-w1').heightOffsetM).toBe(1.25);
+  });
+
+  it('drops a walk that is switched off: the floor under it is what is measured', async () => {
+    const { store, saved, ws } = setup([placedWalk()], { walkFloor: () => ({ shift: 1.25 }) });
+    ws.setState({ hidden: { 'walk-w1': true } });
+    await store.getState().drop(['walk-w1']);
+    expect(saved).toEqual([{ layerId: 'walk-w1', patch: { heightOffsetM: 1.25 } }]);
+  });
+
+  it('lowers a walk that has an offset by the floor below it', async () => {
+    const { store, saved } = setup([placedWalk({ heightOffsetM: 2 })], {
+      walkFloor: () => ({ shift: -6 }),
+    });
+    await store.getState().drop(['walk-w1']);
+    expect(saved[0]?.patch).toEqual({ heightOffsetM: -4 });
+    expect(store.getState().notice?.text).toBe('Lowered Walk 1 6.0 m (onto the floor in 3D).');
+  });
+
+  it('says so and writes nothing when no floor is drawn under the walk', async () => {
+    const { store, save } = setup([placedWalk()], { walkFloor: () => 'noFloor' });
+    await store.getState().drop(['walk-w1']);
+    expect(save).not.toHaveBeenCalled();
+    expect(store.getState().notice?.text).toBe(
+      'Nothing is drawn in 3D under Walk 1. Show a model, a cloud or a DSM under it, then try again.',
+    );
+  });
+
+  it('asks to wait while the walk has not been fitted yet', async () => {
+    const { store, save } = setup([placedWalk()], { walkFloor: () => 'notLoaded' });
+    await store.getState().drop(['walk-w1']);
+    expect(save).not.toHaveBeenCalled();
+    expect(store.getState().notice?.text).toContain('Walk 1 has not loaded yet');
+  });
+
+  it('sets a walk offset typed in Properties, with Undo', async () => {
+    const { store, saved } = setup([placedWalk()]);
+    await store.getState().setOffset('walk-w1', 1.5);
+    expect(saved).toEqual([{ layerId: 'walk-w1', patch: { heightOffsetM: 1.5 } }]);
+    expect(store.getState().notice?.text).toBe('Height offset of Walk 1 set to 1.5 m.');
+    await store.getState().apply();
+    expect(saved[1]).toEqual({ layerId: 'walk-w1', patch: { heightOffsetM: null } });
+  });
+});
 
 describe('drop store', () => {
   it('drops two datasets and undoes both', async () => {

@@ -40,7 +40,7 @@ import { updateFlightPaths, useFlightPathModel } from '../pathModel';
 import { siteBasemap, streetMapTool } from '../siteBasemap';
 import { useStreetMap3d } from '../streetMap3d';
 import { toggleTelemetry, useTelemetryOn } from '../telemetryPref';
-import { toggleTimeline, useTimelineShown } from '../timelinePref';
+import { hasTimeline, toggleTimeline, useTimelineShown } from '../timelinePref';
 import { LABEL_MODES } from '../tools/display';
 import { toggleMeasure, toggleSection } from '../tools/measure';
 import { toggleVolumeSection, VolumeChangePicks } from '../VolumeTools';
@@ -118,6 +118,8 @@ interface TileProps {
   shortcut?: ShortcutId | undefined;
   pressed?: boolean | undefined;
   disabled?: boolean | undefined;
+  /** Greyed out with the reason in the tooltip (and read as its description). */
+  disabledReason?: string | undefined;
   /** Opens a panel (the corner caret). */
   caret?: boolean;
   /** Opens the group's workbench: the accent tile at the end of a row. */
@@ -135,6 +137,7 @@ export function Tile({
   shortcut,
   pressed,
   disabled,
+  disabledReason,
   caret,
   toSide,
   flip,
@@ -154,6 +157,7 @@ export function Tile({
       onClick={onClick}
       {...(pressed !== undefined ? { pressed } : {})}
       {...(disabled !== undefined ? { disabled } : {})}
+      {...(disabledReason ? { disabledReason } : {})}
       {...(shortcut ? { shortcut } : {})}
     >
       <Icon name={icon} size={20} {...(flip ? { className: 'flip' } : {})} />
@@ -344,6 +348,8 @@ function ViewRow({ ctx }: { ctx: GroupCtx }) {
           name={timelineOn ? t('timeline.hide') : t('timeline.show')}
           pressed={timelineOn}
           disabled={!project}
+          // no video and one survey date: nothing to show until a second date comes
+          disabledReason={project && !hasTimeline(project) ? t('timeline.needsDates') : undefined}
           testId="timeline-toggle"
           onClick={() => {
             toggleTimeline(workspace.getState().project);

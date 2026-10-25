@@ -84,7 +84,7 @@ it('sets, rounds and clears a cloud height offset', async () => {
 it('refuses a height offset on a model and on a kit-packed cloud', async () => {
   const root = await withLayers();
   await expect(updateLayers(root, ['v'], { heightOffsetM: 3 })).rejects.toThrow(
-    '"Outline" is not a point cloud; only point clouds take a height offset.',
+    '"Outline" is not a point cloud or a walk; only those take a height offset.',
   );
   await expect(updateLayers(root, ['k'], { heightOffsetM: 3 })).rejects.toThrow(
     '"Kit" is a kit-packed cloud, which cannot be moved.',

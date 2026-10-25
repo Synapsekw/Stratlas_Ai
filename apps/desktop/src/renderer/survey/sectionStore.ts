@@ -118,6 +118,11 @@ export interface SectionState {
   cutaway: boolean;
   /** The large window (the pop-out) is open. */
   window: boolean;
+  /**
+   * The window was opened on its own (a pile's Open larger, a card's Open section), not popped
+   * out of the dock: closing it closes the section, so no dock is left behind it.
+   */
+  windowAlone: boolean;
   /** The dock was closed for this source; it opens again for another. */
   dismissed: string | null;
   stations: StationMode | null;
@@ -140,6 +145,7 @@ const initial = (): SectionState => ({
   shadeVs: null,
   cutaway: false,
   window: false,
+  windowAlone: false,
   dismissed: null,
   stations: null,
   exporting: null,
@@ -448,7 +454,20 @@ export function openSection(
 
 /** Close the dock (it opens again for another section). */
 export function closeSection(): void {
-  set({ dismissed: sourceId(get().source), window: false, cutaway: false });
+  set({ dismissed: sourceId(get().source), window: false, windowAlone: false, cutaway: false });
+}
+
+/**
+ * Show a section straight in the larger window (a pile's Open larger, a card's Open section).
+ * Closing the window then closes the section too, unless the dock already showed this section:
+ * then it returns to the dock, as a pop-out does.
+ */
+export function openSectionWindow(line: [number, number][], source: SectionSource): void {
+  const s = get();
+  const docked =
+    sourceId(source) === sourceId(s.source) && s.line !== null && !isDismissed(s) && !s.windowAlone;
+  openSection(line, source);
+  set({ window: true, windowAlone: !docked });
 }
 
 export function isDismissed(s: Pick<SectionState, 'dismissed' | 'source'>): boolean {
@@ -535,8 +554,15 @@ export function setCutaway(on: boolean): void {
   set({ cutaway: on });
 }
 
+/**
+ * Pop the dock's section out to the larger window, or close the window: one opened on its own
+ * closes the section with it, one popped out returns to the dock.
+ */
 export function setWindow(open: boolean): void {
-  set({ window: open });
+  const s = get();
+  if (!open && s.windowAlone) closeSection();
+  // (asked again while the window is open, it stays as it was opened)
+  else set({ window: open, windowAlone: open && s.window && s.windowAlone });
 }
 
 // ------------------------------------------------------------------------------ alignment stations

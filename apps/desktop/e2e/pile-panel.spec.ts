@@ -15,7 +15,7 @@ import type { Locator, Page } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
-import { measureTree, selectMeasure, stageMode, volumesView } from './island';
+import { measureBench, measureTree, selectMeasure, stageMode, volumesView } from './island';
 import { focusPile } from './measureCard';
 import { openDemo } from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
@@ -428,6 +428,60 @@ test('a distance line across a pile: the line picks the line, the body beside it
   await expect(
     win.getByTestId('survey-panel').getByRole('textbox', { name: 'Rename' }),
   ).toHaveValue('Line across SP1');
+});
+
+test('Open larger opens one section window, and closing it leaves none', async ({
+  quarryProject,
+  win,
+}) => {
+  test.setTimeout(600_000);
+  const view = await opened(win, quarryProject);
+  await view.getByTestId('volumes-pile').filter({ hasText: SP1 }).click();
+  const panel = view.getByTestId('pile-panel');
+  await figuresIn(panel);
+  await panel.getByTestId('pile-tab-profile').click();
+  await expect(panel.getByTestId('pile-profile-chart')).toBeVisible({ timeout: 120_000 });
+  await panel.getByTestId('pile-open-larger').click();
+  await expect(win.locator('.sec-window')).toHaveCount(1);
+  // the window alone: the dock does not wait under it to show once the window closes
+  await expect(win.getByTestId('section-dock')).toHaveCount(0);
+  await win.getByTestId('section-window-close').click();
+  await expect(win.locator('.sec-window')).toHaveCount(0);
+  await expect(win.getByTestId('section-dock')).toHaveCount(0);
+});
+
+test('the pile panel opened from Project, In this project, Measurements scrolls with the wheel over its middle', async ({
+  quarryProject,
+  win,
+}) => {
+  test.setTimeout(600_000);
+  await opened(win, quarryProject);
+  await measureBench(win);
+  const group = win.getByTestId('wb-section-project-measurements');
+  const head = group.locator('.wb-section-head').first();
+  await head.scrollIntoViewIfNeeded();
+  if ((await head.getAttribute('aria-expanded')) !== 'true') await head.click();
+  await expect(head).toHaveAttribute('aria-expanded', 'true');
+  await group.getByTestId('project-measurement-row').filter({ hasText: SP1 }).click();
+  const panel = group.getByTestId('survey-side');
+  await expect(panel).toBeVisible();
+  // the panel's scroller: the right sidebar's tab body
+  const scroller = win.locator('.right .wb-scroll').filter({ has: panel });
+  await expect(scroller).toHaveCount(1);
+  await scroller.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  const box = await panel.boundingBox();
+  const port = await scroller.boundingBox();
+  if (!box || !port) throw new Error('no panel');
+  // the middle of the panel's part in view
+  const top = Math.max(box.y, port.y);
+  const bottom = Math.min(box.y + box.height, port.y + port.height);
+  await win.mouse.move(box.x + box.width / 2, (top + bottom) / 2);
+  await win.mouse.wheel(0, 400);
+  await expect
+    .poll(() => scroller.evaluate((el) => el.scrollTop), { timeout: 5_000 })
+    .toBeGreaterThan(100);
 });
 
 test.describe('in the smallest window', () => {

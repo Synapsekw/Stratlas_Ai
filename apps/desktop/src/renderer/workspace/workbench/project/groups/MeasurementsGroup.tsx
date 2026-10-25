@@ -5,7 +5,8 @@
  * `survey-side`, so there is one panel for a measurement. Right-click gives the registered
  * measurement actions (`MeasureMenu`). The list holds the group open for a revealed row
  * (`useRevealRow`, called by the list), so the Body never calls it. The open panel counts beside
- * the eight rows (`--pl-details-h`), as the antenna details do.
+ * the eight rows (`--pl-details-h`), as the antenna details do; while it is open the rows pass the
+ * wheel on to the tab at their end (`has-panel`), so the whole panel scrolls with it.
  */
 import type { SurveyMeasurement } from '@aio/schema';
 import { sortMeasurements, TOOL_LABELS } from '@aio/survey';
@@ -78,7 +79,7 @@ function Body(): ReactElement {
   return (
     <>
       <ul
-        className="pl-rows pl-measure-rows"
+        className={`pl-rows pl-measure-rows${open ? ' has-panel' : ''}`}
         data-testid="project-measurements"
         style={{ '--pl-details-h': `${String(panel.height)}px` } as CSSProperties}
       >

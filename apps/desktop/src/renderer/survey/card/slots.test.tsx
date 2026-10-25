@@ -59,8 +59,9 @@ vi.mock('../sectionStore', async (orig) => ({
   openSection: (line: unknown, source: unknown) => {
     section.opened.push({ line, source });
   },
-  setWindow: (open: boolean) => {
-    section.window = open;
+  openSectionWindow: (line: unknown, source: unknown) => {
+    section.opened.push({ line, source });
+    section.window = true;
   },
 }));
 

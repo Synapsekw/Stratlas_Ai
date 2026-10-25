@@ -39,7 +39,7 @@ import { drawnPoints } from '../measureDates';
 import { useMeasure } from '../measureStore';
 import { useFocusCapture } from '../qaHelpers';
 import { useQa } from '../qaStore';
-import { openSection, sectionStore, setWindow, type SectionSource } from '../sectionStore';
+import { openSection, openSectionWindow, sectionStore, type SectionSource } from '../sectionStore';
 import { usePreparingSoon } from '../surfaceStates';
 import { useLinkedChart } from '../useLinkedChart';
 import { figureParts, largestDrop, minusSigned, pileView, usePileView } from './pileView';
@@ -457,8 +457,7 @@ export function PileProfile({ m }: { m: SurveyMeasurement }): ReactElement {
               label: m.label,
               ...(m.scope.kind === 'survey' ? { capture: m.scope.capture } : {}),
             };
-            openSection(lineOf(axis), source);
-            setWindow(true);
+            openSectionWindow(lineOf(axis), source);
             followInWindow(m.id, source);
           }}
         >

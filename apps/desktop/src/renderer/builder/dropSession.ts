@@ -5,6 +5,8 @@ import { useStore } from 'zustand';
 import { appBoundsDeps } from '../shell/appBounds';
 import { alignTo } from './alignSession';
 import { boundsOf } from '../shell/layerBounds';
+import { walkFitSource, walkFloorShift, walkScenePath } from '../walks/walkDrop';
+import { walkGround } from '../walks/walkGround';
 import { createDropStore, type DropStore } from './dropStore';
 import { DROP_CLOUD_PERCENTILE } from './dropToGround';
 import { modelBaseY } from './modelPlacement';
@@ -43,6 +45,14 @@ export const dropToGround = createDropStore({
       if (y !== null) return y;
     }
     return null;
+  },
+  // the walk's path as the 3D view draws it, the floor asked near its ground (the walk ground)
+  walkFloor: (layerId) => {
+    const m = workspace.getState().project?.manifest;
+    const w = m ? walkFitSource.now(m, layerId) : null;
+    if (!w || !getActiveScene()) return Promise.resolve('notLoaded');
+    const r = walkFloorShift(walkScenePath(w), walkGround.ground);
+    return Promise.resolve(r ? { shift: r.shift } : 'noFloor');
   },
 });
 

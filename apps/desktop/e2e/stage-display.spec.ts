@@ -441,7 +441,7 @@ test.describe('@realdata DAMAC', () => {
     await expect(win.getByRole('checkbox', { name: 'Severity heat map' })).toBeChecked();
   });
 
-  test('no video: the timeline starts folded; the View tile brings it back and folds it', async ({
+  test('no video and one date: no timeline, and the View tile waits for a second date', async ({
     win,
   }) => {
     await openDamac(win);
@@ -450,16 +450,13 @@ test.describe('@realdata DAMAC', () => {
     await expect(timeline).toHaveCount(0);
     const toggle = await timelineToggle(win);
     await expect(toggle).toHaveAccessibleName('Show the timeline');
-    await toggle.click();
-    await expect(timeline).toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-disabled', 'true');
+    await expect(toggle).toHaveAccessibleDescription(
+      'Add a second survey date to see the dates timeline',
+    );
+    await toggle.click({ force: true });
+    await expect(timeline).toHaveCount(0);
     await closeIslandTools(win);
-    await win.locator('.tl-wrap').getByRole('button', { name: 'Hide the timeline' }).click();
-    await expect(timeline).toHaveCount(0);
-    await focusStage(win);
-    await (await timelineToggle(win)).click();
-    await expect(timeline).toBeVisible();
-    await (await timelineToggle(win)).click();
-    await expect(timeline).toHaveCount(0);
   });
 });
 

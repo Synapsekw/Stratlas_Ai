@@ -7,6 +7,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { threeDates } from '../__fixtures__/threeDates';
 import { shell } from '../../shell';
+import { timelinePref } from '../timelinePref';
 import { annotateStage } from '../workbench/benches/annotateStage';
 import { quickRow, type GroupCtx } from './groups';
 import type { GroupId } from './islandModel';
@@ -214,5 +215,38 @@ describe('the Volumes quick row', () => {
     expect(host.querySelector('[data-testid="vol-change-source"]')?.textContent).toContain(
       '12 Jan to 9 Feb',
     );
+  });
+});
+
+describe('the View quick row: the Timeline tile', () => {
+  const tile = () => host.querySelector<HTMLButtonElement>('[data-testid="timeline-toggle"]');
+  // one dated survey and no clips: nothing for a timeline to show
+  const oneDate = {
+    ...threeDates,
+    layers: threeDates.layers.filter((l) => l.kind !== 'video'),
+    captures: threeDates.captures.slice(0, 1),
+  };
+  afterEach(() => {
+    timelinePref.setState({ byProject: {} });
+  });
+
+  it('waits for a second survey date without video: greyed, with the reason', () => {
+    workspace.getState().openProject({ id: 'p3', root: '/p3', manifest: oneDate });
+    timelinePref.getState().set('p3', true);
+    render('view');
+    const b = tile();
+    expect(b?.getAttribute('aria-disabled')).toBe('true');
+    // a timeline left open in that state reads as closed
+    expect(b?.getAttribute('aria-pressed')).toBe('false');
+    const reason = document.getElementById(b?.getAttribute('aria-describedby') ?? '');
+    expect(reason?.textContent).toBe('Add a second survey date to see the dates timeline');
+    act(() => b?.click());
+    expect(timelinePref.getState().byProject.p3).toBe(true);
+  });
+
+  it('stays on with video or a second date', () => {
+    render('view');
+    expect(tile()?.getAttribute('aria-disabled')).toBeNull();
+    expect(tile()?.getAttribute('aria-describedby')).toBeNull();
   });
 });

@@ -419,6 +419,33 @@ describe('handles', () => {
     expect(before).not.toEqual([45, -30]);
   });
 
+  it('on a walk with a height offset, a pin picked in 3D lands where it was picked', () => {
+    const s = session({ layer: { heightOffsetM: 1.25 } });
+    expect(s.getState().heightOffsetM).toBe(1.25);
+    s.getState().chooseSurface({ kind: '3d' });
+    s.getState().click(modelAt(4), 2);
+    // stored without the offset: the fit adds it back
+    expect(s.getState().pins[0]?.y).toBeCloseTo(0.75, 9);
+    s.getState().hover(modelAt(62), 3);
+    // the shape starts at the pin as drawn (its stored height plus the offset)
+    const y = s.getState().preview?.y;
+    expect(y?.[0]).toBeCloseTo(2, 9);
+    expect(y?.[1]).toBe(3);
+    s.getState().click(modelAt(62), 3);
+    expect(s.getState().pins[1]?.y).toBeCloseTo(1.75, 9);
+    expect(s.getState().fit?.at(62)?.groundY).toBeCloseTo(3, 6);
+    s.getState().dragHandle('end', modelAt(60), 4);
+    expect(s.getState().pins[1]?.y).toBeCloseTo(2.75, 9);
+  });
+
+  it('a walk with no offset stores the picked heights as they are', () => {
+    const s = session();
+    expect(s.getState().heightOffsetM).toBe(0);
+    s.getState().chooseSurface({ kind: '3d' });
+    s.getState().click(modelAt(4), 2);
+    expect(s.getState().pins[0]?.y).toBe(2);
+  });
+
   it('dragging Start moves the first pin and keeps its time', () => {
     const s = placeTwo();
     s.getState().dragHandle('start', [-5, 3], 1);
