@@ -883,6 +883,11 @@ describe('handles and clicks', () => {
       { handle: 'end', xz: [40, -30], y: 2 },
     ]);
     expect(sessionHandles({ step: 'fine-tune', fit: null, pins })).toEqual([]);
+    // a walk with a height offset: the handles stand on the ground as drawn
+    expect(sessionHandles({ step: 'placed', fit, pins, heightOffsetM: 1.5 })).toEqual([
+      { handle: 'start', xz: [0, 0], y: 2.5 },
+      { handle: 'end', xz: [40, -30], y: 3.5 },
+    ]);
   });
 });
 
@@ -986,6 +991,23 @@ describe('placed walks on every surface', () => {
     expect(placedWalkFits(moved, () => inputs, lookup, reuse)[0]?.fit).not.toBe(first?.fit);
     // new inputs (a reprocessed path): fitted again
     expect(placedWalkFits(m, () => ({ ...inputs }), lookup, reuse)[0]?.fit).not.toBe(first?.fit);
+  });
+
+  it('a walk height offset fits the walk again, its ground moved by it', () => {
+    const inputs = { raw: null, orientation: null };
+    const reuse = createFitReuse();
+    const m = projectWith([plan, other, placedOnOwn()]).manifest;
+    const [first] = placedWalkFits(m, () => inputs, lookup, reuse);
+    const up = {
+      ...m,
+      layers: m.layers.map((l) => (l.id === 'walk-a' ? { ...l, heightOffsetM: 1.25 } : l)),
+    };
+    const [raised] = placedWalkFits(up, () => inputs, lookup, reuse);
+    expect(raised?.fit).not.toBe(first?.fit);
+    const a = first?.fit.at(10);
+    const b = raised?.fit.at(10);
+    expect(b?.groundY).toBeCloseTo((a?.groundY ?? NaN) + 1.25, 9);
+    expect(b?.xz).toEqual(a?.xz);
   });
 
   it('an unplaced or switched off walk does not show', () => {

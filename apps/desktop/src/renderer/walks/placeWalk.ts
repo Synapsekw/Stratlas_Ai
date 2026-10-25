@@ -578,16 +578,21 @@ export function wantsSurfaceClick(s: Pick<PlaceState, 'step' | 'armed'>): boolea
  * pin by time, at their model x/z, with the pin's height when it has one. Empty otherwise.
  */
 export function sessionHandles(
-  s: Pick<PlaceState, 'step' | 'fit' | 'pins'>,
+  s: Pick<PlaceState, 'step' | 'fit' | 'pins'> & { heightOffsetM?: number },
 ): { handle: PlaceHandle; xz: XZ; y: number | null }[] {
   if ((s.step !== 'placed' && s.step !== 'fine-tune') || !s.fit) return [];
   const shown = handlePins(s.fit);
   if (!shown) return [];
-  const at = (handle: PlaceHandle, pin: typeof shown.start) => ({
-    handle,
-    xz: [pin.target[0], pin.target[1]] as XZ,
-    y: s.pins[pin.index]?.y ?? null,
-  });
+  // the pin's stored height plus the walk's offset: where the fit draws the ground
+  const off = s.heightOffsetM ?? 0;
+  const at = (handle: PlaceHandle, pin: typeof shown.start) => {
+    const y = s.pins[pin.index]?.y;
+    return {
+      handle,
+      xz: [pin.target[0], pin.target[1]] as XZ,
+      y: y === undefined ? null : y + off,
+    };
+  };
   return [at('start', shown.start), at('end', shown.end)];
 }
 
@@ -998,8 +1003,10 @@ export function placedWalkFits(
     const sheets = [...new Set(place.pins.map((p) => p.surface))].filter(
       (id) => id !== MODEL_SURFACE,
     );
+    const heightOffsetM = layer.heightOffsetM ?? 0;
     const key = JSON.stringify([
       place,
+      heightOffsetM,
       layer.durationS,
       shift,
       sheets.map((id) => frames.drawing(id)),
@@ -1011,7 +1018,7 @@ export function placedWalkFits(
       reuse?.set(layer.id, { ...kept, walk });
       return [walk];
     }
-    const fit = fitWalk(inputs.raw, place, frames, layer.durationS);
+    const fit = fitWalk(inputs.raw, { ...place, heightOffsetM }, frames, layer.durationS);
     if (fit.error) {
       reuse?.delete(layer.id);
       return [];
