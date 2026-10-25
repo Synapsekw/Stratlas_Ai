@@ -565,11 +565,13 @@ const trim = (n: number, decimals: number) => String(Number(n.toFixed(decimals))
 export function methodNote(model: VolumetricModel, t: VolumetricT): string {
   const m = model.method;
   const parts: string[] = [];
-  // one base for every pile is stated; mixed bases are named per pile in the table and cards
+  // one base for every pile is stated; mixed bases, or a pile whose base is unknown, are named
+  // per pile in the table and cards
   const [only] = m.bases;
-  if (m.bases.length === 1 && only !== undefined)
+  const allNamed = model.piles.every((p) => p.base.trim() !== '');
+  if (m.bases.length === 1 && only !== undefined && allNamed)
     parts.push(t('vreport.method.base', { base: only }));
-  else if (m.bases.length > 1) parts.push(t('vreport.method.basePerPile'));
+  else if (m.bases.length >= 1) parts.push(t('vreport.method.basePerPile'));
   if (m.cellM !== null) parts.push(t('vreport.method.cell', { cell: trim(m.cellM, 3) }));
   if (m.gsdCm !== null) parts.push(t('vreport.method.gsd', { gsd: trim(m.gsdCm, 1) }));
   if (model.project.crs !== '') parts.push(t('vreport.method.crs', { crs: model.project.crs }));

@@ -401,6 +401,13 @@ describe('methodNote', () => {
     expect(note).not.toContain('Base: ');
   });
 
+  it('says the base per pile when one pile has no known base', () => {
+    const piles = ORDER.map((i) => pile(i, i === 4 ? { base: '' } : {}));
+    const note = methodNote(volumetricModel(input({ piles })), t);
+    expect(note).toContain('Base per pile, see table.');
+    expect(note).not.toContain('Base: ');
+  });
+
   it('says there are no tonnes without a density', () => {
     const piles = ORDER.map((i) =>
       pile(i, {
