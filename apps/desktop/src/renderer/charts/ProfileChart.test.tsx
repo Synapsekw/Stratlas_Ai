@@ -184,6 +184,22 @@ describe('ProfileChart', () => {
     expect(r).not.toContain(' m');
   });
 
+  it('the elevation title sits inside the chart, above the plot from its left edge', () => {
+    const h = render({ width: 320 });
+    const [elevation] = [...h.querySelectorAll('.pc-axis-title')];
+    expect(elevation?.textContent).toBe('Elevation (m)');
+    // started at the box's edge, never ended at the axis: no host clips it to "evation"
+    expect(Number(elevation?.getAttribute('x'))).toBe(0);
+    expect(elevation?.getAttribute('text-anchor')).toBe('start');
+    // above the plot's top grid line, below the box's top
+    const y = Number(elevation?.getAttribute('y'));
+    const gridTops = [...h.querySelectorAll('[data-axis="c"] line')].map((l) =>
+      Number(l.getAttribute('y1')),
+    );
+    expect(y).toBeGreaterThan(0);
+    expect(y).toBeLessThan(Math.min(...gridTops));
+  });
+
   it('shaded against the date before, the change shows once: the Δ line, no Difference row', () => {
     const h = render({ shadeVs: 'cap-1' });
     move(h, sampleX(h, 1) + (sampleX(h, 2) - sampleX(h, 1)) / 2); // chainage 15

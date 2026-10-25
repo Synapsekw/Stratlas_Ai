@@ -433,7 +433,9 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
               </g>
             ))}
           </g>
-          <text className="pc-axis-title" x={left - 6} y={top - 9} textAnchor="end">
+          {/* above the plot from the chart's left edge (as the time chart's): ended at the
+              axis, a long title ran out of the box and its host clipped it */}
+          <text className="pc-axis-title" x={0} y={top - 9} textAnchor="start">
             {t('chart.axisTitle', { label: t('chart.elevation'), unit: u })}
           </text>
           <text className="pc-axis-title" x={left} y={h - 6}>
