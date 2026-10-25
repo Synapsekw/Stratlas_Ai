@@ -231,7 +231,13 @@ export class EngineSession {
       ring,
       item,
       resolve,
-      { site: this.ctx.site, ...(signal ? { signal } : {}) },
+      // the overlap box of two surveys holds cells only one date covers: they are outside the
+      // comparison, never a reason to refuse it (that answered 0, 0, 0 for most drone surveys)
+      {
+        site: this.ctx.site,
+        ...(signal ? { signal } : {}),
+        ...(req.ring ? {} : { overlapOnly: true }),
+      },
       out,
     );
     const g = out[0];

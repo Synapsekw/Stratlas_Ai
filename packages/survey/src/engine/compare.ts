@@ -145,6 +145,13 @@ export interface CompareOptions {
   ringCurrent?: Shift;
   ringTurn?: Turn;
   ringCurrentTurn?: Turn;
+  /**
+   * The ring is only the box around the overlap of two surveys (the whole site), not an area the
+   * person drew: a survey covers an irregular area, so cells where either date has no height are
+   * outside the comparison, not missing from it. The result is then never partial or refused for
+   * its uncovered share (still reported in `uncoveredM2`); only for no common cell at all.
+   */
+  overlapOnly?: boolean;
 }
 
 /** Coverage and surface samples of one polygon, reused by its items (same grid, same cells). */
@@ -518,6 +525,9 @@ export async function compareItem(
     uncoveredM2: tot.uncovered,
   });
   const pct = Math.floor(share * 100 + 0.5);
+  if (opts.overlapOnly) {
+    return tot.uncovered >= area ? refuse('The two surfaces do not overlap.', tot.uncovered) : res;
+  }
   if (share > REFUSE_SHARE) return refuse(`${pct}% outside the survey`, tot.uncovered);
   if (share > PARTIAL_SHARE) {
     res.status = 'partial';

@@ -19,7 +19,9 @@ import {
   writeCutFillPrefs,
   type PileRun,
 } from './cutFill';
+import { encodeTile, TILE } from '@aio/survey';
 import type { HeatGrid } from '../engineProtocol';
+import { EngineSession } from '../engineServe';
 
 const pile = (id: string, label: string, over: Partial<SurveyMeasurement> = {}) =>
   ({
@@ -241,6 +243,83 @@ describe('whole site', () => {
       ({ cellM, bounds: [0, 0, 0, w, w, 0] }) as unknown as HeightTiles;
     expect(siteCellM([s(0.2, 100)])).toBeCloseTo(0.2, 9);
     expect(siteCellM([s(0.2, 4000)])).toBeCloseTo(4, 9);
+  });
+});
+
+describe('whole site on surveys that do not fill their box', () => {
+  // A drone survey covers a round area, so its data box has no heights in the corners. Two dates
+  // over a disc of radius 100 m (1 m cells) leave about 21 % of the overlap box without data; a
+  // 20 x 20 m pad rose 2 m between the dates (fill 800 m3), a 10 x 10 m one went down 1 m (cut
+  // 100 m3).
+  const R = 100;
+  const C = 128;
+  const inDisc = (e: number, n: number) => (e - C) ** 2 + (n - C) ** 2 <= R * R;
+  const surface = (id: string, capture: string): HeightTiles => ({
+    schema: 'aio.height-tiles/1',
+    id,
+    name: id,
+    source: { kind: 'dsm', layer: 'dsm' },
+    capture,
+    crs: { epsg: 32640 },
+    cellM: 1,
+    tileSize: TILE,
+    originE: 0,
+    originN: 0,
+    cols: 1,
+    rows: 1,
+    levels: 1,
+    bounds: [C - R, C - R, 9, C + R, C + R, 12],
+    tiles: ['0_0'],
+    fingerprint: id,
+    preparedAt: '2026-10-20T00:00:00Z',
+  });
+  async function tile(changed: boolean): Promise<Uint8Array> {
+    const h = new Float64Array(TILE * TILE);
+    for (let j = 0; j < TILE; j++)
+      for (let i = 0; i < TILE; i++) {
+        const e = i + 0.5;
+        const n = j + 0.5;
+        let z = 10;
+        if (changed && e >= 100 && e < 120 && n >= 100 && n < 120) z += 2;
+        if (changed && e >= 140 && e < 150 && n >= 140 && n < 150) z -= 1;
+        h[j * TILE + i] = inDisc(e, n) ? z : NaN;
+      }
+    return encodeTile(h);
+  }
+
+  it('counts the cells both dates cover instead of answering 0, 0, 0', async () => {
+    const before = await tile(false);
+    const after = await tile(true);
+    const session = new EngineSession(
+      {
+        base: 'aio://project/p1/',
+        surfaces: [surface('s1', 'c1'), surface('s2', 'c2')],
+        captures: ['c1', 'c2'],
+        designs: [],
+        site: { verticalDatum: { kind: 'project' } },
+      },
+      (url) =>
+        Promise.resolve(
+          url.endsWith('surfaces/s1/0/0_0.bin')
+            ? before
+            : url.endsWith('surfaces/s2/0/0_0.bin')
+              ? after
+              : null,
+        ),
+    );
+    const out = await wholeSiteCutFill(
+      {
+        from: { kind: 'survey', surface: 's1', capture: 'c1' },
+        to: { kind: 'survey', surface: 's2', capture: 'c2' },
+      },
+      0.1,
+      1,
+      (req) => session.site(req),
+    );
+    expect(out.status).not.toBe('refused');
+    expect(out.fillM3).toBeCloseTo(800, 6);
+    expect(out.cutM3).toBeCloseTo(100, 6);
+    expect(out.netM3).toBeCloseTo(700, 6);
   });
 });
 
