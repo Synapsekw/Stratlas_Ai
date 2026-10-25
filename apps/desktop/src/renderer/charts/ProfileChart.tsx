@@ -24,6 +24,7 @@ import {
   orderSeries,
   seriesStyle,
   zExtent,
+  type ChartScale,
   type ChartSeries,
   type Pin,
 } from '@aio/survey';
@@ -57,6 +58,11 @@ export interface ProfileChartProps {
   onPin?(chainage: number): void;
   height?: number;
   width?: number; // width given → no ResizeObserver (static render for the report)
+  /**
+   * The line across the whole plot's width and the heights over its whole height (the section
+   * window): `exaggeration` is not applied, the note says the one the box gives.
+   */
+  fill?: boolean;
   interactive?: boolean; // false: no crosshair, no click (report)
   testId?: string;
   /** The export and "Add to report" buttons, set at the end of the line under the chart. */
@@ -94,6 +100,24 @@ const PIN_HIT_PX = 6;
 const GAP_MIN_M = 0.05;
 
 type Run = [number, number][];
+
+/** A scale that fills the plot both ways: chainage over its width, heights over its height. */
+export function fillScale(
+  width: number,
+  height: number,
+  chainage: [number, number],
+  z: [number, number],
+): ChartScale {
+  const sx = width / Math.max(1e-9, chainage[1] - chainage[0]);
+  const sz = height / Math.max(1e-9, z[1] - z[0]);
+  return {
+    sx,
+    sz,
+    x: (c) => (c - chainage[0]) * sx,
+    y: (v) => height - (v - z[0]) * sz,
+    zRange: z,
+  };
+}
 
 /** The polyline runs of a series, broken where it has no data. */
 function runs(s: ChartSeries): Run[] {
@@ -184,13 +208,15 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
 
   const plotW = Math.max(1, w - PAD.left - PAD.right);
   const plotH = Math.max(1, h - PAD.top - PAD.bottom);
-  const sc = chartScale({
-    width: plotW,
-    height: plotH,
-    chainage: [c0, c1],
-    z: zr,
-    exaggeration: p.exaggeration,
-  });
+  const sc = p.fill
+    ? fillScale(plotW, plotH, [c0, c1], zr)
+    : chartScale({
+        width: plotW,
+        height: plotH,
+        chainage: [c0, c1],
+        z: zr,
+        exaggeration: p.exaggeration,
+      });
   const x = (c: number) => PAD.left + sc.x(c);
   const y = (z: number) => PAD.top + sc.y(z);
   const pts = (r: Run) => r.map(([c, z]) => `${String(x(c))},${String(y(z))}`).join(' ');
@@ -316,8 +342,10 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
 
   const strokeOf = new Map(ordered.map((s) => [s.key, seriesStyle(s, ordered)]));
   const direction = t('chart.direction', { a: p.ends.a, b: p.ends.b });
-  const exaggeration = t('chart.exaggeration', { n: String(p.exaggeration) });
-  const chartLabel = t('chart.label', { a: p.ends.a, b: p.ends.b, n: String(p.exaggeration) });
+  // filled, the exaggeration is the box's: heights over lengths, to a tenth
+  const ex = p.fill ? formatNumber(sc.sz / sc.sx, 1, locale) : String(p.exaggeration);
+  const exaggeration = t('chart.exaggeration', { n: ex });
+  const chartLabel = t('chart.label', { a: p.ends.a, b: p.ends.b, n: ex });
   const left = PAD.left;
   const right = w - PAD.right;
   const top = PAD.top;

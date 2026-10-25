@@ -4,7 +4,7 @@ import type { ChartSeries } from '@aio/survey';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ProfileChart, type ProfileChartProps } from './ProfileChart';
+import { fillScale, ProfileChart, type ProfileChartProps } from './ProfileChart';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -198,6 +198,19 @@ describe('ProfileChart', () => {
     );
     expect(y).toBeGreaterThan(0);
     expect(y).toBeLessThan(Math.min(...gridTops));
+  });
+
+  it("filled, the line spans the plot both ways and the note says the box's exaggeration", () => {
+    const h = render({ fill: true, exaggeration: 5, width: 600, height: 240 });
+    const xs = (line(h, 'cap-2')?.getAttribute('points') ?? '')
+      .split(' ')
+      .map((pt) => Number(pt.split(',')[0]));
+    // the first sample at the plot's left edge (the axis), the last at its right edge
+    expect(Math.min(...xs)).toBeCloseTo(60, 0);
+    expect(Math.max(...xs)).toBeCloseTo(600 - 14, 0);
+    const note = h.querySelector('.pc-axis-note')?.textContent ?? '';
+    expect(note).toMatch(/Vertical exaggeration \d+(\.\d)?:1/);
+    expect(note).not.toContain('5:1');
   });
 
   it('shaded against the date before, the change shows once: the Δ line, no Difference row', () => {
@@ -604,5 +617,17 @@ describe('ProfileChart', () => {
       .map((id) => document.getElementById(id)?.textContent ?? '')
       .join(' ');
     expect(help).not.toContain('F flies');
+  });
+});
+
+describe('fillScale', () => {
+  it('maps the chainage over the width and the heights over the height', () => {
+    const sc = fillScale(400, 100, [10, 50], [100, 110]);
+    expect(sc.x(10)).toBe(0);
+    expect(sc.x(50)).toBe(400);
+    expect(sc.y(100)).toBe(100);
+    expect(sc.y(110)).toBe(0);
+    // 10 px a metre along, 10 px a metre up: no exaggeration
+    expect(sc.sz / sc.sx).toBe(1);
   });
 });

@@ -270,6 +270,18 @@ describe('the larger window', () => {
     ).toEqual(['PNG', 'DXF…', 'CSV', 'Add to report']);
     expect(body?.querySelector('.pc-actions')).toBeNull();
   });
+
+  it("fills the chart: no exaggeration slider; the chips join the controls' column", () => {
+    root = createRoot(host);
+    act(() => root?.render(<SectionBody big />));
+    expect(host.querySelector('[data-testid="section-exaggeration"]')).toBeNull();
+    expect(host.querySelector('.sec-side [data-testid="section-chips"]')).not.toBeNull();
+    expect(host.querySelector('.sec-main [data-testid="section-chips"]')).toBeNull();
+    // the dock keeps its slider and its chips over the chart
+    act(() => root?.render(<SectionBody />));
+    expect(host.querySelector('[data-testid="section-exaggeration"]')).not.toBeNull();
+    expect(host.querySelector('.sec-main [data-testid="section-chips"]')).not.toBeNull();
+  });
 });
 
 describe('sections at stations', () => {

@@ -18,6 +18,8 @@
 .sec-body.big {
   flex: 1;
   min-height: 0;
+  /* the first row is the body's height (the chart's, below) */
+  grid-template-rows: 100%;
 }
 .sec-side,
 .sec-pins {
@@ -33,10 +35,25 @@
   gap: var(--sp-3);
   min-width: 0;
 }
-/* the chart is the shared profile chart (charts/charts.css); the window gives it the room its
-   title, chips and footer leave (cqh: the window is its size container) */
+/* The chart is the shared profile chart (charts/charts.css). In the window it fills the body as
+   it shows at rest: the first row is the body's height, the chart takes all of it (the svg follows
+   the plot's measured box), and the controls' column scrolls on its own. The pins, in a row of
+   their own below, start under the fold, never half in view. */
+.sec-body.big .sec-main {
+  min-block-size: 0;
+}
+.sec-body.big .sec-main > .pc {
+  flex: 1 1 0;
+  min-block-size: 0;
+}
 .sec-body.big .pc-plot {
-  block-size: clamp(120px, calc(100cqh - 120px), 420px);
+  flex: 1 1 0;
+  block-size: auto;
+  min-block-size: 0;
+}
+.sec-body.big .sec-pins {
+  padding-block-start: var(--sp-4);
+  border-block-start: 1px solid var(--line-soft);
 }
 .sec-empty {
   display: grid;
@@ -77,8 +94,8 @@
    marker on it stay in sight beside and above it and the views stay usable. The title and the
    export buttons stay in view; the body between them scrolls. */
 .sec-window {
-  /* laid out by its own size: the stage narrows as the sidebars open */
-  container-type: size;
+  /* laid out by its own width: the stage narrows as the sidebars open */
+  container-type: inline-size;
   position: absolute;
   inset-inline-start: var(--sp-4);
   inset-block-end: var(--sp-4);

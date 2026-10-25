@@ -274,6 +274,38 @@ export function SectionBody({ big = false }: { big?: boolean }) {
     </>
   );
 
+  const head = (
+    <div className="pc-head">
+      <SurfaceChips
+        shown={shown}
+        off={hidden}
+        addable={addable}
+        onToggle={toggleShown}
+        onAdd={(key) => {
+          const c = choices.find((x) => x.key === key);
+          if (c) addSurface(c.ref);
+        }}
+        onRemove={removeSurface}
+        testId="section-chips"
+      />
+      <ShadeVs targets={targets} value={s.shadeVs} onChange={setShadeVs} />
+    </div>
+  );
+  const notes = (
+    <>
+      <p className="small faint">
+        {result ? `${d(result.length)} long, sampled every ${d(result.stepM)}.` : ''}
+      </p>
+      {result && visible.length > 0 && (
+        <p className="small faint" data-testid="hover-footer">
+          {tr('hover.footer')}
+        </p>
+      )}
+    </>
+  );
+
+  // In the window the chart fills the body (its exaggeration the box's, said in its note, so the
+  // slider goes); the chips and the notes join the controls' column, which scrolls on its own.
   const body = (
     <div ref={root} className={`sec-body${big ? ' big' : ''}`} data-measure-id={measureId}>
       <div className="sec-side">
@@ -288,24 +320,27 @@ export function SectionBody({ big = false }: { big?: boolean }) {
             {m.label}: {m.reason}
           </p>
         ))}
-        <label className="pop-row">
-          <span>{tr('section.exaggeration')}</span>
-          <input
-            type="range"
-            min={1}
-            max={20}
-            step={1}
-            value={s.exaggeration}
-            aria-label={tr('section.exaggerationLabel')}
-            data-testid="section-exaggeration"
-            onChange={(e) => {
-              setExaggeration(Number(e.target.value));
-            }}
-          />
-          <span className="mono">
-            {tr('section.exaggerationValue', { n: String(s.exaggeration) })}
-          </span>
-        </label>
+        {big && head}
+        {!big && (
+          <label className="pop-row">
+            <span>{tr('section.exaggeration')}</span>
+            <input
+              type="range"
+              min={1}
+              max={20}
+              step={1}
+              value={s.exaggeration}
+              aria-label={tr('section.exaggerationLabel')}
+              data-testid="section-exaggeration"
+              onChange={(e) => {
+                setExaggeration(Number(e.target.value));
+              }}
+            />
+            <span className="mono">
+              {tr('section.exaggerationValue', { n: String(s.exaggeration) })}
+            </span>
+          </label>
+        )}
         <label className="pop-row">
           <span className="pop-grow">Enable cutaway</span>
           <input
@@ -318,23 +353,10 @@ export function SectionBody({ big = false }: { big?: boolean }) {
           />
         </label>
         {offersStations(activeAlignment !== null, source, measurements) && <StationControls />}
+        {big && notes}
       </div>
       <div className="sec-main">
-        <div className="pc-head">
-          <SurfaceChips
-            shown={shown}
-            off={hidden}
-            addable={addable}
-            onToggle={toggleShown}
-            onAdd={(key) => {
-              const c = choices.find((x) => x.key === key);
-              if (c) addSurface(c.ref);
-            }}
-            onRemove={removeSurface}
-            testId="section-chips"
-          />
-          <ShadeVs targets={targets} value={s.shadeVs} onChange={setShadeVs} />
-        </div>
+        {!big && head}
         {s.error && (
           <p className="notice danger small" role="alert">
             <Icon name="warn" size={14} /> {s.error}
@@ -365,7 +387,7 @@ export function SectionBody({ big = false }: { big?: boolean }) {
               </Button>
             }
             testId={big ? 'section-window-chart' : 'section-chart'}
-            {...(big ? {} : { actions })}
+            {...(big ? { fill: true } : { actions })}
           />
         ) : (
           <p className="small faint sec-empty">
@@ -376,14 +398,7 @@ export function SectionBody({ big = false }: { big?: boolean }) {
                 : tr('section.addSurface')}
           </p>
         )}
-        <p className="small faint">
-          {result ? `${d(result.length)} long, sampled every ${d(result.stepM)}.` : ''}
-        </p>
-        {result && visible.length > 0 && (
-          <p className="small faint" data-testid="hover-footer">
-            {tr('hover.footer')}
-          </p>
-        )}
+        {!big && notes}
       </div>
       <div className="sec-pins">
         <span className="caps faint">Pins</span>

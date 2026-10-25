@@ -19,7 +19,7 @@ const container = (query: string) => {
 
 describe('the larger section window over a narrow stage (472 px with both sidebars open)', () => {
   it('lays itself out by its own width, not the window', () => {
-    expect(rule('.sec-window')).toMatch(/container-type: size/);
+    expect(rule('.sec-window')).toMatch(/container-type: inline-size/);
   });
 
   it('below 640 px the controls stack above a chart of the full width, the pins below', () => {
@@ -54,5 +54,14 @@ describe('the larger section window docked on the stage', () => {
     expect(rule('.sec-window')).toMatch(/overflow: hidden/);
     expect(rule('.sec-window > .sec-body.big')).toMatch(/overflow: auto/);
     expect(rule('.sec-foot')).toMatch(/flex: none/);
+  });
+});
+
+describe('the chart in the larger window', () => {
+  it('fills the body as it shows at rest: its first row is the body, the plot all of it', () => {
+    expect(rule('.sec-body.big')).toMatch(/grid-template-rows: 100%/);
+    expect(rule('.sec-body.big .sec-main > .pc')).toMatch(/flex: 1 1 0/);
+    expect(rule('.sec-body.big .pc-plot')).toMatch(/flex: 1 1 0/);
+    expect(rule('.sec-body.big .pc-plot')).toMatch(/block-size: auto/);
   });
 });
