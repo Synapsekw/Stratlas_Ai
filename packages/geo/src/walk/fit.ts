@@ -564,11 +564,12 @@ const sane = (d: WalkFitDetail | null): WalkFitDetail | null =>
 
 /**
  * Fit a walk to its pins (design "The fit", rules 1 to 10). `raw` null (no `raw-path.json` yet)
- * or `source: 'pins-only'` gives a pins-only fit.
+ * or `source: 'pins-only'` gives a pins-only fit. `heightOffsetM` (the walk layer's; absent, 0) is
+ * added to the ground at every moment, so one number moves the whole walk up or down.
  */
 export function fitWalk(
   raw: WalkRawPath | null,
-  cal: Pick<WalkCalibration, 'pins' | 'yawOffsetDeg'>,
+  cal: Pick<WalkCalibration, 'pins' | 'yawOffsetDeg'> & { heightOffsetM?: number | undefined },
   s: WalkSurfaces,
   durationS: number,
 ): WalkFit {
@@ -594,7 +595,10 @@ export function fitWalk(
       break;
     }
   }
-  const groundFor = (pins: readonly ActivePin[]) => (t: number) => groundAt(pins, baseY, t);
+  const off =
+    cal.heightOffsetM !== undefined && Number.isFinite(cal.heightOffsetM) ? cal.heightOffsetM : 0;
+  const groundFor = (pins: readonly ActivePin[]) => (t: number) =>
+    off === 0 ? groundAt(pins, baseY, t) : groundAt(pins, baseY, t) + off;
 
   const maxT = Number.isFinite(durationS) && durationS > 0 ? durationS : Infinity;
   const clampT = (t: number) => clamp(t, 0, maxT);

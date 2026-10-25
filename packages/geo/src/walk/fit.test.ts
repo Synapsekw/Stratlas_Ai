@@ -343,6 +343,37 @@ describe('fitWalk', () => {
     expect(at(fit, end).groundY).toBe(3);
   });
 
+  it('adds the walk height offset to the ground at every moment, x/z unchanged', () => {
+    const pins = [
+      { ...pinAtTruth(raw, 4), y: 1 },
+      { ...pinAtTruth(raw, end), y: 3 },
+    ];
+    const plain = fitWalk(raw, { pins, yawOffsetDeg: 0 }, noDrawings, dur);
+    const up = fitWalk(raw, { pins, yawOffsetDeg: 0, heightOffsetM: 1.25 }, noDrawings, dur);
+    const down = fitWalk(raw, { pins, yawOffsetDeg: 0, heightOffsetM: -6 }, noDrawings, dur);
+    for (const t of [0, 10, 30, end]) {
+      expect(at(up, t).groundY).toBeCloseTo(at(plain, t).groundY + 1.25, 9);
+      expect(at(down, t).groundY).toBeCloseTo(at(plain, t).groundY - 6, 9);
+      expect(at(up, t).xz).toEqual(at(plain, t).xz);
+    }
+  });
+
+  it('adds the offset to the drawing base height when the pins carry none', () => {
+    const pins = [pinAtTruth(raw, 4), pinAtTruth(raw, end)];
+    const fit = fitWalk(raw, { pins, yawOffsetDeg: 0, heightOffsetM: 2 }, noDrawings, dur);
+    expect(at(fit, 10).groundY).toBe(2);
+  });
+
+  it('an offset of 0 fits exactly as no offset', () => {
+    const pins = [
+      { ...pinAtTruth(raw, 4), y: 1 },
+      { ...pinAtTruth(raw, end), y: 3 },
+    ];
+    const plain = fitWalk(raw, { pins, yawOffsetDeg: 0 }, noDrawings, dur);
+    const zero = fitWalk(raw, { pins, yawOffsetDeg: 0, heightOffsetM: 0 }, noDrawings, dur);
+    for (const t of [0, 17.5, end]) expect(zero.at(t)).toEqual(plain.at(t));
+  });
+
   it('never returns NaN', () => {
     const cases: { r: WalkRawPath | null; pins: WalkPin[] }[] = [
       { r: raw, pins: [pinAtTruth(raw, 10), pinAtTruth(raw, 10)] },
