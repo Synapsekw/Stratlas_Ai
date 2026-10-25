@@ -11,7 +11,7 @@ import type { VolumetricModel, VolumetricPile } from '@aio/project/export';
 import type { HeatmapStyle, ReportViewsFrame } from '@aio/schema';
 import { t } from '@aio/ui';
 import type { ReactElement } from 'react';
-import { HeatLegend, LEGEND_RANGE_M } from '../../survey/heatLegend';
+import { HeatLegendView, LEGEND_RANGE_M } from '../../survey/heatLegendView';
 import { CUT_FILL_DEFAULT_M } from '../../survey/volumes/cutFill';
 import type { PageComponent, PageContext } from '../types/template';
 import { dateText, Page, signed, SitePicture, volumetricTexts } from './chrome';
@@ -190,7 +190,7 @@ export function ChangePage({
             <p className="vr-c-key-row is-up">{t('vreport.key.blue')}</p>
             <p className="vr-c-key-row is-flat">{t('vreport.key.grey', { deadband })}</p>
             {before && after ? (
-              <HeatLegend
+              <HeatLegendView
                 className="vr-c-legend"
                 from={before.date}
                 to={after.date}
