@@ -77,7 +77,9 @@ import {
   surveyOrNone,
   surveySectionIds,
   type SurveyFiles,
+  type SurveyReader,
 } from './surveyData';
+import type { VolumetricPublish } from '../volumetric/run';
 
 interface PageState {
   state: 'loading' | 'ready' | 'error';
@@ -91,6 +93,10 @@ interface PageState {
   timings?: Record<string, number>;
   /** A survey CSV export (`only` = `measurements-csv` or `stockpile-csv`): the file's text. */
   csv?: string;
+  /** `only=volumetric-model`: the editor's model. */
+  model?: VolumetricPublish['model'];
+  /** `only=volumetric-html`: the offline file. */
+  html?: string;
 }
 
 const w = window as unknown as { __report: PageState };
@@ -147,6 +153,48 @@ function photoFacts(
   return { name: path.split('/').pop() ?? photo, at };
 }
 
+/** `only=volumetric-*`: the volumetric report's model, PDF pages or offline file. */
+async function volumetric(
+  only: string,
+  projectId: string,
+  manifest: ProjectManifest,
+  read: SurveyReader,
+  surfaceIds: readonly string[],
+  params: URLSearchParams,
+): Promise<void> {
+  // loaded only for this report: its pages, styles and React stay out of the house report
+  const { isVolumetricKind, runVolumetric } = await import('../volumetric/run');
+  if (!isVolumetricKind(only)) throw new Error(`Unknown report kind ${only}.`);
+  let files: SurveyFiles | null = null;
+  try {
+    files = await readSurveyFiles(read, manifest, surfaceIds);
+  } catch (e) {
+    console.warn('Report: the survey files are unreadable', e);
+  }
+  const branding = resolveReportBranding(
+    brandingFromQuery(params.get('branding')),
+    brand.productName,
+  );
+  await runVolumetric({
+    kind: only,
+    read,
+    files,
+    build: (f) =>
+      buildSurveyData(f, (path) => read.bytes(path), {
+        need: 'report',
+        fillDates: true,
+        progress: (done, total) => {
+          set({ phase: 'Computing the survey volumes', done, total });
+        },
+      }),
+    compare: params.get('compare'),
+    companyName: branding.name,
+    pictureUrl: (path) => assetUrl(projectId, { path }),
+    root: document.getElementById('report'),
+    set,
+  });
+}
+
 async function run(): Promise<void> {
   const t0 = performance.now();
   const timings: Record<string, number> = {};
@@ -160,6 +208,32 @@ async function run(): Promise<void> {
   const pm = parseManifest(await json(assetUrl(projectId, { path: 'manifest.json' })));
   if (!pm.ok) throw new Error(pm.error);
   const manifest = pm.value;
+  const onlyParam = params.get('only');
+  const surfaceIds = (params.get('surfaces') ?? '').split(',').filter((x) => x !== '');
+  const read = {
+    json: (path: string) => optional(projectId, path),
+    text: async (path: string) => {
+      try {
+        const r = await fetch(assetUrl(projectId, { path }));
+        return r.ok ? await r.text() : null;
+      } catch {
+        return null;
+      }
+    },
+    bytes: async (path: string) => {
+      try {
+        const r = await fetch(assetUrl(projectId, { path }));
+        return r.ok ? new Uint8Array(await r.arrayBuffer()) : null;
+      } catch {
+        return null;
+      }
+    },
+  };
+  // the volumetric customer report (spec 2026-10-25): its own pages, before the house layout
+  if (onlyParam?.startsWith('volumetric-')) {
+    await volumetric(onlyParam, projectId, manifest, read, surfaceIds, params);
+    return;
+  }
   const file = z
     .object({ issues: z.array(Issue) })
     .parse(await json(assetUrl(projectId, { path: 'issues.json' })));
@@ -205,7 +279,6 @@ async function run(): Promise<void> {
     if (acc) processing = processingSummary(acc, parsed(PhotoRun, runRaw, 'run.json'), manifest);
   }
   // the run's accuracy report PDF: the processing section alone, behind its own cover
-  const onlyParam = params.get('only');
   const only = onlyParam === 'processing';
   if (only) {
     if (!processing) throw new Error('This project has no processing run with an accuracy report.');
@@ -217,26 +290,6 @@ async function run(): Promise<void> {
   const surveyOnly = onlyParam === 'survey';
   const csvKind =
     onlyParam === 'measurements-csv' || onlyParam === 'stockpile-csv' ? onlyParam : null;
-  const surfaceIds = (params.get('surfaces') ?? '').split(',').filter((x) => x !== '');
-  const read = {
-    json: (path: string) => optional(projectId, path),
-    text: async (path: string) => {
-      try {
-        const r = await fetch(assetUrl(projectId, { path }));
-        return r.ok ? await r.text() : null;
-      } catch {
-        return null;
-      }
-    },
-    bytes: async (path: string) => {
-      try {
-        const r = await fetch(assetUrl(projectId, { path }));
-        return r.ok ? new Uint8Array(await r.arrayBuffer()) : null;
-      } catch {
-        return null;
-      }
-    },
-  };
   let surveyFiles: SurveyFiles | null = null;
   try {
     surveyFiles = await readSurveyFiles(read, manifest, surfaceIds);
