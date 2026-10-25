@@ -32,11 +32,11 @@ function memory() {
 
 describe('timeline visibility', () => {
   it('shows by default only for projects with video clips', () => {
-    // HCl, Al-Zour: clips (with photos, clouds)
+    // a plant inspection: clips (with photos, clouds)
     expect(timelineByDefault(kinds('mesh', 'video', 'video', 'photos'))).toBe(true);
-    // DAMAC: a model and timed photos, no video
+    // a facade survey: a model and timed photos, no video
     expect(timelineByDefault(kinds('mesh', 'photos', 'photos', 'raster'))).toBe(false);
-    // Masafi: two surveys, nothing to play
+    // a quarry: two surveys, nothing to play
     expect(timelineByDefault(kinds('mesh', 'mesh', 'raster', 'legacy'))).toBe(false);
   });
 
