@@ -2,7 +2,7 @@
 import type { SurveyMeasurement } from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
-import { connectKitPilePick } from './kitPileLink';
+import { connectKitPilePick, shownKitPiles } from './kitPileLink';
 
 const pile = (id: string, kitPile?: string): SurveyMeasurement => ({
   id,
@@ -53,5 +53,24 @@ describe('connectKitPilePick', () => {
     off();
     vol.setState({ selected: 'Pile 3' });
     expect(open).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('shownKitPiles', () => {
+  const m = (id: string, pile?: string): SurveyMeasurement =>
+    ({
+      id,
+      tool: 'volume',
+      family: 'polygon',
+      ...(pile ? { origin: { kind: 'kit-pile', pile } } : {}),
+    }) as unknown as SurveyMeasurement;
+
+  it('names the kit piles whose measurement is on screen, once each', () => {
+    expect(shownKitPiles([m('a', 'P02'), m('b'), m('c', 'P01'), m('d', 'P01')])).toEqual([
+      'P01',
+      'P02',
+    ]);
+    // hidden or on another date: not among the drawn ones, so its kit body stays
+    expect(shownKitPiles([])).toEqual([]);
   });
 });

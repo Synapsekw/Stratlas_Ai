@@ -517,7 +517,7 @@ describe('VolumetricScene: piles read their volume measurements', () => {
     v.detach();
   });
 
-  it('draws no kit body for a pile its measurement draws', async () => {
+  it('draws no kit body for a pile its measurement draws, and keeps it while that is hidden', async () => {
     const { store, scene } = await ready();
     scene.mockImplementation((req: SceneRequest) =>
       Promise.resolve({
@@ -553,9 +553,17 @@ describe('VolumetricScene: piles read their volume measurements', () => {
       return n;
     };
     expect(bodies()).toBeGreaterThan(0);
+    // a measurement that is hidden or on another date: the kit body stays
     store.getState().setPileFigures({ P01: {} });
     await settle(frame);
+    expect(bodies()).toBeGreaterThan(0);
+    // the measurement drawn now: it stands for the pile
+    store.getState().setMeasuredShown(['P01']);
+    await settle(frame);
     expect(bodies()).toBe(0);
+    store.getState().setMeasuredShown([]);
+    await settle(frame);
+    expect(bodies()).toBeGreaterThan(0);
     v.detach();
   });
 

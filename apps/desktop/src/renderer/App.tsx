@@ -84,7 +84,7 @@ import { help } from './help/store';
 import { timeline, useTimelineSync } from './workspace/timeline';
 import { connectVolumeDates } from './workspace/volumeDates';
 import { connectPileFigures } from './workspace/pileFigures';
-import { connectKitPilePick } from './survey/pile/kitPileLink';
+import { connectKitPilePick, connectKitPilesShown } from './survey/pile/kitPileLink';
 import { connectVolumeChange } from './workspace/VolumeTools';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 import { BuilderLayer } from './builder/BuilderLayer';
@@ -386,6 +386,8 @@ export function App() {
   );
   // a kit pile picked in the volumetric view opens its converted measurement in the Volumes tab
   useEffect(() => connectKitPilePick(), []);
+  // a kit pile whose measurement is drawn shows by it, without the kit's own body
+  useEffect(() => connectKitPilesShown(), []);
   // the kit piles' 3D callouts read their volume measurements
   useEffect(
     () =>
