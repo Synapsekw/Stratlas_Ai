@@ -336,7 +336,10 @@ export class VolumetricScene {
       g.name = `vol:${p.id}`;
       g.userData.pile = p.id;
       let lift = 0;
-      if (p.body && s.body !== 'off' && !swipe) {
+      // a pile with a volume measurement is drawn by the measurement (its outline and, opened,
+      // the app's lifted box): the kit draws no body, plate or hatch of its own for it
+      const measured = s.pileFigures[p.id] !== undefined;
+      if (p.body && s.body !== 'off' && !swipe && !measured) {
         const geo = bodyGeometry(p.body, local, { lifted, change: chg });
         lift = geo.lift;
         const top = new BufferGeometry();
@@ -405,7 +408,6 @@ export class VolumetricScene {
           ...local(p.toe[i] ?? 0, p.toe[i + 1] ?? 0, (p.toe[i + 2] ?? 0) + (sel ? 0.35 : 0.25)),
         );
       // one outline in 3D: a pile with a volume measurement has its outline drawn by the measurement
-      const measured = s.pileFigures[p.id] !== undefined;
       if (toe.length > 6 && !measured) {
         const tl = new LineLoop(
           lineGeometry(toe),

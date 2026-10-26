@@ -517,6 +517,48 @@ describe('VolumetricScene: piles read their volume measurements', () => {
     v.detach();
   });
 
+  it('draws no kit body for a pile its measurement draws', async () => {
+    const { store, scene } = await ready();
+    scene.mockImplementation((req: SceneRequest) =>
+      Promise.resolve({
+        piles: req.piles.map((p) => ({
+          id: p.id,
+          body: {
+            nx: 2,
+            ny: 2,
+            cell: 1,
+            e0: 1000,
+            n0: 2000,
+            ins: new Uint8Array([1, 1, 1, 1]),
+            top: new Float32Array([52, 52, 52, 52]),
+            bot: new Float32Array([50, 50, 50, 50]),
+            tmax: 52,
+            bmin: 50,
+          },
+          toe: new Float64Array([1000, 2000, 50, 1010, 2000, 50, 1010, 1990, 50]),
+          toeBase: null,
+        })),
+      }),
+    );
+    const { stage, scene: three, frame } = fakeStage();
+    const v = new VolumetricScene(stage, store);
+    v.attach();
+    store.getState().setAllPilesVisible(true);
+    await settle(frame);
+    const bodies = () => {
+      let n = 0;
+      three.getObjectByName('volumetric')?.traverse((o) => {
+        if (o.name === 'body-top' || o.name === 'base-plate') n++;
+      });
+      return n;
+    };
+    expect(bodies()).toBeGreaterThan(0);
+    store.getState().setPileFigures({ P01: {} });
+    await settle(frame);
+    expect(bodies()).toBe(0);
+    v.detach();
+  });
+
   it('draws no kit toe line for a pile its measurement outlines', async () => {
     const { store } = await ready();
     const { stage, scene: three, frame } = fakeStage();
