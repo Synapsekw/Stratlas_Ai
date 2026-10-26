@@ -147,6 +147,8 @@ test('right-click a shape in 3D opens its menu; a left click selects it; not whi
     'measure-colour-yellow',
     'ctx-item-measure.visibility',
     'ctx-item-measure.flyTo',
+    // an outline's vertex edit in the view
+    'ctx-item-measure.editBoundary',
     'ctx-item-measure.moveToFolder',
     'ctx-item-measure.moveToDate',
     // Add to report and Export (a submenu of CSV, DXF and PNG) send it out (W2, W8)

@@ -232,6 +232,110 @@ test('a click on the pile in 3D and on its outline in Map opens the same panel',
   await expect(panel).toHaveAttribute('data-id', SP1_ID);
 });
 
+/** Where the pile look's screenshots go (`PILE_SHOTS`); none taken without it. */
+const SHOTS = process.env.PILE_SHOTS;
+
+/** Wait until a measurement's label stops moving: the camera has settled. */
+async function settled(win: Page, id: string): Promise<Pt> {
+  let last = '';
+  await expect
+    .poll(
+      async () => {
+        const now = JSON.stringify(await labelAnchor3d(win, id));
+        const still = now === last;
+        last = now;
+        return still;
+      },
+      { intervals: [500], timeout: 30_000 },
+    )
+    .toBe(true);
+  return labelAnchor3d(win, id);
+}
+
+test('an opened pile shows as its glass box, framed, Solid or Height, and Edit boundary from its menu', async ({
+  quarryProject,
+  win,
+}) => {
+  test.setTimeout(600_000);
+  const view = await opened(win, quarryProject);
+  const scene = win.locator('[data-scene-view]').first();
+  // the whole site at first: the box is for an opened pile only
+  await expect(win.locator('[data-pile-look]')).toHaveCount(0);
+
+  await view.getByTestId('volumes-pile').filter({ hasText: SP1 }).click();
+  const panel = view.getByTestId('pile-panel');
+  await expect(panel).toHaveAttribute('data-id', SP1_ID);
+  // the box drawn in place of the pile's outline, solid red
+  const box = win.locator(`[data-pile-look="${SP1_ID}"]`);
+  await expect(box).toHaveCount(1, { timeout: 60_000 });
+  await expect(box).toHaveAttribute('data-pile-surface', 'solid');
+
+  // the camera framed it: the pile's middle near the middle of the view
+  const at = await settled(win, SP1_ID);
+  const r = await scene.boundingBox();
+  if (!r) throw new Error('no scene view');
+  expect(Math.abs(at.x - (r.x + r.width / 2))).toBeLessThan(r.width * 0.3);
+  expect(Math.abs(at.y - (r.y + r.height / 2))).toBeLessThan(r.height * 0.3);
+  if (SHOTS) await scene.screenshot({ path: join(SHOTS, 'final-solid.png') });
+
+  // Surface: Height colours the top by height above the base, with its legend
+  const surface = panel.getByTestId('pile-surface');
+  await expect(surface.getByTestId('pile-surface-solid')).toHaveAttribute('aria-pressed', 'true');
+  await surface.getByTestId('pile-surface-height').click();
+  await expect(surface.getByTestId('pile-surface-height')).toHaveAttribute('aria-pressed', 'true');
+  await expect(box).toHaveAttribute('data-pile-surface', 'height');
+  const legend = win.getByTestId('pile-height-legend');
+  await expect(legend).toBeVisible();
+  await expect(legend).toContainText('Height above base');
+  await expect(legend).toContainText(/0\.0 m/);
+  if (SHOTS) await scene.screenshot({ path: join(SHOTS, 'final-height.png') });
+  // the legend never takes the view's clicks
+  const lb = await legend.boundingBox();
+  if (!lb) throw new Error('no legend');
+  expect(
+    await win.evaluate(([x, y]) => document.elementFromPoint(x, y)?.tagName, [
+      lb.x + lb.width / 2,
+      lb.y + lb.height / 2,
+    ] as const),
+  ).toBe('CANVAS');
+  await surface.getByTestId('pile-surface-solid').click();
+  await expect(legend).toHaveCount(0);
+  await expect(box).toHaveAttribute('data-pile-surface', 'solid');
+
+  // a click on it in 3D, in view: the camera stays
+  const before = await settled(win, SP1_ID);
+  await win.mouse.click(before.x, before.y);
+  await expect(panel).toHaveAttribute('data-id', SP1_ID);
+  await win.waitForTimeout(1_500);
+  const after = await settled(win, SP1_ID);
+  expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeLessThan(3);
+
+  // right-click on the box: Edit boundary enters the vertex edit of its outline
+  await win.mouse.click(after.x, after.y, { button: 'right' });
+  const menu = win.getByTestId('measure-menu');
+  await expect(menu).toBeVisible();
+  const edit = menu.getByRole('menuitem', { name: 'Edit boundary' });
+  await expect(edit).toBeEnabled();
+  if (SHOTS) await win.screenshot({ path: join(SHOTS, 'final-menu.png') });
+  await edit.click();
+  await expect(panel.getByTestId('pile-editing')).toBeVisible();
+  // the box makes way for the outline and its handles
+  await expect(box).toHaveCount(0);
+  if (SHOTS) await scene.screenshot({ path: join(SHOTS, 'final-edit.png') });
+  await panel.getByTestId('pile-edit-done').click();
+  await expect(panel.getByTestId('pile-editing')).toHaveCount(0);
+  await expect(box).toHaveCount(1, { timeout: 30_000 });
+
+  if (SHOTS) {
+    // a wide view: the other piles keep their outline, label and light fill
+    const c = await settled(win, SP1_ID);
+    await win.mouse.move(c.x, c.y);
+    for (let i = 0; i < 5; i += 1) await win.mouse.wheel(0, 500);
+    await win.waitForTimeout(2_500);
+    await win.screenshot({ path: join(SHOTS, 'final-wide.png') });
+  }
+});
+
 test('a pile picked with the right workbench folded opens it with its panel', async ({
   quarryProject,
   win,
@@ -283,6 +387,8 @@ test('Profile shows a chip per survey and the chart, its point on the line in 3D
   await expect(win.getByTestId('stage-hint')).toHaveAttribute('data-kind', 'pile');
 
   // hovering the chart puts its point on the pile's line in 3D, at the same chainage
+  // (the panel's head has the Surface choice too: the chart may sit below the fold at 720 px)
+  await chart.locator('svg.pc-svg').scrollIntoViewIfNeeded();
   const box = await chart.locator('svg.pc-svg').boundingBox();
   if (!box) throw new Error('no chart');
   await win.mouse.move(box.x + box.width * 0.4, box.y + box.height / 2);
