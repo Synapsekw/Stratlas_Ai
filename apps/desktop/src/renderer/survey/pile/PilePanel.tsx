@@ -32,7 +32,7 @@ import { volumeStatusLine, type StatusLine } from '../card/VolumeDetail';
 import { useSurveyDates } from '../card/slots';
 import { isStale, seriesStale, useCompare } from '../compareStore';
 import { drawnPoints } from '../measureDates';
-import { select, useMeasure } from '../measureStore';
+import { select, stopEditing, useMeasure } from '../measureStore';
 import { escapeStage } from '../stageEscape';
 import { captureDateOf, datedCaptures, weighRows } from '../volumes/surveyDates';
 import { pickInVolumesView } from '../volumesPick';
@@ -40,6 +40,7 @@ import { useTimeline } from '../../workspace/timeline';
 import { PileHeader } from './PileHeader';
 import { PileHistory } from './PileHistory';
 import { PileOverview } from './PileOverview';
+import { askPileFly } from './pileFly';
 import { PileProfile } from './PileProfile';
 import { pileFigures, pileView, usePileView, type PileFigures, type PileTab } from './pileView';
 import './pile.css';
@@ -144,10 +145,14 @@ function usePileData(m: SurveyMeasurement | null): PileData | null {
   ]);
 }
 
-/** Open a pile from the panel: the view's own pick (the Measure tab does not follow it). */
+/**
+ * Open a pile from the panel (its arrows): the view's own pick (the Measure tab does not follow
+ * it), and the camera frames it.
+ */
 function openHere(id: string): void {
   pickInVolumesView(id);
   select([id], id);
+  askPileFly(id);
 }
 
 /** Back to the inventory: the pile is no longer selected. */
@@ -171,6 +176,7 @@ export function PilePanel({
     () => order ?? inventoryPiles(file.measurements).map((x) => x.id),
     [order, file],
   );
+  const editing = useMeasure((s) => s.editing !== null && s.focus === id);
   const tab = usePileView((s) => s.tab);
   const setTab = usePileView((s) => s.setTab);
   const data = usePileData(m);
@@ -208,6 +214,21 @@ export function PilePanel({
       onKeyDown={onKey}
     >
       <PileHeader data={data} order={ids} dates={dates} onOpen={openHere} onBack={back} />
+      {editing && (
+        <div className="pp-editing" role="status" data-testid="pile-editing">
+          <p>{t('pile.edit.note')}</p>
+          <button
+            type="button"
+            className="btn sm"
+            data-testid="pile-edit-done"
+            onClick={() => {
+              stopEditing();
+            }}
+          >
+            {t('pile.edit.done')}
+          </button>
+        </div>
+      )}
       <Tabs items={tabs} value={tab} onChange={setTab} label={data.m.label} idPrefix={prefix} />
       <div
         className="pp-body"

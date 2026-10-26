@@ -25,10 +25,10 @@ import {
   revealMeasurement,
   setFolder,
   setMeasurementColour,
-  select,
   setMeasurementsHidden,
   startEditing,
 } from '../../survey/measureStore';
+import { openMeasurement } from '../../survey/pile/openPile';
 import { renameRequest } from '../renameRequest';
 import { dateLabel, editBlocked } from './reasons';
 
@@ -155,21 +155,30 @@ const actions: readonly Action[] = [
       if (!flyToMeasurement(tg.clicked)) ctx.host.note(t('actions.measure.notFound'), true);
     },
   }),
-  // SPIKE (feat/pile-3d-look): the boundary's vertex edit, which today only the card's Vertices section opens
+  // the boundary's vertex edit in the view (the card's Vertices section has it too); a pile's
+  // volume goes stale with the edit and is worked out again as after any outline edit
   defineAction<'measurements'>({
     id: 'measure.editBoundary',
-    label: () => 'Edit boundary',
+    label: 'actions.measure.editBoundary',
     icon: 'polygon',
     section: 'edit',
     targets: ['measurements'],
-    disabled: (tg, ctx) => {
-      const b = measureEditBlocked(ctx);
-      if (b) return b;
+    appliesTo: (tg) => {
       const m = measureStore.getState().file.measurements.find((x) => x.id === tg.clicked);
-      return m?.family === 'polygon' ? false : 'Only an outline has a boundary to edit';
+      return m?.family === 'polygon' && !isTelecomTool(m.tool);
+    },
+    disabled: (tg, ctx) => {
+      const why = measureEditBlocked(ctx);
+      if (why) return why;
+      const s = measureStore.getState();
+      if (s.editing && s.focus === tg.clicked) return t('actions.measure.editBoundary.editing');
+      if (!s.measurementsVisible || s.hiddenMeasurements.includes(tg.clicked))
+        return t('actions.measure.editBoundary.hidden');
+      return false;
     },
     run: (tg) => {
-      select([tg.clicked], tg.clicked);
+      // opened where it was right-clicked: the camera stays unless the pile is out of view
+      openMeasurement(tg.clicked, undefined, 'if-out-of-view');
       startEditing();
     },
   }),

@@ -238,4 +238,56 @@ describe('measurement menu actions', () => {
     expect(fly).toHaveBeenCalledWith(expect.objectContaining({ kind: 'point' }));
     expect(flyToMeasurement('gone')).toBe(false);
   });
+
+  describe('Edit boundary', () => {
+    const pile = {
+      ...m('sp'),
+      family: 'polygon' as const,
+      tool: 'volume' as const,
+      points: [
+        [0, 0, 0],
+        [10, 0, 0],
+        [10, 10, 0],
+      ] as SitePoint[],
+    };
+    const edit = (c = ctx()) =>
+      actionsFor(one('sp'), c).find((i) => i.id === 'measure.editBoundary');
+    beforeEach(() => {
+      const file = { ...emptyMeasurements(), measurements: [m('m1'), pile] };
+      measureStore.setState({ file, savedText: JSON.stringify(file), editing: null, focus: null });
+    });
+
+    it('is offered on an outline, after Fly to, and not on a line', () => {
+      expect(ids(one('sp'))).toEqual([
+        'measure.rename',
+        'measure.colour',
+        'measure.visibility',
+        'measure.flyTo',
+        'measure.editBoundary',
+        'measure.moveToFolder',
+        'measure.delete',
+      ]);
+      expect(edit()?.label).toBe('Edit boundary');
+      expect(ids(one('m1'))).not.toContain('measure.editBoundary');
+    });
+
+    it('is greyed with the reason when it cannot run', () => {
+      measureStore.setState({ readOnly: true });
+      expect(edit(ctx({ pkg: true, canEdit: false }))?.disabled).toBe(t('actions.reason.package'));
+      measureStore.setState({ readOnly: false, hiddenMeasurements: ['sp'] });
+      expect(edit()?.disabled).toBe(t('actions.measure.editBoundary.hidden'));
+      measureStore.setState({ hiddenMeasurements: [] });
+      expect(edit()?.disabled).toBe(false);
+    });
+
+    it('selects the pile and enters the vertex edit of its boundary', () => {
+      edit()?.run();
+      const s = measureStore.getState();
+      expect(s.focus).toBe('sp');
+      expect(s.selected).toEqual(['sp']);
+      expect(s.editing?.points).toHaveLength(3);
+      // a second menu on it says it is being edited
+      expect(edit()?.disabled).toBe(t('actions.measure.editBoundary.editing'));
+    });
+  });
 });
