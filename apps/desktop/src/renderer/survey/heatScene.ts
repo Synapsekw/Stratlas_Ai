@@ -26,6 +26,7 @@ import { compareStore, type CompareState, type SiteTiles } from './compareStore'
 import type { HeatGrid } from './engineProtocol';
 import { measureStore, type MeasureState } from './measureStore';
 import type { Frame } from './measureScene';
+import { pileLookState } from './pile/pileLookState';
 
 const LIFT_M = 0.04;
 
@@ -41,15 +42,17 @@ export function activeHeat(
 }
 
 /**
- * The heat grid the 3D view draws: `activeHeat`, except that an opened pile shows its own lifted
- * box (`pileLookScene`), not its cut and fill heat map; Show, Cut & fill still draws the site's.
+ * The heat grid the 3D view draws: `activeHeat`, except while the focused pile shows as its
+ * lifted box (`boxShown`, `pileLookScene`): then not its own cut and fill heat map, while Show,
+ * Cut & fill still draws the site's. Without the box (being edited, its heights still coming)
+ * the pile keeps its heat map.
  */
 export function sceneHeat(
   c: Pick<CompareState, 'computed' | 'heat'> & { siteHeat?: HeatGrid | null },
   s: MeasureState,
+  boxShown: string | null = pileLookState.getState().shown,
 ): HeatGrid | null {
-  const m = s.focus ? s.file.measurements.find((x) => x.id === s.focus) : undefined;
-  if (m?.tool === 'volume' && m.family === 'polygon') return c.siteHeat ?? null;
+  if (s.focus !== null && s.focus === boxShown) return c.siteHeat ?? null;
   return activeHeat(c, s);
 }
 
@@ -236,10 +239,15 @@ export function attachHeat3d(stage: EngineStage, frame: Frame): () => void {
   const offB = measureStore.subscribe((s, p) => {
     if (s.focus !== p.focus || s.settings !== p.settings) draw();
   });
+  // the opened pile's box comes or goes: its heat map makes way or comes back
+  const offC = pileLookState.subscribe((s, p) => {
+    if (s.shown !== p.shown) draw();
+  });
   draw();
   return () => {
     offA();
     offB();
+    offC();
     clear();
     stage.scene.remove(group);
     stage.requestRender();

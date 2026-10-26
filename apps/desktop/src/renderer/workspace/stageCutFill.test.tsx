@@ -106,7 +106,7 @@ describe('the whole-site cut and fill on the stage (state)', () => {
     expect(activeHeat({ computed: {}, heat }, { ...s, focus: null })).toBeNull();
   });
 
-  it("an opened pile shows its box in 3D, not its own heat map; the site's still draws", () => {
+  it("a pile drawn as its box in 3D drops its own heat map; the site's still draws", () => {
     const s = measureStore.getState();
     const heat = { show3d: true, show2d: true, contours: false, item: null };
     const own = { ...grid('a'), item: 'a' };
@@ -134,10 +134,13 @@ describe('the whole-site cut and fill on the stage (state)', () => {
       typeof activeHeat
     >[0]['computed'];
     const on = (focus: string) => ({ ...s, file, focus });
-    expect(sceneHeat({ computed, heat }, on('pile'))).toBeNull();
-    expect(sceneHeat({ computed, heat, siteHeat: site }, on('pile'))).toBe(site);
+    // the box drawn for the pile: no heat map of its own, the site's still
+    expect(sceneHeat({ computed, heat }, on('pile'), 'pile')).toBeNull();
+    expect(sceneHeat({ computed, heat, siteHeat: site }, on('pile'), 'pile')).toBe(site);
+    // no box (its boundary edited, its heights coming): the pile keeps its heat map
+    expect(sceneHeat({ computed, heat }, on('pile'), null)).toBe(own);
     // any other polygon keeps its own heat map
-    expect(sceneHeat({ computed, heat, siteHeat: site }, on('area'))).toBe(own);
+    expect(sceneHeat({ computed, heat, siteHeat: site }, on('area'), 'pile')).toBe(own);
   });
 });
 
