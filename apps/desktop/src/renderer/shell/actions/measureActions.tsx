@@ -25,7 +25,9 @@ import {
   revealMeasurement,
   setFolder,
   setMeasurementColour,
+  select,
   setMeasurementsHidden,
+  startEditing,
 } from '../../survey/measureStore';
 import { renameRequest } from '../renameRequest';
 import { dateLabel, editBlocked } from './reasons';
@@ -151,6 +153,24 @@ const actions: readonly Action[] = [
     multi: true,
     run: (tg, ctx) => {
       if (!flyToMeasurement(tg.clicked)) ctx.host.note(t('actions.measure.notFound'), true);
+    },
+  }),
+  // SPIKE (feat/pile-3d-look): the boundary's vertex edit, which today only the card's Vertices section opens
+  defineAction<'measurements'>({
+    id: 'measure.editBoundary',
+    label: () => 'Edit boundary',
+    icon: 'polygon',
+    section: 'edit',
+    targets: ['measurements'],
+    disabled: (tg, ctx) => {
+      const b = measureEditBlocked(ctx);
+      if (b) return b;
+      const m = measureStore.getState().file.measurements.find((x) => x.id === tg.clicked);
+      return m?.family === 'polygon' ? false : 'Only an outline has a boundary to edit';
+    },
+    run: (tg) => {
+      select([tg.clicked], tg.clicked);
+      startEditing();
     },
   }),
   defineAction<'measurements'>({

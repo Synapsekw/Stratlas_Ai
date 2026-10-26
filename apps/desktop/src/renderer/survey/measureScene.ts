@@ -76,6 +76,7 @@ import {
 } from './measureStore';
 import { fallbackZ, type MapHeights } from './mapHeights';
 import { mapPickLayer, type VertexPick } from './measureSource';
+import { spikeOwnsPile } from './pileLookSpike';
 import { materialOf, materialsDraft } from './volumes/materialsDraft';
 import { declutter, type LabelBox } from './labelDeclutter';
 
@@ -722,6 +723,7 @@ export function attach3d(
       // named after the measurement: which view draws which is read from the scene (tests)
       const name = `measure:${sh.id}`;
       if (!sh.outline) continue;
+      if (spikeOwnsPile(sh.id)) continue; // SPIKE pile looks
       if (sh.filled)
         addFill(
           sh.points,

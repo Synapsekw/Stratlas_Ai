@@ -21,6 +21,7 @@ import { ExportDialogMount } from './ExportDialog';
 import { attachHover3d, attachHoverFly, attachHoverMap } from './hoverScene';
 import { useMagicController } from './MagicPolygon';
 import { MeasureMenu } from './MeasureMenu';
+import { attachPileLookSpike } from './pileLookSpike';
 import { attachMeasurePick3d, attachMeasurePickMap, type MeasureMenuAt } from './measurePick';
 import { PendingNote, usePending } from './PendingNote';
 import { attachPileAxis3d, attachPileAxisMap } from './pile/pileAxisScene';
@@ -99,7 +100,9 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
     const detachPick = attachMeasurePick3d(stage, frame, setMenuAt);
     // the open pile's profile line with its A, B and turn handles (spec section 3, board 2)
     const detachAxis = attachPileAxis3d(stage, frame);
+    const detachSpike = attachPileLookSpike(stage, frame);
     return () => {
+      detachSpike();
       detachAxis();
       detachHover();
       detachPick();
