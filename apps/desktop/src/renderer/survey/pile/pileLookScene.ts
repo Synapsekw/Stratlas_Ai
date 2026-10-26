@@ -237,6 +237,9 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
     fatMats.length = 0;
     legend?.remove();
     legend = null;
+    // what the view shows, for tests and tools: the box's pile and how its top is coloured
+    delete host.dataset.pileLook;
+    delete host.dataset.pileSurface;
   };
 
   const toLocal = (positions: Float64Array): Float32Array => {
@@ -323,13 +326,10 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
 
   /** Publish what is drawn: the measurement layer and the pick read it. */
   const publish = (id: string | null, p: Prism | null) => {
-    const shown = id !== null && p !== null ? id : null;
-    const was = pileLookState.getState();
-    if (was.shown === shown && (shown === null || was.hits.length > 0)) {
-      if (shown !== null && p) pileLookState.setState({ hits: prismHitShapes(shown, p) });
-      return;
-    }
-    pileLookState.setState({ shown, hits: shown !== null && p ? prismHitShapes(shown, p) : [] });
+    if (id !== null && p !== null)
+      pileLookState.setState({ shown: id, hits: prismHitShapes(id, p) });
+    else if (pileLookState.getState().shown !== null)
+      pileLookState.setState({ shown: null, hits: [] });
   };
 
   const draw = () => {
@@ -435,6 +435,8 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
     );
     if (mode === 'height' && !change) showLegend(p.hmax);
     publish(m.id, p);
+    host.dataset.pileLook = m.id;
+    host.dataset.pileSurface = change ? 'change' : mode;
     stage.requestRender();
     if (flyAsk?.id === m.id) fly(flyAsk, p);
   };
@@ -456,7 +458,10 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
       });
       if (mostlyInView(screen, w, h)) return;
     }
-    const view = pileFlyView(p);
+    const view = pileFlyView(p, {
+      vfovDeg: stage.camera.fov,
+      aspect: canvas.clientWidth / Math.max(1, canvas.clientHeight),
+    });
     const c = frame.toLocal(view.at);
     const d = frame.toLocal([
       view.at[0] + view.dir[0],
@@ -525,8 +530,9 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
   const offTimeline = timeline.subscribe((s, p) => {
     if (s.focus !== p.focus) draw();
   });
-  const offDates = primaryScene.subscribe(() => {
-    draw();
+  // a layer switch or the view's date puts the pile on or off screen
+  const offDates = primaryScene.subscribe((ws, prev) => {
+    if (ws.hidden !== prev.hidden || ws.dates !== prev.dates) draw();
   });
   const offView = pileView.subscribe((s, p) => {
     if (s.surface !== p.surface) draw();

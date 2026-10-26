@@ -2,6 +2,7 @@ import type { SitePoint } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
   buildPrism,
+  fitDistance,
   gridPoints,
   heightRamp,
   HEIGHT_RAMP,
@@ -186,6 +187,16 @@ describe('the fly to an opened pile', () => {
     // the camera sits south and a little west of the pile
     expect(v.dir[1]).toBeLessThan(0);
     expect(v.dir[0]).toBeLessThan(0);
+  });
+
+  it('stands further back in a narrow view, so the whole box fits', () => {
+    const p = { centre: [0, 0, 0] as [number, number, number], lift: 10, span: 40 };
+    const wide = pileFlyView(p, { vfovDeg: 40, aspect: 1.6 });
+    const narrow = pileFlyView(p, { vfovDeg: 40, aspect: 0.6 });
+    expect(narrow.distance).toBeGreaterThan(wide.distance * 1.5);
+    // the sphere round the box fits the vertical angle in a wide view
+    const r = 0.5 * Math.hypot(40, 40, 10);
+    expect(fitDistance(r, 40, 1.6)).toBeCloseTo(r / Math.sin((20 * Math.PI) / 180));
   });
 
   it('flies only when the pile is not mostly in view', () => {

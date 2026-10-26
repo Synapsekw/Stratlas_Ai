@@ -352,18 +352,35 @@ export interface PileFlyView {
 }
 
 /**
+ * How far a camera with a vertical field of view of `vfovDeg` and the view's `aspect` (width over
+ * height) stands for a sphere of `radius` to fill the narrower of its two angles.
+ */
+export function fitDistance(radius: number, vfovDeg: number, aspect: number): number {
+  const v = (vfovDeg * Math.PI) / 180;
+  const h = 2 * Math.atan(Math.tan(v / 2) * Math.max(0.05, aspect));
+  return radius / Math.sin(Math.min(v, h) / 2);
+}
+
+/**
  * An oblique view framing the whole box: looking down at `elevationDeg` from the
- * south-south-west (`azimuthDeg` clockwise from north), at the box's middle.
+ * south-south-west (`azimuthDeg` clockwise from north), at the box's middle. With the camera's
+ * field of view the box's bounding sphere fits the view (a narrow view stands further back);
+ * without it, twice the pile's size.
  */
 export function pileFlyView(
   p: Pick<Prism, 'centre' | 'lift' | 'span'>,
-  opts: { elevationDeg?: number; azimuthDeg?: number } = {},
+  opts: { elevationDeg?: number; azimuthDeg?: number; vfovDeg?: number; aspect?: number } = {},
 ): PileFlyView {
   const el = ((opts.elevationDeg ?? 38) * Math.PI) / 180;
   const az = ((opts.azimuthDeg ?? 200) * Math.PI) / 180;
+  const radius = 0.5 * Math.hypot(p.span, p.span, p.lift);
+  const distance =
+    opts.vfovDeg !== undefined && opts.aspect !== undefined
+      ? fitDistance(radius, opts.vfovDeg, opts.aspect) * 1.05
+      : p.span * 2 + p.lift;
   return {
     at: [p.centre[0], p.centre[1], p.centre[2] + p.lift * 0.45],
-    distance: p.span * 2 + p.lift,
+    distance,
     dir: [Math.cos(el) * Math.sin(az), Math.cos(el) * Math.cos(az), Math.sin(el)],
   };
 }
