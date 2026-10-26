@@ -291,6 +291,8 @@ describe('marking with the keyboard while main saves', () => {
 describe('aiming with the cursor loupe and the arrow keys', () => {
   /** The photo is 800 x 600 original px, shown 400 x 300 CSS px at (100, 50): 1:2. */
   const IMG = { left: 100, top: 50, width: 400, height: 300 };
+  /** Where the photo is now: a scroll or a zoom moves it. */
+  let img = { ...IMG };
   /** The viewer, which the loupe is placed in. */
   const VIEW = { left: 0, top: 0, width: 600, height: 400 };
   const rect = (r: typeof IMG) =>
@@ -320,11 +322,45 @@ describe('aiming with the cursor loupe and the arrow keys', () => {
     });
   };
 
+  /** Arrow nudges are saved once the key has rested (a debounce of about 150 ms). */
+  const settle = () =>
+    act(async () => {
+      await new Promise((r) => setTimeout(r, 220));
+    });
+  const key = (k: string, o: KeyboardEventInit = {}) => {
+    act(() => {
+      q('marker-viewer').dispatchEvent(
+        new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...o }),
+      );
+    });
+  };
+  /** The viewer's scroll offsets (jsdom has no layout): kept on the element. */
+  const scrollable = () => {
+    const el = q('marker-viewer');
+    const at = { left: 0, top: 0 };
+    Object.defineProperty(el, 'scrollLeft', {
+      configurable: true,
+      get: () => at.left,
+      set: (v: number) => {
+        at.left = v;
+      },
+    });
+    Object.defineProperty(el, 'scrollTop', {
+      configurable: true,
+      get: () => at.top,
+      set: (v: number) => {
+        at.top = v;
+      },
+    });
+    return at;
+  };
+
   beforeEach(() => {
+    img = { ...IMG };
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
       this: HTMLElement,
     ) {
-      if (this.classList.contains('ph-mk-img')) return rect(IMG);
+      if (this.classList.contains('ph-mk-img')) return rect(img);
       if (this.classList.contains('ph-mk-viewer')) return rect(VIEW);
       return rect({ left: 0, top: 0, width: 0, height: 0 });
     });
@@ -337,7 +373,7 @@ describe('aiming with the cursor loupe and the arrow keys', () => {
     const first = shown();
     const [rx = NaN, ry = NaN] = xy(ringAt());
     press('ArrowRight');
-    await sent();
+    await settle();
     expect(lastMark()?.state).toBe('confirmed');
     // the ring's data-px is rounded to 0.1 px
     expect(lastMark()?.px[0]).toBeCloseTo(rx + 1, 0);
@@ -349,12 +385,13 @@ describe('aiming with the cursor loupe and the arrow keys', () => {
         new KeyboardEvent('keydown', { key: 'ArrowUp', shiftKey: true, bubbles: true }),
       );
     });
-    await sent();
+    await settle();
     expect(lastMark()?.px).toEqual([from[0], from[1] - 10]);
     await answer(OK);
     // the arrows never change the photo: N and P do
     expect(shown()).toBe(first);
     press('ArrowLeft');
+    await settle();
     await answer(OK);
     expect(shown()).toBe(first);
     expect(xy(q('marker-mark').getAttribute('data-px'))).toEqual([from[0] - 1, from[1] - 10]);
@@ -374,6 +411,7 @@ describe('aiming with the cursor loupe and the arrow keys', () => {
     expect(parseFloat(l.style.left) + 130).toBeCloseTo(100 + ax / 2, 1);
     expect(parseFloat(l.style.top) + 130).toBeCloseTo(50 + ay / 2, 1);
     press('ArrowDown');
+    await settle();
     await answer(OK);
     expect(xy(loupe()?.dataset.at)).toEqual(xy(q('marker-mark').getAttribute('data-px')));
     expect(host.querySelector('.ph-mk-bar')?.textContent).toContain('Photo 1:2 · loupe 6:1');
@@ -394,7 +432,9 @@ describe('aiming with the cursor loupe and the arrow keys', () => {
     expect(xy(loupe()?.dataset.at)).toEqual([402, 299.5]);
     pointer('click', 312, 197);
     await sent();
+    // the fine-aimed point, not the one under the cursor (424, 294)
     expect(lastMark()?.px).toEqual([402, 299.5]);
+    expect(lastMark()?.px).not.toEqual([424, 294]);
     await answer(OK);
     // off the photo: the loupe rests on the new mark
     pointer('pointerout', 600, 380, { relatedTarget: document.body });
@@ -419,6 +459,133 @@ describe('aiming with the cursor loupe and the arrow keys', () => {
     for (let i = 0; i < 9; i++) wheel(100);
     expect(loupe()?.dataset.power).toBe('2');
     expect(host.querySelector('.ph-mk-bar')?.textContent).toContain('loupe 2:1');
+  });
+
+  it('keeps the wheel over the photo for the loupe, and lets it scroll elsewhere', () => {
+    loaded();
+    const wheel = (el: Element) => {
+      const e = new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true });
+      act(() => {
+        el.dispatchEvent(e);
+      });
+      return e.defaultPrevented;
+    };
+    expect(wheel(host.querySelector('.ph-mk-img') ?? expect.fail('no photo'))).toBe(true);
+    expect(wheel(q('marker-viewer'))).toBe(false);
+    expect(wheel(host.querySelector('.ph-mk-bar') ?? expect.fail('no bar'))).toBe(false);
+  });
+
+  it('pans the photo with a right- or middle-button drag, or Space and drag, placing no mark', async () => {
+    loaded();
+    const at = scrollable();
+    // right button: the view moves with the hand, 50 px left and 30 up scroll 50 and 30 on
+    pointer('pointerdown', 300, 200, { button: 2, buttons: 2 });
+    pointer('pointermove', 250, 170, { buttons: 2 });
+    pointer('pointerup', 250, 170, { button: 2 });
+    expect([at.left, at.top]).toEqual([50, 30]);
+    // middle button
+    pointer('pointerdown', 250, 170, { button: 1, buttons: 4 });
+    pointer('pointermove', 260, 180, { buttons: 4 });
+    pointer('pointerup', 260, 180, { button: 1 });
+    expect([at.left, at.top]).toEqual([40, 20]);
+    // Space held: the left button pans, and its click places nothing
+    key(' ');
+    pointer('pointerdown', 260, 180, { button: 0, buttons: 1 });
+    pointer('pointermove', 200, 180, { buttons: 1 });
+    pointer('pointerup', 200, 180, { button: 0 });
+    pointer('click', 200, 180, { button: 0 });
+    act(() => {
+      q('marker-viewer').dispatchEvent(new KeyboardEvent('keyup', { key: ' ', bubbles: true }));
+    });
+    expect([at.left, at.top]).toEqual([100, 20]);
+    // a plain left drag places no mark either
+    pointer('pointerdown', 200, 180, { button: 0, buttons: 1 });
+    pointer('pointermove', 230, 190, { buttons: 1 });
+    pointer('pointerup', 230, 190, { button: 0 });
+    pointer('click', 230, 190, { button: 0 });
+    await settle();
+    expect(sentFiles).toHaveLength(0);
+    // a click without a drag still places one
+    pointer('pointerdown', 300, 200, { button: 0, buttons: 1 });
+    pointer('pointerup', 300, 200, { button: 0 });
+    pointer('click', 300, 200, { button: 0 });
+    await sent();
+    expect(sentFiles).toHaveLength(1);
+  });
+
+  it('aims again where the cursor is when the photo moves under it', () => {
+    loaded();
+    pointer('pointermove', 300, 200);
+    expect(xy(loupe()?.dataset.at)).toEqual([400, 300]);
+    // the view scrolls 50 px (a save re-centring it, a pan, a zoom): the photo moves, the cursor not
+    img = { ...IMG, left: 50 };
+    act(() => {
+      q('marker-viewer').dispatchEvent(new Event('scroll'));
+    });
+    expect(xy(loupe()?.dataset.at)).toEqual([500, 300]);
+    // a zoom: the photo is drawn twice as large
+    img = { left: 0, top: 0, width: 800, height: 600 };
+    key('+');
+    expect(xy(loupe()?.dataset.at)).toEqual([300, 200]);
+  });
+
+  it('keeps every press of a held arrow: one save of the last place, then the latest', async () => {
+    const [rx = NaN] = xy(ringAt());
+    for (let i = 0; i < 5; i++) key('ArrowRight', { repeat: i > 0 });
+    // shown at once, saved once the key rests
+    const [mx = NaN] = xy(q('marker-mark').getAttribute('data-px'));
+    expect(mx).toBeCloseTo(rx + 5, 0);
+    await sent();
+    expect(sentFiles).toHaveLength(0);
+    await settle();
+    expect(sentFiles).toHaveLength(1);
+    expect(lastMark()?.px[0]).toBe(mx);
+    // three more while main has not answered: queued, drawn, sent as one when it answers
+    for (let i = 0; i < 3; i++) key('ArrowRight', { repeat: i > 0 });
+    expect(xy(q('marker-mark').getAttribute('data-px'))[0]).toBe(mx + 3);
+    await settle();
+    expect(sentFiles).toHaveLength(1);
+    await answer(OK);
+    await sent();
+    expect(sentFiles).toHaveLength(2);
+    expect(lastMark()?.px[0]).toBe(mx + 3);
+    await answer(OK);
+    expect(xy(q('marker-mark').getAttribute('data-px'))[0]).toBe(mx + 3);
+  });
+
+  it('confirms a nudged mark where it was nudged to, and moves on', async () => {
+    const first = shown();
+    key('ArrowDown');
+    const placed = xy(q('marker-mark').getAttribute('data-px'));
+    press('Enter');
+    await sent();
+    expect(lastMark()?.px).toEqual(placed);
+    expect(lastMark()?.state).toBe('confirmed');
+    await answer(OK);
+    expect(shown()).not.toBe(first);
+    expect(count()).toBe('1 of 3');
+  });
+
+  it('rests the loupe on the mark after a nudge, until the mouse moves again', async () => {
+    loaded();
+    pointer('pointermove', 300, 200);
+    expect(loupe()?.dataset.aiming).toBe('true');
+    key('ArrowLeft');
+    expect(loupe()?.dataset.aiming).toBeUndefined();
+    expect(xy(loupe()?.dataset.at)).toEqual(xy(q('marker-mark').getAttribute('data-px')));
+    pointer('pointermove', 301, 200);
+    expect(loupe()?.dataset.aiming).toBe('true');
+    await settle();
+    await answer(OK);
+  });
+
+  it('keeps the whole loupe inside the viewer near its edges', () => {
+    loaded();
+    // the cursor 10 px from the viewer's bottom-right corner: the loupe slides in, its aim kept
+    pointer('pointermove', 590, 390);
+    const l = loupe() ?? expect.fail('no loupe');
+    expect([l.style.left, l.style.top]).toEqual(['340px', '140px']);
+    expect(xy(l.dataset.at)).toEqual([800, 600]);
   });
 
   it('samples a photo read at another size in the calibrated size, where the marks are', () => {
