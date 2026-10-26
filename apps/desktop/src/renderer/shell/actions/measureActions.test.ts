@@ -18,6 +18,7 @@ vi.mock('../../shell', () => ({
 const { registerMeasureActions, flyToMeasurement } = await import('./measureActions');
 const { renameRequest } = await import('../renameRequest');
 const { measureStore } = await import('../../survey/measureStore');
+const { pileFly } = await import('../../survey/pile/pileFly');
 
 const manifest = {
   captures: [],
@@ -278,6 +279,28 @@ describe('measurement menu actions', () => {
       expect(edit()?.disabled).toBe(t('actions.measure.editBoundary.hidden'));
       measureStore.setState({ hiddenMeasurements: [] });
       expect(edit()?.disabled).toBe(false);
+    });
+
+    it('is greyed while another shape is being drawn, which it never throws away', () => {
+      measureStore.setState({ tool: { tool: 'distance' } as never, draw: {} as never });
+      expect(edit()?.disabled).toBe(t('actions.measure.editBoundary.drawing'));
+      edit()?.run();
+      expect(measureStore.getState().draw).not.toBeNull();
+      measureStore.setState({ tool: null, draw: null });
+    });
+
+    it('starts the edit before it asks the camera to move, only if the pile is out of view', () => {
+      const seen: { editing: boolean; onlyIfOutOfView: boolean }[] = [];
+      const off = pileFly.subscribe((s) => {
+        if (s.ask)
+          seen.push({
+            editing: measureStore.getState().editing !== null,
+            onlyIfOutOfView: s.ask.onlyIfOutOfView,
+          });
+      });
+      edit()?.run();
+      off();
+      expect(seen).toEqual([{ editing: true, onlyIfOutOfView: true }]);
     });
 
     it('selects the pile and enters the vertex edit of its boundary', () => {

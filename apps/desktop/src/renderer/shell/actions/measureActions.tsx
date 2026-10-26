@@ -28,7 +28,8 @@ import {
   setMeasurementsHidden,
   startEditing,
 } from '../../survey/measureStore';
-import { openMeasurement } from '../../survey/pile/openPile';
+import { isPile, openMeasurement } from '../../survey/pile/openPile';
+import { askPileFly } from '../../survey/pile/pileFly';
 import { renameRequest } from '../renameRequest';
 import { dateLabel, editBlocked } from './reasons';
 
@@ -172,14 +173,19 @@ const actions: readonly Action[] = [
       if (why) return why;
       const s = measureStore.getState();
       if (s.editing && s.focus === tg.clicked) return t('actions.measure.editBoundary.editing');
+      // a shape being drawn is never thrown away for it
+      if (s.draw !== null || s.tool !== null) return t('actions.measure.editBoundary.drawing');
       if (!s.measurementsVisible || s.hiddenMeasurements.includes(tg.clicked))
         return t('actions.measure.editBoundary.hidden');
       return false;
     },
     run: (tg) => {
-      // opened where it was right-clicked: the camera stays unless the pile is out of view
-      openMeasurement(tg.clicked, undefined, 'if-out-of-view');
+      // the edit starts first, then the camera moves (at once, only if the pile is out of view):
+      // it never moves while the outline is being edited
+      openMeasurement(tg.clicked, undefined, 'never');
       startEditing();
+      const m = measureStore.getState().file.measurements.find((x) => x.id === tg.clicked);
+      if (m && isPile(m)) askPileFly(tg.clicked, 'if-out-of-view');
     },
   }),
   defineAction<'measurements'>({

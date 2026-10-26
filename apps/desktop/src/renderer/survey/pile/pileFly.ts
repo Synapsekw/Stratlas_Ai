@@ -28,3 +28,51 @@ export function askPileFly(id: string, mode: PileFlyMode = 'always'): void {
   seq += 1;
   pileFly.setState({ ask: { id, onlyIfOutOfView: mode === 'if-out-of-view', seq } });
 }
+
+/** What the 3D view does with a fly ask: frame the box, frame an estimate, wait for the box, or drop it. */
+export type FlyStep = 'box' | 'estimate' | 'wait' | 'drop';
+
+/**
+ * The step for an ask, now (`deferred` false: the ask has just come) or later (`deferred`: the
+ * wait for the box ended). The camera never moves under an edit that began after the ask: an ask
+ * made with the edit already on frames the flat outline at once, a deferred one is dropped.
+ */
+export function flyStep(o: { boxShown: boolean; editing: boolean; deferred: boolean }): FlyStep {
+  if (o.editing) return o.deferred ? 'drop' : 'estimate';
+  if (o.boxShown) return 'box';
+  return o.deferred ? 'estimate' : 'wait';
+}
+
+/** One sample in flight at a time: a result counts only if it is still the one wanted. */
+export interface SampleGate {
+  /** Start sampling `key`; false when it is already in flight. */
+  start(key: string): boolean;
+  /** A result for `key` arrived: true when it is still wanted (and the gate is free again). */
+  settle(key: string): boolean;
+  /** Sampling `key` failed. */
+  fail(key: string): void;
+  /** The wanted key is already sampled: anything in flight is no longer wanted. */
+  reuse(): void;
+}
+
+export function sampleGate(): SampleGate {
+  let pending = '';
+  return {
+    start: (key) => {
+      if (pending === key) return false;
+      pending = key;
+      return true;
+    },
+    settle: (key) => {
+      if (pending !== key) return false;
+      pending = '';
+      return true;
+    },
+    fail: (key) => {
+      if (pending === key) pending = '';
+    },
+    reuse: () => {
+      pending = '';
+    },
+  };
+}

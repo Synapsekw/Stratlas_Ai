@@ -4256,6 +4256,7 @@ export const en = {
   'actions.measure.editBoundary': 'Edit boundary',
   'actions.measure.editBoundary.hidden': 'Show it first to edit its boundary',
   'actions.measure.editBoundary.editing': 'Its boundary is being edited',
+  'actions.measure.editBoundary.drawing': 'Finish or cancel the drawing first',
   'actions.measure.moveToFolder': 'Move to folder',
   'actions.measure.noFolder': 'No folder',
   'actions.measure.newFolder': 'New folder…',

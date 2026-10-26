@@ -40,7 +40,7 @@ import { captureInFocus } from '../measureRows';
 import { stageClamp, type Frame } from '../measureScene';
 import { measureStore } from '../measureStore';
 import { isPile } from './openPile';
-import { pileFly, type PileFlyAsk } from './pileFly';
+import { flyStep, pileFly, sampleGate, type PileFlyAsk } from './pileFly';
 import {
   buildPrism,
   gridPoints,
@@ -219,7 +219,7 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
   let legend: HTMLDivElement | null = null;
 
   let sampled: Sampled | null = null;
-  let pending = '';
+  const gate = sampleGate();
   let prism: Prism | null = null;
   let drawnKey = '';
   let drawnHeat: unknown = null;
@@ -349,8 +349,7 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
     // a surface prepared since: sampled again
     const key = JSON.stringify([m.id, captureOf(m), ring, baseSpecOf(m), surfacesSeq]);
     if (sampled?.key !== key) {
-      if (pending !== key) {
-        pending = key;
+      if (gate.start(key)) {
         // the previous pile's box goes while this one's heights come
         if (sampled && sampled.id !== m.id) {
           clear();
@@ -360,17 +359,19 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
         }
         void sample(m, ring, clamp)
           .then((r) => {
-            if (pending !== key) return;
-            pending = '';
+            // a result for a pile or date left again meanwhile is not drawn
+            if (!gate.settle(key)) return;
             sampled = { key, id: m.id, ...r };
             draw();
           })
           .catch(() => {
-            if (pending === key) pending = '';
+            gate.fail(key);
           });
       }
       return;
     }
+    // back on the sampled pile: a sample still in flight for another is no longer wanted
+    gate.reuse();
     const mode = pileView.getState().surface;
     const change = changeColours();
     const heat = change ? compareStore.getState().siteHeat : null;
@@ -495,27 +496,40 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
     };
   };
 
-  const onFly = (ask: PileFlyAsk | null) => {
-    if (!ask) return;
-    if (prism && pileLookState.getState().shown === ask.id) {
-      fly(ask, prism);
-      return;
-    }
-    flyAsk = ask;
+  const cancelFly = () => {
+    flyAsk = null;
     if (flyTimer !== null) window.clearTimeout(flyTimer);
-    const run = () => {
-      flyTimer = null;
-      if (flyAsk?.seq !== ask.seq) return;
+    flyTimer = null;
+  };
+
+  /** Act on an ask now (`deferred` false) or when the wait for its box ends. */
+  const step = (ask: PileFlyAsk, deferred: boolean) => {
+    const boxShown = prism !== null && pileLookState.getState().shown === ask.id;
+    const editing = measureStore.getState().editing !== null;
+    const next = flyStep({ boxShown, editing, deferred });
+    if (next === 'box' && prism) fly(ask, prism);
+    else if (next === 'estimate') {
       const e = estimate(ask.id);
       if (e) fly(ask, e);
-      else flyAsk = null;
-    };
-    // an outline being edited has no box to wait for
-    if (measureStore.getState().editing) run();
-    else flyTimer = window.setTimeout(run, FLY_WAIT_MS);
+      else cancelFly();
+    } else if (next === 'drop') cancelFly();
+    else {
+      flyAsk = ask;
+      if (flyTimer !== null) window.clearTimeout(flyTimer);
+      flyTimer = window.setTimeout(() => {
+        flyTimer = null;
+        if (flyAsk?.seq === ask.seq) step(ask, true);
+      }, FLY_WAIT_MS);
+    }
+  };
+
+  const onFly = (ask: PileFlyAsk | null) => {
+    if (ask) step(ask, false);
   };
 
   const offStore = measureStore.subscribe((s, p) => {
+    // an edit begun: a fly still waiting for the box never moves the camera under it
+    if (s.editing && !p.editing && flyAsk) cancelFly();
     if (
       s.focus !== p.focus ||
       s.editing !== p.editing ||
