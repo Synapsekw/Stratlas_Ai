@@ -231,14 +231,14 @@
   position: absolute;
   left: 14px;
   bottom: 100px;
-  z-index: 5;
+  z-index: var(--z-stage-ui);
   padding: 8px 10px;
-  border-radius: 8px;
-  background: rgb(14 17 22 / 82%);
-  color: #e8ecf2;
+  border-radius: var(--r-6);
+  background: var(--scrim);
+  color: var(--fg-0);
   font: 12px/1.3 var(--f-ui);
   pointer-events: none;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
+  box-shadow: var(--el-2);
 }
 .pl-legend-title {
   margin-bottom: 5px;
