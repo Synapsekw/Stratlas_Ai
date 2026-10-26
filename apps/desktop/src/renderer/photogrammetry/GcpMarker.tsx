@@ -1,10 +1,21 @@
 /**
  * The GCP marker (G4): the photos that see the selected point, nearest the image centre first;
- * the photo with a loupe, the prediction ring and any draft detections; click to place a mark.
+ * the photo with the prediction ring and any draft detections; click to place a mark.
+ *
+ * Aiming: a round loupe follows the cursor over the photo at true magnification (screen px per
+ * original photo px, 6:1 until the mouse wheel steps it between 2:1 and 12:1, remembered on this
+ * computer), sampling the full-resolution photo; a click places the mark at the loupe's centre, in
+ * original pixels with the sub-pixel part kept. Holding Shift slows the aim to loupe speed: the
+ * loupe stays under the cursor while its centre moves 1 / power original px per screen px, for
+ * centring a target to a fraction of a pixel. Off the photo, the loupe rests on the mark (else the
+ * prediction), so a nudge from the keyboard stays in view. The mark is an open crosshair of the
+ * same screen size at any zoom, its centre left clear.
+ *
  * Keyboard: Enter or C confirms (the draft, or the prediction) and goes to the next photo without
- * a mark, S skips the photo, N or the right arrow goes to the next photo, P or the left arrow to
- * the previous one, + and - zoom, Esc goes back to the table. Every change is saved at once
- * (`photo:writeGcp`, atomic with a `.bak`).
+ * a mark, S skips the photo, N and P go to the next and previous photo, the arrow keys move the
+ * mark 1 original px (Shift: 10; with no mark yet, from the prediction), + and - zoom the photo,
+ * Esc goes back to the table. Every change is saved at once (`photo:writeGcp`, atomic with a
+ * `.bak`).
  *
  * The predictions learn from the marks (`marks.ts`): two confirmed marks of a point triangulate
  * it, which places it in every other photo, and the marked points say how far the survey sits
@@ -21,20 +32,28 @@ import {
 } from '@aio/schema';
 import { Icon } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { bridge } from '../shell';
 import {
+  aimStart,
   applyMark,
   clickToPixel,
   confirmedMarks,
+  crosshairArms,
+  fineAim,
   inFrame,
+  LOUPE_POWER,
+  LOUPE_POWERS,
   loupeBackground,
   markerList,
   MIN_MARKS,
   nextToMark,
+  nudged,
+  ratioLabel,
   readCamerasFile,
   sfmPhotos,
   step,
+  stepPower,
   withPoint,
   type MarkAction,
   type MarkerPhoto,
@@ -48,9 +67,149 @@ interface ShownPhoto extends MarkerPhoto {
 }
 
 const ZOOMS = [1, 1.5, 2, 3, 4] as const;
-const LOUPE = 4;
 /** The loupe's diameter, CSS pixels (photo.css .ph-loupe). */
-const LOUPE_BOX = 140;
+const LOUPE_BOX = 260;
+/** The loupe's power on this computer (screen px per original photo px). */
+const POWER_KEY = 'quadrion.gcpLoupePower';
+/** Mouse wheel travel, CSS px, for one step of the loupe's power (a mouse notch is about 100). */
+const WHEEL_STEP = 50;
+
+function readPower(): number {
+  try {
+    const v = Number(localStorage.getItem(POWER_KEY));
+    return (LOUPE_POWERS as readonly number[]).includes(v) ? v : LOUPE_POWER;
+  } catch {
+    return LOUPE_POWER;
+  }
+}
+
+type Px = [number, number];
+/** Where the photo is drawn in the viewer, CSS px. */
+interface Layout {
+  left: number;
+  top: number;
+  width: number;
+  viewW: number;
+  viewH: number;
+}
+const sameLayout = (a: Layout | null, b: Layout | null) =>
+  a === b ||
+  (!!a &&
+    !!b &&
+    a.left === b.left &&
+    a.top === b.top &&
+    a.width === b.width &&
+    a.viewW === b.viewW &&
+    a.viewH === b.viewH);
+
+/** The open crosshair on the photo: arms from 6 to 24 screen px off the mark. */
+const MARK_GAP = 6;
+const MARK_ARM = 24;
+
+/**
+ * The cursor loupe, decorative (the bar reads its power as text): the photo at `power` screen px
+ * per original px around `at`, drawn centred on `centre` in the viewer, with the aim's crosshair
+ * and the mark's when it is in view.
+ */
+function Loupe({
+  url,
+  size,
+  power,
+  at,
+  centre,
+  mark,
+  aiming,
+}: {
+  url: string;
+  size: readonly [number, number];
+  power: number;
+  at: Px;
+  centre: Px;
+  mark: { px: readonly [number, number]; state: string } | undefined;
+  aiming: boolean;
+}) {
+  const h = LOUPE_BOX / 2;
+  const bg = loupeBackground(at, size, LOUPE_BOX, power);
+  const m: Px | null = mark
+    ? [h + (mark.px[0] - at[0]) * power, h + (mark.px[1] - at[1]) * power]
+    : null;
+  // a mark under the aim (the loupe resting on it) is drawn as the mark, else the aim has its own
+  const onAim = m !== null && Math.hypot(m[0] - h, m[1] - h) < 0.5;
+  return (
+    <div
+      className="ph-loupe"
+      aria-hidden="true"
+      data-testid="marker-loupe"
+      data-at={`${String(at[0])},${String(at[1])}`}
+      data-power={power}
+      data-aiming={aiming ? 'true' : undefined}
+      style={{
+        left: `${String(centre[0] - h)}px`,
+        top: `${String(centre[1] - h)}px`,
+        backgroundImage: `url("${url}")`,
+        backgroundSize: bg.size,
+        backgroundPosition: bg.position,
+      }}
+    >
+      <svg width={LOUPE_BOX} height={LOUPE_BOX}>
+        {m && !onAim && Math.hypot(m[0] - h, m[1] - h) < h + 30 && (
+          <g className={`mk ${mark?.state ?? ''}`}>
+            <Crosshair arms={crosshairArms(m, 1, 7, 30)} className="arm" />
+          </g>
+        )}
+        <g className={onAim ? `mk ${mark?.state ?? ''}` : 'aim'}>
+          <Crosshair arms={crosshairArms([h, h], 1, 7, 30)} className="arm" />
+          <circle className="dot" cx={h} cy={h} r={0.75} />
+        </g>
+      </svg>
+      <span className="ph-loupe-tag">
+        {ratioLabel(power)} · {at[0].toFixed(1)}, {at[1].toFixed(1)}
+      </span>
+    </div>
+  );
+}
+
+/** The loupe's centre while it rests on the mark: over it, but held inside the viewer. */
+function restPlace(l: Layout, c: Px): { x: number; y: number } {
+  const h = LOUPE_BOX / 2;
+  const fit = (v: number, max: number) =>
+    max >= LOUPE_BOX ? Math.min(max - h, Math.max(h, v)) : max / 2;
+  return { x: fit(c[0], l.viewW), y: fit(c[1], l.viewH) };
+}
+
+/** An open crosshair: four arms with a dark halo, the centre left clear. */
+function Crosshair({
+  arms,
+  className,
+  scaled,
+}: {
+  arms: [number, number, number, number][];
+  className: string;
+  /** Drawn in a scaled viewBox: keep the strokes their screen width. */
+  scaled?: boolean;
+}) {
+  const ve = scaled ? 'non-scaling-stroke' : undefined;
+  return (
+    <>
+      {arms.map(([x1, y1, x2, y2], i) => (
+        <line
+          key={`h${String(i)}`}
+          className={`halo ${className}`}
+          vectorEffect={ve}
+          {...{ x1, y1, x2, y2 }}
+        />
+      ))}
+      {arms.map(([x1, y1, x2, y2], i) => (
+        <line
+          key={`l${String(i)}`}
+          className={className}
+          vectorEffect={ve}
+          {...{ x1, y1, x2, y2 }}
+        />
+      ))}
+    </>
+  );
+}
 
 export function GcpMarker({
   run,
@@ -71,6 +230,49 @@ export function GcpMarker({
   // the photo shown, by its id: a mark can add photos to the list and reorder it
   const [shown, setShown] = useState<string | null>(null);
   const [zoom, setZoom] = useState(0);
+  const [power, setPower] = useState(readPower);
+  useEffect(() => {
+    try {
+      localStorage.setItem(POWER_KEY, String(power));
+    } catch {
+      // storage blocked: the power holds for this session only
+    }
+  }, [power]);
+  /** The cursor over the photo: where it is in the viewer and on the photo it aims at. */
+  const [hover, setHover] = useState<{ photo: string; pos: Px; aim: Px } | null>(null);
+  const outer = useRef<HTMLDivElement>(null);
+  const imgBox = useRef<HTMLDivElement>(null);
+  const [layout, setLayout] = useState<Layout | null>(null);
+  const measure = useCallback(() => {
+    const img = imgBox.current;
+    const o = outer.current;
+    if (!img || !o) {
+      setLayout(null);
+      return;
+    }
+    const r = img.getBoundingClientRect();
+    const v = o.getBoundingClientRect();
+    const next = {
+      left: r.left - v.left,
+      top: r.top - v.top,
+      width: r.width,
+      viewW: v.width,
+      viewH: v.height,
+    };
+    setLayout((old) => (sameLayout(old, next) ? old : next));
+  }, []);
+  // after every render (the zoom, the photo, the list beside it can move the photo), then on
+  // scrolling and resizing
+  useLayoutEffect(measure);
+  useEffect(() => {
+    const o = outer.current;
+    if (!o || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(o);
+    return () => {
+      ro.disconnect();
+    };
+  }, [measure]);
   const [loadedSize, setLoadedSize] = useState<{ id: string; size: [number, number] } | null>(null);
   const [saving, setSaving] = useState(false);
   /** A mark action is being saved (`act`). */
@@ -85,8 +287,22 @@ export function GcpMarker({
       keyRef.current(e);
     };
     el.addEventListener('keydown', fn);
+    // the wheel over the photo steps the loupe's power (a native listener: React's is passive and
+    // could not keep the viewer from scrolling)
+    let travel = 0;
+    const wheel = (e: WheelEvent) => {
+      if (!(e.target instanceof Element) || !e.target.closest('.ph-mk-img')) return;
+      e.preventDefault();
+      travel += e.deltaY;
+      if (Math.abs(travel) < WHEEL_STEP) return;
+      const dir = travel < 0 ? 1 : -1;
+      travel = 0;
+      setPower((p) => stepPower(p, dir));
+    };
+    el.addEventListener('wheel', wheel, { passive: false });
     return () => {
       el.removeEventListener('keydown', fn);
+      el.removeEventListener('wheel', wheel);
     };
   }, []);
 
@@ -259,6 +475,7 @@ export function GcpMarker({
         advance ? nextToMark(markerList(file, next, photos, frame, gsdCm), next, a.photo) : a.photo,
       );
   };
+  const size = current?.photo.size ?? [1, 1];
   const go = (by: 1 | -1) => {
     setShown(list[step(index, list.length, by)]?.photo.id ?? null);
   };
@@ -276,12 +493,30 @@ export function GcpMarker({
       true,
     );
   };
+  /** The arrow keys: the mark (else the prediction) moved by whole original pixels. */
+  const nudge = (by: Px) => {
+    if (!current) return;
+    const from = aimStart(mark, predicted);
+    if (!from) return;
+    void act({ kind: 'place', photo: current.photo.id, px: nudged(from, by, size) }, false);
+  };
+  const arrows: Record<string, Px | undefined> = {
+    ArrowLeft: [-1, 0],
+    ArrowRight: [1, 0],
+    ArrowUp: [0, -1],
+    ArrowDown: [0, 1],
+  };
   const onKey = (e: KeyboardEvent) => {
     const k = e.key;
-    if (k === 'Enter' || k === 'c' || k === 'C') confirm();
+    const arrow = arrows[k];
+    if (arrow) {
+      if (e.ctrlKey || e.altKey) return;
+      const d = e.shiftKey ? 10 : 1;
+      nudge([arrow[0] * d, arrow[1] * d]);
+    } else if (k === 'Enter' || k === 'c' || k === 'C') confirm();
     else if (k === 's' || k === 'S') skip();
-    else if (k === 'n' || k === 'N' || k === 'ArrowRight') go(1);
-    else if (k === 'p' || k === 'P' || k === 'ArrowLeft') go(-1);
+    else if (k === 'n' || k === 'N') go(1);
+    else if (k === 'p' || k === 'P') go(-1);
     else if (k === '+' || k === '=') setZoom((z) => Math.min(ZOOMS.length - 1, z + 1));
     else if (k === '-') setZoom((z) => Math.max(0, z - 1));
     else if (k === 'Escape') onBack();
@@ -295,9 +530,27 @@ export function GcpMarker({
   });
 
   if (!project) return null;
-  const size = current?.photo.size ?? [1, 1];
   const ring = current?.prediction;
-  const loupeAt = mark?.px ?? predicted ?? null;
+  // the photo as shown, screen px per original px; `unit` is the inverse, for constant-size marks
+  const scale = layout && layout.width > 0 ? layout.width / size[0] : 0;
+  const unit = scale > 0 ? 1 / scale : 1;
+  const aiming = current && hover?.photo === current.photo.id ? hover : null;
+  /** Where the loupe looks, in photo px, and where its centre is drawn, in the viewer. */
+  const rest = aimStart(mark, predicted);
+  const loupe = aiming
+    ? { at: aiming.aim, x: aiming.pos[0], y: aiming.pos[1] }
+    : rest && layout && scale > 0
+      ? {
+          at: rest,
+          ...restPlace(layout, [layout.left + rest[0] * scale, layout.top + rest[1] * scale]),
+        }
+      : null;
+  const markShown = mark && mark.state !== 'skipped' ? mark : undefined;
+  /** The cursor in the viewer, CSS px. */
+  const inViewer = (e: { clientX: number; clientY: number }): Px => {
+    const v = outer.current?.getBoundingClientRect();
+    return v ? [e.clientX - v.left, e.clientY - v.top] : [e.clientX, e.clientY];
+  };
 
   return (
     <div className="ph-marker" data-testid="gcp-marker">
@@ -357,28 +610,62 @@ export function GcpMarker({
       </aside>
 
       <div className="ph-mk-main">
-        <div className="ph-mk-viewer">
+        <div className="ph-mk-viewer" ref={outer}>
           <div
             ref={viewer}
             className="ph-mk-scroll"
             tabIndex={0}
             role="group"
-            aria-label={`Photo ${current?.photo.name ?? ''} of ${point.id}. Enter confirms, S skips, N and P change photo, plus and minus zoom.`}
-            aria-keyshortcuts="Enter C S N P ArrowRight ArrowLeft + - Escape"
+            aria-label={`Photo ${current?.photo.name ?? ''} of ${point.id}. Enter confirms, S skips, N and P change photo, the arrow keys move the mark, plus and minus zoom.`}
+            aria-keyshortcuts="Enter C S N P ArrowLeft ArrowRight ArrowUp ArrowDown + - Escape"
             data-testid="marker-viewer"
+            onScroll={measure}
           >
             {current ? (
               <>
                 <div
-                  className="ph-mk-img"
+                  ref={imgBox}
+                  className={`ph-mk-img ${natural ? 'aiming' : ''}`}
                   style={{
                     width: `${String((ZOOMS[zoom] ?? 1) * 100)}%`,
                     ...(imageUrl ? {} : { aspectRatio: `${String(size[0])} / ${String(size[1])}` }),
                   }}
+                  onPointerMove={(e) => {
+                    const pos = inViewer(e);
+                    const id = current.photo.id;
+                    const at = clickToPixel(
+                      [e.clientX, e.clientY],
+                      e.currentTarget.getBoundingClientRect(),
+                      size,
+                    );
+                    setHover((h) =>
+                      // Shift: fine aim, the loupe's centre moves at loupe speed
+                      e.shiftKey && h?.photo === id
+                        ? {
+                            photo: id,
+                            pos,
+                            aim: fineAim(
+                              h.aim,
+                              [pos[0] - h.pos[0], pos[1] - h.pos[1]],
+                              power,
+                              size,
+                            ),
+                          }
+                        : { photo: id, pos, aim: at },
+                    );
+                  }}
+                  onPointerLeave={() => {
+                    setHover(null);
+                  }}
                   onClick={(e) => {
-                    const r = e.currentTarget.getBoundingClientRect();
-                    const px = clickToPixel([e.clientX, e.clientY], r, size);
-                    void act({ kind: 'place', photo: current.photo.id, px }, false);
+                    const px =
+                      aiming?.aim ??
+                      clickToPixel(
+                        [e.clientX, e.clientY],
+                        e.currentTarget.getBoundingClientRect(),
+                        size,
+                      );
+                    void act({ kind: 'place', photo: current.photo.id, px: [px[0], px[1]] }, false);
                   }}
                 >
                   {imageUrl ? (
@@ -414,44 +701,38 @@ export function GcpMarker({
                         className="ring"
                       />
                     )}
-                    {mark && mark.state !== 'skipped' && (
-                      <g className={`mk ${mark.state}`} data-testid="marker-mark">
-                        <circle cx={mark.px[0]} cy={mark.px[1]} r={size[0] / 160} />
-                        <line
-                          x1={mark.px[0] - size[0] / 80}
-                          x2={mark.px[0] + size[0] / 80}
-                          y1={mark.px[1]}
-                          y2={mark.px[1]}
-                        />
-                        <line
-                          x1={mark.px[0]}
-                          x2={mark.px[0]}
-                          y1={mark.px[1] - size[0] / 80}
-                          y2={mark.px[1] + size[0] / 80}
+                    {markShown && (
+                      <g
+                        className={`mk ${markShown.state}`}
+                        data-testid="marker-mark"
+                        data-px={`${String(markShown.px[0])},${String(markShown.px[1])}`}
+                        data-unit={unit}
+                      >
+                        <Crosshair
+                          arms={crosshairArms(markShown.px, unit, MARK_GAP, MARK_ARM)}
+                          className="arm"
+                          scaled
                         />
                       </g>
                     )}
                   </svg>
                 </div>
-                {loupeAt && natural && imageUrl && (
-                  <div
-                    className="ph-loupe"
-                    aria-hidden="true"
-                    data-testid="marker-loupe"
-                    style={{
-                      backgroundImage: `url("${imageUrl}")`,
-                      backgroundSize: loupeBackground(loupeAt, size, LOUPE_BOX, LOUPE).size,
-                      backgroundPosition: loupeBackground(loupeAt, size, LOUPE_BOX, LOUPE).position,
-                    }}
-                  >
-                    <i />
-                  </div>
-                )}
               </>
             ) : (
               <p className="faint small">No photo to show.</p>
             )}
           </div>
+          {current && loupe && natural && imageUrl && (
+            <Loupe
+              url={imageUrl}
+              size={size}
+              power={power}
+              at={loupe.at}
+              centre={[loupe.x, loupe.y]}
+              mark={markShown}
+              aiming={!!aiming}
+            />
+          )}
         </div>
         <div className="ph-mk-bar">
           <span className="small faint">
@@ -460,6 +741,11 @@ export function GcpMarker({
               : ''}
             {saving ? ' · saving' : ''}
           </span>
+          {scale > 0 && (
+            <span className="ph-mk-scale small" data-testid="marker-scale">
+              Photo {ratioLabel(scale)} · loupe {ratioLabel(power)}
+            </span>
+          )}
           <button
             type="button"
             className="btn sm"

@@ -415,21 +415,102 @@ export function clickToPixel(
 }
 
 /**
- * The loupe: the photo at `zoom` times the box width, placed so the original-image pixel position
- * `px` sits under the box centre (where the cross hair is drawn). CSS pixels.
+ * The loupe at true magnification: the photo drawn `power` screen px per original pixel, placed so
+ * the original-image pixel position `px` (sub-pixel kept) sits under the centre of a loupe `box`
+ * CSS pixels across, where its crosshair is drawn. The image is scaled to the original size
+ * whatever its natural size, so a photo read at another resolution still lines up with the marks.
  */
 export function loupeBackground(
   px: readonly [number, number],
   size: readonly [number, number],
   box: number,
-  zoom: number,
+  power: number,
 ): { size: string; position: string } {
-  const w = box * zoom;
-  const h = (w * size[1]) / size[0];
-  const x = box / 2 - (px[0] / size[0]) * w;
-  const y = box / 2 - (px[1] / size[1]) * h;
   const f = (v: number) => `${String(Math.round(v * 100) / 100)}px`;
-  return { size: `${f(w)} ${f(h)}`, position: `${f(x)} ${f(y)}` };
+  return {
+    size: `${f(size[0] * power)} ${f(size[1] * power)}`,
+    position: `${f(box / 2 - px[0] * power)} ${f(box / 2 - px[1] * power)}`,
+  };
+}
+
+/** The cursor loupe's powers, screen px per original pixel, that the mouse wheel steps through. */
+export const LOUPE_POWERS = [2, 3, 4, 6, 8, 10, 12] as const;
+/** The loupe's power until the person picks another (remembered on this computer). */
+export const LOUPE_POWER = 6;
+
+/** The next loupe power up (`dir` 1) or down (-1), held at 2:1 and 12:1. */
+export function stepPower(power: number, dir: 1 | -1): number {
+  if (!Number.isFinite(power)) return LOUPE_POWER;
+  const lo = LOUPE_POWERS[0];
+  const hi = LOUPE_POWERS[LOUPE_POWERS.length - 1] ?? lo;
+  if (dir > 0) return LOUPE_POWERS.find((p) => p > power + 1e-9) ?? hi;
+  return [...LOUPE_POWERS].reverse().find((p) => p < power - 1e-9) ?? lo;
+}
+
+const clampTo = (p: readonly [number, number], size: readonly [number, number]) =>
+  [Math.min(size[0], Math.max(0, p[0])), Math.min(size[1], Math.max(0, p[1]))] as [number, number];
+
+/**
+ * Fine aim (Shift held over the photo): the aim moves at loupe speed, `delta` screen px of the
+ * mouse moving it `delta / power` original px, so a target can be centred to a fraction of a
+ * pixel without a steady hand. Held inside the photo.
+ */
+export function fineAim(
+  aim: readonly [number, number],
+  delta: readonly [number, number],
+  power: number,
+  size: readonly [number, number],
+): [number, number] {
+  return clampTo([aim[0] + delta[0] / power, aim[1] + delta[1] / power], size);
+}
+
+/**
+ * Where the loupe rests while the cursor is off the photo, and where a nudge starts: the mark,
+ * else the prediction. A skipped mark keeps no place on the photo.
+ */
+export function aimStart(
+  mark: { px: readonly [number, number]; state: GcpMark['state'] } | undefined,
+  predicted: readonly [number, number] | undefined,
+): [number, number] | null {
+  const at = mark && mark.state !== 'skipped' ? mark.px : predicted;
+  return at ? [at[0], at[1]] : null;
+}
+
+/** A mark moved by whole original pixels (the arrow keys), held inside the photo. */
+export function nudged(
+  from: readonly [number, number],
+  by: readonly [number, number],
+  size: readonly [number, number],
+): [number, number] {
+  return clampTo([from[0] + by[0], from[1] + by[1]], size);
+}
+
+/**
+ * An open crosshair at `at` (photo units): four arms from `gap` to `arm` screen px off the centre,
+ * so the target's very centre stays in view. `unit` is photo units per screen px, which keeps the
+ * crosshair the same size on screen at any zoom. Each arm runs from the gap outwards.
+ */
+export function crosshairArms(
+  at: readonly [number, number],
+  unit: number,
+  gap: number,
+  arm: number,
+): [number, number, number, number][] {
+  const [x, y] = at;
+  const g = gap * unit;
+  const a = arm * unit;
+  return [
+    [x - g, y, x - a, y],
+    [x + g, y, x + a, y],
+    [x, y - g, x, y - a],
+    [x, y + g, x, y + a],
+  ];
+}
+
+/** A scale, screen px per photo px, as a ratio: "6:1" magnified, "1:5.6" shrunk. */
+export function ratioLabel(s: number): string {
+  const trim = (v: number) => String(Math.round(v * 10) / 10);
+  return s >= 1 ? `${trim(s)}:1` : `1:${trim(1 / s)}`;
 }
 
 /**

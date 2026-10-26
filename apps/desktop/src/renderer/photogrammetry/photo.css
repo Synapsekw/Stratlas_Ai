@@ -350,6 +350,10 @@
   position: relative;
   cursor: crosshair;
 }
+/* the loupe is the cursor while the photo can be sampled */
+.ph-mk-img.aiming {
+  cursor: none;
+}
 .ph-mk-img img {
   display: block;
   width: 100%;
@@ -370,39 +374,63 @@
   vector-effect: non-scaling-stroke;
   stroke-dasharray: 6 4;
 }
-.ph-mk-over .mk circle,
-.ph-mk-over .mk line {
-  fill: none;
+/* open crosshairs (the mark on the photo, the aim and the mark in the loupe): thin arms over a
+   dark halo, the centre left clear */
+.ph-mk-over .arm,
+.ph-loupe .arm {
   stroke: var(--acc);
-  stroke-width: 2;
-  vector-effect: non-scaling-stroke;
+  stroke-width: 1.25;
 }
-.ph-mk-over .mk.draft circle,
-.ph-mk-over .mk.draft line {
+.ph-mk-over .arm.halo,
+.ph-loupe .arm.halo {
+  stroke: var(--scrim);
+  stroke-width: 3.25;
+}
+.ph-mk-over .mk.draft .arm:not(.halo),
+.ph-loupe .mk.draft .arm:not(.halo) {
   stroke: var(--s4);
-  stroke-dasharray: 3 3;
 }
+.ph-loupe .aim .arm:not(.halo) {
+  stroke: var(--acc-strong);
+}
+.ph-loupe .dot {
+  fill: var(--acc-strong);
+}
+.ph-loupe .mk.draft .dot {
+  fill: var(--s4);
+}
+/* the cursor loupe (GcpMarker Loupe): LOUPE_BOX across, placed by its centre in the viewer */
 .ph-loupe {
-  position: sticky;
-  float: right;
-  top: 8px;
-  right: 8px;
-  margin: 8px;
-  width: 140px;
-  height: 140px;
-  border: 1px solid var(--line-strong);
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  overflow: hidden;
+  border: 2px solid var(--line-strong);
   border-radius: 50%;
+  box-shadow: var(--el-2);
   background-repeat: no-repeat;
   background-color: var(--bg-0);
+  /* original pixels as crisp squares: the target's edges are what the eye lines up */
+  image-rendering: pixelated;
   pointer-events: none;
-  display: grid;
-  place-items: center;
 }
-.ph-loupe i {
-  width: 18px;
-  height: 18px;
-  border: 1px solid var(--acc);
-  border-radius: 50%;
+.ph-loupe svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+.ph-loupe-tag {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--scrim);
+  color: var(--fg-1);
+  font-size: var(--t-11);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .ph-mk-bar {
   display: flex;
@@ -411,6 +439,11 @@
 }
 .ph-mk-bar > span {
   flex: 1;
+}
+.ph-mk-bar > span.ph-mk-scale {
+  flex: none;
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
 }
 .ph-marker-empty {
   display: grid;

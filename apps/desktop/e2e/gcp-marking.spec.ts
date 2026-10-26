@@ -1,7 +1,7 @@
 /**
  * Ground control in the Builder (M10 G4): import the site's GCP CSV with a column mapping, mark
  * every point on the photos with the keyboard (the prediction ring sits on the painted target),
- * **Adjust**, and read the accuracy report: checkpoints measured, never adjusted, the planted bad
+ * aim one mark with the cursor loupe and nudge it with an arrow key, **Adjust**, and read the accuracy report: checkpoints measured, never adjusted, the planted bad
  * point (GCP6) flagged. Saves are atomic with a `.bak`.
  *
  * A run read from a flight folder outside the project marks the same way, its photos read
@@ -27,6 +27,7 @@ import {
   PHOTO_DAY,
   PHOTO_PLATFORM,
   PHOTO_PLATFORM_ONLY,
+  PHOTO_SIZE,
   photoFixtures,
   runId,
   startRun,
@@ -50,6 +51,55 @@ async function ringOffset(win: Page, point: (typeof GCPS)[number]): Promise<numb
   const at = await marker.getByTestId('prediction-ring').getAttribute('data-px');
   const [x = Number.NaN, y = Number.NaN] = (at ?? '').split(',').map(Number);
   return Math.hypot(x - want[0], y - want[1]);
+}
+
+const xy = (s: string | null) => (s ?? '').split(',').map(Number) as [number, number];
+
+/**
+ * The cursor loupe on the photo shown: it rests on the prediction, follows the cursor at 6:1, a
+ * click places the mark under its centre, the right arrow moves the mark one photo px, and off the
+ * photo the loupe rests on the mark.
+ */
+async function aimWithTheLoupe(win: Page, point: (typeof GCPS)[number]): Promise<void> {
+  const marker = win.getByTestId('gcp-marker');
+  const loupe = marker.getByTestId('marker-loupe');
+  await expect(loupe).toBeVisible();
+  await expect(loupe).not.toHaveAttribute('data-aiming', 'true');
+  const name = await marker.locator('.ph-mk-list button[aria-current="true"] .mono').innerText();
+  const cam = CAMERAS.find((c) => c.file === name.trim());
+  const want = cam ? expectedPixel(cam, point.local) : null;
+  if (!want) throw new Error(`${point.id} is not in ${name}`);
+  const box = await marker.locator('.ph-mk-img').boundingBox();
+  if (!box) throw new Error('no photo');
+  const s = box.width / PHOTO_SIZE[0];
+  const at = { x: box.x + want[0] * s, y: box.y + want[1] * s };
+  await win.mouse.move(at.x - 40, at.y - 30);
+  await win.mouse.move(at.x, at.y, { steps: 4 });
+  await expect(loupe).toHaveAttribute('data-aiming', 'true');
+  // the loupe is centred on the cursor, at true magnification
+  const lb = await loupe.boundingBox();
+  if (!lb) throw new Error('no loupe');
+  expect(Math.abs(lb.x + lb.width / 2 - at.x)).toBeLessThan(1.5);
+  expect(Math.abs(lb.y + lb.height / 2 - at.y)).toBeLessThan(1.5);
+  await expect(loupe).toHaveAttribute('data-power', '6');
+  await expect(marker.getByTestId('marker-scale')).toContainText('loupe 6:1');
+  // a click places the mark under the loupe's centre (one CSS px is 1 / s photo px)
+  await win.mouse.click(at.x, at.y);
+  const mark = marker.getByTestId('marker-mark');
+  await expect(mark).toBeVisible();
+  const placed = xy(await mark.getAttribute('data-px'));
+  expect(Math.hypot(placed[0] - want[0], placed[1] - want[1])).toBeLessThan(1 / s + 0.5);
+  // the right arrow nudges it one photo px; the photo stays
+  await win.keyboard.press('ArrowRight');
+  await expect
+    .poll(async () => xy(await mark.getAttribute('data-px'))[0])
+    .toBeCloseTo(placed[0] + 1, 6);
+  expect(xy(await mark.getAttribute('data-px'))[1]).toBeCloseTo(placed[1], 6);
+  await expect(marker.locator('.ph-mk-list button[aria-current="true"] .mono')).toHaveText(name);
+  // off the photo, the loupe rests on the mark
+  await marker.locator('.ph-mk-side').hover();
+  await expect(loupe).not.toHaveAttribute('data-aiming', 'true');
+  await expect(loupe).toHaveAttribute('data-at', (await mark.getAttribute('data-px')) ?? '');
 }
 
 test('import GCPs, mark them with the keyboard, adjust, read an honest report and export it', async ({
@@ -89,10 +139,20 @@ test('import GCPs, mark them with the keyboard, adjust, read an honest report an
     await expect(marker).toBeVisible();
     const viewer = marker.getByTestId('marker-viewer');
     await expect(viewer).toBeFocused();
+    const shownName = marker.locator('.ph-mk-list button[aria-current="true"] .mono');
+    if (i === 0) {
+      // a click with the loupe places a confirmed mark: the count is 1 before Enter
+      await aimWithTheLoupe(win, point);
+      await expect(viewer).toBeFocused();
+      await expect(marker.getByTestId('marker-count')).toContainText('1 of 3');
+    }
     for (let n = 1; n <= 3; n++) {
       expect(await ringOffset(win, point)).toBeLessThan(10);
+      const before = await shownName.innerText();
       await win.keyboard.press('Enter');
       await expect(marker.getByTestId('marker-count')).toContainText(`${String(n)} of 3`);
+      // Enter on the photo marked with the loupe leaves the count: wait for the next photo
+      if (i === 0 && n === 1) await expect(shownName).not.toHaveText(before);
     }
     if (i === 0)
       await expectAccessible(win, 'GCP marker', { include: '[data-testid="photo-run"]' });

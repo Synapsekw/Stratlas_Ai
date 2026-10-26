@@ -3,23 +3,31 @@ import type { GcpFile, GcpPoint } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
   adjustProblems,
+  aimStart,
   applyMark,
   clickToPixel,
+  crosshairArms,
+  fineAim,
   gcpLocal,
   gcpLonLat,
   GNSS_RADIUS_PX,
   groundShift,
   inFrame,
+  LOUPE_POWER,
+  LOUPE_POWERS,
   loupeBackground,
   MARKED_RADIUS_PX,
   markerList,
   MAX_SHIFT_M,
   nextToMark,
+  nudged,
   photosFor,
   predictions,
+  ratioLabel,
   readCamerasFile,
   sfmPhotos,
   step,
+  stepPower,
   surveyShift,
   triangulate,
   withPoint,
@@ -436,15 +444,83 @@ describe('pixel convention (COLMAP: top-left corner is 0, 0; pixel i has its cen
     expect(pred?.px[1]).toBeCloseTo(600, 9);
   });
 
-  it('puts the target under the loupe centre at any position', () => {
-    // 140 px loupe at 4x: the photo is 560 x 420 px; the centre pixel sits at 70, 70
-    expect(loupeBackground([800, 600], size, 140, 4)).toEqual({
-      size: '560px 420px',
-      position: '-210px -140px',
+  it('puts the target under the loupe centre at true magnification', () => {
+    // 260 px loupe at 6:1: the photo is 6 screen px per original px, 9600 x 7200 px
+    expect(loupeBackground([800, 600], size, 260, 6)).toEqual({
+      size: '9600px 7200px',
+      position: '-4670px -3470px',
     });
     // the top-left corner: the photo starts at the loupe centre
-    expect(loupeBackground([0, 0], size, 140, 4).position).toBe('70px 70px');
-    expect(loupeBackground([1600, 1200], size, 140, 4).position).toBe('-490px -350px');
+    expect(loupeBackground([0, 0], size, 260, 6).position).toBe('130px 130px');
+    // sub-pixel aims are kept: 0.5 px at 6:1 is 3 screen px
+    expect(loupeBackground([0.5, 0.25], size, 260, 6).position).toBe('127px 128.5px');
+    // the power is per original pixel, whatever the loupe's size
+    expect(loupeBackground([800, 600], size, 140, 2).size).toBe('3200px 2400px');
+  });
+});
+
+describe('the cursor loupe', () => {
+  const size: [number, number] = [1600, 1200];
+
+  it('steps the power through 2:1 to 12:1 and holds it at the ends', () => {
+    expect(LOUPE_POWER).toBe(6);
+    expect(LOUPE_POWERS[0]).toBe(2);
+    expect(LOUPE_POWERS.at(-1)).toBe(12);
+    expect(stepPower(6, 1)).toBe(8);
+    expect(stepPower(6, -1)).toBe(4);
+    expect(stepPower(12, 1)).toBe(12);
+    expect(stepPower(2, -1)).toBe(2);
+    // a power not in the list (an old stored value) goes to its neighbour in the list
+    expect(stepPower(5, 1)).toBe(6);
+    expect(stepPower(5, -1)).toBe(4);
+    expect(stepPower(40, -1)).toBe(12);
+    expect(stepPower(Number.NaN, 1)).toBe(LOUPE_POWER);
+  });
+
+  it('moves the aim at loupe speed with Shift (fine aim), held inside the photo', () => {
+    // 12 screen px at 6:1 is 2 original px
+    expect(fineAim([100, 100], [12, -3], 6, size)).toEqual([102, 99.5]);
+    expect(fineAim([1, 1], [-60, -60], 6, size)).toEqual([0, 0]);
+    expect(fineAim([1599, 1199], [60, 60], 6, size)).toEqual([1600, 1200]);
+  });
+
+  it('rests on the mark, else the prediction; a skipped mark has no place to rest on', () => {
+    const mark = (state: 'draft' | 'confirmed' | 'skipped') => ({
+      px: [10, 20] as [number, number],
+      state,
+    });
+    expect(aimStart(mark('confirmed'), [5, 5])).toEqual([10, 20]);
+    expect(aimStart(mark('draft'), [5, 5])).toEqual([10, 20]);
+    expect(aimStart(mark('skipped'), [5, 5])).toEqual([5, 5]);
+    expect(aimStart(undefined, [5, 5])).toEqual([5, 5]);
+    expect(aimStart(undefined, undefined)).toBeNull();
+  });
+
+  it('nudges by whole original pixels, held inside the photo, sub-pixel part kept', () => {
+    expect(nudged([100.25, 50.5], [1, 0], size)).toEqual([101.25, 50.5]);
+    expect(nudged([100.25, 50.5], [0, -10], size)).toEqual([100.25, 40.5]);
+    expect(nudged([3, 1195], [-10, 10], size)).toEqual([0, 1200]);
+  });
+
+  it('draws an open crosshair of the same screen size at any photo scale', () => {
+    // photo shown at 1:4 (4 original px per screen px) and at 2:1 (half an original px per screen px)
+    for (const unit of [4, 0.5]) {
+      const arms = crosshairArms([400, 300], unit, 6, 24);
+      expect(arms).toHaveLength(4);
+      for (const [x1, y1, x2, y2] of arms) {
+        // every arm is 18 screen px long and starts 6 screen px from the centre
+        expect(Math.hypot(x2 - x1, y2 - y1) / unit).toBeCloseTo(18, 9);
+        expect(Math.hypot(x1 - 400, y1 - 300) / unit).toBeCloseTo(6, 9);
+      }
+    }
+  });
+
+  it('reads a scale as a ratio of screen px to photo px', () => {
+    expect(ratioLabel(6)).toBe('6:1');
+    expect(ratioLabel(1)).toBe('1:1');
+    expect(ratioLabel(0.18)).toBe('1:5.6');
+    expect(ratioLabel(0.25)).toBe('1:4');
+    expect(ratioLabel(2.5)).toBe('2.5:1');
   });
 });
 

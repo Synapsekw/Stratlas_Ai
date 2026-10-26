@@ -17,10 +17,12 @@ interface Reply {
   ok: true;
   value: { ok: true } | { ok: false; error: string };
 }
-const { call, writes } = vi.hoisted(() => ({
+const { call, writes, sentFiles } = vi.hoisted(() => ({
   call: vi.fn(),
   /** The `photo:writeGcp` calls main has not answered yet, oldest first. */
   writes: [] as { gcp: GcpFile; answer: (r: Reply) => void }[],
+  /** Every file sent to `photo:writeGcp`, answered or not. */
+  sentFiles: [] as GcpFile[],
 }));
 vi.mock('../shell', () => ({
   bridge: { call },
@@ -135,12 +137,15 @@ const answer = async (r: Reply) => {
 
 beforeEach(async () => {
   writes.length = 0;
+  sentFiles.length = 0;
+  localStorage.clear();
   call.mockReset();
   call.mockImplementation((channel: string, req: { gcp: GcpFile }) => {
     if (channel === 'photo:readGcp')
       return Promise.resolve({ ok: true, value: { ok: true, gcp: onDisk } });
     if (channel === 'photo:writeGcp')
       return new Promise<Reply>((reply) => {
+        sentFiles.push(req.gcp);
         writes.push({ gcp: req.gcp, answer: reply });
       });
     throw new Error(`unexpected channel ${channel}`);
@@ -280,5 +285,166 @@ describe('marking with the keyboard while main saves', () => {
     expect(shown()).toBe(here);
     await sent();
     expect(writes).toHaveLength(0);
+  });
+});
+
+describe('aiming with the cursor loupe and the arrow keys', () => {
+  /** The photo is 800 x 600 original px, shown 400 x 300 CSS px at (100, 50): 1:2. */
+  const IMG = { left: 100, top: 50, width: 400, height: 300 };
+  /** The viewer, which the loupe is placed in. */
+  const VIEW = { left: 0, top: 0, width: 600, height: 400 };
+  const rect = (r: typeof IMG) =>
+    ({ ...r, x: r.left, y: r.top, right: r.left + r.width, bottom: r.top + r.height }) as DOMRect;
+
+  const loupe = () => host.querySelector<HTMLElement>('[data-testid="marker-loupe"]');
+  const xy = (s: string | null | undefined) => (s ?? '').split(',').map(Number);
+  /** The mark main was last asked to save for the photo shown. */
+  const lastMark = () => {
+    const f = sentFiles.at(-1) ?? expect.fail('no write');
+    const p = f.points.find((pp) => pp.id === 'GCP1');
+    return p?.marks.at(-1);
+  };
+  const pointer = (type: string, x: number, y: number, o: MouseEventInit = {}) => {
+    const el = host.querySelector('.ph-mk-img') ?? expect.fail('no photo');
+    act(() => {
+      el.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true, ...o }));
+    });
+  };
+  /** The photo has loaded (jsdom loads no images): the loupe can sample it. */
+  const loaded = (natural = [800, 600]) => {
+    const img = host.querySelector('.ph-mk-img img') ?? expect.fail('no img');
+    Object.defineProperty(img, 'naturalWidth', { value: natural[0], configurable: true });
+    Object.defineProperty(img, 'naturalHeight', { value: natural[1], configurable: true });
+    act(() => {
+      img.dispatchEvent(new Event('load'));
+    });
+  };
+
+  beforeEach(() => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this.classList.contains('ph-mk-img')) return rect(IMG);
+      if (this.classList.contains('ph-mk-viewer')) return rect(VIEW);
+      return rect({ left: 0, top: 0, width: 0, height: 0 });
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('nudges the mark one photo px with an arrow, ten with Shift, starting at the prediction', async () => {
+    const first = shown();
+    const [rx = NaN, ry = NaN] = xy(ringAt());
+    press('ArrowRight');
+    await sent();
+    expect(lastMark()?.state).toBe('confirmed');
+    // the ring's data-px is rounded to 0.1 px
+    expect(lastMark()?.px[0]).toBeCloseTo(rx + 1, 0);
+    expect(lastMark()?.px[1]).toBeCloseTo(ry, 0);
+    await answer(OK);
+    const from = lastMark()?.px ?? expect.fail('no mark');
+    act(() => {
+      q('marker-viewer').dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowUp', shiftKey: true, bubbles: true }),
+      );
+    });
+    await sent();
+    expect(lastMark()?.px).toEqual([from[0], from[1] - 10]);
+    await answer(OK);
+    // the arrows never change the photo: N and P do
+    expect(shown()).toBe(first);
+    press('ArrowLeft');
+    await answer(OK);
+    expect(shown()).toBe(first);
+    expect(xy(q('marker-mark').getAttribute('data-px'))).toEqual([from[0] - 1, from[1] - 10]);
+  });
+
+  it('rests the loupe on the prediction, then on the mark, while the cursor is off the photo', async () => {
+    expect(loupe()).toBeNull(); // nothing to sample before the photo has loaded
+    loaded();
+    const [rx = NaN, ry = NaN] = xy(ringAt());
+    const l = loupe() ?? expect.fail('no loupe');
+    expect(l.getAttribute('aria-hidden')).toBe('true');
+    expect(l.dataset.power).toBe('6');
+    const [ax = NaN, ay = NaN] = xy(l.dataset.at);
+    expect(ax).toBeCloseTo(rx, 0);
+    expect(ay).toBeCloseTo(ry, 0);
+    // drawn over the prediction on the photo: 1:2 from the photo's corner, in the viewer
+    expect(parseFloat(l.style.left) + 130).toBeCloseTo(100 + ax / 2, 1);
+    expect(parseFloat(l.style.top) + 130).toBeCloseTo(50 + ay / 2, 1);
+    press('ArrowDown');
+    await answer(OK);
+    expect(xy(loupe()?.dataset.at)).toEqual(xy(q('marker-mark').getAttribute('data-px')));
+    expect(host.querySelector('.ph-mk-bar')?.textContent).toContain('Photo 1:2 · loupe 6:1');
+  });
+
+  it('follows the cursor at true magnification and places the mark at its centre', async () => {
+    loaded();
+    // the cursor at (300, 200) is half way across the photo shown: original px 400, 300
+    pointer('pointermove', 300, 200);
+    const l = loupe() ?? expect.fail('no loupe');
+    expect(xy(l.dataset.at)).toEqual([400, 300]);
+    expect([l.style.left, l.style.top]).toEqual(['170px', '70px']);
+    // 6 screen px per original px: the photo is 4800 x 3600, the aim under the centre
+    expect(l.style.backgroundSize).toBe('4800px 3600px');
+    expect(l.style.backgroundPosition).toBe('-2270px -1670px');
+    // Shift: the aim moves at loupe speed, 12 screen px are 2 original px
+    pointer('pointermove', 312, 197, { shiftKey: true });
+    expect(xy(loupe()?.dataset.at)).toEqual([402, 299.5]);
+    pointer('click', 312, 197);
+    await sent();
+    expect(lastMark()?.px).toEqual([402, 299.5]);
+    await answer(OK);
+    // off the photo: the loupe rests on the new mark
+    pointer('pointerout', 600, 380, { relatedTarget: document.body });
+    expect(xy(loupe()?.dataset.at)).toEqual([402, 299.5]);
+  });
+
+  it('changes the power with the wheel in steps from 2:1 to 12:1 and remembers it', () => {
+    loaded();
+    pointer('pointermove', 300, 200);
+    const wheel = (deltaY: number) => {
+      act(() => {
+        host
+          .querySelector('.ph-mk-img')
+          ?.dispatchEvent(new WheelEvent('wheel', { deltaY, bubbles: true, cancelable: true }));
+      });
+    };
+    wheel(-100);
+    expect(loupe()?.dataset.power).toBe('8');
+    for (let i = 0; i < 5; i++) wheel(-100);
+    expect(loupe()?.dataset.power).toBe('12');
+    expect(localStorage.getItem('quadrion.gcpLoupePower')).toBe('12');
+    for (let i = 0; i < 9; i++) wheel(100);
+    expect(loupe()?.dataset.power).toBe('2');
+    expect(host.querySelector('.ph-mk-bar')?.textContent).toContain('loupe 2:1');
+  });
+
+  it('samples a photo read at another size in the calibrated size, where the marks are', () => {
+    loaded([1600, 1200]); // a photo twice the calibrated 800 x 600
+    pointer('pointermove', 300, 200);
+    expect(xy(loupe()?.dataset.at)).toEqual([400, 300]);
+    expect(loupe()?.style.backgroundSize).toBe('4800px 3600px');
+  });
+});
+
+describe('the mark on the photo', () => {
+  it('is an open crosshair the same size on screen at any zoom', async () => {
+    press('Enter');
+    await answer(OK);
+    press('p');
+    const arms = () =>
+      [...host.querySelectorAll('[data-testid="marker-mark"] line:not(.halo)')].map((l) =>
+        Math.hypot(
+          Number(l.getAttribute('x2')) - Number(l.getAttribute('x1')),
+          Number(l.getAttribute('y2')) - Number(l.getAttribute('y1')),
+        ),
+      );
+    expect(arms()).toHaveLength(4);
+    const unit = Number(q('marker-mark').dataset.unit);
+    // in photo units, the arms are as long as their screen size times the photo px per screen px
+    for (const a of arms()) expect(a / unit).toBeCloseTo(18, 6);
+    expect(host.querySelector('[data-testid="marker-mark"] circle')).toBeNull();
   });
 });
