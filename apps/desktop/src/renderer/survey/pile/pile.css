@@ -205,6 +205,58 @@
   gap: var(--sp-5);
   min-width: 0;
 }
+.pp-look dd {
+  font-family: var(--f-ui);
+  font-weight: 400;
+}
+.pp-editing {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: var(--sp-3) 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  background: var(--bg-2);
+}
+.pp-editing p {
+  flex: 1;
+  margin: 0;
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+
+/* the opened pile's height legend over the 3D view (pileLookScene) */
+.pl-legend {
+  position: absolute;
+  left: 14px;
+  bottom: 100px;
+  z-index: 5;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgb(14 17 22 / 82%);
+  color: #e8ecf2;
+  font: 12px/1.3 var(--f-ui);
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
+}
+.pl-legend-title {
+  margin-bottom: 5px;
+  opacity: 0.85;
+}
+.pl-legend-bar {
+  width: 160px;
+  height: 9px;
+  border-radius: 3px;
+}
+.pl-legend-ticks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 .pp-row {
   display: flex;
   flex-wrap: wrap;

@@ -16,7 +16,8 @@ import type { DatedSurface } from '../card/pointHistory';
 import { useCompare } from '../compareStore';
 import { saveSiteSettings, updateMeasurement } from '../measureStore';
 import type { PileData } from './PilePanel';
-import { footprintM2, minusSigned, parseDecimal, pilePosition } from './pileView';
+import type { PileSurfaceMode } from './pileLook';
+import { footprintM2, minusSigned, parseDecimal, pilePosition, usePileView } from './pileView';
 import '../compare.css';
 
 /** Density decimals as the boards write it ("1.60"). */
@@ -278,8 +279,50 @@ export function PileHeader({
             />
           </dd>
         </div>
+        <SurfaceFact />
       </dl>
     </header>
+  );
+}
+
+/**
+ * How the opened pile's top shows in 3D (founder, 26 Oct 2026): solid red, or coloured by its
+ * height above the base with a legend in the view. A view choice for the session.
+ */
+function SurfaceFact(): ReactElement {
+  const t = useT();
+  const surface = usePileView((s) => s.surface);
+  const setSurface = usePileView((s) => s.setSurface);
+  const modes: { id: PileSurfaceMode; label: string }[] = [
+    { id: 'solid', label: t('pile.surface.solid') },
+    { id: 'height', label: t('pile.surface.height') },
+  ];
+  return (
+    <div className="pp-look">
+      <dt className="pp-cap">{t('pile.surface')}</dt>
+      <dd>
+        <div
+          className="seg"
+          role="group"
+          aria-label={t('pile.surface.aria')}
+          data-testid="pile-surface"
+        >
+          {modes.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              aria-pressed={surface === o.id}
+              data-testid={`pile-surface-${o.id}`}
+              onClick={() => {
+                setSurface(o.id);
+              }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </dd>
+    </div>
   );
 }
 

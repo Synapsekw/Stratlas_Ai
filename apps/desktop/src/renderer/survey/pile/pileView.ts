@@ -10,6 +10,7 @@ import type { NumberLocale } from '@aio/geo';
 import { pileAxis, seriesDate, type ChartSeries, type PileAxis, type TimeRow } from '@aio/survey';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import type { PileSurfaceMode } from './pileLook';
 
 export type PileTab = 'overview' | 'profile' | 'history';
 export type HistoryUnit = 'm3' | 't' | 'both';
@@ -19,6 +20,11 @@ export interface PileViewState {
   /** Each pile's profile line, by measurement id; absent: its long axis. */
   axis: ReadonlyMap<string, PileAxis>;
   historyUnit: HistoryUnit;
+  /**
+   * How the opened pile's top is coloured in 3D: solid red or its height above the base. A view
+   * preference for the session, never saved on the measurement.
+   */
+  surface: PileSurfaceMode;
   /** The outline each pile's line was last fitted to (`fitAxisTo`), by measurement id. */
   fitted: ReadonlyMap<string, string>;
   setAxis: (id: string, axis: PileAxis) => void;
@@ -29,6 +35,7 @@ export interface PileViewState {
   fitAxisTo: (id: string, ringKey: string, ring: readonly SitePoint[]) => void;
   setTab: (tab: PileTab) => void;
   setHistoryUnit: (u: HistoryUnit) => void;
+  setSurface: (s: PileSurfaceMode) => void;
 }
 
 export function createPileView(): StoreApi<PileViewState> {
@@ -36,6 +43,7 @@ export function createPileView(): StoreApi<PileViewState> {
     tab: 'overview',
     axis: new Map(),
     historyUnit: 'm3',
+    surface: 'solid',
     fitted: new Map(),
     setAxis: (id, axis) => {
       set((s) => ({ axis: new Map(s.axis).set(id, axis) }));
@@ -56,6 +64,9 @@ export function createPileView(): StoreApi<PileViewState> {
     },
     setHistoryUnit: (historyUnit) => {
       set({ historyUnit });
+    },
+    setSurface: (surface) => {
+      set({ surface });
     },
   }));
 }

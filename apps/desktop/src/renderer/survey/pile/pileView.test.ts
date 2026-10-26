@@ -47,6 +47,13 @@ describe('pileView store', () => {
     expect(s.getState().tab).toBe('history');
     expect(s.getState().historyUnit).toBe('both');
   });
+
+  it('shows the opened pile solid until Height is picked, for the session', () => {
+    const s = createPileView();
+    expect(s.getState().surface).toBe('solid');
+    s.getState().setSurface('height');
+    expect(s.getState().surface).toBe('height');
+  });
 });
 
 describe('pilePosition', () => {

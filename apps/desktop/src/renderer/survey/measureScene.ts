@@ -76,7 +76,7 @@ import {
 } from './measureStore';
 import { fallbackZ, type MapHeights } from './mapHeights';
 import { mapPickLayer, type VertexPick } from './measureSource';
-import { spikeOwnsPile } from './pileLookSpike';
+import { pileLookOwns, pileLookState } from './pile/pileLookState';
 import { materialOf, materialsDraft } from './volumes/materialsDraft';
 import { declutter, type LabelBox } from './labelDeclutter';
 
@@ -723,7 +723,8 @@ export function attach3d(
       // named after the measurement: which view draws which is read from the scene (tests)
       const name = `measure:${sh.id}`;
       if (!sh.outline) continue;
-      if (spikeOwnsPile(sh.id)) continue; // SPIKE pile looks
+      // the opened pile is drawn as its lifted box (`pileLookScene`) in the main view
+      if (!display && pileLookOwns(sh.id)) continue;
       if (sh.filled)
         addFill(
           sh.points,
@@ -975,12 +976,18 @@ export function attach3d(
   });
   const offDates = onDatesChange(dates, rebuild);
   const offShow = onShowChange(rebuild);
+  const offLook = display
+    ? null
+    : pileLookState.subscribe((s, p) => {
+        if (s.shown !== p.shown) rebuild();
+      });
   rebuild();
 
   return () => {
     offStore();
     offDates();
     offShow();
+    offLook?.();
     offFrame();
     offClaim?.();
     if (!display) {

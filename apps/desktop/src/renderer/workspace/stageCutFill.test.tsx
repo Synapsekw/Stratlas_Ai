@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compareStore } from '../survey/compareStore';
 import type * as CompareStoreModule from '../survey/compareStore';
 import type { HeatGrid } from '../survey/engineProtocol';
-import { activeHeat } from '../survey/heatScene';
+import { activeHeat, sceneHeat } from '../survey/heatScene';
 import { measureStore } from '../survey/measureStore';
 import { clearCutFillCache, cutFillPrefs, SITE_HEAT_CELLS } from '../survey/volumes/cutFill';
 import { threeDates } from './__fixtures__/threeDates';
@@ -104,6 +104,40 @@ describe('the whole-site cut and fill on the stage (state)', () => {
       siteGrid,
     );
     expect(activeHeat({ computed: {}, heat }, { ...s, focus: null })).toBeNull();
+  });
+
+  it("an opened pile shows its box in 3D, not its own heat map; the site's still draws", () => {
+    const s = measureStore.getState();
+    const heat = { show3d: true, show2d: true, contours: false, item: null };
+    const own = { ...grid('a'), item: 'a' };
+    const site = grid('site');
+    const poly = (id: string, tool: 'volume' | 'area') => ({
+      id,
+      family: 'polygon' as const,
+      tool,
+      label: id,
+      scope: { kind: 'site' as const },
+      points: [],
+      items: [
+        {
+          id: 'a',
+          from: { kind: 'smart' as const },
+          to: { kind: 'current' as const },
+          useDeadband: false,
+        },
+      ],
+      results: [],
+      createdAt: '2026-10-26T00:00:00Z',
+    });
+    const file = { ...s.file, measurements: [poly('pile', 'volume'), poly('area', 'area')] };
+    const computed = { pile: { heat: [own] }, area: { heat: [own] } } as unknown as Parameters<
+      typeof activeHeat
+    >[0]['computed'];
+    const on = (focus: string) => ({ ...s, file, focus });
+    expect(sceneHeat({ computed, heat }, on('pile'))).toBeNull();
+    expect(sceneHeat({ computed, heat, siteHeat: site }, on('pile'))).toBe(site);
+    // any other polygon keeps its own heat map
+    expect(sceneHeat({ computed, heat, siteHeat: site }, on('area'))).toBe(own);
   });
 });
 

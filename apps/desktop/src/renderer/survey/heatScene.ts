@@ -26,7 +26,6 @@ import { compareStore, type CompareState, type SiteTiles } from './compareStore'
 import type { HeatGrid } from './engineProtocol';
 import { measureStore, type MeasureState } from './measureStore';
 import type { Frame } from './measureScene';
-import { spikeOwnsPile } from './pileLookSpike';
 
 const LIFT_M = 0.04;
 
@@ -39,6 +38,19 @@ export function activeHeat(
   s: MeasureState,
 ): HeatGrid | null {
   return focusHeat(c, s) ?? c.siteHeat ?? null;
+}
+
+/**
+ * The heat grid the 3D view draws: `activeHeat`, except that an opened pile shows its own lifted
+ * box (`pileLookScene`), not its cut and fill heat map; Show, Cut & fill still draws the site's.
+ */
+export function sceneHeat(
+  c: Pick<CompareState, 'computed' | 'heat'> & { siteHeat?: HeatGrid | null },
+  s: MeasureState,
+): HeatGrid | null {
+  const m = s.focus ? s.file.measurements.find((x) => x.id === s.focus) : undefined;
+  if (m?.tool === 'volume' && m.family === 'polygon') return c.siteHeat ?? null;
+  return activeHeat(c, s);
 }
 
 /** A difference grid the map can place: the cells' dz from the west and south edges. */
@@ -136,9 +148,7 @@ export function attachHeat3d(stage: EngineStage, frame: Frame): () => void {
   const draw = () => {
     const c = compareStore.getState();
     const s = measureStore.getState();
-    // SPIKE pile looks: an opened pile in a spike look hides its heat map
-    const spike = s.focus !== null && spikeOwnsPile(s.focus);
-    const h = c.heat.show3d && !spike ? activeHeat(c, s) : null;
+    const h = c.heat.show3d ? sceneHeat(c, s) : null;
     const key = [h, c.heat.contours, s.settings.heatmap];
     if (key.every((k, i) => k === last[i])) return;
     last = key;
@@ -224,7 +234,7 @@ export function attachHeat3d(stage: EngineStage, frame: Frame): () => void {
   };
   const offA = compareStore.subscribe(draw);
   const offB = measureStore.subscribe((s, p) => {
-    if (s.focus !== p.focus || s.settings !== p.settings || s.selected !== p.selected) draw();
+    if (s.focus !== p.focus || s.settings !== p.settings) draw();
   });
   draw();
   return () => {
@@ -351,7 +361,7 @@ export function attachHeatMap(ctl: MapController, frame: Frame): () => void {
     draw();
   });
   const offB = measureStore.subscribe((s, p) => {
-    if (s.focus !== p.focus || s.settings !== p.settings || s.selected !== p.selected) draw();
+    if (s.focus !== p.focus || s.settings !== p.settings) draw();
   });
   const offC = volumetric.subscribe((s, p) => {
     if (s.status !== p.status || s.surface !== p.surface || s.changeGrid !== p.changeGrid) draw();
