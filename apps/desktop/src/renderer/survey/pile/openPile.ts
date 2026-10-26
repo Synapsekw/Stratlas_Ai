@@ -11,6 +11,7 @@ import { showBench } from '../../workspace/workbench/followTool';
 import { workbench, type WorkbenchState } from '../../workspace/workbench/workbenchStore';
 import { measureStore, select } from '../measureStore';
 import { pickInVolumesView } from '../volumesPick';
+import { askPileFly, type PileFlyMode } from './pileFly';
 
 /** A stockpile: a volume measurement drawn as a polygon. */
 export function isPile(m: Pick<SurveyMeasurement, 'tool' | 'family'>): boolean {
@@ -35,14 +36,19 @@ export interface KitPileSelection {
  * volumetric view too, as a click on the kit pile itself did: its body, toe line and callout show
  * and the workspace selects the pile's asset. Its outline now lies on the pile and takes the click
  * before the pile body, so this is where a 3D click on a kit pile reaches the volumetric view.
- * The camera stays where it is: the pile was clicked in view, or picked from a list that never
- * flew. The volumetric selection comes back here through `connectKitPilePick`, which finds the
- * kit pile already selected and goes no further.
+ * The kit's view does not fly (`fly: false`): the camera move is the opened pile's own.
+ * The volumetric selection comes back here through `connectKitPilePick`, which finds the kit pile
+ * already selected and goes no further.
+ *
+ * The camera then frames the pile from an oblique view (`askPileFly`, founder 26 Oct 2026): from
+ * a list, the map or the panel's arrows always, after a click in 3D only when the pile is not
+ * already mostly in view (`fly`).
  */
 export function openPile(
   id: string,
   bench: StoreApi<WorkbenchState> = workbench,
   vol: KitPileSelection = volumetric,
+  fly: PileFlyMode = 'always',
 ): void {
   pickInVolumesView(id);
   select([id], id);
@@ -50,11 +56,19 @@ export function openPile(
   const origin = measureStore.getState().file.measurements.find((x) => x.id === id)?.origin;
   if (origin?.kind === 'kit-pile' && vol.getState().selected !== origin.pile)
     vol.getState().select(origin.pile, { fly: false });
+  askPileFly(id, fly);
 }
 
-/** A measurement row picked: a pile opens in the Volumes tab, anything else is selected. */
-export function openMeasurement(id: string, bench: StoreApi<WorkbenchState> = workbench): void {
+/**
+ * A measurement row picked: a pile opens in the Volumes tab (and the camera frames it, `fly`),
+ * anything else is selected.
+ */
+export function openMeasurement(
+  id: string,
+  bench: StoreApi<WorkbenchState> = workbench,
+  fly: PileFlyMode = 'always',
+): void {
   const m = measureStore.getState().file.measurements.find((x) => x.id === id);
-  if (m && isPile(m)) openPile(id, bench);
+  if (m && isPile(m)) openPile(id, bench, volumetric, fly);
   else select([id], id);
 }

@@ -24,6 +24,8 @@ import { measureAt, type HitShape } from './measureHits';
 import { shapesOf, type Frame } from './measureScene';
 import { measureStore, revealMeasurement, select, type MeasureState } from './measureStore';
 import { isPile, openPile } from './pile/openPile';
+import type { PileFlyMode } from './pile/pileFly';
+import { openPileHits } from './pile/pileLookState';
 
 /** A measure tool is drawing or a measurement's vertices are being edited: no pick, no menu. */
 export function pickBlocked(s: Pick<MeasureState, 'tool' | 'draw' | 'editing'>): boolean {
@@ -111,6 +113,7 @@ function pickClick(
   y: number,
   pointTarget: (x: number, y: number) => boolean,
   hit: (x: number, y: number) => string | null,
+  fly: PileFlyMode,
 ): boolean {
   const s = measureStore.getState();
   if (pickBlocked(s) || pointTarget(x, y)) return false;
@@ -118,7 +121,7 @@ function pickClick(
   if (id) {
     // a pile opens in the Volumes tab, any other measurement is selected for the Measure tab
     const m = s.file.measurements.find((r) => r.id === id);
-    if (m && isPile(m)) openPile(id);
+    if (m && isPile(m)) openPile(id, undefined, undefined, fly);
     else select([id], id);
     revealMeasurement(id, { openSidebar: false });
     return true;
@@ -146,8 +149,9 @@ export function attachMeasurePick3d(
     return { x: r.left + ((tmp.x + 1) / 2) * r.width, y: r.top + ((1 - tmp.y) / 2) * r.height };
   };
   const toScreen: ToScreen = (p) => localToScreen(frame.toLocal(p));
+  // the opened pile's lifted top and box sides take the click as well as its outline
   const hit = (x: number, y: number) =>
-    measureAt(hitShapes(primaryScene.getState(), frame), toScreen, x, y);
+    measureAt([...hitShapes(primaryScene.getState(), frame), ...openPileHits()], toScreen, x, y);
   const pointTarget = (x: number, y: number): boolean => {
     if (markersHit(canvas, x, y)) return true;
     if (issueAt(canvas, x, y) !== null) return true;
@@ -171,7 +175,8 @@ export function attachMeasurePick3d(
   const offRight = attachRightClick(canvas, pointTarget, hit, onMenu);
   const offClaim = stage.claimClicks((e) => {
     if (stage.tool !== 'select') return false;
-    return pickClick(e.clientX, e.clientY, pointTarget, hit);
+    // the pile was clicked where it shows: the camera moves only if it is mostly out of view
+    return pickClick(e.clientX, e.clientY, pointTarget, hit, 'if-out-of-view');
   });
   return () => {
     offRight();
@@ -239,7 +244,7 @@ export function attachMeasurePickMap(
     down = null;
     if (e.target !== canvas || e.button !== 0) return;
     if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_PX) return;
-    pickClick(e.clientX, e.clientY, pointTarget, hit);
+    pickClick(e.clientX, e.clientY, pointTarget, hit, 'always');
   };
   container.addEventListener('pointerdown', pd, true);
   container.addEventListener('click', click);

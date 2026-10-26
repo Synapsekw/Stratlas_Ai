@@ -6,6 +6,7 @@ import { drawerStore } from '../../workspace/workbench/drawerStore';
 import { createWorkbenchStore } from '../../workspace/workbench/workbenchStore';
 import { measureStore } from '../measureStore';
 import { isPile, openMeasurement, openPile } from './openPile';
+import { pileFly } from './pileFly';
 
 const shellState = vi.hoisted(() => ({ rightCollapsed: false }));
 vi.mock('../../shell', () => ({
@@ -85,6 +86,26 @@ describe('openPile', () => {
     openPile('pile1', bench);
     expect(bench.getState().front).toBe('volumes');
     expect(drawerStore.getState().opened).toBe('click');
+  });
+
+  it('asks the 3D view to frame the pile; a click in 3D only when it is out of view', () => {
+    pileFly.setState({ ask: null });
+    openPile('pile1', bench);
+    const first = pileFly.getState().ask;
+    expect(first).toMatchObject({ id: 'pile1', onlyIfOutOfView: false });
+    openPile('pile1', bench, undefined, 'if-out-of-view');
+    const second = pileFly.getState().ask;
+    expect(second).toMatchObject({ id: 'pile1', onlyIfOutOfView: true });
+    // a new ask each time, also for the same pile
+    expect(second?.seq).toBeGreaterThan(first?.seq ?? Infinity);
+    openPile('pile1', bench, undefined, 'never');
+    expect(pileFly.getState().ask).toBe(second);
+    // a line is selected, never flown to
+    pileFly.setState({ ask: null });
+    openMeasurement('line1', bench);
+    expect(pileFly.getState().ask).toBeNull();
+    openMeasurement('pile1', bench);
+    expect(pileFly.getState().ask?.id).toBe('pile1');
   });
 
   it('a sidebar pile row with the sidebar folded brings the drawer out too', () => {

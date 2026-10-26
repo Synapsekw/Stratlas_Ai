@@ -22,8 +22,9 @@ export interface KitPilePickDeps {
 const appDeps = (): KitPilePickDeps => ({
   vol: volumetric,
   measurements: () => measureStore.getState().file.measurements,
+  // the kit pile was picked where it shows: the camera moves only if it is out of view
   open: (id) => {
-    openPile(id);
+    openPile(id, undefined, undefined, 'if-out-of-view');
   },
 });
 
