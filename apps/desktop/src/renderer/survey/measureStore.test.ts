@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   emptyMeasurements,
   MeasurementsFile,
+  type ComparisonResult,
   type Layer,
   type PickedOn,
   type ProjectManifest,
@@ -39,6 +40,7 @@ import {
   setMeasureVisibilityMemory,
   dismissUndoDelete,
   setAutosave,
+  setComputedResults,
   undoDeleteMeasurements,
   replaceMeasurements,
   setMeasureNote,
@@ -953,5 +955,123 @@ describe('replacing measurements as one undoable edit', () => {
     // used once
     undoMeasureChange(second);
     expect(measureStore.getState().file.measurements[0]?.folder).toBe('One');
+  });
+});
+
+describe('a recompute after a base change, with Autosave on', () => {
+  const result = (over: Partial<ComparisonResult>): ComparisonResult => ({
+    item: 'a',
+    status: 'ok',
+    cutM3: 0,
+    fillM3: 10,
+    netM3: 10,
+    totalM3: 10,
+    areaM2: 20,
+    areaCutM2: 0,
+    areaFillM2: 20,
+    areaUnchangedM2: 0,
+    uncoveredM2: 0,
+    fromLabel: 'Lowest point on the perimeter (38.000 m)',
+    toLabel: 'Current survey',
+    deadbandM: 0,
+    usedDeadband: false,
+    cellM: 0.1,
+    engine: 'ts',
+    fingerprint: 'old',
+    computedAt: '2026-10-20T00:00:00.000Z',
+    ...over,
+  });
+  const pile = () => ({
+    id: 'v1',
+    family: 'polygon' as const,
+    tool: 'volume' as const,
+    label: 'Volume 1',
+    scope: { kind: 'site' as const },
+    points: [
+      [0, 0, 0],
+      [4, 0, 0],
+      [4, 4, 0],
+    ] as SitePoint[],
+    items: [
+      {
+        id: 'a',
+        from: { kind: 'reference' as const, mode: 'perimeter-min' as const },
+        to: { kind: 'current' as const },
+        useDeadband: false,
+      },
+    ],
+    results: [result({})],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  });
+  const flush = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+  const smart = () =>
+    result({ fromLabel: 'Smart base (triangulated perimeter)', netM3: 7, fingerprint: 'new' });
+
+  it('writes the new result in place of the stale one the base change saved', async () => {
+    io.saved = MeasurementsFile.parse({ schema: 'aio.measurements/1', measurements: [pile()] });
+    measureStore.setState({ projectId: null });
+    await loadMeasurements('p1');
+    setAutosave(true);
+    // the person switches the base: the edit marks the result stale and autosave writes it
+    updateMeasurement('v1', (x) => ({
+      ...x,
+      items: x.items.map((it) => ({ ...it, from: { kind: 'smart' as const } })),
+      results: x.results.map((r) => ({ ...r, status: 'stale' as const })),
+    }));
+    await flush();
+    expect(io.saved.measurements[0]?.results[0]?.status).toBe('stale');
+    // the app recomputes the focused pile on its own
+    setComputedResults('v1', () => [smart()]);
+    await flush();
+    const onDisk = io.saved.measurements[0]?.results[0];
+    expect(onDisk?.status).toBe('ok');
+    expect(onDisk?.fromLabel).toBe('Smart base (triangulated perimeter)');
+    expect(isDirty(measureStore.getState())).toBe(false);
+    setAutosave(false);
+  });
+
+  it('writes it once the base change save still in flight lands', async () => {
+    io.saved = MeasurementsFile.parse({ schema: 'aio.measurements/1', measurements: [pile()] });
+    measureStore.setState({ projectId: null });
+    await loadMeasurements('p1');
+    setAutosave(true);
+    let open: () => void = () => undefined;
+    io.gate = {
+      channel: 'survey:writeMeasurements',
+      wait: new Promise<void>((r) => {
+        open = r;
+      }),
+    };
+    updateMeasurement('v1', (x) => ({
+      ...x,
+      items: x.items.map((it) => ({ ...it, from: { kind: 'smart' as const } })),
+      results: x.results.map((r) => ({ ...r, status: 'stale' as const })),
+    }));
+    expect(measureStore.getState().saving).toBe(true);
+    // the recompute answers while the edit's write is still out
+    setComputedResults('v1', () => [smart()]);
+    io.gate = null;
+    open();
+    await flush();
+    expect(io.saved.measurements[0]?.results[0]?.status).toBe('ok');
+    setAutosave(false);
+  });
+
+  it('a result the app works out for a pile with none stored waits for the next save', async () => {
+    io.saved = MeasurementsFile.parse({
+      schema: 'aio.measurements/1',
+      measurements: [{ ...pile(), results: [] }],
+    });
+    measureStore.setState({ projectId: null });
+    await loadMeasurements('p1');
+    setAutosave(true);
+    const before = io.writes;
+    setComputedResults('v1', () => [smart()]);
+    await flush();
+    expect(io.writes).toBe(before);
+    setAutosave(false);
   });
 });

@@ -1105,7 +1105,8 @@ export function updateMeasurement(
  * Put results the app computed on its own (opening a polygon whose stored results are missing or
  * stale) on a measurement. Derived numbers, not a person's edit: `updatedAt` stays, autosave does
  * not run, and the saved baseline takes the same results, so the file does not show unsaved
- * changes. The results are written with the next save (a person's edit, or Recompute).
+ * changes. The results are written with the next save (a person's edit, or Recompute); with
+ * Autosave on, results that replace ones a person's edit marked stale are saved at once.
  */
 export function setComputedResults(
   id: string,
@@ -1115,7 +1116,16 @@ export function setComputedResults(
   if (s.readOnly) return;
   const target = s.file.measurements.find((m) => m.id === id);
   if (!target) return;
-  setDerived(id, { results: fn(target) });
+  const results = fn(target);
+  setDerived(id, { results });
+  // a result marked stale by a person's edit (a base switched, the outline moved) and now
+  // recomputed is that edit's answer: with Autosave on it is written too, or the file keeps the
+  // stale figure (and its old base label) until some later save
+  const replacesStale = target.results.some(
+    (r) => r.status === 'stale' && results.some((x) => x.item === r.item && x.status !== 'stale'),
+  );
+  // a save still in flight saves again once it lands (its baseline lacks these results)
+  if (replacesStale && get().autosave) void saveMeasurements();
 }
 
 /**
