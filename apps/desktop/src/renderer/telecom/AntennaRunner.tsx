@@ -27,6 +27,7 @@ import { AntennaDeleteDialog } from './AntennaDeleteDialog';
 import { AntennaLabelsControl } from './AntennaLabelsControl';
 import { AntennaMenu } from './AntennaMenu';
 import { AntennaSendPreview } from './AntennaSendPreview';
+import { attachAntennaHandleSpike } from './antennaHandleSpike';
 import { attachAntennaLabels } from './antennaLabels';
 import { antennaCorners } from './antennaMeasure';
 import {
@@ -127,6 +128,10 @@ export function AntennaRunner(): ReactElement | null {
         if (antennaStore.getState().selected !== id) followAntennaPick(id);
       },
     );
+    // SPIKE: drag handles on the selected unit's box (Ctrl+Alt+H)
+    const offSpike = attachAntennaHandleSpike(stage, frame, () =>
+      antennaShift(antennaStore.getState().file, manifest),
+    );
     let last = antennaStore.getState().selected;
     let lastFly = antennaStore.getState().flyRequest?.seq ?? 0;
     const offFly = antennaStore.subscribe((a) => {
@@ -147,6 +152,7 @@ export function AntennaRunner(): ReactElement | null {
       }
     });
     return () => {
+      offSpike();
       offFly();
       offLabels();
       offLayer();
