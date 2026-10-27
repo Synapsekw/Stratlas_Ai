@@ -7,6 +7,7 @@
 import {
   AI_LABEL_KIND,
   TOWER_HINT_NEEDED,
+  type AntennaBox,
   type AntennaKind,
   type AntennasFile,
   type AntennaStatus,
@@ -19,6 +20,7 @@ import {
 import type { PointSelection } from '@aio/engine';
 import { t } from '@aio/ui';
 import { createStore, useStore } from 'zustand';
+import { toasts } from '../exports/exports';
 import { bridge, jobs } from '../shell';
 import { isIssueEditing } from '../issueCard/state';
 import { revealInList } from '../workspace/workbench/project/projectListStore';
@@ -26,8 +28,23 @@ import { toolInFront } from '../workspace/workbench/tabsModel';
 import { workbench, type WorkbenchState } from '../workspace/workbench/workbenchStore';
 import type { StoreApi } from 'zustand/vanilla';
 import type { AntennaMenuAt } from './AntennaMenu';
+import {
+  DIM_KEYS,
+  draggedUnit,
+  resizeBox,
+  settleBoxEdit,
+  type BoxFace,
+  type BoxSelection,
+} from './antennaBoxEdit';
 import { flagParams, newFlagId } from './antennaFlag';
-import { boxWithValues, canReset, withTyped, withoutTyped, type TypedKey } from './antennaTyped';
+import {
+  boxWithValues,
+  canReset,
+  wasMeasured,
+  withTyped,
+  withoutTyped,
+  type TypedKey,
+} from './antennaTyped';
 import { isAntennaDrawn, type AntennaFilter, type AntennaLabelMode } from './antennaVisibility';
 
 export { isAntennaDrawn, type AntennaFilter, type AntennaLabelMode };
@@ -74,6 +91,21 @@ export interface AntennaState {
   focusField: { id: string; key: 'azimuthGridDeg' | 'downtiltDeg'; seq: number } | null;
   /** The right-click menu open on a unit (its row or its box in 3D); the runner shows it. */
   menu: AntennaMenuAt | null;
+  /**
+   * A face of the selected unit's box dragged with its handle: the unit before the drag, the face
+   * and the box as dragged (project E, N, Z). `drag` while the pointer holds it, `measure` while
+   * `telecom.flag` measures the unit again from the points in that box. The 3D view draws the
+   * dragged box until the job's inventory is read in.
+   */
+  boxEdit: BoxEditState | null;
+}
+
+export interface BoxEditState {
+  unitId: string;
+  face: BoxFace;
+  before: AntennaUnit;
+  box: AntennaBox;
+  phase: 'drag' | 'measure';
 }
 
 export interface AiPreview {
@@ -109,6 +141,7 @@ const initial = (): AntennaState => ({
   flyRequest: null,
   focusField: null,
   menu: null,
+  boxEdit: null,
 });
 
 export const antennaStore = createStore<AntennaState>()(initial);
@@ -130,6 +163,8 @@ let offerAfterLoad: { projectId: string; before: string | null } | null = null;
 let flagAfterLoad: { projectId: string; unit: string; redraw: boolean } | null = null;
 /** Whether the flag job going redraws a unit that exists (one flag job at a time). */
 let flagRedraw = false;
+/** The box drag the flag job going measures, settled once its inventory is read in. */
+let boxAfterFlag: (BoxEditState & { toast: string }) | null = null;
 /** Writes run one after the other so a quick second click builds on the first. */
 let queue: Promise<void> = Promise.resolve();
 
@@ -141,6 +176,7 @@ let queue: Promise<void> = Promise.resolve();
  */
 export function resetAntennas(): void {
   loadSeq++;
+  boxAfterFlag = null;
   set({ ...initial(), reveal: get().reveal, labelMode: get().labelMode });
 }
 
@@ -273,14 +309,25 @@ function onFlagJob(list: readonly JobRecord[]): void {
     }
     case 'failed':
       set({ flagJob: null, message: job.error ?? null });
+      endBoxMeasure(job.error ?? t('telecom.antennas.resize.failed'));
       return;
     case 'cancelled':
     case 'interrupted':
       set({ flagJob: null });
+      endBoxMeasure(t('telecom.antennas.resize.stopped'));
       return;
     default:
       return;
   }
+}
+
+/** A box drag's job ended without a result: the box goes back, the toast says why. */
+function endBoxMeasure(text: string): void {
+  const after = boxAfterFlag;
+  if (!after) return;
+  boxAfterFlag = null;
+  if (get().boxEdit?.unitId === after.unitId) set({ boxEdit: null });
+  toasts.getState().finish(after.toast, 'error', text);
 }
 
 const newRunId = (): string =>
@@ -408,7 +455,20 @@ const TYPED_KEYS: readonly TypedKey[] = [
  */
 async function afterFlag(projectId: string, id: string, redraw: boolean): Promise<void> {
   const found = get().file?.units.find((u) => u.id === id);
-  if (!found) return;
+  const edit = boxAfterFlag?.unitId === id ? boxAfterFlag : null;
+  if (edit) {
+    boxAfterFlag = null;
+    // the inventory read in draws the job's box: the dragged one is no longer needed
+    if (get().boxEdit?.unitId === id) set({ boxEdit: null });
+  }
+  if (!found) {
+    if (edit) toasts.getState().finish(edit.toast, 'error', t('telecom.antennas.resize.gone'));
+    return;
+  }
+  if (edit) {
+    await settleBox(found, edit);
+    return;
+  }
   // a filter that would hide the new unit shows every unit, so its row is listed
   const { filter } = get();
   if (filter !== 'all' && found.status !== filter) set({ filter: 'all' });
@@ -422,6 +482,133 @@ async function afterFlag(projectId: string, id: string, redraw: boolean): Promis
   const u = get().file?.units.find((x) => x.id === id);
   if (!u || u.kindBasis === 'user' || u.status === 'rejected') return;
   previewAiLabels(projectId, [id]);
+}
+
+/** Save what a box drag's job measured (`settleBoxEdit`) and say how it went. */
+async function settleBox(
+  found: AntennaUnit,
+  edit: BoxEditState & { toast: string },
+): Promise<void> {
+  const settled = settleBoxEdit(found, edit);
+  if (settled) await changeUnit(found.id, () => settled);
+  const key = DIM_KEYS[edit.face.axis];
+  const name = found.name;
+  let text: string;
+  if (!wasMeasured(found)) text = t('telecom.antennas.resize.tooFew', { name });
+  else if (settled?.[key]?.basis === 'user' && edit.before[key]?.basis !== 'user')
+    text = t('telecom.antennas.resize.kept', {
+      name,
+      dimension: t(`telecom.antennas.resize.dim.${key}`),
+      value: edit.box.extents[edit.face.axis].toFixed(2),
+    });
+  else text = t('telecom.antennas.resize.done', { name });
+  toasts.getState().finish(edit.toast, 'done', text);
+}
+
+/**
+ * Why the selected box takes no handles now, or false: a read-only package, a detection or flag
+ * job going or starting, the flag tool on, a drag being measured; a dish (a diameter, no faces to
+ * drag) or a unit not in the inventory.
+ */
+export function boxEditBlocked(unitId: string | null, s: AntennaState = get()): string | false {
+  if (s.readOnly) return t('telecom.antennas.readOnly');
+  if (s.running) return t('telecom.antennas.running');
+  if (s.flagStarting || s.flagJob !== null || s.flagging || s.boxEdit?.phase === 'measure')
+    return t('telecom.antennas.flag.busy');
+  const unit = s.file?.units.find((u) => u.id === unitId);
+  if (!unit) return t('telecom.antennas.resize.none');
+  if (unit.kind === 'dish') return t('telecom.antennas.resize.dish');
+  return false;
+}
+
+/** Start dragging face `face` of unit `unitId`; false when it takes no handles now. */
+export function beginBoxDrag(unitId: string, face: BoxFace): boolean {
+  const s = get();
+  if (boxEditBlocked(unitId, s) !== false || s.boxEdit) return false;
+  const before = s.file?.units.find((u) => u.id === unitId);
+  if (!before) return false;
+  set({ boxEdit: { unitId, face, before, box: before.box, phase: 'drag' } });
+  return true;
+}
+
+/** Move the dragged face so the box's size along its axis is `extent` (clamped). */
+export function dragBox(extent: number): void {
+  const e = get().boxEdit;
+  if (e?.phase !== 'drag') return;
+  set({ boxEdit: { ...e, box: resizeBox(e.before.box, e.face, extent) } });
+}
+
+/** Drop the drag (Escape, or a release that moved nothing): the box goes back. */
+export function cancelBoxDrag(): void {
+  if (get().boxEdit?.phase === 'drag') set({ boxEdit: null });
+}
+
+/** A face moved less than this is a click, not a drag: nothing is measured. */
+const MOVED_M = 0.005;
+
+/**
+ * The face is let go: measure the unit again with `telecom.flag` (a redraw) from the points of
+ * cloud layer `layer` inside the dragged box (`selection`, stage local, as drawn). The dragged box
+ * is drawn until the job's inventory is read in; then `settleBoxEdit` decides what is saved. With
+ * no cloud layer, a refusal or a face that did not move, the box goes back.
+ */
+export async function commitBoxDrag(o: {
+  layer: string | null;
+  selection: BoxSelection;
+}): Promise<void> {
+  const s = get();
+  const e = s.boxEdit;
+  if (e?.phase !== 'drag') return;
+  const moved = Math.abs(e.box.extents[e.face.axis] - e.before.box.extents[e.face.axis]);
+  if (moved < MOVED_M || !o.layer || !s.root || s.readOnly || s.running || flagBusy()) {
+    set({ boxEdit: null });
+    return;
+  }
+  watchJobs();
+  const root = s.root;
+  const edit: BoxEditState = { ...e, phase: 'measure' };
+  const toast = `antenna-resize-${e.unitId}-${Date.now().toString(36)}`;
+  toasts.getState().start(toast, t('telecom.antennas.resize.title', { name: e.before.name }));
+  set({ boxEdit: edit, message: null, flagStarting: true });
+  const r = await bridge
+    .call('jobs:start', {
+      pipeline: 'telecom.flag',
+      project: root,
+      params: {
+        unit: e.unitId,
+        redraw: true,
+        cloud: { layer: o.layer },
+        selection: o.selection,
+      },
+    })
+    .finally(() => {
+      set({ flagStarting: false });
+    });
+  if (get().root !== root) return;
+  if (!r.ok || !r.value.ok) {
+    const error = !r.ok ? r.error : r.value.ok ? '' : r.value.error;
+    set({ boxEdit: null });
+    toasts.getState().finish(toast, 'error', error || t('telecom.antennas.resize.failed'));
+    return;
+  }
+  flagRedraw = true;
+  boxAfterFlag = { ...edit, toast };
+  set({ flagJob: { id: r.value.job.id, unit: e.unitId } });
+  // the job may already have finished by the time the answer arrives
+  const store: Partial<typeof jobs> = jobs;
+  if (store.getState) onJobs(store.getState().jobs);
+}
+
+/** The file as the 3D view draws it: the unit being dragged or measured in its dragged box. */
+export function drawnFile(
+  file: AntennasFile | null,
+  edit: BoxEditState | null,
+): AntennasFile | null {
+  if (!file || !edit) return file;
+  return {
+    ...file,
+    units: file.units.map((u) => (u.id === edit.unitId ? draggedUnit(u, edit.face, edit.box) : u)),
+  };
 }
 
 /** Drop the "click the tower" request. */

@@ -2,11 +2,11 @@
 
 **Detect antennas** finds the antennas on a telecom tower in its point cloud and measures each one: direction, tilt, lean, size and position. The result is an inventory you review, correct and export as a CSV file.
 
-Use it on a tower project that has a point cloud. The tower must be a monopole or a lattice tower. The button is hidden while the project has no point cloud, and in read-only packages. It sits in the **Measure** workbench, in the **Telecom** section.
+Use it on a tower project that has a point cloud. The tower must be a monopole or a lattice tower. The button is hidden while the project has no point cloud, and in read-only packages. It sits in the right sidebar's **Project** tab, under **Tools**, in the **Telecom** section.
 
 ## Run a detection
 
-1. Open the project and the **Measure** workbench, then open its **Telecom** section.
+1. Open the project and the right sidebar's **Project** tab, then find **Telecom** under **Tools**.
 2. Click **Detect antennas**. If the project has several point clouds, open **Detection options** and choose the **Point cloud**, or leave it on **Automatic**.
 3. Follow the progress in the jobs indicator (**Detecting antennas**). The button is disabled while a run is going and while the point cloud is still loading.
 4. If the app cannot tell which structure is the tower, it asks **Which one is the tower?** Click the tower once in the 3D view. Detection then runs again. **Cancel** stops it.
@@ -15,7 +15,7 @@ The measuring runs on this computer, in the processing tools. The point cloud is
 
 ## Read the inventory
 
-The inventory is the **Antenna inventory** section of the **Measure** workbench, with the number of units listed beside its title. Clicking a box in the 3D view opens the section and selects its row.
+The inventory is the **Antennas** group of the right sidebar's **Project** tab, above the tools, with the number of units listed beside its title. Clicking a box in the 3D view selects its row. The details of the selected unit open inline under its row.
 
 Units are grouped as **Panel antennas**, **Short antennas**, **Microwave dishes** and **Other equipment**. The summary line counts antennas, other equipment and units that need review.
 
@@ -42,13 +42,13 @@ Units are grouped as **Panel antennas**, **Short antennas**, **Microwave dishes*
 Every unit starts as a **Draft**. Status is shown by outline style and a text chip, not by colour alone.
 
 - **Accept** and **Reject** set the status. **Show in 3D** and **Hide in 3D** toggle a unit in the 3D view.
-- **Open details** shows all values and the equipment fields: **Model**, **Weight (kg)**, **Frequencies** and **In service**. Whatever you enter is marked **Entered by you**.
+- The details of the selected unit show all values and the equipment fields: **Model**, **Weight (kg)**, **Frequencies** and **In service**. Whatever you enter is marked **Entered by you**.
 - Running detection again keeps your review. A unit you accepted or edited that the new run no longer finds stays in the list as **Not found in latest run**, so nothing you decided is lost silently.
 - **Best photos** shows up to three photos that see the front of the unit. If none does, it says **No photo sees this unit.** Whether something stands in the way of the view is not checked.
 
 ## Flag a missed unit
 
-When detection misses an antenna, outline it yourself. **Flag antenna** is in the antenna inventory header. It is disabled, with the message **Run antenna detection first**, until detection has run on the project, because the outline is measured against that run's tower axis.
+When detection misses an antenna, outline it yourself. **Flag antenna** is in the header of the **Antennas** group. It is disabled, with the message **Run antenna detection first**, until detection has run on the project, because the outline is measured against that run's tower axis.
 
 1. Turn the 3D view to the unit and click **Flag antenna**.
 2. Click once on each corner of the unit on the point cloud. Press Enter (or double-click) to close the outline. Escape cancels.
@@ -59,14 +59,31 @@ Flagging works on the point cloud and survey date shown in the tower view, and i
 
 ## Correct a unit
 
-Open a unit's details to correct it.
+Select a unit and use its details to correct it. The row's right-click menu has the common actions too.
 
 - **Redraw outline** draws the outline again and measures the unit again from the new points. It keeps the unit's name, status and the values you typed. A detected unit you redraw becomes a flagged one, so later runs keep your outline.
 - **Your values** lets you type the azimuth, downtilt, centre height and size. Press Enter and the box turns or resizes to match. A value you type is marked **Entered by you** and wins over the measured one. The typed azimuth is in true north when the project has a place on the Earth, so the app knows the grid convergence, and in project north otherwise.
 - **Reset to measured** sits beside each typed value. It clears your value, so the measured one shows again, and the box is rebuilt. It is hidden when nothing was measured, as on a **Not measured** unit.
-- **Delete** removes a unit. It is offered on flagged units only. To drop a detected unit, use **Reject**.
+- **Delete** removes a unit, detected or flagged. It is offered in the row's right-click menu, in the details and in the bulk bar (tick several rows), and it asks you to confirm. A deleted unit stays gone when **Detect antennas** runs again. To keep a unit listed but out of the export, use **Reject**.
 
 Running detection again keeps what you flagged and typed. A flagged unit stays once, with its own box and values, and the matching detected unit is not added beside it. Once you type any value on a detected unit, later runs keep its whole box as it is; use **Redraw outline** to measure it again.
+
+## Resize a box with the handles
+
+When an antenna is selected in the 3D view, a small arrow shows at the centre of each face of its box, pointing out. An arrow grows when you hover it.
+
+1. Drag an arrow to move only that face. The opposite face stays where it is.
+2. A chip by the cursor shows the size being changed, for example **H Height 1.66 m**. The W, H and D value labels hide while you drag. The smallest size a drag allows is 5 cm.
+3. Press Escape while dragging to put the box back.
+4. Let go. The antenna is measured again from the points inside the new box, like **Redraw outline**, which can also correct its direction and tilt. A notice says when it is done.
+
+Arrows on the far side of the box are dimmer but can still be dragged. The W, H and D value labels sit a little way along their lines, clear of the arrows.
+
+- The face you dragged stays where you let go. If the points measure smaller than you dragged it, your size is kept as an **Entered by you** value, and **Reset to measured** brings the measured one back.
+- If the box holds too few points to measure, the box is kept as you drew it with its earlier angles, and the notice says so.
+- A resized unit becomes a flagged one, so running **Detect antennas** again keeps it. Its name, status and typed values stay.
+- There are no handles on dishes (use **Redraw outline**), in a read-only package, while detection or a flag job runs, or while **Flag antenna** or **Redraw outline** is drawing.
+- A resize has no Undo. Use **Reset to measured** or drag the face back.
 
 ## Label with AI
 
@@ -78,7 +95,7 @@ The AI only sets the type label. It never changes a number.
 
 ## Export
 
-In the **Measure** workbench, open **Site data** and click **Export antenna inventory (CSV)**, next to **Export survey data**. **Export CSV** writes the accepted units. Tick **Include drafts** to add the drafts too. Rejected units are never written.
+In the **Measure** tools, open **Site data** and click **Export antenna inventory (CSV)**, next to **Export survey data**. **Export CSV** writes the accepted units. Tick **Include drafts** to add the drafts too. Rejected units are never written.
 
 The E, N and Z in the CSV, and in a unit's details, are in the survey date's own coordinates, before any line-up shift. When dates are lined up, they can differ from where the box is drawn by that date's shift.
 

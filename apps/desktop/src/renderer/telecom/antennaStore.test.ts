@@ -10,8 +10,16 @@ import {
   type JobRecord,
 } from '@aio/schema';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toasts } from '../exports/exports';
+import { boxCropSelection } from './antennaBoxEdit';
 import { boxWithValues, userValue } from './antennaTyped';
 import {
+  beginBoxDrag,
+  boxEditBlocked,
+  cancelBoxDrag,
+  commitBoxDrag,
+  dragBox,
+  drawnFile,
   antennaStore,
   applyAiLabels,
   beginFlag,
@@ -200,6 +208,7 @@ beforeEach(() => {
     flagStarting: false,
     ticked: {},
     flyRequest: null,
+    boxEdit: null,
   });
   localStorage.clear();
 });
@@ -1154,6 +1163,188 @@ describe('flagging', () => {
     });
     expect(need(need(h.disk.file).units[0]).box).toEqual(expected);
     expect(state().selected).toBe('ant-a3');
+  });
+});
+
+describe('box handles', () => {
+  const top = { axis: 1, sign: 1 } as const;
+  const crop = boxCropSelection(
+    [0, 30, 0],
+    [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, -1],
+    ],
+    [0.3, 2.6, 0.15],
+  );
+  const lastToast = () => need(toasts.getState().toasts.at(-1));
+
+  beforeEach(async () => {
+    toasts.setState({ toasts: [] });
+    h.disk.file = sampleFile();
+    await loadAntennas('p1', '/p');
+  });
+
+  it('a drag moves one face of the drawn box and leaves the file alone', () => {
+    const before = unit(0);
+    expect(beginBoxDrag(before.id, top)).toBe(true);
+    dragBox(2.6);
+    const e = need(state().boxEdit);
+    expect(e.box.extents[1]).toBe(2.6);
+    expect(file().units[0]).toBe(before);
+    const drawn = need(drawnFile(state().file, e));
+    expect(need(drawn.units[0]).box).toBe(e.box);
+    expect(writes()).toHaveLength(0);
+  });
+
+  it('Escape (cancel) and a release that moved nothing start no job', async () => {
+    beginBoxDrag(unit(0).id, top);
+    dragBox(2.6);
+    cancelBoxDrag();
+    expect(state().boxEdit).toBeNull();
+    beginBoxDrag(unit(0).id, top);
+    await commitBoxDrag({ layer: 'cloud-1', selection: crop });
+    expect(state().boxEdit).toBeNull();
+    expect(starts()).toHaveLength(0);
+  });
+
+  it('is refused read-only, while detection runs, while flagging, and on a dish', async () => {
+    h.disk.readOnly = true;
+    await loadAntennas('p1', '/p');
+    expect(beginBoxDrag(unit(0).id, top)).toBe(false);
+    h.disk.readOnly = false;
+    await loadAntennas('p1', '/p');
+    await runDetection();
+    expect(beginBoxDrag(unit(0).id, top)).toBe(false);
+    emitJob({ id: 'j1', status: 'cancelled' });
+    beginFlag();
+    expect(boxEditBlocked(unit(0).id)).not.toBe(false);
+    endFlag();
+    expect(boxEditBlocked(unit(0).id)).toBe(false);
+    const dish = file().units.find((u) => u.kind === 'dish');
+    if (dish) expect(boxEditBlocked(dish.id)).not.toBe(false);
+    antennaStore.setState({
+      file: {
+        ...file(),
+        units: file().units.map((u, i) => (i === 0 ? { ...u, kind: 'dish' as const } : u)),
+      },
+    });
+    expect(boxEditBlocked(unit(0).id)).not.toBe(false);
+    expect(beginBoxDrag(unit(0).id, top)).toBe(false);
+  });
+
+  it('a release starts a telecom.flag redraw with the box crop and says so', async () => {
+    const id = unit(0).id;
+    beginBoxDrag(id, top);
+    dragBox(2.6);
+    await commitBoxDrag({ layer: 'cloud-1', selection: crop });
+    expect(lastStart()).toMatchObject({
+      project: '/p',
+      params: { unit: id, redraw: true, cloud: { layer: 'cloud-1' }, selection: crop },
+    });
+    expect(state().boxEdit?.phase).toBe('measure');
+    expect(state().flagJob?.unit).toBe(id);
+    expect(boxEditBlocked(id)).not.toBe(false);
+    expect(lastToast().state).toBe('running');
+  });
+
+  it('with no cloud layer the box goes back and no job starts', async () => {
+    beginBoxDrag(unit(0).id, top);
+    dragBox(2.6);
+    await commitBoxDrag({ layer: null, selection: crop });
+    expect(state().boxEdit).toBeNull();
+    expect(starts()).toHaveLength(0);
+  });
+
+  it('a re-measure that gives the size back smaller keeps the dragged size as typed', async () => {
+    const before = unit(0);
+    beginBoxDrag(before.id, top);
+    dragBox(2.6);
+    await commitBoxDrag({ layer: 'cloud-1', selection: crop });
+    const f = sampleFile();
+    const u = need(f.units[0]);
+    f.units[0] = {
+      ...u,
+      origin: 'flagged',
+      heightM: { value: 1.9, basis: 'measured', quality: { basis: 'measured' } },
+      box: { ...u.box, extents: [u.box.extents[0], 1.9, u.box.extents[2]] },
+    };
+    h.disk.file = f;
+    emitJob({ id: 'j1', status: 'done' });
+    await vi.waitFor(() => {
+      expect(writes()).toHaveLength(1);
+    });
+    await vi.waitFor(() => {
+      expect(unit(0).heightM).toEqual(userValue(2.6));
+    });
+    expect(unit(0).measured?.heightM?.value).toBe(1.9);
+    expect(unit(0).origin).toBe('flagged');
+    expect(state().boxEdit).toBeNull();
+    expect(lastToast().state).toBe('done');
+    expect(lastToast().message).toContain('2.60 m is kept');
+  });
+
+  it('a re-measure that gives the dragged size stands as measured, no extra write', async () => {
+    const before = unit(0);
+    beginBoxDrag(before.id, top);
+    dragBox(2.6);
+    await commitBoxDrag({ layer: 'cloud-1', selection: crop });
+    const f = sampleFile();
+    const u = need(f.units[0]);
+    f.units[0] = {
+      ...u,
+      origin: 'flagged',
+      heightM: { value: 2.61, basis: 'measured', quality: { basis: 'measured' } },
+    };
+    h.disk.file = f;
+    emitJob({ id: 'j1', status: 'done' });
+    await vi.waitFor(() => {
+      expect(lastToast().state).toBe('done');
+    });
+    expect(writes()).toHaveLength(0);
+    expect(unit(0).heightM?.value).toBe(2.61);
+    expect(state().boxEdit).toBeNull();
+  });
+
+  it('too few points keeps the dragged box and the earlier angles, and says so', async () => {
+    const before = unit(0);
+    beginBoxDrag(before.id, top);
+    dragBox(2.6);
+    const dragged = need(state().boxEdit).box;
+    await commitBoxDrag({ layer: 'cloud-1', selection: crop });
+    const f = sampleFile();
+    const u = { ...need(f.units[0]), origin: 'flagged' as const };
+    delete u.azimuthGridDeg;
+    delete u.downtiltDeg;
+    delete u.plumbDeg;
+    delete u.widthM;
+    delete u.heightM;
+    delete u.depthM;
+    f.units[0] = {
+      ...u,
+      box: { centre: [0, 0, 0], axes: before.box.axes, extents: [0.2, 0.2, 0.2] },
+    };
+    h.disk.file = f;
+    emitJob({ id: 'j1', status: 'done' });
+    await vi.waitFor(() => {
+      expect(writes()).toHaveLength(1);
+    });
+    await vi.waitFor(() => {
+      expect(unit(0).box).toEqual(dragged);
+    });
+    expect(unit(0).azimuthGridDeg).toEqual(before.azimuthGridDeg);
+    expect(lastToast().message).toContain('Too few points');
+  });
+
+  it('a failed job puts the box back and the toast says why', async () => {
+    beginBoxDrag(unit(0).id, top);
+    dragBox(2.6);
+    await commitBoxDrag({ layer: 'cloud-1', selection: crop });
+    emitJob({ id: 'j1', status: 'failed', error: 'No points.' });
+    expect(state().boxEdit).toBeNull();
+    expect(state().flagJob).toBeNull();
+    expect(lastToast()).toMatchObject({ state: 'error', message: 'No points.' });
+    expect(writes()).toHaveLength(0);
   });
 });
 

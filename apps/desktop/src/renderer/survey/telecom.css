@@ -137,3 +137,81 @@
 .antenna-label--dim {
   background: var(--scrim);
 }
+/* the drag handles on the selected antenna's box (antennaHandles.ts): an SVG layer over the
+   canvas that takes no clicks itself; each face's arrow does. Hover and drag grow an arrow, the
+   dragged one takes the accent and the chip names its size, so no state is colour alone */
+.antenna-handles {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: var(--z-stage-ui);
+}
+.antenna-handles svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.antenna-handle {
+  pointer-events: auto;
+  cursor: grab;
+}
+.antenna-handle[data-back='1'] {
+  opacity: 0.45;
+}
+.antenna-handle[data-active='1'] {
+  opacity: 1;
+  cursor: grabbing;
+}
+.antenna-handle-arrow {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform var(--d-1) var(--ease);
+}
+.antenna-handle:hover .antenna-handle-arrow,
+.antenna-handle[data-active='1'] .antenna-handle-arrow {
+  transform: scale(1.35);
+}
+.antenna-handle-cone {
+  fill: var(--fg-0);
+  stroke: var(--bg-0);
+  stroke-width: 1.5;
+}
+.antenna-handle-stem {
+  stroke: var(--fg-0);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.antenna-handle:hover .antenna-handle-cone,
+.antenna-handle[data-active='1'] .antenna-handle-cone {
+  fill: var(--acc-strong);
+}
+.antenna-handle[data-active='1'] .antenna-handle-stem {
+  stroke: var(--acc-strong);
+}
+.antenna-handle-chip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: none;
+  padding: 3px 8px;
+  border-radius: var(--r-4);
+  background: var(--scrim);
+  box-shadow: var(--el-1);
+  color: var(--fg-0);
+  font: 500 var(--t-12) / 1.3 var(--f-mono);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.antenna-handle-chip b {
+  margin-right: 6px;
+  color: var(--acc-strong);
+  font-weight: 700;
+}
+@media (prefers-reduced-motion: reduce) {
+  .antenna-handle-arrow {
+    transition: none;
+  }
+}

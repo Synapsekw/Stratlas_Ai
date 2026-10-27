@@ -97,11 +97,11 @@ const withMeasured = (unit: AntennaUnit, measured: AntennaMeasured): AntennaUnit
 };
 
 /** Measured from the cloud: a size the geometry gave, now or before a person typed over it. */
-const wasMeasured = (u: AntennaUnit): boolean =>
+export const wasMeasured = (u: AntennaUnit): boolean =>
   (u.widthM !== undefined && u.widthM.basis !== 'user') || u.measured?.widthM !== undefined;
 
-/** The unit with `key` typed as `value`, the measured value it replaces kept, and its box rebuilt. */
-export function withTyped(unit: AntennaUnit, key: TypedKey, value: number): AntennaUnit {
+/** The unit with `key` typed as `value` and the measured value it replaces kept; the box as it is. */
+export function withTypedValue(unit: AntennaUnit, key: TypedKey, value: number): AntennaUnit {
   const cur = unit[key];
   const measured: AntennaMeasured = { ...unit.measured };
   if (cur && cur.basis !== 'user') measured[key] = cur;
@@ -111,7 +111,12 @@ export function withTyped(unit: AntennaUnit, key: TypedKey, value: number): Ante
       basis: 'measured',
       quality: { basis: 'measured' },
     };
-  const next = withMeasured({ ...unit, [key]: userValue(value) }, measured);
+  return withMeasured({ ...unit, [key]: userValue(value) }, measured);
+}
+
+/** The unit with `key` typed as `value`, the measured value it replaces kept, and its box rebuilt. */
+export function withTyped(unit: AntennaUnit, key: TypedKey, value: number): AntennaUnit {
+  const next = withTypedValue(unit, key, value);
   return { ...next, box: boxWithValues(next) };
 }
 

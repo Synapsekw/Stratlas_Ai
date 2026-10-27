@@ -105,13 +105,27 @@ describe('antennaMeasure', () => {
     expect(m.segments.filter((s) => Math.abs(len(s) - 0.05) < 1e-9)).toHaveLength(6);
   });
 
-  it('anchors each value at its line midpoint, off the box by the offset', () => {
+  it('anchors each value a fifth of the way along its line, off the box by the offset', () => {
     const m = antennaMeasure(upright, frame, null);
     const h = m.spots.find((s) => s.text === '2.60 m');
-    // centre local (10, 30, -20); right-front edge at x 10.2, z -19.85, offset 0.08 outward (+z)
+    // centre local (10, 30, -20); right-front edge at x 10.2, z -19.85, offset 0.08 outward (+z);
+    // from the bottom (y 28.7) a fifth of 2.6 m up
     expect(h?.at[0]).toBeCloseTo(10.2, 9);
-    expect(h?.at[1]).toBeCloseTo(30, 9);
+    expect(h?.at[1]).toBeCloseTo(28.7 + 0.2 * 2.6, 9);
     expect(h?.at[2]).toBeCloseTo(-19.77, 9);
+  });
+
+  it('keeps every value label off the face centres, where the drag handles stand', () => {
+    const m = antennaMeasure(upright, frame, null);
+    const corners = antennaCorners(upright, frame, null);
+    const centre = corners
+      .reduce<Vec3>((s, p) => [s[0] + p[0], s[1] + p[1], s[2] + p[2]], [0, 0, 0])
+      .map((v) => v / 8) as Vec3;
+    for (const spot of m.spots.filter((s) => s.kind === 'dim')) {
+      // a face centre has two box coordinates at zero: a label never lies on those mid planes
+      const off = spot.at.map((v, k) => Math.abs(v - centre[k as 0 | 1 | 2]));
+      expect(off.filter((d) => d < 0.01)).toHaveLength(0);
+    }
   });
 
   it('puts the true azimuth and downtilt at the facing-arrow tip', () => {

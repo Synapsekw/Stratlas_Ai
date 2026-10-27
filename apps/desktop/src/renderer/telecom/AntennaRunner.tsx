@@ -27,7 +27,7 @@ import { AntennaDeleteDialog } from './AntennaDeleteDialog';
 import { AntennaLabelsControl } from './AntennaLabelsControl';
 import { AntennaMenu } from './AntennaMenu';
 import { AntennaSendPreview } from './AntennaSendPreview';
-import { attachAntennaHandleSpike } from './antennaHandleSpike';
+import { attachAntennaHandles } from './antennaHandles';
 import { attachAntennaLabels } from './antennaLabels';
 import { antennaCorners } from './antennaMeasure';
 import {
@@ -40,6 +40,7 @@ import {
   antennaStore,
   cancelAiLabels,
   closeAntennaMenu,
+  drawnFile,
   loadAntennas,
   openAntennaMenu,
   resetAntennas,
@@ -82,7 +83,16 @@ export function AntennaRunner(): ReactElement | null {
   const onScene = useShell((s) => s.screen === 'scene' && s.stageMode !== 'map');
   const preview = useAntennas((a) => a.aiPreview);
   const menu = useAntennas((a) => a.menu);
-  const hasCloud = useAntennaClouds().length > 0;
+  const clouds = useAntennaClouds();
+  const hasCloud = clouds.length > 0;
+  const cloudLayer = useAntennas((a) => a.cloudLayer);
+  // the layer a box drag is measured on, as the Flag antenna tool picks it: the one chosen for
+  // detection, else the newest visible cloud
+  const measureLayer = useRef<string | null>(null);
+  const layerNow = cloudLayer ?? clouds.filter((l) => l.visible).at(-1)?.id ?? null;
+  useEffect(() => {
+    measureLayer.current = layerNow;
+  }, [layerNow]);
   const projectId = project?.id ?? null;
   const root = project?.root ?? null;
   const manifest = project?.manifest ?? null;
@@ -103,10 +113,19 @@ export function AntennaRunner(): ReactElement | null {
   const drawn = hasCloud && hasFile;
   useEffect(() => {
     if (!drawn || !stage || !frame || !spotsOf) return;
+    // the unit being dragged or measured is drawn in its dragged box; the same file object while
+    // nothing changes, so the drawn state is not rebuilt on every frame
+    let drawnOf: { file: unknown; edit: unknown; out: ReturnType<typeof drawnFile> } | null = null;
+    const sceneFile = () => {
+      const a = antennaStore.getState();
+      if (drawnOf?.file !== a.file || drawnOf.edit !== a.boxEdit)
+        drawnOf = { file: a.file, edit: a.boxEdit, out: drawnFile(a.file, a.boxEdit) };
+      return drawnOf.out;
+    };
     const sceneState = (): AntennaSceneState => {
       const a = antennaStore.getState();
       return {
-        file: a.file,
+        file: sceneFile(),
         selected: a.selected,
         hidden: a.hidden,
         solo: a.solo,
@@ -121,17 +140,24 @@ export function AntennaRunner(): ReactElement | null {
       onMenu: openAntennaMenu,
     });
     // a pin picks its unit as a box pick does; the selected unit's own pin (none drawn) is a no-op
+    // while a face is dragged its chip carries the value: the W, H and D labels step aside
     const offLabels = attachAntennaLabels(
       stage,
-      () => spotsOf(sceneState()),
+      () => {
+        const spots = spotsOf(sceneState());
+        return antennaStore.getState().boxEdit?.phase === 'drag'
+          ? spots.filter((sp) => sp.kind !== 'dim')
+          : spots;
+      },
       (id) => {
         if (antennaStore.getState().selected !== id) followAntennaPick(id);
       },
     );
-    // SPIKE: drag handles on the selected unit's box (Ctrl+Alt+H)
-    const offSpike = attachAntennaHandleSpike(stage, frame, () =>
-      antennaShift(antennaStore.getState().file, manifest),
-    );
+    // the drag handles on the selected unit's box
+    const offHandles = attachAntennaHandles(stage, frame, {
+      getShift: () => antennaShift(antennaStore.getState().file, manifest),
+      getLayer: () => measureLayer.current,
+    });
     let last = antennaStore.getState().selected;
     let lastFly = antennaStore.getState().flyRequest?.seq ?? 0;
     const offFly = antennaStore.subscribe((a) => {
@@ -152,7 +178,7 @@ export function AntennaRunner(): ReactElement | null {
       }
     });
     return () => {
-      offSpike();
+      offHandles();
       offFly();
       offLabels();
       offLayer();

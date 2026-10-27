@@ -33,7 +33,18 @@ const add = (p: Vec3, d: Vec3, s: number): Vec3 => [
   p[1] + d[1] * s,
   p[2] + d[2] * s,
 ];
-const mid = (a: Vec3, b: Vec3): Vec3 => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+/** The point a fraction `k` of the way from `a` to `b`. */
+const lerp = (a: Vec3, b: Vec3, k: number): Vec3 => [
+  a[0] + (b[0] - a[0]) * k,
+  a[1] + (b[1] - a[1]) * k,
+  a[2] + (b[2] - a[2]) * k,
+];
+
+/**
+ * How far along its dimension line a value label sits. Not the middle: the drag handles stand on
+ * the face centres, which a middle label would cover from most views.
+ */
+export const DIM_LABEL_AT = 0.2;
 
 /** The box centre in the local frame, moved by the line-up shift. */
 export function antennaCentre(unit: AntennaUnit, frame: Frame, shift: DateShift | null): Vec3 {
@@ -100,7 +111,9 @@ function angleText(unit: AntennaUnit): string | null {
  * top-front edge, pushed up and out, and height along its up axis on the right-front edge, pushed
  * out along the outward axis (so the width and depth labels stay apart); depth runs along the
  * outward axis on the bottom-right edge, pushed out to the right. Each line is `DIM_OFFSET_M` off
- * its edge with a `DIM_TICK_M` tick across each end.
+ * its edge with a `DIM_TICK_M` tick across each end. Each value sits `DIM_LABEL_AT` of the way
+ * along its line (width from the left, height from the bottom, depth from the back), clear of the
+ * face centres where the drag handles are.
  */
 export function antennaMeasure(
   unit: AntennaUnit,
@@ -173,7 +186,7 @@ export function antennaMeasure(
     spots.push({
       key: `${unit.id}:dim:${l.key}`,
       text: metres(l.value),
-      at: mid(a, b),
+      at: lerp(a, b, DIM_LABEL_AT),
       kind: 'dim',
       selected: true,
       // the width hangs under its line on the top edge, clear of the name above the box
