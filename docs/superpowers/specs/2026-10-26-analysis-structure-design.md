@@ -1,6 +1,6 @@
 # Analysis: how the sections fit together
 
-Date: 26 Oct 2026. Status: draft for founder approval.
+Date: 26 Oct 2026. Status: approved (the founder delegated the remaining decisions on 27 Oct).
 
 This is the umbrella design for the analysis work. It settles where each kind of analysis lives, how a person moves between them, how project types pick the tools, and how every finding reaches one report. The sections themselves (thermal, point cloud segmentation, the industry tools, the report centre) each get their own design and plan after this one; this document fixes the frame they plug into.
 
