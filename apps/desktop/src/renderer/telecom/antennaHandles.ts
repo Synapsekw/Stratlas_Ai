@@ -281,7 +281,9 @@ export function attachAntennaHandles(
     const c = v3(antennaCentre(unit, frame, opts.getShift()));
     const normal = v3(axisToLocal(unit.box.axes[f.axis])).multiplyScalar(f.sign);
     const r = rect();
-    const target = e.currentTarget instanceof Element ? e.currentTarget : layer;
+    // the capture goes on the svg: the arrows are re-stacked every frame, and moving the element
+    // that holds the capture would drop it
+    const target: Element = svg;
     hold = {
       face: f,
       pointerId: e.pointerId,
