@@ -303,6 +303,20 @@ describe('settleBoxEdit', () => {
     expect(u?.widthM).toBeUndefined();
   });
 
+  it('a typed centre height does not pull the fixed face when the measurement stands', () => {
+    const typed: AntennaUnit = { ...panel, centreHeightM: userValue(panel.box.centre[2]) };
+    // the job keeps the stale typed centre height; its box is the measured one
+    const after: AntennaUnit = {
+      ...remeasured(2.6),
+      centreHeightM: userValue(panel.box.centre[2]),
+    };
+    const u = settleBoxEdit(after, { face, before: typed, box: resizeBox(typed.box, face, 2.6) });
+    if (!u) throw new Error('expected a settled unit');
+    expect(u.centreHeightM?.value).toBeCloseTo(after.box.centre[2], 9);
+    const bottom = add(u.box.centre, u.box.axes[1], -u.box.extents[1] / 2);
+    expect(Math.abs(bottom[2] - fixedFace[2])).toBeLessThan(0.05);
+  });
+
   it('a typed centre height follows the box it settled on', () => {
     const typed: AntennaUnit = { ...panel, centreHeightM: userValue(31.5) };
     const after: AntennaUnit = { ...remeasured(1.9), centreHeightM: userValue(31.5) };

@@ -170,9 +170,11 @@
   transform-origin: center;
   transition: transform var(--d-1) var(--ease);
 }
-.antenna-handle:hover .antenna-handle-arrow,
+.antenna-handle:hover .antenna-handle-arrow {
+  transform: scale(1.3);
+}
 .antenna-handle[data-active='1'] .antenna-handle-arrow {
-  transform: scale(1.35);
+  transform: scale(1.55);
 }
 .antenna-handle-cone {
   fill: var(--fg-0);
@@ -184,7 +186,6 @@
   stroke-width: 2;
   stroke-linecap: round;
 }
-.antenna-handle:hover .antenna-handle-cone,
 .antenna-handle[data-active='1'] .antenna-handle-cone {
   fill: var(--acc-strong);
 }

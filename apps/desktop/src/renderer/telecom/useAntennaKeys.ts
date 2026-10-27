@@ -12,6 +12,8 @@ import { antennaStore, decideAntenna, selectAntenna, stepAntenna } from './anten
 
 function ignored(e: KeyboardEvent): boolean {
   if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return true;
+  // a face held by its drag handle: the walk, decisions and Delete wait for its release
+  if (antennaStore.getState().boxEdit?.phase === 'drag') return true;
   if (isTypingTarget(e.target)) return true;
   return document.querySelector('[aria-modal="true"]') !== null;
 }

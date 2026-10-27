@@ -38,7 +38,7 @@ nearly right only needs one face pulled out.
   of Detect antennas keeps it. Name, status, notes and typed values are kept.
 - **Where handles do not show.** Dishes (they have a diameter, not width, height and depth), a
   read-only package, while detection or a flag job runs, while the Flag or Redraw outline tool is
-  on, and on a hidden unit.
+  on. The selected unit is always drawn, so a hidden unit that is selected has them too.
 - **One drag, one job.** Antennas have no Undo today (review edits are journaled, not undoable). A
   drag is one `telecom.flag` job plus, at most, one follow-up save of the settled values. Escape
   while dragging puts the box back and starts nothing; a release where the face did not move

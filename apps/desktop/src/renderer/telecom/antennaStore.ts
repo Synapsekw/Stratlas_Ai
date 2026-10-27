@@ -164,7 +164,19 @@ let flagAfterLoad: { projectId: string; unit: string; redraw: boolean } | null =
 /** Whether the flag job going redraws a unit that exists (one flag job at a time). */
 let flagRedraw = false;
 /** The box drag the flag job going measures, settled once its inventory is read in. */
-let boxAfterFlag: (BoxEditState & { toast: string }) | null = null;
+let boxAfterFlag: BoxAfterFlag | null = null;
+interface BoxAfterFlag extends BoxEditState {
+  toast: string;
+  projectId: string;
+  jobId: string;
+}
+
+/** A box drag's measuring dropped (another project opened): its toast says so. */
+function dropBoxAfterFlag(): void {
+  if (!boxAfterFlag) return;
+  toasts.getState().finish(boxAfterFlag.toast, 'error', t('telecom.antennas.resize.stopped'));
+  boxAfterFlag = null;
+}
 /** Writes run one after the other so a quick second click builds on the first. */
 let queue: Promise<void> = Promise.resolve();
 
@@ -176,7 +188,7 @@ let queue: Promise<void> = Promise.resolve();
  */
 export function resetAntennas(): void {
   loadSeq++;
-  boxAfterFlag = null;
+  dropBoxAfterFlag();
   set({ ...initial(), reveal: get().reveal, labelMode: get().labelMode });
 }
 
@@ -191,6 +203,7 @@ export async function loadAntennas(projectId: string, root: string): Promise<voi
   // a read error's message goes on the next good read, even when no file was there to keep
   const wasError = get().status === 'error';
   const previousRunId = same ? (get().file?.run.id ?? null) : null;
+  if (!same) dropBoxAfterFlag();
   if (same) set({ status: get().file ? get().status : 'loading' });
   // the reveal count carries on: the inventory section tells a new reveal by it; the labels
   // setting is the person's for the session
@@ -308,8 +321,11 @@ function onFlagJob(list: readonly JobRecord[]): void {
       return;
     }
     case 'failed':
-      set({ flagJob: null, message: job.error ?? null });
-      endBoxMeasure(job.error ?? t('telecom.antennas.resize.failed'));
+      // a box drag's failure is said by its toast; the Flag tool's by the message line
+      if (boxAfterFlag?.jobId === job.id) {
+        set({ flagJob: null });
+        endBoxMeasure(job.error ?? t('telecom.antennas.resize.failed'));
+      } else set({ flagJob: null, message: job.error ?? null });
       return;
     case 'cancelled':
     case 'interrupted':
@@ -455,20 +471,17 @@ const TYPED_KEYS: readonly TypedKey[] = [
  */
 async function afterFlag(projectId: string, id: string, redraw: boolean): Promise<void> {
   const found = get().file?.units.find((u) => u.id === id);
-  const edit = boxAfterFlag?.unitId === id ? boxAfterFlag : null;
+  const edit =
+    boxAfterFlag?.unitId === id && boxAfterFlag.projectId === projectId ? boxAfterFlag : null;
   if (edit) {
     boxAfterFlag = null;
-    // the inventory read in draws the job's box: the dragged one is no longer needed
+    // the dragged box stays drawn (and the handles off) until the settled unit is saved
+    if (found) await settleBox(found, edit);
+    else toasts.getState().finish(edit.toast, 'error', t('telecom.antennas.resize.gone'));
     if (get().boxEdit?.unitId === id) set({ boxEdit: null });
-  }
-  if (!found) {
-    if (edit) toasts.getState().finish(edit.toast, 'error', t('telecom.antennas.resize.gone'));
     return;
   }
-  if (edit) {
-    await settleBox(found, edit);
-    return;
-  }
+  if (!found) return;
   // a filter that would hide the new unit shows every unit, so its row is listed
   const { filter } = get();
   if (filter !== 'all' && found.status !== filter) set({ filter: 'all' });
@@ -485,12 +498,11 @@ async function afterFlag(projectId: string, id: string, redraw: boolean): Promis
 }
 
 /** Save what a box drag's job measured (`settleBoxEdit`) and say how it went. */
-async function settleBox(
-  found: AntennaUnit,
-  edit: BoxEditState & { toast: string },
-): Promise<void> {
+async function settleBox(found: AntennaUnit, edit: BoxAfterFlag): Promise<void> {
   const settled = settleBoxEdit(found, edit);
-  if (settled) await changeUnit(found.id, () => settled);
+  // settled again on the unit as it is when the write's turn comes: a review edit queued
+  // meanwhile is kept
+  if (settled) await changeUnit(found.id, (u) => settleBoxEdit(u, edit));
   const key = DIM_KEYS[edit.face.axis];
   const name = found.name;
   let text: string;
@@ -560,10 +572,18 @@ export async function commitBoxDrag(o: {
   const e = s.boxEdit;
   if (e?.phase !== 'drag') return;
   const moved = Math.abs(e.box.extents[e.face.axis] - e.before.box.extents[e.face.axis]);
-  if (moved < MOVED_M || !o.layer || !s.root || s.readOnly || s.running || flagBusy()) {
+  if (moved < MOVED_M || !s.root || !s.projectId || s.readOnly || s.running || flagBusy()) {
     set({ boxEdit: null });
     return;
   }
+  if (!o.layer) {
+    set({ boxEdit: null });
+    const id = `antenna-resize-${e.unitId}-${Date.now().toString(36)}`;
+    toasts.getState().start(id, t('telecom.antennas.resize.title', { name: e.before.name }));
+    toasts.getState().finish(id, 'error', t('telecom.antennas.resize.noCloud'));
+    return;
+  }
+  const projectId = s.projectId;
   watchJobs();
   const root = s.root;
   const edit: BoxEditState = { ...e, phase: 'measure' };
@@ -584,7 +604,10 @@ export async function commitBoxDrag(o: {
     .finally(() => {
       set({ flagStarting: false });
     });
-  if (get().root !== root) return;
+  if (get().root !== root) {
+    toasts.getState().finish(toast, 'error', t('telecom.antennas.resize.stopped'));
+    return;
+  }
   if (!r.ok || !r.value.ok) {
     const error = !r.ok ? r.error : r.value.ok ? '' : r.value.error;
     set({ boxEdit: null });
@@ -592,7 +615,7 @@ export async function commitBoxDrag(o: {
     return;
   }
   flagRedraw = true;
-  boxAfterFlag = { ...edit, toast };
+  boxAfterFlag = { ...edit, toast, projectId, jobId: r.value.job.id };
   set({ flagJob: { id: r.value.job.id, unit: e.unitId } });
   // the job may already have finished by the time the answer arrives
   const store: Partial<typeof jobs> = jobs;

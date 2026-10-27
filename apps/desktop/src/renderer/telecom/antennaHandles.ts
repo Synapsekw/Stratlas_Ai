@@ -19,6 +19,7 @@ import {
   BOX_FACES,
   boxCropSelection,
   DIM_KEYS,
+  draggedUnit,
   extentFromRay,
   faceKey,
   type BoxFace,
@@ -31,7 +32,6 @@ import {
   cancelBoxDrag,
   commitBoxDrag,
   dragBox,
-  drawnFile,
 } from './antennaStore';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -51,6 +51,10 @@ const n = (v: number) => v.toFixed(1);
 /** The pointer's hold on a face: the fixed face's centre and the outward normal, stage local. */
 interface Hold {
   face: BoxFace;
+  pointerId: number;
+  /** Whether the orbit controls were on before the press: they go back to that. */
+  controls: boolean;
+  target: Element;
   fixed: Vector3;
   normal: Vector3;
   pointer: { x: number; y: number };
@@ -108,10 +112,14 @@ export function attachAntennaHandles(
   const shownUnit = (): AntennaUnit | null => {
     const a = antennaStore.getState();
     const id = a.selected;
-    if (!id || a.hidden[id]) return null;
+    // the selected unit is always drawn (`isAntennaDrawn`), hidden or not
+    if (!id) return null;
     const dragging = a.boxEdit?.unitId === id && a.boxEdit.phase === 'drag';
     if (!dragging && boxEditBlocked(id, a) !== false) return null;
-    return drawnFile(a.file, a.boxEdit)?.units.find((u) => u.id === id) ?? null;
+    const unit = a.file?.units.find((u) => u.id === id) ?? null;
+    return unit && a.boxEdit?.unitId === id
+      ? draggedUnit(unit, a.boxEdit.face, a.boxEdit.box)
+      : unit;
   };
 
   const rect = () => canvas.getBoundingClientRect();
@@ -195,7 +203,7 @@ export function attachAntennaHandles(
 
   const raycaster = new Raycaster();
   const onMove = (e: PointerEvent) => {
-    if (!hold) return;
+    if (e.pointerId !== hold?.pointerId) return;
     const r = rect();
     hold.pointer = { x: e.clientX - r.left, y: e.clientY - r.top };
     raycaster.setFromCamera(
@@ -216,19 +224,25 @@ export function attachAntennaHandles(
     stage.requestRender();
   };
   const release = () => {
+    if (!hold) return;
+    const { controls, target, pointerId } = hold;
     hold = null;
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onUp);
     window.removeEventListener('pointercancel', onCancel);
     window.removeEventListener('keydown', onKey, true);
-    stage.controls.enabled = true;
+    target.removeEventListener('lostpointercapture', onLost);
+    const capture = target as Partial<Element>;
+    if (capture.hasPointerCapture?.(pointerId)) capture.releasePointerCapture?.(pointerId);
+    stage.controls.enabled = controls;
     stage.requestRender();
   };
-  const onUp = () => {
-    if (!hold) return;
+  const onUp = (e: PointerEvent) => {
+    if (e.pointerId !== hold?.pointerId) return;
     release();
-    const a = antennaStore.getState();
-    const unit = drawnFile(a.file, a.boxEdit)?.units.find((u) => u.id === a.boxEdit?.unitId);
+    const edit = antennaStore.getState().boxEdit;
+    const held = antennaStore.getState().file?.units.find((u) => u.id === edit?.unitId);
+    const unit = held && edit ? draggedUnit(held, edit.face, edit.box) : null;
     if (!unit) {
       cancelBoxDrag();
       return;
@@ -246,12 +260,17 @@ export function attachAntennaHandles(
     release();
     cancelBoxDrag();
   };
-  const onKey = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape' || !hold) return;
-    // Escape puts the box back; it does not also leave the selection
-    e.preventDefault();
-    e.stopPropagation();
+  // the pointer lost (left the window, the capture taken): the box goes back
+  const onLost = () => {
     onCancel();
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (!hold) return;
+    // no other key acts while a face is held (the review keys would change the selection);
+    // Escape puts the box back and does not also leave the selection
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (e.key === 'Escape') onCancel();
   };
   const onDown = (e: PointerEvent, f: BoxFace) => {
     if (e.button !== 0 || hold) return;
@@ -262,13 +281,21 @@ export function attachAntennaHandles(
     const c = v3(antennaCentre(unit, frame, opts.getShift()));
     const normal = v3(axisToLocal(unit.box.axes[f.axis])).multiplyScalar(f.sign);
     const r = rect();
+    const target = e.currentTarget instanceof Element ? e.currentTarget : layer;
     hold = {
       face: f,
+      pointerId: e.pointerId,
+      controls: stage.controls.enabled,
+      target,
       fixed: c.clone().addScaledVector(normal, -unit.box.extents[f.axis] / 2),
       normal,
       pointer: { x: e.clientX - r.left, y: e.clientY - r.top },
     };
     stage.controls.enabled = false;
+    // the capture keeps the release coming when the pointer leaves the window
+    // (a test DOM may have no pointer capture)
+    (target as Partial<Element>).setPointerCapture?.(e.pointerId);
+    target.addEventListener('lostpointercapture', onLost);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);

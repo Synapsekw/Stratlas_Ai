@@ -203,12 +203,22 @@ export function settleBoxEdit(after: AntennaUnit, edit: BoxEdit): AntennaUnit | 
     const kept: Record<string, unknown> = {};
     for (const k of GEOMETRY) if (before[k] !== undefined) kept[k] = before[k];
     let u = { ...rest, ...kept, box } as AntennaUnit;
+    // a measured centre height described the box before the drag: it no longer does
+    if (u.centreHeightM && u.centreHeightM.basis !== 'user') delete u.centreHeightM;
     if (before[key] !== undefined) u = withTypedValue(u, key, extent);
     return centreFollows(u);
   }
 
-  const typedAny = TYPED_KEYS.some((k) => after[k]?.basis === 'user');
-  const base: AntennaUnit = typedAny ? { ...after, box: boxWithValues(after) } : after;
+  // a typed centre height is the job's measured centre now (the box it described moved), so the
+  // rebuild from typed values does not pull the fixed face along
+  const measuredAfter: AntennaUnit =
+    after.centreHeightM?.basis === 'user'
+      ? { ...after, centreHeightM: userValue(after.box.centre[2]) }
+      : after;
+  const typedAny = TYPED_KEYS.some((k) => measuredAfter[k]?.basis === 'user');
+  const base: AntennaUnit = typedAny
+    ? { ...measuredAfter, box: boxWithValues(measuredAfter) }
+    : measuredAfter;
   const value = after[key];
   const measured = value?.basis === 'user' ? after.measured?.[key]?.value : value?.value;
   const wasTyped = before[key]?.basis === 'user';

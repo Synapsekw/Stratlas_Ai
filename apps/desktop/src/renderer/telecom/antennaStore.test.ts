@@ -1344,7 +1344,28 @@ describe('box handles', () => {
     expect(state().boxEdit).toBeNull();
     expect(state().flagJob).toBeNull();
     expect(lastToast()).toMatchObject({ state: 'error', message: 'No points.' });
+    // said once, by the toast
+    expect(state().message).toBeNull();
     expect(writes()).toHaveLength(0);
+  });
+
+  it('another project opened while measuring stops the toast and settles nothing', async () => {
+    beginBoxDrag(unit(0).id, top);
+    dragBox(2.6);
+    await commitBoxDrag({ layer: 'cloud-1', selection: crop });
+    await loadAntennas('p2', '/q');
+    expect(lastToast().state).toBe('error');
+    expect(state().boxEdit).toBeNull();
+    emitJob({ id: 'j1', status: 'done' });
+    expect(writes()).toHaveLength(0);
+  });
+
+  it('a release with no cloud to measure on says so', async () => {
+    beginBoxDrag(unit(0).id, top);
+    dragBox(2.6);
+    await commitBoxDrag({ layer: null, selection: crop });
+    expect(lastToast().state).toBe('error');
+    expect(starts()).toHaveLength(0);
   });
 });
 

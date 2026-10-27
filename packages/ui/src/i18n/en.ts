@@ -4833,6 +4833,8 @@ export const en = {
   'telecom.antennas.resize.failed': 'The antenna could not be measured again.',
   'telecom.antennas.resize.stopped': 'Measuring stopped. The box is back as it was.',
   'telecom.antennas.resize.gone': 'The antenna is no longer in the inventory.',
+  'telecom.antennas.resize.noCloud':
+    'Show a point cloud to measure the box. The box is back as it was.',
   'telecom.antennas.resize.none': 'Select an antenna in the 3D view.',
   'telecom.antennas.resize.dish': 'A dish has a diameter, not faces to drag. Use Redraw outline.',
   'telecom.antennas.resize.dim.widthM': 'width',
