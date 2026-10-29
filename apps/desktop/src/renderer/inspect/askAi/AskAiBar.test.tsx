@@ -182,7 +182,14 @@ const click = async (id: string) => {
   });
 };
 
-function bar(p: { current?: PhotoPick | null; selected?: PhotoPick[]; all?: PhotoPick[] } = {}) {
+function bar(
+  p: {
+    current?: PhotoPick | null;
+    selected?: PhotoPick[];
+    all?: PhotoPick[];
+    onCustom?: () => void;
+  } = {},
+) {
   act(() => {
     root.render(
       <AskAiBar
@@ -193,6 +200,7 @@ function bar(p: { current?: PhotoPick | null; selected?: PhotoPick[]; all?: Phot
         selected={p.selected ?? []}
         all={p.all ?? [P1, P2]}
         durations={{ clip: 20_000 }}
+        {...(p.onCustom ? { onCustom: p.onCustom } : {})}
       />,
     );
   });
@@ -226,6 +234,27 @@ describe('AskAiBar', () => {
     expect(q('ask-ai-check-0')).toBeNull();
     await click('ask-ai-checks');
     expect(q('ask-ai-check-0')?.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('opens a custom request from the menu, after the checks', async () => {
+    const onCustom = vi.fn();
+    bar({ current: P1, onCustom });
+    await click('ask-ai-checks');
+    const items = [...host.querySelectorAll('.ask-menu-item')];
+    expect(items.at(-1)?.getAttribute('data-testid')).toBe('ask-ai-custom');
+    expect(q('ask-ai-custom')?.textContent).toBe('Custom request...');
+    await click('ask-ai-custom');
+    expect(onCustom).toHaveBeenCalledTimes(1);
+    expect(q('ask-ai-custom')).toBeNull();
+  });
+
+  it('keeps the custom request reachable in a read-only project', async () => {
+    h.readOnly = true;
+    bar({ current: P1, onCustom: vi.fn() });
+    expect(q('ask-ai-checks')?.disabled).toBe(false);
+    await click('ask-ai-checks');
+    expect(q('ask-ai-check-0')?.disabled).toBe(true);
+    expect(q('ask-ai-custom')).not.toBeNull();
   });
 
   it('scopes to the picks when there are some', async () => {

@@ -52,6 +52,7 @@ import '../detections/detections.css';
 import { FocusZone } from '../FocusZone';
 import { acceptSuggestion, dismissSuggestion } from '../inspect/actions';
 import { AskAiBar } from '../inspect/askAi/AskAiBar';
+import { AskPanel } from '../inspect/askAi/AskPanel';
 import { RunStrip } from '../inspect/askAi/RunStrip';
 import { ChangePicker } from '../inspect/ChangePicker';
 import {
@@ -153,6 +154,8 @@ function InspectBody(): ReactElement | null {
   const [fixing, setFixing] = useState<string | null>(null);
   const [fitSignal, setFitSignal] = useState(0);
   const [note, setNote] = useState<string | null>(null);
+  // the right panel's custom request mode ("Custom request..." in Ask AI's menu), for one project
+  const [askFor, setAskFor] = useState<string | null>(null);
   const [, setThermalSeen] = useState(0);
   const viewer = useRef<PhotoViewerHandle>(null);
   /** The size the open photo is drawn at (InspectViewer reports it as the photo loads). */
@@ -176,6 +179,14 @@ function InspectBody(): ReactElement | null {
       live = false;
     };
   }, [projectId]);
+
+  // the review queue (after a run, Review) takes the panel over from the custom request
+  const [seenPanel, setSeenPanel] = useState(panel);
+  if (seenPanel !== panel) {
+    setSeenPanel(panel);
+    if (panel === 'queue') setAskFor(null);
+  }
+  const asking = askFor !== null && askFor === projectId;
 
   // three columns, or the findings as a drawer when the screen is narrow (the agent column open)
   useEffect(() => {
@@ -544,37 +555,49 @@ function InspectBody(): ReactElement | null {
     />
   );
 
-  const right =
-    panel === 'queue' ? (
-      <ReviewQueue
-        projectId={project.id}
-        manifest={manifest}
-        readOnly={readOnly}
-        onFix={() => {
-          if (!current) return;
-          setFixing(current.id);
-          setPicker({ id: current.id, on: 'pick' });
-        }}
-        onNeedsPicker={(id) => {
-          setPicker({ id, on: 'pick' });
-        }}
-      />
-    ) : cardIssue ? (
-      <IssueCard issueId={cardIssue} place="media" className="fill-col" />
-    ) : (
-      <FindingsPanel
-        projectId={project.id}
-        rows={rows}
-        issues={issues}
-        leftToReview={counts.review}
-        readOnly={readOnly}
-        onSelectRow={(row) => {
-          if (row.kind === 'you') workspace.getState().select({ kind: 'issue', id: row.issueId });
-          else dispatch({ type: 'select', id: row.detectionId });
-        }}
-        onNextToReview={nextToReview}
-      />
-    );
+  const right = asking ? (
+    <AskPanel
+      key={project.id}
+      projectId={project.id}
+      projectRoot={project.root}
+      manifest={manifest}
+      current={photo}
+      selected={selectedPhotos}
+      all={allPhotos}
+      onClose={() => {
+        setAskFor(null);
+      }}
+    />
+  ) : panel === 'queue' ? (
+    <ReviewQueue
+      projectId={project.id}
+      manifest={manifest}
+      readOnly={readOnly}
+      onFix={() => {
+        if (!current) return;
+        setFixing(current.id);
+        setPicker({ id: current.id, on: 'pick' });
+      }}
+      onNeedsPicker={(id) => {
+        setPicker({ id, on: 'pick' });
+      }}
+    />
+  ) : cardIssue ? (
+    <IssueCard issueId={cardIssue} place="media" className="fill-col" />
+  ) : (
+    <FindingsPanel
+      projectId={project.id}
+      rows={rows}
+      issues={issues}
+      leftToReview={counts.review}
+      readOnly={readOnly}
+      onSelectRow={(row) => {
+        if (row.kind === 'you') workspace.getState().select({ kind: 'issue', id: row.issueId });
+        else dispatch({ type: 'select', id: row.detectionId });
+      }}
+      onNextToReview={nextToReview}
+    />
+  );
 
   const panelEl = showPanel && (
     <aside
@@ -702,6 +725,12 @@ function InspectBody(): ReactElement | null {
                   selected={selectedPhotos}
                   all={allPhotos}
                   durations={durations}
+                  onCustom={() => {
+                    if (panel === 'queue') leaveQueue();
+                    setAskFor(project.id);
+                    // a narrow screen shows the panel as its drawer
+                    if (drawer) inspectUi.setState({ drawerOpen: true });
+                  }}
                 />
                 {manifest.type === 'inspection' && (
                   <button
