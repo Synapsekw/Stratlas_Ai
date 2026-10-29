@@ -44,6 +44,7 @@ import { MapPacks } from './settings/MapPacks';
 import { MapSources } from './settings/MapSources';
 import { Classes } from './settings/Classes';
 import { ProcessingTools } from './settings/ProcessingTools';
+import { ProjectPrivacy } from './settings/ProjectPrivacy';
 import { ProviderConnection } from './settings/ProviderConnection';
 import { ReportBranding } from './settings/ReportBranding';
 import { TeamServer } from './settings/TeamServer';
@@ -650,6 +651,7 @@ function Privacy() {
         </div>
       </div>
       <OfflineOnly />
+      <ProjectPrivacy />
       <div className="sblock">
         <h2>Always on</h2>
         <div className="opt">
