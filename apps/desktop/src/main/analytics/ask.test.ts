@@ -277,4 +277,23 @@ describe('local ask', () => {
     expect(t.release).toHaveBeenCalledTimes(1);
     expect(t.idleIfUnused).toHaveBeenCalledTimes(1);
   });
+
+  it('asks a Qwen2.5 pack for pixels and reads them as pixels', async () => {
+    const t = setup({
+      model: 'qwen2.5-vl-7b-q4',
+      replies: [() => reply('[{"bbox_2d":[100,50,300,300],"label":"gauge"}]')],
+    });
+    const r = await t.ask.run(findReq());
+    const msgs = body(t.fetch).messages as { content: { text?: string }[] }[];
+    expect(msgs[0]?.content[2]?.text).not.toContain('0-1000');
+    expect(r.ok && r.items[0]?.box).toEqual([0.1, 0.1, 0.3, 0.6]);
+  });
+
+  it('releases the lease once when the server cannot be reached', async () => {
+    const t = setup({ replies: [() => Promise.reject(new Error('refused'))] });
+    const r = await t.ask.run(findReq());
+    expect(r.ok).toBe(false);
+    expect(t.release).toHaveBeenCalledTimes(1);
+    expect(t.idleIfUnused).toHaveBeenCalledTimes(1);
+  });
 });

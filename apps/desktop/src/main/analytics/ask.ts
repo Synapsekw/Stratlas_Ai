@@ -103,13 +103,13 @@ export function createLocalAsk(d: LocalAskDeps): LocalAsk {
     return { model, url: up.state.url, key: up.state.apiKey };
   }
 
-  function buildMessages(req: AskRequest): Message[] {
+  function buildMessages(req: AskRequest, family: 'qwen25' | 'qwen3'): Message[] {
     const turns = req.turns ?? [];
     // a thread's first turn is the original question; it rides with the images
     const first = turns[0]?.role === 'user' ? turns[0] : undefined;
     const rest = first ? turns.slice(1) : turns;
     const text = askPrompt({
-      family: 'qwen3',
+      family,
       kind: req.kind,
       prompt: first?.text ?? req.prompt,
       fields: req.kind === 'change' ? [...CHANGE_FIELDS, ...req.fields] : req.fields,
@@ -184,7 +184,7 @@ export function createLocalAsk(d: LocalAskDeps): LocalAsk {
     run: NonNullable<typeof current>,
   ): Promise<AskResponse> {
     const info = localVlmModel(r.model);
-    const messages = buildMessages(req);
+    const messages = buildMessages(req, info.family);
     const sent = req.images[req.images.length - 1] ?? { width: 1, height: 1 };
     let inputTokens = 0;
     let outputTokens = 0;
@@ -248,10 +248,10 @@ export function createLocalAsk(d: LocalAskDeps): LocalAsk {
       current = run;
       let release: (() => void) | null = null;
       try {
+        release = d.server.lease();
         const r = await resolve();
         if ('error' in r && r.error) return r.error;
         if (run.stopped) return { ok: false, error: 'Stopped.', stopped: true };
-        release = d.server.lease();
         return await answer(r, req, run);
       } catch (e) {
         return run.stopped ? { ok: false, error: 'Stopped.', stopped: true } : fail(message(e));
