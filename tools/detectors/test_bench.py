@@ -14,8 +14,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[1] / "python" / "tests"))
 
-import bench  # noqa: E402
-from fake_vlm import FakeVlm, logprob_response, text_response  # noqa: E402
+import bench
+from fake_vlm import FakeVlm, logprob_response, text_response
 
 W, H = 392, 280  # a multiple of 28 each, so one tile is sent as it is
 CLASS = "cls-a"

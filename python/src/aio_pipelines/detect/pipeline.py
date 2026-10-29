@@ -216,6 +216,7 @@ class DetectVlm:
 
             photos: list[dict[str, Any]] = ctx.outputs("prepare")["photos"]
             client = _client(params["serverFile"])
+            frame = box_frame(params["model"])
             total = len(photos) * len(detectors)
             done = ok = failed = streak = 0
             for pi, photo in enumerate(photos):
@@ -236,7 +237,7 @@ class DetectVlm:
                                 client,
                                 im,
                                 _fit_tiles(det, im.width, im.height),
-                                frame=box_frame(params["model"]),
+                                frame=frame,
                             )
                     except VlmUnavailable as e:
                         raise JobError(STOPPED) from e

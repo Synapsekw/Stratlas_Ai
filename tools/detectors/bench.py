@@ -26,7 +26,13 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python" / "src"))
 
-from aio_pipelines.detect.engine import BoxFrame, VlmClient, VlmUnavailable, box_frame, run_detector
+from aio_pipelines.detect.engine import (
+    BoxFrame,
+    VlmClient,
+    VlmUnavailable,
+    box_frame,
+    run_detector,
+)
 from aio_pipelines.inspection.frame import asset_path, photo_layers, read_manifest
 
 Box = tuple[float, float, float, float]
