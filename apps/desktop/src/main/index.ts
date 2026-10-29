@@ -9,8 +9,10 @@ import {
 } from '@aio/ai/main';
 import { brand, privacyPolicyLink, urlSchemes } from '@aio/brand';
 import {
+  AI_REQUEST_FILE_EXTENSION,
   ChangeThresholds,
   DETECTOR_FILE_EXTENSION,
+  GPU_PIPELINES,
   ipcEvents,
   PACKAGE_EXTENSION,
   VLM_SERVER_STATE,
@@ -22,6 +24,7 @@ import {
   type ReportBrandingSettings,
   type Settings,
 } from '@aio/schema';
+import { en } from '@aio/ui/i18n/en';
 import { Entry } from '@napi-rs/keyring';
 import {
   app,
@@ -212,6 +215,7 @@ import { findFfmpeg } from './jobs/pack';
 import { packArchivePlaces, registerPipelinePackIpc } from './jobs/packInstall';
 import { resolveDetectors } from './analytics/detectors';
 import { registerDetectorsIpc } from './analytics/detectorsIpc';
+import { createLocalAsk } from './analytics/ask';
 import { detectJobGate, detectLane } from './analytics/gate';
 import { checkHardware, execNvidiaSmi } from './analytics/hardware';
 import { registerLedgerIpc } from './analytics/ledgerIpc';
@@ -219,6 +223,7 @@ import { DETECT_PACK_FEATURE, detectPackRefusal } from './analytics/detectPack';
 import { localVlmModel } from './analytics/models';
 import { findAnalyticsPack, unusablePacks } from './analytics/pack';
 import { registerAnalyticsPackIpc } from './analytics/packIpc';
+import { registerRequestsIpc } from './analytics/requestsIpc';
 import { nodeVlmServerDeps, VlmServer } from './analytics/server';
 import { createKeyVault } from './keys';
 import { createClassLibraryStore } from './classLibrary';
@@ -1055,9 +1060,51 @@ const detectQueue = detectLane({
   jobs: () => jobStore.all(),
   job: (id) => jobs.get(id),
   server: vlmServer,
+  othersOnCard: () => localAsk.active(),
   log: (line) => {
     appLog.write('warn', [line]);
   },
+});
+/** Custom requests on this PC's model: one at a time, never beside a detector run or GPU job. */
+const localAsk = createLocalAsk({
+  env: process.env,
+  findPack: () =>
+    findAnalyticsPack({
+      dataRoot: settings.current().dataRoot,
+      env: process.env,
+      app: packApp,
+      platform: packPlatform,
+    }),
+  unusable: () =>
+    unusablePacks({
+      dataRoot: settings.current().dataRoot,
+      env: process.env,
+      app: packApp,
+      platform: packPlatform,
+    }),
+  hardware: (minFreeMb) =>
+    checkHardware({ platform: process.platform, exec: execNvidiaSmi, minFreeMb }),
+  server: vlmServer,
+  gpuBusy: () =>
+    detectQueue.gpuBusy('photo.align') ??
+    (jobStore
+      .all()
+      .some(
+        (j) =>
+          GPU_PIPELINES.has(j.pipeline) &&
+          (j.status === 'starting' || j.status === 'running' || j.status === 'cancelling'),
+      )
+      ? en['detect.preset.gpuBusy']
+      : null),
+  idleIfUnused: () => {
+    detectQueue.idleIfUnused();
+    // a detector run that waited for the card goes now
+    void detectQueue.askEnded().catch((e: unknown) => {
+      appLog.write('warn', [`The detector queue did not move on: ${String(e)}`]);
+    });
+  },
+  fetch,
+  now: () => Date.now(),
 });
 detectQueue.onChange((e) => {
   broadcast('detect:queue', e);
@@ -1600,8 +1647,14 @@ function registerIpc(): void {
     agent.toolResult(req);
     return { ok: true };
   });
+  handle('ai:ask', (req) => (req.backend.kind === 'local' ? localAsk.run(req) : agent.ask(req)));
+  handle('ai:askStatus', async ({ projectId }) => ({
+    ...(await agent.askStatus(projectId)),
+    local: await localAsk.status(),
+  }));
   handle('ai:cancel', ({ runId }) => {
     agent.cancel(runId);
+    localAsk.cancel(runId);
     return { ok: true };
   });
   // after any settings change still being written: the panel checks right after cloud AI turns on
@@ -2497,6 +2550,47 @@ function registerIpc(): void {
         title: 'Export the detector',
         defaultPath: join(app.getPath('downloads'), defaultName),
         filters: [{ name: 'Detector', extensions: [DETECTOR_FILE_EXTENSION.slice(1)] }],
+      };
+      const r = win
+        ? await dialog.showSaveDialog(win, options)
+        : await dialog.showSaveDialog(options);
+      return r.canceled || !r.filePath ? null : r.filePath;
+    },
+    assertWritable,
+  });
+  registerRequestsIpc({
+    handle,
+    userData: () => app.getPath('userData'),
+    projectDir: (projectId) => registry.root(projectId) ?? null,
+    isPackage: (projectId) => registry.package(projectId) !== undefined,
+    chooseOpen: async () => {
+      const win = targetWindow();
+      const options = {
+        title: 'Choose a request file',
+        properties: ['openFile' as const],
+        filters: [
+          {
+            name: `${brand.productName} request`,
+            extensions: [AI_REQUEST_FILE_EXTENSION.slice(1)],
+          },
+        ],
+      };
+      const r = win
+        ? await dialog.showOpenDialog(win, options)
+        : await dialog.showOpenDialog(options);
+      return r.canceled ? null : (r.filePaths[0] ?? null);
+    },
+    chooseSave: async (defaultName) => {
+      const win = targetWindow();
+      const options = {
+        title: 'Export the request',
+        defaultPath: join(app.getPath('downloads'), defaultName),
+        filters: [
+          {
+            name: `${brand.productName} request`,
+            extensions: [AI_REQUEST_FILE_EXTENSION.slice(1)],
+          },
+        ],
       };
       const r = win
         ? await dialog.showSaveDialog(win, options)

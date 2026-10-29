@@ -209,6 +209,8 @@ export function detectLane(d: {
   /** The stored job of a resume: its params name the run. */
   job?: (id: string) => Pick<JobRecord, 'params'> | undefined;
   server: Pick<VlmServer, 'idle'>;
+  /** A local ask holds the card: photo GPU jobs are refused and waiting runs wait. */
+  othersOnCard?: () => boolean;
   log: (line: string) => void;
 }) {
   const waiting: Waiting[] = [];
@@ -219,7 +221,8 @@ export function detectLane(d: {
 
   const atWork = (pipelines: (p: PipelineName) => boolean) =>
     d.jobs().some((j) => pipelines(j.pipeline) && AT_WORK.has(j.status));
-  const gpuAtWork = () => atWork((p) => GPU_PIPELINES.has(p));
+  const onCard = () => d.othersOnCard?.() === true;
+  const gpuAtWork = () => atWork((p) => GPU_PIPELINES.has(p)) || onCard();
   const detectAtWork = () => atWork((p) => p === 'detect.vlm');
 
   /** What `detect:queue` shows: an item its schema refuses is left out, not the whole event. */
@@ -300,6 +303,11 @@ export function detectLane(d: {
     } finally {
       draining = false;
     }
+    idleIfUnused();
+  }
+
+  /** Stop the server when no detector run is at work, passing or waiting. */
+  function idleIfUnused(): void {
     if (waiting.length === 0 && passing === 0 && !detectAtWork()) d.server.idle();
   }
 
@@ -324,6 +332,11 @@ export function detectLane(d: {
         return;
       await settle();
     },
+    /** A local ask ended: the next waiting detector run goes. */
+    askEnded(): Promise<void> {
+      return settle();
+    },
+    idleIfUnused,
     /** Waiting requests, oldest first (tests, diagnostics). */
     waiting(): readonly StartRequest[] {
       return waiting.map((w) => w.req);
@@ -347,7 +360,7 @@ export function detectLane(d: {
      * is at work or its start is passing the gate (loading the model). Waiting runs hold nothing.
      */
     gpuBusy(pipeline: string): string | null {
-      return PHOTO_GPU.has(pipeline) && (detectAtWork() || passing > 0)
+      return PHOTO_GPU.has(pipeline) && (detectAtWork() || passing > 0 || onCard())
         ? en['detect.preset.gpuBusy']
         : null;
     },

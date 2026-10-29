@@ -310,7 +310,15 @@ function lane() {
     jobs.push(j);
     return Promise.resolve({ ok: true as const, job: j });
   });
-  const l = detectLane({ gate, start, jobs: () => jobs, server, log });
+  const card = { ask: false };
+  const l = detectLane({
+    gate,
+    start,
+    jobs: () => jobs,
+    server,
+    log,
+    othersOnCard: () => card.ask,
+  });
   const changed = vi.fn();
   l.onChange(changed);
   const end = async (id: string, status = 'done') => {
@@ -321,10 +329,45 @@ function lane() {
     jobs[i] = now;
     await l.settled({ type: 'update', job: now });
   };
-  return { l, jobs, server, gate, start, end, log, changed };
+  return { l, jobs, server, gate, start, end, log, changed, card };
 }
 
 describe('detectLane', () => {
+  it('refuses photo GPU jobs while a local ask holds the card', () => {
+    const t = lane();
+    expect(t.l.gpuBusy('photo.align')).toBeNull();
+    t.card.ask = true;
+    expect(t.l.gpuBusy('photo.align')).toBe(en['detect.preset.gpuBusy']);
+    expect(t.l.gpuBusy('walk.process')).toBeNull();
+  });
+
+  it('a waiting detector run waits for a local ask, then goes', async () => {
+    const t = lane();
+    t.card.ask = true;
+    expect(await t.l.start(newRequest())).toEqual({ ok: false, error: DETECT_QUEUED });
+    expect(t.l.waiting()).toHaveLength(1);
+    t.card.ask = false;
+    await t.l.askEnded();
+    expect(t.start).toHaveBeenCalledTimes(1);
+    expect(t.l.waiting()).toHaveLength(0);
+  });
+
+  it('idleIfUnused stops the server only when no detector run is at work or waiting', async () => {
+    const t = lane();
+    t.l.idleIfUnused();
+    expect(t.server.idle).toHaveBeenCalledTimes(1);
+    await t.l.start(newRequest());
+    t.l.idleIfUnused();
+    expect(t.server.idle).toHaveBeenCalledTimes(1);
+    await t.end('job-1');
+    t.server.idle.mockClear();
+    t.card.ask = true;
+    await t.l.start(newRequest());
+    expect(t.l.waiting()).toHaveLength(1);
+    t.l.idleIfUnused();
+    expect(t.server.idle).not.toHaveBeenCalled();
+  });
+
   it('starts, queues behind a running one and starts it when that ends', async () => {
     const t = lane();
     const a = await t.l.start(newRequest());
