@@ -41,6 +41,14 @@ export const askThread: StoreApi<AskThread> = createStore<AskThread>(() => ({ ..
 
 /** Earlier turns sent with a follow-up (the `ai:ask` cap). */
 const MAX_TURNS = 20;
+/** The longest text of one earlier turn (`AskTurn.text`). */
+const MAX_TURN_TEXT = 8000;
+
+/** An earlier turn as sent: a text past the cap keeps its start and ends in an ellipsis. */
+const sentTurn = (x: AskThread['turns'][number]): AskTurn => ({
+  role: x.role,
+  text: x.text.length <= MAX_TURN_TEXT ? x.text : `${x.text.slice(0, MAX_TURN_TEXT - 1)}…`,
+});
 
 /** What the thread holds besides its store: the image as sent, and who answered. */
 let ctx: {
@@ -155,7 +163,7 @@ export async function askInThread(o: {
     prompt: text.slice(0, 2000),
     fields: [],
     images: [{ key, dataUrl: c.image.dataUrl, width, height }],
-    ...(earlier.length > 0 ? { turns: earlier.map((x): AskTurn => ({ ...x })) } : {}),
+    ...(earlier.length > 0 ? { turns: earlier.map(sentTurn) } : {}),
   });
   if (g !== gen) return;
   const answer = res.ok ? res.value : { ok: false as const, error: res.error };

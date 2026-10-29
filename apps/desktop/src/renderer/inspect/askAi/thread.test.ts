@@ -139,6 +139,20 @@ describe('Ask AI threads', () => {
     expect(h.ask.at(-1)?.prompt).toBe('Question 11');
   });
 
+  it('cuts a long earlier answer to the turn cap, keeping its start', async () => {
+    const long = `Start ${'x'.repeat(9000)}`;
+    h.reply = said(long);
+    await ask('Describe everything.', { confirmed: true });
+    h.reply = said('Short.');
+    await ask('And the rust?');
+    const sent = h.ask[1]?.turns?.[1]?.text ?? '';
+    expect(sent.length).toBeLessThanOrEqual(8000);
+    expect(sent.startsWith('Start xxx')).toBe(true);
+    expect(sent.endsWith('…')).toBe(true);
+    // the thread on screen keeps the whole answer
+    expect(askThread.getState().turns[1]?.text).toBe(long);
+  });
+
   it('another photo starts a new thread, which needs its own confirm', async () => {
     h.reply = said('Yes.');
     await ask('Is the ladder safe?', { confirmed: true });
