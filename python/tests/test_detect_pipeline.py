@@ -439,3 +439,15 @@ def test_pass_lists_every_detector_of_the_run_with_its_class_as_given(tmp_path):
     ]
     assert {d["modelSha256"] for d in listed} == {SHA}
     assert listed[1]["name"] == "Corrosion on metal" and listed[0]["version"] == 2
+
+
+def test_job_passes_the_box_frame_from_the_model_param(tmp_path):
+    # the same reply read as 0 to 1000 (Qwen3) and as sent pixels (Qwen2.5-VL)
+    out = {}
+    for name, model in (("rel", "qwen3.5-9b-q4_k_m"), ("px", "qwen2.5-vl-7b-instruct-q4_k_m")):
+        root = make_project(tmp_path / name)
+        with FakeVlm(scoring([0.95])) as vlm:
+            run_job(pipeline(), root, params(state_file(root, vlm.url), photos=("p1",), model=model))
+        out[name] = {tuple(round(v) for v in d["bbox"]) for d in pass_of(root)["detections"]}
+    assert (240, 150, 400, 240) in out["rel"]  # [600, 500, 1000, 800] of 1000 on a 400 x 300 photo
+    assert (179, 149, 298, 238) in out["px"]  # the same numbers as pixels of the 1344 x 1008 frame

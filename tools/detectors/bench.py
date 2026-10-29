@@ -18,6 +18,7 @@ import json
 import math
 import os
 import sys
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +26,7 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python" / "src"))
 
-from aio_pipelines.detect.engine import VlmClient, VlmUnavailable, run_detector
+from aio_pipelines.detect.engine import BoxFrame, VlmClient, VlmUnavailable, box_frame, run_detector
 from aio_pipelines.inspection.frame import asset_path, photo_layers, read_manifest
 
 Box = tuple[float, float, float, float]
@@ -196,13 +197,14 @@ def run(args: argparse.Namespace) -> int:
     truth = load_truth(project, classes, sizes)
 
     client = VlmClient(args.server, api_key=args.api_key)
+    frame = box_frame(args.model) if args.model else server_frame(args.server, args.api_key)
     entries: list[dict[str, Any]] = []
     failed = 0
     for pid in ids:
         try:
             with Image.open(photos[pid]) as im:
                 im.load()
-                result = run_detector(client, im, detector)
+                result = run_detector(client, im, detector, frame=frame)
         except VlmUnavailable as e:
             print(f"The model server cannot be reached: {e}", file=sys.stderr)
             return 2
@@ -261,11 +263,25 @@ def run(args: argparse.Namespace) -> int:
     return 0
 
 
+def server_frame(server: str, api_key: str | None) -> BoxFrame:
+    """The box frame of the model the server has loaded (first id of ``GET /v1/models``), else pixels."""
+    req = urllib.request.Request(server.rstrip("/") + "/v1/models")
+    if api_key:
+        req.add_header("Authorization", f"Bearer {api_key}")
+    try:
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=10) as r:
+            data = json.load(r)
+        return box_frame(str(data["data"][0]["id"]))
+    except (OSError, ValueError, KeyError, IndexError, TypeError):
+        return "pixels"
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Measure a detector on a reference project (read only).")
     ap.add_argument("--project", required=True)
     ap.add_argument("--detector", required=True, help="an aio.vlm-detector/1 file")
     ap.add_argument("--server", required=True, help="llama-server URL")
+    ap.add_argument("--model", help="model id, picks the box frame (default: the server's loaded model)")
     ap.add_argument("--split", required=True, choices=("tune", "bench"))
     ap.add_argument("--truth-class", action="append", default=[], help="class id; repeat for several")
     ap.add_argument("--threshold", type=float, default=0.8)

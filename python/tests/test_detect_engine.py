@@ -10,10 +10,12 @@ from aio_pipelines.detect.engine import (
     Candidate,
     VlmClient,
     VlmUnavailable,
+    box_frame,
     check_prompt,
     detect_prompt,
     merge,
     parse_boxes,
+    parse_boxes_ex,
     run_detector,
     score_from_top,
     tile_grid,
@@ -247,3 +249,62 @@ def test_detect_and_check_use_their_own_timeouts(monkeypatch):
     assert seen
     assert {t for is_check, t in seen if not is_check} == {120}
     assert {t for is_check, t in seen if is_check} == {60}
+
+
+def test_parse_boxes_repairs_double_brace():
+    got, repaired = parse_boxes_ex('[{"bbox_2d":[1,2,30,40],"note":"n"}}]')
+    assert got == [([1.0, 2.0, 30.0, 40.0], "n")]
+    assert repaired
+    got, repaired = parse_boxes_ex('[{"bbox_2d":[1,2,30,40],"note":"n"},{"bbox_2d":[5,6,70,80]}}')
+    assert [b for b, _ in got] == [[1.0, 2.0, 30.0, 40.0], [5.0, 6.0, 70.0, 80.0]]
+    assert repaired
+    assert parse_boxes('[{"bbox_2d":[1,2,30,40],"note":"n"}}]') == [([1.0, 2.0, 30.0, 40.0], "n")]
+
+
+def test_parse_boxes_clean_reply_is_not_repaired():
+    assert parse_boxes_ex('[{"bbox_2d":[1,2,30,40]}]')[1] is False
+    assert parse_boxes_ex("[]") == ([], False)
+
+
+def test_parse_boxes_cut_back():
+    got, repaired = parse_boxes_ex('[{"bbox_2d":[1,2,30,40],"note":"a"},{"bbox_2d":[5,6,70,80],"no')
+    assert got == [([1.0, 2.0, 30.0, 40.0], "a")]
+    assert repaired
+
+
+def test_parse_boxes_strips_think():
+    reply = '<think>maybe [1, 2] here {"x": 1}</think>\n[{"bbox_2d":[1,2,30,40],"note":"n"}]'
+    got, repaired = parse_boxes_ex(reply)
+    assert got == [([1.0, 2.0, 30.0, 40.0], "n")]
+    assert not repaired
+
+
+def test_box_frame():
+    assert box_frame("qwen3.5-9b-q4_k_m") == "rel1000"
+    assert box_frame("Qwen3-VL-4B-Instruct") == "rel1000"
+    assert box_frame("qwen2.5-vl-7b-instruct-q4_k_m") == "pixels"
+    assert box_frame("anything-else") == "pixels"
+
+
+def test_rel1000_boxes_scale_to_send_frame():
+    img = Image.new("RGB", (1344, 1008))
+    with FakeVlm(tile_handler('[{"bbox_2d":[500,500,750,750]}]')) as fake:
+        res = run_detector(VlmClient(fake.url), img, ONE_TILE, frame="rel1000")
+    assert res.candidates[0].box == pytest.approx((672.0, 504.0, 1008.0, 756.0))
+    assert "model answered in fractions" not in res.warnings
+    assert "reply repaired" not in res.warnings
+
+
+def test_rel1000_scales_a_larger_source_by_the_tile():
+    img = Image.new("RGB", (2688, 2016))
+    with FakeVlm(tile_handler('[{"bbox_2d":[500,500,750,750]}]')) as fake:
+        res = run_detector(VlmClient(fake.url), img, ONE_TILE, frame="rel1000")
+    assert res.candidates[0].box == pytest.approx((1344.0, 1008.0, 2016.0, 1512.0))
+
+
+def test_repaired_reply_adds_a_warning():
+    img = Image.new("RGB", (1344, 1008))
+    with FakeVlm(tile_handler('[{"bbox_2d":[100,100,300,300],"note":"n"}}]')) as fake:
+        res = run_detector(VlmClient(fake.url), img, ONE_TILE)
+    assert len(res.candidates) == 1
+    assert "reply repaired" in res.warnings

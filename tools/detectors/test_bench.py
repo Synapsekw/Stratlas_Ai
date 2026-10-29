@@ -239,3 +239,20 @@ def test_photos_off_the_review_grid_are_warned_and_counted(project, capsys):
     err = capsys.readouterr().err
     assert "9 of 10 photos" in err
     assert "2560" in err
+
+
+def test_model_reaches_run_detector(project, monkeypatch):
+    seen = []
+    real = bench.run_detector
+
+    def spy(client, image, det, frame="pixels"):
+        seen.append(frame)
+        return real(client, image, det, frame=frame)
+
+    monkeypatch.setattr(bench, "run_detector", spy)
+    with FakeVlm(_handler) as srv:
+        _run(project, srv.url, "--model", "qwen3.5-9b-q4_k_m", "--limit", "1")
+        assert seen == ["rel1000"]
+        seen.clear()
+        _run(project, srv.url, "--model", "qwen2.5-vl-7b-instruct-q4_k_m", "--limit", "1")
+        assert seen == ["pixels"]

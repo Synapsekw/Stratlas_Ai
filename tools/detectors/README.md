@@ -8,11 +8,14 @@ reviewed findings. It decides which detectors ship as "verified".
 uv run --project python python tools/detectors/bench.py \
   --project <dir> --detector <detector.json> --server <url> \
   --split tune|bench [--truth-class <id>...] [--threshold 0.8] [--limit 50] \
-  [--api-key <key>] --out <dir>
+  [--model <id>] [--api-key <key>] --out <dir>
 ```
 
 - `--server` is a running `llama-server` (loopback). `--api-key` defaults to the `LLAMA_API_KEY`
   environment variable.
+- `--model` is the model id and picks the box frame: a Qwen3 model (`qwen3.5-...`, `qwen3-vl-...`)
+  answers `bbox_2d` in 0 to 1000 of the sent image, anything else (Qwen2.5-VL) in sent pixels. Without it
+  the bench asks `GET /v1/models` of `--server` and falls back to pixels.
 - Split: a photo is in `tune` when `int(sha1(photo_id).hexdigest(), 16) % 10 < 3`, otherwise in
   `bench`. Tune the detector text on `tune`; measure on `bench`.
 - Truth: image sightings of issues (box, rotated box or polygon bounds) and accepted detections in

@@ -212,7 +212,7 @@ class DetectVlm:
         def detect_step(ctx: StepContext) -> dict[str, Any]:
             from PIL import Image
 
-            from .engine import VlmUnavailable, run_detector
+            from .engine import VlmUnavailable, box_frame, run_detector
 
             photos: list[dict[str, Any]] = ctx.outputs("prepare")["photos"]
             client = _client(params["serverFile"])
@@ -232,7 +232,12 @@ class DetectVlm:
                     try:
                         with Image.open(photo["path"]) as im:
                             im.load()
-                            result = run_detector(client, im, _fit_tiles(det, im.width, im.height))
+                            result = run_detector(
+                                client,
+                                im,
+                                _fit_tiles(det, im.width, im.height),
+                                frame=box_frame(params["model"]),
+                            )
                     except VlmUnavailable as e:
                         raise JobError(STOPPED) from e
                     except OSError as e:

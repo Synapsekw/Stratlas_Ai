@@ -1,7 +1,8 @@
 """The vlm detector engine: tile, detect, merge, check.
 
 Talks to a llama.cpp ``llama-server`` (OpenAI-compatible ``/v1/chat/completions``) running a
-Qwen2.5-VL model. For one photo and one detector (``aio.vlm-detector/1``, camelCase keys) it:
+Qwen2.5-VL model (boxes in sent pixels) or a Qwen3 model (Qwen3.5, Qwen3-VL: boxes in a 0 to 1000
+frame of the sent image); ``box_frame`` picks the frame from the model id. For one photo and one detector (``aio.vlm-detector/1``, camelCase keys) it:
 
 1. splits the photo into an ``n x n`` grid of overlapping tiles,
 2. resizes each tile to the send size so the model's pixel frame equals ours and asks for boxes,
@@ -21,7 +22,7 @@ import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from PIL import Image
 
@@ -47,6 +48,9 @@ DETECT = (
 CHECK = "This is a crop from a drone inspection photo. {question} Answer yes or no."
 
 FRACTIONS_WARNING = "model answered in fractions"
+REPAIRED_WARNING = "reply repaired"
+
+BoxFrame = Literal["pixels", "rel1000"]
 
 Box = tuple[float, float, float, float]
 
@@ -177,19 +181,58 @@ def check_prompt(det: dict) -> str:
     return CHECK.format(question=det["question"])
 
 
-def parse_boxes(text: str) -> list[tuple[list[float], str]] | None:
-    """Boxes and notes from a model reply (bare or fenced JSON). None if there is no JSON list."""
-    m = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
-    body = m.group(1) if m else text
-    start, end = body.find("["), body.rfind("]")
-    if start < 0 or end < start:
-        return None
+def box_frame(model_id: str) -> BoxFrame:
+    """The frame a model answers ``bbox_2d`` in: 0 to 1000 of the sent image for the Qwen3 family
+    (``qwen3.5-...``, ``qwen3-vl-...``), sent pixels for everything else (Qwen2.5-VL)."""
+    return "rel1000" if re.search(r"qwen[-_ ]?3", model_id, re.IGNORECASE) else "pixels"
+
+
+def _try_list(text: str) -> list | None:
     try:
-        got = json.loads(body[start : end + 1])
+        got = json.loads(text)
     except ValueError:
         return None
-    if not isinstance(got, list):
-        return None
+    return got if isinstance(got, list) else None
+
+
+def _read_list(text: str) -> tuple[list | None, bool]:
+    """The JSON list in a reply, and whether it needed repair. Repairs: a ``}}`` before ``]`` or ``,``
+    becomes ``}``; a trailing ``}}`` becomes ``}]``; a cut-off list is cut back to its last complete object."""
+    t = re.sub(r"<think>[\s\S]*?</think>", "", text)
+    m = re.search(r"```(?:json)?\s*([\s\S]*?)(?:```|$)", t)
+    body = m.group(1) if m else t
+    start = body.find("[")
+    if start < 0:
+        return None, False
+    end = body.rfind("]")
+    if end > start:
+        got = _try_list(body[start : end + 1])
+        if got is not None:
+            return got, False
+    s = body[start:]
+    for fixed in (
+        re.sub(r"\}\s*\}(\s*[\],])", r"}\1", s),
+        re.sub(r"\}\s*\}\s*$", "}]", s.rstrip().rstrip("`").rstrip()),
+    ):
+        close = fixed.rfind("]")
+        got = _try_list(fixed[: close + 1]) if close > 0 else None
+        if got is not None:
+            return got, True
+    cut = s.rfind("}")
+    while cut > 0:
+        got = _try_list(s[: cut + 1] + "]")
+        if got is not None:
+            return got, True
+        cut = s.rfind("}", 0, cut)
+    return None, False
+
+
+def parse_boxes_ex(text: str) -> tuple[list[tuple[list[float], str]] | None, bool]:
+    """Boxes and notes from a model reply (bare or fenced JSON, ``<think>`` blocks ignored) and whether
+    the reply needed repair. The list is None if there is no JSON list."""
+    got, repaired = _read_list(text)
+    if got is None:
+        return None, False
     out: list[tuple[list[float], str]] = []
     for d in got:
         if not isinstance(d, dict):
@@ -204,7 +247,12 @@ def parse_boxes(text: str) -> list[tuple[list[float], str]] | None:
         # json reads NaN and Infinity; one in a pass file makes the whole pass unreadable
         if all(math.isfinite(v) for v in box):
             out.append((box, str(d.get("note", ""))))
-    return out
+    return out, repaired
+
+
+def parse_boxes(text: str) -> list[tuple[list[float], str]] | None:
+    """``parse_boxes_ex`` without the repair flag."""
+    return parse_boxes_ex(text)[0]
 
 
 def _area(b: Sequence[float]) -> float:
@@ -242,16 +290,19 @@ def _jpeg(img: Image.Image) -> bytes:
     return buf.getvalue()
 
 
-def _detect_tile(client: VlmClient, jpeg: bytes, prompt: str) -> list[tuple[list[float], str]] | None:
-    """Ask once, retry once. None if both replies were unusable. VlmUnavailable propagates."""
+def _detect_tile(
+    client: VlmClient, jpeg: bytes, prompt: str
+) -> tuple[list[tuple[list[float], str]], bool] | None:
+    """Ask once, retry once. The boxes and whether the reply was repaired; None if both replies were
+    unusable. VlmUnavailable propagates."""
     for _ in range(2):
         try:
             text, _top = client.chat(jpeg, prompt, timeout=DETECT_TIMEOUT_S)
         except VlmError:
             continue
-        got = parse_boxes(text)
+        got, repaired = parse_boxes_ex(text)
         if got is not None:
-            return got
+            return got, repaired
     return None
 
 
@@ -274,8 +325,9 @@ def _check(client: VlmClient, src: Image.Image, box: Box, prompt: str) -> float 
     return score_from_top(top) if top else None
 
 
-def run_detector(client: VlmClient, image: Image.Image, det: dict) -> PhotoResult:
-    """Run one detector over one photo. Raises VlmUnavailable if the server cannot be reached."""
+def run_detector(client: VlmClient, image: Image.Image, det: dict, frame: BoxFrame = "pixels") -> PhotoResult:
+    """Run one detector over one photo. Raises VlmUnavailable if the server cannot be reached.
+    ``frame`` is the model's box frame (see ``box_frame``): ``rel1000`` boxes are scaled to the send size."""
     tiles_cfg = {**TILES_DEFAULT, **(det.get("tiles") or {})}
     send_w, send_h = int(tiles_cfg["sendW"]), int(tiles_cfg["sendH"])
     prompt = detect_prompt(det)
@@ -284,20 +336,30 @@ def run_detector(client: VlmClient, image: Image.Image, det: dict) -> PhotoResul
     tiles = tile_grid(image.width, image.height, int(tiles_cfg["n"]), float(tiles_cfg["overlap"]))
     failed_tiles = 0
     fractions = False
+    repaired_any = False
 
     for x, y, tw, th in tiles:
         region = image.crop((x, y, x + tw, y + th)).resize((send_w, send_h), Image.LANCZOS)
-        got = _detect_tile(client, _jpeg(region), prompt)
-        if got is None:
+        tile_reply = _detect_tile(client, _jpeg(region), prompt)
+        if tile_reply is None:
             failed_tiles += 1
             warnings.append(f"tile at ({x}, {y}): reply could not be read")
             continue
+        got, repaired = tile_reply
+        repaired_any = repaired_any or repaired
         # Fractions of the frame instead of pixels: every value of every box is at most 1.
-        tile_fractions = bool(got) and all(v <= 1.0 for b, _ in got for v in b)
+        tile_fractions = frame == "pixels" and bool(got) and all(v <= 1.0 for b, _ in got for v in b)
         fractions = fractions or tile_fractions
         sx, sy = tw / send_w, th / send_h
         for raw, note in got:
-            if tile_fractions:
+            if frame == "rel1000":
+                raw = [
+                    raw[0] * send_w / 1000,
+                    raw[1] * send_h / 1000,
+                    raw[2] * send_w / 1000,
+                    raw[3] * send_h / 1000,
+                ]
+            elif tile_fractions:
                 raw = [raw[0] * send_w, raw[1] * send_h, raw[2] * send_w, raw[3] * send_h]
             x1, x2 = sorted((raw[0], raw[2]))
             y1, y2 = sorted((raw[1], raw[3]))
@@ -313,6 +375,8 @@ def run_detector(client: VlmClient, image: Image.Image, det: dict) -> PhotoResul
 
     if fractions:
         warnings.append(FRACTIONS_WARNING)
+    if repaired_any:
+        warnings.append(REPAIRED_WARNING)
     cands = merge(found)
     check = check_prompt(det)
     for c in cands:
