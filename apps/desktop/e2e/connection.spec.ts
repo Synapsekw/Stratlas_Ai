@@ -79,7 +79,15 @@ test('the status row shows the real mode, its menu switches it, and the mode sur
     app = run.app;
     let { win, network } = run;
 
-    // A new workstation may go online, and cloud AI is off: the pair says exactly that.
+    // A new install goes online with cloud AI on: the pair says exactly that.
+    await expect(mode(win)).toHaveText('Online');
+    await expect(cloud(win)).toHaveText('Cloud AI');
+    expect(await cloudIsGreen(win)).toBe(true);
+    // The rest of this walk starts from cloud AI off: save it, and load the screen again.
+    await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: false }));
+    await win.reload();
+    await win.waitForLoadState('domcontentloaded');
+    await expect(win.locator('.sb-top')).toBeVisible();
     await expect(mode(win)).toHaveText('Online');
     await expect(mode(win)).toHaveAttribute('aria-haspopup', 'dialog');
     await expect(mode(win)).toHaveAttribute('aria-expanded', 'false');
@@ -224,7 +232,8 @@ test('the connection fits the sidebar foot at the smallest window, in its longes
   const { app, win, network } = await start(data);
   try {
     // the longest pair, "Offline only" and "Cloud AI blocked", with a project's Share chip open
-    await command(win, 'Turn cloud AI on');
+    // a new install has cloud AI on already
+    await expect(cloud(win)).toHaveText('Cloud AI');
     await command(win, 'Work offline only');
     await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
     await expect(win.locator('.proj-switch')).toContainText('E2E tiny project');

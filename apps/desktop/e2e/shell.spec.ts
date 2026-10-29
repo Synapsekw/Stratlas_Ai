@@ -105,13 +105,14 @@ test('open a project, drive the shell and keep the sidebar state', async () => {
     await expect(palette).toBeHidden();
     await expect(win.locator('.nav-item[aria-current="page"] .lbl')).toHaveText('Issues');
 
-    // Settings: providers, routing and cloud AI off by default.
+    // Settings: providers, routing and cloud AI on for a new install.
     await win.locator('.sb-foot .nav-item', { hasText: 'Settings' }).click();
     await expect(win.getByRole('heading', { name: 'AI providers' })).toBeVisible();
     await expect(win.getByLabel('Anthropic API key')).toHaveAttribute('type', 'password');
     await expect(win.getByLabel('Provider for Agent chat')).toBeVisible();
     await expect(win.getByTestId('connection-chip')).toHaveText('Online');
-    await expect(win.getByTestId('cloud-chip')).toHaveText('Cloud AI off');
+    await expect(win.getByTestId('cloud-chip')).toHaveText('Cloud AI');
+    await expect(win.getByTestId('cloud-chip')).toHaveAttribute('data-state', 'on');
 
     // The command search knows the Processing tools page, also by the pack's older name.
     await win.keyboard.press('Control+K');
