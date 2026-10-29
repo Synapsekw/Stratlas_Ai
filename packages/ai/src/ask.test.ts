@@ -185,6 +185,22 @@ describe('parseAskReply', () => {
     expect(r.items[0]?.fields.map((f) => f.key)).toEqual(['change_type', 'what', 'tag']);
     expect(r.items[0]?.label).toBe('item');
   });
+  it('gives an item without a box the whole image on a whole-image request', () => {
+    const text = JSON.stringify([{ label: 'site', note: 'tidy' }]);
+    const o = {
+      family: 'cloud' as const,
+      kind: 'find' as const,
+      sent: { width: 1568, height: 1176 },
+      fields: [],
+    };
+    const whole = parseAskReply(text, { ...o, wholeImage: true });
+    if ('error' in whole) throw new Error(whole.error);
+    expect(whole.items).toEqual([{ box: [0, 0, 1, 1], label: 'site', note: 'tidy', fields: [] }]);
+    const plain = parseAskReply(text, o);
+    if ('error' in plain) throw new Error(plain.error);
+    expect(plain.items).toEqual([]);
+    expect(plain.warnings.join(' ')).toMatch(/no usable box/);
+  });
   it('warns on a repaired or cut reply', () => {
     const r = parseAskReply('[{"bbox_2d":[100,100,400,400]}}]', {
       family: 'qwen3',
@@ -273,6 +289,28 @@ describe('guardItems', () => {
     const big = item([0.01, 0.01, 0.99, 0.99]);
     expect(guardItems([big], { sent }).items).toEqual([]);
     expect(guardItems([big], { sent, wholeImage: true }).items).toEqual([big]);
+  });
+  it('drops a whole-frame box before merging, so the small boxes stay', () => {
+    const big = item([0.01, 0.01, 0.99, 0.99]);
+    const a = item([0.1, 0.1, 0.2, 0.2]);
+    const b = item([0.5, 0.5, 0.6, 0.6]);
+    const r = guardItems([big, a, b], { sent });
+    expect(r.items).toEqual([a, b]);
+    expect(r.warnings).toContain('A box that covered the whole image was dropped.');
+  });
+  it('counts what the model listed before merging in the cap warning', () => {
+    const many = Array.from({ length: 40 }, (_, n) =>
+      item([
+        (n % 8) * 0.1,
+        Math.floor(n / 8) * 0.1,
+        (n % 8) * 0.1 + 0.05,
+        Math.floor(n / 8) * 0.1 + 0.05,
+      ]),
+    );
+    const copies = Array.from({ length: 5 }, () => item([0, 0, 0.05, 0.05]));
+    const r = guardItems([...many, ...copies], { sent });
+    expect(r.items).toHaveLength(30);
+    expect(r.warnings).toContain('The model listed 45 items; the first 30 are kept.');
   });
   it('merges two boxes sharing 70 % of the smaller into the larger', () => {
     const small = item([0, 0, 0.1, 0.1]);
@@ -447,7 +485,7 @@ describe('askPrompt', () => {
         prompt: 'Look at the scaffolding.',
         fields: [...CHANGE_FIELDS, txt],
         images: [
-          { width: 1568, height: 1176, label: '3 March 2026' },
+          { width: 1400, height: 1050, label: '3 March 2026' },
           { width: 1568, height: 1176, label: '9 June 2026' },
         ],
       }),

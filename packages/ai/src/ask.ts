@@ -252,27 +252,32 @@ const WHOLE_FRAME = 0.9;
 const MIN_BOX_PX = 3;
 
 /**
- * The guards on one image's items: tiny boxes out, overlapping boxes merged into the larger
- * (largest first), at most MAX_ASK_ITEMS kept in the model's order, then whole-frame boxes out
- * unless the request asks for the whole image.
+ * The guards on one image's items: tiny boxes out, whole-frame boxes out unless the request asks
+ * for the whole image (before merging, so an "everything" box never swallows the real items),
+ * overlapping boxes merged into the larger (largest first), then at most MAX_ASK_ITEMS kept in
+ * the model's order.
  */
 export function guardItems(
   items: AskItem[],
   o: { wholeImage?: boolean; sent: { width: number; height: number } },
 ): { items: AskItem[]; warnings: string[] } {
   const warnings: string[] = [];
-  const sized = items.filter(
+  const small = items.filter(
     (it) =>
       (it.box[2] - it.box[0]) * o.sent.width >= MIN_BOX_PX &&
       (it.box[3] - it.box[1]) * o.sent.height >= MIN_BOX_PX,
   );
-  const tiny = items.length - sized.length;
+  const tiny = items.length - small.length;
   if (tiny > 0) {
     warnings.push(
       tiny === 1
         ? 'One box was smaller than 3 pixels and was dropped.'
         : `${String(tiny)} boxes were smaller than 3 pixels and were dropped.`,
     );
+  }
+  const sized = o.wholeImage ? small : small.filter((it) => area(it.box) < WHOLE_FRAME);
+  if (sized.length < small.length) {
+    warnings.push('A box that covered the whole image was dropped.');
   }
   const order = sized
     .map((it, n) => ({ it, n }))
@@ -292,19 +297,13 @@ export function guardItems(
         : `${String(merged)} boxes overlapped larger ones and were merged into them.`,
     );
   }
-  let out = kept.sort((a, b) => a.n - b.n).map((k) => k.it);
+  const out = kept.sort((a, b) => a.n - b.n).map((k) => k.it);
   if (out.length > MAX_ASK_ITEMS) {
+    // N is what the model listed, before any guard.
     warnings.push(
-      `The model listed ${String(out.length)} items; the first ${String(MAX_ASK_ITEMS)} are kept.`,
+      `The model listed ${String(items.length)} items; the first ${String(MAX_ASK_ITEMS)} are kept.`,
     );
-    out = out.slice(0, MAX_ASK_ITEMS);
-  }
-  if (!o.wholeImage) {
-    const before = out.length;
-    out = out.filter((it) => area(it.box) < WHOLE_FRAME);
-    if (out.length < before) {
-      warnings.push('A box that covered the whole image was dropped.');
-    }
+    return { items: out.slice(0, MAX_ASK_ITEMS), warnings };
   }
   return { items: out, warnings };
 }
