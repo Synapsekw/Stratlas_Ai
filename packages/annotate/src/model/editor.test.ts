@@ -1,4 +1,4 @@
-import type { Issue, ProjectManifest, Sighting } from '@aio/schema';
+import { Issue as IssueSchema, type Issue, type ProjectManifest, type Sighting } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -52,6 +52,43 @@ function setup(issues: Issue[] = [], derive?: (s: Sighting, i: Issue) => Sightin
   });
   return { store, editor, calls };
 }
+
+describe('IssueEditor custom fields', () => {
+  const fields = [
+    { key: 'reading', label: 'Reading', type: 'number' as const, value: 4, unit: 'bar' },
+    { key: 'ok', label: 'Fine', type: 'yesno' as const, value: 'unknown' as const },
+  ];
+
+  it('create writes fields onto an issue that validates', () => {
+    const { editor } = setup();
+    const r = editor.create({ sighting: photoSighting, classId: 'crack', severity: 4, fields });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.fields).toEqual(fields);
+    expect(IssueSchema.safeParse(r.value).success).toBe(true);
+  });
+
+  it('createMany keeps fields, and a bad field refuses the batch', () => {
+    const { editor } = setup();
+    const r = editor.createMany(
+      [{ sighting: photoSighting, classId: 'crack', severity: 4, fields }],
+      'Accept all',
+    );
+    expect(r.ok && r.value[0]?.fields).toEqual(fields);
+    const bad = [{ key: 'n', label: 'N', type: 'number' as const, value: 'x' }] as never;
+    expect(
+      editor.create({ sighting: photoSighting, classId: 'crack', severity: 4, fields: bad }).ok,
+    ).toBe(false);
+  });
+
+  it('adding a sighting leaves the fields alone', () => {
+    const { editor } = setup();
+    const r = editor.create({ sighting: photoSighting, classId: 'crack', severity: 4, fields });
+    if (!r.ok) throw new Error('create');
+    const a = editor.addSighting(r.value.id, photoSighting);
+    expect(a.ok && a.value.fields).toEqual(fields);
+  });
+});
 
 describe('IssueEditor', () => {
   it('creates an issue in the workspace and saves', () => {

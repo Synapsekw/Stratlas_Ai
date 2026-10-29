@@ -1,4 +1,10 @@
-import { DetectionsFile, type ClassCatalogue, type Issue, type SeverityModel } from '@aio/schema';
+import {
+  DetectionsFile,
+  type ClassCatalogue,
+  type FieldValue,
+  type Issue,
+  type SeverityModel,
+} from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { acceptProblem, linkCandidates, newIssueInput, sightingOf } from './accept';
 import {
@@ -504,5 +510,55 @@ describe('mask assist post-processing', () => {
     expect(
       maskToPolygon({ width: 4, height: 4, data: new Uint8Array(16) }, { width: 4, height: 4 }),
     ).toBeNull();
+  });
+});
+
+describe('custom fields', () => {
+  const fields: FieldValue[] = [
+    { key: 'reading', label: 'Reading', type: 'number', value: 4.5, unit: 'bar' },
+    { key: 'state', label: 'State', type: 'choice', value: 'open' },
+  ];
+  const file: DetectionsFile = {
+    schema: 'aio.detections/1',
+    source: 'ai',
+    producer: 'anthropic claude-sonnet-5-5',
+    detections: [
+      {
+        id: 'g1',
+        photo: 'p001',
+        class: 'moderate',
+        status: 'draft',
+        bbox: [10, 20, 60, 80] as Bbox,
+        origin: {
+          provider: 'anthropic',
+          model: 'claude-sonnet-5-5',
+          promptVersion: 'custom-v1',
+          runId: 'r9',
+          request: 'gauges',
+        },
+        fields,
+      },
+    ],
+  };
+
+  it('reads fields and the request id, and writes them back unchanged', () => {
+    const r = readPasses([{ name: 'ai-r9.json', file }], passCtx);
+    const d = r.detections[0];
+    expect(d?.fields).toEqual(fields);
+    expect(d?.origin).toMatchObject({ kind: 'ai', request: 'gauges' });
+    const rec = r.passes[0];
+    if (!rec || !d) throw new Error('no pass');
+    const edited = { ...d, note: 'x' };
+    const out = writePass(rec, [edited], new Map([[d.id, d]]));
+    expect(out.detections[0]?.fields).toEqual(fields);
+    expect(out.detections[0]?.origin?.request).toBe('gauges');
+    expect(DetectionsFile.safeParse(out).success).toBe(true);
+  });
+
+  it('newIssueInput copies the fields', () => {
+    const r = newIssueInput(det({ fields }), ctx);
+    expect(r.ok && r.value.fields).toEqual(fields);
+    const plain = newIssueInput(det(), ctx);
+    expect(plain.ok && 'fields' in plain.value).toBe(false);
   });
 });

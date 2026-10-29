@@ -23,7 +23,7 @@ import {
 export type QueueFilter = 'draft' | 'all' | 'accepted' | 'rejected';
 
 export type DetectionPatch = Partial<
-  Pick<Detection, 'geom' | 'classId' | 'severity' | 'uncertain' | 'note'>
+  Pick<Detection, 'geom' | 'classId' | 'severity' | 'uncertain' | 'note' | 'fields'>
 >;
 
 export interface ReviewChange {

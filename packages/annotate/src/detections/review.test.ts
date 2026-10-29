@@ -233,6 +233,18 @@ describe('review decisions', () => {
   });
 });
 
+describe('custom fields on drafts', () => {
+  it('a fields patch is undoable', () => {
+    const s = loaded([det('a')]);
+    const fields = [
+      { key: 'reading', label: 'Reading', type: 'number' as const, value: 3, unit: 'bar' },
+    ];
+    const e = run(s, { type: 'edit', id: 'a', patch: { fields }, now: NOW });
+    expect(currentOf(e)?.fields).toEqual(fields);
+    expect(run(e, { type: 'undo' }).detections[0]?.fields).toBeUndefined();
+  });
+});
+
 describe('detector drafts and per-pass thresholds', () => {
   const detector = {
     id: 'corrosion-spike',

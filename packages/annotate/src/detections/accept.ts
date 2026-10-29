@@ -1,4 +1,12 @@
-import { err, ok, type DetectionGeom, type Issue, type Result, type Sighting } from '@aio/schema';
+import {
+  err,
+  ok,
+  type DetectionGeom,
+  type FieldValue,
+  type Issue,
+  type Result,
+  type Sighting,
+} from '@aio/schema';
 import { findClass, findModel, type IssueContext } from '../model/ops';
 import { scaleGeom, toFrameGeom } from './geometry';
 import type { Detection } from './model';
@@ -120,6 +128,8 @@ export interface AcceptAsNew {
   title?: string;
   note: string;
   source: Issue['source'];
+  /** Custom-request values, copied from the draft. */
+  fields?: FieldValue[];
 }
 
 /** Input for `issueEditor.create`: a new draft issue from the detection. */
@@ -143,6 +153,7 @@ export function newIssueInput(
       ...(cls ? { title: cls.label } : {}),
       note,
       source: issueSourceOf(d),
+      ...(d.fields && d.fields.length > 0 ? { fields: d.fields } : {}),
     },
   };
 }

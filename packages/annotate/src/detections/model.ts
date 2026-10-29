@@ -1,5 +1,6 @@
 import type {
   DetectionGeom,
+  FieldValue,
   RejectReason,
   Detection as PassDetection,
   DetectionRun as PassRun,
@@ -39,7 +40,15 @@ export type DetectionSource =
 /** Who proposed a detection (the pass `source` with its details). Only `human` may be deleted. */
 export type DetectionOrigin =
   | { kind: 'human'; author: string }
-  | { kind: 'ai'; provider: string; model: string; promptVersion: string; runId: string }
+  | {
+      kind: 'ai';
+      provider: string;
+      model: string;
+      promptVersion: string;
+      runId: string;
+      /** The saved custom request (`aio.ai-request/1`) that made it. */
+      request?: string;
+    }
   | {
       kind: 'model';
       producer: string;
@@ -59,6 +68,8 @@ export interface Detection {
   geom: DetectionGeom;
   /** Class id from the project's catalogues; empty when the proposer's word matched none. */
   classId: string;
+  /** Values a custom request read off the photo; copied onto the issue on Accept. */
+  fields?: FieldValue[];
   /** The proposer's own word, kept for review. */
   label?: string;
   /** The proposer suggests a new class named `label` (AI Detect `new:<name>`). */
@@ -151,6 +162,7 @@ function originOf(raw: PassDetection, file: DetectionsFile): DetectionOrigin {
       model: o.model ?? file.run?.model ?? file.producer ?? '',
       promptVersion: o.promptVersion ?? file.run?.promptVersion ?? '',
       runId: o.runId ?? file.run?.id ?? '',
+      ...(o.request ? { request: o.request } : {}),
     };
   }
   const producer = o.model ?? file.producer ?? kind;
@@ -213,6 +225,7 @@ function fromPass(
   const label = raw.label ?? (classId ? undefined : raw.class);
   if (label) d.label = label;
   if (raw.suggestedNew && classId === '') d.suggestedNew = true;
+  if (raw.fields) d.fields = raw.fields;
   if (raw.confidence !== undefined) d.confidence = raw.confidence;
   if (raw.belowThreshold !== undefined) d.belowThreshold = raw.belowThreshold;
   if (raw.unscored !== undefined) d.unscored = raw.unscored;
@@ -331,6 +344,7 @@ export function toPassDetection(
   out.class = d.classId !== '' ? d.classId : (d.label ?? 'unclassified');
   if (d.label) out.label = d.label;
   if (d.suggestedNew && d.classId === '') out.suggestedNew = true;
+  if (d.fields) out.fields = d.fields;
   if (d.severity !== null) out.severity = d.severity;
   if (d.uncertain) out.uncertain = true;
   if (d.confidence !== undefined) out.confidence = d.confidence;
@@ -349,6 +363,7 @@ export function toPassDetection(
       model: d.origin.model,
       promptVersion: d.origin.promptVersion,
       runId: d.origin.runId,
+      ...(d.origin.request ? { request: d.origin.request } : {}),
     };
   } else if (d.origin.kind === 'model' && d.origin.detector) {
     const { id, version, modelSha256, threshold } = d.origin.detector;

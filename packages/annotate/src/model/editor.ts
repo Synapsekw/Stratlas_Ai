@@ -1,4 +1,12 @@
-import { err, ok, type Issue, type IssueStatus, type Result, type Sighting } from '@aio/schema';
+import {
+  err,
+  ok,
+  type FieldValue,
+  type Issue,
+  type IssueStatus,
+  type Result,
+  type Sighting,
+} from '@aio/schema';
 import type { Workspace } from '@aio/workspace';
 import type { StoreApi } from 'zustand/vanilla';
 import { History, applyChange, type Change } from './history';
@@ -40,7 +48,11 @@ export interface EditorState {
   lastError: string | null;
 }
 
-export type CreateInput = Omit<NewIssueInput, 'author' | 'now'> & { author?: string };
+export type CreateInput = Omit<NewIssueInput, 'author' | 'now'> & {
+  author?: string;
+  /** Custom-request values written onto the new issue. */
+  fields?: FieldValue[];
+};
 
 /** Outcome of a bulk action: how many issues changed and which were left alone, and why. */
 export interface BulkResult {
@@ -263,6 +275,18 @@ export function createIssueEditor(opts: IssueEditorOptions): IssueEditor {
     return ok(cur);
   }
 
+  /** `createIssue` plus the custom fields, validated again with them. */
+  function build(existing: readonly Issue[], input: CreateInput, now: string): Result<Issue> {
+    const { fields, ...rest } = input;
+    const r = createIssue(
+      existing,
+      { ...rest, id: input.id ?? makeId(), author: input.author ?? author(), now },
+      context(),
+    );
+    if (!r.ok || !fields || fields.length === 0) return r;
+    return validateIssue({ ...r.value, fields }, context());
+  }
+
   function withDerived(issue: Issue, s: Sighting): Issue {
     const extra = opts.derive?.(s, issue) ?? [];
     return extra.reduce((acc, x) => addSighting(acc, x, acc.updatedAt), issue);
@@ -289,11 +313,7 @@ export function createIssueEditor(opts: IssueEditorOptions): IssueEditor {
     context,
     create(input) {
       if (readOnly()) return fail(READ_ONLY_ERROR);
-      const r = createIssue(
-        store.getState().issues,
-        { ...input, id: input.id ?? makeId(), author: input.author ?? author(), now: clock() },
-        context(),
-      );
+      const r = build(store.getState().issues, input, clock());
       if (!r.ok) return fail(r.error);
       const issue = withDerived(r.value, input.sighting);
       const c = commit(`Create ${issue.code}`, { [issue.id]: issue });
@@ -406,16 +426,11 @@ export function createIssueEditor(opts: IssueEditorOptions): IssueEditor {
       if (readOnly()) return fail(READ_ONLY_ERROR);
       if (inputs.length === 0) return ok([]);
       const now = clock();
-      const ctx = context();
       const list: Issue[] = [...store.getState().issues];
       const after: Record<string, Issue> = {};
       const out: Issue[] = [];
       for (const input of inputs) {
-        const r = createIssue(
-          list,
-          { ...input, id: input.id ?? makeId(), author: input.author ?? author(), now },
-          ctx,
-        );
+        const r = build(list, input, now);
         if (!r.ok) return fail(r.error);
         const issue = withDerived(r.value, input.sighting);
         list.push(issue);
