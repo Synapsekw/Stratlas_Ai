@@ -28,6 +28,7 @@ import {
 import { assetUrl, dateShiftOf, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { frameImage, type FrameImage } from '../detections/prepare';
+import { FieldsList } from '../inspect/FieldsForm';
 import { shell } from '../shell';
 import { setEvidenceEnabled, useEvidence } from './evidence';
 import { Mark } from './Marks';
@@ -511,6 +512,12 @@ export function IssueCard({
             </dd>
           </div>
         </dl>
+        {issue.fields && issue.fields.length > 0 && (
+          <div className="ic-block">
+            <h4>{t('fields.title')}</h4>
+            <FieldsList fields={issue.fields} />
+          </div>
+        )}
         {facts.action && (
           <div className="ic-block">
             <h4>{t('card.action')}</h4>

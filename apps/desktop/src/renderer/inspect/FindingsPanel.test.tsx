@@ -25,6 +25,7 @@ vi.mock('./actions', () => ({
 vi.mock('../detections/store', () => ({
   useDetections: <T,>(sel: (s: unknown) => T) =>
     sel({ review: { detections: h.detections, passThreshold: {} } }),
+  dispatch: vi.fn(),
 }));
 vi.mock('../detections/createFromLabel', () => ({
   createClassFromLabel: vi.fn(() => Promise.resolve(null)),
@@ -253,6 +254,20 @@ describe('FindingsPanel', () => {
     expect(host.textContent).toContain('3 photos still have AI suggestions to check');
     await click(byId('inspect-next-review'));
     expect(p.onNextToReview).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the read value and the note on an AI row', async () => {
+    h.detections = [
+      draft('d1', {
+        note: 'Needle in the red zone',
+        fields: [{ key: 'reading', label: 'Reading', type: 'number', value: 42.5, unit: 'bar' }],
+      }),
+    ];
+    await render();
+    const row = rows()[1];
+    expect(row?.textContent).toContain('Reading');
+    expect(row?.textContent).toContain('42.5 bar');
+    expect(row?.textContent).toContain('Needle in the red zone');
   });
 
   it('says so when the photo has no findings', async () => {

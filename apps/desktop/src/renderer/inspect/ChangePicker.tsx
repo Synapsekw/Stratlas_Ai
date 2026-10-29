@@ -7,12 +7,14 @@
  */
 import { ClassSeverityForm, useNewClass } from '@aio/annotate';
 import type { Detection } from '@aio/annotate/detections';
-import type { Issue } from '@aio/schema';
+import type { FieldValue, Issue } from '@aio/schema';
 import { Tip, useT } from '@aio/ui';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { createClassFromLabel } from '../detections/createFromLabel';
 import { LinkPicker } from '../detections/LinkPicker';
+import { dispatch } from '../detections/store';
 import { acceptWith, linkSuggestion, type AcceptOutcome } from './actions';
+import { FieldsForm } from './FieldsForm';
 import { lastChoiceFor } from './lastChoice';
 
 export interface ChangePickerProps {
@@ -58,6 +60,8 @@ export function ChangePicker({
     };
   }, []);
   const start = startValues(projectId, d);
+  const [edited, setEdited] = useState<FieldValue[] | null>(null);
+  const shownFields = edited ?? d.fields ?? [];
 
   const run = (call: () => Promise<AcceptOutcome>) => {
     if (pending.current) return;
@@ -87,6 +91,14 @@ export function ChangePicker({
       role="group"
       aria-label={t('inspect.change.title')}
     >
+      {!linking && shownFields.length > 0 && (
+        <FieldsForm
+          fields={shownFields}
+          onChange={(f) => {
+            setEdited(f);
+          }}
+        />
+      )}
       {linking ? (
         <div className="inspect-change-link">
           <LinkPicker
@@ -116,7 +128,17 @@ export function ChangePicker({
           confirmLabel={t('inspect.change.accept')}
           error={error}
           onConfirm={(classId, severity) => {
-            run(() => acceptWith(projectId, d.id, { classId, severity }));
+            run(() => {
+              // the fixed values land on the draft first, so the issue it becomes carries them
+              if (edited)
+                dispatch({
+                  type: 'edit',
+                  id: d.id,
+                  patch: { fields: edited },
+                  now: new Date().toISOString(),
+                });
+              return acceptWith(projectId, d.id, { classId, severity });
+            });
             return null;
           }}
           onCancel={onCancel}

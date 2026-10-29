@@ -210,6 +210,16 @@ async function filterTo(label: string) {
 
 describe('ReviewQueue', () => {
   // first in the file: React warns about a missing key only once per component
+  it('lists the values the AI read on the current card', async () => {
+    load([
+      det('d1', {
+        fields: [{ key: 'reading', label: 'Reading', type: 'number', value: 42.5, unit: 'bar' }],
+      }),
+    ]);
+    await mount();
+    expect(host.querySelector('[data-testid="fields-list"]')?.textContent).toContain('42.5 bar');
+  });
+
   it('keys every severity button', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {

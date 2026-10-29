@@ -1,0 +1,66 @@
+/* Custom fields on suggestions and issues: a compact list, and the form that fixes it */
+.fields-list {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  gap: 1px 10px;
+  margin: 0;
+  font-size: var(--t-12);
+}
+.fields-list .fields-item {
+  display: contents;
+}
+.fields-list dt {
+  color: var(--fg-3);
+}
+.fields-list dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--fg-0);
+  overflow-wrap: anywhere;
+}
+.fields-list dd[data-empty] {
+  color: var(--fg-3);
+}
+.fields-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px dashed var(--warn);
+  border-radius: var(--r-4);
+  min-width: 0;
+  font-size: var(--t-12);
+}
+.fields-form legend {
+  padding: 0 4px;
+  color: var(--fg-2);
+}
+.fields-form .field-row {
+  display: grid;
+  grid-template-columns: minmax(0, 38%) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.fields-form .field-name {
+  color: var(--fg-2);
+  overflow-wrap: anywhere;
+}
+.fields-form .field-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.fields-form .field-unit {
+  color: var(--fg-3);
+}
+.fields-form .field-seg {
+  display: inline-flex;
+  gap: 4px;
+}
+.inspect-row-note {
+  margin: 0;
+  color: var(--fg-2);
+  overflow-wrap: anywhere;
+}

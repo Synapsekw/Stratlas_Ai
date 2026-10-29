@@ -15,6 +15,7 @@ import { ScoreBadge } from '../detections/detectors/ScoreBadge';
 import { useDetections } from '../detections/store';
 import { acceptSuggestion, dismissSuggestion } from './actions';
 import { ChangePicker } from './ChangePicker';
+import { FieldsList } from './FieldsForm';
 import type { FindingRow } from './findings';
 import './findingsPanel.css';
 
@@ -142,6 +143,12 @@ function AiCard(p: {
         <span className="inspect-row-class">{cls?.label ?? row.label ?? t('det.class.pick')}</span>
         {severity !== null && <SeverityBadge model={model} severity={severity} />}
       </button>
+      {d?.note && (
+        <p className="inspect-row-note" data-testid="inspect-row-note">
+          {d.note}
+        </p>
+      )}
+      {d?.fields && d.fields.length > 0 && <FieldsList fields={d.fields} />}
       {error && (
         <p className="ann-error" role="alert">
           {error}

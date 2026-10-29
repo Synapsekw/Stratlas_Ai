@@ -53,6 +53,7 @@ vi.mock('./actions', () => ({
   acceptWith: vi.fn(() => Promise.resolve({ ok: true, issueId: 'i9' })),
   linkSuggestion: vi.fn(() => Promise.resolve({ ok: true, issueId: 'i1' })),
 }));
+vi.mock('../detections/store', () => ({ dispatch: vi.fn() }));
 vi.mock('./lastChoice', () => ({ lastChoiceFor: vi.fn(() => null) }));
 vi.mock('../detections/createFromLabel', () => ({
   createClassFromLabel: vi.fn(() => Promise.resolve(null)),
@@ -61,6 +62,7 @@ vi.mock('../detections/createFromLabel', () => ({
 const { ChangePicker } = await import('./ChangePicker');
 const { acceptWith, linkSuggestion } = await import('./actions');
 const { lastChoiceFor } = await import('./lastChoice');
+const { dispatch } = await import('../detections/store');
 const { createClassFromLabel } = await import('../detections/createFromLabel');
 
 const det = (over: Partial<Detection> = {}): Detection =>
@@ -131,6 +133,54 @@ const click = async (el: HTMLElement | null) => {
     await Promise.resolve();
   });
 };
+
+describe('ChangePicker fields', () => {
+  const reading = {
+    key: 'reading',
+    label: 'Reading',
+    type: 'number' as const,
+    value: 42.5,
+    unit: 'bar',
+  };
+
+  it('shows the form above the lists when the draft has fields', async () => {
+    await render({ detection: det({ fields: [reading] }) });
+    expect(byId('fields-form')).not.toBeNull();
+    expect(byId('fields-form')?.nextElementSibling).toBe(byId('form'));
+  });
+
+  it('shows no form for a draft without fields', async () => {
+    await render();
+    expect(byId('fields-form')).toBeNull();
+  });
+
+  it('patches the edited fields before accepting', async () => {
+    await render({ detection: det({ fields: [reading] }) });
+    const input = byId('field-reading') as HTMLInputElement;
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    await act(async () => {
+      set?.call(input, '17');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await Promise.resolve();
+    });
+    await click(byId('form-confirm'));
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'edit',
+        id: 'd1',
+        patch: { fields: [{ ...reading, value: 17 }] },
+      }),
+    );
+    expect(acceptWith).toHaveBeenCalled();
+  });
+
+  it('does not patch when nothing was edited', async () => {
+    await render({ detection: det({ fields: [reading] }) });
+    await click(byId('form-confirm'));
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+});
 
 describe('ChangePicker', () => {
   it("starts on the draft's class and severity", async () => {

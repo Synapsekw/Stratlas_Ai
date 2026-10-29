@@ -42,6 +42,7 @@ import {
 } from './actions';
 import { askAiPrefs } from './askAi/prefs';
 import { Crop } from './Crop';
+import { FieldsList } from './FieldsForm';
 import { visibleDetections } from './findings';
 import { leaveQueue, openQueue, useInspectUi } from './inspectUi';
 import './reviewQueue.css';
@@ -561,6 +562,12 @@ export function ReviewQueue(p: {
               ))}
             </div>
           </div>
+          {current.fields && current.fields.length > 0 && (
+            <div className="ann-field">
+              <span>{t('fields.title')}</span>
+              <FieldsList fields={current.fields} />
+            </div>
+          )}
           <div className="queue-actions">
             <WithReason reason={reason}>
               <button
