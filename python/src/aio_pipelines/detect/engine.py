@@ -183,8 +183,15 @@ def check_prompt(det: dict) -> str:
 
 def box_frame(model_id: str) -> BoxFrame:
     """The frame a model answers ``bbox_2d`` in: 0 to 1000 of the sent image for the Qwen3 family
-    (``qwen3.5-...``, ``qwen3-vl-...``), sent pixels for everything else (Qwen2.5-VL)."""
-    return "rel1000" if re.search(r"qwen[-_ ]?3", model_id, re.IGNORECASE) else "pixels"
+    (an id that starts ``qwen3``, ``qwen3.5`` and the like: ``qwen3.5-...``, ``qwen3-vl-...``),
+    sent pixels for everything else (Qwen2.5-VL). The app's ``localVlmModel`` uses the same rule
+    (``QWEN3_FAMILY``) and both test suites check the same ids."""
+    return "rel1000" if QWEN3_FAMILY.match(model_id) else "pixels"
+
+
+#: An id of the Qwen3 family: ``qwen3`` (``qwen-3``, ``qwen_3``), an optional ``.N`` minor, then
+#: the end or anything but a digit or a dot. ``qwen30-x`` and ``my-qwen3-...`` are not.
+QWEN3_FAMILY = re.compile(r"^qwen[-_ ]?3(?:\.\d+)?(?![\d.])", re.IGNORECASE)
 
 
 def _try_list(text: str) -> list | None:

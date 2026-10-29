@@ -28,4 +28,22 @@ describe('localVlmModel', () => {
     });
     expect(localVlmModel('qwen-vl').family).toBe('qwen25');
   });
+  // the same ids and answers as `box_frame` in python/tests/test_detect_engine.py
+  it.each([
+    ['qwen3.5-9b-q4_k_m', 'qwen3'],
+    ['qwen3-vl-4b-instruct-q4_k_m', 'qwen3'],
+    ['Qwen3-VL-4B-Instruct', 'qwen3'],
+    ['qwen3-8b-q4_k_m', 'qwen3'],
+    ['qwen2.5-vl-7b-instruct-q4_k_m', 'qwen25'],
+    ['qwen-vl', 'qwen25'],
+    ['qwen30-x', 'qwen25'],
+    ['my-qwen3-finetune', 'qwen25'],
+    ['anything-else', 'qwen25'],
+  ] as const)('%s answers boxes as the %s family', (id, family) => {
+    expect(localVlmModel(id).family).toBe(family);
+  });
+  it('another Qwen3 model gets the Qwen3-VL floor', () => {
+    expect(localVlmModel('qwen3-8b-q4_k_m')).toMatchObject({ family: 'qwen3', minFreeMb: 5600 });
+    expect(localVlmModel('Qwen3.5-9B').serverArgs).toEqual(['--reasoning', 'off']);
+  });
 });

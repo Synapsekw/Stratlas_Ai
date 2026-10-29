@@ -279,11 +279,23 @@ def test_parse_boxes_strips_think():
     assert not repaired
 
 
+# the same ids and answers as `localVlmModel` in apps/desktop/src/main/analytics/models.test.ts
+BOX_FRAME_IDS = [
+    ("qwen3.5-9b-q4_k_m", "rel1000"),
+    ("qwen3-vl-4b-instruct-q4_k_m", "rel1000"),
+    ("Qwen3-VL-4B-Instruct", "rel1000"),
+    ("qwen3-8b-q4_k_m", "rel1000"),
+    ("qwen2.5-vl-7b-instruct-q4_k_m", "pixels"),
+    ("qwen-vl", "pixels"),
+    ("qwen30-x", "pixels"),
+    ("my-qwen3-finetune", "pixels"),
+    ("anything-else", "pixels"),
+]
+
+
 def test_box_frame():
-    assert box_frame("qwen3.5-9b-q4_k_m") == "rel1000"
-    assert box_frame("Qwen3-VL-4B-Instruct") == "rel1000"
-    assert box_frame("qwen2.5-vl-7b-instruct-q4_k_m") == "pixels"
-    assert box_frame("anything-else") == "pixels"
+    for model_id, frame in BOX_FRAME_IDS:
+        assert box_frame(model_id) == frame, model_id
 
 
 def test_rel1000_boxes_scale_to_send_frame():
