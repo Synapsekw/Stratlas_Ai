@@ -1044,7 +1044,8 @@ const detectQueue = detectLane({
       userData: app.getPath('userData'),
       findPack: (o) => findAnalyticsPack({ ...o, app: packApp, platform: packPlatform }),
       unusable: (o) => unusablePacks({ ...o, app: packApp, platform: packPlatform }),
-      hardware: () => checkHardware({ platform: process.platform, exec: execNvidiaSmi }),
+      hardware: (minFreeMb) =>
+        checkHardware({ platform: process.platform, exec: execNvidiaSmi, minFreeMb }),
       server: vlmServer,
       resolve: resolveDetectors,
       running,

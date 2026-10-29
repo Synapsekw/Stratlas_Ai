@@ -104,7 +104,9 @@ const oldDriver = (g: Gpu) => Number.parseInt(g.driver, 10) < MIN_DRIVER;
  * newer, on driver 580 or later, with enough total and free memory. Refused in that order (no
  * card, driver, card age, total, free), and the card is picked among those that pass.
  */
-export async function checkHardware(d: HardwareDeps): Promise<HardwareCheck> {
+export async function checkHardware(
+  d: HardwareDeps & { minFreeMb?: number },
+): Promise<HardwareCheck> {
   if (d.platform === 'darwin') return refuse('mac');
   // full paths only, so a nvidia-smi planted in the current folder is never run; the driver puts
   // it in System32 (newer) or Program Files (older), and only a drive-letter ProgramFiles counts
@@ -138,7 +140,7 @@ export async function checkHardware(d: HardwareDeps): Promise<HardwareCheck> {
   if (best.totalMb < VLM_MIN_VRAM_MB) {
     return refuse('tooSmall', { total: Math.floor(best.totalMb / 1024) });
   }
-  if (best.freeMb < VLM_MIN_FREE_VRAM_MB) {
+  if (best.freeMb < Math.max(VLM_MIN_FREE_VRAM_MB, d.minFreeMb ?? 0)) {
     return refuse('tooBusy', { free: (best.freeMb / 1024).toFixed(1) });
   }
   return {

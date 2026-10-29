@@ -20,6 +20,7 @@ import { basename, dirname, resolve } from 'node:path';
 import { programPath, systemProgram } from '@aio/project/fs';
 import { jobBaseEnv } from '../jobs/runner';
 import { killTree } from '../odm/system';
+import { localVlmModel } from './models';
 import type { AnalyticsPack } from './pack';
 import { presetText } from './text';
 
@@ -108,6 +109,9 @@ export class VlmServer {
   private starting: { dir: string; done: Promise<EnsureResult> } | null = null;
   /** Pack folders being removed or replaced; `'*'` holds every pack. */
   private readonly holds = new Map<string, number>();
+  /** Leases held by local asks, and whether `idle()` came while one was held. */
+  private leases = 0;
+  private stopWanted = false;
   /** The leftover check of `sweep`; every start waits for it. */
   private swept: Promise<void> = Promise.resolve();
 
@@ -191,7 +195,29 @@ export class VlmServer {
   /** No detector run is running or waiting: stop now (not while a start is still loading). */
   idle(): void {
     if (this.starting) return;
+    if (this.leases > 0) {
+      this.stopWanted = true;
+      return;
+    }
     void this.stop();
+  }
+
+  /**
+   * Keep the server running for a local ask. While a lease is held `idle()` only marks a stop as
+   * wanted; the last release stops it then. Returns the release (safe to call twice).
+   */
+  lease(): () => void {
+    this.leases += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.leases -= 1;
+      if (this.leases === 0 && this.stopWanted) {
+        this.stopWanted = false;
+        void this.stop();
+      }
+    };
   }
 
   async stop(): Promise<void> {
@@ -282,6 +308,7 @@ export class VlmServer {
       '--parallel',
       '1',
       '--no-ui',
+      ...localVlmModel(pack.manifest.model.id).serverArgs,
     ];
     // in the environment, not on the command line: llama-server reads LLAMA_API_KEY
     const env: Record<string, string> = {

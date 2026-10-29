@@ -27,6 +27,7 @@ import { en } from '@aio/ui/i18n/en';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { resolveDetectors } from './detectors';
+import { localVlmModel } from './models';
 import type { AnalyticsPack, UnusablePack } from './pack';
 import type { VlmServer } from './server';
 
@@ -55,7 +56,7 @@ export interface GateDeps {
     env: Record<string, string | undefined>;
   }) => Promise<UnusablePack[]>;
   /** The `checkHardware` result for this start. */
-  hardware: () => Promise<HardwareCheck>;
+  hardware: (minFreeMb: number) => Promise<HardwareCheck>;
   server: Pick<VlmServer, 'ensure' | 'attach' | 'serves'>;
   resolve: typeof resolveDetectors;
   /** A `detect.vlm` or GPU pipeline job is at work (or another start is passing the gate). */
@@ -126,7 +127,7 @@ export async function detectJobGate(req: StartRequest, d: GateDeps): Promise<Gat
   // a server already loaded holds the memory the check looks for
   let gpuIndex: number | null = null;
   if (!d.server.serves(pack.dir)) {
-    const hw = await d.hardware();
+    const hw = await d.hardware(localVlmModel(pack.manifest.model.id).minFreeMb);
     if (!hw.ok) return { refuse: hw.reason };
     gpuIndex = hw.gpuIndex;
   }

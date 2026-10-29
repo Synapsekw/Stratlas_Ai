@@ -108,6 +108,16 @@ describe('hardware check', () => {
     });
   });
 
+  it('minFreeMb raises the free memory floor', async () => {
+    const csv = '0, RTX 4070, 12282, 7000, 591.86, 8.9';
+    expect(await checkHardware({ platform: 'win32', exec: ok(csv) })).toMatchObject({ ok: true });
+    expect(await checkHardware({ platform: 'win32', exec: ok(csv), minFreeMb: 7400 })).toEqual({
+      ok: false,
+      code: 'tooBusy',
+      reason: en['detect.preset.hw.tooBusy'].replace('{free}', '6.8'),
+    });
+  });
+
   it('darwin is the mac message', async () => {
     let called = false;
     const r = await checkHardware({

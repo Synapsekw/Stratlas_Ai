@@ -10,6 +10,7 @@ import {
   type VlmServerState,
 } from '@aio/schema';
 import { en } from '@aio/ui/i18n/en';
+import { localVlmModel } from './models';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -96,8 +97,14 @@ function deps(over: Partial<GateDeps> = {}) {
     attach: vi.fn((url: string) => Promise.resolve({ ...STATE, url })),
     serves: vi.fn(() => false),
   };
-  const hardware = vi.fn((): Promise<HardwareCheck> =>
-    Promise.resolve({ ok: true, gpu: 'GPU', gpuIndex: 1, totalMb: 16000, freeMb: 15000 }),
+  const hardware = vi.fn((minFreeMb: number): Promise<HardwareCheck> =>
+    Promise.resolve({
+      ok: true,
+      gpu: 'GPU',
+      gpuIndex: 1,
+      totalMb: 16000,
+      freeMb: Math.max(15000, minFreeMb),
+    }),
   );
   const findPack = vi.fn(() => Promise.resolve(PACK as AnalyticsPack | null));
   const resolve = vi.fn((_o: unknown, refs: { where: string; id: string }[]) =>
@@ -149,6 +156,12 @@ describe('detectJobGate', () => {
     });
     expect(await detectJobGate(newRequest(), d)).toEqual({ refuse: 'Too little memory.' });
     expect(server.ensure).not.toHaveBeenCalled();
+  });
+
+  it('hands the model floor to the hardware check', async () => {
+    const { d, hardware } = deps();
+    await detectJobGate(newRequest(), d);
+    expect(hardware).toHaveBeenCalledWith(localVlmModel('qwen-vl').minFreeMb);
   });
 
   it('a server that does not start refuses with server.failed', async () => {

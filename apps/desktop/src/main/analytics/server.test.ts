@@ -307,6 +307,54 @@ describe('VlmServer', () => {
     expect(h.spawned).toHaveLength(2);
   });
 
+  it('launch adds the model table arguments', async () => {
+    const h = harness();
+    await h.server.ensure(pack(), 0);
+    expect(at(h.spawned, 0).args).not.toContain('--reasoning');
+    await h.server.stop();
+    manifest.model.id = 'qwen3.5-9b-q4_k_m';
+    try {
+      await h.server.ensure(pack(), 0);
+    } finally {
+      manifest.model.id = 'qwen-vl';
+    }
+    const args = at(h.spawned, 1).args;
+    expect(args.slice(-2)).toEqual(['--reasoning', 'off']);
+    await h.server.stop();
+    manifest.model.id = 'qwen2.5-vl-7b-instruct-q4_k_m';
+    try {
+      await h.server.ensure(pack(), 0);
+    } finally {
+      manifest.model.id = 'qwen-vl';
+    }
+    expect(at(h.spawned, 2).args).not.toContain('--reasoning');
+  });
+
+  it('idle during a lease waits for the release; stopSync ignores leases', async () => {
+    const h = harness();
+    await h.server.ensure(pack(), 0);
+    const release = h.server.lease();
+    h.server.idle();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.killed).toEqual([]);
+    release();
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.killed).toEqual([4000]);
+    await h.server.ensure(pack(), 0);
+    h.server.lease();
+    h.server.stopSync();
+    expect(h.killed).toEqual([4000, 4001]);
+  });
+
+  it('a release without an idle leaves the server running', async () => {
+    const h = harness();
+    await h.server.ensure(pack(), 0);
+    h.server.lease()();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.killed).toEqual([]);
+  });
+
   it('does not stop while a queued run waits', async () => {
     let ready = false;
     const h = harness(() => (ready ? 200 : 503));
