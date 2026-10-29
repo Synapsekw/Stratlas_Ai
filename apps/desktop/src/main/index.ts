@@ -216,6 +216,7 @@ import { detectJobGate, detectLane } from './analytics/gate';
 import { checkHardware, execNvidiaSmi } from './analytics/hardware';
 import { registerLedgerIpc } from './analytics/ledgerIpc';
 import { DETECT_PACK_FEATURE, detectPackRefusal } from './analytics/detectPack';
+import { localVlmModel } from './analytics/models';
 import { findAnalyticsPack, unusablePacks } from './analytics/pack';
 import { registerAnalyticsPackIpc } from './analytics/packIpc';
 import { nodeVlmServerDeps, VlmServer } from './analytics/server';
@@ -2451,9 +2452,20 @@ function registerIpc(): void {
         'The Analytics pack holds a program that runs on this computer with your permissions. This file carries no publisher signature, so the app cannot tell where it came from. Install it only if you got it from the publisher yourself.',
       ),
   });
-  handle('analytics:hardware', () =>
-    checkHardware({ platform: process.platform, exec: execNvidiaSmi }),
-  );
+  handle('analytics:hardware', async () => {
+    // the installed pack's model sets the free memory floor; no pack keeps the base floor
+    const pack = await findAnalyticsPack({
+      dataRoot: settings.current().dataRoot,
+      env: process.env,
+      app: packApp,
+      platform: packPlatform,
+    }).catch(() => null);
+    return checkHardware({
+      platform: process.platform,
+      exec: execNvidiaSmi,
+      ...(pack ? { minFreeMb: localVlmModel(pack.manifest.model.id).minFreeMb } : {}),
+    });
+  });
   handle('detect:queue', () => ({ items: detectQueue.list() }));
   handle('detect:queueCancel', ({ run }) => detectQueue.cancel(run));
   registerDetectorsIpc({
