@@ -60,6 +60,8 @@ async function start(models: Parameters<typeof startFakeLlm>[0]['models']): Prom
   await network.attach(app);
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
+  // a new install starts with cloud AI on; these specs prove the offline path, so start it off
+  await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: false }));
   return { data, fake, app, win, network };
 }
 

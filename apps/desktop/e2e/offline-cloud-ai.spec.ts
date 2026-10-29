@@ -86,6 +86,11 @@ test('offline-only: no cloud AI request leaves, and the app says why', async () 
     await network.attach(app);
     const win = await app.firstWindow();
     await win.waitForLoadState('domcontentloaded');
+    // a new install starts with cloud AI on; both specs here start from off
+    await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: false }));
+    // the screen loaded with the new-install default, so load it again to show the saved value
+    await win.reload();
+    await win.waitForLoadState('domcontentloaded');
     await win.evaluate(
       (key) => window.aio.invoke('ai:setKey', { provider: 'anthropic', key }),
       KEY,
@@ -188,6 +193,7 @@ test('offline-only: a local model on this machine still answers, one elsewhere d
     await network.attach(app);
     const win = await app.firstWindow();
     await win.waitForLoadState('domcontentloaded');
+    await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: false }));
     const useLocal = (baseUrl: string) =>
       win.evaluate(
         ({ baseUrl: url, routes }) =>

@@ -91,6 +91,8 @@ async function start(c: Copy) {
   await network.attach(app);
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
+  // a new install starts with cloud AI on; the spec switches it itself where it needs it
+  await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: false }));
   await app.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows()[0]?.setContentSize(1600, 960);
   });

@@ -32,7 +32,8 @@ export function defaultDataRoot(o: {
 
 export function defaultSettings(dataRoot: string): Settings {
   return {
-    cloudAi: false,
+    // on for a new install (founder, 27 Oct); merge() reads a stored file without it as off
+    cloudAi: true,
     theme: 'dark',
     sidebarCollapsed: false,
     dataRoot,
@@ -116,7 +117,8 @@ function toDisk(settings: Settings, keep: Record<string, boolean>): Record<strin
 function merge(defaults: Settings, raw: unknown): Settings {
   if (typeof raw !== 'object' || raw === null) return defaults;
   const stored = fromDisk(raw as Record<string, unknown>);
-  const out: Record<string, unknown> = { ...defaults };
+  // an upgrade never turns the cloud on by itself: a file with no valid cloudAi reads as off
+  const out: Record<string, unknown> = { ...defaults, cloudAi: false };
   for (const [key, field] of Object.entries(Settings.shape)) {
     if (!(key in stored)) continue;
     const r = field.safeParse(stored[key]);

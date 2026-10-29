@@ -67,7 +67,8 @@ test('library, settings and aio:// work offline and the protocol refuses travers
     await win.waitForLoadState('domcontentloaded');
 
     const settings = await win.evaluate(() => window.aio.invoke('settings:get', {}));
-    expect(settings.cloudAi).toBe(false);
+    // a new install starts with cloud AI on; no key is stored, so nothing may leave
+    expect(settings.cloudAi).toBe(true);
     expect(settings.dataRoot).toBe(dataRoot);
 
     const library = await win.evaluate(() => window.aio.invoke('library:list', {}));

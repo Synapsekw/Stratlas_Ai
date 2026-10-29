@@ -60,8 +60,8 @@ describe('settings store', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it('has offline-first defaults', () => {
-    expect(defaults.cloudAi).toBe(false);
+  it('has offline-first defaults, with cloud AI on for a new install', () => {
+    expect(defaults.cloudAi).toBe(true);
     expect(defaults.theme).toBe('dark');
     expect(defaults.sidebarCollapsed).toBe(false);
     expect(defaults.dataRoot).toBe('D:\\Data');
@@ -178,16 +178,27 @@ describe('settings store', () => {
     });
   });
 
-  it('fills fields missing from an older file with defaults', async () => {
+  it('fills fields missing from an older file with defaults, but never turns cloud AI on', async () => {
     await writeFile(file, JSON.stringify({ theme: 'light' }));
     const store = createSettingsStore(file, defaults);
-    expect(await store.get()).toEqual({ ...defaults, theme: 'light' });
+    expect(await store.get()).toEqual({ ...defaults, theme: 'light', cloudAi: false });
+  });
+
+  it('keeps a stored cloudAi of false or true, and reads a missing or invalid one as false', async () => {
+    const read = async (stored: object) => {
+      await writeFile(file, JSON.stringify(stored));
+      return (await createSettingsStore(file, defaults).get()).cloudAi;
+    };
+    expect(await read({ cloudAi: false })).toBe(false);
+    expect(await read({ cloudAi: true })).toBe(true);
+    expect(await read({ theme: 'light' })).toBe(false);
+    expect(await read({ cloudAi: 'yes' })).toBe(false);
   });
 
   it('drops invalid fields and keeps the valid ones', async () => {
     await writeFile(file, JSON.stringify({ theme: 'purple', sidebarCollapsed: true }));
     const store = createSettingsStore(file, defaults);
-    expect(await store.get()).toEqual({ ...defaults, sidebarCollapsed: true });
+    expect(await store.get()).toEqual({ ...defaults, sidebarCollapsed: true, cloudAi: false });
   });
 
   it('survives a corrupt file', async () => {
