@@ -36,6 +36,10 @@ export interface LocalAsk {
 }
 
 export const LOCAL_ASK_TIMEOUT_MS = 180_000;
+/** Earlier turns after the first question sent to the model on this PC (`--ctx-size 8192`). */
+export const LOCAL_MAX_TURNS = 8;
+const TOO_LONG =
+  'This conversation is too long for the model on this PC. Start a new question on this photo.';
 const BUSY = 'The model on this PC is answering another request.';
 const DEFAULT_MODEL = 'qwen3.5-9b-q4_k_m';
 const SEAM_SHA = 'a'.repeat(64);
@@ -105,9 +109,14 @@ export function createLocalAsk(d: LocalAskDeps): LocalAsk {
 
   function buildMessages(req: AskRequest, family: 'qwen25' | 'qwen3'): Message[] {
     const turns = req.turns ?? [];
-    // a thread's first turn is the original question; it rides with the images
-    const first = turns[0]?.role === 'user' ? turns[0] : undefined;
-    const rest = first ? turns.slice(1) : turns;
+    // a thread's first question rides with the images; anything before it is dropped and, with
+    // no question at all, the request goes alone (as the cloud route does, `askRun.ts`)
+    const start = turns.findIndex((t) => t.role === 'user');
+    const first = start >= 0 ? turns[start] : undefined;
+    // the model on this PC has a small context: only the newest earlier turns go with it
+    const rest = first ? turns.slice(start + 1).slice(-LOCAL_MAX_TURNS) : [];
+    // the image message is a question: the kept turns start with an answer
+    if (rest.length < turns.length - start - 1 && rest[0]?.role === 'user') rest.shift();
     const text = askPrompt({
       family,
       kind: req.kind,
@@ -130,7 +139,7 @@ export function createLocalAsk(d: LocalAskDeps): LocalAsk {
     parts.push({ type: 'text', text });
     const out: Message[] = [{ role: 'user', content: parts }];
     for (const t of rest) out.push({ role: t.role, content: t.text });
-    if (first || rest.length > 0) out.push({ role: 'user', content: req.prompt });
+    if (first) out.push({ role: 'user', content: req.prompt });
     return out;
   }
 
@@ -157,6 +166,9 @@ export function createLocalAsk(d: LocalAskDeps): LocalAsk {
     });
     if (!res.ok) {
       const head = (await res.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 200);
+      // llama-server refuses a prompt past its context with a 400 that names the context size
+      if (res.status === 400 && /context (size|length)|exceed_context/i.test(head))
+        return { ok: false, status: res.status, error: TOO_LONG };
       return {
         ok: false,
         status: res.status,

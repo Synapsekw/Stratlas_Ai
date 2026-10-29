@@ -183,6 +183,73 @@ describe('local ask', () => {
     expect(msgs[2]?.content).toBe('And the left one?');
   });
 
+  it('drops a leading assistant turn, as the cloud route does', async () => {
+    const t = setup({ replies: [() => reply('Rust.'), () => reply('Fine.')] });
+    await t.ask.run(
+      findReq({
+        kind: 'ask',
+        prompt: 'And the rust?',
+        turns: [
+          { role: 'assistant', text: 'Hello.' },
+          { role: 'user', text: 'What is here?' },
+          { role: 'assistant', text: 'A tank.' },
+        ],
+      }),
+    );
+    const msgs = body(t.fetch).messages as { role: string; content: unknown }[];
+    expect(msgs.map((m) => m.role)).toEqual(['user', 'assistant', 'user']);
+    expect(JSON.stringify(msgs[0]?.content)).toContain('What is here?');
+    expect(JSON.stringify(msgs)).not.toContain('Hello.');
+    // only assistant turns: the request goes alone
+    await t.ask.run(
+      findReq({ kind: 'ask', prompt: 'Any rust?', turns: [{ role: 'assistant', text: 'Hi.' }] }),
+    );
+    const alone = body(t.fetch, 1).messages as { role: string; content: unknown }[];
+    expect(alone).toHaveLength(1);
+    expect(JSON.stringify(alone[0]?.content)).toContain('Any rust?');
+  });
+
+  it('sends the first question and only the last 8 earlier turns to the model on this PC', async () => {
+    const t = setup({ replies: [() => reply('Done.')] });
+    const turns = Array.from({ length: 20 }, (_, i) => ({
+      role: i % 2 === 0 ? ('user' as const) : ('assistant' as const),
+      text: `Turn ${String(i)}`,
+    }));
+    await t.ask.run(findReq({ kind: 'ask', prompt: 'Last?', turns }));
+    const msgs = body(t.fetch).messages as { role: string; content: unknown }[];
+    // the last 8 (Turn 12 to 19), less a leading question so the roles still alternate
+    expect(msgs).toHaveLength(1 + 7 + 1);
+    expect(JSON.stringify(msgs[0]?.content)).toContain('Turn 0');
+    expect(msgs[1]).toEqual({ role: 'assistant', content: 'Turn 13' });
+    expect(msgs[7]).toEqual({ role: 'assistant', content: 'Turn 19' });
+    expect(msgs[8]).toEqual({ role: 'user', content: 'Last?' });
+  });
+
+  it('says a conversation too long for the model in plain words', async () => {
+    const t = setup({
+      replies: [
+        () =>
+          new Response(
+            JSON.stringify({
+              error: {
+                code: 400,
+                message: 'the request exceeds the available context size, try increasing it',
+                type: 'exceed_context_size_error',
+              },
+            }),
+            { status: 400 },
+          ),
+      ],
+    });
+    const r = await t.ask.run(findReq({ kind: 'ask', prompt: 'More?' }));
+    expect(r).toMatchObject({
+      ok: false,
+      error:
+        'This conversation is too long for the model on this PC. Start a new question on this photo.',
+    });
+    expect(JSON.stringify(r)).not.toContain('exceed_context_size_error');
+  });
+
   it('keeps what was read when the answer is cut short', async () => {
     const t = setup({
       replies: [
