@@ -198,6 +198,24 @@ export function registerEvidencePolicyIpc({
     });
     return { ok: true };
   });
+
+  // "Keep this project's images on this PC": the project's `aiPolicy: 'forbid'`; off removes the key.
+  handle('ai:setProjectPolicy', async ({ projectId, keepLocal }) => {
+    if (projects.package(projectId)) return READ_ONLY;
+    const root = projects.root(projectId);
+    if (root === undefined) {
+      return { ok: false, error: `Project "${projectId}" is not open.` };
+    }
+    await (
+      await lib()
+    ).updateManifestFile(root, (m) => {
+      const next: ProjectManifest = { ...m };
+      if (keepLocal) next.aiPolicy = 'forbid';
+      else delete next.aiPolicy;
+      return { manifest: next };
+    });
+    return { ok: true };
+  });
 }
 
 /**

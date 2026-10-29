@@ -4,6 +4,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { readAiPolicy } from './aiProjects';
+import { updateManifestFile } from '@aio/project/builder';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   engineerRuntimeHost,
@@ -246,6 +248,40 @@ describe('evidencePolicy', () => {
     expect(
       await ipc().call('ai:setCloudEvidence', { projectId: 'other', scans: true }),
     ).toMatchObject({ ok: false });
+  });
+
+  it('ai:setProjectPolicy keeps images on this PC, survives other saves, and turns off again', async () => {
+    await writeManifestFile(root, manifest);
+    const t = ipc();
+    expect(await t.call('ai:setProjectPolicy', { projectId: 'site', keepLocal: true })).toEqual({
+      ok: true,
+    });
+    expect(
+      (JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as ProjectManifest).aiPolicy,
+    ).toBe('forbid');
+    expect(await readAiPolicy(root)).toBe('forbid');
+    await updateManifestFile(root, (m) => ({ manifest: { ...m, name: 'Renamed' } }));
+    expect(await readAiPolicy(root)).toBe('forbid');
+    expect(await t.call('ai:setProjectPolicy', { projectId: 'site', keepLocal: false })).toEqual({
+      ok: true,
+    });
+    expect(await readAiPolicy(root)).toBe('allow');
+    expect((await readManifestFile(root)).aiPolicy).toBeUndefined();
+    expect((await readManifestFile(root)).name).toBe('Renamed');
+  });
+
+  it('ai:setProjectPolicy refuses a package and a project that is not open', async () => {
+    await writeManifestFile(root, manifest);
+    expect(
+      await ipc({ package: () => ({}) }).call('ai:setProjectPolicy', {
+        projectId: 'site',
+        keepLocal: true,
+      }),
+    ).toMatchObject({ ok: false, code: 'read-only' });
+    expect(await readAiPolicy(root)).toBe('allow');
+    expect(
+      await ipc().call('ai:setProjectPolicy', { projectId: 'other', keepLocal: true }),
+    ).toMatchObject({ ok: false, error: 'Project "other" is not open.' });
   });
 
   it('the engineer host reads the consents from disk on every request', async () => {
