@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
-  pkg: null,
+  pkg: null as { id: string } | null,
   call: vi.fn(),
 }));
 
