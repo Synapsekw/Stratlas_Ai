@@ -9,4 +9,10 @@ export const enAskFields = {
   'fields.unknown': 'Unknown',
   'fields.none': 'Not read',
   'fields.edit': 'Fix the values before you accept',
+  'fields.pick': 'Pick one',
+  'fields.change.new': 'New',
+  'fields.change.removed': 'Removed',
+  'fields.change.moved': 'Moved',
+  'fields.change.progress': 'Progress',
+  'fields.change.damage': 'Damage',
 } as const satisfies Record<string, string>;

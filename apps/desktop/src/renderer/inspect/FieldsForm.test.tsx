@@ -12,7 +12,13 @@ const fields: FieldValue[] = [
   { key: 'reading', label: 'Reading', type: 'number', value: 42.5, unit: 'bar' },
   { key: 'tag', label: 'Tag', type: 'text', value: 'P-101' },
   { key: 'leaking', label: 'Leaking', type: 'yesno', value: 'no' },
-  { key: 'change_type', label: 'Change', type: 'choice', value: 'new' },
+  {
+    key: 'change_type',
+    label: 'Change',
+    type: 'choice',
+    value: 'new',
+    choices: ['new', 'removed', 'moved', 'progress', 'damage'],
+  },
 ];
 
 let host: HTMLDivElement;
@@ -60,6 +66,34 @@ describe('FieldsList', () => {
 });
 
 describe('FieldsForm', () => {
+  it('limits a choice to its choices, in words for the change kinds', () => {
+    render(<FieldsForm fields={fields} onChange={vi.fn()} />);
+    const select = q('[data-testid="field-change_type"]') as HTMLSelectElement;
+    expect([...select.options].map((o) => o.textContent)).toEqual([
+      'New',
+      'Removed',
+      'Moved',
+      'Progress',
+      'Damage',
+    ]);
+    expect(select.value).toBe('new');
+  });
+
+  it('shows a value outside the choices as a disabled current value', () => {
+    const odd: FieldValue = {
+      key: 'state',
+      label: 'State',
+      type: 'choice',
+      value: 'half',
+      choices: ['open', 'closed'],
+    };
+    render(<FieldsForm fields={[odd]} onChange={vi.fn()} />);
+    const select = q('[data-testid="field-state"]') as HTMLSelectElement;
+    expect([...select.options].map((o) => o.textContent)).toEqual(['half', 'open', 'closed']);
+    expect(select.options[0]?.disabled).toBe(true);
+    expect(select.value).toBe('half');
+  });
+
   it('reports a new number', () => {
     const onChange = vi.fn();
     render(<FieldsForm fields={fields} onChange={onChange} />);

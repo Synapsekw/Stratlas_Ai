@@ -6,7 +6,7 @@
  */
 import { formatFieldValue } from '@aio/project/export';
 import type { FieldValue } from '@aio/schema';
-import { useT } from '@aio/ui';
+import { t, useT, type MessageKey } from '@aio/ui';
 import { useState, type ReactElement } from 'react';
 import './fields.css';
 
@@ -14,6 +14,18 @@ import './fields.css';
 const BUILT_IN_CHOICES: Readonly<Record<string, readonly string[]>> = {
   change_type: ['new', 'removed', 'moved', 'progress', 'damage'],
 };
+
+const CHANGE_WORDS: Readonly<Record<string, MessageKey>> = {
+  new: 'fields.change.new',
+  removed: 'fields.change.removed',
+  moved: 'fields.change.moved',
+  progress: 'fields.change.progress',
+  damage: 'fields.change.damage',
+};
+
+/** The change kinds are shown in words; any other choice is shown as the request wrote it. */
+const choiceLabel = (key: string, c: string): string =>
+  key === 'change_type' && CHANGE_WORDS[c] ? t(CHANGE_WORDS[c]) : c;
 
 function useWords() {
   const t = useT();
@@ -92,7 +104,7 @@ export function FieldsForm({
     <fieldset className="fields-form" data-testid="fields-form">
       <legend>{t('fields.edit')}</legend>
       {fields.map((f) => {
-        const choices = f.type === 'choice' ? BUILT_IN_CHOICES[f.key] : undefined;
+        const choices = f.type === 'choice' ? (f.choices ?? BUILT_IN_CHOICES[f.key]) : undefined;
         return (
           <div key={f.key} className="field-row">
             <span className="field-name">{f.label}</span>
@@ -136,13 +148,18 @@ export function FieldsForm({
                   aria-label={f.label}
                   value={typeof f.value === 'string' ? f.value : ''}
                   onChange={(e) => {
-                    set(f.key, e.target.value === '' ? null : e.target.value);
+                    set(f.key, e.target.value);
                   }}
                 >
-                  <option value="">{words.none}</option>
+                  {/* a value outside the list stays visible but cannot be picked again */}
+                  {(f.value === null || !choices.includes(String(f.value))) && (
+                    <option value={typeof f.value === 'string' ? f.value : ''} disabled>
+                      {typeof f.value === 'string' && f.value !== '' ? f.value : t('fields.pick')}
+                    </option>
+                  )}
                   {choices.map((c) => (
                     <option key={c} value={c}>
-                      {c}
+                      {choiceLabel(f.key, c)}
                     </option>
                   ))}
                 </select>

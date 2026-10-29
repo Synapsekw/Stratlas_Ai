@@ -192,6 +192,7 @@ export function coerceField(
     type: spec.type,
     value,
     ...(spec.unit ? { unit: spec.unit } : {}),
+    ...(spec.choices ? { choices: spec.choices } : {}),
   });
   if (raw === undefined || raw === null) return { value: make(null) };
   const bad = (what: string) => ({

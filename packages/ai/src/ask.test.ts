@@ -242,7 +242,13 @@ describe('coerceField', () => {
     expect(off.value.value).toBeNull();
     expect(off.warning).toBeTruthy();
     expect(coerceField(ch, 'closed')).toEqual({
-      value: { key: 'state', label: 'State', type: 'choice', value: 'Closed' },
+      value: {
+        key: 'state',
+        label: 'State',
+        type: 'choice',
+        value: 'Closed',
+        choices: ['Open', 'Closed'],
+      },
     });
   });
   it('trims text to 200', () => {

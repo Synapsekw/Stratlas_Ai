@@ -62,6 +62,12 @@ describe('aio.ai-request/1', () => {
     expect(FieldValue.safeParse({ ...base, type: 'text', value: null }).success).toBe(true);
   });
 
+  it('carries the choices of a choice value', () => {
+    const v = { key: 'a', label: 'A', type: 'choice', value: 'x', choices: ['x', 'y'] };
+    expect(FieldValue.safeParse(v).success).toBe(true);
+    expect(FieldValue.safeParse({ ...v, choices: [] }).success).toBe(false);
+  });
+
   it('accepts a gauge request and refuses duplicate keys or 13 fields', () => {
     expect(AiRequest.safeParse(gauge).success).toBe(true);
     const dup = { ...gauge, fields: [spec(1), spec(1)] };

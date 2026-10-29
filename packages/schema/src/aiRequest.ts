@@ -35,6 +35,8 @@ export const FieldValue = z
     type: FieldType,
     value: z.union([z.number(), z.string(), z.null()]),
     unit: z.string().max(20).optional(),
+    /** The request's choices, carried on a `choice` value so the form can limit the pick. */
+    choices: z.array(z.string().min(1).max(40)).min(1).max(20).optional(),
   })
   .strict()
   .refine(
