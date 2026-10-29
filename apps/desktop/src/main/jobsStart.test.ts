@@ -43,6 +43,7 @@ function jobsStart(
   if (!callback) throw new Error('jobs:start handler is not registered.');
   const start = vi.fn(() => Promise.resolve({ ok: true }));
   const detectStart = vi.fn(() => Promise.resolve({ ok: true }));
+  const photoStarting = vi.fn();
   const findPack = vi.fn(() => Promise.resolve({ pack: { version } }));
   const compiled = ts.transpileModule(`(${callback.getText(source)})`, {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
@@ -77,10 +78,10 @@ function jobsStart(
     thermalPackRefusal,
     evidenceJobPackRefusal,
     detectPackRefusal,
-    detectQueue: { start: detectStart, gpuBusy },
+    detectQueue: { start: detectStart, gpuBusy, photoStarting },
     laneSphere: () => null,
   }) as (req: IpcRequest<'jobs:start'>) => Promise<{ ok: boolean; error?: string }>;
-  return { handle, start, detectStart, findPack };
+  return { handle, start, detectStart, findPack, photoStarting };
 }
 
 describe('jobs:start resume feature gate', () => {
@@ -157,8 +158,19 @@ describe('jobs:start resume feature gate', () => {
     const req = { pipeline: 'photo.align' as const, project: 'synthetic', params: {} };
     expect(await t.handle(req)).toEqual({ ok: false, error: en['detect.preset.gpuBusy'] });
     expect(t.start).not.toHaveBeenCalled();
+    expect(t.photoStarting).not.toHaveBeenCalled();
     const other = { pipeline: 'walk.process' as const, project: 'synthetic', params: {} };
     expect(await t.handle(other)).toEqual({ ok: true });
+  });
+
+  it('stops a model kept warm after a local ask before a job that is let through starts', async () => {
+    const t = jobsStart('0.23.0', 'failed');
+    const req = { pipeline: 'photo.align' as const, project: 'synthetic', params: {} };
+    expect(await t.handle(req)).toEqual({ ok: true });
+    expect(t.photoStarting).toHaveBeenCalledWith('photo.align');
+    expect(t.photoStarting.mock.invocationCallOrder[0]).toBeLessThan(
+      t.start.mock.invocationCallOrder[0] ?? 0,
+    );
   });
 
   it('allows new component evidence on the component-processing pack', async () => {
