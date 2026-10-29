@@ -234,6 +234,16 @@ td {
 tr {
   break-inside: avoid;
 }
+h2.fields-title {
+  margin-top: 8mm;
+  break-after: avoid;
+}
+table.fields {
+  margin-bottom: 5mm;
+}
+table.fields td.val {
+  font-variant-numeric: tabular-nums;
+}
 td.code {
   font-family: 'IBM Plex Mono', monospace;
   white-space: nowrap;

@@ -1,4 +1,4 @@
-import type { Issue, ReportBrandingSettings, Vec3 } from '@aio/schema';
+import type { FieldValue, Issue, ReportBrandingSettings, Vec3 } from '@aio/schema';
 import {
   bestPhoto,
   classInfo,
@@ -42,6 +42,8 @@ export interface ReportRow {
   position: Vec3 | null;
   /** Mesh normal at the position when the sighting has one, to look at the surface. */
   normal: Vec3 | null;
+  /** Custom values read off the photo (gauge readings and the like), in the order recorded. */
+  fields: FieldValue[];
 }
 
 /**
@@ -186,6 +188,7 @@ export function reportModel(
       photo: bestPhoto(m, issue),
       position: issuePosition(issue, ctx.shiftOf),
       normal: normalOf(issue),
+      fields: issue.fields ?? [],
     };
   });
 
@@ -205,4 +208,51 @@ export function reportModel(
     byStatus,
     rows,
   };
+}
+
+export interface FieldTable {
+  columns: { key: string; label: string; unit?: string }[];
+  rows: { code: string; title: string; values: FieldValue[] }[];
+}
+
+/**
+ * The custom values of the register as tables: one table per distinct ordered key list, in
+ * register order. Issues without fields have no table. `values` lines up with `columns`.
+ */
+export function fieldTables(rows: readonly ReportRow[]): FieldTable[] {
+  const tables = new Map<string, FieldTable>();
+  for (const r of rows) {
+    if (r.fields.length === 0) continue;
+    const id = r.fields.map((f) => f.key).join('|');
+    let t = tables.get(id);
+    if (!t) {
+      t = {
+        columns: r.fields.map((f) => ({
+          key: f.key,
+          label: f.label,
+          ...(f.unit ? { unit: f.unit } : {}),
+        })),
+        rows: [],
+      };
+      tables.set(id, t);
+    }
+    t.rows.push({ code: r.code, title: r.title, values: r.fields });
+  }
+  return [...tables.values()];
+}
+
+/** A recorded value as printed: `4.2 bar`, Yes / No / Unknown, a null as `none`. No dashes. */
+export function formatFieldValue(
+  v: FieldValue,
+  words: { yes: string; no: string; unknown: string; none: string },
+): string {
+  if (v.value === null) return noDashes(words.none);
+  if (typeof v.value === 'number') {
+    const n = String(Math.round(v.value * 1000) / 1000);
+    return noDashes(v.unit ? `${n} ${v.unit}` : n);
+  }
+  if (v.type === 'yesno') {
+    return noDashes(v.value === 'yes' ? words.yes : v.value === 'no' ? words.no : words.unknown);
+  }
+  return noDashes(v.value);
 }

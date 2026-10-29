@@ -91,6 +91,7 @@ const row = (code: string): ReportRow => ({
   photo: null,
   position: null,
   normal: null,
+  fields: [],
 });
 
 const model = (branding = resolveReportBranding(undefined, 'Quadrion AI')): ReportModel => ({
@@ -107,6 +108,28 @@ const model = (branding = resolveReportBranding(undefined, 'Quadrion AI')): Repo
   byZone: [{ zone: 'Roof', count: 2 }],
   byStatus: [{ status: 'approved', count: 2 }],
   rows: [row('D001'), row('D002')],
+});
+
+describe('custom fields in the register report', () => {
+  const gauge = (value: number) => ({
+    key: 'pressure',
+    label: 'Pressure',
+    type: 'number' as const,
+    value,
+    unit: 'bar',
+  });
+  it('prints a Recorded values table and the fields on the issue page', () => {
+    const m = model();
+    m.rows = [{ ...row('D001'), fields: [gauge(4.2)] }, row('D002')];
+    const html = reportHtml(m, new Map());
+    expect(html).toContain('Recorded values');
+    expect(html).toContain('Pressure (bar)');
+    expect(html).toContain('4.2 bar');
+    expect(html).toContain('<dt>Pressure</dt><dd>4.2 bar</dd>');
+  });
+  it('prints nothing extra without fields', () => {
+    expect(reportHtml(model(), new Map())).not.toContain('Recorded values');
+  });
 });
 
 describe('report branding', () => {

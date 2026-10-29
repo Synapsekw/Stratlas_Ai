@@ -1,6 +1,8 @@
 // The sections of the house report, laid out with the Pager. Every string comes from the i18n
 // catalogue; data text is escaped and has no em or en dashes.
 import {
+  fieldTables,
+  formatFieldValue,
   noDashes,
   type HouseModel,
   type ReportBranding,
@@ -651,7 +653,42 @@ export function layoutRegister(p: Pager, ctx: HouseContext, n: string): Map<stri
     ]),
     rows,
   );
+  layoutFieldTables(p, b.rows);
   return cells;
+}
+
+const fieldWords = () => ({
+  yes: tk('report.fields.yes'),
+  no: tk('report.fields.no'),
+  unknown: tk('report.fields.unknown'),
+  none: tk('report.fields.none'),
+});
+
+/** The custom values of the register, one table per set of fields, flowing over pages. */
+function layoutFieldTables(p: Pager, rows: readonly ReportRow[]): void {
+  const tables = fieldTables(rows);
+  if (tables.length === 0) return;
+  const words = fieldWords();
+  subheading(p, tk('house.fields.title'));
+  for (const t of tables) {
+    p.table(
+      tableMaker('grid fields', [
+        tk('house.fields.code'),
+        tk('house.fields.finding'),
+        ...t.columns.map((c) => (c.unit ? `${c.label} (${c.unit})` : c.label)),
+      ]),
+      t.rows.map((r) =>
+        row(
+          [
+            `<b>${esc(r.code)}</b>`,
+            txt(r.title),
+            ...r.values.map((v) => txt(formatFieldValue(v, words))),
+          ],
+          'fld',
+        ),
+      ),
+    );
+  }
 }
 
 /* ------------------------------------------------------------------------------- issue page */
@@ -696,6 +733,7 @@ export function issuePageHtml(r: ReportRow, img: IssueImages, extra: IssueExtra)
     ...(extra.captured
       ? ([[tk('house.issue.captured'), extra.captured]] as [string, string][])
       : []),
+    ...r.fields.map((f): [string, string] => [f.label, formatFieldValue(f, fieldWords())]),
     [tk('house.issue.author'), `${r.author}${r.updatedAt ? `, ${r.updatedAt}` : ''}`],
   ];
   const view = img.view

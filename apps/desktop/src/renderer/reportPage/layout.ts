@@ -1,12 +1,14 @@
 // Issue register report layout: pure HTML building blocks, printed to PDF by main.
 import {
+  fieldTables,
+  formatFieldValue,
   noDashes,
   type CountRow,
   type ReportBranding,
   type ReportModel,
   type ReportRow,
 } from '@aio/project/export';
-import { ReportBrandingSettings, type Vec3 } from '@aio/schema';
+import { ReportBrandingSettings, type FieldValue, type Vec3 } from '@aio/schema';
 
 export function esc(s: string): string {
   return s
@@ -126,6 +128,9 @@ export interface IssueImages {
   view?: string;
 }
 
+const FIELD_WORDS = { yes: 'Yes', no: 'No', unknown: 'Unknown', none: 'Not read' };
+const fieldText = (v: FieldValue) => formatFieldValue(v, FIELD_WORDS);
+
 const chip = (color: string, label: string) =>
   `<span class="chip"><i style="background:${esc(color)}"></i>${txt(label)}</span>`;
 
@@ -210,9 +215,24 @@ function register(m: ReportModel): string {
         `<tr><td class="code">${esc(r.code)}</td><td>${txt(r.title)}</td><td>${txt(r.classLabel)}</td><td>${chip(r.severityColor, r.severityLabel)}</td><td>${esc(r.status)}</td><td>${txt(r.zone)}</td></tr>`,
     )
     .join('');
+  const tables = fieldTables(m.rows)
+    .map((t) => {
+      const head = t.columns
+        .map((c) => `<th>${txt(c.unit ? `${c.label} (${c.unit})` : c.label)}</th>`)
+        .join('');
+      const body = t.rows
+        .map(
+          (r) =>
+            `<tr><td class="code">${esc(r.code)}</td><td>${txt(r.title)}</td>${r.values.map((v) => `<td class="val">${txt(fieldText(v))}</td>`).join('')}</tr>`,
+        )
+        .join('');
+      return `<table class="fields"><thead><tr><th>Code</th><th>Title</th>${head}</tr></thead><tbody>${body}</tbody></table>`;
+    })
+    .join('');
   return `<section class="register">
   <h2>Issue register</h2>
   <table><thead><tr><th>Code</th><th>Title</th><th>Class</th><th>Severity</th><th>Status</th><th>Zone</th></tr></thead><tbody>${rows}</tbody></table>
+  ${tables ? `<h2 class="fields-title">Recorded values</h2>${tables}` : ''}
 </section>`;
 }
 
@@ -225,6 +245,7 @@ function issuePage(r: ReportRow, img: IssueImages | undefined): string {
     ['Zone', r.zone],
     ['Position', r.coords || 'Not placed'],
     ...(r.wgs84 ? ([['WGS84', r.wgs84]] as [string, string][]) : []),
+    ...r.fields.map((f): [string, string] => [f.label, fieldText(f)]),
     ['Sightings', String(r.sightings)],
     ['Author', r.author],
     ['Updated', r.updatedAt],

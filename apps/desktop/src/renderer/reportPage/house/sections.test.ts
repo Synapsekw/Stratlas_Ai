@@ -5,7 +5,7 @@ import {
   type PlanPoint,
   type ReportRow,
 } from '@aio/project/export';
-import { ProjectManifest } from '@aio/schema';
+import { ProjectManifest, type FieldValue } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { isFlat, locatorMap, niceStep } from './charts';
 import {
@@ -13,6 +13,7 @@ import {
   coverHtml,
   frameHtml,
   issuePageHtml,
+  layoutRegister,
   layerAmount,
   layerKindLabel,
   metres,
@@ -21,6 +22,7 @@ import {
   residual,
   type HouseContext,
 } from './sections';
+import { Pager } from './pager';
 
 const manifest = ProjectManifest.parse({
   schema: 'aio.project/1',
@@ -63,6 +65,7 @@ const row: ReportRow = {
   photo: null,
   position: null,
   normal: null,
+  fields: [],
 };
 
 const extra = { photoName: '', captured: '', action: '', actionIsCriteria: false, disclaimer: 'D' };
@@ -112,6 +115,54 @@ describe('issue page', () => {
     const html = issuePageHtml(row, { locator: '<svg class="map"></svg>' }, extra);
     expect(html).toContain('ip-loc');
     expect(html).toContain('Where the issue lies');
+  });
+});
+
+const gauge = (value: number | null): FieldValue => ({
+  key: 'pressure',
+  label: 'Pressure',
+  type: 'number',
+  value,
+  unit: 'bar',
+});
+
+describe('issue page fields', () => {
+  it('adds one meta row per field', () => {
+    const html = issuePageHtml({ ...row, fields: [gauge(4.2)] }, {}, extra);
+    expect(html).toContain('<dt>Pressure</dt><dd>4.2 bar</dd>');
+    expect(issuePageHtml(row, {}, extra)).not.toContain('Pressure');
+  });
+});
+
+describe('register fields', () => {
+  const lay = (rows: ReportRow[]) => {
+    const c = ctx();
+    c.h.base.total = rows.length;
+    c.h.base.rows = rows;
+    const root = document.createElement('div');
+    const p = new Pager({
+      root,
+      frame: () => {
+        const page = document.createElement('div');
+        const body = document.createElement('div');
+        page.appendChild(body);
+        root.appendChild(page);
+        return { page, body };
+      },
+      overflows: () => false,
+    });
+    p.start('register');
+    layoutRegister(p, c, '1');
+    return root.innerHTML;
+  };
+  it('prints no field table without fields', () => {
+    expect(lay([row])).not.toContain('Recorded values');
+  });
+  it('prints a table of the values with fields', () => {
+    const html = lay([{ ...row, fields: [gauge(4.2)] }]);
+    expect(html).toContain('Recorded values');
+    expect(html).toContain('Pressure (bar)');
+    expect(html).toContain('4.2 bar');
   });
 });
 

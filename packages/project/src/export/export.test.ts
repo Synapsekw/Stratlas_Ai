@@ -1,8 +1,12 @@
 import { toWgs84 } from '@aio/geo';
+import type { FieldValue } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { ORIGIN, sampleIssues, sampleManifest } from './fixtures';
 import {
   CSV_COLUMNS,
+  fieldTables,
+  formatFieldValue,
+  type ReportRow,
   issueLocation,
   issuePosition,
   issueZone,
@@ -241,6 +245,55 @@ describe('reportModel', () => {
     );
     expect(r.rows[0]?.position).toEqual([10, 2, -20]);
     expect(JSON.stringify(r)).not.toMatch(/[–—]/);
+  });
+});
+
+describe('field tables', () => {
+  const words = { yes: 'Yes', no: 'No', unknown: 'Unknown', none: 'Not read' };
+  const num = (key: string, value: number | null): FieldValue => ({
+    key,
+    label: key,
+    type: 'number',
+    value,
+    unit: 'bar',
+  });
+  const base = (code: string, fields: FieldValue[]) =>
+    ({ id: code, code, title: `T ${code}`, fields }) as unknown as ReportRow;
+
+  it('groups issues by their ordered key list, in register order', () => {
+    const t = fieldTables([
+      base('A', [num('pressure', 1)]),
+      base('B', [{ key: 'change_type', label: 'Change', type: 'text', value: 'new' }]),
+      base('C', [num('pressure', 2)]),
+      base('D', []),
+    ]);
+    expect(t).toHaveLength(2);
+    expect(t[0]?.rows.map((r) => r.code)).toEqual(['A', 'C']);
+    expect(t[0]?.columns).toEqual([{ key: 'pressure', label: 'pressure', unit: 'bar' }]);
+    expect(t[1]?.rows.map((r) => r.code)).toEqual(['B']);
+  });
+
+  it('formats values', () => {
+    expect(formatFieldValue(num('p', 4.2), words)).toBe('4.2 bar');
+    expect(formatFieldValue(num('p', null), words)).toBe('Not read');
+    const yn = (value: string): FieldValue => ({ key: 'k', label: 'K', type: 'yesno', value });
+    expect(formatFieldValue(yn('yes'), words)).toBe('Yes');
+    expect(formatFieldValue(yn('no'), words)).toBe('No');
+    expect(formatFieldValue(yn('unknown'), words)).toBe('Unknown');
+    expect(
+      formatFieldValue({ key: 'k', label: 'K', type: 'text', value: 'a – b' }, words),
+    ).not.toMatch(/[–—]/);
+  });
+
+  it('carries issue fields into the report rows', () => {
+    const c = ctx();
+    const issues = c.issues.map((i, n) => (n === 0 ? { ...i, fields: [num('pressure', 4.2)] } : i));
+    const r = reportModel(
+      { ...c, issues },
+      { branding: resolveReportBranding(undefined, 'Quadrion AI') },
+    );
+    expect(r.rows.flatMap((x) => x.fields)).toHaveLength(1);
+    expect(r.rows.filter((x) => x.fields.length === 0).length).toBe(r.rows.length - 1);
   });
 });
 
