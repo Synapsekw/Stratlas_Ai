@@ -22,6 +22,13 @@
  *   the 1344 x 1008 frame sent), a check prompt ("This is a crop from a drone inspection photo.")
  *   gets Yes and No with `top_logprobs`, scoring `VLM_HIGH` for the crop of the large box and
  *   `VLM_LOW` for the small one (told apart by the width of the JPEG sent);
+ * - a custom request to the model on this PC (`ai:ask` on the local route, which names no model
+ *   either, `askLocalReply`): a prompt whose text asks for "bbox_2d coordinates normalised to
+ *   0-1000" gets one item at `ASK_BOX_REL` (in that 0 to 1000 frame) with every field the prompt
+ *   asks for, filled by the scripted model's rules (a number 42.5, yes/no "yes", a choice its first
+ *   option, text "scripted"), written with the doubled closing brace (`}}`) small local models
+ *   write, so the app's repair runs end to end; a question ("You help an inspection engineer")
+ *   gets `ASK_ANSWER`;
  * - anything else gets a fixed greeting.
  * A model without tools answers a request with tools with the 400 Ollama gives; a model without
  * vision refuses images the same way.
@@ -48,6 +55,8 @@ export interface FakeRequest {
   tools?: string[];
   image?: boolean;
   authorization?: string;
+  /** `chat_template_kwargs.enable_thinking` as sent, when it was. */
+  enableThinking?: boolean;
   /** The tool call the fake answered with, if any. */
   call?: { tool: string; args: string };
 }
@@ -79,6 +88,11 @@ export const VLM_HIGH = 0.95;
 export const VLM_LOW = 0.6;
 /** A crop wider than this many pixels is the large box's (the small one is about 100 px). */
 const VLM_LARGE_CROP_PX = 250;
+
+/** Where the fake finds the one item of a custom request: `[x1, y1, x2, y2]`, 0 to 1 of the image. */
+export const ASK_BOX_REL = [0.1, 0.2, 0.3, 0.5] as const;
+/** The fake's answer to a question about a photo (a custom request of kind `ask`). */
+export const ASK_ANSWER = 'Fake answer.';
 
 /** The entry id the fake's RF plan gives its last unit: not in any catalogue. */
 export const RF_UNKNOWN_ENTRY = 'fake-entry-not-in-catalogue';
@@ -128,6 +142,7 @@ interface ChatBody {
   messages: ChatMessage[];
   tools?: { function: { name: string } }[];
   stream?: boolean;
+  chat_template_kwargs?: { enable_thinking?: boolean };
 }
 
 type Reply = { text: string } | { tool: string; args: string };
@@ -240,6 +255,54 @@ function vlmReply(body: ChatBody): unknown {
     { role: 'assistant', content: 'Yes' },
     { content: [{ token: 'Yes', logprob: Math.log(p), top_logprobs: top }] },
   );
+}
+
+/** Every text part of every user message, in order. */
+function userTexts(messages: ChatMessage[]): string[] {
+  return messages
+    .filter((m) => m.role === 'user')
+    .flatMap((m) =>
+      typeof m.content === 'string'
+        ? [m.content]
+        : (m.content ?? []).filter((p) => p.type === 'text').map((p) => p.text ?? ''),
+    );
+}
+
+/** One field's value from its slot in the prompt, by the scripted cloud model's rules. */
+function askField(slot: string): number | string {
+  if (slot.startsWith('<')) return slot.includes('as a number') ? 42.5 : 'scripted';
+  const inner = slot.slice(1, -1);
+  if (inner === 'yes|no|unknown') return 'yes';
+  if (inner.startsWith('<') || !inner.includes('|')) return 'scripted';
+  return inner.split('|')[0] ?? 'scripted';
+}
+
+/**
+ * The reply to a custom request for the model on this PC (it names no model), or null for any
+ * other request: one item at `ASK_BOX_REL` in the 0 to 1000 frame, its fields filled, closed with
+ * `}}`; or `ASK_ANSWER` to a question.
+ */
+function askLocalReply(body: ChatBody): unknown {
+  const texts = userTexts(body.messages);
+  if (texts.some((t) => t.startsWith('You help an inspection engineer')))
+    return vlmCompletion({ role: 'assistant', content: ASK_ANSWER });
+  const prompt = texts.find((t) => t.includes('bbox_2d coordinates normalised to 0-1000'));
+  if (prompt === undefined) return null;
+  const fields: Record<string, number | string> = {};
+  for (const m of prompt.matchAll(/"([a-z][a-z0-9_]*)": (<[^>]*>|"[^"]*")/g)) {
+    const key = m[1] ?? '';
+    if (key === 'label' || key === 'note') continue;
+    fields[key] = askField(m[2] ?? '');
+  }
+  const item = {
+    bbox_2d: ASK_BOX_REL.map((v) => Math.round(v * 1000)),
+    label: 'item',
+    note: 'Fake item.',
+    ...fields,
+  };
+  // `[{...}]` becomes `[{...}}]`: the doubled brace the app repairs
+  const list = JSON.stringify([item]);
+  return vlmCompletion({ role: 'assistant', content: `${list.slice(0, -2)}}}]` });
 }
 
 function script(body: ChatBody): Reply {
@@ -386,7 +449,9 @@ export async function startFakeLlm(opts: FakeLlmOptions): Promise<FakeLlm> {
       }
       if (method === 'POST' && path === '/v1/chat/completions') {
         const body = JSON.parse(raw) as ChatBody;
-        const vlm = vlmReply(body);
+        const thinking = body.chat_template_kwargs?.enable_thinking;
+        if (thinking !== undefined) record.enableThinking = thinking;
+        const vlm = vlmReply(body) ?? askLocalReply(body);
         if (vlm) {
           record.image = hasImage(body.messages);
           json(res, 200, vlm);

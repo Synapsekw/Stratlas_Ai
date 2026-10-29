@@ -309,6 +309,11 @@ test('the review queue: progress, slider, Accept all above, Esc', async ({ win, 
 });
 
 test('Ask AI on this photo asks before sending to the cloud', async ({ win }) => {
+  // a new install starts with cloud AI on; this test turns it on itself, so it starts from off
+  await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: false }));
+  // the screen loaded with the new-install default, so load it again to show the saved value
+  await win.reload();
+  await win.waitForLoadState('domcontentloaded');
   await openProject(win);
   await openInspect(win);
   await openPhotoInInspect(win, 'p1');

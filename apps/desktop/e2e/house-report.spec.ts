@@ -51,6 +51,11 @@ async function start(data: DataRoot) {
   await network.attach(app);
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
+  // a new install starts with cloud AI on; these tests start from off, as before
+  await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: false }));
+  // the screen loaded with the new-install default, so load it again to show the saved value
+  await win.reload();
+  await win.waitForLoadState('domcontentloaded');
   return { app, win, network };
 }
 
