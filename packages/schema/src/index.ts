@@ -4,6 +4,8 @@ export * from './cloudFrame';
 export * from './dateShift';
 export * from './severity';
 export * from './annotation';
+// Custom analytics: saved requests (aio.ai-request/1) and typed field values
+export * from './aiRequest';
 // Findings on a model: the point selection file (selections/<name>.sel)
 export * from './selection';
 export * from './manifest';

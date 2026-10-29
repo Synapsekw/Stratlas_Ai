@@ -47,6 +47,7 @@ import {
 import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './package';
 import { BoundaryEditsFile, VolumesFile } from './volumes';
 import { DetectionsFile } from './detections';
+import { AiRequest, AiRequestId, AskItem, AskKind, AskTurn, FieldSpec } from './aiRequest';
 import {
   NarrativeFile,
   REPORT_VIEWS_MAX,
@@ -212,6 +213,15 @@ export const DetectImage = z
     height: z.number().int().positive(),
   })
   .strict();
+
+/**
+ * One image of an `ai:ask` request. `width` and `height` are the **sent** pixel size of `dataUrl`
+ * (cloud models are told this size and answer in its pixels).
+ */
+export const AskImage = DetectImage.extend({ label: z.string().max(80).optional() }).strict();
+
+/** Where a saved request lives: the project (`requests/`) or this computer's library. */
+export const RequestWhere = z.enum(['project', 'library']);
 
 /** One proposal in an `ai:detect` result, coordinates normalised (0 to 1, top-left origin). */
 export const AiDetectionResult = z.object({
@@ -1236,6 +1246,126 @@ export const ipc = {
         status: z.number().int().optional(),
         stopped: z.boolean().optional(),
       }),
+    ]),
+  },
+  /**
+   * Custom analytics: one question about one photo (`find`, `ask`) or two (`change`, older then
+   * newer), to this PC's model or a cloud model. Same gates as `ai:detect` (cloud switch, project
+   * policy, key), read from disk on every request. Items come back normalised 0 to 1 of the last
+   * image. `ask` carries the earlier turns of its thread.
+   */
+  'ai:ask': {
+    request: z
+      .object({
+        runId: z.string().min(1),
+        projectId: z.string().min(1),
+        backend: z.discriminatedUnion('kind', [
+          z.object({ kind: z.literal('local') }).strict(),
+          z
+            .object({
+              kind: z.literal('cloud'),
+              provider: z.enum(['anthropic', 'openai']),
+              model: z.string().min(1).max(80),
+            })
+            .strict(),
+        ]),
+        kind: AskKind,
+        prompt: z.string().min(1).max(2000),
+        fields: z.array(FieldSpec).max(14),
+        images: z.array(AskImage).min(1).max(2),
+        turns: z.array(AskTurn).max(20).optional(),
+        wholeImage: z.boolean().optional(),
+        requestId: AiRequestId.optional(),
+      })
+      .strict()
+      .refine((r) => r.images.length === (r.kind === 'change' ? 2 : 1), {
+        message: 'A change request has two images; the others have one.',
+        path: ['images'],
+      }),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        provider: z.string(),
+        model: z.string(),
+        promptVersion: z.string(),
+        items: z.array(AskItem),
+        text: z.string().optional(),
+        inputTokens: z.number().nonnegative(),
+        outputTokens: z.number().nonnegative(),
+        costUsd: z.number().nonnegative().optional(),
+        warnings: z.array(z.string()),
+      }),
+      z.object({
+        ok: z.literal(false),
+        error: z.string(),
+        /** HTTP status of a provider error. */
+        status: z.number().int().optional(),
+        stopped: z.boolean().optional(),
+        code: z.enum(['busy', 'no-pack', 'no-card', 'refused', 'format', 'forbidden']).optional(),
+      }),
+    ]),
+  },
+  /** What an ask can use right now: the cloud (and why not), the keep-local switch, this PC's model. */
+  'ai:askStatus': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.object({
+      cloud: z.object({
+        usable: z.boolean(),
+        reason: z.enum(['offline-only', 'cloud-off', 'forbidden']).optional(),
+        message: z.string().optional(),
+        providers: z.array(z.enum(['anthropic', 'openai'])),
+      }),
+      keepLocal: z.boolean(),
+      local: z.object({
+        ready: z.boolean(),
+        model: z.string().optional(),
+        problem: z.string().optional(),
+      }),
+    }),
+  },
+  /** Flip "Keep this project's images on this PC" (the manifest's `aiPolicy`). */
+  'ai:setProjectPolicy': {
+    request: z.object({ projectId: z.string().min(1), keepLocal: z.boolean() }).strict(),
+    /** Failure may carry `code: 'read-only'` (a package). */
+    response: OkOrFailure,
+  },
+  /** Saved requests: the project's (`<project>/requests/`) and this computer's library, bad files listed. */
+  'requests:list': {
+    request: z.object({ projectId: z.string().min(1).optional() }).strict(),
+    response: z.object({
+      items: z.array(z.object({ where: RequestWhere, request: AiRequest })),
+      problems: z.array(z.object({ file: z.string(), error: z.string() })),
+    }),
+  },
+  /** Save (or replace) a request in the project or the library. */
+  'requests:save': {
+    request: z
+      .object({ projectId: z.string().min(1).optional(), where: RequestWhere, request: AiRequest })
+      .strict(),
+    response: OkOrFailure,
+  },
+  'requests:remove': {
+    request: z
+      .object({ projectId: z.string().min(1).optional(), where: RequestWhere, id: AiRequestId })
+      .strict(),
+    response: OkOrFailure,
+  },
+  /** Export one request as a `.aioreq` file through a save dialog; no path: the dialog was closed. */
+  'requests:export': {
+    request: z
+      .object({ projectId: z.string().min(1).optional(), where: RequestWhere, id: AiRequestId })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), path: z.string().optional() }),
+      Failure,
+    ]),
+  },
+  /** Import a `.aioreq` file through an open dialog and save it; no request: the dialog was closed. */
+  'requests:import': {
+    request: z.object({ projectId: z.string().min(1).optional(), where: RequestWhere }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), request: AiRequest.optional() }),
+      Failure,
     ]),
   },
   /**

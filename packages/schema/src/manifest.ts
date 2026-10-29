@@ -3,6 +3,7 @@ import { AccuracySource, Id, IsoDate, Vec3, err, ok, uniqueIds, type Result } fr
 import { CaptureLineUp, CaptureLineUpTurn } from './dateShift';
 import { Layer } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
+import { AiPolicy } from './package';
 import { ProjectPurpose, ProjectType, VerticalDatum } from './builder';
 
 export const SCHEMA_VERSION = 'aio.project/1' as const;
@@ -90,6 +91,12 @@ export const ProjectManifest = z
     aiCloudPhotos: z.boolean().optional(),
     /** May the engineering model send point cloud renders to a cloud model? Absent means off. */
     aiCloudScans: z.boolean().optional(),
+    /**
+     * Keep this project's images on this PC (`forbid`) or allow cloud AI (`allow`). Absent means
+     * allow for a folder project. `readAiPolicyDetail` still reads the raw file and also accepts
+     * `package.aiPolicy`; declared here so the app's own saves stop stripping it.
+     */
+    aiPolicy: AiPolicy.optional(),
   })
   .superRefine(uniqueIds('layers'))
   .superRefine(uniqueIds('severityModels'))

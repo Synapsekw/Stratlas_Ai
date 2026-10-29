@@ -685,6 +685,14 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'thermal/candidates.json',
     since: '0.26',
   },
+  // Custom analytics: saved requests, shared as .aioreq (aiRequest.ts)
+  {
+    family: 'aio.ai-request',
+    version: 1,
+    home: 'project',
+    where: 'requests/<id>.json (also userData requests/)',
+    since: '0.27',
+  },
   // Local vision-model detectors (analytics.ts)
   {
     family: 'aio.vlm-detector',

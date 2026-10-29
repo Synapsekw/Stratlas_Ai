@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AssetRef, Id, IsoTime, Vec2, Vec3, err, ok, type Result } from './common';
+import { FieldValue } from './aiRequest';
 import type { SeverityModel } from './severity';
 
 // 2D geometry in image pixels (review-copy grid for photos, frame pixels for video).
@@ -149,6 +150,8 @@ export const Issue = z.object({
    * "resolved"; the status becomes `closed` with this field only after a person confirms.
    */
   resolvedIn: Id.optional(),
+  /** Values a custom analytics request read (29 Oct 2026); absent on older issues. */
+  fields: z.array(FieldValue).max(14).optional(),
 });
 
 export type ImageGeom = z.infer<typeof ImageGeom>;

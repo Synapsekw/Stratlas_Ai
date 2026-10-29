@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Box, Point2, Polygon, RotBox } from './annotation';
 import { DetectorId, RejectReason, Sha256 } from './analytics';
+import { AiRequestId, FieldValue } from './aiRequest';
 import { Id, IsoTime } from './common';
 
 /**
@@ -68,6 +69,8 @@ export const DetectionOrigin = z
     detectorVersion: z.number().int().optional(),
     modelSha256: z.string().optional(),
     threshold: z.number().min(0).max(1).optional(),
+    /** The saved custom request (`aio.ai-request/1`) that made this detection. */
+    request: AiRequestId.optional(),
   })
   .strict();
 
@@ -127,6 +130,8 @@ export const Detection = z
       })
       .optional(),
     origin: DetectionOrigin.optional(),
+    /** Values a custom analytics request read off the photo (a gauge reading, a state). */
+    fields: z.array(FieldValue).max(14).optional(),
     /**
      * The issue a person made from (or added) this detection in the review. The pipeline does not
      * group it into an issue of its own: it places it and adds the mesh sighting to that issue.

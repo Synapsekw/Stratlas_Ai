@@ -89,6 +89,7 @@ describe('M9 additive rule: no new field inside existing records', () => {
       'classId',
       'code',
       'createdAt',
+      'fields',
       'id',
       'measurements',
       'note',
@@ -104,7 +105,7 @@ describe('M9 additive rule: no new field inside existing records', () => {
     ]);
     expect(IssueStatus.options).toEqual(['draft', 'reviewed', 'approved', 'closed']);
     expect(keysOf(ChangeReview)).toEqual(['at', 'by', 'issueId', 'note', 'status']);
-    // detectorId, detectorVersion, modelSha256 and threshold (2026-10-21) come from local detectors.
+    // detectorId, detectorVersion, modelSha256 and threshold (2026-10-21) come from local detectors; request (2026-10-29) names the custom request.
     expect(keysOf(DetectionOrigin)).toEqual([
       'author',
       'detectorId',
@@ -113,6 +114,7 @@ describe('M9 additive rule: no new field inside existing records', () => {
       'modelSha256',
       'promptVersion',
       'provider',
+      'request',
       'runId',
       'threshold',
     ]);
@@ -125,6 +127,7 @@ describe('M9 additive rule: no new field inside existing records', () => {
         "component",
         "confidence",
         "createdAt",
+        "fields",
         "frame",
         "geom",
         "height",

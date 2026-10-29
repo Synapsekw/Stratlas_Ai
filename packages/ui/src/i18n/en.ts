@@ -1,3 +1,9 @@
+import { enAskFields } from './enAskFields';
+import { enAskPanel } from './enAskPanel';
+import { enAskReport } from './enAskReport';
+import { enAskRun } from './enAskRun';
+import { enAskSettings } from './enAskSettings';
+
 /**
  * English UI strings for the main shell (title bar, sidebar, settings). The source catalogue:
  * every other locale is checked against it (`catalogueProblems`). Keys are `area.thing`;
@@ -6806,6 +6812,12 @@ export const en = {
   'vreport.error.notOffered':
     'This project has no stockpile volumes with figures, so it has no volumetric report.',
   'vreport.error.failed': 'The volumetric report was not exported: {error}',
+  // Custom analytics (one catalogue file per UI task)
+  ...enAskRun,
+  ...enAskPanel,
+  ...enAskFields,
+  ...enAskSettings,
+  ...enAskReport,
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */
