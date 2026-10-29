@@ -113,9 +113,14 @@ function toDisk(settings: Settings, keep: Record<string, boolean>): Record<strin
   return out;
 }
 
-/** Keep every stored field that is still valid; anything else falls back to its default. */
+/**
+ * Keep every stored field that is still valid; anything else falls back to its default. Only a
+ * missing file (`raw` undefined) takes the defaults as they are: any other file, unreadable or
+ * not a settings object included, reads cloud AI as off.
+ */
 function merge(defaults: Settings, raw: unknown): Settings {
-  if (typeof raw !== 'object' || raw === null) return defaults;
+  if (raw === undefined) return defaults;
+  if (typeof raw !== 'object' || raw === null) return { ...defaults, cloudAi: false };
   const stored = fromDisk(raw as Record<string, unknown>);
   // an upgrade never turns the cloud on by itself: a file with no valid cloudAi reads as off
   const out: Record<string, unknown> = { ...defaults, cloudAi: false };
@@ -159,7 +164,8 @@ export function createSettingsStore(file: string, defaults: Settings): SettingsS
       raw = await readJson(file);
     } catch (e) {
       console.warn(`Settings file ${file} is unreadable, using defaults: ${String(e)}`);
-      raw = undefined;
+      // a file that is there but cannot be read never turns the cloud on
+      raw = null;
     }
     keep = isRecord(raw) ? extraSections(raw[EXTRA]) : {};
     cache = merge(defaults, raw);

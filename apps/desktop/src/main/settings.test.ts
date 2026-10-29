@@ -201,10 +201,24 @@ describe('settings store', () => {
     expect(await store.get()).toEqual({ ...defaults, sidebarCollapsed: true, cloudAi: false });
   });
 
-  it('survives a corrupt file', async () => {
+  it('survives a corrupt file, with cloud AI off', async () => {
     await writeFile(file, '{ not json');
     const store = createSettingsStore(file, defaults);
-    expect(await store.get()).toEqual(defaults);
+    expect(await store.get()).toEqual({ ...defaults, cloudAi: false });
+  });
+
+  it('reads a file that is not a settings object as defaults with cloud AI off', async () => {
+    for (const text of ['null', '[]', '"x"']) {
+      await writeFile(file, text);
+      expect(await createSettingsStore(file, defaults).get()).toEqual({
+        ...defaults,
+        cloudAi: false,
+      });
+    }
+  });
+
+  it('turns cloud AI on by default only when there is no settings file', async () => {
+    expect((await createSettingsStore(file, defaults).get()).cloudAi).toBe(true);
   });
 
   it('treats undefined fields in a patch as not given', async () => {
