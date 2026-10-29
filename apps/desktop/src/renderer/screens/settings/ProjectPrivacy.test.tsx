@@ -99,6 +99,24 @@ describe('ProjectPrivacy', () => {
     expect(workspace.getState().project?.manifest.aiPolicy).toBe('forbid');
   });
 
+  it('does not overwrite a project reopened during the call', async () => {
+    h.call.mockImplementation((channel: string) => {
+      if (channel === 'project:open') {
+        workspace.setState({ openSeq: workspace.getState().openSeq + 1 });
+        return Promise.resolve({
+          ok: true,
+          value: { ok: true, manifest: { ...base, aiPolicy: 'forbid' } },
+        });
+      }
+      return Promise.resolve({ ok: true, value: { ok: true } });
+    });
+    mount();
+    act(() => sw()?.click());
+    await flush();
+    await flush();
+    expect(workspace.getState().project?.manifest.aiPolicy).toBeUndefined();
+  });
+
   it('shows a package disabled', () => {
     h.pkg = { id: 'pkg' };
     mount();

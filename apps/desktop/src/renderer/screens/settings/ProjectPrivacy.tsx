@@ -32,6 +32,7 @@ export function ProjectPrivacy(): ReactElement | null {
         setError(call.value.error);
         return;
       }
+      const seq = workspace.getState().openSeq;
       const opened = await bridge.call('project:open', { path: root });
       if (!opened.ok) {
         setError(opened.error);
@@ -42,7 +43,7 @@ export function ProjectPrivacy(): ReactElement | null {
         return;
       }
       const now = workspace.getState();
-      if (now.project?.id === id && now.project.root === root)
+      if (now.openSeq === seq && now.project?.id === id && now.project.root === root)
         now.replaceManifest(opened.value.manifest);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
