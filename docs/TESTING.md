@@ -8,8 +8,8 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 
 - The product is **Quadrion AI** (it was called Stratlas until 7 Oct 2026; older stages below keep the old name).
 - Close the app first. The installer refuses while it (or an old Stratlas.exe) runs: "Quadrion AI is running. Close it and click Retry."
-- Run `E:\Dev\AIO Software\apps\desktop\dist\QuadrionAI-0.27.0-win-x64-setup.exe` and install over the previous version (also over a Stratlas install).
-- 0.27.0 contains every earlier fix, so all stages below are tested on it too.
+- Run `E:\Dev\AIO Software\apps\desktop\dist\QuadrionAI-0.28.0-win-x64-setup.exe` and install over the previous version (also over a Stratlas install).
+- 0.28.0 contains every earlier fix, so all stages below are tested on it too.
 - The build is unsigned. SmartScreen shows "Windows protected your PC": choose **More info**, then **Run anyway**.
 
 ### Check the build first
