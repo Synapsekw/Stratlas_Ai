@@ -15,6 +15,9 @@ import { AnalyticsPackManifest } from '../../packages/schema/src/analytics.ts';
 import { keygen, verifyBytes } from '../release/ed25519.mjs';
 import { APP_RANGE, buildAnalyticsPack, pinnedDownload } from './build.mjs';
 
+const APP_VERSION = JSON.parse(
+  readFileSync(join(import.meta.dirname, '../../apps/desktop/package.json'), 'utf8'),
+).version;
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 
 const BODIES = {
@@ -46,7 +49,7 @@ const LOCK = {
   },
   licences: [
     pin('rt-LICENSE', { file: 'licences/llama.cpp-LICENSE.txt' }),
-    pin('qw-LICENSE', { file: 'licences/Qwen2.5-VL-7B-Instruct-LICENSE.txt' }),
+    pin('qw-LICENSE', { file: 'licences/Qwen3.5-9B-LICENSE.txt' }),
   ],
 };
 
@@ -88,7 +91,7 @@ const build = (o = {}) =>
     out: join(root, 'out'),
     cache: join(root, 'cache'),
     lock: LOCK,
-    version: '0.1.0',
+    version: '0.2.0',
     detectorsDir: detectorsDir(),
     fetchTo,
     unzip,
@@ -125,7 +128,7 @@ describe('analytics pack build', () => {
     const manifest = JSON.parse(readFileSync(join(packDir, 'manifest.json'), 'utf8'));
     expect(AnalyticsPackManifest.parse(manifest)).toBeTruthy();
     expect(manifest.appRange).toBe(APP_RANGE);
-    expect(APP_RANGE).toBe('>=0.25.0 <2.0.0');
+    expect(APP_RANGE).toBe(`>=${APP_VERSION} <2.0.0`);
     expect(manifest.model.sha256).toBe(sha(BODIES['m.gguf']));
     const onDisk = [];
     const walk = (d) => {
@@ -165,11 +168,23 @@ describe('analytics pack build', () => {
     const manifest = JSON.parse(readFileSync(join(packDir, 'manifest.json'), 'utf8'));
     for (const [file, body] of [
       ['licences/llama.cpp-LICENSE.txt', BODIES['rt-LICENSE']],
-      ['licences/Qwen2.5-VL-7B-Instruct-LICENSE.txt', BODIES['qw-LICENSE']],
+      ['licences/Qwen3.5-9B-LICENSE.txt', BODIES['qw-LICENSE']],
     ]) {
       expect(readFileSync(join(packDir, file), 'utf8')).toBe(body);
       expect(manifest.files[file]).toEqual({ size: body.length, sha256: sha(body) });
     }
+  });
+
+  it('the shipped pins are pack 0.2.0 with Qwen3.5-9B', () => {
+    const lock = JSON.parse(readFileSync(join(import.meta.dirname, 'lock.json'), 'utf8'));
+    const pkg = JSON.parse(readFileSync(join(import.meta.dirname, 'package.json'), 'utf8'));
+    expect(pkg.version).toBe('0.2.0');
+    expect(lock.model.id).toBe('qwen3.5-9b-q4_k_m');
+    expect(lock.model.gguf.file).toBe('model/qwen3.5-9b-q4_k_m.gguf');
+    expect(lock.model.mmproj.file).toBe('model/mmproj-qwen3.5-9b-f16.gguf');
+    expect(lock.model.gguf.url).toMatch(/\/resolve\/[0-9a-f]{40}\//);
+    expect(lock.licences.map((l) => l.file)).toContain('licences/Qwen3.5-9B-LICENSE.txt');
+    expect(APP_RANGE.startsWith(`>=${APP_VERSION} `)).toBe(true);
   });
 
   it('--no-model still carries the licence texts', async () => {

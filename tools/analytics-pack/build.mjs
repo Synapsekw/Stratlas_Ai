@@ -1,4 +1,4 @@
-// The Analytics pack: llama.cpp `llama-server`, the Qwen2.5-VL model and its mmproj, the shipped
+// The Analytics pack: llama.cpp `llama-server`, the Qwen3.5-9B model and its mmproj, the shipped
 // detectors and a manifest (`aio.analytics-pack/1`, packages/schema/src/analytics.ts). It installs
 // from an archive like the pipeline pack. Every download is pinned in lock.json by URL, size and
 // SHA-256 and refused when the hash differs; the app downloads nothing.
@@ -33,7 +33,11 @@ import { BuildError, tarCommand } from '../pipeline-pack/build.mjs';
 import { signBytes } from '../release/ed25519.mjs';
 
 const here = import.meta.dirname;
-export const APP_RANGE = '>=0.25.0 <2.0.0';
+// The floor is this app's own version: pack 0.2.0 needs the engine and the model table that ship with it.
+const APP_VERSION = JSON.parse(
+  readFileSync(join(here, '..', '..', 'apps', 'desktop', 'package.json'), 'utf8'),
+).version;
+export const APP_RANGE = `>=${APP_VERSION} <2.0.0`;
 export const PLATFORM = 'win-x64';
 export const PACK_PREFIX = 'analytics-pack';
 

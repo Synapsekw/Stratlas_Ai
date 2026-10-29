@@ -1,6 +1,6 @@
 {
   "name": "aio-analytics-pack",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Version of the Analytics pack (tools/analytics-pack/build.mjs). Not a workspace package."
 }

@@ -1,4 +1,4 @@
-"""Smoke check for the Analytics pack runtime: llama-server plus Qwen2.5-VL on this machine.
+"""Smoke check for the Analytics pack runtime: llama-server plus the pinned Qwen model on this machine.
 
 Starts the server with the pack's arguments and the per-launch key in the environment
 (`LLAMA_API_KEY`, never on the command line, as the app does), then checks that a request without
@@ -6,7 +6,8 @@ the key is refused with HTTP 401, that boxes come back in the pixel frame of the
 that yes/no logprobs score as the detector engine expects. Prints SMOKE OK or the failing check,
 and always stops the server.
 
-    python tools/analytics-pack/smoke.py --server <llama-server.exe> --model <gguf> --mmproj <gguf>
+    python tools/analytics-pack/smoke.py --server <llama-server.exe> --model <gguf> --mmproj <gguf> \
+        [--model-id qwen3.5-9b-q4_k_m]
 """
 
 import argparse
@@ -29,6 +30,41 @@ from PIL import Image, ImageDraw
 SIZE = (1344, 1008)
 SQUARE = (900, 300, 1100, 500)
 CORNER_TOLERANCE_PX = 40
+REL1000_TOLERANCE = 30  # 3 % of the 0 to 1000 frame
+DEFAULT_MODEL_ID = "qwen3.5-9b-q4_k_m"
+BOX_PROMPT = 'Locate the red square. Output JSON [{"bbox_2d":[x1,y1,x2,y2]}]'
+BOX_RE = re.compile(
+    r"\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\]"
+)
+
+
+def frame_for(model_id: str) -> str:
+    """The frame a model answers boxes in: Qwen3 family in 0 to 1000, Qwen2.5-VL in sent pixels."""
+    return "pixels" if model_id.startswith("qwen2.5") else "rel1000"
+
+
+def is_qwen3(model_id: str) -> bool:
+    return model_id.startswith("qwen3")
+
+
+def tolerance_px(frame: str) -> float:
+    return REL1000_TOLERANCE if frame == "rel1000" else CORNER_TOLERANCE_PX
+
+
+def expected_box(frame: str) -> list[float]:
+    """The red square in the model's frame."""
+    if frame == "rel1000":
+        x1, y1, x2, y2 = SQUARE
+        w, h = SIZE
+        return [x1 / w * 1000, y1 / h * 1000, x2 / w * 1000, y2 / h * 1000]
+    return [float(v) for v in SQUARE]
+
+
+def box_off(box: list[float], frame: str) -> float:
+    """Worst corner distance from the red square, in the units of the frame."""
+    return max(abs(a - b) for a, b in zip(box, expected_box(frame)))
+
+
 HEALTH_TIMEOUT_S = 120
 
 
@@ -47,9 +83,11 @@ def image_url(img: Image.Image) -> str:
 API_KEY = secrets.token_hex(16)
 
 
-def server_args(server: str, model: str, mmproj: str, port: int) -> list[str]:
+def server_args(
+    server: str, model: str, mmproj: str, port: int, model_id: str = ""
+) -> list[str]:
     """The pack's llama-server arguments. The key is not among them: see server_env."""
-    return [
+    args = [
         server,
         "--model",
         model,
@@ -67,6 +105,10 @@ def server_args(server: str, model: str, mmproj: str, port: int) -> list[str]:
         "1",
         "--no-ui",
     ]
+    if is_qwen3(model_id):
+        # Qwen3.5 thinks by default; the detectors want the answer only.
+        args += ["--reasoning", "off"]
+    return args
 
 
 def server_env(key: str) -> dict[str, str]:
@@ -148,7 +190,31 @@ def wait_healthy(base: str, proc: subprocess.Popen) -> None:
     raise RuntimeError(f"server not healthy within {HEALTH_TIMEOUT_S} s")
 
 
-def run_checks(base: str) -> list[str]:
+def check_box(base: str, frame: str, square: Image.Image | None = None) -> str | None:
+    """The red square must come back in the model's frame. Returns the failure or None."""
+    if square is None:
+        square = Image.new("RGB", SIZE, (128, 128, 128))
+        ImageDraw.Draw(square).rectangle(SQUARE, fill=(220, 30, 30))
+    extra = (
+        {"chat_template_kwargs": {"enable_thinking": False}}
+        if frame == "rel1000"
+        else {}
+    )
+    t = time.monotonic()
+    resp = chat(base, square, BOX_PROMPT, max_tokens=128, **extra)
+    text = resp["choices"][0]["message"]["content"]
+    m = BOX_RE.search(text)
+    box = [float(v) for v in json.loads(m.group(0))] if m else None
+    off = box_off(box, frame) if box else None
+    print(
+        f"{frame} frame: box={box} worst corner off={off} ({time.monotonic() - t:.1f} s)"
+    )
+    if box is None or off > tolerance_px(frame):
+        return f"{frame} frame: expected about {[round(v) for v in expected_box(frame)]}, got {text!r}"
+    return None
+
+
+def run_checks(base: str, frame: str = "rel1000") -> list[str]:
     grey = Image.new("RGB", SIZE, (128, 128, 128))
     square = grey.copy()
     ImageDraw.Draw(square).rectangle(SQUARE, fill=(220, 30, 30))
@@ -158,25 +224,9 @@ def run_checks(base: str) -> list[str]:
     if keyless:
         failures.append(keyless)
 
-    t = time.monotonic()
-    resp = chat(
-        base,
-        square,
-        'Locate the red square. Output JSON [{"bbox_2d":[x1,y1,x2,y2]}]',
-        max_tokens=128,
-    )
-    text = resp["choices"][0]["message"]["content"]
-    m = re.search(
-        r"\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\]",
-        text,
-    )
-    box = [float(v) for v in json.loads(m.group(0))] if m else None
-    off = max(abs(a - b) for a, b in zip(box, SQUARE)) if box else None
-    print(
-        f"pixel frame: box={box} worst corner off={off} px ({time.monotonic() - t:.1f} s)"
-    )
-    if box is None or off > CORNER_TOLERANCE_PX:
-        failures.append(f"pixel frame: expected about {list(SQUARE)}, got {text!r}")
+    boxed = check_box(base, frame, square)
+    if boxed:
+        failures.append(boxed)
 
     ask = "Is there a red square in this image? Answer yes or no."
     lp = {"logprobs": True, "top_logprobs": 10, "max_tokens": 1}
@@ -214,11 +264,12 @@ def main() -> int:
     ap.add_argument("--server", required=True)
     ap.add_argument("--model", required=True)
     ap.add_argument("--mmproj", required=True)
+    ap.add_argument("--model-id", default=DEFAULT_MODEL_ID)
     a = ap.parse_args()
 
     port = free_port()
     base = f"http://127.0.0.1:{port}"
-    args = server_args(a.server, a.model, a.mmproj, port)
+    args = server_args(a.server, a.model, a.mmproj, port, a.model_id)
     with open("smoke-server.log", "w", encoding="utf-8") as log:
         proc = subprocess.Popen(
             args, stdout=log, stderr=subprocess.STDOUT, env=server_env(API_KEY)
@@ -227,7 +278,7 @@ def main() -> int:
             t = time.monotonic()
             wait_healthy(base, proc)
             print(f"server healthy in {time.monotonic() - t:.1f} s")
-            failures = run_checks(base)
+            failures = run_checks(base, frame_for(a.model_id))
         except Exception as e:  # noqa: BLE001 - the smoke check reports any failure as one line
             failures = [f"server: {e} (see smoke-server.log)"]
         finally:
