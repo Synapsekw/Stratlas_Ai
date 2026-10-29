@@ -20,7 +20,8 @@ const require = createRequire(import.meta.url);
 const manifest = require.resolve('eslint/package.json');
 const { bin } = require(manifest);
 const eslint = join(dirname(manifest), typeof bin === 'string' ? bin : bin.eslint);
-const HEAP_MB = 4096;
+// The renderer outgrew 4096 MB (Oct 2026); two runs at 6 GB still fit a 16 GB CI Windows runner.
+const HEAP_MB = 6144;
 const JOBS =
   Math.floor(Number(process.env.QUADRION_LINT_JOBS)) ||
   Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)));
