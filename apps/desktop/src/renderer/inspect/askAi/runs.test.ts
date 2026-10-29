@@ -21,6 +21,8 @@ function deferred<T>(): Deferred<T> {
 const h = vi.hoisted(() => ({
   calls: [] as { channel: string; req: unknown }[],
   detect: [] as { req: IpcRequest<'ai:detect'>; answer: Deferred<unknown> }[],
+  ask: [] as { req: IpcRequest<'ai:ask'>; answer: Deferred<unknown> }[],
+  prepared: [] as { item: unknown; maxPx: unknown }[],
   inference: null as Deferred<unknown> | null,
   queueStarted: false,
   started: [] as IpcRequest<'jobs:start'>[],
@@ -52,6 +54,11 @@ vi.mock('../../shell', async () => {
           h.detect.push({ req: req as IpcRequest<'ai:detect'>, answer });
           return answer.promise;
         }
+        if (channel === 'ai:ask') {
+          const answer = deferred<unknown>();
+          h.ask.push({ req: req as IpcRequest<'ai:ask'>, answer });
+          return answer.promise;
+        }
         if (channel === 'inference:run') {
           h.inference = deferred<unknown>();
           return h.inference.promise;
@@ -76,8 +83,10 @@ vi.mock('../../shell', async () => {
   };
 });
 vi.mock('../../detections/prepare', () => ({
-  prepareItem: () =>
-    Promise.resolve({ dataUrl: 'data:image/jpeg;base64,x', width: 4000, height: 3000 }),
+  prepareItem: (_p: string, _l: unknown, item: unknown, maxPx: unknown) => {
+    h.prepared.push({ item, maxPx });
+    return Promise.resolve({ dataUrl: 'data:image/jpeg;base64,x', width: 4000, height: 3000 });
+  },
 }));
 
 const shell = (await import('../../shell')) as unknown as {
@@ -146,6 +155,8 @@ const cloud = (items: DetectItem[], over: object = {}) =>
 beforeEach(() => {
   h.calls = [];
   h.detect = [];
+  h.ask = [];
+  h.prepared = [];
   h.inference = null;
   h.queueStarted = false;
   h.started = [];
@@ -619,5 +630,213 @@ describe('Ask AI runs', () => {
       error: 'Out of memory. Out of memory.',
     });
     expect(askAiRun.getState().run?.remaining).toHaveLength(2);
+  });
+});
+
+describe('custom request runs', () => {
+  const REQUEST = {
+    id: 'gauges',
+    name: 'Read gauges',
+    kind: 'find' as const,
+    prompt: 'Find every gauge.',
+    fields: [{ key: 'bar', label: 'Pressure', type: 'number' as const, unit: 'bar' }],
+  };
+  const LOCAL = { kind: 'local' as const };
+  const HAIKU = {
+    kind: 'cloud' as const,
+    provider: 'anthropic' as const,
+    model: 'claude-haiku-5-5',
+  };
+
+  const custom = (
+    items: DetectItem[],
+    over: Partial<Parameters<typeof startAskRun>[0]> = {},
+    route: typeof LOCAL | typeof HAIKU = LOCAL,
+  ) =>
+    startAskRun({
+      projectId: 'p',
+      projectRoot: '/projects/p',
+      manifest: MANIFEST,
+      items,
+      check: { kind: 'everything' },
+      what: 'unused',
+      backend: { kind: 'cloud', provider: 'anthropic', model: 'claude-x' },
+      prefs: readPrefs(),
+      custom: { request: REQUEST, route },
+      ...over,
+    });
+
+  function answer(n: number, items = 1) {
+    const a = h.ask[n];
+    if (!a) throw new Error(`no ask ${String(n)}`);
+    a.answer.resolve({
+      ok: true,
+      value: {
+        ok: true,
+        provider: a.req.backend.kind === 'cloud' ? a.req.backend.provider : 'local',
+        model: a.req.backend.kind === 'cloud' ? a.req.backend.model : 'qwen3.5-9b-q4_k_m',
+        promptVersion: 'ask-v1',
+        items: Array.from({ length: items }, () => ({
+          box: [0.1, 0.1, 0.2, 0.2],
+          label: 'corrosion',
+          note: 'near the base',
+          fields: [{ key: 'bar', label: 'Pressure', type: 'number', value: 4, unit: 'bar' }],
+        })),
+        inputTokens: 10,
+        outputTokens: 5,
+        warnings: [],
+      },
+    });
+  }
+  const drafts = () => detections.getState().review.detections;
+
+  it('runs a local request over three photos, one ask each, drafts as answers arrive', async () => {
+    void custom(photos(3));
+    await flush();
+    expect(askAiRun.getState().run).toMatchObject({
+      backend: 'local',
+      what: 'Read gauges',
+      total: 3,
+      done: 0,
+      phase: 'running',
+    });
+    expect(h.ask).toHaveLength(1);
+    const runId = askAiRun.getState().run?.runIds[0] ?? '';
+    expect(h.ask[0]?.req).toMatchObject({
+      runId: `${runId}-0`,
+      projectId: 'p',
+      backend: { kind: 'local' },
+      kind: 'find',
+      prompt: 'Find every gauge.',
+      requestId: 'gauges',
+      // the 4000 x 3000 original goes at the local cap, 1344 px on the long side
+      images: [{ key: 'photo:ph:ph-0', width: 1344, height: 1008 }],
+    });
+    expect(h.prepared[0]?.maxPx).toBe(1344);
+    answer(0, 2);
+    await flush();
+    expect(askAiRun.getState().run).toMatchObject({ done: 1, found: 2, phase: 'running' });
+    expect(drafts()).toHaveLength(2);
+    expect(drafts()[0]).toMatchObject({
+      classId: 'corrosion',
+      status: 'draft',
+      size: [4000, 3000],
+      geom: { type: 'box', x: 400, y: 300, w: 400, h: 300 },
+      origin: { kind: 'ai', request: 'gauges', promptVersion: 'ask-v1' },
+    });
+    answer(1);
+    await flush();
+    answer(2);
+    await flush();
+    expect(h.ask.map((a) => a.req.runId)).toEqual([`${runId}-0`, `${runId}-1`, `${runId}-2`]);
+    expect(askAiRun.getState().run).toMatchObject({ done: 3, found: 4, phase: 'done' });
+    expect(askAiRun.getState().run?.remaining).toEqual([]);
+    expect(detections.getState().review.runs.at(-1)).toMatchObject({
+      id: runId,
+      images: 3,
+      detections: 4,
+    });
+  });
+
+  it('a cloud run does not start without the confirm', async () => {
+    await expect(custom(photos(2), {}, HAIKU)).rejects.toThrow();
+    expect(h.ask).toHaveLength(0);
+    expect(askAiRun.getState().run).toBeNull();
+    void custom(photos(1), { confirmed: true }, HAIKU);
+    await flush();
+    expect(h.ask[0]?.req.backend).toEqual(HAIKU);
+    expect(h.ask[0]?.req.images[0]).toMatchObject({ width: 1568, height: 1176 });
+    expect(askAiRun.getState().run).toMatchObject({ backend: 'cloud', provider: 'Anthropic' });
+  });
+
+  it('a custom run that fails on item 3 keeps items 1 and 2 and lists the rest', async () => {
+    const items = photos(5);
+    void custom(items);
+    await flush();
+    answer(0);
+    await flush();
+    answer(1);
+    await flush();
+    h.ask[2]?.answer.resolve({
+      ok: true,
+      value: { ok: false, error: 'The card is busy.', code: 'busy' },
+    });
+    await flush();
+    expect(h.ask).toHaveLength(3);
+    expect(askAiRun.getState().run).toMatchObject({
+      phase: 'failed',
+      error: 'The card is busy.',
+      done: 2,
+      found: 2,
+    });
+    expect(drafts()).toHaveLength(2);
+    expect(askAiRun.getState().run?.remaining).toEqual(items.slice(2));
+
+    // Try again sends only what is left
+    void retryAskRun();
+    await flush();
+    expect(h.calls.some((c) => c.channel === 'ai:status')).toBe(false);
+    expect(h.ask).toHaveLength(4);
+    expect(h.ask[3]?.req.images[0]?.key).toBe('photo:ph:ph-2');
+    expect(askAiRun.getState().run).toMatchObject({ total: 3, done: 0, phase: 'running' });
+  });
+
+  it('Try again on a cloud custom run skips the vision route check', async () => {
+    void custom(photos(2), { confirmed: true }, HAIKU);
+    await flush();
+    h.ask[0]?.answer.resolve({ ok: true, value: { ok: false, error: 'rate limited' } });
+    await flush();
+    h.status = { ready: true, cloud: true, route: { ...VISION, provider: 'openai' } };
+    void retryAskRun();
+    await flush();
+    expect(h.ask).toHaveLength(2);
+    expect(h.ask[1]?.req.backend).toEqual(HAIKU);
+  });
+
+  it('Stop cancels the ask in flight and keeps what arrived', async () => {
+    void custom(photos(3));
+    await flush();
+    answer(0);
+    await flush();
+    stopAskRun();
+    const runId = askAiRun.getState().run?.runIds[0] ?? '';
+    expect(askAiRun.getState().run?.phase).toBe('stopping');
+    expect(h.calls.filter((c) => c.channel === 'ai:cancel').map((c) => c.req)).toEqual([
+      { runId: `${runId}-1` },
+    ]);
+    h.ask[1]?.answer.resolve({ ok: true, value: { ok: false, error: 'Stopped.', stopped: true } });
+    await flush();
+    expect(h.ask).toHaveLength(2);
+    expect(askAiRun.getState().run).toMatchObject({ phase: 'stopped', done: 1, found: 1 });
+    expect(askAiRun.getState().run?.remaining).toHaveLength(2);
+    expect(drafts()).toHaveLength(1);
+  });
+
+  it('a pair run sends both dates in one ask and puts the drafts on the newer photo', async () => {
+    const before = { kind: 'photo' as const, layer: 'ph', photo: 'old' };
+    const after = { kind: 'photo' as const, layer: 'ph2', photo: 'new' };
+    void custom([after], {
+      confirmed: true,
+      custom: {
+        request: { ...REQUEST, kind: 'change', fields: [] },
+        route: HAIKU,
+        pair: { before, after, labels: ['3 March 2026', '9 October 2026'] },
+      },
+    });
+    await flush();
+    expect(h.ask).toHaveLength(1);
+    const req = h.ask[0]?.req;
+    expect(req?.kind).toBe('change');
+    expect(req?.images.map((i) => [i.key, i.label])).toEqual([
+      ['photo:ph:old', '3 March 2026'],
+      ['photo:ph2:new', '9 October 2026'],
+    ]);
+    expect(req?.fields.map((f) => f.key)).toEqual(['change_type', 'what']);
+    expect(askAiRun.getState().run).toMatchObject({ total: 1 });
+    answer(0, 2);
+    await flush();
+    expect(drafts()).toHaveLength(2);
+    expect(drafts().every((d) => d.source.kind === 'photo' && d.source.photo === 'new')).toBe(true);
+    expect(askAiRun.getState().run).toMatchObject({ phase: 'done', done: 1, found: 2 });
   });
 });

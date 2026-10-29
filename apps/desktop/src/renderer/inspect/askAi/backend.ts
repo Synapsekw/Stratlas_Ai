@@ -153,6 +153,11 @@ export const PREVIEW_IMAGES = 12;
 const PHOTO_GUESS = { width: 2560, height: 1708 };
 const FRAME_GUESS = { width: 1920, height: 1080 };
 
+/** The size an item is assumed to have for an estimate, before it has been opened. */
+export function guessSize(item: DetectItem): { width: number; height: number } {
+  return item.kind === 'photo' ? PHOTO_GUESS : FRAME_GUESS;
+}
+
 export interface CloudConfirm {
   provider: string;
   /** The provider's name as people know it ("Anthropic"). */
@@ -199,7 +204,7 @@ export function cloudConfirm(i: {
     estimate: estimateDetect({
       provider,
       model,
-      images: i.items.map((x) => (x.kind === 'photo' ? PHOTO_GUESS : FRAME_GUESS)),
+      images: i.items.map(guessSize),
       prompt,
       batchSize: i.batchSize,
     }),

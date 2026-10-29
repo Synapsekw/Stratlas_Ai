@@ -70,11 +70,16 @@ export async function grabFrame(
   }
 }
 
-/** The image of one item as sent to the model, with its original size. */
+/**
+ * The image of one item as sent to the model, with its original size. `maxPx` caps the long side
+ * as sent (custom requests send at `ASK_SEND_MAX_PX`); the sent size is `sendSize(width, height,
+ * maxPx)`.
+ */
 export async function prepareItem(
   projectId: string,
   layers: readonly Layer[],
   item: DetectItem,
+  maxPx: number = SEND_MAX_PX,
 ): Promise<PreparedImage> {
   const layer = layers.find((l) => l.id === item.layer);
   if (item.kind === 'photo') {
@@ -83,13 +88,13 @@ export async function prepareItem(
     if (!photo) throw new Error(`Photo ${item.photo} is not in layer ${item.layer}.`);
     const img = await loadImage(assetUrl(projectId, photo.src));
     return {
-      dataUrl: toJpeg(img, img.naturalWidth, img.naturalHeight, SEND_MAX_PX),
+      dataUrl: toJpeg(img, img.naturalWidth, img.naturalHeight, maxPx),
       width: img.naturalWidth,
       height: img.naturalHeight,
     };
   }
   if (layer?.kind !== 'video') throw new Error(`Video ${item.layer} is not in this project.`);
-  return grabFrame(assetUrl(projectId, layer.src), item.t, SEND_MAX_PX);
+  return grabFrame(assetUrl(projectId, layer.src), item.t, maxPx);
 }
 
 // ---- frame thumbnails for the contact sheet (one at a time, cached for the session) ----

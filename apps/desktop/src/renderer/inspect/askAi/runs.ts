@@ -8,14 +8,24 @@
  * project: opening another project stops and clears it, and nothing that arrives late from it is
  * added to the review. A cloud run never starts without the person's yes (`confirmed`, or the
  * project's "Don't ask again").
+ *
+ * A custom request (`custom`) runs as its own kind of run: one `ai:ask` per item (or one for a
+ * pair of dates, drafts on the newer photo) on the route it was given, this PC or a named cloud
+ * model, each answer's items added to the review as drafts as it arrives.
  */
-import { aiPassName } from '@aio/annotate/detections';
+import { ASK_PROMPT_VERSION, ASK_SEND_MAX_PX, sendSize, type AskRoute } from '@aio/ai';
+import { aiPassName, type DetectionRun } from '@aio/annotate/detections';
 import type { IpcEvent, ProjectManifest } from '@aio/schema';
 import { t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
-import { promptTaxonomy, toDraftDetections, type DetectItem } from '../../detections/convert';
+import {
+  itemKey,
+  promptTaxonomy,
+  toDraftDetections,
+  type DetectItem,
+} from '../../detections/convert';
 import {
   newRunId,
   planRuns,
@@ -31,6 +41,7 @@ import { bridge, jobs } from '../../shell';
 import { cloudHint, providerLabelOf, type ResolvedBackend } from './backend';
 import type { AskCheck } from './checks';
 import { classMapFor, writeClassMap } from './classMap';
+import { askItemsToDrafts, requestName, sendFields, type AskDraftRequest } from './custom';
 import { cloudConfirmSkipped, rememberCheck, type AskAiPrefs } from './prefs';
 
 export interface AskRun {
@@ -64,7 +75,24 @@ export interface AskRunInput {
   prefs: AskAiPrefs;
   /** The person said yes to the cloud confirm. A cloud run without it (or "Don't ask again") throws. */
   confirmed?: boolean;
+  /**
+   * A custom request: it runs on `route` (not `backend`), one ask per item, or one ask for `pair`
+   * (Image 1 the older date, Image 2 the newer; drafts on `after`).
+   */
+  custom?: {
+    request: AskDraftRequest;
+    route: AskRoute;
+    pair?: {
+      before: DetectItem & { kind: 'photo' };
+      after: DetectItem & { kind: 'photo' };
+      labels: [string, string];
+    };
+  };
 }
+
+/** Where a run sends: a custom request's route, else the backend Ask AI resolved. */
+const sendsToCloud = (i: AskRunInput) =>
+  (i.custom ? i.custom.route.kind : i.backend.kind) === 'cloud';
 
 export const askAiRun: StoreApi<{ run: AskRun | null }> = createStore<{ run: AskRun | null }>(
   () => ({ run: null }),
@@ -119,16 +147,20 @@ const reloadReview = (projectId: string): Promise<void> =>
   loadDetections(projectId, true).catch(() => undefined);
 
 export async function startAskRun(i: AskRunInput): Promise<void> {
-  if (i.backend.kind === 'cloud' && i.confirmed !== true && !cloudConfirmSkipped(i.projectId))
+  if (sendsToCloud(i) && i.confirmed !== true && !cloudConfirmSkipped(i.projectId))
     throw new Error('A cloud run starts only once the person has confirmed what is sent.');
   if (busy(askAiRun.getState().run)) return;
-  rememberCheck(i.projectId, i.check);
+  if (!i.custom) rememberCheck(i.projectId, i.check);
   await begin(i);
 }
 
 async function begin(i: AskRunInput, localRunId?: string): Promise<void> {
   const token = ++seq;
   active = { token, input: i, stop: () => undefined };
+  if (i.custom) {
+    await runCustom(token, i, i.custom);
+    return;
+  }
   askAiRun.setState({
     run: {
       runIds: [],
@@ -299,6 +331,191 @@ async function runLocal(
   });
 }
 
+/** One ask of a custom run: the images sent, and the item its drafts land on. */
+interface AskUnit {
+  target: DetectItem;
+  images: { item: DetectItem; label?: string }[];
+}
+
+/** An image of an ask as sent: its key, the JPEG, its sent size and its date label. */
+interface SentImage {
+  key: string;
+  dataUrl: string;
+  width: number;
+  height: number;
+  label?: string;
+}
+
+async function runCustom(
+  token: number,
+  i: AskRunInput,
+  custom: NonNullable<AskRunInput['custom']>,
+): Promise<void> {
+  const { projectId, manifest } = i;
+  const { request, route, pair } = custom;
+  const units: AskUnit[] = pair
+    ? [
+        {
+          target: pair.after,
+          images: [
+            { item: pair.before, label: pair.labels[0] },
+            { item: pair.after, label: pair.labels[1] },
+          ],
+        },
+      ]
+    : i.items.map((item) => ({ target: item, images: [{ item }] }));
+  const runId = runStamp();
+  const pass = aiPassName(runId);
+  const maxPx = ASK_SEND_MAX_PX[route.kind];
+  const fields = sendFields(request);
+  const classes = classesOf(manifest);
+  askAiRun.setState({
+    run: {
+      runIds: [runId],
+      projectId,
+      backend: route.kind,
+      ...(route.kind === 'cloud' ? { provider: providerLabelOf(route.provider) } : {}),
+      what: requestName(request),
+      frames: units.some((u) => u.target.kind === 'frame'),
+      total: units.length,
+      done: 0,
+      found: 0,
+      phase: 'running',
+      remaining: [],
+    },
+  });
+  noteAssessed(
+    pass,
+    units.flatMap((u) => (u.target.kind === 'photo' ? [u.target.photo] : [])),
+  );
+
+  let stopped = false;
+  /** Read through a function: Stop flips it while a request awaits. */
+  const isStopped = () => stopped;
+  /** The ask in flight, which Stop cancels. */
+  let current: string | null = null;
+  if (active?.token === token)
+    active.stop = () => {
+      stopped = true;
+      if (current !== null) void bridge.call('ai:cancel', { runId: current });
+      patch(token, () => ({ phase: 'stopping' }));
+    };
+
+  let provider: string = route.kind === 'cloud' ? route.provider : 'local';
+  let model = route.kind === 'cloud' ? route.model : '';
+  let inputTokens = 0;
+  let outputTokens = 0;
+  /** Null once an answer had no price: the run then states no cost. */
+  let cost: number | null = 0;
+  let found = 0;
+  let done = 0;
+  /** The run ends with the items not answered; its run block is written once any answered. */
+  const end = (phase: AskRun['phase'], from: number, error?: string) => {
+    if (!isLive(token)) return;
+    if (done > 0) {
+      const run: DetectionRun = {
+        id: runId,
+        pass,
+        at: new Date().toISOString(),
+        provider,
+        model,
+        promptVersion: ASK_PROMPT_VERSION,
+        images: done,
+        detections: found,
+        inputTokens,
+        outputTokens,
+        ...(cost !== null ? { costUsd: cost } : {}),
+      };
+      dispatch({ type: 'add', detections: [], label: t('det.ai.undoLabel'), run });
+    }
+    patch(token, () => ({
+      phase,
+      done,
+      found,
+      remaining: units.slice(from).map((u) => u.target),
+      ...(error !== undefined ? { error } : {}),
+    }));
+  };
+
+  for (const [n, unit] of units.entries()) {
+    if (isStopped()) {
+      end('stopped', n);
+      return;
+    }
+    let images: SentImage[];
+    let original = { width: 0, height: 0 };
+    try {
+      images = await Promise.all(
+        unit.images.map(async ({ item, label }): Promise<SentImage> => {
+          const p = await prepareItem(projectId, manifest.layers, item, maxPx);
+          if (item === unit.target) original = { width: p.width, height: p.height };
+          const [width, height] = sendSize(p.width, p.height, maxPx);
+          return {
+            key: itemKey(item),
+            dataUrl: p.dataUrl,
+            width,
+            height,
+            ...(label !== undefined ? { label } : {}),
+          };
+        }),
+      );
+    } catch (e) {
+      end('failed', n, e instanceof Error ? e.message : String(e));
+      return;
+    }
+    if (!isLive(token)) return;
+    if (isStopped()) {
+      end('stopped', n);
+      return;
+    }
+    current = `${runId}-${String(n)}`;
+    const res = await bridge.call('ai:ask', {
+      runId: current,
+      projectId,
+      backend: route,
+      kind: request.kind,
+      prompt: request.prompt,
+      fields,
+      images,
+      ...(request.wholeImage === true ? { wholeImage: true } : {}),
+      ...(request.id !== undefined ? { requestId: request.id } : {}),
+    });
+    current = null;
+    // a run of a project no longer open adds nothing
+    if (!isLive(token)) return;
+    const answer = res.ok ? res.value : { ok: false as const, error: res.error };
+    if (!answer.ok) {
+      if (isStopped() || ('stopped' in answer && answer.stopped === true)) end('stopped', n);
+      else end('failed', n, answer.error);
+      return;
+    }
+    provider = answer.provider;
+    model = answer.model;
+    inputTokens += answer.inputTokens;
+    outputTokens += answer.outputTokens;
+    cost = cost === null || answer.costUsd === undefined ? null : cost + answer.costUsd;
+    const drafts = askItemsToDrafts({
+      items: answer.items,
+      item: unit.target,
+      size: original,
+      request,
+      classes,
+      runId,
+      pass,
+      provider: answer.provider,
+      model: answer.model,
+      now: new Date().toISOString(),
+      newId: () => globalThis.crypto.randomUUID(),
+    });
+    if (drafts.length > 0)
+      dispatch({ type: 'add', detections: drafts, label: t('det.ai.undoLabel') });
+    done += 1;
+    found += drafts.length;
+    patch(token, () => ({ done, found }));
+  }
+  end(isStopped() ? 'stopped' : 'done', units.length);
+}
+
 /** The pass a detector run writes (`detect.vlm`'s `vlm-<run>.json`). */
 const vlmPassName = (runId: string) =>
   `vlm-${runId.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 100)}.json`;
@@ -462,6 +679,12 @@ export async function retryAskRun(): Promise<{ refused: string } | undefined> {
   const run = askAiRun.getState().run;
   const a = active;
   if (!run || !a || busy(run) || run.remaining.length === 0) return undefined;
+  const custom = a.input.custom;
+  if (custom) {
+    // a custom run's route is explicit and was confirmed: what is left goes to it again
+    await begin(custom.pair ? a.input : { ...a.input, items: run.remaining });
+    return undefined;
+  }
   const b = a.input.backend;
   if (b.kind === 'cloud') {
     const status = await bridge.call('ai:status', { projectId: a.input.projectId, task: 'vision' });
