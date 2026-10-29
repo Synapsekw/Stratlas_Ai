@@ -257,6 +257,19 @@ describe('detectJobGate', () => {
     expect(resolve).not.toHaveBeenCalled();
   });
 
+  it('a resume on another pack model re-stamps the model and its sha from the pack', async () => {
+    const restamp = vi.fn();
+    const stored = { params: { run: 'r', model: 'qwen-old', modelSha256: 'c'.repeat(64) } };
+    const { d } = deps({ job: () => stored, restamp });
+    expect(await detectJobGate({ resume: 'job-1' }, d)).toEqual({ req: { resume: 'job-1' } });
+    expect(restamp).toHaveBeenCalledWith('job-1', { model: 'qwen-vl', modelSha256: SHA });
+    restamp.mockClear();
+    const same = { params: { run: 'r', model: 'qwen-vl', modelSha256: SHA } };
+    const again = deps({ job: () => same, restamp });
+    await detectJobGate({ resume: 'job-1' }, again.d);
+    expect(restamp).not.toHaveBeenCalled();
+  });
+
   it('QUADRION_VLM_SERVER_URL skips pack, hardware and spawn', async () => {
     const { d, server, hardware, findPack } = deps({
       env: { QUADRION_VLM_SERVER_URL: 'http://127.0.0.1:40000' },

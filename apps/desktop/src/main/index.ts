@@ -1055,6 +1055,11 @@ const detectQueue = detectLane({
       server: vlmServer,
       resolve: resolveDetectors,
       running,
+      job: (id) => jobStore.get(id),
+      restamp: (id, model) => {
+        const j = jobStore.get(id);
+        if (j) jobStore.put({ ...j, params: { ...j.params, ...model } }, true);
+      },
     }),
   start: (req) => jobs.start(req),
   jobs: () => jobStore.all(),

@@ -61,6 +61,10 @@ export interface GateDeps {
   resolve: typeof resolveDetectors;
   /** A `detect.vlm` or GPU pipeline job is at work (or another start is passing the gate). */
   running: () => boolean;
+  /** The stored job of a resume. */
+  job?: (id: string) => Pick<JobRecord, 'params'> | undefined;
+  /** Write the pack's model and its sha into a resumed job's stored params. */
+  restamp?: (id: string, model: { model: string; modelSha256: string }) => void;
 }
 
 /** What the gate reads of the request's detectors; the rest is checked by the job runner. */
@@ -142,7 +146,16 @@ export async function detectJobGate(req: StartRequest, d: GateDeps): Promise<Gat
     };
   }
 
-  if (!isNew || !refs?.success) return { req };
+  if (!isNew) {
+    // a run stopped on an older pack resumes on this one's model: its boxes are read in the
+    // frame of the model that answers them now
+    const was = d.job?.(req.resume)?.params;
+    const now = { model: pack.manifest.model.id, modelSha256: pack.manifest.model.sha256 };
+    if (was && (was.model !== now.model || was.modelSha256 !== now.modelSha256))
+      d.restamp?.(req.resume, now);
+    return { req };
+  }
+  if (!refs?.success) return { req };
   return {
     req: withServer(
       req,
