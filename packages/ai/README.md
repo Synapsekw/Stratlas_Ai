@@ -20,6 +20,7 @@ See `docs/architecture/SPEC.md` section 2 for ownership and dependencies. Public
 | `engineer.ts`, `engineerTools.ts`, `engineerPrompt.ts`, `engineerApproval.ts`, `engineerSpend.ts`                                      | The engineer step of the engineering model: one structured, cached and budgeted model call (main process) that turns the evidence pack into an `EngineerProposal`, plus its read-only tools, prompt, approval and spend.         |
 | `rfPlan.ts`                                                                                                                            | The AI step of Auto-plan (RF coverage): proposes equipment and a carrier for each detected unit from a fixed catalogue; the geometry job measures every number.                                                                  |
 | `detect.ts`                                                                                                                            | AI-assisted detection (BLD-6): prompt and `DETECT_PROMPT_VERSION`, batches, cost estimate from each provider's image token rules, reply parser. Main runs `detect()` (`ai:detect`).                                              |
+| `ask.ts`                                                                                                                               | Custom requests (find, change, ask): prompts and `ASK_PROMPT_VERSION`, the reply parser with its `}}` and cut-off repairs, box guards, routing, provider options and the cost estimate. Main runs the requests.                  |
 | `pricing.ts`                                                                                                                           | Price table and per-provider usage sums for the meter.                                                                                                                                                                           |
 
 ## Approvals and restarts
@@ -28,12 +29,12 @@ Write and send steps always wait for a click. A conversation is saved after ever
 
 ## Prices
 
-Estimates for the meter only; the provider's invoice is authoritative. USD per million tokens, standard tier, base context tier. Checked on 2026-10-04 (`PRICES_AS_OF`):
+Estimates for the meter only; the provider's invoice is authoritative. USD per million tokens, standard tier, base context tier. Checked on 2026-10-29 (`PRICES_AS_OF`):
 
-| Provider  | Source                                                   | Notes                                                                                                                                                                               |
-| --------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Anthropic | https://platform.claude.com/docs/en/about-claude/pricing | Opus 5.5 $4 / $20 (cache read $0.20), Sonnet 5.5 $2 / $10 ($0.20), Haiku 4.5 $1 / $5, Fable 5.1 $10 / $50 ($0.25). 5 minute cache writes 1.25 times input.                          |
-| OpenAI    | https://developers.openai.com/api/docs/pricing           | gpt-6.1-sol $2 / $10, gpt-6-luna $0.10 / $0.50, gpt-6-astra $10 / $50. Short context (up to 272K input).                                                                            |
-| Google    | https://ai.google.dev/gemini-api/docs/pricing            | gemini-3.1-pro-preview $2 / $12, gemini-3.5-flash $1.50 / $9, gemini-3.1-flash-lite $0.25 / $1.50. Prompts up to 200k. gemini-3.8-flash has an introductory price until 2026-12-31. |
+| Provider  | Source                                                   | Notes                                                                                                                                                                                                         |
+| --------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anthropic | https://platform.claude.com/docs/en/about-claude/pricing | Opus 5.5 $4 / $20 (cache read $0.20), Sonnet 5.5 $2 / $10 ($0.20), Haiku 5.5 $0.10 / $0.50 ($0.01, added 2026-10-29), Haiku 4.5 $1 / $5, Fable 5.1 $10 / $50 ($0.25). 5 minute cache writes 1.25 times input. |
+| OpenAI    | https://developers.openai.com/api/docs/pricing           | gpt-6.1-sol $2 / $10, gpt-6-luna $0.10 / $0.50, gpt-6-astra $10 / $50. Short context (up to 272K input).                                                                                                      |
+| Google    | https://ai.google.dev/gemini-api/docs/pricing            | gemini-3.1-pro-preview $2 / $12, gemini-3.5-flash $1.50 / $9, gemini-3.1-flash-lite $0.25 / $1.50. Prompts up to 200k. gemini-3.8-flash has an introductory price until 2026-12-31.                           |
 
 The OpenAI marketing page (openai.com/api/pricing) refused automated reads; the OpenAI rows come from the developer docs page above. A local model costs nothing per token.

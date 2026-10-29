@@ -4,7 +4,7 @@
  * Sources and the date they were checked are in packages/ai/README.md. Bump PRICES_AS_OF when a
  * row changes.
  */
-export const PRICES_AS_OF = '2026-10-04';
+export const PRICES_AS_OF = '2026-10-29';
 
 export interface ModelPrice {
   input: number;
@@ -25,6 +25,7 @@ const PRICES: Record<string, ModelPrice> = {
   'claude-sonnet-5-5': { input: 2, output: 10, cacheRead: 0.2 },
   'claude-sonnet-5': { input: 2, output: 10, cacheRead: 0.2 },
   'claude-sonnet-4-6': { input: 3, output: 15 },
+  'claude-haiku-5-5': { input: 0.1, output: 0.5, cacheRead: 0.01 },
   'claude-haiku-4-5': { input: 1, output: 5 },
   // OpenAI, developers.openai.com/api/docs/pricing (short context, up to 272K input).
   'gpt-6-astra': { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 },

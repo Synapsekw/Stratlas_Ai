@@ -101,12 +101,32 @@ export {
   addProviderUsage,
   estimateCostUsd,
   formatMeter,
+  priceFor,
   PRICES_AS_OF,
   totalUsage,
   type ProviderUsageRow,
   type UsageTotals,
 } from './pricing';
 export { conversationMarkdown, issuesCsv } from './exporting';
+export {
+  ASK_MARKER,
+  ASK_MODELS,
+  ASK_PROMPT_VERSION,
+  ASK_SEND_MAX_PX,
+  CHANGE_FIELDS,
+  MAX_ASK_ITEMS,
+  askMaxTokens,
+  askPrompt,
+  askProviderOptions,
+  coerceField,
+  estimateAsk,
+  guardItems,
+  parseAskReply,
+  readJsonList,
+  routeAsk,
+  type AskFamily,
+  type AskRoute,
+} from './ask';
 export {
   DEFAULT_BATCH,
   DETECT_PROMPT_VERSION,

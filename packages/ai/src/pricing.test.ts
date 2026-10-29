@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addProviderUsage, estimateCostUsd, formatMeter, totalUsage } from './pricing';
+import { addProviderUsage, estimateCostUsd, formatMeter, priceFor, totalUsage } from './pricing';
 import { missingKeyMessage, modelLabel } from './routes';
 
 describe('cost estimate', () => {
@@ -17,6 +17,13 @@ describe('cost estimate', () => {
       cacheReadTokens: 9_000,
     });
     expect(cached).toBeLessThan(plain ?? 0);
+  });
+
+  it('knows Claude Haiku 5.5', () => {
+    expect(priceFor('claude-haiku-5-5')).toBeDefined();
+    expect(
+      estimateCostUsd('claude-haiku-5-5', { inputTokens: 1_000_000, outputTokens: 1_000_000 }),
+    ).toBeCloseTo(0.6);
   });
 
   it('returns undefined for unknown models', () => {
