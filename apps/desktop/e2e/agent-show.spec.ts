@@ -1213,8 +1213,8 @@ test.describe('the agent column in the smallest window', () => {
     await shot(win, 'agent-show-08-small-reports');
 
     // the connection pair in its longest wording, "Offline only" and "Cloud AI blocked", beside
-    // the Agent chip, the Processing chip and the project's Share chip
-    await command(win, 'Turn cloud AI on');
+    // the Agent chip, the Processing chip and the project's Share chip (cloud AI is on for a new
+    // install)
     await command(win, 'Work offline only');
     await expect(win.getByTestId('connection-chip')).toHaveText('Offline only');
     await expect(win.getByTestId('cloud-chip')).toHaveText('Cloud AI blocked');

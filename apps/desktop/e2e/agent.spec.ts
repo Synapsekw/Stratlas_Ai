@@ -235,7 +235,8 @@ test('agent: Settings tests the connection and keeps the Anthropic workspace ID'
     const { win } = run;
     const testConnection = () =>
       win.evaluate(() => window.aio.invoke('ai:testConnection', { provider: 'anthropic' }));
-    // Cloud AI is off by default: the test does not call out.
+    // with cloud AI off the test does not call out (a new install starts with it on)
+    await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: false }));
     expect(await testConnection()).toEqual({
       ok: false,
       message: 'Cloud AI is off. Turn it on in Settings, AI providers, to use the agent.',

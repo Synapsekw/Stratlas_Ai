@@ -251,14 +251,10 @@ test('the demo plot plan: units, a broken file, placed by control points, parts 
   }
 
   // the agent drafts T-202 from the drawing; it waits for approval and sends no drawing content
-  // (cloud AI on from the command search: the scripted test provider stands in for the cloud)
-  await win.keyboard.press('Control+K');
-  const palette = win.getByRole('dialog', { name: 'Command search' });
-  await palette.getByRole('combobox').fill('cloud AI');
-  await palette.getByRole('option', { name: /Turn cloud AI on/ }).click();
+  // (cloud AI is on for a new install: the scripted test provider stands in for the cloud)
   const agent = win.getByRole('region', { name: 'Agent' });
   const message = agent.getByRole('textbox', { name: 'Message the agent' });
-  // the open panel checks its route again by itself when the AI settings change: no Check again
+  // the open panel is ready without a Check again
   await expect(message).toBeEnabled({ timeout: 15_000 });
   await expect(agent.getByRole('button', { name: 'Check again' })).toHaveCount(0);
   await message.fill(

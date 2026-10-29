@@ -39,6 +39,11 @@ test('the agent pane: off row, maximise, minimise, a live tool, the divider and 
     await network.attach(app);
     const win = await app.firstWindow();
     await win.waitForLoadState('domcontentloaded');
+    // a new install starts with cloud AI on; this spec starts from off and turns it on itself
+    await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: false }));
+    // the screen loaded with the new-install default, so load it again to show the saved value
+    await win.reload();
+    await win.waitForLoadState('domcontentloaded');
     await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
     await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
 
