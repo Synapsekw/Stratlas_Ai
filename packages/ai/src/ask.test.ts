@@ -229,6 +229,21 @@ describe('coerceField', () => {
     expect(na.value.value).toBeNull();
     expect(na.warning).toBeTruthy();
   });
+  it('reads a comma before exactly three digits as a thousands separator, and says so', () => {
+    const k = coerceField(num, '1,250 kPa');
+    expect(k.value.value).toBe(1250);
+    expect(k.warning).toContain('1,250');
+    expect(k.warning).toContain('1250');
+    expect(coerceField(num, '12,500,000').value.value).toBe(12500000);
+    const dec = coerceField(num, '4,2');
+    expect(dec.value.value).toBe(4.2);
+    expect(dec.warning).toBeUndefined();
+    expect(coerceField(num, '4,25').value.value).toBe(4.25);
+    expect(coerceField(num, '1234,567').value.value).toBe(1234.567);
+    const both = coerceField(num, '1,250.5');
+    expect(both.value.value).toBe(1250.5);
+    expect(both.warning).toBeUndefined();
+  });
   it('reads yes and no', () => {
     expect(coerceField(yn, 'Yes.').value.value).toBe('yes');
     expect(coerceField(yn, true).value.value).toBe('yes');

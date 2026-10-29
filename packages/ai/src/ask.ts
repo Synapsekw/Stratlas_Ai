@@ -204,6 +204,19 @@ export function coerceField(
       if (typeof raw === 'number')
         return Number.isFinite(raw) ? { value: make(raw) } : bad('a number');
       if (typeof raw !== 'string') return bad('a number');
+      // "1,250" is a thousand and more, not 1.25: a comma before exactly three digits groups
+      // thousands; with no decimal point after it the reading is said in a warning
+      const grouped = /(?<![\d.,])-?\d{1,3}(?:,\d{3})+(\.\d+)?(?![\d,])/.exec(raw);
+      if (grouped) {
+        const n = Number(grouped[0].replace(/,/g, ''));
+        if (!Number.isFinite(n)) return bad('a number');
+        return grouped[1]
+          ? { value: make(n) }
+          : {
+              value: make(n),
+              warning: `${spec.label}: the model answered "${grouped[0]}", read as ${String(n)} (the comma taken as a thousands separator).`,
+            };
+      }
       const m = /-?\d+(?:[.,]\d+)?/.exec(raw);
       if (!m) return bad('a number');
       const n = Number(m[0].replace(',', '.'));
