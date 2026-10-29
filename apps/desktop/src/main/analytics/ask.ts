@@ -22,7 +22,9 @@ export interface LocalAskDeps {
   server: Pick<VlmServer, 'ensure' | 'attach' | 'serves' | 'lease'>;
   /** Why the card is taken (a detector run or a GPU job), null when free. */
   gpuBusy(): string | null;
-  /** Stop the server when nothing else uses it. */
+  /** A request goes to the model now (a model kept warm stays loaded). */
+  started?(): void;
+  /** The request ended: keep the model warm a while, then stop it when nothing else uses it. */
   idleIfUnused(): void;
   fetch: typeof fetch;
   now(): number;
@@ -258,6 +260,7 @@ export function createLocalAsk(d: LocalAskDeps): LocalAsk {
       if (busy) return fail(busy, 'busy');
       const run = { runId: req.runId, abort: new AbortController(), stopped: false };
       current = run;
+      d.started?.();
       let release: (() => void) | null = null;
       try {
         release = d.server.lease();

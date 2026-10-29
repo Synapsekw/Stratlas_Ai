@@ -201,6 +201,12 @@ const PHOTO_GPU: ReadonlySet<string> = new Set(
 
 export type DetectQueueEvent = IpcEvent<'detect:queue'>;
 
+/**
+ * How long the model stays loaded after a local ask: the next photo of a selection or the next
+ * follow-up of a thread finds it ready instead of loading the model again.
+ */
+export const KEEP_WARM_MS = 90_000;
+
 /** A waiting start and what `detect:queue` shows of it. */
 interface Waiting {
   req: StartRequest;
@@ -231,6 +237,13 @@ export function detectLane(d: {
   /** Starts passing the gate now. */
   let passing = 0;
   let draining = false;
+  /** Set after a local ask: the server stays loaded until it fires. */
+  let warm: ReturnType<typeof setTimeout> | null = null;
+
+  function coolDown(): void {
+    if (warm) clearTimeout(warm);
+    warm = null;
+  }
 
   const atWork = (pipelines: (p: PipelineName) => boolean) =>
     d.jobs().some((j) => pipelines(j.pipeline) && AT_WORK.has(j.status));
@@ -319,8 +332,9 @@ export function detectLane(d: {
     idleIfUnused();
   }
 
-  /** Stop the server when no detector run is at work, passing or waiting. */
+  /** Stop the server when no detector run is at work, passing or waiting, and it is not warm. */
   function idleIfUnused(): void {
+    if (warm) return;
     if (waiting.length === 0 && passing === 0 && !detectAtWork()) d.server.idle();
   }
 
@@ -345,9 +359,32 @@ export function detectLane(d: {
         return;
       await settle();
     },
-    /** A local ask ended: the next waiting detector run goes. */
+    /** A local ask starts: the model it may find loaded stays so while it runs. */
+    askStarted(): void {
+      coolDown();
+    },
+    /**
+     * A local ask ended: the model stays loaded for `KEEP_WARM_MS` (each ask starts the wait
+     * again), then stops unless a detector run holds it; the next waiting detector run goes now.
+     */
     askEnded(): Promise<void> {
+      coolDown();
+      warm = setTimeout(() => {
+        warm = null;
+        idleIfUnused();
+      }, KEEP_WARM_MS);
+      // a pending timer must not keep the process alive at quit
+      (warm as { unref?: () => void }).unref?.();
       return settle();
+    },
+    /**
+     * A GPU photo job is about to start: a model kept warm after a local ask stops first (unless
+     * a detector run holds it), so the two never share the card.
+     */
+    photoStarting(pipeline: string): void {
+      if (!PHOTO_GPU.has(pipeline) || !warm) return;
+      coolDown();
+      idleIfUnused();
     },
     idleIfUnused,
     /** Waiting requests, oldest first (tests, diagnostics). */

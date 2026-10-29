@@ -1101,9 +1101,12 @@ const localAsk = createLocalAsk({
       )
       ? en['detect.preset.gpuBusy']
       : null),
+  started: () => {
+    detectQueue.askStarted();
+  },
+  // the model stays loaded a while for the next photo or follow-up (KEEP_WARM_MS), and a
+  // detector run that waited for the card goes now
   idleIfUnused: () => {
-    detectQueue.idleIfUnused();
-    // a detector run that waited for the card goes now
     void detectQueue.askEnded().catch((e: unknown) => {
       appLog.write('warn', [`The detector queue did not move on: ${String(e)}`]);
     });
@@ -1725,6 +1728,8 @@ function registerIpc(): void {
         detectQueue.gpuBusy(pipeline) ??
         odmGuard.busy(pipeline);
       if (busy) return { ok: false, error: busy };
+      // a model kept warm after a local ask never sits beside a GPU photo job
+      detectQueue.photoStarting(pipeline);
     }
     // Check feature minimums for new jobs and the resolved pipeline of resumed jobs alike.
     // An old installed pack gets the update path before the runner can launch it.

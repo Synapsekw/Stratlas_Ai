@@ -71,6 +71,7 @@ function setup(o: {
     lease: vi.fn(() => release),
   };
   const idleIfUnused = vi.fn();
+  const started = vi.fn();
   const findPack = vi.fn(() =>
     Promise.resolve(o.pack === undefined ? pack(o.model ?? 'qwen3.5-9b-q4_k_m') : o.pack),
   );
@@ -83,10 +84,11 @@ function setup(o: {
     server,
     gpuBusy: () => o.gpuBusy ?? null,
     idleIfUnused,
+    started,
     fetch: fetch as unknown as typeof globalThis.fetch,
     now: () => 0,
   };
-  return { ask: createLocalAsk(d), fetch, release, server, idleIfUnused, findPack };
+  return { ask: createLocalAsk(d), fetch, release, server, idleIfUnused, started, findPack };
 }
 
 const body = (f: ReturnType<typeof vi.fn>, n = 0) =>
@@ -335,6 +337,15 @@ describe('local ask', () => {
     expect(r.ok).toBe(true);
     expect(t.findPack).not.toHaveBeenCalled();
     expect(t.server.attach).toHaveBeenCalledWith('http://127.0.0.1:5555', 'a'.repeat(64));
+  });
+
+  it('says when a request goes to the model, and not when the card is taken', async () => {
+    const t = setup({ replies: [() => reply('[]')] });
+    await t.ask.run(findReq());
+    expect(t.started).toHaveBeenCalledTimes(1);
+    const g = setup({ gpuBusy: 'A detector run is at work.' });
+    await g.ask.run(findReq());
+    expect(g.started).not.toHaveBeenCalled();
   });
 
   it('releases the lease after a failed request', async () => {

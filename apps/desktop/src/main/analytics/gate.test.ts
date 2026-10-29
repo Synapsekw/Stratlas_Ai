@@ -12,9 +12,10 @@ import {
 import { en } from '@aio/ui/i18n/en';
 import { localVlmModel } from './models';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DETECT_QUEUED,
+  KEEP_WARM_MS,
   detectJobGate,
   detectLane,
   type GateAnswer,
@@ -571,5 +572,72 @@ describe('detectLane', () => {
     expect(t.l.waiting()).toHaveLength(2);
     expect(t.l.list().map((i) => i.run)).toEqual(['run-b']);
     expect(ipcEvents['detect:queue'].safeParse(t.changed.mock.lastCall?.[0]).success).toBe(true);
+  });
+});
+
+describe('detectLane keep-warm after a local ask', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('two asks back to back keep the model loaded; it stops 90 s after the last', async () => {
+    vi.useFakeTimers();
+    const t = lane();
+    expect(KEEP_WARM_MS).toBe(90_000);
+    t.l.askStarted();
+    await t.l.askEnded();
+    vi.advanceTimersByTime(30_000);
+    t.l.askStarted();
+    await t.l.askEnded();
+    // a settle in between (a GPU job of another kind ended) does not stop it either
+    t.l.idleIfUnused();
+    vi.advanceTimersByTime(89_000);
+    expect(t.server.idle).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1_000);
+    expect(t.server.idle).toHaveBeenCalledTimes(1);
+  });
+
+  it('a new ask clears the timer', async () => {
+    vi.useFakeTimers();
+    const t = lane();
+    t.l.askStarted();
+    await t.l.askEnded();
+    t.l.askStarted();
+    vi.advanceTimersByTime(200_000);
+    expect(t.server.idle).not.toHaveBeenCalled();
+  });
+
+  it('when the timer fires during a detector run, the run keeps the server', async () => {
+    vi.useFakeTimers();
+    const t = lane();
+    t.l.askStarted();
+    await t.l.askEnded();
+    await t.l.start(newRequest());
+    vi.advanceTimersByTime(KEEP_WARM_MS);
+    expect(t.server.idle).not.toHaveBeenCalled();
+    await t.end('job-1');
+    expect(t.server.idle).toHaveBeenCalledTimes(1);
+  });
+
+  it('a photo GPU job start stops a warm idle server first', async () => {
+    vi.useFakeTimers();
+    const t = lane();
+    t.l.askStarted();
+    await t.l.askEnded();
+    t.l.photoStarting('walk.process');
+    expect(t.server.idle).not.toHaveBeenCalled();
+    t.l.photoStarting('photo.align');
+    expect(t.server.idle).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(KEEP_WARM_MS);
+    expect(t.server.idle).toHaveBeenCalledTimes(1);
+  });
+
+  it('a photo GPU job start leaves a server a detector run holds', async () => {
+    const t = lane();
+    t.l.askStarted();
+    await t.l.askEnded();
+    await t.l.start(newRequest());
+    t.l.photoStarting('photo.align');
+    expect(t.server.idle).not.toHaveBeenCalled();
   });
 });
