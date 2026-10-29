@@ -388,6 +388,70 @@ describe('AskPanel', () => {
     expect(q('ask-usecase-export')?.disabled).toBe(false);
   });
 
+  it('starts a new request with no choices left over from the one before', async () => {
+    h.answers['requests:list'] = {
+      ok: true,
+      value: {
+        items: [
+          {
+            where: 'project',
+            request: {
+              ...SAVED,
+              fields: [{ key: 'state', label: 'State', type: 'choice', choices: ['ok', 'worn'] }],
+            },
+          },
+        ],
+        problems: [],
+      },
+    };
+    panel();
+    setValue(select('ask-usecase'), 'project:gauges-abc123');
+    setValue(input('field-choices-0'), 'ok, worn,');
+    expect(input('field-choices-0')?.value).toBe('ok, worn,');
+    await click('ask-usecase-new');
+    await click('field-add');
+    setValue(select('field-type-0'), 'choice');
+    expect(input('field-choices-0')?.value).toBe('');
+  });
+
+  it('says why Run is off with no photo open', () => {
+    panel({ current: null });
+    setValue(area('ask-prompt'), 'find all gauges');
+    expect(text('ask-no-photo')).toBe('Open a photo first, or look at Selected or All photos.');
+    expect(q('ask-run')?.disabled).toBe(true);
+  });
+
+  it('asks for the other date before a compare can run', async () => {
+    h.spot = {
+      index: { captures: [{ id: 'c1' }, { id: 'c2' }] },
+      tags: {},
+      result: {
+        history: {
+          spot: {},
+          dates: [
+            {
+              capture: 'c1',
+              matches: [{ item: { kind: 'photo', layer: 'old', photo: 'o1' }, distanceM: 2 }],
+              skipped: 0,
+            },
+          ],
+        },
+      },
+      origin: 'c2',
+    };
+    panel();
+    await click('ask-kind-change');
+    expect(text('ask-dates-pick')).toBe('Pick the other date.');
+    await click('ask-date-c1');
+    expect(q('ask-dates-pick')).toBeNull();
+  });
+
+  it('Ask says it looks at the photo in view', async () => {
+    panel();
+    await click('ask-kind-ask');
+    expect(text('ask-scope-ask')).toBe('Asks about the photo in view.');
+  });
+
   it('a read-only package keeps Run and Save off', () => {
     h.readOnly = true;
     panel();

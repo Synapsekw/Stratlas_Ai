@@ -277,10 +277,3 @@
 .askp-ask .btn {
   justify-self: end;
 }
-
-/* "Custom request..." under the checks in Ask AI's menu */
-.ask-menu-sep {
-  height: 1px;
-  margin: var(--sp-2) var(--sp-3);
-  background: var(--line-soft);
-}

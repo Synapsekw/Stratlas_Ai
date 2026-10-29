@@ -24,7 +24,6 @@ import { clipItems, frameCap, walkItems, WALK_EVERY } from './frames';
 import { cloudConfirmSkipped, lastCheck, useAskAiPrefs } from './prefs';
 import { startAskRun, useAskAiRun } from './runs';
 import './askAi.css';
-import './askPanel.css';
 
 export type AskScope = 'photo' | 'selected' | 'all' | 'frames';
 

@@ -225,3 +225,10 @@
   padding: var(--sp-4) var(--sp-5);
   background: var(--bg-1);
 }
+
+/* "Custom request..." under the checks in the menu */
+.ask-menu-sep {
+  height: 1px;
+  margin: var(--sp-2) var(--sp-3);
+  background: var(--line-soft);
+}

@@ -89,8 +89,12 @@ export function AskPanel({
     setEditor(s);
     setConfirm(null);
   };
+  // bumped on every load (New, a saved request, Import): the editor starts afresh, so nothing
+  // typed for the previous request (a choices box mid-word) outlives it
+  const [loads, setLoads] = useState(0);
   const load = (s: EditorState) => {
     edit(s);
+    setLoads((n) => n + 1);
     setQuestion(s.kind === 'ask' ? s.prompt : '');
     setNaming(null);
     setDeleting(false);
@@ -513,7 +517,13 @@ export function AskPanel({
           )}
         </section>
 
-        <RequestEditor state={editor} manifest={manifest} disabled={readOnly} onChange={edit} />
+        <RequestEditor
+          key={loads}
+          state={editor}
+          manifest={manifest}
+          disabled={readOnly}
+          onChange={edit}
+        />
 
         {editor.kind === 'find' && (
           <div className="askp-block">
@@ -545,6 +555,11 @@ export function AskPanel({
               }}
             />
           </div>
+        )}
+        {editor.kind === 'ask' && (
+          <p className="askp-note faint" data-testid="ask-scope-ask">
+            {t('askPanel.scope.askPhoto')}
+          </p>
         )}
         {editor.kind === 'ask' && (
           <ThreadView
@@ -624,6 +639,11 @@ export function AskPanel({
             >
               {t('askPanel.note.settings')}
             </button>
+          </p>
+        )}
+        {editor.kind === 'find' && findScope === 'photo' && current === null && (
+          <p className="askp-note faint" data-testid="ask-no-photo">
+            {t('askPanel.note.noPhoto')}
           </p>
         )}
         {readOnly && (

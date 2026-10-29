@@ -21,7 +21,6 @@ export const enAskPanel = {
   'askPanel.usecase.deleteSure': 'Delete it',
   'askPanel.usecase.name': 'Name',
   'askPanel.usecase.namePlaceholder': 'Pressure gauge readings',
-  'askPanel.usecase.saveAs': 'Save as',
   'askPanel.usecase.cancel': 'Cancel',
   'askPanel.usecase.saved': 'Saved {name}.',
   'askPanel.usecase.savedLibrary': 'Saved {name} to the library.',
@@ -75,7 +74,6 @@ export const enAskPanel = {
   'askPanel.defaults.class': 'Class',
   'askPanel.defaults.severity': 'Severity',
   'askPanel.defaults.none': 'Pick at accept',
-  'askPanel.defaults.uncertain': 'Uncertain',
 
   'askPanel.model.local': 'Runs on this PC',
   'askPanel.model.cloud': 'Runs on {model}',
@@ -98,6 +96,7 @@ export const enAskPanel = {
   'askPanel.note.cloud': 'That cloud model cannot be used here.',
   'askPanel.note.local': "This PC's model is not ready.",
   'askPanel.note.settings': 'Open AI settings',
+  'askPanel.note.noPhoto': 'Open a photo first, or look at Selected or All photos.',
   'askPanel.note.empty': 'Write what to look for first.',
   'askPanel.note.fields': 'Give every value a name, and every choice at least two options.',
 

@@ -76,6 +76,11 @@ export function DatePairPicker({
   };
   return (
     <div className="askp-dates" role="radiogroup" aria-label={t('askPanel.dates')}>
+      {picked === null && (
+        <p className="askp-note faint" data-testid="ask-dates-pick">
+          {t('askPanel.dates.pick')}
+        </p>
+      )}
       {options.map((o) => (
         <button
           key={o.capture}
