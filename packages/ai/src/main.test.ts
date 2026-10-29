@@ -1,11 +1,12 @@
 import type { LanguageModelV4StreamPart } from '@ai-sdk/provider';
-import type { AiProvider, IpcEvent, IpcRequest } from '@aio/schema';
+import type { AiPolicy, AiProvider, IpcEvent, IpcRequest } from '@aio/schema';
 import { APICallError } from 'ai';
 import { convertArrayToReadableStream, MockLanguageModelV4 } from 'ai/test';
 import { describe, expect, it, vi } from 'vitest';
 import { createAgentRuntime, MESSAGES, type AgentRuntime, type AgentRuntimeHost } from './main';
 import { systemPrompt } from './prompt';
 import { createProviderRegistry, type ModelProvider } from './providers';
+import { createScriptedProvider } from './scripted';
 import { offlineRoutes } from './routes';
 import { COMPACT_TOOLS } from './tools';
 
@@ -929,5 +930,172 @@ describe('the local agent on a small model (AI-9)', () => {
     if (call.type !== 'tool-call') throw new Error('unreachable');
     t.runtime.toolResult({ runId: 'r1', callId: call.callId, approved: true, result: {} });
     expect((await t.end('r1')).type).toBe('done');
+  });
+});
+
+describe('custom requests on cloud models (ai:ask)', () => {
+  const IMG = 'data:image/png;base64,AAAA';
+  const askReq = (over: Partial<IpcRequest<'ai:ask'>> = {}): IpcRequest<'ai:ask'> => ({
+    runId: 'ask-1',
+    projectId: 'p1',
+    backend: { kind: 'cloud', provider: 'anthropic', model: 'claude-sonnet-5-5' },
+    kind: 'find',
+    prompt: 'Find all gauges.',
+    fields: [],
+    images: [{ key: 'photo:p1', dataUrl: IMG, width: 1000, height: 500 }],
+    ...over,
+  });
+
+  function askSetup(host: Partial<AgentRuntimeHost> = {}, more: ModelProvider[] = []) {
+    const onGenerate = vi.fn();
+    const recordUsage = vi.fn();
+    const runtime = createAgentRuntime(
+      {
+        getKey: () => Promise.resolve(null),
+        cloudAllowed: () => true,
+        emit: () => undefined,
+        recordUsage,
+        ...host,
+      },
+      {
+        providers: createProviderRegistry([
+          createScriptedProvider('anthropic', true, { onGenerate }),
+          ...more,
+        ]),
+        maxRetries: 0,
+      },
+    );
+    return { runtime, onGenerate, recordUsage };
+  }
+
+  it('answers a find through the scripted provider and meters the usage', async () => {
+    const t = askSetup();
+    const r = await t.runtime.ask(askReq());
+    expect(r).toMatchObject({ ok: true, provider: 'anthropic', model: 'claude-sonnet-5-5' });
+    if (r.ok) expect(r.items).toHaveLength(2);
+    expect(t.recordUsage).toHaveBeenCalledWith(
+      'p1',
+      expect.objectContaining({ provider: 'anthropic', inputTokens: 1200 }),
+    );
+  });
+
+  it('refuses a local backend: those run in the app', async () => {
+    const t = askSetup();
+    expect(await t.runtime.ask(askReq({ backend: { kind: 'local' } }))).toEqual({
+      ok: false,
+      error: 'Local requests run in the app.',
+    });
+    expect(t.onGenerate).not.toHaveBeenCalled();
+  });
+
+  it('refuses before any call while offline-only', async () => {
+    const t = askSetup({ offlineOnly: () => true });
+    expect(await t.runtime.ask(askReq())).toEqual({ ok: false, error: MESSAGES.offlineOnly });
+    expect(t.onGenerate).not.toHaveBeenCalled();
+  });
+
+  it('refuses before any call with cloud AI off', async () => {
+    const t = askSetup({ cloudAllowed: () => false });
+    expect(await t.runtime.ask(askReq())).toEqual({ ok: false, error: MESSAGES.cloudOff });
+    expect(t.onGenerate).not.toHaveBeenCalled();
+  });
+
+  it('refuses before any call under the forbid policy', async () => {
+    const t = askSetup({ policy: () => Promise.resolve('forbid') });
+    expect(await t.runtime.ask(askReq())).toEqual({
+      ok: false,
+      code: 'forbidden',
+      error: MESSAGES.forbidden,
+    });
+    expect(t.onGenerate).not.toHaveBeenCalled();
+  });
+
+  it('ask refuses a cloud request once the project forbids it, read from disk per request', async () => {
+    let onDisk: AiPolicy = 'allow';
+    const policy = vi.fn(() => Promise.resolve(onDisk));
+    const t = askSetup({ policy });
+    expect((await t.runtime.ask(askReq({ runId: 'a' }))).ok).toBe(true);
+    onDisk = 'forbid';
+    expect(await t.runtime.ask(askReq({ runId: 'b' }))).toMatchObject({
+      ok: false,
+      code: 'forbidden',
+    });
+    expect(policy).toHaveBeenCalledTimes(2);
+    expect(t.onGenerate).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a provider that needs a key it does not have', async () => {
+    const t = askSetup({}, [
+      { ...createScriptedProvider('openai'), label: 'OpenAI', needsKey: true },
+    ]);
+    const r = await t.runtime.ask(
+      askReq({ backend: { kind: 'cloud', provider: 'openai', model: 'gpt-6-luna' } }),
+    );
+    expect(r).toMatchObject({ ok: false });
+    expect(t.onGenerate).not.toHaveBeenCalled();
+  });
+
+  it('answers busy for a run id already at work, and cancel stops a run', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((r) => {
+      release = r;
+    });
+    const t = askSetup({
+      policy: async () => {
+        await held;
+        return 'allow';
+      },
+    });
+    const first = t.runtime.ask(askReq());
+    expect(await t.runtime.ask(askReq())).toMatchObject({
+      ok: false,
+      code: 'busy',
+      error: MESSAGES.busy,
+    });
+    t.runtime.cancel('ask-1');
+    release();
+    expect(await first).toEqual({ ok: false, error: MESSAGES.stopped, stopped: true });
+  });
+
+  describe('askStatus', () => {
+    const openai = (needsKey: boolean): ModelProvider => ({
+      ...createScriptedProvider('openai'),
+      label: 'OpenAI',
+      needsKey,
+    });
+
+    it('lists the providers that are keyless or keyed', async () => {
+      const keyed = askSetup({ getKey: (p) => Promise.resolve(p === 'openai' ? 'k' : null) }, [
+        openai(true),
+      ]);
+      expect(await keyed.runtime.askStatus('p1')).toEqual({
+        cloud: { usable: true, providers: ['anthropic', 'openai'] },
+        keepLocal: false,
+      });
+      const keyless = askSetup({}, [openai(true)]);
+      expect((await keyless.runtime.askStatus('p1')).cloud.providers).toEqual(['anthropic']);
+    });
+
+    it('says why the cloud cannot be used, offline-only first', async () => {
+      const all = askSetup({
+        offlineOnly: () => true,
+        cloudAllowed: () => false,
+        policy: () => Promise.resolve('forbid'),
+      });
+      expect(await all.runtime.askStatus('p1')).toMatchObject({
+        cloud: { usable: false, reason: 'offline-only', message: MESSAGES.offlineOnly },
+        keepLocal: true,
+      });
+      const off = askSetup({ cloudAllowed: () => false, policy: () => Promise.resolve('forbid') });
+      expect((await off.runtime.askStatus('p1')).cloud).toMatchObject({
+        usable: false,
+        reason: 'cloud-off',
+      });
+      const kept = askSetup({ policy: () => Promise.resolve('forbid') });
+      expect(await kept.runtime.askStatus('p1')).toMatchObject({
+        cloud: { usable: false, reason: 'forbidden', message: MESSAGES.forbidden },
+        keepLocal: true,
+      });
+    });
   });
 });

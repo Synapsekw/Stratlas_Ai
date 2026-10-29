@@ -79,6 +79,7 @@ import {
   type ToolSet,
   type UserContent,
 } from 'ai';
+import { parseDataUrl, runAsk } from './askRun';
 import { engineerReady } from './capabilities';
 import {
   DEFAULT_BATCH,
@@ -292,6 +293,14 @@ export interface AgentRuntime {
   rfPlanPreview(req: IpcRequest<'ai:rfPlanPreview'>): Promise<IpcResponse<'ai:rfPlanPreview'>>;
   /** Auto-plan's AI step: equipment and one carrier per unit, one request for the site, no geometry. */
   rfPlan(req: IpcRequest<'ai:rfPlan'>): Promise<IpcResponse<'ai:rfPlan'>>;
+  /**
+   * One custom request (`find`, `change`, `ask`) to a cloud model, behind the same gates as
+   * `detect` with the project policy read per request. Local requests run in the app.
+   * `cancel(req.runId)` stops it.
+   */
+  ask(req: IpcRequest<'ai:ask'>): Promise<IpcResponse<'ai:ask'>>;
+  /** Whether custom requests can use the cloud now, and which providers. Never calls out. */
+  askStatus(projectId: string): Promise<Omit<IpcResponse<'ai:askStatus'>, 'local'>>;
 }
 
 /** How long a one-time consent from the send preview stays valid. */
@@ -500,8 +509,7 @@ export function createAgentRuntime(
   }
 
   /**
-   * Every gate before a call, in order: route, provider, offline-only, cloud switch, project
-   * policy, key, then the engineer step's model capabilities and the local model probe.
+   * Every gate before a call, in order: route, then `gateRoute`.
    */
   async function check(task: AiTask, projectId: string | undefined): Promise<Check> {
     let route: ModelRoute;
@@ -515,6 +523,19 @@ export function createAgentRuntime(
         cloud: true,
       };
     }
+    return gateRoute(route, task, projectId);
+  }
+
+  /**
+   * The gates on a known route, in order: provider, offline-only, cloud switch, project policy
+   * (read from the host on every call, so a project switched to keep-local stops the next
+   * request), key, then the engineer step's model capabilities and the local model probe.
+   */
+  async function gateRoute(
+    route: ModelRoute,
+    task: AiTask,
+    projectId: string | undefined,
+  ): Promise<Check> {
     const provider = resolveProvider(route.provider);
     if (!provider) {
       return route.provider === 'local'
@@ -1811,8 +1832,67 @@ export function createAgentRuntime(
     cancel: (runId) => {
       runs.get(runId)?.controller.abort();
     },
+    ask: async (req) => {
+      if (req.backend.kind === 'local') return { ok: false, error: LOCAL_ASK_IN_APP };
+      if (runs.has(req.runId)) return { ok: false, code: 'busy', error: MESSAGES.busy };
+      const run: Run = { controller: new AbortController(), pending: new Map() };
+      runs.set(req.runId, run);
+      try {
+        const route: ModelRoute = {
+          task: 'vision',
+          provider: req.backend.provider,
+          model: req.backend.model,
+        };
+        const gate = await gateRoute(route, 'vision', req.projectId);
+        if (!gate.ok) {
+          return gate.reason === 'forbidden'
+            ? { ok: false, code: 'forbidden', error: MESSAGES.forbidden }
+            : { ok: false, error: gate.message };
+        }
+        if (run.controller.signal.aborted) {
+          return { ok: false, error: MESSAGES.stopped, stopped: true };
+        }
+        const key = await keyFor(gate.provider, route.provider);
+        return await runAsk({
+          req,
+          route,
+          provider: gate.provider,
+          key,
+          signal: run.controller.signal,
+          maxRetries: options.maxRetries ?? 2,
+          recordUsage: (u) => host.recordUsage?.(req.projectId, u),
+        });
+      } finally {
+        runs.delete(req.runId);
+      }
+    },
+    askStatus: async (projectId) => {
+      const keepLocal = host.policy ? (await host.policy(projectId)) === 'forbid' : false;
+      const providerIds: ('anthropic' | 'openai')[] = [];
+      for (const id of ['anthropic', 'openai'] as const) {
+        const p = providers.get(id);
+        if (p && (!p.needsKey || (await host.getKey(id)))) providerIds.push(id);
+      }
+      const why: { reason: 'offline-only' | 'cloud-off' | 'forbidden'; message: string } | null =
+        offlineOnly()
+          ? { reason: 'offline-only', message: MESSAGES.offlineOnly }
+          : !host.cloudAllowed()
+            ? { reason: 'cloud-off', message: MESSAGES.cloudOff }
+            : keepLocal
+              ? { reason: 'forbidden', message: MESSAGES.forbidden }
+              : null;
+      return {
+        cloud: why
+          ? { usable: false, ...why, providers: providerIds }
+          : { usable: true, providers: providerIds },
+        keepLocal,
+      };
+    },
   };
 }
+
+/** A custom request for this PC's model goes to the app's local runner, not this runtime. */
+const LOCAL_ASK_IN_APP = 'Local requests run in the app.';
 
 function toModelMessages(req: IpcRequest<'ai:send'>): ModelMessage[] {
   let lastUser = -1;
@@ -1833,11 +1913,6 @@ function toModelMessages(req: IpcRequest<'ai:send'>): ModelMessage[] {
     out.push({ role: 'user', content: contextBlock(req.window, req.context) });
   }
   return out;
-}
-
-function parseDataUrl(url: string): { mediaType: string; base64: string } | null {
-  const m = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(url);
-  return m?.[1] && m[2] ? { mediaType: m[1], base64: m[2] } : null;
 }
 
 type ModelOutput = Awaited<ReturnType<NonNullable<Tool<unknown, Outcome>['toModelOutput']>>>;

@@ -12,6 +12,7 @@ import {
   type LanguageModelV4Prompt,
   type LanguageModelV4StreamPart,
 } from '@ai-sdk/provider';
+import { ASK_MARKER } from './ask';
 import { CORRECTION_PROMPT_LEAD } from './correctionPrompt';
 import { DETECT_MARKER } from './detect';
 import { ENGINEER_SYSTEM_LEAD } from './engineerPrompt';
@@ -215,6 +216,62 @@ export function scriptedDetections(prompt: LanguageModelV4Prompt): string | null
         ],
   }));
   return JSON.stringify({ images });
+}
+
+/** The scripted value of one field from its slot in the prompt. */
+function scriptedField(slot: string): number | string {
+  if (slot.startsWith('<')) return slot.includes('as a number') ? 42.5 : 'scripted';
+  const inner = slot.slice(1, -1);
+  if (inner === 'yes|no|unknown') return 'yes';
+  if (inner.startsWith('<') || !inner.includes('|')) return 'scripted';
+  return inner.split('|')[0] ?? 'scripted';
+}
+
+/**
+ * The scripted answer to a custom request prompt (`askPrompt`, cloud family): `garbage` gives a
+ * reply that is not JSON; a find or change prompt gives two items in pixels of the size the
+ * prompt names, with every field it asks for filled; anything else a short text answer.
+ */
+export function askReply(text: string): string {
+  if (/garbage/i.test(text)) return 'I could not do that.';
+  if (!text.includes('Output JSON only') && !text.includes('Output a JSON list only')) {
+    return `Scripted answer: ${text.slice(0, 80)}`;
+  }
+  const size = /\((?:it is|both are) (\d+) x (\d+)/.exec(text);
+  const w = Number(size?.[1] ?? 1000);
+  const h = Number(size?.[2] ?? 1000);
+  const change = text.includes('Output a JSON list only');
+  const fields: Record<string, number | string> = {};
+  for (const m of text.matchAll(/"([a-z][a-z0-9_]*)": (<[^>]*>|"[^"]*")/g)) {
+    const key = m[1] ?? '';
+    if (key === 'label' || key === 'note') continue;
+    fields[key] = scriptedField(m[2] ?? '');
+  }
+  const boxes = [
+    [0.1, 0.2, 0.3, 0.5],
+    [0.6, 0.4, 0.8, 0.7],
+  ];
+  return JSON.stringify(
+    boxes.map((b, n) => ({
+      bbox_2d: b.map((v, i) => Math.round(v * (i % 2 === 0 ? w : h))),
+      label: 'scripted item',
+      note: `Scripted item ${String(n + 1)}.`,
+      ...fields,
+      ...(change ? { change_type: 'new', what: 'scripted object' } : {}),
+    })),
+  );
+}
+
+/** A custom request (`ai:ask` on the cloud): null when no user text starts with ASK_MARKER. */
+export function scriptedAsk(prompt: LanguageModelV4Prompt): string | null {
+  const texts = prompt
+    .filter((m) => m.role === 'user')
+    .flatMap((m) => m.content.filter((x) => x.type === 'text').map((x) => x.text));
+  if (!texts.some((t) => t.startsWith(ASK_MARKER))) return null;
+  const newest = lastUserText(prompt);
+  return newest.startsWith(ASK_MARKER)
+    ? askReply(newest)
+    : `Scripted answer: ${newest.slice(0, 80)}`;
 }
 
 interface WireParam {
@@ -484,6 +541,7 @@ function scriptedModel(modelId: string, options: ScriptedOptions = {}): Language
             type: 'text',
             text:
               engineer ??
+              scriptedAsk(options.prompt) ??
               scriptedDetections(options.prompt) ??
               scriptedNarrative(options.prompt) ??
               'OK',
