@@ -167,9 +167,27 @@ def test_compare_warns_on_another_dataset_or_model_but_still_compares():
 def test_compare_without_reference_metrics():
     res = m.compare(REPORT, {"metrics": None, "datasetHash": None}, tolerance=0.05)
     assert res["status"] == "no-reference" and res["regressions"] == []
-    # a metric the run could not measure is a warning, not a pass or a failure
+
+
+def test_an_unmeasured_metric_against_a_full_reference_is_a_regression():
     res = m.compare({**REPORT, "recall": None}, _ref(), tolerance=0.05)
-    assert res["status"] == "ok" and any("recall" in w for w in res["warnings"])
+    assert res["status"] == "regression" and any("recall" in r for r in res["regressions"])
+    empty = {**REPORT, "precision": None, "recall": None, "f1": None}
+    assert len(m.compare(empty, _ref(), tolerance=0.05)["regressions"]) == 3
+
+
+SETTINGS = {"threshold": 0.8, "iouMin": 0.3, "split": "bench", "truthClasses": ["rust", "corrosion"]}
+
+
+def test_compare_refuses_other_settings():
+    ref = {**_ref(), **SETTINGS}
+    same = {**REPORT, **SETTINGS, "truthClasses": ["corrosion", "rust"]}  # order does not matter
+    assert m.compare(same, ref, tolerance=0.05)["status"] == "ok"
+    for key, other in (("threshold", 0.5), ("iouMin", 0.5), ("split", "tune"), ("truthClasses", ["rust"])):
+        res = m.compare({**same, key: other}, ref, tolerance=0.05)
+        assert res["status"] == "mismatch", key
+        assert len(res["mismatches"]) == 1 and key in res["mismatches"][0]
+        assert res["regressions"] == []
 
 
 def test_stale_tuned_on():

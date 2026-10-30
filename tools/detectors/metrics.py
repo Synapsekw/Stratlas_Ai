@@ -214,7 +214,10 @@ def compare(report: dict[str, Any], reference: dict[str, Any], tolerance: float)
     """
     ref = reference.get("metrics")
     if not isinstance(ref, dict):
-        return {"status": "no-reference", "regressions": [], "warnings": []}
+        return {"status": "no-reference", "regressions": [], "warnings": [], "mismatches": []}
+    mismatches = settings_mismatches(report, reference)
+    if mismatches:
+        return {"status": "mismatch", "regressions": [], "warnings": [], "mismatches": mismatches}
     warnings: list[str] = []
     if reference.get("datasetHash") != report.get("datasetHash"):
         warnings.append(
@@ -231,11 +234,33 @@ def compare(report: dict[str, Any], reference: dict[str, Any], tolerance: float)
         if was is None:
             continue
         if now is None:
-            warnings.append(f"{f} could not be measured in this run (reference {was:.3f})")
+            # an empty run must never pass against a full reference
+            regressions.append(f"{f} could not be measured in this run (reference {was:.3f})")
             continue
         if now < was - tolerance:
             regressions.append(f"{f} {now:.3f} is below the reference {was:.3f} by more than {tolerance:.3f}")
-    return {"status": "regression" if regressions else "ok", "regressions": regressions, "warnings": warnings}
+    return {
+        "status": "regression" if regressions else "ok",
+        "regressions": regressions,
+        "warnings": warnings,
+        "mismatches": [],
+    }
+
+
+SETTINGS = ("threshold", "iouMin", "split", "truthClasses")
+
+
+def settings_mismatches(report: dict[str, Any], reference: dict[str, Any]) -> list[str]:
+    """Run settings that differ from the reference's: numbers measured that way do not compare."""
+    out: list[str] = []
+    for k in SETTINGS:
+        was, now = reference.get(k), report.get(k)
+        if k == "truthClasses":
+            was = sorted(was) if isinstance(was, list) else was
+            now = sorted(now) if isinstance(now, list) else now
+        if was != now:
+            out.append(f"{k} is {now!r} in this run but {was!r} in the reference")
+    return out
 
 
 def stale_tuned_on(

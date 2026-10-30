@@ -19,12 +19,15 @@ uv run --project python python tools/detectors/bench.py \
   the bench asks `GET /v1/models` of `--server` and falls back to pixels. The model id goes into the
   report and the reference.
 - `--project` may repeat. `--limit` caps the photos per project, read in id order. With several
-  projects a photo key is `<project folder>/<photo id>`.
+  projects a photo key is `<project folder>/<photo id>`, so two projects with the same folder name are
+  refused.
 - Split: a photo is in `tune` when `int(sha1(photo_id).hexdigest(), 16) % 10 < 3`, otherwise in
   `bench`. Tune the detector text on `tune`; measure on `bench`.
 - Truth: image sightings of issues (box, rotated box or polygon bounds) and accepted detections in
-  `detections/*.json`, filtered by `--truth-class`, each with its class. Truth on photos outside the
-  split is skipped.
+  `detections/*.json`, filtered by `--truth-class`, each with its class (`unclassified` when it has
+  none). An accepted detection that overlaps an issue of the same class with an IoU of at least 0.5 is
+  the same finding and counts once; two issues, or items of different classes, are never merged. Truth
+  on photos outside the split is skipped.
 
 ## Matching
 
@@ -69,10 +72,15 @@ dataset hash, split, threshold, IoU bar, truth classes, the headline metrics and
 `--write-reference <file>` writes one from a run.
 
 `--compare <file>` flags a drop in precision, recall or F1 of more than `--tolerance` (absolute, default
-0.05), writes `compare.json` and exits 1. A reference measured on another dataset or another model is
-warned about but still compared, so a regression cannot hide behind new data: when the change is
-expected, refresh the reference. A reference whose `metrics` is `null` has nothing to compare and is
-reported as "no reference yet".
+0.05), writes `compare.json` and exits 1. A metric the run could not measure (`null`, for example no
+truth at all) while the reference has it is a regression too, so an empty run never passes. A reference
+measured on another dataset or another model is warned about but still compared, so a regression cannot
+hide behind new data: when the change is expected, refresh the reference. A run whose threshold, IoU
+bar, split or truth classes differ from the reference's is refused as not comparable (exit 2). A
+reference whose `metrics` is `null` has nothing to compare and is reported as "no reference yet".
+
+`--write-reference` is skipped when the comparison in the same run failed (regression or other
+settings), so a regression never becomes the baseline; `--force-reference` writes it anyway.
 
 The corrosion reference has no metrics yet: the 29 Oct 2026 run on Qwen3.5-9B had no reviewed corrosion
 truth in the bench split, and re-tuning the detector waits for the asset inspection work.
@@ -97,10 +105,13 @@ uv run --project python python tools/detectors/prerelease.py \
   exits 0, so the release flow can call it on any machine.
 - With a dataset it needs `--server` (or `QUADRION_DETECTOR_BENCH_SERVER`). Truth classes, threshold
   and IoU bar come from the reference, else from the detector.
-- `--update-references` writes each run as the new reference (commit only the JSON).
+- `--update-references` writes each run as the new reference (commit only the JSON), except after a
+  failed comparison; add `--force-references` to write it anyway. Truth classes, threshold and IoU bar
+  set in a reference are used as they are, including `[]` (every class) and `0`.
 - `--out` defaults to a folder in the system temp directory, never inside the repository.
-- Exit codes: 0 fine (warnings allowed), 1 a regression beyond the tolerance, 2 a usage problem
-  (missing dataset folder, no server, server unreachable).
+- Exit codes: 0 fine (warnings allowed), 1 a regression beyond the tolerance, 2 a usage problem or a
+  failure (missing dataset folder, no server, server unreachable, settings that differ from the
+  reference, an unreadable reference or a bench crash).
 
 ## The bar
 

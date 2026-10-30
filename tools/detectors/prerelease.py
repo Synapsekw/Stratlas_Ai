@@ -71,6 +71,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--tolerance", type=float, default=0.05)
     ap.add_argument("--limit", type=int, default=50, help="most photos per project")
     ap.add_argument("--update-references", action="store_true", help="write each run as the new reference")
+    ap.add_argument(
+        "--force-references",
+        action="store_true",
+        help="with --update-references: write even when the comparison failed or the settings changed",
+    )
     # Outputs hold contact sheets of reference photos: never inside the repository.
     ap.add_argument("--out", default=str(Path(tempfile.gettempdir()) / "quadrion-detector-bench"))
     ap.add_argument("--detectors", default=str(DETECTORS), help=argparse.SUPPRESS)
@@ -85,7 +90,11 @@ def main(argv: list[str] | None = None) -> int:
 
     for _, det in dets:
         name = det.get("id")
-        ref = _read_ref(refs_dir / f"{name}.json")
+        try:
+            ref = _read_ref(refs_dir / f"{name}.json")
+        except (OSError, ValueError) as e:
+            print(f"warning: {name}: the stored reference cannot be read: {e}")
+            continue
         for w in metrics.stale_tuned_on(det, pack_model, ref):
             print(f"warning: {w}")
         if ref is None:
@@ -116,27 +125,51 @@ def main(argv: list[str] | None = None) -> int:
     for det_file, det in dets:
         name = str(det.get("id"))
         ref_file = refs_dir / f"{name}.json"
-        ref = _read_ref(ref_file) or {}
-        classes = ref.get("truthClasses") or [det.get("classId")]
-        cmd = [arg for p in projects for arg in ("--project", str(p))]
-        cmd += ["--detector", str(det_file), "--server", args.server, "--split", "bench"]
-        cmd += [arg for c in classes if c for arg in ("--truth-class", str(c))]
-        cmd += ["--threshold", str(ref.get("threshold") or det.get("threshold") or 0.8)]
-        cmd += ["--iou", str(ref.get("iouMin") or metrics.IOU_MIN), "--limit", str(args.limit)]
-        cmd += ["--tolerance", str(args.tolerance), "--out", str(Path(args.out) / name)]
-        if args.model:
-            cmd += ["--model", args.model]
-        if args.api_key:
-            cmd += ["--api-key", args.api_key]
-        if ref_file.is_file():
-            cmd += ["--compare", str(ref_file)]
-        if args.update_references:
-            cmd += ["--write-reference", str(ref_file)]
-        print(f"{name}: bench on {len(projects)} project(s)")
-        code = _bench_main(cmd)
+        try:
+            ref = _read_ref(ref_file) or {}
+            code = _bench_main(_bench_args(args, projects, det_file, det, ref, ref_file))
+        except Exception as e:  # a broken reference or a bench crash fails the check; it is no regression
+            print(f"error: {name}: {type(e).__name__}: {e}", file=sys.stderr)
+            code = 2
         print(f"{name}: {'REGRESSION' if code == 1 else 'failed' if code else 'ok'}")
         worst = max(worst, code)
     return worst
+
+
+def _first(*values: Any) -> Any:
+    """The first value that is set (not None), so 0 and [] count as set."""
+    return next((v for v in values if v is not None), None)
+
+
+def _bench_args(
+    args: argparse.Namespace,
+    projects: list[Path],
+    det_file: Path,
+    det: dict[str, Any],
+    ref: dict[str, Any],
+    ref_file: Path,
+) -> list[str]:
+    # truth classes [] in a reference means every class, as no --truth-class does in the bench
+    own = [det["classId"]] if det.get("classId") is not None else []
+    classes = _first(ref.get("truthClasses"), own)
+    cmd = [arg for p in projects for arg in ("--project", str(p))]
+    cmd += ["--detector", str(det_file), "--server", args.server, "--split", "bench"]
+    cmd += [arg for c in classes for arg in ("--truth-class", str(c))]
+    cmd += ["--threshold", str(_first(ref.get("threshold"), det.get("threshold"), 0.8))]
+    cmd += ["--iou", str(_first(ref.get("iouMin"), metrics.IOU_MIN)), "--limit", str(args.limit)]
+    cmd += ["--tolerance", str(args.tolerance), "--out", str(Path(args.out) / str(det.get("id")))]
+    if args.model:
+        cmd += ["--model", args.model]
+    if args.api_key:
+        cmd += ["--api-key", args.api_key]
+    if ref_file.is_file():
+        cmd += ["--compare", str(ref_file)]
+    if args.update_references:
+        cmd += ["--write-reference", str(ref_file)]
+    if args.force_references:
+        cmd += ["--force-reference"]
+    print(f"{det.get('id')}: bench on {len(projects)} project(s)")
+    return cmd
 
 
 if __name__ == "__main__":

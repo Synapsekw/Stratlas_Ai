@@ -116,6 +116,42 @@ def test_update_references_writes_each(env):
         assert _values(c, "--write-reference") == [str(env["refs"] / f"{name}.json")]
 
 
+def test_a_crash_or_broken_reference_is_exit_2_not_a_regression(env, monkeypatch, capsys):
+    data = _dataset(env["tmp"])
+
+    def boom(argv: list[str]) -> int:
+        raise RuntimeError("bench crashed")
+
+    monkeypatch.setattr(prerelease, "_bench_main", boom)
+    assert prerelease.main([*env["base"], "--dataset", str(data), "--server", "http://x"]) == 2
+    assert "RuntimeError: bench crashed" in capsys.readouterr().err
+
+    monkeypatch.setattr(prerelease, "_bench_main", lambda argv: 0)
+    (env["refs"] / "fresh-one.json").write_text("{not json")
+    assert prerelease.main([*env["base"], "--dataset", str(data), "--server", "http://x"]) == 2
+    assert "fresh-one" in capsys.readouterr().err
+
+
+def test_empty_and_zero_reference_settings_are_respected(env):
+    data = _dataset(env["tmp"])
+    ref = {"truthClasses": [], "threshold": 0, "iouMin": 0.0, "metrics": None}
+    (env["refs"] / "fresh-one.json").write_text(json.dumps(ref))
+    prerelease.main([*env["base"], "--dataset", str(data), "--server", "http://x"])
+    fresh = next(c for c in env["calls"] if "fresh-one" in c[c.index("--detector") + 1])
+    assert _values(fresh, "--truth-class") == []  # every class, not the detector's
+    assert _values(fresh, "--threshold") == ["0"] and _values(fresh, "--iou") == ["0.0"]
+
+
+def test_force_references_reaches_the_bench(env):
+    data = _dataset(env["tmp"])
+    base = [*env["base"], "--dataset", str(data), "--server", "http://x", "--update-references"]
+    prerelease.main(base)
+    assert all("--force-reference" not in c for c in env["calls"])
+    env["calls"].clear()
+    prerelease.main([*base, "--force-references"])
+    assert all("--force-reference" in c for c in env["calls"]) and env["calls"]
+
+
 def test_the_repository_defaults_skip_without_data(monkeypatch, capsys):
     monkeypatch.delenv(prerelease.DATA_ENV, raising=False)
     assert prerelease.main([]) == 0

@@ -330,3 +330,88 @@ def test_model_reaches_run_detector(project, monkeypatch):
         seen.clear()
         _run(project, srv.url, "--model", "qwen2.5-vl-7b-instruct-q4_k_m", "--limit", "1")
         assert seen == ["pixels"]
+
+
+def _main(project: dict, url: str, *extra: str) -> int:
+    return bench.main(
+        ["--project", str(project["root"]), "--detector", str(project["detector"]), "--server", url,
+         "--model", MODEL, "--split", "bench", "--truth-class", CLASS, "--out", str(project["out"]), *extra]
+    )  # fmt: skip
+
+
+def test_a_failed_compare_does_not_become_the_baseline(project, tmp_path, capsys):
+    ref = tmp_path / "ref.json"
+    with FakeVlm(_handler) as srv:
+        assert _main(project, srv.url, "--write-reference", str(ref)) == 0
+        stored = json.loads(ref.read_text("utf-8"))
+        stored["metrics"]["recall"] = 0.95
+        ref.write_text(json.dumps(stored), "utf-8")
+        assert _main(project, srv.url, "--compare", str(ref), "--write-reference", str(ref)) == 1
+        assert json.loads(ref.read_text("utf-8"))["metrics"]["recall"] == 0.95
+        assert "Not writing" in capsys.readouterr().err
+        args = ("--compare", str(ref), "--write-reference", str(ref), "--force-reference")
+        assert _main(project, srv.url, *args) == 1
+    assert json.loads(ref.read_text("utf-8"))["metrics"]["recall"] == pytest.approx(0.75)
+
+
+def test_compare_with_other_settings_is_refused(project, tmp_path, capsys):
+    ref = tmp_path / "ref.json"
+    with FakeVlm(_handler) as srv:
+        assert _main(project, srv.url, "--write-reference", str(ref)) == 0
+        assert _main(project, srv.url, "--compare", str(ref), "--iou", "0.5") == 2
+    err = capsys.readouterr().err
+    assert "not comparable" in err and "iouMin" in err
+    assert json.loads((project["out"] / "compare.json").read_text("utf-8"))["status"] == "mismatch"
+
+
+def test_duplicate_project_folder_names_are_refused(project, tmp_path, capsys):
+    import shutil
+
+    twin = tmp_path / "elsewhere" / project["root"].name
+    shutil.copytree(project["root"], twin)
+    code = bench.main(
+        ["--project", str(project["root"]), "--project", str(twin), "--detector", str(project["detector"]),
+         "--server", "http://127.0.0.1:1", "--split", "bench", "--out", str(project["out"])]
+    )  # fmt: skip
+    assert code == 2
+    assert "share the folder name" in capsys.readouterr().err
+
+
+def _truth_project(tmp_path: Path, issues: list[dict], dets: list[dict]) -> Path:
+    root = tmp_path / "truth"
+    (root / "detections").mkdir(parents=True)
+    (root / "issues.json").write_text(json.dumps({"issues": issues}))
+    (root / "detections" / "pass.json").write_text(json.dumps({"detections": dets}))
+    return root
+
+
+def _det(cls, bbox):
+    return {"photo": "p", "class": cls, "status": "accepted", "bbox": bbox, "space": "preview"}
+
+
+def test_truth_dedup_rules(tmp_path):
+    issues = [
+        {"classId": "rust", "sightings": [_sighting("p", _box(0, 0, 100, 100))]},
+        # a second issue on the same spot is its own finding
+        {"classId": "rust", "sightings": [_sighting("p", _box(10, 10, 80, 80))]},
+        # another class on the same spot is never merged
+        {"classId": "crack", "sightings": [_sighting("p", _box(0, 0, 100, 100))]},
+    ]
+    dets = [
+        _det("rust", [5, 5, 100, 100]),  # IoU 0.9 with the rust issue: the same finding
+        _det("paint", [0, 0, 100, 100]),  # same spot, other class: kept
+        _det("rust", [50, 50, 150, 150]),  # IoU under 0.5 with every rust issue: kept
+    ]
+    root = _truth_project(tmp_path, issues, dets)
+    truth = bench.load_truth(root, set(), {"p": (200, 200)})["p"]
+    assert sorted(t["class"] for t in truth) == ["crack", "paint", "rust", "rust", "rust"]
+
+
+def test_missing_classes_are_labelled_unclassified(tmp_path):
+    issues = [{"sightings": [_sighting("p", _box(0, 0, 10, 10))]}]
+    dets = [_det(None, [50, 50, 60, 60]), _det("", [100, 100, 110, 110])]
+    root = _truth_project(tmp_path, issues, dets)
+    truth = bench.load_truth(root, set(), {"p": (200, 200)})["p"]
+    assert [t["class"] for t in truth] == ["unclassified"] * 3
+    assert bench.class_label(None) == bench.class_label("") == "unclassified"
+    assert bench.class_label("rust") == "rust"

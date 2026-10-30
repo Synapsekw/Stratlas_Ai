@@ -116,15 +116,21 @@ def load_truth(
 ) -> dict[str, list[dict[str, Any]]]:
     """Truth items ``{"box", "class"}`` per photo id, boxes in photo pixels. ``classes`` empty: every class."""
     truth: dict[str, list[dict[str, Any]]] = {}
+    from_issues: dict[str, list[dict[str, Any]]] = {}
 
-    def add(photo: str, box: Box | None, cls: Any) -> None:
+    def add(photo: str, box: Box | None, cls: Any, issue: bool) -> None:
         if box is None or photo not in sizes:
             return
-        mine = truth.setdefault(photo, [])
-        c = centre(box)
-        # The same finding recorded as an issue and as an accepted detection counts once.
-        if not any(_contains(o["box"], c) or _contains(box, centre(o["box"])) for o in mine):
-            mine.append({"box": box, "class": str(cls)})
+        item = {"box": box, "class": class_label(cls)}
+        if issue:
+            from_issues.setdefault(photo, []).append(item)
+        elif any(
+            o["class"] == item["class"] and metrics.iou(o["box"], box) >= DEDUP_IOU
+            for o in from_issues.get(photo, [])
+        ):
+            # The same finding recorded as an issue and as an accepted detection counts once.
+            return
+        truth.setdefault(photo, []).append(item)
 
     doc = _read_json(project / "issues.json")
     issues = doc.get("issues", []) if isinstance(doc, dict) else doc
@@ -133,7 +139,7 @@ def load_truth(
             continue
         for s in issue.get("sightings", []):
             if isinstance(s, dict) and s.get("on") == "image" and isinstance(s.get("geom"), dict):
-                add(str(s.get("photo")), truth_box(s["geom"]), issue.get("classId"))
+                add(str(s.get("photo")), truth_box(s["geom"]), issue.get("classId"), True)
     for f in sorted((project / "detections").glob("*.json")):
         pass_doc = _read_json(f)
         for d in pass_doc.get("detections", []) if isinstance(pass_doc, dict) else []:
@@ -143,8 +149,17 @@ def load_truth(
                 continue
             photo = str(d.get("photo"))
             if photo in sizes:
-                add(photo, _detection_box(d, sizes[photo]), d.get("class"))
+                add(photo, _detection_box(d, sizes[photo]), d.get("class"), False)
     return truth
+
+
+DEDUP_IOU = 0.5  # an accepted detection this close to an issue of its class is the same finding
+UNCLASSIFIED = "unclassified"
+
+
+def class_label(cls: Any) -> str:
+    """A class id as text; a missing or empty one is labelled ``unclassified``, never "" or "None"."""
+    return UNCLASSIFIED if cls is None or str(cls).strip() == "" else str(cls)
 
 
 def find_photos(project: Path) -> dict[str, Path]:
@@ -216,6 +231,15 @@ def load_set(
 
 def run(args: argparse.Namespace) -> int:
     projects = [Path(p) for p in args.project]
+    names = [p.resolve().name for p in projects]
+    twins = sorted({n for n in names if names.count(n) > 1})
+    if twins:
+        print(
+            f"error: several projects share the folder name {', '.join(twins)}; photo keys would clash. "
+            "Rename or link them under distinct names.",
+            file=sys.stderr,
+        )
+        return 2
     detector = json.loads(Path(args.detector).read_text("utf-8"))
     classes = set(args.truth_class or [])
     ids, photos, sizes, truth = load_set(projects, args.split, args.limit, classes)
@@ -255,7 +279,7 @@ def run(args: argparse.Namespace) -> int:
         entries.append({"photo": pid, "drafts": drafts})
 
     drafts = [d for e in entries for d in e["drafts"]]
-    det_class = str(detector.get("classId") or "")
+    det_class = class_label(detector.get("classId"))
     for d, (j, v) in zip(drafts, metrics.match(drafts, truth, args.iou), strict=True):
         at = d["score"] is not None and d["score"] >= args.threshold
         d["matched"] = at and j is not None
@@ -310,13 +334,24 @@ def run(args: argparse.Namespace) -> int:
             print(f"Warning: {w}", file=sys.stderr)
         if res["status"] == "no-reference":
             print(f"No reference yet in {args.compare}: nothing to compare.")
+        elif res["status"] == "mismatch":
+            for m in res["mismatches"]:
+                print(f"error: not comparable: {m}", file=sys.stderr)
+            print("Run with the reference's settings, or refresh it with --force-reference.", file=sys.stderr)
+            code = 2
         elif res["status"] == "regression":
             for r in res["regressions"]:
                 print(f"REGRESSION: {r}", file=sys.stderr)
             code = 1
         else:
             print(f"Within {args.tolerance} of the reference.")
-    if args.write_reference:
+    if args.write_reference and code and not args.force_reference:
+        print(
+            f"Not writing {args.write_reference}: the comparison failed, so this run must not become the "
+            "baseline. Pass --force-reference to write it anyway.",
+            file=sys.stderr,
+        )
+    elif args.write_reference:
         Path(args.write_reference).parent.mkdir(parents=True, exist_ok=True)
         Path(args.write_reference).write_text(json.dumps(reference_of(report), indent=2) + "\n", "utf-8")
     return code
@@ -375,7 +410,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--api-key", default=os.environ.get("LLAMA_API_KEY"))
     ap.add_argument("--compare", help="a stored reference (aio.detector-bench-ref/1); exit 1 on a regression")
     ap.add_argument("--tolerance", type=float, default=0.05, help="largest drop in precision, recall or F1")
-    ap.add_argument("--write-reference", help="write this run as a reference file")
+    ap.add_argument(
+        "--write-reference", help="write this run as a reference file (not after a failed compare)"
+    )
+    ap.add_argument(
+        "--force-reference", action="store_true", help="write the reference even when the comparison failed"
+    )
     ap.add_argument("--out", required=True)
     return run(ap.parse_args(argv))
 

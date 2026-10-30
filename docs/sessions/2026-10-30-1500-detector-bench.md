@@ -16,7 +16,7 @@ related:
 - Stored references: `tools/detectors/references/<detector id>.json` (`aio.detector-bench-ref/1`: detector id and version, model, date, dataset hash, metrics). `--write-reference` writes one, `--compare` flags a drop in precision, recall or F1 beyond `--tolerance` (0.05) and exits 1.
 - `tools/detectors/prerelease.py` benches every shipped detector against its reference when a dataset is given, prints `skipped: no dataset` and exits 0 when not, and always warns about a stale `tunedOn` (the corrosion detector still names Qwen2.5-VL while the pack ships Qwen3.5-9B). Documented in `tools/detectors/README.md` and the Analytics pack README.
 - The corrosion reference is committed with `metrics: null`: the 29 Oct run had no reviewed corrosion truth in the bench split, so there is no honest number to store yet. The detector itself is unchanged (re-tuning waits for the asset inspection work). The detect engine is not touched.
-- Checks: `pytest tools/detectors` 36 passed (16 new metric tests on synthetic boxes, 5 new bench tests on the fake llama-server, 7 pre-release tests with the bench stubbed); `pnpm check` green. No real model ran and nothing was downloaded. No e2e, contract or pack change; the new reference id is listed in `NOT_FILE_SCHEMAS` (`packages/schema/src/versions.ts`) as a tool-only format.
+- Checks: `pytest tools/detectors` 46 passed (metric tests on synthetic boxes, bench tests on the fake llama-server, pre-release tests with the bench stubbed); an independent review's eight findings are fixed (unmeasured metrics regress, no baseline from a failed compare, settings must match the reference, stricter truth dedup, explicit `unclassified`, duplicate project names refused, crashes exit 2); `pnpm check` green. No real model ran and nothing was downloaded. No e2e, contract or pack change; the new reference id is listed in `NOT_FILE_SCHEMAS` (`packages/schema/src/versions.ts`) as a tool-only format.
 
 ## Why
 
@@ -32,7 +32,6 @@ Nothing is user-facing. For a developer check:
 ## Open threads
 
 - Write the first real corrosion reference (`prerelease.py --dataset ... --server ... --update-references`) once there is enough reviewed corrosion truth, after the detector is re-tuned on Qwen3.5.
-- Two reference projects with the same folder name would share photo keys when benched together.
 - The pre-release check is documented for the release flow but not wired into `tools/analytics-pack/build.mjs` (the build runs in CI, which has no reference data).
 
 ## Next session entry point
