@@ -32,10 +32,16 @@ export const enChange = {
     'The survey of {dates} is on hold after its quality check; check it before relying on its figures.',
   'narr.summary.held_other':
     'The surveys of {dates} are on hold after their quality check; check them before relying on their figures.',
-  'narr.summary.qaPassed_one': 'The survey passed its quality check.',
-  'narr.summary.qaPassed_other': 'All {n} checked surveys passed their quality check.',
+  'narr.summary.qaPassed_one': 'The survey of {dates} passed its quality check.',
+  'narr.summary.qaPassed_other': 'The surveys of {dates} passed their quality check.',
+  'narr.summary.released_one':
+    'The survey of {dates} failed its quality check and was released by a person with a note.',
+  'narr.summary.released_other':
+    'The surveys of {dates} failed their quality check and were released by a person with a note.',
   'narr.method.qa':
     'Each checked survey was compared with the survey before it at the site quality level, and against checkpoints where given.',
+  'narr.method.qaNoVerdict':
+    'Each checked survey was compared with the survey before it and measured without a verdict, as the site has no quality level set.',
   'narr.method.noQa': 'The surveys have not been quality checked in the app.',
   'narr.summary.todo': '[Add the purpose of the survey and the main conclusion for the client.]',
   'narr.method.capture': 'Data was captured on {dates}: {data}.',
@@ -64,6 +70,7 @@ export const enChange = {
   'change.run': 'Compare issues, detections and map layers',
   'change.runShort': 'Find changes',
   'change.running': 'Finding changes: {phase}',
+  'change.runningOther': 'Finding what changed on a new survey date',
   'change.cancel': 'Cancel',
   'change.readOnly': 'Read only',
   'change.readOnlyTip': 'Opened from a read-only package: reviews are not saved',

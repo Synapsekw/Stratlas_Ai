@@ -35,7 +35,18 @@ export interface ChangeRun {
   phase: string;
   done: number;
   total: number;
+  /** The date pair it computes (the panel's, or another: the checks after a new date). */
+  pair: { from: string; to: string };
 }
+
+/** How a computation ended. */
+export type ChangeOutcome = 'done' | 'failed' | 'cancelled';
+
+/** The same date pair. */
+export const samePair = (
+  a: { from: string; to: string } | null | undefined,
+  b: { from: string; to: string } | null | undefined,
+): boolean => !!a && !!b && a.from === b.from && a.to === b.to;
 
 export interface Misaligned {
   from: string;
@@ -68,8 +79,6 @@ export interface ChangeState {
   /** A run the pipeline refused because the two dates sit apart (the panel offers a line-up). */
   misaligned: Misaligned | null;
   error: string | null;
-  /** How the last computation ended (`cancelled`: the person pressed Cancel), null before one. */
-  lastOutcome: 'done' | 'failed' | 'cancelled' | null;
   /** Bumped on every change, for overlays. */
   version: number;
 }
@@ -89,10 +98,15 @@ export interface ChangeActions {
   /** Show (or clear, with null) an error line in the panel. */
   setError(error: string | null): void;
   /**
-   * Run the in-app producers for the pair (or for `pair`, without changing the one the panel
-   * shows: the checks after a new date); true when sets were written.
+   * Run the in-app producers for the panel's pair, or for `pair` (the checks after a new date):
+   * a pair the panel does not show leaves its pair, refused run and error line alone. How it
+   * ended (`cancelled`: Cancel was pressed), or null when it did not start (another run, no
+   * project or pair).
    */
-  compute(kinds?: readonly ChangeKind[], pair?: { from: string; to: string }): Promise<boolean>;
+  compute(
+    kinds?: readonly ChangeKind[],
+    pair?: { from: string; to: string },
+  ): Promise<ChangeOutcome | null>;
   cancel(): Promise<void>;
   /** Save a person's review of one item (null clears it). */
   review(sel: SelectedItem, review: ChangeReview | null): Promise<boolean>;
@@ -132,7 +146,6 @@ const initial: ChangeState = {
   run: null,
   misaligned: null,
   error: null,
-  lastOutcome: null,
   version: 0,
 };
 
@@ -209,16 +222,17 @@ export function createChangeStore() {
       async compute(kinds = IN_APP_KINDS, given) {
         const projectId = get().projectId;
         const pair = given ?? get().pair;
-        if (!projectId || !pair || get().run) return false;
+        if (!projectId || !pair || get().run) return null;
+        // the panel's own pair: its refused run and error line are this run's
+        const panel = samePair(pair, get().pair);
         runSeq += 1;
         const jobId = `change-${String(Date.now())}-${String(runSeq)}`;
         bump({
-          run: { jobId, phase: 'start', done: 0, total: kinds.length },
-          misaligned: null,
-          error: null,
+          run: { jobId, phase: 'start', done: 0, total: kinds.length, pair: { ...pair } },
+          ...(panel ? { misaligned: null, error: null } : {}),
         });
         const off = bridge()?.on('change:progress', (e) => {
-          if (e.jobId === jobId && get().run?.jobId === jobId) bump({ run: { ...e } });
+          if (e.jobId === jobId && get().run?.jobId === jobId) bump({ run: { ...e, pair } });
         });
         const r = await call('change:compute', {
           jobId,
@@ -229,10 +243,10 @@ export function createChangeStore() {
         });
         off?.();
         const stopped = cancelled.delete(jobId);
-        const lastOutcome = r.ok ? 'done' : stopped ? 'cancelled' : 'failed';
-        bump({ run: null, lastOutcome, ...(r.ok ? {} : { error: r.error }) });
+        const outcome: ChangeOutcome = r.ok ? 'done' : stopped ? 'cancelled' : 'failed';
+        bump({ run: null, ...(r.ok || !panel ? {} : { error: r.error }) });
         if (r.ok) await get().load(projectId);
-        return r.ok;
+        return outcome;
       },
       async cancel() {
         const run = get().run;

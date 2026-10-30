@@ -64,9 +64,23 @@ function dates(f: NarrativeFacts): string {
 function moversLine(movers: NonNullable<NarrativeFacts['volumes']>['movers']): string {
   return listOf(
     movers.map((m) =>
-      t(m.changeM3 > 0 ? 'narr.mover.up' : 'narr.mover.down', { pile: m.label, volume: m.change }),
+      t(m.up ? 'narr.mover.up' : 'narr.mover.down', { pile: m.label, volume: m.change }),
     ),
   );
+}
+
+/** "31 Jan 2026 and 28 Feb 2026": the distinct dates of a verdict, in order. */
+function datesOf(list: readonly { date: string }[]): string {
+  return listOf([...new Set(list.map((x) => longDate(x.date)))]);
+}
+
+/** One verdict sentence (`_one` / `_other` by the distinct dates), or null without dates. */
+function verdict(
+  key: 'narr.summary.held' | 'narr.summary.qaPassed' | 'narr.summary.released',
+  list: readonly { date: string }[],
+): string | null {
+  const count = new Set(list.map((x) => x.date.slice(0, 10))).size;
+  return count === 0 ? null : t(key, { count, dates: datesOf(list) });
 }
 
 /** The survey sentences of the summary: pile count, movers, piles left out, QA verdicts. */
@@ -88,17 +102,12 @@ export function surveySentences(f: NarrativeFacts): string[] {
   }
   const q = f.qa;
   if (q) {
-    if (q.held.length > 0)
-      out.push(
-        t('narr.summary.held', {
-          count: q.held.length,
-          dates: listOf(q.held.map((h) => longDate(h.date))),
-        }),
-      );
-    else if (q.passed > 0 && q.unchecked === 0)
-      out.push(
-        t('narr.summary.qaPassed', { count: q.passed + q.released, n: num(q.passed + q.released) }),
-      );
+    for (const s of [
+      verdict('narr.summary.held', q.held),
+      verdict('narr.summary.qaPassed', q.passed),
+      verdict('narr.summary.released', q.released),
+    ])
+      if (s) out.push(s);
   }
   return out;
 }
@@ -170,7 +179,13 @@ export function templateNarrative(
           placed: num(i.placed),
           total: num(i.total),
         }),
-      f.qa ? t('narr.method.qa') : v && v.piles > 0 ? t('narr.method.noQa') : null,
+      f.qa
+        ? f.qa.held.length + f.qa.passed.length + f.qa.released.length === 0
+          ? t('narr.method.qaNoVerdict')
+          : t('narr.method.qa')
+        : v && v.piles > 0
+          ? t('narr.method.noQa')
+          : null,
       t('narr.method.limits'),
     ),
     opts.todo ? t('narr.method.todo') : '',

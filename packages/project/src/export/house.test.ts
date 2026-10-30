@@ -226,6 +226,25 @@ describe('houseReportModel', () => {
     expect(houseVolumesOf(rows, ['Toe'], String)?.movers).toBeUndefined();
   });
 
+  it('leaves out moves that round to 0 m³ and keeps the direction from before rounding', () => {
+    const volumes: HouseVolumes = {
+      base: 'Toe',
+      piles: 3,
+      dates: [],
+      changeM3: null,
+      text: { date: '', total: '-', change: null, since: null },
+      movers: [
+        { label: 'Big', changeM3: -0.6, change: '0.6 m³' },
+        { label: 'Tiny', changeM3: 0.4, change: '0.4 m³' },
+        { label: 'Tinier', changeM3: -0.4, change: '0.4 m³' },
+      ],
+    };
+    const h = houseReportModel({ manifest: sampleManifest(), issues: [], branding, now, volumes });
+    expect(narrativeFacts(h).volumes?.movers).toEqual([
+      { label: 'Big', changeM3: -1, up: false, change: '0.6 m³' },
+    ]);
+  });
+
   it('carries the survey QA verdicts by date, holds named', () => {
     const manifest = ProjectManifest.parse({
       ...sampleManifest(),
@@ -248,8 +267,8 @@ describe('houseReportModel', () => {
     });
     expect(narrativeFacts(h).qa).toEqual({
       held: [{ label: 'Survey Mar', date: '2026-03-02' }],
-      passed: 1,
-      released: 1,
+      passed: [{ label: 'Survey Jan', date: '2026-01-02' }],
+      released: [{ label: 'Survey Feb', date: '2026-02-02' }],
       unchecked: 0,
     });
   });

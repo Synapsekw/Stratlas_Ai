@@ -6,7 +6,7 @@ import {
   setAnnotationPeople,
   setPhotoRotator,
 } from '@aio/annotate';
-import { changeStore } from '@aio/change';
+import { changeStore, samePair } from '@aio/change';
 import {
   announce,
   buildTimelineModel,
@@ -490,23 +490,42 @@ export function App() {
       },
       readChecked: async (projectId) => {
         const r = await bridge.call('survey:readQa', { projectId });
-        return r.ok && r.value.ok ? r.value.files.map((f) => f.capture) : null;
+        return r.ok && r.value.ok
+          ? r.value.files.map((f) => ({ capture: f.capture, checkedAt: f.checkedAt }))
+          : null;
       },
       readPairs: async (projectId) => {
         const r = await bridge.call('change:list', { projectId });
-        return r.ok && r.value.ok ? r.value.sets.map((s) => ({ from: s.from, to: s.to })) : null;
+        return r.ok && r.value.ok
+          ? r.value.sets.map((s) => ({ from: s.from, to: s.to, createdAt: s.createdAt }))
+          : null;
       },
       qaLevel: async (projectId) => {
         const r = await bridge.call('survey:readSettings', { projectId });
         return r.ok && r.value.ok ? r.value.settings.qa.level : 'off';
+      },
+      // the site's checkpoints as the QA panel offers them: the control file of the newest
+      // processing run that has points (its check points, else its control points)
+      checkpoints: async (projectId) => {
+        const r = await bridge.call('photo:runs', { projectId });
+        if (!r.ok || !r.value.ok) return null;
+        const runs = [...r.value.runs].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        for (const run of runs) {
+          const g = await bridge.call('photo:readGcp', { projectId, run: run.id });
+          if (g.ok && g.value.ok && g.value.gcp?.points.some((p) => !p.disabled))
+            return { gcp: `photogrammetry/${run.id}/gcp.json` };
+        }
+        return null;
       },
       startQa: (req) => jobs.getState().startQuiet(req),
       computeChange: async (projectId, pair) => {
         const cs = changeStore.getState();
         if (cs.projectId !== projectId) await cs.load(projectId);
         if (changeStore.getState().projectId !== projectId) return 'failed';
-        await changeStore.getState().compute(undefined, pair);
-        return changeStore.getState().lastOutcome ?? 'failed';
+        return changeStore.getState().compute(undefined, pair);
+      },
+      cancelChange: (pair) => {
+        if (samePair(changeStore.getState().run?.pair, pair)) void changeStore.getState().cancel();
       },
       refresh: async (projectId) => {
         if (qaStore.getState().projectId === projectId) await refreshQa();

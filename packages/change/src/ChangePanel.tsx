@@ -8,7 +8,15 @@ import { VERDICT_COLOR } from './overlay';
 import { changeProducers, subscribeChangeProducers, type ChangePairContext } from './producers';
 import { registerRows, verdictCounts, type RegisterRow, type ReviewStatus } from './register';
 import { changeSetStale } from './stale';
-import { areasOfPair, changeStore, runProducer, setsOfPair, useChange, volumesNote } from './store';
+import {
+  areasOfPair,
+  changeStore,
+  runProducer,
+  samePair,
+  setsOfPair,
+  useChange,
+  volumesNote,
+} from './store';
 
 /**
  * The Changes panel (FUS-12): the register of the chosen date pair with filters and sort, the
@@ -319,8 +327,11 @@ export function ChangePanel({
         <div className="chg-bar">
           {s.run ? (
             <>
+              {/* a run of another pair (the checks after a new date) is named as such */}
               <span className="sub" role="status" data-testid="change-running">
-                {t('change.running', { phase: s.run.phase })}
+                {samePair(s.run.pair, pair)
+                  ? t('change.running', { phase: s.run.phase })
+                  : t('change.runningOther')}
               </span>
               <button type="button" className="chg-btn ghost" onClick={() => void s.cancel()}>
                 {t('change.cancel')}

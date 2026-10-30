@@ -23,8 +23,22 @@ when a project opens".
 - Trigger is a prepare job that **ended done** on the open project (whoever started it), not
   project open: an older project whose dates were never checked does not get a burst of jobs.
   Dates made from kit DSM grids (no job) are not chained.
-- "Never repeated": a date whose `survey/qa/<capture>.json` exists gets no QA; a pair that has any
-  change set gets no compute; within one open each date is tried once.
+- "Never repeated": a date whose `survey/qa/<capture>.json` is newer than its surface
+  (`checkedAt` against `preparedAt`) gets no QA; a pair with a change set newer than the new
+  date's surface gets no compute; within one open each step is tried once, and a new prepare of a
+  date clears its steps from the tried set (a re-prepared date is checked again). A compute that
+  did not start because a person's compute was running is not counted as tried.
+- The QA compares with the nearest earlier date that has a prepared surface (as `runQa` does) and
+  passes the site's checkpoints the way the panel offers them: the control file of the newest
+  processing run that has points. The change pair is always (date before, new date).
+- Known limit: a date inserted later with an earlier date than existing ones gets its own pair
+  (date before, inserted date) but not the pair (inserted date, the date after it), which only a
+  person's compute makes.
+- Review fixes (31 Oct): `changeStore.compute` returns its own outcome (null when it did not
+  start); a run carries its pair, so a compute of another pair leaves the panel's refused run and
+  error line alone and shows as "Finding what changed on a new survey date"; waits for a job end
+  give up when the job leaves the list, the project closes or the watch stops; a throwing step
+  counts as tried and the loop goes on; stop cancels the chain's compute in flight.
 - The QA runs at the site's QA level exactly as the panel's own run does; at level `off` (the
   default for a new site) it measures the change against the previous survey without a verdict,
   so a hold appears only once the site has a level.

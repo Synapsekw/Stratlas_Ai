@@ -579,19 +579,23 @@ export interface NarrativeFacts {
     change: string | null;
     since: string | null;
     date: string;
-    /** The piles that moved most since the date before, largest first (signed m³). */
-    movers: { label: string; changeM3: number; change: string }[];
+    /**
+     * The piles that moved most since the date before, largest first: whole m³ (signed), the
+     * direction taken before rounding, the change in the site's units. A move that rounds to
+     * 0 m³ is left out.
+     */
+    movers: { label: string; changeM3: number; up: boolean; change: string }[];
     /** Piles left out of the latest total. */
     notCounted: number;
   } | null;
   /**
-   * The survey QA verdicts: the dates on hold (a failed check nobody released), and how many
-   * passed, were released or measured without a verdict. Null when no date was checked.
+   * The survey QA verdicts: the dates on hold (a failed check nobody released), that passed, that
+   * a person released, and how many were measured without a verdict. Null when no date was checked.
    */
   qa: {
     held: { label: string; date: string }[];
-    passed: number;
-    released: number;
+    passed: { label: string; date: string }[];
+    released: { label: string; date: string }[];
     unchecked: number;
   } | null;
   road: {
@@ -605,6 +609,13 @@ export interface NarrativeFacts {
 }
 
 const round = (n: number, d = 1) => Math.round(n * 10 ** d) / 10 ** d;
+
+/** The dates of the QA verdicts that match, as label and date. */
+const datesWith = (
+  qa: HouseModel['qa'],
+  keep: (q: HouseModel['qa'][number]) => boolean,
+): { label: string; date: string }[] =>
+  qa.filter(keep).map((q) => ({ label: q.label, date: q.date }));
 
 export function narrativeFacts(h: HouseModel): NarrativeFacts {
   const b = h.base;
@@ -644,11 +655,14 @@ export function narrativeFacts(h: HouseModel): NarrativeFacts {
           change: h.volumes.text.change,
           since: h.volumes.text.since,
           date: h.volumes.text.date,
-          movers: (h.volumes.movers ?? []).map((x) => ({
-            label: x.label,
-            changeM3: round(x.changeM3, 0),
-            change: x.change,
-          })),
+          movers: (h.volumes.movers ?? [])
+            .filter((x) => Math.round(Math.abs(x.changeM3)) > 0)
+            .map((x) => ({
+              label: x.label,
+              changeM3: round(x.changeM3, 0),
+              up: x.changeM3 > 0,
+              change: x.change,
+            })),
           notCounted: h.volumes.notCounted ?? 0,
         }
       : null,
@@ -656,11 +670,9 @@ export function narrativeFacts(h: HouseModel): NarrativeFacts {
       h.qa.length === 0
         ? null
         : {
-            held: h.qa
-              .filter((q) => q.status === 'hold' || q.status === 'fail')
-              .map((q) => ({ label: q.label, date: q.date })),
-            passed: h.qa.filter((q) => q.status === 'pass').length,
-            released: h.qa.filter((q) => q.status === 'released').length,
+            held: datesWith(h.qa, (q) => q.status === 'hold' || q.status === 'fail'),
+            passed: datesWith(h.qa, (q) => q.status === 'pass'),
+            released: datesWith(h.qa, (q) => q.status === 'released'),
             unchecked: h.qa.filter((q) => q.status === 'unchecked').length,
           },
     road: road

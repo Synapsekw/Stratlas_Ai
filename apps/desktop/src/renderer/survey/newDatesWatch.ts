@@ -3,20 +3,22 @@
  * `survey.prepare` job on the open project ends done, however it was started, each date it
  * prepared that has an earlier date gets, quietly and one step at a time:
  *
- * 1. the site-level survey QA (`survey.qa` against the previous survey, at the site's QA level, as
- *    the QA panel's own run), a quiet job listed in Jobs with Cancel; a failed check holds the
- *    survey as a hand run does, and at level Off it measures the change without a verdict;
+ * 1. the site-level survey QA (`survey.qa` against the nearest earlier survey with a prepared
+ *    surface, at the site's QA level, as the QA panel's own run, with the site's checkpoints when
+ *    it has them), a quiet job listed in Jobs with Cancel; a failed check holds the survey as a
+ *    hand run does, and at level Off it measures the change without a verdict;
  * 2. the in-app change compute for the pair (previous date, new date), shown in the Changes panel
  *    with its Cancel; its verdicts stay proposals.
  *
  * So a new date brings its QA verdict and a "what changed" set without a click. Nothing else is
- * written. Never repeated: a date with a QA file gets no QA, a pair with a change set no compute,
- * and each step is tried once per open. Never on a project with one date, nor for its earliest
- * date. Light on a computer the person is using: it settles first, waits until no job is at work
- * on the project and the QA and Changes panels are idle, and a step the person cancels stops the
- * chain until the project is opened again. Nothing starts with the setting off
- * (`Settings.autoCheckNewDates`, absent means on) or for a read-only project; the QA step needs the
- * pipeline Python.
+ * written. Never repeated: a date whose QA file is newer than its surface gets no QA, a pair with
+ * a change set newer than the new date's surface no compute, and each step is tried once per
+ * open; a date prepared again (its surface replaced) is checked again. Never on a project with
+ * one date, nor for its earliest date. Light on a computer the person is using: it settles first,
+ * waits until no job is at work on the project and the QA and Changes panels are idle, and a step
+ * the person cancels stops the chain until the project is opened again. Nothing starts with the
+ * setting off (`Settings.autoCheckNewDates`, absent means on) or for a read-only project; the QA
+ * step needs the pipeline Python.
  */
 import type { HeightTiles, JobRecord, QaLevel, SurveyQaParams } from '@aio/schema';
 import type { Workspace } from '@aio/workspace';
@@ -37,6 +39,9 @@ export type NewDateStep =
 export const stepKey = (s: NewDateStep): string =>
   s.kind === 'qa' ? `qa:${s.capture}` : `change:${s.from}>${s.to}`;
 
+/** The checkpoints of a QA run: a CSV or the GCP file of a processing run. */
+export type QaCheckpoints = NonNullable<SurveyQaParams['checkpoints']>;
+
 const RANK: Record<string, number> = { dsm: 1, cloud: 2, dtm: 3 };
 
 /** A survey's own prepared surface (DSM first, then a cloud, then a DTM), as the QA panel picks. */
@@ -51,17 +56,26 @@ function surfaceOf(surfaces: readonly HeightTiles[], capture: string): HeightTil
   return best;
 }
 
+/** `a` was written at or after `b` (ISO times; an unreadable one counts as older). */
+const notOlder = (a: string, b: string): boolean => {
+  const ta = Date.parse(a);
+  const tb = Date.parse(b);
+  if (Number.isNaN(tb)) return true;
+  return !Number.isNaN(ta) && ta >= tb;
+};
+
 /**
- * What to run for the newly prepared dates `fresh`, in date order (pure). `checked`: the dates
- * with a QA file; `pairs`: the date pairs with a change set; `tried`: step keys tried this open;
- * `qa`: whether a QA job may run (the pipeline Python is there).
+ * What to run for the newly prepared dates `fresh`, in date order (pure). `checked`: the QA files
+ * (date and when checked); `pairs`: the change sets (pair and when made); `tried`: step keys tried
+ * this open; `qa`: whether a QA job may run (the pipeline Python is there). A QA file or change set
+ * older than the new date's surface is out of date: the date was prepared again.
  */
 export function newDateSteps(x: {
   captures: readonly { id: string; date: string }[];
   fresh: ReadonlySet<string>;
   surfaces: readonly HeightTiles[];
-  checked: ReadonlySet<string>;
-  pairs: readonly { from: string; to: string }[];
+  checked: readonly { capture: string; checkedAt: string }[];
+  pairs: readonly { from: string; to: string; createdAt: string }[];
   tried: ReadonlySet<string>;
   qa: boolean;
 }): NewDateStep[] {
@@ -75,18 +89,28 @@ export function newDateSteps(x: {
     if (!prev || !x.fresh.has(c.id)) return;
     const surface = surfaceOf(x.surfaces, c.id);
     if (!surface) return;
-    const before = surfaceOf(x.surfaces, prev.id);
-    // without the previous survey's surface (and no checkpoints) the check could only say unchecked
-    if (x.qa && before && !x.checked.has(c.id)) {
+    const madeAt = surface.preparedAt;
+    // the nearest earlier survey with a prepared surface (as the QA panel's own run picks)
+    const before = dated
+      .slice(0, i)
+      .reverse()
+      .map((d) => ({ id: d.id, s: surfaceOf(x.surfaces, d.id) }))
+      .find((d) => d.s !== null);
+    // without an earlier surface (and no checkpoints) the check could only say unchecked
+    const qaDone = x.checked.some((q) => q.capture === c.id && notOlder(q.checkedAt, madeAt));
+    if (x.qa && before?.s && !qaDone) {
       const step: NewDateStep = {
         kind: 'qa',
         capture: c.id,
         surface: surface.id,
-        previous: { capture: prev.id, surface: before.id },
+        previous: { capture: before.id, surface: before.s.id },
       };
       if (!x.tried.has(stepKey(step))) steps.push(step);
     }
-    if (!x.pairs.some((p) => p.from === prev.id && p.to === c.id)) {
+    const pairDone = x.pairs.some(
+      (p) => p.from === prev.id && p.to === c.id && notOlder(p.createdAt, madeAt),
+    );
+    if (!pairDone) {
       const step: NewDateStep = { kind: 'change', from: prev.id, to: c.id };
       if (!x.tried.has(stepKey(step))) steps.push(step);
     }
@@ -111,23 +135,30 @@ export interface NewDatesWatchDeps {
   /** The QA panel or the Changes panel is at work (a person's run): wait for it. */
   busy(): boolean;
   readSurfaces(projectId: string): Promise<HeightTiles[] | null>;
-  /** The dates of the project with a QA file, or null when they cannot be read. */
-  readChecked(projectId: string): Promise<string[] | null>;
-  /** The date pairs with a change set, or null when they cannot be read. */
-  readPairs(projectId: string): Promise<{ from: string; to: string }[] | null>;
+  /** The QA files of the project (date, when checked), or null when they cannot be read. */
+  readChecked(projectId: string): Promise<{ capture: string; checkedAt: string }[] | null>;
+  /** The change sets of the project (pair, when made), or null when they cannot be read. */
+  readPairs(projectId: string): Promise<{ from: string; to: string; createdAt: string }[] | null>;
   /** The site's QA level (`survey/settings.json`). */
   qaLevel(projectId: string): Promise<QaLevel>;
+  /** The site's checkpoints, as the QA panel offers them; null without any. */
+  checkpoints?(projectId: string): Promise<QaCheckpoints | null>;
   /** Start the QA job quietly (`jobs.startQuiet`). */
   startQa(req: {
     pipeline: 'survey.qa';
     project: string;
     params: SurveyQaParams;
   }): Promise<{ jobId: string } | { error: string }>;
-  /** Compute the in-app change sets of a pair; how it ended. */
+  /**
+   * Compute the in-app change sets of a pair; how it ended, or null when it did not start (a
+   * person's compute was running).
+   */
   computeChange(
     projectId: string,
     pair: { from: string; to: string },
-  ): Promise<'done' | 'failed' | 'cancelled'>;
+  ): Promise<'done' | 'failed' | 'cancelled' | null>;
+  /** Cancel the chain's compute of `pair` if it is still running (on stop). */
+  cancelChange?(pair: { from: string; to: string }): void;
   /** Read the QA and change stores again. */
   refresh(projectId: string): Promise<void> | void;
   /** Wait `ms` (tests pass one that does not). */
@@ -159,28 +190,45 @@ function capturesOf(job: JobRecord): string[] {
 /** Start the checks after a new date; returns the stop. Called once at start. */
 export function connectNewDatesWatch(deps: NewDatesWatchDeps): () => void {
   const wait = deps.wait ?? sleep;
-  const state = { running: false, again: false, stopped: false };
+  const state = { running: false, again: false, stopped: false, marked: false };
   /** What is remembered for the open project, until it closes. */
   let open: { id: string; fresh: Set<string>; tried: Set<string>; cancelled: boolean } | null =
     null;
+  /** Waits for a job's end that must give up when the project closes or the watch stops. */
+  const pending = new Set<() => void>();
+  /** The pair the chain is computing now. */
+  let computing: { from: string; to: string } | null = null;
   const current = () => deps.workspace.getState().project;
+  const giveUp = () => {
+    for (const f of [...pending]) f();
+  };
 
+  /** The job's record once it has ended; null when it leaves the list or the wait is given up. */
   const jobEnded = (id: string): Promise<JobRecord | null> =>
     new Promise((resolve) => {
-      const look = (list: readonly JobRecord[]) => {
+      let stop = (): void => undefined;
+      const done = (j: JobRecord | null) => {
+        stop();
+        pending.delete(cancel);
+        resolve(j);
+      };
+      const cancel = () => {
+        done(null);
+      };
+      const look = (list: readonly JobRecord[]): 'wait' | JobRecord | null => {
         const j = list.find((x) => x.id === id);
-        return j && ENDED.has(j.status) ? j : null;
+        if (!j) return null;
+        return ENDED.has(j.status) ? j : 'wait';
       };
       const now = look(deps.jobs.getState().jobs);
-      if (now) {
+      if (now !== 'wait') {
         resolve(now);
         return;
       }
-      const stop = deps.jobs.subscribe((s) => {
+      pending.add(cancel);
+      stop = deps.jobs.subscribe((s) => {
         const j = look(s.jobs);
-        if (!j && !state.stopped) return;
-        stop();
-        resolve(j);
+        if (j !== 'wait') done(j);
       });
     });
 
@@ -209,11 +257,12 @@ export function connectNewDatesWatch(deps: NewDatesWatchDeps): () => void {
       if (!busy) break;
       await wait(IDLE_POLL_MS);
     }
-    const [surfaces, checked, pairs, level] = await Promise.all([
+    const [surfaces, checked, pairs, level, checkpoints] = await Promise.all([
       deps.readSurfaces(mine.id),
       deps.readChecked(mine.id),
       deps.readPairs(mine.id),
       deps.qaLevel(mine.id).catch((): QaLevel => 'off'),
+      deps.checkpoints ? deps.checkpoints(mine.id).catch(() => null) : Promise.resolve(null),
     ]);
     if (!still()) return;
     const now = current();
@@ -222,7 +271,7 @@ export function connectNewDatesWatch(deps: NewDatesWatchDeps): () => void {
       captures: now.manifest.captures,
       fresh: mine.fresh,
       surfaces,
-      checked: new Set(checked),
+      checked,
       pairs,
       tried: mine.tried,
       qa: deps.hasPython(),
@@ -233,29 +282,35 @@ export function connectNewDatesWatch(deps: NewDatesWatchDeps): () => void {
       return;
     }
     mine.tried.add(stepKey(step));
+    state.marked = true;
     if (step.kind === 'qa') {
-      let r: { jobId: string } | { error: string };
-      try {
-        r = await deps.startQa({
-          pipeline: 'survey.qa',
-          project: now.root,
-          params: {
-            capture: step.capture,
-            surface: step.surface,
-            level,
-            previous: step.previous,
-          },
-        });
-      } catch (e) {
-        r = { error: e instanceof Error ? e.message : String(e) };
-      }
+      const r = await deps.startQa({
+        pipeline: 'survey.qa',
+        project: now.root,
+        params: {
+          capture: step.capture,
+          surface: step.surface,
+          level,
+          ...(checkpoints ? { checkpoints } : {}),
+          previous: step.previous,
+        },
+      });
       if ('jobId' in r) {
         const job = await jobEnded(r.jobId);
         if (job?.status === 'cancelled') mine.cancelled = true;
       }
     } else {
-      const how = await deps.computeChange(mine.id, { from: step.from, to: step.to });
+      const pair = { from: step.from, to: step.to };
+      computing = pair;
+      let how: Awaited<ReturnType<NewDatesWatchDeps['computeChange']>>;
+      try {
+        how = await deps.computeChange(mine.id, pair);
+      } finally {
+        computing = null;
+      }
       if (how === 'cancelled') mine.cancelled = true;
+      // a person's compute was running: not tried, looked at again once it is idle
+      if (how === null) mine.tried.delete(stepKey(step));
     }
     if (!still()) return;
     await deps.refresh(mine.id);
@@ -265,6 +320,8 @@ export function connectNewDatesWatch(deps: NewDatesWatchDeps): () => void {
 
   // a change while a check runs (or a step just run) asks for one more check after it
   const more = (): boolean => state.again && !state.stopped;
+  // whether the check that just ran marked a step as tried (set inside check)
+  const stepMarked = (): boolean => state.marked;
 
   const run = async (): Promise<void> => {
     if (state.running) {
@@ -275,7 +332,15 @@ export function connectNewDatesWatch(deps: NewDatesWatchDeps): () => void {
     try {
       do {
         state.again = false;
-        await check();
+        state.marked = false;
+        try {
+          await check();
+        } catch (e) {
+          // a step that failed stays tried (it was marked before it ran) and the next one is
+          // looked at; a failure before any step waits for the next prepare job
+          console.warn('The checks after a new survey date failed', e);
+          if (stepMarked()) state.again = true;
+        }
       } while (more());
     } finally {
       state.running = false;
@@ -284,12 +349,13 @@ export function connectNewDatesWatch(deps: NewDatesWatchDeps): () => void {
 
   const unWorkspace = deps.workspace.subscribe((s, prev) => {
     if (s.project?.id === prev.project?.id) return;
+    giveUp();
     open = s.project
       ? { id: s.project.id, fresh: new Set(), tried: new Set(), cancelled: false }
       : null;
   });
 
-  // a prepare job on the open project ended done: its dates are new candidates
+  // a prepare job on the open project ended done: its dates are new candidates, tried afresh
   const unJobs = deps.jobs.subscribe((s, prev) => {
     const project = current();
     if (!project || !open) return;
@@ -301,6 +367,8 @@ export function connectNewDatesWatch(deps: NewDatesWatchDeps): () => void {
       if (!before || !isActive(before)) continue;
       for (const c of capturesOf(j)) {
         open.fresh.add(c);
+        open.tried.delete(`qa:${c}`);
+        for (const k of [...open.tried]) if (k.endsWith(`>${c}`)) open.tried.delete(k);
         added = true;
       }
     }
@@ -311,6 +379,8 @@ export function connectNewDatesWatch(deps: NewDatesWatchDeps): () => void {
   if (first) open = { id: first.id, fresh: new Set(), tried: new Set(), cancelled: false };
   return () => {
     state.stopped = true;
+    if (computing) deps.cancelChange?.(computing);
+    giveUp();
     unWorkspace();
     unJobs();
   };

@@ -3,10 +3,10 @@ import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import { dsm, lineUpManifest } from '../lineup/testing';
-import { connectNewDatesWatch, newDateSteps } from './newDatesWatch';
+import { connectNewDatesWatch, newDateSteps, type NewDatesWatchDeps } from './newDatesWatch';
 
 const flush = async () => {
-  for (let i = 0; i < 40; i++) await Promise.resolve();
+  for (let i = 0; i < 300; i++) await Promise.resolve();
 };
 
 const CAPTURES = [
@@ -15,10 +15,15 @@ const CAPTURES = [
   { id: 'd3', label: 'Survey 4 May 2026', date: '2026-05-04' },
 ];
 
-const surface = (capture: string, kind = 'dsm'): HeightTiles =>
+const T0 = '2026-05-05T10:00:00Z';
+const LATER = '2026-05-05T11:00:00Z';
+const EARLIER = '2026-05-05T09:00:00Z';
+
+const surface = (capture: string, kind = 'dsm', preparedAt = T0): HeightTiles =>
   ({
     id: `${kind}-${capture}`,
     capture,
+    preparedAt,
     source: { kind, layer: `${kind}${capture}` },
   }) as unknown as HeightTiles;
 
@@ -46,8 +51,8 @@ describe('newDateSteps', () => {
     captures: CAPTURES,
     fresh: new Set(['d3']),
     surfaces: [surface('d1'), surface('d2'), surface('d3')],
-    checked: new Set<string>(),
-    pairs: [],
+    checked: [] as { capture: string; checkedAt: string }[],
+    pairs: [] as { from: string; to: string; createdAt: string }[],
     tried: new Set<string>(),
     qa: true,
   };
@@ -64,11 +69,24 @@ describe('newDateSteps', () => {
     ]);
   });
 
-  it('never repeats a date already checked or a pair already computed', () => {
+  it('never repeats a date checked or a pair computed after its surface was made', () => {
     expect(
-      newDateSteps({ ...base, checked: new Set(['d3']), pairs: [{ from: 'd2', to: 'd3' }] }),
+      newDateSteps({
+        ...base,
+        checked: [{ capture: 'd3', checkedAt: LATER }],
+        pairs: [{ from: 'd2', to: 'd3', createdAt: LATER }],
+      }),
     ).toEqual([]);
     expect(newDateSteps({ ...base, tried: new Set(['qa:d3', 'change:d2>d3']) })).toEqual([]);
+  });
+
+  it('checks a date again when its surface was prepared again after the check', () => {
+    const steps = newDateSteps({
+      ...base,
+      checked: [{ capture: 'd3', checkedAt: EARLIER }],
+      pairs: [{ from: 'd2', to: 'd3', createdAt: EARLIER }],
+    });
+    expect(steps.map((s) => s.kind)).toEqual(['qa', 'change']);
   });
 
   it('does nothing on a project with one date, nor for the earliest date', () => {
@@ -78,9 +96,23 @@ describe('newDateSteps', () => {
     expect(newDateSteps({ ...base, fresh: new Set(['d1']) })).toEqual([]);
   });
 
-  it('skips the check without the previous surface or when QA may not run, keeps the compute', () => {
-    const noPrev = newDateSteps({ ...base, surfaces: [surface('d1'), surface('d3')] });
-    expect(noPrev).toEqual([{ kind: 'change', from: 'd2', to: 'd3' }]);
+  it('checks against the nearest earlier date with a surface, and pairs with the date before', () => {
+    // d2 has no surface: the check compares with d1, the change pair stays (d2, d3)
+    expect(newDateSteps({ ...base, surfaces: [surface('d1'), surface('d3')] })).toEqual([
+      {
+        kind: 'qa',
+        capture: 'd3',
+        surface: 'dsm-d3',
+        previous: { capture: 'd1', surface: 'dsm-d1' },
+      },
+      { kind: 'change', from: 'd2', to: 'd3' },
+    ]);
+  });
+
+  it('skips the check with no earlier surface or when QA may not run, keeps the compute', () => {
+    expect(newDateSteps({ ...base, surfaces: [surface('d3')] })).toEqual([
+      { kind: 'change', from: 'd2', to: 'd3' },
+    ]);
     expect(newDateSteps({ ...base, qa: false })).toEqual([
       { kind: 'change', from: 'd2', to: 'd3' },
     ]);
@@ -106,16 +138,21 @@ describe('newDateSteps', () => {
   });
 });
 
+type Outcome = 'done' | 'failed' | 'cancelled' | null;
+
 function setup(
   opts: {
     setting?: boolean;
     writable?: boolean;
     python?: boolean;
     level?: QaLevel;
-    checked?: string[];
-    pairs?: { from: string; to: string }[];
+    checked?: { capture: string; checkedAt: string }[];
+    pairs?: { from: string; to: string; createdAt: string }[];
     busy?: () => boolean;
-    change?: 'done' | 'failed' | 'cancelled';
+    change?: () => Promise<Outcome>;
+    checkpoints?: { gcp: string } | null;
+    wait?: (ms: number) => Promise<void>;
+    readSurfaces?: NewDatesWatchDeps['readSurfaces'];
   } = {},
 ) {
   const workspace = createWorkspace();
@@ -129,14 +166,16 @@ function setup(
   let n = 0;
   const startQa = vi.fn((req: { params: { capture: string } }) => {
     n += 1;
-    const id = `qa${n}`;
+    const id = `qa${String(n)}`;
     jobs.setState({ jobs: [job(id, 'survey.qa', 'running', req.params), ...jobs.getState().jobs] });
     return Promise.resolve({ jobId: id });
   });
   const computeChange = vi.fn((_p: string, pair: { from: string; to: string }) => {
-    data.pairs = [...data.pairs, pair];
-    return Promise.resolve(opts.change ?? 'done');
+    if (opts.change) return opts.change();
+    data.pairs = [...data.pairs, { ...pair, createdAt: LATER }];
+    return Promise.resolve<Outcome>('done');
   });
+  const cancelChange = vi.fn();
   const refresh = vi.fn();
   const stop = connectNewDatesWatch({
     workspace,
@@ -145,18 +184,20 @@ function setup(
     writable: () => opts.writable ?? true,
     hasPython: () => opts.python ?? true,
     busy: opts.busy ?? (() => false),
-    readSurfaces: () => Promise.resolve(data.surfaces),
+    readSurfaces: opts.readSurfaces ?? (() => Promise.resolve(data.surfaces)),
     readChecked: () => Promise.resolve(data.checked),
     readPairs: () => Promise.resolve(data.pairs),
     qaLevel: () => Promise.resolve(opts.level ?? 'moderate'),
+    checkpoints: () => Promise.resolve(opts.checkpoints ?? null),
     startQa,
     computeChange,
+    cancelChange,
     refresh,
-    wait: () => Promise.resolve(),
+    wait: opts.wait ?? (() => Promise.resolve()),
   });
-  const open = (captures = CAPTURES) => {
+  const open = (captures = CAPTURES, id = 'p') => {
     workspace.getState().openProject({
-      id: 'p',
+      id,
       root: 'C:/p',
       manifest: lineUpManifest({
         captures,
@@ -184,12 +225,28 @@ function setup(
         ),
     });
   };
-  return { open, prepared, endQa, startQa, computeChange, refresh, stop, flags, data };
+  const dropQa = () => {
+    jobs.setState({ jobs: jobs.getState().jobs.filter((j) => j.pipeline !== 'survey.qa') });
+  };
+  return {
+    workspace,
+    open,
+    prepared,
+    endQa,
+    dropQa,
+    startQa,
+    computeChange,
+    cancelChange,
+    refresh,
+    stop,
+    flags,
+    data,
+  };
 }
 
 describe('connectNewDatesWatch', () => {
   it('runs the QA job then the change compute after a new date is prepared', async () => {
-    const w = setup({ level: 'strict' });
+    const w = setup({ level: 'strict', checkpoints: { gcp: 'photogrammetry/r1/gcp.json' } });
     w.open();
     w.prepared(['d3']);
     await flush();
@@ -201,12 +258,13 @@ describe('connectNewDatesWatch', () => {
         capture: 'd3',
         surface: 'dsm-d3',
         level: 'strict',
+        checkpoints: { gcp: 'photogrammetry/r1/gcp.json' },
         previous: { capture: 'd2', surface: 'dsm-d2' },
       },
     });
     // one at a time: the compute waits for the QA job
     expect(w.computeChange).not.toHaveBeenCalled();
-    w.data.checked = ['d3'];
+    w.data.checked = [{ capture: 'd3', checkedAt: LATER }];
     w.endQa('done');
     await flush();
     expect(w.computeChange).toHaveBeenCalledWith('p', { from: 'd2', to: 'd3' });
@@ -215,7 +273,10 @@ describe('connectNewDatesWatch', () => {
   });
 
   it('never repeats a date already done', async () => {
-    const w = setup({ checked: ['d3'], pairs: [{ from: 'd2', to: 'd3' }] });
+    const w = setup({
+      checked: [{ capture: 'd3', checkedAt: LATER }],
+      pairs: [{ from: 'd2', to: 'd3', createdAt: LATER }],
+    });
     w.open();
     w.prepared(['d3']);
     await flush();
@@ -223,16 +284,23 @@ describe('connectNewDatesWatch', () => {
     expect(w.computeChange).not.toHaveBeenCalled();
   });
 
-  it('tries each step once per open, even when it wrote nothing', async () => {
-    const w = setup({ python: false });
+  it('tries each step once per prepare, and again after the date is prepared again', async () => {
+    const w = setup({ python: false, change: () => Promise.resolve('failed') });
     w.open();
     w.prepared(['d3']);
     await flush();
     expect(w.computeChange).toHaveBeenCalledTimes(1);
-    w.data.pairs = [];
+    // the same step is not retried by itself
+    w.prepared(['d2']);
+    await flush();
+    expect(w.computeChange.mock.calls.map((c) => c[1])).toEqual([
+      { from: 'd2', to: 'd3' },
+      { from: 'd1', to: 'd2' },
+    ]);
+    // d3 prepared again: its step is tried afresh
     w.prepared(['d3']);
     await flush();
-    expect(w.computeChange).toHaveBeenCalledTimes(1);
+    expect(w.computeChange).toHaveBeenCalledTimes(3);
   });
 
   it('does nothing on a project with one date', async () => {
@@ -271,6 +339,7 @@ describe('connectNewDatesWatch', () => {
     w.prepared(['d3']);
     await flush();
     expect(w.startQa.mock.calls[0]?.[0].params).toMatchObject({ capture: 'd3', level: 'off' });
+    expect(w.startQa.mock.calls[0]?.[0].params).not.toHaveProperty('checkpoints');
   });
 
   it('skips the QA step without Python, and still computes the pair', async () => {
@@ -295,7 +364,7 @@ describe('connectNewDatesWatch', () => {
   });
 
   it('stops after a cancelled compute', async () => {
-    const w = setup({ python: false, change: 'cancelled' });
+    const w = setup({ python: false, change: () => Promise.resolve('cancelled') });
     w.open();
     w.prepared(['d2', 'd3']);
     await flush();
@@ -310,5 +379,107 @@ describe('connectNewDatesWatch', () => {
     await flush();
     expect(busy).toBeLessThan(0);
     expect(w.startQa).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not count a compute that did not start (a person computing) as tried', async () => {
+    const results: Outcome[] = [null, 'done'];
+    const w = setup({
+      python: false,
+      change: () => Promise.resolve(results.length > 0 ? (results.shift() as Outcome) : 'done'),
+    });
+    w.open();
+    w.prepared(['d3']);
+    await flush();
+    expect(w.computeChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('moves on when the QA job drops out of the list', async () => {
+    const w = setup();
+    w.open();
+    w.prepared(['d3']);
+    await flush();
+    expect(w.startQa).toHaveBeenCalledTimes(1);
+    w.dropQa();
+    await flush();
+    expect(w.computeChange).toHaveBeenCalledWith('p', { from: 'd2', to: 'd3' });
+  });
+
+  it('survives a dependency that throws: the step counts as tried, the next one runs', async () => {
+    const w = setup();
+    w.startQa.mockImplementationOnce(() => Promise.reject(new Error('refused')));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    w.open();
+    w.prepared(['d3']);
+    await flush();
+    expect(w.computeChange).toHaveBeenCalledWith('p', { from: 'd2', to: 'd3' });
+    expect(w.startQa).toHaveBeenCalledTimes(1);
+    // a failure before any step does not loop
+    const r = setup({ readSurfaces: () => Promise.reject(new Error('disk')) });
+    r.open();
+    r.prepared(['d3']);
+    await flush();
+    expect(r.startQa).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('gives up when the project is closed or switched mid-chain', async () => {
+    const w = setup();
+    w.open();
+    w.prepared(['d3']);
+    await flush();
+    expect(w.startQa).toHaveBeenCalledTimes(1);
+    w.open(CAPTURES, 'other');
+    await flush();
+    w.endQa('done');
+    await flush();
+    expect(w.computeChange).not.toHaveBeenCalled();
+    expect(w.refresh).not.toHaveBeenCalled();
+  });
+
+  it('stops during the settle wait without starting anything', async () => {
+    let release: () => void = () => undefined;
+    const w = setup({
+      wait: () =>
+        new Promise<void>((r) => {
+          release = r;
+        }),
+    });
+    w.open();
+    w.prepared(['d3']);
+    await flush();
+    w.stop();
+    release();
+    await flush();
+    expect(w.startQa).not.toHaveBeenCalled();
+  });
+
+  it('stops during a step: the wait ends and the compute in flight is cancelled', async () => {
+    let finish: (o: Outcome) => void = () => undefined;
+    const w = setup({
+      python: false,
+      change: () =>
+        new Promise<Outcome>((r) => {
+          finish = r;
+        }),
+    });
+    w.open();
+    w.prepared(['d2', 'd3']);
+    await flush();
+    expect(w.computeChange).toHaveBeenCalledTimes(1);
+    w.stop();
+    expect(w.cancelChange).toHaveBeenCalledWith({ from: 'd1', to: 'd2' });
+    finish('cancelled');
+    await flush();
+    expect(w.computeChange).toHaveBeenCalledTimes(1);
+
+    const q = setup();
+    q.open();
+    q.prepared(['d3']);
+    await flush();
+    q.stop();
+    await flush();
+    q.endQa('done');
+    await flush();
+    expect(q.computeChange).not.toHaveBeenCalled();
   });
 });
