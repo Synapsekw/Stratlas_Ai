@@ -119,7 +119,7 @@ test('every workbench tab scrolls its own body with the mouse wheel', async ({ w
   // the divider moved up as far as it goes: every long bench is taller than its pane (with the
   // AI off the agent is one row with no divider until it is opened)
   await openAgentOff(win);
-  const divider = win.getByRole('separator', { name: 'Resize the agent' });
+  const divider = win.getByRole('separator', { name: 'Resize Ask AI' });
   await divider.focus();
   await win.keyboard.press('Home');
   await expect

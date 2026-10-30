@@ -99,17 +99,19 @@ export function aiStatus(i: AiStatusInput): AiStatus {
         : null;
   const cloudReady = (agent.status === 'ready' && agent.cloud) || askBackend?.kind === 'cloud';
   if (cloudReady && !block) return out('ready');
+  // the local model on, but its route refused (the server down, no vision): not Offline AI
   const local =
     (agent.status === 'ready' && !agent.cloud) ||
     askBackend?.kind === 'local' ||
-    i.localModel === 'running';
+    (i.localModel === 'running' && agent.status !== 'disabled');
   if (local) return out('local');
   if (block) return out(block);
   if (agent.status === 'disabled') {
-    // a switch the agent has not seen change yet: its next check decides, quietly
+    // a switch or a policy the agent has not seen change yet: its next check decides, quietly
     const stale =
       (agent.reason === 'cloud-off' && i.settings.cloudAi) ||
-      (agent.reason === 'offline-only' && !i.settings.offlineOnly);
+      (agent.reason === 'offline-only' && !i.settings.offlineOnly) ||
+      (agent.reason === 'forbidden' && i.projectPolicy !== 'forbid');
     return stale ? out('no-key', true) : out(REASON[agent.reason] ?? 'no-key');
   }
   return out('no-key', agent.status === 'checking');

@@ -162,7 +162,7 @@ test('the agent pane: off row, maximise, minimise, a live tool, the divider and 
     await expect(box(win)).toBeVisible();
 
     // sized by the person, the agent stays as it is when a tool starts
-    const divider = win.getByRole('separator', { name: 'Resize the agent' });
+    const divider = win.getByRole('separator', { name: 'Resize Ask AI' });
     await divider.focus();
     await win.keyboard.press('ArrowUp');
     await win.keyboard.press('ArrowUp');

@@ -1,5 +1,5 @@
 import { useWorkspace } from '@aio/workspace';
-import { t, Tip, useT } from '@aio/ui';
+import { announce, t, Tip, useT } from '@aio/ui';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { StoreApi } from 'zustand/vanilla';
 import { appAgentSession } from '../agent/session';
@@ -14,8 +14,8 @@ import './aiStatus.css';
 /**
  * The one AI status (aiStatus.ts) from the live sources: the settings, the agent session, the open
  * project's or package's AI policy and the local model; `askBackend` where Ask AI on a photo knows
- * what it would use (Inspect). A change of the AI settings has the session check again, so the
- * state follows a switch also where no agent panel is mounted.
+ * what it would use (Inspect). The session checks its route again when the AI settings change or a
+ * key is saved (agent/session.ts, startAgentSession), so the state follows them on every screen.
  */
 export function useAiStatus(
   askBackend: ResolvedBackend | null = null,
@@ -31,17 +31,9 @@ export function useAiStatus(
   });
   const pkgBlocked = useShellStore(store, (s) => cloudAiBlocked(s.pkg));
   const manifestPolicy = useWorkspace((s) => s.project?.manifest.aiPolicy);
-  const aiKey = useShellStore(store, (s) =>
-    JSON.stringify([s.settings.cloudAi, s.settings.offlineOnly === true, s.settings.routes]),
-  );
+  // the session checks again on its own when the settings or a key change (startAgentSession)
   const session = appAgentSession();
   const agent = useSyncExternalStore(session.subscribe, () => session.getState().availability);
-  const seen = useRef(aiKey);
-  useEffect(() => {
-    if (seen.current === aiKey) return;
-    seen.current = aiKey;
-    void session.refresh();
-  }, [aiKey, session]);
   return aiStatus({
     settings: { cloudAi, offlineOnly },
     agent,
@@ -68,6 +60,7 @@ export function AiStatusChip({
   className = '',
   testId = 'ai-status-chip',
   placement = 'top',
+  announces = false,
   onOpen,
 }: {
   store?: StoreApi<Shell>;
@@ -75,12 +68,22 @@ export function AiStatusChip({
   testId?: string;
   /** Where its tip opens: above in the sidebar's foot, below in a header. */
   placement?: 'top' | 'bottom';
+  /** Says a change of state to a screen reader: one chip does (the sidebar's), not each copy. */
+  announces?: boolean;
   /** Before the fix opens (a menu closes). */
   onOpen?: () => void;
 }) {
   useT();
   const status = useAiStatus(null, store);
   const look = status.checking ? AI_CHECKING : AI_LOOK[status.state];
+  const said = useRef<string | null>(null);
+  const label = status.checking ? null : look.label;
+  useEffect(() => {
+    if (!announces || label === null) return;
+    // the first settled state is what the screen shows; a change after it is news
+    if (said.current !== null && said.current !== label) announce(t(label), 'polite');
+    said.current = label;
+  }, [announces, label]);
   return (
     <Tip content={t(look.tip)} placement={placement}>
       <button

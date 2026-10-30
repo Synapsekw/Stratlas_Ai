@@ -1,6 +1,6 @@
 import type { AioBridge } from '@aio/schema';
 import { afterEach, describe, expect, it } from 'vitest';
-import { beforeJobStart, createBridge } from './bridge';
+import { afterCall, beforeJobStart, createBridge } from './bridge';
 
 const START = { pipeline: 'aik.cameras', project: 'E:\\p', params: {} } as const;
 
@@ -73,5 +73,36 @@ describe('checks before a job start', () => {
     stop();
     expect((await createBridge(fakeAio(log)).call('jobs:start', START)).ok).toBe(true);
     expect(log).toEqual(['jobs:start']);
+  });
+});
+
+describe('after a call', () => {
+  it('runs what follows a channel once main answered it, for every bridge of the window', async () => {
+    const log: string[] = [];
+    let saved = 0;
+    stops.push(
+      afterCall('ai:setKey', () => {
+        saved++;
+      }),
+    );
+    await createBridge(fakeAio(log)).call('ai:setKey', { provider: 'anthropic', key: 'k' });
+    await createBridge(fakeAio(log)).call('ai:hasKey', { provider: 'anthropic' });
+    expect(saved).toBe(1);
+  });
+
+  it('does not run it when the call failed, or once it is taken away', async () => {
+    let saved = 0;
+    const stop = afterCall('ai:setKey', () => {
+      saved++;
+    });
+    const failing = {
+      invoke: () => Promise.reject(new Error('vault locked')),
+      on: () => () => undefined,
+    } as unknown as AioBridge;
+    const r = await createBridge(failing).call('ai:setKey', { provider: 'anthropic', key: 'k' });
+    expect(r.ok).toBe(false);
+    stop();
+    await createBridge(fakeAio([])).call('ai:setKey', { provider: 'anthropic', key: 'k' });
+    expect(saved).toBe(0);
   });
 });

@@ -235,7 +235,7 @@ describe('AgentPane', () => {
     const stop = startAgentPaneFollow();
     render();
     const divider = host.querySelector<HTMLElement>('[role="separator"]');
-    expect(divider?.getAttribute('aria-label')).toBe('Resize the agent');
+    expect(divider?.getAttribute('aria-label')).toBe('Resize Ask AI');
     act(() => {
       divider?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
     });

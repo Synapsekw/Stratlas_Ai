@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type { PackageInfo } from '@aio/schema';
+import { announced } from '@aio/ui';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -65,6 +66,18 @@ describe('SidebarStatus', () => {
     render();
     expect(q('ai-status-chip')?.textContent).toBe('AI off');
     expect(q('ai-status-chip')?.getAttribute('data-tone')).toBe('neutral');
+  });
+
+  it('says a change of the AI status to a screen reader, not the state it starts in', () => {
+    shell.setState({ settings: { ...shell.getState().settings, cloudAi: false } });
+    render();
+    const before = announced().polite;
+    expect(before).not.toContain('AI off');
+    act(() => {
+      shell.setState({ settings: { ...shell.getState().settings, offlineOnly: true } });
+    });
+    expect(announced().polite.trim()).toBe('AI off: offline');
+    shell.setState({ settings: { ...shell.getState().settings, offlineOnly: false } });
   });
 
   it('says the connection and opens its menu', () => {

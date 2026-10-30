@@ -642,7 +642,7 @@ test('the context and the agent keep their sizes until the divider between them 
     expect(Math.abs(before.ctx - 1 - before.natural)).toBeLessThanOrEqual(1);
     expect(before.agent).toBeGreaterThanOrEqual(180);
     // moved once (here by the keyboard), the divider keeps the size it was given
-    const divider = win.getByRole('separator', { name: 'Resize the agent' });
+    const divider = win.getByRole('separator', { name: 'Resize Ask AI' });
     await divider.focus();
     await win.keyboard.press('ArrowDown');
     await expect
@@ -686,7 +686,7 @@ test("the right panel's tab takes its clicks wherever the divider below the cont
     expect(await strays(), 'the divider where it always stands').toEqual([]);
 
     // drag the divider (it is moved from now on) down to the tab's height, with the mouse
-    const divider = win.getByRole('separator', { name: 'Resize the agent' });
+    const divider = win.getByRole('separator', { name: 'Resize Ask AI' });
     const from = await divider.boundingBox();
     if (!from) throw new Error('no divider');
     await win.mouse.move(from.x + from.width / 2, from.y + from.height / 2);

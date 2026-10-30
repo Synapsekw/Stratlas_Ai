@@ -10,7 +10,7 @@ export const enWorkbench = {
   'panel.expandRight': 'Expand right sidebar',
   'panel.resizeLeft': 'Resize left sidebar',
   'panel.resizeRight': 'Resize right sidebar',
-  'panel.resizeAgent': 'Resize the agent',
+  'panel.resizeAgent': 'Resize Ask AI',
   'selection.title': 'Selection',
 
   // Tabs (Tabs.tsx) and the shared dialog close button

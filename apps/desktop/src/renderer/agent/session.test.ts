@@ -9,6 +9,7 @@ import type {
 } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createBridge } from '../bridge';
 import { shell } from '../shell';
 import {
   agentTask,
@@ -245,6 +246,35 @@ describe('the one agent session of the app', () => {
     const last = b.sent('ai:send').at(-1);
     expect(last).toMatchObject({ window: 'photo' });
     expect(last).not.toHaveProperty('task');
+  });
+
+  it('checks the route as soon as it starts, so the AI status does not wait on a panel', () => {
+    const asked = b.sent('ai:status').length;
+    stop = startAgentSession();
+    expect(b.sent('ai:status')).toHaveLength(asked + 1);
+  });
+
+  it('checks the route again when a key is saved or cleared, wherever that happens', async () => {
+    stop = startAgentSession();
+    const asked = b.sent('ai:status').length;
+    await createBridge(b.bridge).call('ai:setKey', { provider: 'anthropic', key: 'k' });
+    expect(b.sent('ai:status')).toHaveLength(asked + 1);
+    await createBridge(b.bridge).call('ai:setKey', { provider: 'anthropic', key: '' });
+    expect(b.sent('ai:status')).toHaveLength(asked + 2);
+  });
+
+  it('checks the route again once per change of the AI settings, and not for others', () => {
+    stop = startAgentSession();
+    const asked = b.sent('ai:status').length;
+    const settings = shell.getState().settings;
+    shell.setState({ settings: { ...settings, cloudAi: !settings.cloudAi } });
+    expect(b.sent('ai:status')).toHaveLength(asked + 1);
+    shell.setState({ settings: { ...shell.getState().settings, offlineOnly: true } });
+    expect(b.sent('ai:status')).toHaveLength(asked + 2);
+    // a change that does not decide the route asks nothing
+    shell.getState().go('issues');
+    expect(b.sent('ai:status')).toHaveLength(asked + 2);
+    shell.setState({ settings });
   });
 
   it('checks the route again when the window gets the focus', () => {

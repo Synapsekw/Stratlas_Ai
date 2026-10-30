@@ -49,6 +49,23 @@ async function jobStartRefusal(): Promise<string | null> {
   return null;
 }
 
+const afterCalls = new Map<IpcChannel, Set<() => void>>();
+
+/**
+ * Run `done` after every call on `channel` that main answered, whoever made it: what follows a
+ * change made in one place (a key saved in Settings has the agent check its route again) without
+ * that place knowing. Every call goes through `createBridge`, so this is the one place. Answers
+ * the function that takes it away again.
+ */
+export function afterCall(channel: IpcChannel, done: () => void): () => void {
+  const set = afterCalls.get(channel) ?? new Set();
+  set.add(done);
+  afterCalls.set(channel, set);
+  return () => {
+    set.delete(done);
+  };
+}
+
 /** Wrap window.aio so every call resolves to a result instead of throwing. */
 export function createBridge(aio: AioBridge | undefined): Bridge {
   return {
@@ -59,7 +76,9 @@ export function createBridge(aio: AioBridge | undefined): Bridge {
         if (refusal !== null) return { ok: false, error: refusal };
       }
       try {
-        return { ok: true, value: await aio.invoke(channel, request) };
+        const value = await aio.invoke(channel, request);
+        for (const done of [...(afterCalls.get(channel) ?? [])]) done();
+        return { ok: true, value };
       } catch (e) {
         return { ok: false, error: readableError(e) };
       }

@@ -78,7 +78,15 @@ describe('aiStatus: the source combinations', () => {
     expect(
       status({
         settings: { cloudAi: false, offlineOnly: false },
-        agent: off('cloud-off'),
+        agent: READY_LOCAL,
+        localModel: 'running',
+      }).state,
+    ).toBe('local');
+    // and before the agent has answered
+    expect(
+      status({
+        settings: { cloudAi: false, offlineOnly: false },
+        agent: { status: 'checking' },
         localModel: 'running',
       }).state,
     ).toBe('local');
@@ -89,6 +97,12 @@ describe('aiStatus: the source combinations', () => {
       { cloudAi: true, offlineOnly: true },
     ])
       expect(status({ settings, projectPolicy: 'forbid', agent: READY_LOCAL }).state).toBe('local');
+  });
+  it('a local model whose route is refused is not Offline AI', () => {
+    for (const reason of ['no-route', 'local-off'] as const)
+      expect(status({ agent: off(reason), localModel: 'running' }).state).toBe('no-key');
+    // while the agent checks, the local model on the chat route is Offline AI already
+    expect(status({ agent: { status: 'checking' }, localModel: 'running' }).state).toBe('local');
   });
   it('offline only beats a key', () => {
     expect(
@@ -125,6 +139,13 @@ describe('aiStatus: start-up', () => {
   it('a cloud switch the agent has not seen turn on yet is checking, not off', () => {
     expect(status({ agent: off('cloud-off') }).checking).toBe(true);
     expect(status({ agent: off('offline-only') }).checking).toBe(true);
+  });
+  it('a project policy the agent has not seen change yet is checking, not off', () => {
+    expect(status({ agent: off('forbidden') }).checking).toBe(true);
+    expect(status({ agent: off('forbidden'), projectPolicy: 'forbid' })).toMatchObject({
+      state: 'project-off',
+      checking: false,
+    });
   });
   it('a block that is known now does not wait for the agent', () => {
     expect(

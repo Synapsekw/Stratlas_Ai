@@ -21,7 +21,7 @@ export function SidebarStatus() {
     <div className="sb-status">
       <div className="sb-status-row">
         <ConnectionStatus store={shell} variant="foot" />
-        <AiStatusChip store={shell} className="foot-cloud" />
+        <AiStatusChip store={shell} className="foot-cloud" announces />
         <ProcessingChip />
       </div>
       {pkg && (

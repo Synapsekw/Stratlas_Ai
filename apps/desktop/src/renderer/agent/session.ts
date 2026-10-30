@@ -12,6 +12,7 @@
 import { AgentSession, defaultToolContext, type RendererToolContext } from '@aio/ai';
 import type { AiTask, AioBridge, WindowKind } from '@aio/schema';
 import { workspace, type Workspace } from '@aio/workspace';
+import { afterCall } from '../bridge';
 import { shell } from '../shell';
 import type { Screen } from '../store';
 import { isDockScreen } from './dockScreens';
@@ -69,6 +70,24 @@ const showsAgent = (screen: Screen) => screen === 'scene' || isDockScreen(screen
 export function startAgentSession(): () => void {
   const s = appAgentSession();
   const disconnect = s.connect();
+  // the route is known from the start, so the AI status does not wait on a panel to ask
+  void s.refresh();
+  // and checked again whenever what decides it changes, wherever that happens: the AI settings
+  // (Settings, the command search, the connection menu) and a key saved or cleared
+  const stopSettings = shell.subscribe((state, prev) => {
+    const a = state.settings;
+    const b = prev.settings;
+    if (
+      a.cloudAi !== b.cloudAi ||
+      a.offlineOnly !== b.offlineOnly ||
+      a.routes !== b.routes ||
+      a.localModel !== b.localModel
+    )
+      void s.refresh();
+  });
+  const stopKeys = afterCall('ai:setKey', () => {
+    void s.refresh();
+  });
   // On Settings, the Globe, the project list and Welcome there is no panel and no Stop: a reply
   // must not run on there, changing the screen under the person with its next step. It ends as
   // it did when leaving Scene took the panel away, also when a step of its own went there
@@ -96,6 +115,8 @@ export function startAgentSession(): () => void {
   globalThis.addEventListener('focus', onFocus);
   return () => {
     globalThis.removeEventListener('focus', onFocus);
+    stopSettings();
+    stopKeys();
     stopScreen();
     stopProject();
     disconnect();
