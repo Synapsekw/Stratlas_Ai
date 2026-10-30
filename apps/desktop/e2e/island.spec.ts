@@ -128,12 +128,17 @@ test.describe('the island on a project with two dates', () => {
       const bar = await openIslandTools(win);
       await islandSettled(win);
       // hovering shows the group's row, and the tab stays under the pointer (the first row
-      // sets the island's width, whatever the row)
+      // sets the island's width, whatever the row). On a narrow stage the previewed tab shows
+      // its name (W1b), so it may grow, but from where it stood: the pointer stays on it.
       const before = await tab(bar, name).boundingBox();
       await tab(bar, name).hover();
       await expect(bar.getByRole('tabpanel')).toHaveAccessibleName(name);
       await islandSettled(win);
-      expect(await tab(bar, name).boundingBox()).toEqual(before);
+      const after = await tab(bar, name).boundingBox();
+      if (!before || !after) throw new Error(`no box for the ${name} tab`);
+      expect(after.x).toBeCloseTo(before.x, 0);
+      expect(after.y).toBeCloseTo(before.y, 0);
+      expect(after.width).toBeGreaterThanOrEqual(before.width - 0.5);
       await tab(bar, name).click();
       // the group's workbench opens in the right sidebar (D4, D12), and the island folds back
       await expect(bar).not.toHaveAttribute('data-state', 'tools');
@@ -158,6 +163,29 @@ test.describe('the island on a project with two dates', () => {
     await win.keyboard.press('Space');
     await expect(bar).not.toHaveAttribute('data-state', 'tools');
     await expect(win.locator('#wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('previewing Annotate names Annotate, and the picked tab keeps its name', async ({
+    twoDateProject,
+    win,
+  }) => {
+    await openCard(win, 'E2E two dates', twoDateProject.id);
+    const bar = await openIslandTools(win);
+    await islandSettled(win);
+    const tab = (name: string) => bar.getByRole('tab', { name, exact: true });
+    const picked = await bar.getByRole('tab', { selected: true }).innerText();
+    // a name on show is wider than the 1 px a hidden one keeps
+    const nameWidth = async (name: string) =>
+      (await tab(name).locator('.isl-gl').boundingBox())?.width ?? 0;
+    await tab('Annotate').hover();
+    await expect(bar.getByRole('tabpanel')).toHaveAccessibleName('Annotate');
+    await expect.poll(() => nameWidth('Annotate')).toBeGreaterThan(20);
+    expect(await nameWidth(picked)).toBeGreaterThan(20);
+    // the preview stays put while the pointer rests (no hover loop between the tabs)
+    await islandSettled(win);
+    await win.waitForTimeout(300);
+    await expect(bar.getByRole('tabpanel')).toHaveAccessibleName('Annotate');
+    await closeIslandTools(win);
   });
 
   test('the calendar lines up the dates beside Compare the two dates', async ({

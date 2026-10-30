@@ -11,6 +11,7 @@
   border-radius: 3px;
   font-size: var(--t-12);
   color: var(--fg-2);
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: 6px;

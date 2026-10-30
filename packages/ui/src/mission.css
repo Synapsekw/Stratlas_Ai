@@ -342,6 +342,11 @@ select.input option {
   opacity: 1;
   transform: translate(-50%, 0);
 }
+/* a click focuses the button and leaves the pointer over it: the tip stays shut until the
+   focus moves on (keyboard focus still shows it) */
+.tool:focus:not(:focus-visible) .tip {
+  opacity: 0;
+}
 .tool.tip-up .tip {
   top: auto;
   bottom: calc(100% + 8px);

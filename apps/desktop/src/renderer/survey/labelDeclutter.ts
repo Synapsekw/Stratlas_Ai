@@ -78,3 +78,24 @@ export function declutter(
   }
   return out;
 }
+
+/** A point and a size on screen, in the labels' layer coordinates. */
+export interface Point {
+  x: number;
+  y: number;
+}
+export interface Size {
+  w: number;
+  h: number;
+}
+
+/**
+ * Keeps a label chip inside its view (the stage, or a pane in Split): a chip whose top left `at`
+ * would run past an edge slides back in, and `edge` says it moved, so it no longer sits where its
+ * anchor puts it. A chip larger than the view keeps the view's top left corner.
+ */
+export function clampLabel(rect: Rect, at: Point, size: Size): { at: Point; edge: boolean } {
+  const x = Math.max(rect.x, Math.min(at.x, rect.x + rect.w - size.w));
+  const y = Math.max(rect.y, Math.min(at.y, rect.y + rect.h - size.h));
+  return { at: { x, y }, edge: x !== at.x || y !== at.y };
+}

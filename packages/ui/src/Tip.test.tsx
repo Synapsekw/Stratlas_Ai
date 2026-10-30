@@ -167,6 +167,33 @@ describe('Tip', () => {
     expect(tip()).not.toBeNull();
   });
 
+  it('does not open when the click and its focus land in one task', () => {
+    render(save());
+    act(() => {
+      btn().dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
+      btn().focus();
+    });
+    fire(btn(), new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }));
+    wait(500);
+    expect(tip()).toBeNull();
+  });
+
+  it('hides on pointer down and on pointer leave', () => {
+    render(save());
+    fire(btn(), new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }));
+    wait(400);
+    expect(tip()).not.toBeNull();
+    fire(btn(), new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
+    expect(tip()).toBeNull();
+    fire(btn(), new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }));
+    fire(btn(), new PointerEvent('pointerout', { bubbles: true, pointerType: 'mouse' }));
+    fire(btn(), new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }));
+    wait(400);
+    expect(tip()).not.toBeNull();
+    fire(btn(), new PointerEvent('pointerout', { bubbles: true, pointerType: 'mouse' }));
+    expect(tip()).toBeNull();
+  });
+
   it('still hands the element to the caller ref', () => {
     const ref = createRef<HTMLButtonElement>();
     render(

@@ -6,7 +6,7 @@
  * and Down (and Tab) between the rows, the line's among them (`moveFocus`).
  */
 import { Button, focusables, Icon, Tip, useT, type ShortcutId } from '@aio/ui';
-import { useId, type Dispatch, type KeyboardEvent, type ReactNode } from 'react';
+import { useId, useRef, type Dispatch, type KeyboardEvent, type ReactNode } from 'react';
 import { shell } from '../../shell';
 import type { StageMode } from '../../store';
 import { GROUP_ICON, GROUP_NAME, MODES, quickRow, type GroupCtx } from './groups';
@@ -116,6 +116,10 @@ export function IslandTools({
   const t = useT();
   const id = useId();
   const shown = preview && groups.includes(preview) ? preview : group;
+  // Where the pointer last moved over the tabs. Previewing a tab can widen it (its name shows on
+  // a narrow stage), which slides the tabs under a pointer that has not moved; the browser then
+  // reports a move at the same spot, and acting on it would bounce the preview between tabs.
+  const last = useRef<{ x: number; y: number } | null>(null);
   return (
     <div className="isl-tools">
       <div className="isl-tabs" data-isl-row="">
@@ -129,8 +133,11 @@ export function IslandTools({
               aria-selected={g === group}
               aria-controls={`${id}-panel`}
               className={g === shown ? 'isl-shown' : undefined}
-              onPointerOver={() => {
-                if (g !== shown) dispatch({ type: 'hoverGroup', group: g });
+              onPointerMove={(event) => {
+                const at = { x: event.clientX, y: event.clientY };
+                const still = last.current?.x === at.x && last.current.y === at.y;
+                last.current = at;
+                if (!still && g !== shown) dispatch({ type: 'hoverGroup', group: g });
               }}
               onFocus={() => {
                 if (g !== shown) dispatch({ type: 'hoverGroup', group: g });

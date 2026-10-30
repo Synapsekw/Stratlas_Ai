@@ -78,7 +78,7 @@ import { fallbackZ, type MapHeights } from './mapHeights';
 import { mapPickLayer, type VertexPick } from './measureSource';
 import { pileLookOwns, pileLookState } from './pile/pileLookState';
 import { materialOf, materialsDraft } from './volumes/materialsDraft';
-import { declutter, type LabelBox } from './labelDeclutter';
+import { clampLabel, declutter, type LabelBox } from './labelDeclutter';
 
 const DRAFT_COLOR = '#4cc9f0';
 const SNAP_COLOR = '#ff5ccd';
@@ -797,7 +797,7 @@ export function attach3d(
           },
         ];
       }),
-      `${String(r.width)}x${String(r.height)}`,
+      { x: r.left - hr.left, y: r.top - hr.top, w: r.width, h: r.height },
       pointer,
     );
   };
@@ -1021,17 +1021,27 @@ interface LabelItem {
   at: { x: number; y: number } | null;
 }
 
-/** A label chip's top margin in measure.css (`.sv-label`): the chip sits above its anchor. */
+/** A label chip's margins in measure.css (`.sv-label`): above and right of its anchor. */
 const LABEL_TOP = -24;
+const LABEL_LEFT = 6;
+
+/** The view's box in the labels' layer: the 3D canvas or the map, a pane of its own in Split. */
+interface ViewBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 /**
  * The measurement labels over a view (`.sv-label` chips in an `.sv-labels` layer of `host`), the
  * same in the 3D view and on the map: close ones kept apart (`declutter`), a hidden one shown while
- * the pointer rests on its place. `view` names the view's size: a label is measured again only
- * when its text, font size or the view changes.
+ * the pointer rests on its place, and each kept inside `view` (`clampLabel`), so the right panel
+ * or the next pane never cuts one. A label is measured again only when its text, font size or the
+ * view's size changes.
  */
 function labelChips(host: HTMLElement): {
-  place(items: readonly LabelItem[], view: string, pointer: { x: number; y: number } | null): void;
+  place(items: readonly LabelItem[], view: ViewBox, pointer: { x: number; y: number } | null): void;
   remove(): void;
 } {
   const layer = document.createElement('div');
@@ -1059,7 +1069,7 @@ function labelChips(host: HTMLElement): {
           return;
         }
         el.style.display = '';
-        const key = `${view}|${String(it.size)}|${it.text}`;
+        const key = `${String(view.w)}x${String(view.h)}|${String(it.size)}|${it.text}`;
         let size = sizes.get(el);
         if (size?.key !== key) {
           const b = el.getBoundingClientRect();
@@ -1083,9 +1093,14 @@ function labelChips(host: HTMLElement): {
       for (const b of boxes) {
         const at = placed.get(b.id);
         b.el.style.visibility = at?.hidden === true ? 'hidden' : '';
-        // the transform stays the anchor; a nudge moves the chip by its top margin
+        // the transform stays the anchor; a nudge, or the view's edge, moves the chip by its margins
         b.el.style.transform = `translate(${String(b.x)}px, ${String(b.y)}px)`;
-        b.el.style.marginTop = at && at.dy !== 0 ? `${String(LABEL_TOP + at.dy)}px` : '';
+        const want = { x: b.x + LABEL_LEFT, y: b.y + LABEL_TOP + (at?.dy ?? 0) };
+        const fit = clampLabel(view, want, b);
+        const top = fit.at.y - b.y;
+        const left = fit.at.x - b.x;
+        b.el.style.marginTop = top !== LABEL_TOP ? `${String(top)}px` : '';
+        b.el.style.marginLeft = left !== LABEL_LEFT ? `${String(left)}px` : '';
       }
     },
     remove() {
@@ -1203,7 +1218,7 @@ export function attachMap(
           at: inView ? { x: Math.round(p.x), y: Math.round(p.y) } : null,
         };
       }),
-      `${String(w)}x${String(h)}`,
+      { x: 0, y: 0, w, h },
       pointer,
     );
   };

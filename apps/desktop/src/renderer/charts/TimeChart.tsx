@@ -17,6 +17,7 @@ import type { SurveyPrecision, SurveyUnits } from '@aio/schema';
 import { niceStep, type StackRow, type TimeRow } from '@aio/survey';
 import { Tip, useT } from '@aio/ui';
 import { shortDates, thinLabels } from './dateTicks';
+import { READOUT_W, readoutFlips } from './readoutSide';
 import {
   useId,
   useLayoutEffect,
@@ -412,7 +413,15 @@ export function TimeChart(p: TimeChartProps): ReactElement {
   const liveRow = live?.stack;
   const readoutId = `${uid}-readout`;
   const cx = live ? x(live.t) : 0;
-  const flip = cx > left + plotW / 2;
+  const flip = readoutFlips({
+    x: cx,
+    lastX: x(t1),
+    left,
+    plotW,
+    w,
+    gap: READOUT_GAP,
+    cardW: READOUT_W,
+  });
 
   const columnsOf = cols.map((c) => ({ c, cx: x(c.t) }));
 

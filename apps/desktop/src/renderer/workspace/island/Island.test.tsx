@@ -96,6 +96,13 @@ const button = (name: string) =>
   host.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`);
 const tab = (name: string) =>
   [...host.querySelectorAll<HTMLElement>('[role="tab"]')].find((t) => t.textContent === name);
+/** The pointer moves onto a group tab (at `x`, or a fresh spot each time). */
+let tabX = 1000;
+const hoverTab = (name: string, x = ++tabX) => {
+  tab(name)?.dispatchEvent(
+    new MouseEvent('pointermove', { bubbles: true, clientX: x, clientY: 8 }),
+  );
+};
 const notch = () => host.querySelector<HTMLElement>('.island');
 /** The pointer onto the notch (`buttons`: held down, as in a drag) or off it. */
 let pointerX = 0;
@@ -343,11 +350,28 @@ describe('Island', () => {
     await render();
     openTools();
     act(() => {
-      tab('Display')?.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+      hoverTab('Display');
     });
     expect(host.querySelector('[role="tabpanel"]')?.getAttribute('aria-label')).toBe('Display');
     expect(tab('View')?.getAttribute('aria-selected')).toBe('true');
     expect(tab('Display')?.getAttribute('aria-selected')).toBe('false');
+  });
+
+  it('ignores a pointer move without movement (a tab shifted under a still pointer)', async () => {
+    await render();
+    openTools();
+    act(() => {
+      hoverTab('Display', 40);
+    });
+    // the tabs reflow, Measure now lies under the pointer that has not moved
+    act(() => {
+      hoverTab('Measure', 40);
+    });
+    expect(host.querySelector('[role="tabpanel"]')?.getAttribute('aria-label')).toBe('Display');
+    act(() => {
+      hoverTab('Measure', 41);
+    });
+    expect(host.querySelector('[role="tabpanel"]')?.getAttribute('aria-label')).toBe('Measure');
   });
 
   it('moves between the tiles with the arrow keys', async () => {
@@ -643,7 +667,7 @@ describe('Island: the groups open their workbench', () => {
     await render();
     openTools();
     act(() => {
-      tab('Measure')?.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+      hoverTab('Measure');
     });
     act(() => button('Measure: All tools')?.click());
     expect(front()).toBe('measure');
@@ -726,7 +750,7 @@ describe('Island: the groups open their workbench', () => {
     await render();
     openTools();
     act(() => {
-      tab('Display')?.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+      hoverTab('Display');
     });
     act(() => button('Display: Layers')?.click());
     expect(front()).toBe('display');

@@ -66,6 +66,7 @@ import {
   yTicks,
   type StripMode,
 } from './stripModel';
+import { READOUT_W, readoutFlips } from '../../charts/readoutSide';
 import '../../charts/charts.css';
 import './datesStrip.css';
 
@@ -523,7 +524,16 @@ export function DatesStripView(p: DatesStripViewProps): ReactElement {
       : followPlayer && passedDay
         ? X(passedDay.t)
         : (playheadX ?? 0);
-  const roFlip = roX > left + plotW / 2;
+  const newest = days[days.length - 1];
+  const roFlip = readoutFlips({
+    x: roX,
+    lastX: newest ? X(newest.t) : roX,
+    left,
+    plotW,
+    w,
+    gap: READOUT_GAP,
+    cardW: READOUT_W,
+  });
   const deltaText = (v: number, pct: number | null) => {
     const pctText = pct === null ? '' : `${signed(num(Math.abs(pct), 1), pct)} %`;
     return t('strip.readout.delta', { delta: quantText(v, true), percent: pctText });

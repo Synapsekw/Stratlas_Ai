@@ -572,12 +572,13 @@
   white-space: nowrap;
 }
 
-/* narrow stages: the group tabs drop their names, the shown one keeps it (D6); the view switch
-   its names. (The widths are the wrap's room, the same at rest and open so the line never
-   changes as the notch opens: the stage less 104 px.) */
+/* narrow stages: the group tabs drop their names, the picked and shown ones keep them (D6);
+   the view switch its names. (The widths are the wrap's room, the same at rest and open so
+   the line never changes as the notch opens: the stage less 104 px.) */
 @container (max-width: 656px) {
-  /* out of sight, still the tab's name */
-  .seg.isl-groups button:not([aria-selected='true']) .isl-gl {
+  /* out of sight, still the tab's name; the picked tab and the previewed one keep theirs, so
+     the row under the line is always named */
+  .seg.isl-groups button:not([aria-selected='true']):not(.isl-shown) .isl-gl {
     position: absolute;
     inline-size: 1px;
     block-size: 1px;

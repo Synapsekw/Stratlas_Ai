@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { declutter, LABEL_GAP, type LabelBox } from './labelDeclutter';
+import { clampLabel, declutter, LABEL_GAP, type LabelBox } from './labelDeclutter';
 
 const box = (id: string, x: number, y: number, more: Partial<LabelBox> = {}): LabelBox => ({
   id,
@@ -97,6 +97,37 @@ describe('declutter', () => {
       expect(out.get('picked')?.hidden).toBe(false);
       expect(out.get('under')?.hidden).toBe(false);
       for (const id of ['line', 'area', 'other', 'other2']) expect(out.get(id)?.hidden).toBe(false);
+    });
+  });
+});
+
+describe('clampLabel', () => {
+  const view = { x: 0, y: 0, w: 400, h: 300 };
+  const size = { w: 80, h: 20 };
+
+  it('inside stays, outside snaps to the edge and flags it', () => {
+    expect(clampLabel(view, { x: 100, y: 50 }, size)).toEqual({
+      at: { x: 100, y: 50 },
+      edge: false,
+    });
+    // past the right edge (the right panel, the next pane): the chip slides back in
+    expect(clampLabel(view, { x: 360, y: 50 }, size)).toEqual({
+      at: { x: 320, y: 50 },
+      edge: true,
+    });
+    // above the top and left of the left edge
+    expect(clampLabel(view, { x: -10, y: -8 }, size)).toEqual({ at: { x: 0, y: 0 }, edge: true });
+    // below the bottom
+    expect(clampLabel(view, { x: 10, y: 295 }, size)).toEqual({
+      at: { x: 10, y: 280 },
+      edge: true,
+    });
+  });
+
+  it('keeps the start edge when the chip is wider than the view', () => {
+    expect(clampLabel({ x: 10, y: 0, w: 50, h: 300 }, { x: 30, y: 5 }, size).at).toEqual({
+      x: 10,
+      y: 5,
     });
   });
 });
