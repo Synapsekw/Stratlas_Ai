@@ -57,7 +57,9 @@ touched here.
 4. Docs: `tools/detectors/README.md`, a pre-release line in `tools/analytics-pack/README.md`, session note.
 
 No e2e specs are added or changed (nothing user-facing). No contract change (dev tool only). Packages
-touched: none of the workspace packages; `tools/detectors`, `tools/analytics-pack/README.md`, docs.
+touched: `@aio/schema` only to list `aio.detector-bench-ref/1` in `NOT_FILE_SCHEMAS` (a tool-only
+format the app never reads; the registry test requires every `aio.*` id to be listed); otherwise
+`tools/detectors`, `tools/analytics-pack/README.md`, docs.
 
 ## Execution DAG
 

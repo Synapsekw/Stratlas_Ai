@@ -713,7 +713,8 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
 /**
  * Ids that look like file schemas but are not files: wire protocols (`aio.pipelines/1`,
  * `aio.sync/1`), signing domains (`aio.cert/1`, `aio.request/1`) and tool-only formats (the
- * demo's ground truth, the calibration patch). The registry test fails on any other unlisted id.
+ * demo's ground truth, the calibration patch, the detector bench's stored references in
+ * `tools/detectors/references/`). The registry test fails on any other unlisted id.
  */
 export const NOT_FILE_SCHEMAS: readonly string[] = [
   'aio.pipelines/1',
@@ -723,6 +724,7 @@ export const NOT_FILE_SCHEMAS: readonly string[] = [
   'aio.invite/1',
   'aio.truth/1',
   'aio.video-calibration-patch/1',
+  'aio.detector-bench-ref/1',
 ];
 
 /** `aio.<family>/<version>` split, or null when the string is not a schema id. */
