@@ -191,6 +191,8 @@ class DetectVlm:
             for problem in problems:
                 ctx.log(problem, "warn")
             photos: list[dict[str, Any]] = []
+            # the photo metadata is read only when a detector of the run can use a GSD
+            sized = any(e["detector"].get("objectSizeM") for e in detectors)
             for k, (photo_id, path) in enumerate(found):
                 ctx.check()
                 size = _image_size(path)
@@ -203,7 +205,7 @@ class DetectVlm:
                         "path": str(path),
                         "width": size[0],
                         "height": size[1],
-                        "gsdM": _gsd(path, size[0], size[1]),
+                        "gsdM": _gsd(path, size[0], size[1]) if sized else None,
                     }
                 )
                 ctx.progress((k + 1) / max(1, len(found)))
@@ -254,6 +256,7 @@ class DetectVlm:
                                 im,
                                 _fit_tiles(det, im.width, im.height, photo.get("gsdM")),
                                 frame=frame,
+                                start_tile=pi,
                             )
                     except VlmUnavailable as e:
                         raise JobError(STOPPED) from e
@@ -294,7 +297,7 @@ class DetectVlm:
             if capped:
                 ctx.log(
                     f"{capped} photo results had more than {MAX_CANDIDATES} candidates; "
-                    f"kept the first {MAX_CANDIDATES} of each.",
+                    f"kept {MAX_CANDIDATES} of each (the first answers of each tile).",
                     "warn",
                 )
             ctx.progress(1.0)
@@ -476,7 +479,7 @@ def _gsd(path: Path, width: int, height: int) -> float | None:
 
     try:
         return gsd_from_meta(read_meta(path), width, height)
-    except (OSError, ValueError, TypeError, ZeroDivisionError):
+    except Exception:  # unreadable metadata only means no GSD: the detector's own tiles apply
         return None
 
 

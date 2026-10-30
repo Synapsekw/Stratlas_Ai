@@ -38,6 +38,7 @@ from aio_pipelines.detect.engine import (
     box_frame,
     run_detector,
 )
+from aio_pipelines.detect.pipeline import _fit_tiles, _gsd
 from aio_pipelines.inspection.frame import asset_path, photo_layers, read_manifest
 
 Box = tuple[float, float, float, float]
@@ -257,11 +258,14 @@ def run(args: argparse.Namespace) -> int:
     frame = box_frame(model) if model else "pixels"
     entries: list[dict[str, Any]] = []
     failed = 0
-    for pid in ids:
+    for k, pid in enumerate(ids):
         try:
             with Image.open(photos[pid]) as im:
                 im.load()
-                result = run_detector(client, im, detector, frame=frame)
+                # the tile count the app's job would use for this photo (detect.vlm ``_fit_tiles``)
+                gsd = _gsd(photos[pid], im.width, im.height) if detector.get("objectSizeM") else None
+                fitted = _fit_tiles(detector, im.width, im.height, gsd)
+                result = run_detector(client, im, fitted, frame=frame, start_tile=k)
         except VlmUnavailable as e:
             print(f"The model server cannot be reached: {e}", file=sys.stderr)
             return 2

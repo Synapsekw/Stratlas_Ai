@@ -319,9 +319,9 @@ def test_model_reaches_run_detector(project, monkeypatch):
     seen = []
     real = bench.run_detector
 
-    def spy(client, image, det, frame="pixels"):
+    def spy(client, image, det, frame="pixels", start_tile=0):
         seen.append(frame)
-        return real(client, image, det, frame=frame)
+        return real(client, image, det, frame=frame, start_tile=start_tile)
 
     monkeypatch.setattr(bench, "run_detector", spy)
     with FakeVlm(_handler) as srv:

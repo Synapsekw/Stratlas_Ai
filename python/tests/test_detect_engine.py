@@ -76,6 +76,7 @@ def test_tile_grid_n1_is_whole_image():
 
 def test_prompts_follow_the_template():
     p = detect_prompt(DET)
+    assert "at most 30" in p
     assert f"Report at most {MAX_CANDIDATES} areas, the clearest first." in p
     assert "Find: orange-brown rust on steel\nDo NOT report: intact painted bands\n" in p
     assert '"label": "corrosion"' in p
@@ -161,6 +162,9 @@ def test_cap_candidates_round_robin_across_tiles():
     assert [c.note for c in kept[:4]] == ["0-0", "1-0", "0-1", "1-1"]
     assert {c.note for c in kept} == {f"{t}-{r}" for t in range(2) for r in range(15)}
     assert cap_candidates(ranked[:5], cap=30) == ([c for _, _, c in ranked[:5]], False)
+    # the round starts at another tile for another photo
+    turned, _ = cap_candidates(ranked, cap=30, start=1)
+    assert [c.note for c in turned[:4]] == ["1-0", "0-0", "1-1", "0-1"]
 
 
 def test_score_case_variants():
@@ -448,10 +452,54 @@ def test_choose_tiles_from_object_size_and_gsd():
     assert choose_tiles(5472, 3648, TILES, 0.01, 0.2) == 4
 
 
+def test_choose_tiles_stops_at_native_resolution():
+    # 2688 x 2016: n = 2 sends tiles at 0.9 of their pixels, n = 3 at 1.3; a tiny object stops at 3
+    assert choose_tiles(2688, 2016, TILES, 0.01, 0.05) == 3
+    # a photo no bigger than the send size is never tiled for size
+    assert choose_tiles(1344, 1008, TILES, 0.01, 0.05) == 1
+
+
 def test_gsd_from_meta_near_nadir_only():
     meta = {"focal35": 24.0, "RelativeAltitude": 60.0, "GimbalPitchDegree": -90.0}
-    assert gsd_from_meta(meta, 5472, 3648) == pytest.approx(60 * 43.27 / (24 * 6576.4), rel=1e-3)
+    assert gsd_from_meta(meta, 5472, 3648) == pytest.approx(60 * 36 / (24 * 5472), rel=1e-3)
     assert gsd_from_meta({**meta, "GimbalPitchDegree": -30.0}, 5472, 3648) is None
     assert gsd_from_meta({**meta, "RelativeAltitude": -2.0}, 5472, 3648) is None
     for key in meta:
         assert gsd_from_meta({k: v for k, v in meta.items() if k != key}, 5472, 3648) is None
+
+
+def test_a_piece_cut_at_an_inner_tile_edge_does_not_beat_the_whole_object():
+    # 2560 x 1920 in 2 x 2 tiles of 1422 x 1066 (left tiles 0..1422, right tiles from 1138). The
+    # object spans x 800..1200: whole in the left tile, cut at x 1138 in the right one.
+    sx, sy = 1344 / 1422, 1008 / 1066
+    whole = [800 * sx, 100 * sy, 1200 * sx, 300 * sy]
+    piece = [0, 100 * sy, (1200 - 1138) * sx, 300 * sy]
+    replies = iter([boxes_json(whole), boxes_json(piece), "[]", "[]"])
+    checks = []
+
+    def handler(req):
+        if req.get("logprobs"):
+            checks.append(1)  # the piece, had it been checked, would score higher
+            return logprob_response([("Yes", -1.0), ("No", -0.5)] if len(checks) == 1 else YES)
+        return text_response(next(replies))
+
+    img = Image.new("RGB", (2560, 1920), (120, 120, 120))
+    with FakeVlm(handler) as fake:
+        res = run_detector(VlmClient(fake.url), img, DET)
+    assert len(checks) == 1
+    assert [c.box for c in res.candidates] == [pytest.approx((800, 100, 1200, 300), abs=1)]
+
+
+def test_a_box_at_the_photo_edge_is_not_cut():
+    sx, sy = 1344 / 1422, 1008 / 1066
+    small, large = [0, 100 * sy, 60 * sx, 300 * sy], [0, 50 * sy, 400 * sx, 400 * sy]
+    replies = iter([boxes_json(small, large), "[]", "[]", "[]"])
+
+    def handler(req):
+        return logprob_response(YES) if req.get("logprobs") else text_response(next(replies))
+
+    img = Image.new("RGB", (2560, 1920), (120, 120, 120))
+    with FakeVlm(handler) as fake:
+        res = run_detector(VlmClient(fake.url), img, DET)
+    # both checked, equal scores: the smaller wins (the left edge is the photo's own edge)
+    assert [c.box for c in res.candidates] == [pytest.approx((0, 100, 60, 300), abs=1)]

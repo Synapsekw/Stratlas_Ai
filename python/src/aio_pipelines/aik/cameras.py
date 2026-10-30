@@ -50,6 +50,8 @@ def _rat(v):
 
 
 MAX_ALTITUDE_M = 20000.0
+#: The width of a 35 mm film frame: ``FocalLengthIn35mmFilm`` maps it to the photo's long side.
+FULL_FRAME_WIDTH_MM = 36.0
 
 
 def _gps_altitude(v) -> float | None:
@@ -173,7 +175,7 @@ def pose(meta, origin, sensor_w=None, asset_height=None, prefer="absolute", take
     y, height_source = camera_height(meta, alt0, prefer, takeoff_height)
     W, H = meta["width"], meta["height"]
     if meta.get("focal35"):
-        hf = 2 * math.degrees(math.atan(36 / (2 * meta["focal35"])))
+        hf = 2 * math.degrees(math.atan(FULL_FRAME_WIDTH_MM / (2 * meta["focal35"])))
     elif meta.get("focal") and sensor_w:
         hf = 2 * math.degrees(math.atan(sensor_w / (2 * meta["focal"])))
     else:

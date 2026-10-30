@@ -31,6 +31,8 @@ from typing import TYPE_CHECKING, Literal
 
 from PIL import Image
 
+from ..aik.cameras import FULL_FRAME_WIDTH_MM
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -42,7 +44,11 @@ DEDUPE_IOU = 0.5  # the same, for overlap copies before scoring
 #: Candidates per tile reply and per photo: the custom-analytics cap (``MAX_ASK_ITEMS`` in
 #: packages/ai/src/ask.ts). Each candidate costs one yes/no call.
 MAX_CANDIDATES = 30
-CAPPED_WARNING = f"more than {MAX_CANDIDATES} candidates; kept the first {MAX_CANDIDATES}"
+CAPPED_WARNING = (
+    f"more than {MAX_CANDIDATES} candidates; kept {MAX_CANDIDATES} (the first answers of each tile)"
+)
+#: A box within this share of the sent frame of a tile edge that is not a photo edge is cut there.
+EDGE_SHARE = 0.01
 #: The smallest an object should appear in the sent image, in sent pixels, when the tile count
 #: comes from the ground sample distance.
 MIN_OBJECT_SENT_PX = 64
@@ -50,7 +56,6 @@ MAX_TILES = 4
 #: The gimbal must point at least this far down (degrees) for the height above take-off to stand
 #: in for the distance to the ground; a more oblique photo has no usable GSD.
 NADIR_PITCH_DEG = -60.0
-FULL_FRAME_DIAGONAL_MM = 43.27
 CROP_PAD = 0.15
 CROP_MAX = 896
 JPEG_QUALITY = 92
@@ -85,6 +90,7 @@ class Candidate:
     box: Box
     note: str
     score: float | None = None  # None = unscored
+    cut: bool = False  # touches an inner tile edge: the object may go on in the next tile
 
 
 @dataclass
@@ -303,11 +309,24 @@ def _inside_share(a: Sequence[float], b: Sequence[float]) -> float:
     return _inter(a, b) / max(1e-9, min(_area(a), _area(b)))
 
 
-def dedupe(cands: list[Candidate], iou: float = DEDUPE_IOU) -> list[Candidate]:
-    """Drop copies before scoring: a box whose IoU with an earlier kept one is at least ``iou``.
-    The list order is the preference (the caller puts the model's first answers first)."""
+def dedupe(cands: list[Candidate], iou: float = DEDUPE_IOU, share: float = MERGE_SHARE) -> list[Candidate]:
+    """Drop copies before scoring. First a piece cut off at an inner tile edge (``cut``) that lies
+    mostly (``share``) inside a larger box: the larger one sees the whole object, and the piece must
+    not beat it on score. Then a box whose IoU with an earlier kept one is at least ``iou``. The
+    list order is the preference (the caller puts the model's first answers first)."""
+    whole = [
+        c
+        for c in cands
+        if not (
+            c.cut
+            and any(
+                d is not c and _area(d.box) > _area(c.box) and _inside_share(c.box, d.box) >= share
+                for d in cands
+            )
+        )
+    ]
     kept: list[Candidate] = []
-    for c in cands:
+    for c in whole:
         if all(_iou(c.box, k.box) < iou for k in kept):
             kept.append(c)
     return kept
@@ -327,12 +346,14 @@ def suppress(cands: list[Candidate], iou: float = NMS_IOU, share: float = MERGE_
 
 
 def cap_candidates(
-    ranked: list[tuple[int, int, Candidate]], cap: int = MAX_CANDIDATES
+    ranked: list[tuple[int, int, Candidate]], cap: int = MAX_CANDIDATES, start: int = 0
 ) -> tuple[list[Candidate], bool]:
     """At most ``cap`` candidates from (rank in its tile reply, tile index, candidate) entries,
     taken round robin across the tiles (every tile's first answer, then every second one...), and
-    whether any were cut. Unscored yet: the cut must come before the yes/no calls it saves."""
-    order = sorted(ranked, key=lambda r: (r[0], r[1]))
+    whether any were cut. Unscored yet: the cut must come before the yes/no calls it saves. The
+    round starts at tile ``start`` (the caller turns it per photo), so no tile always goes first."""
+    tiles = max((t for _, t, _ in ranked), default=0) + 1
+    order = sorted(ranked, key=lambda r: (r[0], (r[1] - start) % tiles))
     return [c for _, _, c in order[:cap]], len(order) > cap
 
 
@@ -348,7 +369,9 @@ def gsd_from_meta(meta: dict, width: int, height: int) -> float | None:
         return None
     if alt <= 0 or f35 <= 0 or pitch > NADIR_PITCH_DEG:
         return None
-    return alt * FULL_FRAME_DIAGONAL_MM / (f35 * math.hypot(width, height))
+    # The same 35 mm convention as the camera poses (``aik.cameras.pose``): the 36 mm frame width
+    # maps to the photo's long side.
+    return alt * FULL_FRAME_WIDTH_MM / (f35 * max(width, height))
 
 
 def choose_tiles(
@@ -360,15 +383,17 @@ def choose_tiles(
     min_px: float = MIN_OBJECT_SENT_PX,
 ) -> int:
     """The tile count for a photo: the smallest ``n`` from 1 to ``MAX_TILES`` at which an object of
-    ``object_size_m`` spans at least ``min_px`` pixels of the sent image (``MAX_TILES`` if none
-    does). Without a GSD or an object size it is the detector's own ``tiles["n"]``."""
+    ``object_size_m`` spans at least ``min_px`` pixels of the sent image. Tiles are never enlarged
+    past the photo's own pixels: the first ``n`` that sends a tile at native resolution or more is
+    the last tried, even when the object is still under ``min_px`` (``MAX_TILES`` if no ``n``
+    reaches it). Without a GSD or an object size it is the detector's own ``tiles["n"]``."""
     if not gsd_m or not object_size_m or gsd_m <= 0 or object_size_m <= 0:
         return int(tiles["n"])
     object_px = object_size_m / gsd_m
     for n in range(1, MAX_TILES + 1):
         span = n - (n - 1) * float(tiles["overlap"])
         scale = min(tiles["sendW"] * span / width, tiles["sendH"] * span / height)
-        if object_px * scale >= min_px:
+        if object_px * scale >= min_px or scale >= 1.0:
             return n
     return MAX_TILES
 
@@ -426,9 +451,12 @@ def _check(client: VlmClient, src: Image.Image, box: Box, prompt: str) -> float 
     return score_from_top(top) if top else None
 
 
-def run_detector(client: VlmClient, image: Image.Image, det: dict, frame: BoxFrame = "pixels") -> PhotoResult:
+def run_detector(
+    client: VlmClient, image: Image.Image, det: dict, frame: BoxFrame = "pixels", start_tile: int = 0
+) -> PhotoResult:
     """Run one detector over one photo. Raises VlmUnavailable if the server cannot be reached.
-    ``frame`` is the model's box frame (see ``box_frame``): ``rel1000`` boxes are scaled to the send size."""
+    ``frame`` is the model's box frame (see ``box_frame``): ``rel1000`` boxes are scaled to the send size.
+    ``start_tile`` is the tile the candidate cap's round robin starts at (the caller turns it per photo)."""
     tiles_cfg = {**TILES_DEFAULT, **(det.get("tiles") or {})}
     send_w, send_h = int(tiles_cfg["sendW"]), int(tiles_cfg["sendH"])
     prompt = detect_prompt(det)
@@ -476,7 +504,14 @@ def run_detector(client: VlmClient, image: Image.Image, det: dict, frame: BoxFra
             box = (x + x1 * sx, y + y1 * sy, x + x2 * sx, y + y2 * sy)
             if box[2] - box[0] < MIN_BOX_PX or box[3] - box[1] < MIN_BOX_PX:
                 continue
-            found.append((rank, ti, Candidate(box=box, note=note)))
+            ex, ey = send_w * EDGE_SHARE, send_h * EDGE_SHARE
+            cut = (
+                (x > 0 and x1 <= ex)
+                or (y > 0 and y1 <= ey)
+                or (x + tw < image.width and x2 >= send_w - ex)
+                or (y + th < image.height and y2 >= send_h - ey)
+            )
+            found.append((rank, ti, Candidate(box=box, note=note, cut=cut)))
 
     if fractions:
         warnings.append(FRACTIONS_WARNING)
@@ -484,7 +519,7 @@ def run_detector(client: VlmClient, image: Image.Image, det: dict, frame: BoxFra
         warnings.append(REPAIRED_WARNING)
     found.sort(key=lambda r: (r[0], r[1]))
     kept = {id(c) for c in dedupe([c for _, _, c in found])}
-    cands, photo_capped = cap_candidates([r for r in found if id(r[2]) in kept])
+    cands, photo_capped = cap_candidates([r for r in found if id(r[2]) in kept], start=start_tile)
     capped = capped or photo_capped
     if capped:
         warnings.append(CAPPED_WARNING)

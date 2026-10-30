@@ -491,7 +491,8 @@ def test_tiles_follow_the_object_size_when_the_gsd_is_known(tmp_path, monkeypatc
         with FakeVlm(scoring([0.9])) as vlm:
             run_job(pipeline(), root, params(state_file(root, vlm.url), photos=("p1",), detectors=dets))
             detects[name] = len([r for r in vlm.requests if not r.get("logprobs")])
-    assert detects == {"small": 16, "large": 1}  # 4 x 4 tiles for 20 px objects, whole for 2000 px
+    # 20 px objects: 3 x 3 tiles, the first count at native resolution (never enlarged); 2000 px: whole
+    assert detects == {"small": 9, "large": 1}
 
 
 def test_tiles_stay_as_the_detector_says_without_a_gsd(tmp_path):
@@ -500,3 +501,67 @@ def test_tiles_stay_as_the_detector_says_without_a_gsd(tmp_path):
     with FakeVlm(scoring([0.9])) as vlm:
         run_job(pipeline(), root, params(state_file(root, vlm.url), photos=("p1",), detectors=dets))
         assert len([r for r in vlm.requests if not r.get("logprobs")]) == 4
+
+
+def capping(body):
+    """31 boxes for every detect call: every photo result is capped."""
+    if body.get("logprobs"):
+        return logprob_response([("Yes", -0.01), ("No", -4.5)])
+    return text_response(
+        "[" + ", ".join(f'{{"bbox_2d": [{40 * i}, 10, {40 * i + 30}, 40]}}' for i in range(31)) + "]"
+    )
+
+
+def test_a_resume_counts_capped_results_staged_before(tmp_path):
+    root = make_project(tmp_path / "p")
+    cancel = threading.Event()
+
+    def emit(method, p):
+        if method == "progress" and str(p.get("message", "")).startswith("photo 3 of 3"):
+            cancel.set()
+
+    with FakeVlm(capping) as vlm:
+        sf = state_file(root, vlm.url)
+        with pytest.raises(Cancelled):
+            Job("jr", pipeline(), root, params(sf), emit, cancel).run()
+        result, _ = run_job(pipeline(), root, params(sf), job_id="jr")
+    assert result["outputs"]["detect"]["capped"] == 3
+    assert result["outputs"]["commit"]["capped"] == 3
+
+
+def test_fit_tiles_sends_a_small_photo_whole_even_with_a_gsd():
+    from aio_pipelines.detect.pipeline import _fit_tiles
+
+    det = detector(n=2, objectSizeM=0.05)
+    assert _fit_tiles(det, 1200, 900, 0.01)["tiles"]["n"] == 1
+    assert _fit_tiles(det, 2688, 2016, 0.01)["tiles"]["n"] == 3
+    assert _fit_tiles(det, 2688, 2016, None) is det
+
+
+def test_prepare_survives_unreadable_metadata(tmp_path, monkeypatch):
+    from aio_pipelines.aik import cameras
+
+    calls = []
+
+    def broken(path):
+        calls.append(path)
+        raise RuntimeError("bad XMP")
+
+    monkeypatch.setattr(cameras, "read_meta", broken)
+    root = make_project(tmp_path / "p", sizes=((2688, 2016),))
+    dets = [{"where": "project", "detector": detector(n=2, objectSizeM=0.2), "threshold": 0.8}]
+    with FakeVlm(scoring([0.9])) as vlm:
+        run_job(pipeline(), root, params(state_file(root, vlm.url), photos=("p1",), detectors=dets))
+        assert len([r for r in vlm.requests if not r.get("logprobs")]) == 4  # no GSD: tiles.n
+    assert calls and pass_of(root)["assessed"] == ["p1"]
+
+
+def test_metadata_is_not_read_without_an_object_size(tmp_path, monkeypatch):
+    from aio_pipelines.aik import cameras
+
+    calls = []
+    monkeypatch.setattr(cameras, "read_meta", lambda path: calls.append(path) or {})
+    root = make_project(tmp_path / "p")
+    with FakeVlm(scoring([0.9])) as vlm:
+        run_job(pipeline(), root, params(state_file(root, vlm.url), photos=("p1",)))
+    assert calls == []
