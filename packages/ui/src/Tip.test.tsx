@@ -8,7 +8,25 @@ import { Tip } from './Tip';
 let host: HTMLDivElement;
 let root: Root | null = null;
 let clock = 1_000_000;
+/**
+ * Whether focus counts as keyboard focus (`:focus-visible`), which jsdom never reports: true for
+ * `focus()` as a Tab would give it, false while a test plays a mouse click.
+ */
+let focusVisible = true;
+const matches = Object.getOwnPropertyDescriptor(Element.prototype, 'matches')?.value as (
+  this: Element,
+  selector: string,
+) => boolean;
 beforeEach(() => {
+  focusVisible = true;
+  vi.spyOn(Element.prototype, 'matches').mockImplementation(function (
+    this: Element,
+    selector: string,
+  ) {
+    return selector === ':focus-visible'
+      ? focusVisible && document.activeElement === this
+      : matches.call(this, selector);
+  });
   vi.useFakeTimers();
   clock += 60_000; // the skip window is module state: keep tests apart
   vi.setSystemTime(clock);
@@ -22,6 +40,7 @@ afterEach(() => {
   root = null;
   host.remove();
   document.documentElement.removeAttribute('data-theme');
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -156,12 +175,14 @@ describe('Tip', () => {
 
   it('does not open after a mouse click focuses the child, but does for Tab focus', () => {
     render(save());
+    focusVisible = false;
     fire(btn(), new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
     focus();
     fire(btn(), new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }));
     wait(500);
     expect(tip()).toBeNull();
     blur();
+    focusVisible = true;
     focus();
     wait(400);
     expect(tip()).not.toBeNull();
@@ -169,6 +190,7 @@ describe('Tip', () => {
 
   it('does not open when the click and its focus land in one task', () => {
     render(save());
+    focusVisible = false;
     act(() => {
       btn().dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
       btn().focus();

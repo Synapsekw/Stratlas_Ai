@@ -131,6 +131,9 @@ test.describe('the island on a project with two dates', () => {
       // sets the island's width, whatever the row). On a narrow stage the previewed tab shows
       // its name (W1b), so it may grow, but from where it stood: the pointer stays on it.
       const before = await tab(bar, name).boundingBox();
+      const named = await tab(bar, name)
+        .locator('.isl-gl')
+        .evaluate((el) => el.getBoundingClientRect().width > 1);
       await tab(bar, name).hover();
       await expect(bar.getByRole('tabpanel')).toHaveAccessibleName(name);
       await islandSettled(win);
@@ -138,7 +141,10 @@ test.describe('the island on a project with two dates', () => {
       if (!before || !after) throw new Error(`no box for the ${name} tab`);
       expect(after.x).toBeCloseTo(before.x, 0);
       expect(after.y).toBeCloseTo(before.y, 0);
+      expect(after.height).toBeCloseTo(before.height, 0);
       expect(after.width).toBeGreaterThanOrEqual(before.width - 0.5);
+      // a tab that showed its name already does not move at all
+      if (named) expect(after).toEqual(before);
       await tab(bar, name).click();
       // the group's workbench opens in the right sidebar (D4, D12), and the island folds back
       await expect(bar).not.toHaveAttribute('data-state', 'tools');
@@ -525,6 +531,8 @@ test.describe('in the window CI runs, 1100 x 720', () => {
         panel: box(panel),
         dates: panel?.querySelectorAll('[role="group"][aria-label="Survey date"]').length ?? 0,
         show: box(document.querySelector('[data-testid="stage-show"]')),
+        island: box(document.querySelector('.island')),
+        notice: box(document.querySelector('[data-testid="t-notice"]')),
         controls: [
           ...(panel?.querySelectorAll(
             '[data-testid="volumes-segment"], [data-testid="volumes-csv"]',
@@ -542,11 +550,24 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     if (set.show && set.stage) {
       expect(set.show.left).toBeGreaterThanOrEqual(set.stage.left);
       // its names keep to one line ("Cut & fill", W1b), so at 1100 px it may reach past the
-      // middle along the top; the centre click below still proves it leaves the middle free
+      // middle along the top: it stays on the stage, in its upper half, clear of the island and
+      // the one-time notice
       expect(set.show.right, 'the Show control stays on the stage').toBeLessThanOrEqual(
         set.stage.right,
       );
       expect(set.show.top).toBeGreaterThanOrEqual(set.stage.top);
+      expect(set.show.bottom, 'the Show control keeps to the upper half').toBeLessThan(
+        (set.stage.top + set.stage.bottom) / 2,
+      );
+      const show = set.show;
+      const meets = (b: typeof show | null) =>
+        b !== null &&
+        b.left < show.right &&
+        show.left < b.right &&
+        b.top < show.bottom &&
+        show.top < b.bottom;
+      expect(meets(set.island), 'the Show control clear of the island').toBe(false);
+      expect(meets(set.notice), 'the Show control clear of the notice').toBe(false);
     }
     if (set.panel && set.stage) {
       const p = set.panel;

@@ -27,12 +27,6 @@ export interface TipProps {
   children: ReactElement; // one focusable element; Tip adds aria-describedby unless repeatsName
 }
 
-/**
- * The openers under a pressed pointer. Not state: a click's focus event fires in the same task as
- * its pointerdown, before a state update would be seen.
- */
-const pressed = new WeakSet<Element>();
-
 /** When any tip last hid, so moving to the next one skips the delay. */
 let lastHiddenAt = Number.NEGATIVE_INFINITY;
 
@@ -92,28 +86,12 @@ export function Tip({
     setWanted(true);
     if (Date.now() - lastHiddenAt < TIP_SKIP_WINDOW_MS) setOpen(true);
   }, []);
-  const pointerDown = useCallback(
-    (event: { currentTarget: Element }) => {
-      pressed.add(event.currentTarget);
-      hide();
-    },
-    [hide],
-  );
-  const pointerUp = useCallback((event: { currentTarget: Element }) => {
-    pressed.delete(event.currentTarget);
-  }, []);
-  // a pointer let go off the opener leaves no mark once the focus moves on
-  const blurred = useCallback(
-    (event: { currentTarget: Element }) => {
-      pressed.delete(event.currentTarget);
-      hide();
-    },
-    [hide],
-  );
-  // Only keyboard focus opens the tip: a click focuses the child too, and must not.
+  // Only keyboard focus opens the tip: a click focuses the child too, and must not. The browser
+  // knows which (`:focus-visible`), so a drag off the button or a cancelled pointer leaves nothing
+  // behind to swallow the next keyboard tip.
   const focused = useCallback(
     (event: { currentTarget: Element }) => {
-      if (!pressed.has(event.currentTarget)) show();
+      if (event.currentTarget.matches(':focus-visible')) show();
     },
     [show],
   );
@@ -176,10 +154,9 @@ export function Tip({
       if (event.pointerType !== 'touch') show();
     }),
     onPointerLeave: chain('onPointerLeave', hide),
-    onPointerDown: chain('onPointerDown', pointerDown),
-    onPointerUp: chain('onPointerUp', pointerUp),
+    onPointerDown: chain('onPointerDown', hide),
     onFocus: chain('onFocus', focused),
-    onBlur: chain('onBlur', blurred),
+    onBlur: chain('onBlur', hide),
   };
   if (!repeatsName && open) {
     const existing = childProps['aria-describedby'] as string | undefined;

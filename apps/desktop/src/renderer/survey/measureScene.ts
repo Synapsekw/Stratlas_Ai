@@ -1024,6 +1024,8 @@ interface LabelItem {
 /** A label chip's margins in measure.css (`.sv-label`): above and right of its anchor. */
 const LABEL_TOP = -24;
 const LABEL_LEFT = 6;
+/** A view narrower than this has no room for a label at all. */
+const MIN_VIEW_W = 24;
 
 /** The view's box in the labels' layer: the 3D canvas or the map, a pane of its own in Split. */
 interface ViewBox {
@@ -1064,7 +1066,8 @@ function labelChips(host: HTMLElement): {
         el.dataset.id = it.id;
         el.style.fontSize = `${String(it.size)}px`;
         el.classList.toggle('sel', it.selected);
-        if (!it.at) {
+        // a pane closing in Split (too narrow for any name) shows no empty pills
+        if (!it.at || view.w < MIN_VIEW_W) {
           el.style.display = 'none';
           return;
         }
