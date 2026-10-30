@@ -87,11 +87,13 @@ export function Tip({
     if (Date.now() - lastHiddenAt < TIP_SKIP_WINDOW_MS) setOpen(true);
   }, []);
   // Only keyboard focus opens the tip: a click focuses the child too, and must not. The browser
-  // knows which (`:focus-visible`), so a drag off the button or a cancelled pointer leaves nothing
-  // behind to swallow the next keyboard tip.
+  // knows which: a click's focus lands while the button is pressed (`:active`) and is not
+  // `:focus-visible`. Nothing is kept between events, so a drag off the button or a cancelled
+  // pointer leaves nothing behind to swallow the next keyboard tip.
   const focused = useCallback(
     (event: { currentTarget: Element }) => {
-      if (event.currentTarget.matches(':focus-visible')) show();
+      const el = event.currentTarget;
+      if (el.matches(':focus-visible') || !el.matches(':active')) show();
     },
     [show],
   );

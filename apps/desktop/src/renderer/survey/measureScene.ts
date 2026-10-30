@@ -1066,8 +1066,10 @@ function labelChips(host: HTMLElement): {
         el.dataset.id = it.id;
         el.style.fontSize = `${String(it.size)}px`;
         el.classList.toggle('sel', it.selected);
-        // a pane closing in Split (too narrow for any name) shows no empty pills
-        if (!it.at || view.w < MIN_VIEW_W) {
+        // a pane closing in Split (too narrow for any name) shows no empty pills; a view with no
+        // size yet (before layout) is not one
+        const closing = view.w > 0 && view.w < MIN_VIEW_W;
+        if (!it.at || closing) {
           el.style.display = 'none';
           return;
         }

@@ -9,8 +9,8 @@ let host: HTMLDivElement;
 let root: Root | null = null;
 let clock = 1_000_000;
 /**
- * Whether focus counts as keyboard focus (`:focus-visible`), which jsdom never reports: true for
- * `focus()` as a Tab would give it, false while a test plays a mouse click.
+ * A mouse press in progress (the opener `:active`, its focus not `:focus-visible`), which jsdom
+ * never reports by itself: set while a test plays a mouse click.
  */
 let focusVisible = true;
 const matches = Object.getOwnPropertyDescriptor(Element.prototype, 'matches')?.value as (
@@ -23,9 +23,9 @@ beforeEach(() => {
     this: Element,
     selector: string,
   ) {
-    return selector === ':focus-visible'
-      ? focusVisible && document.activeElement === this
-      : matches.call(this, selector);
+    if (selector === ':focus-visible') return focusVisible && document.activeElement === this;
+    if (selector === ':active') return !focusVisible;
+    return matches.call(this, selector);
   });
   vi.useFakeTimers();
   clock += 60_000; // the skip window is module state: keep tests apart
