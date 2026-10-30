@@ -139,15 +139,15 @@ describe('jobs:start resume feature gate', () => {
     expect(await current.handle(req)).toEqual({ ok: true });
   });
 
-  it('refuses detect.vlm on processing tools below 0.27.0 before the detector queue', async () => {
+  it('refuses detect.vlm on processing tools below 0.28.0 before the detector queue', async () => {
     const req = { pipeline: 'detect.vlm' as const, project: 'synthetic', params: {} };
-    const old = jobsStart('0.26.0', 'failed');
+    const old = jobsStart('0.27.0', 'failed');
     expect(await old.handle(req)).toEqual({
       ok: false,
-      error: detectPackRefusal('detect.vlm', '0.26.0'),
+      error: detectPackRefusal('detect.vlm', '0.27.0'),
     });
     expect(old.detectStart).not.toHaveBeenCalled();
-    const current = jobsStart('0.27.0', 'failed');
+    const current = jobsStart('0.28.0', 'failed');
     expect(await current.handle(req)).toEqual({ ok: true });
     expect(current.detectStart).toHaveBeenCalledWith(req);
   });

@@ -27,7 +27,9 @@ PROTOCOL = "aio.pipelines/1"
 # change run leaves one layer for both producers, change pipelines write the manifest under a
 # lock; the survey site job compares the overlap only, a pile base leaves out an edge shared
 # with a neighbour, and piles report peakM) and pack 0.27.0 (the detector engine reads Qwen3 boxes in a 0 to 1000 frame as well as
-# Qwen2.5-VL pixels, chosen from the run's model param, and repairs replies ending in }})).
+# Qwen2.5-VL pixels, chosen from the run's model param, and repairs replies ending in }}) and pack 0.28.0 (the
+# detector engine caps candidates at 30 per tile and per photo, keeps the higher-scored box when one
+# contains another, and sizes tiles from a detector's objectSizeM and the photo's GSD)).
 # Each keeps the floor.
 # The app refuses a pack outside the range; the syntax is read by `appRangeAllows` in packages/schema/src/versions.ts
 # (space-separated >=, >, <=, <, =).

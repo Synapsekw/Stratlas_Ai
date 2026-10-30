@@ -4,7 +4,7 @@
  */
 import { compareVersions } from '../jobs/pack';
 
-export const DETECT_MIN_PACK = '0.27.0';
+export const DETECT_MIN_PACK = '0.28.0';
 
 /** What the processing tools must be for `detect.vlm` (Settings, Processing tools lists it). */
 export const DETECT_PACK_FEATURE = { label: 'Detectors', minVersion: DETECT_MIN_PACK };
