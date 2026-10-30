@@ -69,11 +69,11 @@ Wave 3:   M1 (after I2) --> A3 memory part; M1 + A2 --> X1
 | M1   | Fact index schema (derived, not a source of truth) |
 | N1   | Add-on pack manifest                               |
 
-## Decisions for the founder
+## Decisions (founder, 30 Oct 2026)
 
-1. **Cost.** Turn on thinking and prompt caching for the cloud agent by default? Caching should more than pay for the thinking tokens on multi-step turns.
-2. **Automatic work after a new date.** Should survey QA and change compute run by themselves, on by default and behind a switch, as automatic surface preparation does?
-3. **Corrosion detector.** Keep shipping it as experimental, or hide it until V2 re-benches it on Qwen3.5?
-4. **New models.** Optional add-on pack or download on demand (SAM 3, road YOLO, point classifier)? The Analytics pack has about 114 MB left.
-5. **MCP server (X1).** Expose project data to outside agents at all, and if so, local only?
-6. **Where to start.** All of Wave 1 in parallel (five branches), or a smaller first slice (E1 + A1 + I1)?
+1. **Cost.** Thinking and prompt caching are on by default for the cloud agent (A1).
+2. **Automatic work after a new date.** Survey QA and change compute run by themselves when a new date's surface is ready, on by default behind a Settings switch next to automatic surface preparation (I1).
+3. **Corrosion detector.** Left as it is (experimental). Re-tuning and re-benching waits for the asset inspection focus, so V2 keeps the learning loop and drops the corrosion re-bench.
+4. **New models.** Founder delegated the choice and asked for what feels most polished. Chosen: download on demand from the Models and detection page (one click, progress, hash check, a size shown before download, removable), with a "Choose file" fallback for offline computers. Users never install a model pack by hand. The full Analytics pack stays as it is.
+5. **MCP server.** Yes, where it adds value: local only, read-only first, on the same tool registry as the agent (X1, Wave 3).
+6. **Where to start.** All five Wave 1 branches in parallel (E1, E2, A1, V1, I1).
