@@ -235,6 +235,25 @@ describe('toast', () => {
     expect(inHost('window')).toEqual(['on stage']);
   });
 
+  it('a toast placed on the stage shows in the window corner while no stage host is mounted', () => {
+    mount(<ToastHost placement="window" />);
+    say('Survey prepared', { placement: 'stage' });
+    expect(text()).toEqual(['Survey prepared']);
+  });
+
+  it('a replace that removes the focused action button does not leave the clock paused', () => {
+    mount(<ToastHost placement="window" />);
+    say('Deleted', { id: 'd', ttlMs: 1000, action: { label: 'Undo', run: vi.fn(), testId: 'u' } });
+    act(() => {
+      host.querySelector<HTMLButtonElement>('[data-testid="u"]')?.focus();
+    });
+    tick(5000);
+    expect(text()).toEqual(['Deleted']);
+    say('Deleted for good', { id: 'd', ttlMs: 1000 });
+    tick(1000);
+    expect(cards()).toHaveLength(0);
+  });
+
   it(`keeps at most ${String(TOAST_QUEUE_MAX)} waiting, dropping the oldest`, () => {
     for (let i = 0; i < TOAST_QUEUE_MAX + 5; i++) say(`t${String(i)}`);
     expect(toastQueue()).toHaveLength(TOAST_QUEUE_MAX);

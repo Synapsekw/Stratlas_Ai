@@ -76,7 +76,7 @@ export function Menu({
   }, [open, opener]);
   return (
     <Popover open={open} onClose={onClose} opener={opener} anchor={anchor} className="menu-pop">
-      <MenuLevel items={items} label={label} onClose={onClose} testId={testId} />
+      <MenuLevel items={items} label={label} onClose={onClose} opener={opener} testId={testId} />
     </Popover>
   );
 }
@@ -85,6 +85,8 @@ interface LevelProps {
   items: readonly MenuEntry[];
   label: string;
   onClose: () => void;
+  /** The menu's opener: focus goes back to it before a chosen item runs. */
+  opener: RefObject<HTMLElement | null>;
   testId?: string | undefined;
   id?: string;
   /** In a submenu: close it and focus its item. */
@@ -103,6 +105,7 @@ function MenuLevel({
   items,
   label,
   onClose,
+  opener,
   testId,
   id,
   onBack,
@@ -120,11 +123,10 @@ function MenuLevel({
   const openable = (it: MenuItem | undefined) =>
     it?.children !== undefined && it.disabledReason === undefined;
 
+  // when the submenu appears from a key or a click, or a hovered one is then entered by key
   useEffect(() => {
     if (focusFirst) rows()[0]?.focus();
-    // once, when the submenu appears
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [focusFirst]);
 
   // keys are handled on the element itself, before the popover's own Tab and Escape handling
   const onKey = useRef<(e: KeyboardEvent) => void>(() => undefined);
@@ -171,10 +173,11 @@ function MenuLevel({
         used();
         onClose();
       } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        if (e.key === ' ' && typed.current.text === '') return; // Space presses the item
-        used();
         const now = Date.now();
         const fresh = now - typed.current.at > TYPEAHEAD_RESET_MS;
+        // Space presses the item, unless it is part of a name being typed ("cut a")
+        if (e.key === ' ' && (fresh || typed.current.text === '')) return;
+        used();
         const text = (fresh ? '' : typed.current.text) + e.key.toLowerCase();
         typed.current = { text, at: now };
         // a new search starts after the current item; a longer prefix may match the current one
@@ -252,6 +255,8 @@ function MenuLevel({
                   return;
                 }
                 onClose();
+                // focus back on the opener first, so a dialog the item opens returns focus there
+                opener.current?.focus();
                 it.onSelect?.();
               }}
             >
@@ -281,6 +286,7 @@ function MenuLevel({
           items={openItem.children}
           label={openItem.label}
           onClose={onClose}
+          opener={opener}
           focusFirst={sub.focus}
           onBack={() => {
             const back = parentEl();
@@ -304,7 +310,7 @@ interface SubMenuProps extends Omit<LevelProps, 'testId'> {
  */
 function SubMenu({ anchor, ...level }: SubMenuProps): ReactElement {
   const box = useRef<HTMLDivElement>(null);
-  const [style, setStyle] = useState<CSSProperties>({ position: 'fixed', visibility: 'hidden' });
+  const [style, setStyle] = useState<CSSProperties>({ position: 'fixed', opacity: 0 });
   useLayoutEffect(() => {
     const a = anchor()?.getBoundingClientRect();
     const b = box.current;

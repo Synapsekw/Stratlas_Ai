@@ -93,7 +93,9 @@ export function ToastHost({ placement }: ToastHostProps): ReactElement {
 function ToastCard({ toast: x }: { toast: Toast }): ReactElement {
   const t = useT();
   const [hover, setHover] = useState(false);
-  const [focus, setFocus] = useState(false);
+  // the version focus came in at: a replace (its action button gone, no blur) unpauses it
+  const [focusedAt, setFocusedAt] = useState<number | null>(null);
+  const focus = focusedAt === x.version;
   const hidden = useDocumentHidden();
   const dismiss = () => {
     dismissToast(x.id);
@@ -114,10 +116,10 @@ function ToastCard({ toast: x }: { toast: Toast }): ReactElement {
         setHover(false);
       }}
       onFocus={() => {
-        setFocus(true);
+        setFocusedAt(x.version);
       }}
       onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget)) setFocus(false);
+        if (!e.currentTarget.contains(e.relatedTarget)) setFocusedAt(null);
       }}
       onKeyDown={(e) => {
         if (e.key !== 'Escape') return;

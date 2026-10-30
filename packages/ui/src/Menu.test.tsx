@@ -2,6 +2,7 @@
 import { act, useRef, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Dialog } from './Dialog';
 import { Menu, type MenuEntry } from './Menu';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -191,13 +192,24 @@ describe('Menu', () => {
     }
   });
 
-  it('Space still presses the focused item', () => {
-    show([{ id: 'a', label: 'A', onSelect: vi.fn() }]);
-    const e = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
-    act(() => {
-      document.activeElement?.dispatchEvent(e);
-    });
-    expect(e.defaultPrevented).toBe(false);
+  it('Space still presses the focused item, also after a typed letter has timed out', () => {
+    vi.useFakeTimers();
+    try {
+      show([{ id: 'a', label: 'A', onSelect: vi.fn() }]);
+      const space = () => {
+        const e = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+        act(() => {
+          document.activeElement?.dispatchEvent(e);
+        });
+        return e.defaultPrevented;
+      };
+      expect(space()).toBe(false);
+      key(document.activeElement, 'a');
+      vi.advanceTimersByTime(600);
+      expect(space()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('Tab closes the menu instead of cycling inside it', () => {
@@ -265,6 +277,62 @@ describe('Menu', () => {
     const row = host.querySelector('[data-testid="row"]');
     expect(row?.hasAttribute('aria-haspopup')).toBe(false);
     expect(row?.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('a dialog opened from an item hands focus back to the menu opener', async () => {
+    function H() {
+      const opener = useRef<HTMLButtonElement>(null);
+      const [menu, setMenu] = useState(true);
+      const [dlg, setDlg] = useState(false);
+      return (
+        <>
+          <button ref={opener} type="button" data-testid="opener">
+            open
+          </button>
+          <Menu
+            open={menu}
+            onClose={() => {
+              setMenu(false);
+            }}
+            opener={opener}
+            label="Actions"
+            items={[
+              {
+                id: 'props',
+                label: 'Properties',
+                onSelect: () => {
+                  setDlg(true);
+                },
+              },
+            ]}
+          />
+          <Dialog
+            open={dlg}
+            title="Properties"
+            onClose={() => {
+              setDlg(false);
+            }}
+          >
+            <input aria-label="name" data-testid="name" />
+          </Dialog>
+        </>
+      );
+    }
+    root = createRoot(host);
+    act(() => root?.render(<H />));
+    act(() => rows()[0]?.click());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const name = document.body.querySelector<HTMLElement>('[data-testid="name"]');
+    expect(document.activeElement).toBe(name);
+    act(() => {
+      name?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(document.activeElement).toBe(host.querySelector('[data-testid="opener"]'));
   });
 
   describe('submenus', () => {
@@ -343,6 +411,18 @@ describe('Menu', () => {
         first?.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
       });
       expect(menus()).toHaveLength(1);
+    });
+
+    it('a submenu opened by hover takes focus when entered by key', () => {
+      show(nested);
+      parent()?.focus();
+      act(() => {
+        parent()?.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+      });
+      expect(menus()).toHaveLength(2);
+      expect(document.activeElement).toBe(parent());
+      key(document.activeElement, 'ArrowRight');
+      expect(document.activeElement?.textContent).toBe('3 Oct 2026');
     });
 
     it('a disabled parent does not open', () => {

@@ -28,7 +28,7 @@ export interface ToastOptions {
   detail?: string;
   /** The leading icon; default by tone. */
   icon?: IconName;
-  /** Default: the stage host when one is mounted, else the window host. */
+  /** The host to show on (the other one while it is not mounted). Default: the stage first. */
   placement?: ToastPlacement;
   /** Called when the person dismisses it (the close button or Escape), not when it times out. */
   onDismiss?: () => void;
@@ -113,10 +113,16 @@ export function toastQueue(): readonly Toast[] {
   return queue;
 }
 
-/** The host a toast goes to: its placement, else the stage when a stage host is mounted. */
+const isMounted = (p: ToastPlacement) => (mounted.get(p) ?? 0) > 0;
+
+/**
+ * The host a toast goes to: its placement while that host is on screen, else the other one (a
+ * stage toast while no project is open shows in the window corner); unplaced, the stage first.
+ */
 function hostOf(x: Toast): ToastPlacement {
-  if (x.placement) return x.placement;
-  return (mounted.get('stage') ?? 0) > 0 ? 'stage' : 'window';
+  const want = x.placement ?? 'stage';
+  const other = want === 'stage' ? 'window' : 'stage';
+  return isMounted(want) || !isMounted(other) ? want : other;
 }
 
 /** The toast a host shows now: the newest routed to it. */
