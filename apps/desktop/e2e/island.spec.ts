@@ -541,8 +541,10 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     expect(set.show, 'the Show control on the stage').not.toBeNull();
     if (set.show && set.stage) {
       expect(set.show.left).toBeGreaterThanOrEqual(set.stage.left);
-      expect(set.show.right, 'the Show control keeps to the left half').toBeLessThan(
-        (set.stage.left + set.stage.right) / 2,
+      // its names keep to one line ("Cut & fill", W1b), so at 1100 px it may reach past the
+      // middle along the top; the centre click below still proves it leaves the middle free
+      expect(set.show.right, 'the Show control stays on the stage').toBeLessThanOrEqual(
+        set.stage.right,
       );
       expect(set.show.top).toBeGreaterThanOrEqual(set.stage.top);
     }

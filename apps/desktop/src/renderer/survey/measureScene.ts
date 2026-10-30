@@ -1069,6 +1069,15 @@ function labelChips(host: HTMLElement): {
           return;
         }
         el.style.display = '';
+        // a pane narrower than the label (Split at 1100 px): the label ends in an ellipsis
+        // rather than run past the pane
+        const maxW = `${String(Math.max(0, Math.floor(view.w)))}px`;
+        if (el.style.maxWidth !== maxW) {
+          el.style.maxWidth = maxW;
+          el.style.boxSizing = 'border-box';
+          el.style.overflow = 'hidden';
+          el.style.textOverflow = 'ellipsis';
+        }
         const key = `${String(view.w)}x${String(view.h)}|${String(it.size)}|${it.text}`;
         let size = sizes.get(el);
         if (size?.key !== key) {
