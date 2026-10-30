@@ -15,7 +15,7 @@ The in-app agent remembers what its tools returned on earlier turns ("now fly to
 5. **Local models** get the history flattened to text ("Called fly_to {...}: result ..."), then trimmed as before: small context windows and models without tool calling cannot take structured history.
 6. **Thinking.** The AI SDK's provider-neutral `reasoning` call option: `medium` when on, `none` when off, on cloud routes only. The SDK maps it per model (Claude 5.x: adaptive thinking with effort; Sonnet 5.5 off is `between_tools`; Opus 5.5 off is effort `low` since it cannot turn thinking off; OpenAI `reasoningEffort`; Google `thinkingConfig`). This follows the current Claude API facts (budget_tokens is rejected on Claude 5.x models).
 7. **Caching.** Anthropic only (OpenAI and Google cache on their own): `cacheControl: { type: 'ephemeral' }` on the system message (tools render before system, so this caches tools plus prompt), on the last message of the older history, and in `prepareStep` on the newest message of each step, so steps 2 to 20 read the whole earlier run from cache. Three breakpoints, under the limit of four.
-8. **One switch.** `Settings.agentThinking` (absent means on). Settings, AI providers, below Model routing: "Thinking and prompt caching". Off sends `reasoning: 'none'` and no cache breakpoints.
+8. **One switch.** `Settings.agentThinking` (absent means on). Settings, AI providers, below Model routing: "Agent thinking". Off sends `reasoning: 'none'`. Prompt caching stays on (review follow-up 10).
 9. **Steps.** `MAX_STEPS` 8 to 20 on cloud; the compact profile stays at 6. At the cap, one more model call with `toolChoice: 'none'` and a short instruction writes what was done and what is left; if it says nothing, the old "I stopped after N steps" line is shown.
 10. **Prompt.** A "How to work" section in the full prompt: plan, gather with read tools, act, re-read to check, report numbers with units and where they came from.
 11. **Tool filter.** `ai:send` gains optional `facts` (`captures`, `photos`, `clips`, `pointClouds`, `models?`). `toolsForWindow` drops the change tools with fewer than two survey dates, the clip tools without clips, the photo tools without photos, and the modelling and correction tools without a model (unless the Model builder's `build` route is in use). No facts (an older renderer) means no filtering. `models` is unknown (kept) unless the desktop host reports it.
@@ -49,3 +49,19 @@ No new spec. The scripted-model agent specs (`apps/desktop/e2e/agent*.spec.ts` e
 ## Contract change
 
 Yes: `ChatMessage`, `ai:send`, `ConversationStep`, `Settings` (all additive or a widened union; older data parses). Row in `docs/architecture/contract-changes.md`.
+
+## Review follow-ups (30 Oct, after an independent review)
+
+1. A long reply can make more than 64 calls with no text between them: the history starts a new assistant message at each model step (`ConversationStep.batch`, counted from the run's usage events) and after 64 calls.
+2. The cloud history is trimmed to a quarter of the route model's context window (`contextTokensOf`), oldest whole groups first (an assistant message with its calls goes together with their results), starting at a user message; the newest user message always stays.
+3. A fourth cache breakpoint sits on the end of the history before the previous user message, where the previous send put its own, so this send reads what that one wrote.
+4. A saved engineering run counts as a model (`engineer:runList` beside `model:list`); either list unreadable means unknown, and unknown keeps the tools.
+5. The model check is kept per project (`agent/modelCheck.ts`), cleared after `model:write` and `engineer:runWrite`, and a check slower than 1.5 s counts as unknown.
+6. Local models keep 8 steps (6 in the compact profile) and get no step-cap summary call.
+7. Tool ids are cleaned once for the whole history; a repeat gets `_2`, `_3`.
+8. `compactValue` always replaces images and falls back to "Done." when a value cannot be written.
+9. Each step records its provider (`ConversationStep.provider`); a cloud send carries only the summary of a local model's step results (AI-6).
+10. Parent decision: prompt caching is always on for Anthropic; the switch, now "Agent thinking", turns off thinking only.
+11. `ChatToolCall.input` is at most 16 KB of JSON and `ai:send` carries at most 2000 messages (the renderer sends the newest, from a user message on).
+
+The step-cap summary keeps the tools declared without executors. On Anthropic it uses tool choice `auto` with the prompt saying not to call a tool, because the AI SDK's Anthropic provider drops every tool for `none` and earlier `tool_use` blocks need them declared; other providers get `none`.

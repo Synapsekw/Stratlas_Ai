@@ -1,6 +1,6 @@
 import { assetUrl, workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
-import { setAgentModelCheck } from '../agent/session';
+import { setAgentModelCheck } from '../agent/modelCheck';
 import { bridge, jobs } from '../shell';
 import { registerModellingTools } from './agentTools';
 import { activeEngineerSession } from './engineerTools';
@@ -47,12 +47,22 @@ registerModellingTools({
       .map((l) => ({ id: l.id, name: l.name })),
 });
 
-// The agent is offered the modelling tools only in a project with a model, or while one is open.
-setAgentModelCheck(async () => {
-  const s = modeller.getState();
-  if (activeEngineerSession() || s.open || s.model) return true;
-  const p = workspace.getState().project;
-  if (!p) return undefined;
-  const r = await bridge.call('model:list', { projectId: p.id });
-  return r.ok && r.value.ok ? r.value.models.length > 0 : undefined;
+// The agent is offered the modelling tools only in a project with a model (a procedural model or
+// a saved engineering run), or while one is open (the Model builder, an engineering correction
+// host). Unknown when either list cannot be read: the tools stay.
+setAgentModelCheck({
+  now: () => {
+    const s = modeller.getState();
+    return activeEngineerSession() !== null || s.open || s.model !== null || s.models.length > 0;
+  },
+  saved: async (projectId) => {
+    const [models, runs] = await Promise.all([
+      bridge.call('model:list', { projectId }),
+      bridge.call('engineer:runList', { projectId }),
+    ]);
+    const procedural = models.ok && models.value.ok ? models.value.models.length : undefined;
+    const engineering = runs.ok && runs.value.ok ? runs.value.runs.length : undefined;
+    if ((procedural ?? 0) > 0 || (engineering ?? 0) > 0) return true;
+    return procedural === undefined || engineering === undefined ? undefined : false;
+  },
 });

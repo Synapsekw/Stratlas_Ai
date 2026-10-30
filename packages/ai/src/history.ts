@@ -65,24 +65,32 @@ function shrink(v: unknown, lvl: Level, depth: number): unknown {
 const json = (v: unknown): string =>
   v === undefined || typeof v === 'function' ? 'null' : JSON.stringify(v);
 
+/** Nothing cut, only images replaced: the first try of `compactValue`. */
+const WHOLE: Level = { str: Number.POSITIVE_INFINITY, arr: Number.POSITIVE_INFINITY, depth: 64 };
+
 /**
- * A tool result as compact text of at most about `max` characters: JSON with images removed, long
- * strings cut, long arrays shortened ("... 12 more"), cut tighter until it fits. A string result
- * stays text. Ids, names, positions and numbers are short scalars, so they are kept.
+ * A tool result as compact text of at most about `max` characters: JSON with images always
+ * removed, long strings cut, long arrays shortened ("... 12 more"), cut tighter until it fits. A
+ * string result stays text. Ids, names, positions and numbers are short scalars, so they are kept.
+ * A value that cannot be written as JSON (a cycle, a bigint) reads "Done.".
  */
 export function compactValue(value: unknown, max = RESULT_MAX): string {
-  if (value === undefined) return 'Done.';
-  if (typeof value === 'string') {
-    const s = value.startsWith('data:') ? '[image]' : value;
-    return s.length > max ? `${s.slice(0, max - 3)}...` : s;
-  }
-  let text = json(value);
-  if (text.length <= max) return text;
-  for (const lvl of LEVELS) {
-    text = json(shrink(value, lvl, 0));
+  try {
+    if (value === undefined) return 'Done.';
+    if (typeof value === 'string') {
+      const s = value.startsWith('data:') ? '[image]' : value;
+      return s.length > max ? `${s.slice(0, max - 3)}...` : s;
+    }
+    let text = json(shrink(value, WHOLE, 0));
     if (text.length <= max) return text;
+    for (const lvl of LEVELS) {
+      text = json(shrink(value, lvl, 0));
+      if (text.length <= max) return text;
+    }
+    return `${text.slice(0, max - 9)}... (cut)`;
+  } catch {
+    return 'Done.';
   }
-  return `${text.slice(0, max - 9)}... (cut)`;
 }
 
 /** A tool input for the history: an object (as providers need), cut like a result when large. */
@@ -142,14 +150,31 @@ function closing(t: AssistantTurn): string {
   return '(The reply ended here.)';
 }
 
+/** The most calls one assistant message of the history carries (`ChatMessage` allows 64). */
+export const CALLS_PER_MESSAGE = 64;
+
+export interface HistoryOptions {
+  /**
+   * The next message goes to a cloud provider: results of steps a local model made are replaced by
+   * their summary, so what stayed on this machine stays here (AI-6).
+   */
+  cloud?: boolean;
+}
+
 /**
  * The messages for `ai:send` from a saved conversation: user text, assistant text with the tool
- * calls it made, and a `tool` message with their results after each batch of calls.
+ * calls it made, and a `tool` message with their results after each model step (at most 64 calls
+ * per message).
  */
 export function historyFromConversation(
   turns: readonly ConversationTurn[],
   steps: Readonly<Record<string, ConversationStep>>,
+  options: HistoryOptions = {},
 ): ChatMessage[] {
+  const resultOf = (s: ConversationStep): ChatToolResult =>
+    options.cloud && s.provider === 'local'
+      ? stepResult({ ...s, result: s.summary ?? 'Done.' })
+      : stepResult(s);
   const out: ChatMessage[] = [];
   for (const t of turns) {
     if (t.kind === 'user') {
@@ -166,7 +191,7 @@ export function historyFromConversation(
         input: compactInput(s.input),
       }));
       out.push({ role: 'assistant', content: text.trim(), toolCalls });
-      out.push({ role: 'tool', results: calls.map(stepResult) });
+      out.push({ role: 'tool', results: calls.map(resultOf) });
       text = '';
       calls = [];
     };
@@ -178,6 +203,9 @@ export function historyFromConversation(
       } else {
         const s = steps[p.callId];
         if (!s) continue;
+        // a new model step, or a full message: the calls so far get their results first
+        const last = calls.at(-1);
+        if (last && (last.batch !== s.batch || calls.length >= CALLS_PER_MESSAGE)) flush();
         calls.push(s);
         endedOnCalls = true;
       }
@@ -191,6 +219,59 @@ export function historyFromConversation(
 
 /** Characters for a tool id the providers accept (Anthropic: letters, digits, _ and -). */
 export const safeCallId = (id: string): string => id.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64);
+
+/**
+ * Clean tool ids for one whole history: each call gets an id the providers accept and no other
+ * call has (a repeat gets `_2`, `_3`...); `result` gives the id of the call a result answers.
+ */
+export function callIdRenamer(): { call(id: string): string; result(id: string): string } {
+  const used = new Set<string>();
+  const latest = new Map<string, string>();
+  return {
+    call(id) {
+      const base = safeCallId(id) || 'call';
+      let clean = base;
+      for (let n = 2; used.has(clean); n++) clean = `${base.slice(0, 58)}_${String(n)}`;
+      used.add(clean);
+      latest.set(id, clean);
+      return clean;
+    },
+    result(id) {
+      return latest.get(id) ?? safeCallId(id);
+    },
+  };
+}
+
+/** Characters per token, roughly, for English text and JSON. */
+const CHARS_PER_TOKEN = 4;
+
+/** How big one message is, in characters of JSON. */
+const sizeOf = (m: ChatMessage) => json(m).length;
+
+/**
+ * The history cut to about `budgetTokens`: the oldest groups go first, whole (a user message, an
+ * assistant text, or an assistant message with its calls together with their results; a pair is
+ * never split), until it fits. The newest user message always stays, and what is left starts with
+ * a user message.
+ */
+export function trimHistory(messages: readonly ChatMessage[], budgetTokens: number): ChatMessage[] {
+  const groups: ChatMessage[][] = [];
+  for (const m of messages) {
+    const prev = groups.at(-1);
+    if (m.role === 'tool' && prev?.[0]?.role === 'assistant' && prev.length === 1) prev.push(m);
+    else groups.push([m]);
+  }
+  const budget = budgetTokens * CHARS_PER_TOKEN;
+  let total = groups.reduce((n, g) => n + g.reduce((k, m) => k + sizeOf(m), 0), 0);
+  let first = 0;
+  const lastUser = groups.findLastIndex((g) => g[0]?.role === 'user');
+  while (first < lastUser && total > budget) {
+    total -= groups[first]?.reduce((k, m) => k + sizeOf(m), 0) ?? 0;
+    first += 1;
+  }
+  while (first < lastUser && groups[first]?.[0]?.role !== 'user') first += 1;
+  return groups.slice(first).flat();
+}
 
 const ENDED = '(The reply ended here.)';
 

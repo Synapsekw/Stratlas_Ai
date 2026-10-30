@@ -82,7 +82,7 @@ import {
   type ToolSet,
   type UserContent,
 } from 'ai';
-import { flattenHistory, pairToolHistory, safeCallId } from './history';
+import { callIdRenamer, flattenHistory, pairToolHistory, trimHistory } from './history';
 import { parseDataUrl, runAsk } from './askRun';
 import { engineerReady } from './capabilities';
 import {
@@ -200,8 +200,8 @@ export interface AgentRuntimeHost {
   /** The open project's AI policy (from its package manifest); `forbid` blocks cloud providers. */
   policy?(projectId: string): Promise<AiPolicy>;
   /**
-   * Settings, AI providers: the cloud agent thinks before it acts and Anthropic prompt caching is
-   * used. Absent: on.
+   * Settings, AI providers, "Agent thinking": the cloud agent thinks before it acts. Absent: on.
+   * Anthropic prompt caching does not depend on it: it is always used.
    */
   agentThinking?(): boolean;
   /** Called for every model step with tokens and the estimated cost, for the per-project meter. */
@@ -346,8 +346,12 @@ export interface AgentRuntimeOptions {
   maxRetries?: number;
 }
 
-/** Model calls per message on cloud; the compact profile for small local models keeps 6. */
+/** Model calls per message on cloud. */
 const MAX_STEPS = 20;
+/** Model calls per message on a local model (full tool profile); the compact profile keeps 6. */
+const LOCAL_MAX_STEPS = 8;
+/** Share of the model's context window the cloud history may take (the rest: prompt, tools, run). */
+const HISTORY_SHARE = 0.25;
 
 /** Asked of the model when a message used all its steps: one more answer, without tools. */
 const STEP_LIMIT_PROMPT =
@@ -720,7 +724,10 @@ export function createAgentRuntime(
     const { runId } = req;
     const { local, watchdog, progress } = o;
     const toolProfile: ToolProfile = local?.toolProfile === 'compact' ? 'compact' : 'full';
-    const limit = toolProfile === 'compact' ? Math.min(COMPACT_MAX_STEPS, maxSteps) : maxSteps;
+    const onThisMachine = route.provider === 'local';
+    const limit = onThisMachine
+      ? Math.min(toolProfile === 'compact' ? COMPACT_MAX_STEPS : LOCAL_MAX_STEPS, maxSteps)
+      : maxSteps;
     const promptProfile: PromptProfile = o.answerOnly
       ? 'answer-only'
       : toolProfile === 'compact'
@@ -735,18 +742,32 @@ export function createAgentRuntime(
     const instructionText = trimmed?.summary
       ? `${prompt}\n\n${summaryBlock(trimmed.summary)}`
       : prompt;
-    // Thinking and prompt caching (Settings, AI providers; on by default): cloud routes only.
-    const boost = !local && o.cloud && (host.agentThinking?.() ?? true);
-    const cache = boost && route.provider === 'anthropic';
+    // Thinking (Settings, AI providers, "Agent thinking"; on by default): cloud routes only.
+    // Prompt caching is always on for Anthropic: it only lowers the cost.
+    const thinking = !local && o.cloud && (host.agentThinking?.() ?? true);
+    const cache = !local && route.provider === 'anthropic';
     const instructions: string | SystemModelMessage = cache
       ? { role: 'system', content: instructionText, providerOptions: CACHE }
       : instructionText;
     const messages = trimmed
       ? withContext(req, trimmed.messages)
-      : withContext(req, toStructuredMessages(pairToolHistory(req.messages)));
-    // The end of the older history is a cache breakpoint: it stays the same on the next message.
-    const historyEnd = cache ? lastUserIndex(messages) - 1 : -1;
-    const sent = historyEnd >= 0 ? markCache(messages, [historyEnd]) : messages;
+      : withContext(
+          req,
+          toStructuredMessages(
+            trimHistory(
+              pairToolHistory(req.messages),
+              contextTokensOf(route.provider, route.model) * HISTORY_SHARE,
+            ),
+          ),
+        );
+    // Cache breakpoints in the history: the end of the older history (the next message reads
+    // it) and the end of the history before the previous user message (where the previous message
+    // put its breakpoint, so this one reads what that one wrote).
+    const latestUser = lastUserIndex(messages);
+    const historyEnd = cache ? latestUser - 1 : -1;
+    const previousEnd = cache ? lastUserIndex(messages.slice(0, Math.max(0, latestUser))) - 1 : -1;
+    const marks = [previousEnd, historyEnd].filter((i, k, all) => i >= 0 && all.indexOf(i) === k);
+    const sent = marks.length > 0 ? markCache(messages, marks) : messages;
     const signal = watchdog
       ? AbortSignal.any([run.controller.signal, watchdog.signal])
       : run.controller.signal;
@@ -762,7 +783,7 @@ export function createAgentRuntime(
       abortSignal: signal,
       maxRetries: options.maxRetries ?? 2,
       maxOutputTokens: local ? outputBudget(local.contextTokens) : 16_000,
-      ...(!local && o.cloud ? { reasoning: boost ? THINKING_EFFORT : ('none' as const) } : {}),
+      ...(!local && o.cloud ? { reasoning: thinking ? THINKING_EFFORT : ('none' as const) } : {}),
       ...(local
         ? {
             // Small models: repair almost-JSON tool calls, and one call at a time.
@@ -776,12 +797,11 @@ export function createAgentRuntime(
     };
     // Offline-only turned on during the run (while an approval waited): no further step goes out.
     // With caching, the newest message of each step is a breakpoint too, so the next step reads
-    // the whole run so far from the cache (system, older history and newest: three of four).
+    // the whole run so far from the cache: system, the two history ends and the newest, four.
     const prepareStep = ({ messages: now }: { messages: ModelMessage[] }) => {
       if (o.cloud && offlineOnly()) throw new OfflineOnlyError();
       if (!cache) return {};
-      const keep = historyEnd >= 0 ? [historyEnd, now.length - 1] : [now.length - 1];
-      return { messages: markCache(now, keep) };
+      return { messages: markCache(now, [...marks, now.length - 1]) };
     };
     const result = streamText({
       ...common,
@@ -793,16 +813,28 @@ export function createAgentRuntime(
     const said = await consume(result.stream);
     if (run.controller.signal.aborted) throw new Cancelled();
     if (!(progress.steps >= limit && progress.lastFinish === 'tool-calls')) return;
-    // The step cap: one more answer without tools, saying what was done and what is left.
+    // The step cap: one more answer without tools, saying what was done and what is left (not on
+    // a model on this machine: a small model would only add a slow extra call).
     let summarised = false;
+    if (onThisMachine) {
+      host.emit({ type: 'text', runId, delta: `\n\n${stepLimitAfter(limit)}` });
+      return;
+    }
     const stopped = () => run.controller.signal.aborted;
     try {
       const done = await result.responseMessages;
       const final = streamText({
         ...common,
         messages: [...sent, ...done, { role: 'user', content: STEP_LIMIT_PROMPT }],
-        // the tools stay declared (earlier calls refer to them) but cannot run
-        ...(tools ? { tools: inert(tools), toolChoice: 'none' as const } : {}),
+        // The tools stay declared (earlier calls refer to them) but cannot run. Tool choice
+        // `none`, except on Anthropic: its AI SDK provider drops every tool for `none`, and a
+        // request with tool_use blocks needs them declared; there the prompt says not to call one.
+        ...(tools
+          ? {
+              tools: inert(tools),
+              toolChoice: route.provider === 'anthropic' ? ('auto' as const) : ('none' as const),
+            }
+          : {}),
         stopWhen: stepCountIs(1),
         prepareStep,
       });
@@ -1978,6 +2010,7 @@ const LOCAL_ASK_IN_APP = 'Local requests run in the app.';
 /** The cloud history as AI SDK messages: text, tool calls and their results. */
 function toStructuredMessages(history: readonly ChatMessage[]): ModelMessage[] {
   const out: ModelMessage[] = [];
+  const ids = callIdRenamer();
   for (const m of history) {
     if (m.role === 'user') {
       out.push({ role: 'user', content: m.content });
@@ -1994,7 +2027,7 @@ function toStructuredMessages(history: readonly ChatMessage[]): ModelMessage[] {
           ...(m.content.trim() ? [{ type: 'text' as const, text: m.content }] : []),
           ...calls.map((c) => ({
             type: 'tool-call' as const,
-            toolCallId: safeCallId(c.callId),
+            toolCallId: ids.call(c.callId),
             toolName: c.name,
             input: c.input,
           })),
@@ -2005,7 +2038,7 @@ function toStructuredMessages(history: readonly ChatMessage[]): ModelMessage[] {
         role: 'tool',
         content: m.results.map((r) => ({
           type: 'tool-result' as const,
-          toolCallId: safeCallId(r.callId),
+          toolCallId: ids.result(r.callId),
           toolName: r.name,
           output:
             r.status === 'ok'
@@ -2018,6 +2051,25 @@ function toStructuredMessages(history: readonly ChatMessage[]): ModelMessage[] {
     }
   }
   return out;
+}
+
+/**
+ * The context window of a cloud model, in tokens, roughly: Claude 4.6 and later and Gemini 1M,
+ * other Claude 200k, GPT-5 and later 400k, anything else 128k.
+ */
+export function contextTokensOf(provider: AiProvider, model: string): number {
+  const m = model.toLowerCase();
+  if (provider === 'anthropic') {
+    const v = /claude-(?:[a-z]+)-(\d+)(?:-(\d+))?/.exec(m);
+    const major = Number(v?.[1] ?? 0);
+    const minor = Number(v?.[2] ?? 0);
+    // a dated snapshot (claude-sonnet-4-20250514) has no minor version
+    const version = major + (minor < 100 ? minor / 10 : 0);
+    return version >= 4.6 ? 1_000_000 : 200_000;
+  }
+  if (provider === 'google') return 1_000_000;
+  if (provider === 'openai') return Number(/gpt-(\d+)/.exec(m)?.[1] ?? 0) >= 5 ? 400_000 : 128_000;
+  return 128_000;
 }
 
 function lastUserIndex(messages: readonly ModelMessage[]): number {

@@ -1,13 +1,17 @@
 import {
+  CHAT_MESSAGES_MAX,
   ChatMessage,
   Conversation,
+  ipc,
   type ConversationStep,
   type ConversationTurn,
 } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
+  callIdRenamer,
   compactInput,
   compactValue,
+  trimHistory,
   flattenHistory,
   historyFromConversation,
   pairToolHistory,
@@ -277,5 +281,123 @@ describe('flattenHistory', () => {
       },
       { role: 'user', content: 'The second one' },
     ]);
+  });
+});
+
+describe('history limits and privacy', () => {
+  const callsTurn = (ids: string[]): ConversationTurn => ({
+    kind: 'assistant',
+    id: 'a',
+    runId: 'r',
+    status: 'done',
+    parts: [
+      ...ids.map((callId) => ({ type: 'step' as const, callId })),
+      { type: 'text', text: 'Done.' },
+    ],
+  });
+
+  it('puts at most 64 calls in one message, so a long reply never breaks later sends', () => {
+    const ids = Array.from({ length: 150 }, (_, i) => `c${String(i)}`);
+    const steps = Object.fromEntries(ids.map((id) => [id, step({ callId: id })]));
+    const h = historyFromConversation([callsTurn(ids)], steps);
+    for (const m of h) expect(ChatMessage.safeParse(m).success).toBe(true);
+    const sizes = h.flatMap((m) =>
+      m.role === 'assistant' && m.toolCalls ? [m.toolCalls.length] : [],
+    );
+    expect(sizes).toEqual([64, 64, 22]);
+  });
+
+  it('starts a new message at each model step', () => {
+    const steps = {
+      a: step({ callId: 'a', batch: 0 }),
+      b: step({ callId: 'b', batch: 0 }),
+      c: step({ callId: 'c', batch: 1 }),
+    };
+    const h = historyFromConversation([callsTurn(['a', 'b', 'c'])], steps);
+    const calls = h.flatMap((m) =>
+      m.role === 'assistant' && m.toolCalls ? [m.toolCalls.map((c) => c.callId)] : [],
+    );
+    expect(calls).toEqual([['a', 'b'], ['c']]);
+  });
+
+  it('sends only the summary of a local model step to a cloud provider', () => {
+    const steps = {
+      l: step({ callId: 'l', provider: 'local', result: '{"secret":1}', summary: '1 place' }),
+      c: step({ callId: 'c', provider: 'anthropic', result: '{"id":"T-1"}', batch: 1 }),
+    };
+    const outputs = (cloud: boolean) =>
+      historyFromConversation([callsTurn(['l', 'c'])], steps, { cloud }).flatMap((m) =>
+        m.role === 'tool' ? m.results.map((r) => r.output) : [],
+      );
+    expect(outputs(true)).toEqual(['1 place', '{"id":"T-1"}']);
+    expect(outputs(false)).toEqual(['{"secret":1}', '{"id":"T-1"}']);
+  });
+
+  it('always removes images and never throws', () => {
+    expect(compactValue({ image: 'data:image/png;base64,AAAA', id: 'x' })).toBe(
+      '{"image":"[image]","id":"x"}',
+    );
+    const cyclic: Record<string, unknown> = { id: 'a' };
+    cyclic.self = cyclic;
+    expect(() => compactValue(cyclic)).not.toThrow();
+    expect(compactValue({ n: 10n })).toBe('{"n":null}');
+    const broken = {
+      get bad(): string {
+        throw new Error('no');
+      },
+    };
+    expect(compactValue(broken)).toBe('Done.');
+  });
+
+  it('renames repeated tool ids across the whole history', () => {
+    const ids = callIdRenamer();
+    expect(ids.call('a:1')).toBe('a_1');
+    expect(ids.result('a:1')).toBe('a_1');
+    expect(ids.call('a/1')).toBe('a_1_2');
+    expect(ids.result('a/1')).toBe('a_1_2');
+    expect(ids.call('a:1')).toBe('a_1_3');
+    expect(ids.result('a:1')).toBe('a_1_3');
+  });
+
+  it('drops the oldest whole groups to fit a budget and starts with a user message', () => {
+    const big = 'y'.repeat(4000);
+    const h: ChatMessage[] = [
+      { role: 'user', content: 'q1' },
+      { role: 'assistant', content: '', toolCalls: [{ callId: 'c1', name: 'n', input: {} }] },
+      { role: 'tool', results: [{ callId: 'c1', name: 'n', status: 'ok', output: big }] },
+      { role: 'assistant', content: 'a1' },
+      { role: 'user', content: 'q2' },
+      { role: 'assistant', content: '', toolCalls: [{ callId: 'c2', name: 'n', input: {} }] },
+      { role: 'tool', results: [{ callId: 'c2', name: 'n', status: 'ok', output: big }] },
+      { role: 'user', content: 'q3' },
+    ];
+    const cut = trimHistory(h, 1500);
+    expect(cut[0]).toEqual({ role: 'user', content: 'q2' });
+    expect(cut.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'user']);
+    // even a tiny budget keeps the newest user message
+    expect(trimHistory(h, 1)).toEqual([{ role: 'user', content: 'q3' }]);
+    expect(trimHistory(h, 1_000_000)).toEqual(h);
+  });
+});
+
+describe('ai:send limits', () => {
+  it('refuses a history tool input over 16 KB and more messages than the cap', () => {
+    const big = {
+      role: 'assistant',
+      content: '',
+      toolCalls: [{ callId: 'c', name: 'n', input: { s: 'z'.repeat(17_000) } }],
+    };
+    expect(ChatMessage.safeParse(big).success).toBe(false);
+    const small = { ...big, toolCalls: [{ callId: 'c', name: 'n', input: { s: 'z' } }] };
+    expect(ChatMessage.safeParse(small).success).toBe(true);
+    const send = (n: number) =>
+      ipc['ai:send'].request.safeParse({
+        runId: 'r',
+        window: 'scene3d',
+        context: {},
+        messages: Array.from({ length: n }, () => ({ role: 'user', content: 'x' })),
+      }).success;
+    expect(send(CHAT_MESSAGES_MAX)).toBe(true);
+    expect(send(CHAT_MESSAGES_MAX + 1)).toBe(false);
   });
 });

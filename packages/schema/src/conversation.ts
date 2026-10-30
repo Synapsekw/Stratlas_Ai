@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ToolRisk, WindowKind } from './agent';
+import { AiProvider, ToolRisk, WindowKind } from './agent';
 import { IsoTime } from './common';
 
 export const CONVERSATION_SCHEMA = 'aio.conversation/1' as const;
@@ -34,6 +34,16 @@ export const ConversationStep = z.object({
    * those are read back with `summary` as the result.
    */
   result: z.string().max(8000).optional(),
+  /**
+   * The model step of its reply that made the call (0, 1, ...), so the history keeps the calls of
+   * one step together. Absent in older conversations.
+   */
+  batch: z.number().int().nonnegative().optional(),
+  /**
+   * The provider of the model that made the call. A result from a local model's step is never sent
+   * to a cloud provider later (only its summary). Absent in older conversations.
+   */
+  provider: AiProvider.optional(),
 });
 
 export const ConversationPart = z.discriminatedUnion('type', [

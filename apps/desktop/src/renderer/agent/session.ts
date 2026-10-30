@@ -15,6 +15,7 @@ import { workspace, type Workspace } from '@aio/workspace';
 import { shell } from '../shell';
 import type { Screen } from '../store';
 import { isDockScreen } from './dockScreens';
+import { agentHasModel } from './modelCheck';
 
 let session: AgentSession | null = null;
 /** The window of the screen that shows the panel now: the tools run against it. */
@@ -29,17 +30,6 @@ function toolContext(): RendererToolContext {
   return before ? { ...ctx, workspace: { ...ctx.workspace, getState: () => before } } : ctx;
 }
 
-/** Whether the open project has a model; set by the Model builder, unknown until then. */
-let modelCheck: (() => Promise<boolean | undefined>) | null = null;
-
-/**
- * The Model builder tells the agent whether the open project has a procedural or engineering
- * model, so the modelling tools are offered only where they can work.
- */
-export function setAgentModelCheck(check: (() => Promise<boolean | undefined>) | null): void {
-  modelCheck = check;
-}
-
 /** The one session, made on first use. Without the app bridge (tests) it says the agent is off. */
 export function appAgentSession(): AgentSession {
   session ??= new AgentSession({
@@ -47,7 +37,7 @@ export function appAgentSession(): AgentSession {
     window: current,
     toolContext,
     task: () => currentTask,
-    hasModel: () => modelCheck?.(),
+    hasModel: () => agentHasModel(workspace.getState().project?.id),
   });
   return session;
 }

@@ -9,8 +9,10 @@
  */
 import {
   CONVERSATION_SCHEMA,
+  CHAT_MESSAGES_MAX,
   needsApproval,
   type AgentFacts,
+  type AiProvider,
   type AiErrorCode,
   type AiPolicy,
   type AiTask,
@@ -142,6 +144,10 @@ export class AgentSession {
   /** Tool calls of the live run; any other awaiting step belongs to a run that has ended. */
   private readonly live = new Set<string>();
   private runId: string | null = null;
+  /** The model step of the running reply, counted by its usage events (`Step.batch`). */
+  private batch = 0;
+  /** The provider the running reply goes to (`Step.provider`). */
+  private runProvider: AiProvider | undefined;
   private off: (() => void) | null = null;
   private readonly newId: () => string;
   private readonly now: () => Date;
@@ -311,7 +317,7 @@ export class AgentSession {
       });
       return;
     }
-    await this.dispatch(trimmed, context, image, task);
+    await this.dispatch(trimmed, context, image, task, a.status === 'ready' ? a : undefined);
   }
 
   /** Send the previewed message. `always` stores "Always allow for this project". */
@@ -326,7 +332,8 @@ export class AgentSession {
       const r = await bridge.invoke('ai:setConsent', { projectId, alwaysAllow: true });
       if (r.ok) this.set({ alwaysAllow: true });
     }
-    await this.dispatch(p.text, p.context, p.image, p.task);
+    // a preview is shown only before a cloud send
+    await this.dispatch(p.text, p.context, p.image, p.task, { route: p.route, cloud: true });
   }
 
   /**
@@ -370,6 +377,8 @@ export class AgentSession {
     context: Record<string, unknown>,
     image: string | undefined,
     task: AiTask | undefined,
+    /** Where the message goes, when known; unknown counts as cloud for the history. */
+    target?: { route: ModelRoute; cloud: boolean },
   ): Promise<void> {
     const bridge = this.deps.bridge;
     if (!bridge || this.state.busy) return;
@@ -377,7 +386,7 @@ export class AgentSession {
     if (!this.state.id) {
       this.state = { ...this.state, id: this.newId(), createdAt: this.now().toISOString() };
     }
-    const history = this.history();
+    const history = this.history(target?.cloud ?? true);
     const user: Turn = {
       kind: 'user',
       id: this.newId(),
@@ -393,6 +402,8 @@ export class AgentSession {
       status: 'streaming',
     };
     this.runId = runId;
+    this.batch = 0;
+    this.runProvider = target?.route.provider;
     this.live.clear();
     this.set({ turns: [...this.state.turns, user, reply], busy: true, fix: null });
     const messages: ChatMessage[] = [...history, { role: 'user', content: text }];
@@ -603,9 +614,17 @@ export class AgentSession {
 
   // internals ----------------------------------------------------------------------------------
 
-  /** Earlier turns with their tool calls and compacted results, so follow-ups can use them. */
-  private history(): ChatMessage[] {
-    return historyFromConversation(this.state.turns, this.state.steps);
+  /**
+   * Earlier turns with their tool calls and compacted results, so follow-ups can use them. For a
+   * cloud send, results of a local model's steps go as their summary only (AI-6). The newest
+   * messages that fit `ai:send`, from a user message on.
+   */
+  private history(cloud: boolean): ChatMessage[] {
+    const all = historyFromConversation(this.state.turns, this.state.steps, { cloud });
+    if (all.length < CHAT_MESSAGES_MAX) return all;
+    let start = all.length - (CHAT_MESSAGES_MAX - 1);
+    while (start < all.length && all[start]?.role !== 'user') start += 1;
+    return all.slice(start);
   }
 
   /** What the open project has, so the model is offered only the tools that can work there. */
@@ -639,6 +658,8 @@ export class AgentSession {
         this.onToolCall(e);
         break;
       case 'usage': {
+        // one usage event per model step: later calls belong to the next step
+        if (e.runId === this.runId) this.batch += 1;
         const u = this.state.usage;
         const projectUsage = e.provider
           ? addProviderUsage(this.state.projectUsage, {
@@ -681,6 +702,8 @@ export class AgentSession {
       risk: e.risk,
       status: needsApproval(e.risk) ? 'awaiting' : 'running',
       canUndo: false,
+      ...(e.runId === this.runId ? { batch: this.batch } : {}),
+      ...(e.runId === this.runId && this.runProvider ? { provider: this.runProvider } : {}),
     };
     this.live.add(e.callId);
     this.updateReply(e.runId, (t) => ({

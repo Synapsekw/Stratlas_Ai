@@ -380,11 +380,11 @@ export const enSettings = {
   'settings.treatAsVision': 'Treat as vision model',
   'settings.treatAsVisionHint':
     'You vouch that this model reads images and returns structured answers. Used with careful limits.',
-  'settings.agentThinking': 'Agent thinking and prompt caching',
+  'settings.agentThinking': 'Agent thinking',
   'settings.agentThinkingOn':
-    'On: the cloud agent thinks before it acts and reuses the unchanged start of each request, which costs less.',
+    'On: the cloud agent thinks before it acts. Replies take a little longer and use more tokens, and multi-step work is more reliable.',
   'settings.agentThinkingOff':
-    'Off: the cloud agent answers without thinking first and every request is sent in full.',
+    'Off: the cloud agent answers without thinking first: faster and cheaper, for simple requests.',
   'settings.task.engineer': 'Engineering models',
   'settings.task.engineerSends': 'Measurements, photos, scan views',
   'settings.autoPrepare.label': 'Prepare survey surfaces when a project opens',

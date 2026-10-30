@@ -558,8 +558,8 @@ export const Settings = z.object({
   /** Prepare survey surfaces in the background when a project opens. Absent: on. */
   autoPrepareSurfaces: z.boolean().optional(),
   /**
-   * The cloud agent thinks before it acts (provider reasoning) and reuses the unchanged start of
-   * each request (Anthropic prompt caching). Absent: on.
+   * The cloud agent thinks before it acts (provider reasoning). Absent: on. Anthropic prompt
+   * caching does not depend on it: it is always on.
    */
   agentThinking: z.boolean().optional(),
 });
@@ -808,11 +808,23 @@ export const ReportFile = z.object({
 });
 
 /** One tool call the agent made in an earlier turn, sent back so it remembers it. */
+/** The largest tool input (as JSON) a history message may carry. */
+export const CHAT_TOOL_INPUT_MAX = 16_384;
+/** The most messages one `ai:send` may carry; the renderer sends the newest ones. */
+export const CHAT_MESSAGES_MAX = 2000;
+
 export const ChatToolCall = z.object({
   callId: z.string().min(1).max(128),
   name: z.string().min(1).max(64),
-  /** The call's input as the model sent it (compacted when large). */
-  input: z.unknown(),
+  /** The call's input as the model sent it (compacted when large), 16 KB of JSON at most. */
+  input: z.unknown().refine((v) => {
+    try {
+      const text: unknown = JSON.stringify(v);
+      return typeof text !== 'string' || text.length <= CHAT_TOOL_INPUT_MAX;
+    } catch {
+      return false;
+    }
+  }, 'A tool input in the history is at most 16 KB of JSON.'),
 });
 
 /**
@@ -1167,7 +1179,7 @@ export const ipc = {
         window: WindowKind,
         /** Snapshot of the window context: selection, time, visible layers, frame info. */
         context: z.record(z.string(), z.unknown()),
-        messages: z.array(ChatMessage).min(1),
+        messages: z.array(ChatMessage).min(1).max(CHAT_MESSAGES_MAX),
         /** What the project has, to offer only the tools it can use. Absent: every tool. */
         facts: AgentFacts.optional(),
         /** Optional image (data URL) such as the current video frame. */

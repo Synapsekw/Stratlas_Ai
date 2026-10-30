@@ -57,6 +57,7 @@ import {
 } from '@aio/schema';
 import type { StoreApi } from 'zustand';
 import { createStore } from 'zustand/vanilla';
+import { forgetAgentModelCheck } from '../agent/modelCheck';
 import type { Bridge } from '../bridge';
 import type { EngineerModelSession } from '../modeller/engineerTools';
 import { measurementSummary } from './summary';
@@ -1194,6 +1195,7 @@ export function ipcRunIpc(bridge: Bridge, projectId: string, root: string): RunI
           bridge.call('engineer:runWrite', { projectId, run, ...(proposal ? { proposal } : {}) }),
         ),
       );
+      forgetAgentModelCheck();
     },
     evidenceImage: async (runId, imageId) =>
       ok(await must(bridge.call('engineer:evidenceImage', { projectId, runId, imageId }))).dataUrl,
@@ -1227,6 +1229,7 @@ export function ipcRunIpc(bridge: Bridge, projectId: string, root: string): RunI
     },
     modelWrite: async (model) => {
       ok(await must(bridge.call('model:write', { projectId, model })));
+      forgetAgentModelCheck();
     },
     modelBuild: async (id, draft) => {
       const r = ok(await must(bridge.call('model:build', { projectId, id, draft })));

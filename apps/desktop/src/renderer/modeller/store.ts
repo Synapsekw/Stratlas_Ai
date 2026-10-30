@@ -28,6 +28,7 @@ import { assetUrl, type Workspace } from '@aio/workspace';
 import type { z } from 'zod';
 import type { StoreApi } from 'zustand';
 import { createStore } from 'zustand/vanilla';
+import { forgetAgentModelCheck } from '../agent/modelCheck';
 import type { Bridge } from '../bridge';
 import type { Jobs } from '../jobs';
 
@@ -162,6 +163,7 @@ export function createModeller(deps: ModellerDeps): StoreApi<Modeller> {
       if (get().readOnly)
         return 'This project is a read-only package. Models are not saved into it.';
       const r = await bridge.call('model:write', { projectId: p.id, model: next });
+      forgetAgentModelCheck();
       const error = !r.ok ? r.error : r.value.ok ? null : r.value.error;
       if (error) {
         set({ error });

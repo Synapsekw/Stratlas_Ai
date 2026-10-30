@@ -332,6 +332,77 @@ describe('agent session conversation', () => {
     ]);
   });
 
+  it('records the provider and the model step of each call', async () => {
+    const t = setup();
+    await t.session.refresh(); // the route is known
+    await t.session.send('look around');
+    const call = (callId: string) =>
+      t.emit({
+        type: 'tool-call',
+        runId: 'id1',
+        callId,
+        name: 'list_layers',
+        input: {},
+        risk: 'read',
+      });
+    call('c1');
+    call('c2');
+    t.emit({ type: 'usage', runId: 'id1', inputTokens: 1, outputTokens: 1 });
+    call('c3');
+    await flush();
+    const steps = t.session.getState().steps;
+    expect([steps.c1, steps.c2, steps.c3].map((s) => [s?.provider, s?.batch])).toEqual([
+      ['openai', 0],
+      ['openai', 0],
+      ['openai', 1],
+    ]);
+  });
+
+  it('sends only the summary of a local model step to a cloud provider (AI-6)', async () => {
+    const saved: Conversation = {
+      schema: 'aio.conversation/1',
+      id: 'mixed',
+      title: 'Mixed',
+      window: 'scene3d',
+      createdAt: '2026-10-03T10:00:00.000Z',
+      updatedAt: '2026-10-03T10:01:00.000Z',
+      turns: [
+        { kind: 'user', id: 'u1', text: 'Where is it?', chips: [], frame: false },
+        {
+          kind: 'assistant',
+          id: 'a1',
+          runId: 'r-old',
+          parts: [
+            { type: 'step', callId: 'k1' },
+            { type: 'text', text: 'Found it.' },
+          ],
+          status: 'done',
+        },
+      ],
+      steps: {
+        k1: {
+          callId: 'k1',
+          name: 'find_places',
+          input: { query: 'tank' },
+          risk: 'read',
+          status: 'done',
+          canUndo: false,
+          summary: '1 place',
+          result: '{"places":[{"id":"T-9","name":"on this PC only"}]}',
+          provider: 'local',
+        },
+      },
+      usage: { inputTokens: 1, outputTokens: 1, costUsd: 0, costKnown: true },
+    };
+    const t = setup({ saved, cloud: true });
+    await t.session.resume('mixed');
+    await t.session.send('Fly there');
+    const req = t.sent('ai:send')[0]?.req as IpcRequest<'ai:send'>;
+    const json = JSON.stringify(req.messages);
+    expect(json).toContain('1 place');
+    expect(json).not.toContain('on this PC only');
+  });
+
   it('sends what the project has, so only fitting tools are offered', async () => {
     const t = setup();
     await t.session.send('What is here?');

@@ -317,7 +317,9 @@ describe('agent runtime', () => {
     expect((await t.end('r1')).type).toBe('done');
     // 20 steps, then one summary call without tools (this mock says nothing: the fixed line)
     expect(t.chat.doStreamCalls).toHaveLength(21);
-    expect(t.chat.doStreamCalls[20]?.toolChoice).toEqual({ type: 'none' });
+    // on Anthropic the tools stay declared with auto (its provider drops them for none)
+    expect(t.chat.doStreamCalls[20]?.toolChoice).toEqual({ type: 'auto' });
+    expect(JSON.stringify(t.chat.doStreamCalls[20]?.prompt)).toContain('Do not call any tool');
     expect(text(t.events)).toContain(MESSAGES.stepLimit);
     expect(MESSAGES.stepLimit).toContain('20 steps');
   });
@@ -428,13 +430,120 @@ describe('agent runtime', () => {
     ]);
   });
 
-  it('neither thinks nor caches when the setting is off', async () => {
+  it('does not think when the setting is off, and still caches', async () => {
     const t = setup({ steps: [textStep('ok')], host: { agentThinking: () => false } });
     await t.runtime.send(req());
     await t.end('r1');
     const call = t.chat.doStreamCalls[0];
     expect(call?.reasoning).toBe('none');
-    expect(JSON.stringify(call?.prompt)).not.toContain('cacheControl');
+    expect(JSON.stringify(call?.prompt)).toContain('cacheControl');
+  });
+
+  it('marks the end of the history before the previous message too: four breakpoints at most', async () => {
+    const t = setup({ steps: [textStep('ok')] });
+    await t.runtime.send(
+      req({
+        messages: [
+          { role: 'user', content: 'One' },
+          { role: 'assistant', content: 'A.' },
+          { role: 'user', content: 'Two' },
+          { role: 'assistant', content: 'B.' },
+          { role: 'user', content: 'Three' },
+          { role: 'assistant', content: 'C.' },
+          { role: 'user', content: 'Four' },
+        ],
+      }),
+    );
+    await t.end('r1');
+    const prompt = t.chat.doStreamCalls[0]?.prompt ?? [];
+    const marked = prompt.flatMap((m, i) =>
+      (m.providerOptions?.anthropic as { cacheControl?: unknown } | undefined)?.cacheControl
+        ? [i]
+        : [],
+    );
+    // system 0, user One 1, A 2, Two 3, B 4, Three 5, C 6, Four 7
+    expect(marked).toEqual([0, 4, 6, 7]);
+  });
+
+  it('keeps the cloud history within a share of the context, dropping whole call groups', async () => {
+    const big = 'x'.repeat(7000);
+    const group = (n: number) => [
+      { role: 'user' as const, content: `Question ${String(n)}` },
+      {
+        role: 'assistant' as const,
+        content: '',
+        toolCalls: [{ callId: `c${String(n)}`, name: 'list_layers', input: {} }],
+      },
+      {
+        role: 'tool' as const,
+        results: [
+          { callId: `c${String(n)}`, name: 'list_layers', status: 'ok' as const, output: big },
+        ],
+      },
+      { role: 'assistant' as const, content: `Answer ${String(n)}` },
+    ];
+    // an older Claude with a 200k window: 50k tokens of history, about 200k characters
+    const messages = [
+      ...Array.from({ length: 60 }, (_, i) => group(i)).flat(),
+      { role: 'user' as const, content: 'Latest' },
+    ];
+    const t = setup({
+      steps: [textStep('ok')],
+      host: { routes: () => [{ task: 'chat', provider: 'anthropic', model: 'claude-haiku-4-5' }] },
+    });
+    await t.runtime.send(req({ messages }));
+    await t.end('r1');
+    const prompt = t.chat.doStreamCalls[0]?.prompt ?? [];
+    const json = JSON.stringify(prompt);
+    expect(json).toContain('Latest');
+    expect(json).not.toContain('Question 0"');
+    expect(json).toContain('Question 59');
+    expect(json.length).toBeLessThan(230_000);
+    // never a call without its result, and the history starts with a user message
+    expect(prompt[1]?.role).toBe('user');
+    prompt.forEach((m, i) => {
+      if (m.role === 'tool') expect(prompt[i - 1]?.role).toBe('assistant');
+    });
+  });
+
+  it('gives each tool id in the history once, renaming repeats', async () => {
+    const t = setup({ steps: [textStep('ok')] });
+    const call = (id: string) => ({
+      role: 'assistant' as const,
+      content: '',
+      toolCalls: [{ callId: id, name: 'list_layers', input: {} }],
+    });
+    const result = (id: string) => ({
+      role: 'tool' as const,
+      results: [{ callId: id, name: 'list_layers', status: 'ok' as const, output: '[]' }],
+    });
+    await t.runtime.send(
+      req({
+        messages: [
+          { role: 'user', content: 'a' },
+          call('x:1'),
+          result('x:1'),
+          { role: 'user', content: 'b' },
+          call('x/1'),
+          result('x/1'),
+          { role: 'user', content: 'c' },
+        ],
+      }),
+    );
+    await t.end('r1');
+    const ids = (t.chat.doStreamCalls[0]?.prompt ?? []).flatMap((m) =>
+      Array.isArray(m.content)
+        ? m.content.flatMap((p) =>
+            p.type === 'tool-call' || p.type === 'tool-result' ? [`${p.type}:${p.toolCallId}`] : [],
+          )
+        : [],
+    );
+    expect(ids).toEqual([
+      'tool-call:x_1',
+      'tool-result:x_1',
+      'tool-call:x_1_2',
+      'tool-result:x_1_2',
+    ]);
   });
 
   it('offers only the tools the project can use', async () => {
@@ -856,9 +965,29 @@ describe('the local agent on a small model (AI-9)', () => {
     };
     await t.runtime.send(req());
     expect((await t.end('r1')).type).toBe('done');
-    // six steps, then one summary call without tools (this mock says nothing: the fixed line)
-    expect(t.model.doStreamCalls).toHaveLength(7);
+    // a model on this machine: no extra summary call
+    expect(t.model.doStreamCalls).toHaveLength(6);
     expect(text(t.events)).toContain('I stopped after 6 steps.');
+  });
+
+  it('stops after eight steps on a local model in the full profile, without a summary call', async () => {
+    const t = localSetup({
+      doStream: () => Promise.resolve(stream(toolStep(`c${Math.random()}`, 'list_layers', {}))),
+    });
+    const origEmit = t.events.push.bind(t.events);
+    t.events.push = (...items: AiEvent[]) => {
+      const n = origEmit(...items);
+      for (const e of items)
+        queueMicrotask(() => {
+          if (e.type === 'tool-call')
+            t.runtime.toolResult({ runId: 'r1', callId: e.callId, approved: true, result: [] });
+        });
+      return n;
+    };
+    await t.runtime.send(req());
+    expect((await t.end('r1')).type).toBe('done');
+    expect(t.model.doStreamCalls).toHaveLength(8);
+    expect(text(t.events)).toContain('I stopped after 8 steps.');
   });
 
   it('repairs a malformed tool call from a small model', async () => {

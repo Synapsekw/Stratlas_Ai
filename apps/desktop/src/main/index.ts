@@ -794,7 +794,7 @@ const agent = createAgentRuntime(
     ...gates,
     routes: () => settings.current().routes,
     localModel: () => settings.current().localModel,
-    // Settings, AI providers: thinking and prompt caching for the cloud agent (absent: on)
+    // Settings, AI providers, "Agent thinking" for the cloud agent (absent: on)
     agentThinking: () => settings.current().agentThinking !== false,
     policy: async (projectId) => {
       const root = registry.root(projectId);
