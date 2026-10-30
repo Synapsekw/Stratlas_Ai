@@ -1,3 +1,4 @@
+import { renameWhenFree, type RenameOptions } from '@aio/project/fs';
 import type { UpdateStatus } from '@aio/schema';
 import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import { z } from 'zod';
@@ -73,6 +74,8 @@ export interface RollbackDeps {
   fs: RollbackFs;
   now?: () => Date;
   log?: (line: string) => void;
+  /** How a refused rename is tried again (tests pass the platform and a quick sleep). */
+  retry?: Pick<RenameOptions, 'platform' | 'sleep'>;
 }
 
 export type StartupDecision =
@@ -133,6 +136,18 @@ export function createRollback(d: RollbackDeps) {
     }
   }
 
+  /**
+   * Rename through `d.fs`, tried again while Windows refuses it because a virus scanner or the
+   * indexer still reads the files just written. A folder moves only to a free name, so there a
+   * target that exists is a real refusal; a file replaces its target.
+   */
+  const move = (from: string, to: string, o: { folder?: boolean } = {}) =>
+    renameWhenFree(from, to, {
+      ...d.retry,
+      rename: (a, b) => d.fs.rename(a, b),
+      ...(o.folder ? { giveUp: () => exists(to) } : {}),
+    });
+
   /** The update message when the journal on disk was saved by a newer build, else null. */
   async function newerJournal(): Promise<string | null> {
     let text: string;
@@ -172,7 +187,7 @@ export function createRollback(d: RollbackDeps) {
     await d.fs.mkdir(d.dir, { recursive: true });
     const tmp = `${journalPath}.tmp`;
     await d.fs.writeFile(tmp, `${JSON.stringify(j, null, 2)}\n`);
-    await d.fs.rename(tmp, journalPath);
+    await move(tmp, journalPath);
   }
 
   async function removeKept(except?: string) {
@@ -210,7 +225,7 @@ export function createRollback(d: RollbackDeps) {
         await d.fs.cp(appRoot, staging, { recursive: true, verbatimSymlinks: true });
         // The rename makes the copy appear complete or not at all.
         await d.fs.rm(dir, { recursive: true, force: true });
-        await d.fs.rename(staging, dir);
+        await move(staging, dir, { folder: true });
       }
       await write({
         schema: JOURNAL_SCHEMA,
@@ -411,7 +426,16 @@ export async function restoreInto(
       `The installed version is in use and could not be replaced: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
     );
   }
-  await r.fs.rename(staging, appRoot);
+  // the restored copy was just written: a scanner may hold it for a moment on Windows
+  await renameWhenFree(staging, appRoot, {
+    rename: (a, b) => r.fs.rename(a, b),
+    sleep: r.sleep,
+    giveUp: () =>
+      r.fs.stat(appRoot).then(
+        () => true,
+        () => false,
+      ),
+  });
   await r.fs.rm(failed, { recursive: true, force: true }).catch(() => {
     log(`Could not remove ${failed}; delete it by hand.`);
   });

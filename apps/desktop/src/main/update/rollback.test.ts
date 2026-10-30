@@ -52,7 +52,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await rm(base, { recursive: true, force: true });
+  await rm(base, { recursive: true, force: true, maxRetries: 5 });
 });
 
 describe('keeping the previous version', () => {
@@ -66,6 +66,47 @@ describe('keeping the previous version', () => {
     const j = await rollbackFor('0.7.0').read();
     expect(j.pending).toMatchObject({ from: '0.7.0', to: '0.8.0', launches: 0, failures: 0 });
     expect(j.previous).toMatchObject({ version: '0.7.0', appRoot });
+  });
+
+  it('tries the rename again while Windows refuses it, then keeps the copy', async () => {
+    // a scanner reading the fresh copy (or the journal) makes Windows refuse the first rename
+    const refused: string[] = [];
+    const flaky: RollbackFs = {
+      ...fs,
+      rename: (a, b) => {
+        if (!refused.includes(b)) {
+          refused.push(b);
+          return Promise.reject(Object.assign(new Error(`EPERM: rename ${a}`), { code: 'EPERM' }));
+        }
+        return fsp.rename(a, b);
+      },
+    };
+    const kept = await createRollback({
+      dir: updates,
+      current: '0.7.0',
+      install: { appRoot, exe: 'QuadrionAI.exe' },
+      fs: flaky,
+      retry: { platform: 'win32', sleep: () => Promise.resolve() },
+    }).keepCurrent('0.8.0');
+    expect(refused).toEqual([kept.dir, join(updates, 'journal.json')]);
+    expect(await readFile(kept.exe, 'utf8')).toBe('exe 0.7.0');
+    expect(existsSync(`${kept.dir}.partial`)).toBe(false);
+    expect((await rollbackFor('0.7.0').read()).pending).toMatchObject({ to: '0.8.0' });
+  });
+
+  it('gives up at once when the kept copy cannot be moved and nothing holds it', async () => {
+    const never: RollbackFs = {
+      ...fs,
+      rename: () => Promise.reject(Object.assign(new Error('EPERM: rename'), { code: 'EPERM' })),
+    };
+    const r = createRollback({
+      dir: updates,
+      current: '0.7.0',
+      install: { appRoot, exe: 'QuadrionAI.exe' },
+      fs: never,
+      retry: { platform: 'linux' },
+    });
+    await expect(r.keepCurrent('0.8.0')).rejects.toMatchObject({ code: 'EPERM' });
   });
 
   it('is not possible in a development build', async () => {
