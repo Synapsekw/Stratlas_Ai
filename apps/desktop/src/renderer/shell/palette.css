@@ -1,0 +1,4 @@
+/* The command palette's rows that cannot run now: listed with the reason, muted. */
+.cmdk-item[aria-disabled='true'] .ct {
+  color: var(--fg-3);
+}

@@ -5,8 +5,15 @@ export interface Command {
   group: string;
   /** Extra words that match but are not shown. */
   keywords?: string[];
-  /** Right-aligned hint: a shortcut, a count, a status. */
+  /** Right-aligned hint: a count, a status, why it cannot run. */
   hint?: string;
+  /** The keys that do the same, as people read them (`M`, `Ctrl B`): shown at the row's end. */
+  shortcut?: string;
+  /**
+   * Added to the match score to break a near tie (the person's favourite tools first). Keep it
+   * at 1 or less: one better-placed letter is worth more, so a boost never beats a better match.
+   */
+  boost?: number;
   run: () => void;
 }
 
@@ -43,17 +50,23 @@ export function scoreMatch(query: string, text: string): number | null {
   return score - t.length * 0.01;
 }
 
+/**
+ * A keyword (a word that matches but is not shown) counts for less than the label: a label that
+ * matches as well ranks first, while a whole-word keyword still beats letters scattered through a
+ * label.
+ */
+const KEYWORD_WEIGHT = 0.6;
+
 export function rankCommands(commands: readonly Command[], query: string, limit = 60): Command[] {
   if (!query.trim()) return commands.slice(0, limit);
   const scored: { c: Command; s: number }[] = [];
   for (const c of commands) {
-    const candidates = [c.title, ...(c.keywords ?? [])];
-    let best: number | null = null;
-    for (const text of candidates) {
+    let best = scoreMatch(query, c.title);
+    for (const text of c.keywords ?? []) {
       const s = scoreMatch(query, text);
-      if (s !== null && (best === null || s > best)) best = s;
+      if (s !== null && (best === null || s * KEYWORD_WEIGHT > best)) best = s * KEYWORD_WEIGHT;
     }
-    if (best !== null) scored.push({ c, s: best });
+    if (best !== null) scored.push({ c, s: best + (c.boost ?? 0) });
   }
   scored.sort((a, b) => b.s - a.s);
   return scored.slice(0, limit).map((x) => x.c);

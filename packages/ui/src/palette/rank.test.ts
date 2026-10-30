@@ -46,6 +46,17 @@ describe('rankCommands', () => {
   it('searches keywords too', () => {
     expect(rankCommands(list, 'critical').map((c) => c.id)).toEqual(['c']);
   });
+  it('label match beats keyword match', () => {
+    const byKeyword = cmd('k', 'Processing tools (Settings)', 'Navigate', ['measure']);
+    const byLabel = cmd('l', 'Measure: Distance', 'Tools');
+    expect(rankCommands([byKeyword, byLabel], 'measure').map((c) => c.id)).toEqual(['l', 'k']);
+  });
+  it('a boost breaks a near tie but never beats a better match', () => {
+    const area = cmd('a', 'Measure: Area', 'Tools');
+    const distance = { ...cmd('d', 'Measure: Distance', 'Tools'), boost: 1 };
+    expect(rankCommands([area, distance], 'measure').map((c) => c.id)).toEqual(['d', 'a']);
+    expect(rankCommands([distance, area], 'area').map((c) => c.id)).toEqual(['a', 'd']);
+  });
   it('limits the result', () => {
     expect(rankCommands(list, '', 2)).toHaveLength(2);
   });

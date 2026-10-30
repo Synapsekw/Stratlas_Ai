@@ -6,6 +6,8 @@ import { rankCommands, type Command } from './rank';
 
 export interface PaletteCommand extends Command {
   icon?: IconName;
+  /** Listed but cannot run now: the hint says why, Enter and a click leave the palette open. */
+  disabled?: boolean;
 }
 
 export interface CommandPaletteProps {
@@ -37,7 +39,7 @@ export function CommandPalette({ commands, onClose, placeholder }: CommandPalett
   }, [index]);
 
   const run = (c: PaletteCommand | undefined) => {
-    if (!c) return;
+    if (!c || c.disabled) return;
     onClose();
     c.run();
   };
@@ -115,6 +117,7 @@ export function CommandPalette({ commands, onClose, placeholder }: CommandPalett
                   data-index={i}
                   role="option"
                   aria-selected={i === index}
+                  aria-disabled={c.disabled ? true : undefined}
                   className="cmdk-item"
                   onPointerMove={() => {
                     if (i !== index) setActive(i);
@@ -125,7 +128,7 @@ export function CommandPalette({ commands, onClose, placeholder }: CommandPalett
                 >
                   <Icon name={c.icon ?? 'chev-r'} />
                   <span className="ct">{c.title}</span>
-                  <span className="ch">{grouped ? c.hint : (c.hint ?? c.group)}</span>
+                  <CommandEnd c={c} grouped={grouped} />
                 </button>
               </div>
             );
@@ -148,5 +151,18 @@ export function CommandPalette({ commands, onClose, placeholder }: CommandPalett
         </div>
       </div>
     </div>
+  );
+}
+
+/** The row's end: the hint (or the group in a ranked list), then the shortcut as keys. */
+function CommandEnd({ c, grouped }: { c: PaletteCommand; grouped: boolean }) {
+  const hint = grouped ? c.hint : (c.hint ?? c.group);
+  if (!hint && !c.shortcut) return null;
+  return (
+    <span className="ch">
+      {hint}
+      {hint && c.shortcut ? ' ' : null}
+      {c.shortcut && <span className="kbd">{c.shortcut}</span>}
+    </span>
   );
 }

@@ -15,4 +15,13 @@ export const enPalette = {
   'palette.prevSurvey': 'Go to previous survey',
   'palette.nextSurvey': 'Go to next survey',
   'palette.surveyOn': 'Go to survey {date}',
+  'palette.tool': '{group}: {name}',
+  'palette.toolGroup': '{name} tools',
+  'palette.tab': 'Go to {name} tab',
+  'palette.settingsPage': 'Settings: {name}',
+  'palette.group.tools': 'Tools',
+  'palette.group.navigate': 'Navigate',
+  'palette.group.settings': 'Settings',
+  'palette.unavailable.readOnly': 'Read only here: open a writable project to measure',
+  'palette.unavailable.needs3d': 'Open the 3D view first',
 } as const satisfies Record<string, string>;

@@ -1,4 +1,5 @@
 import { pinDisplay, useAnnotateReadOnly } from '@aio/annotate';
+import { getActiveStage } from '@aio/engine';
 import { COLOUR_MODES, pointcloudSettings } from '@aio/pointcloud';
 import type { Layer } from '@aio/schema';
 import {
@@ -6,11 +7,15 @@ import {
   formatDate,
   t,
   type IconName,
+  type MessageKey,
   type PaletteCommand,
   shortcutHint,
 } from '@aio/ui';
+import { isTelecomTool } from '@aio/survey';
+import { useVolumetric } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo } from 'react';
+import { useStore } from 'zustand';
 import { actionAllowed, allowedActions } from '../exports/exportModel';
 import { runExportAction } from '../exports/exports';
 import { alignCamera } from '../builder/alignSession';
@@ -24,7 +29,29 @@ import { processing } from '../processing/store';
 import { pickAndScanPanos } from '../panos/panos';
 import { openProcessingTools } from '../processingTools';
 import { shell, useShell } from '../shell';
-import { isSidebarFolded, type Screen } from '../store';
+import { isSidebarFolded, type Screen, type SettingsPage, type StageMode } from '../store';
+import { TOOL_ICON } from '../survey/card';
+import {
+  ALL_TOOLS,
+  favouritesAndRecent,
+  familyOf,
+  measureFavourites,
+  useFavourites,
+  type CatalogueTool,
+} from '../survey/measureCatalogue';
+import { measureStore, startTool, useMeasure } from '../survey/measureStore';
+import { startTelecomTool, useTelecomUnavailable } from '../survey/TelecomTools';
+import { GROUP_ICON, GROUP_NAME, MODES } from '../workspace/island/groups';
+import { GROUP_TAB, openBenchFromIsland } from '../workspace/island/islandBench';
+import { islandGroups } from '../workspace/island/islandModel';
+import { useRoad } from '../road/store';
+import { useEngineStage } from '../workspace/StageTools';
+import { toggleMeasure, toggleSection } from '../workspace/tools/measure';
+import { showBench } from '../workspace/workbench/followTool';
+import { useHasVolumeMeasurements } from '../workspace/workbench/view';
+import { workbench } from '../workspace/workbench/workbenchStore';
+import { paletteIndex, type PaletteTool } from './paletteIndex';
+import './palette.css';
 import { PATH_MODES, setPathMode, togglePaths } from '../workspace/flightPaths';
 import { updateFlightPaths } from '../workspace/pathModel';
 import { useMapViewMenuModel } from '../workspace/MapMenus';
@@ -78,6 +105,161 @@ const SCREENS: { screen: Screen; title: string; icon: IconName }[] = [
   { screen: 'settings', title: 'Settings', icon: 'settings' },
 ];
 
+/** The island's key for a stage view (1, 2, 3). */
+const modeKey = (mode: StageMode): string | undefined => MODES.find((m) => m.mode === mode)?.keys;
+
+// ---------------------------------------------------------------- Settings pages
+// The Settings pages by name, in the order of the Settings screen's list. One block: when the
+// Settings pages move to their own module this becomes that module's list.
+const SETTINGS_PAGE_LABEL: Record<SettingsPage, MessageKey> = {
+  ai: 'settings.page.ai',
+  usage: 'settings.page.usage',
+  privacy: 'settings.page.privacy',
+  identity: 'identity.page',
+  data: 'settings.page.data',
+  tools: 'settings.page.tools',
+  maps: 'settings.page.maps',
+  'map-sources': 'settings.page.mapSources',
+  severity: 'settings.page.severity',
+  classes: 'settings.page.classes',
+  branding: 'settings.page.branding',
+  graphics: 'settings.page.graphics',
+  appearance: 'settings.page.appearance',
+  keyboard: 'settings.page.keyboard',
+  about: 'settings.page.about',
+};
+
+// ---------------------------------------------------------------- tools, island groups, tabs
+
+/** Start a measuring tool from the palette: on the stage, and left on when it already is. */
+function startCatalogueTool(tool: CatalogueTool): void {
+  shell.getState().go('scene');
+  const stage = getActiveStage();
+  if (tool === 'section-plane') {
+    measureFavourites.getState().used(tool);
+    if (stage && !stage.section.enabled) toggleSection(stage);
+    return;
+  }
+  const active = measureStore.getState().tool;
+  if (active?.tool === tool && !active.template) return;
+  if (tool === 'distance') toggleMeasure(stage);
+  else if (isTelecomTool(tool)) startTelecomTool(tool);
+  else {
+    if (stage && stage.tool !== 'select') stage.setTool('select');
+    startTool(tool);
+  }
+}
+
+/**
+ * The palette's tools, island groups, workbench tabs and Settings pages (`paletteIndex`), read
+ * from what the stage and the right sidebar offer now. Tools, groups and tabs need an open project.
+ */
+function useIndexedCommands(): PaletteCommand[] {
+  const project = useWorkspace((s) => s.project);
+  const pkg = useShell((s) => s.pkg !== null);
+  const stageMode = useShell((s) => s.stageMode);
+  const readOnly = useMeasure((s) => s.readOnly) || pkg;
+  const stage = useEngineStage();
+  const telecomOff = useTelecomUnavailable();
+  const favourites = useFavourites((s) => s.favourites);
+  const recent = useFavourites((s) => s.recent);
+  const tabs = useStore(workbench, (s) => s.tabs);
+  const kitVolumes = useVolumetric((x) => x.status === 'ready');
+  const piles = useHasVolumeMeasurements();
+  const road = useRoad((x) => x.status === 'ready');
+  return useMemo(() => {
+    const settingsPages = (Object.keys(SETTINGS_PAGE_LABEL) as SettingsPage[]).map((id) => ({
+      id,
+      label: t(SETTINGS_PAGE_LABEL[id]),
+      open: () => {
+        shell.getState().openSettingsPage(id);
+      },
+    }));
+    if (!project) return paletteIndex({ tools: [], groups: [], tabs: [], settingsPages });
+    const onStage = (fn: () => void) => () => {
+      shell.getState().go('scene');
+      fn();
+    };
+    const measure = t(GROUP_NAME.measure);
+    const tools: PaletteTool[] = ALL_TOOLS.map((e) => {
+      const reason =
+        readOnly && e.saves
+          ? t('palette.unavailable.readOnly')
+          : e.tool === 'section-plane'
+            ? stage
+              ? null
+              : t('palette.unavailable.needs3d')
+            : isTelecomTool(e.tool)
+              ? telecomOff
+              : null;
+      const family = familyOf(e.tool);
+      return {
+        id: e.tool,
+        group: measure,
+        label: e.label,
+        icon: e.tool === 'section-plane' ? 'section' : TOOL_ICON[e.tool],
+        ...(e.key ? { shortcutId: e.key } : {}),
+        keywords: [e.hint, ...(family ? [t(`measureCat.family.${family}`)] : [])],
+        available: reason === null ? true : { reason },
+        start: () => {
+          startCatalogueTool(e.tool);
+        },
+      };
+    });
+    const layers = project.manifest.layers;
+    const groups = islandGroups({
+      map: stageMode === 'map',
+      mode: stageMode,
+      clouds: layers.some((l) => l.kind === 'pointcloud'),
+      volumes: kitVolumes || piles,
+      video: layers.some((l) => l.kind === 'video'),
+      road,
+      pkg,
+    }).flatMap((g) => {
+      const tab = GROUP_TAB[g];
+      // View has no workbench: its tiles are the whole group
+      if (!tab) return [];
+      return [
+        {
+          id: g,
+          label: t(GROUP_NAME[g]),
+          icon: GROUP_ICON[g],
+          tab,
+          open: onStage(() => {
+            openBenchFromIsland(tab);
+          }),
+        },
+      ];
+    });
+    return paletteIndex({
+      tools,
+      preferred: favouritesAndRecent({ favourites, recent }),
+      groups,
+      tabs: tabs.map((tab) => ({
+        id: tab.id,
+        label: t(`wb.tab.${tab.id}`),
+        open: onStage(() => {
+          showBench(tab.id);
+        }),
+      })),
+      settingsPages,
+    });
+  }, [
+    project,
+    pkg,
+    stageMode,
+    readOnly,
+    stage,
+    telecomOff,
+    favourites,
+    recent,
+    tabs,
+    kitVolumes,
+    piles,
+    road,
+  ]);
+}
+
 export function Palette() {
   const open = useShell((s) => s.paletteOpen);
   const library = useShell((s) => s.library);
@@ -102,6 +284,7 @@ export function Palette() {
   // running, nor on a read-only project
   const canAutoplan = canAutoplanCoverage(chip, rfReadOnly);
   const hasProject = project !== null;
+  const indexed = useIndexedCommands();
   useEffect(() => {
     if (open && hasProject) rasterPacks.getState().refresh();
   }, [open, hasProject]);
@@ -141,8 +324,15 @@ export function Palette() {
         processing.getState().openDrawer();
       },
     });
-    const action = (id: string, title: string, icon: IconName, run: () => void, hint?: string) => {
-      list.push({ id, title, group: 'Actions', icon, run, ...(hint ? { hint } : {}) });
+    // the last argument is the key that does the same, shown at the row's end
+    const action = (
+      id: string,
+      title: string,
+      icon: IconName,
+      run: () => void,
+      shortcut?: string,
+    ) => {
+      list.push({ id, title, group: 'Actions', icon, run, ...(shortcut ? { shortcut } : {}) });
     };
     action(
       'help',
@@ -160,7 +350,7 @@ export function Palette() {
       group: 'Actions',
       icon: 'sidebar',
       keywords: ['toggle sidebar', 'hide sidebar', 'show sidebar', 'fold', 'navigation'],
-      hint: shortcutHint('global.sidebar'),
+      shortcut: shortcutHint('global.sidebar'),
       run: () => void s.toggleSidebar(),
     });
     action('add-folder', 'Add project folder', 'import', () => void s.addProjectFolder());
@@ -208,6 +398,7 @@ export function Palette() {
         scene(() => {
           s.setStageMode('3d');
         }),
+        modeKey('3d'),
       );
       action(
         'mode:map',
@@ -216,6 +407,7 @@ export function Palette() {
         scene(() => {
           s.setStageMode('map');
         }),
+        modeKey('map'),
       );
       action(
         'mode:split',
@@ -224,6 +416,7 @@ export function Palette() {
         scene(() => {
           s.setStageMode('split');
         }),
+        modeKey('split'),
       );
       list.push({
         id: 'right',
@@ -231,7 +424,7 @@ export function Palette() {
         group: 'Actions',
         icon: 'sidebar',
         keywords: ['toggle right panel', 'hide right panel', 'show right panel', 'fold', 'agent'],
-        hint: shortcutHint('global.rightPanel'),
+        shortcut: shortcutHint('global.rightPanel'),
         run: s.toggleRight,
       });
       action(
@@ -242,7 +435,7 @@ export function Palette() {
           if (playing) ws.pause();
           else ws.play();
         },
-        'Space',
+        shortcutHint('global.playPause'),
       );
       action(
         'home',
@@ -396,7 +589,7 @@ export function Palette() {
         scene(() => {
           pinDisplay.getState().togglePins();
         }),
-        'I',
+        shortcutHint('scene.pins'),
       );
       // no video and one survey date: no timeline to show (the View tile says why)
       if (hasTimeline(project))
@@ -407,7 +600,6 @@ export function Palette() {
           scene(() => {
             toggleTimeline(project);
           }),
-          'T',
         );
       const clouds = layers.filter((l) => l.kind === 'pointcloud');
       if (clouds.length > 0) {
@@ -448,7 +640,7 @@ export function Palette() {
           scene(() => {
             updateFlightPaths(togglePaths);
           }),
-          'P',
+          shortcutHint('scene.flightPaths'),
         );
         action(
           'telemetry',
@@ -457,7 +649,7 @@ export function Palette() {
           scene(() => {
             toggleTelemetry();
           }),
-          'D',
+          shortcutHint('scene.telemetry'),
         );
         for (const m of PATH_MODES)
           list.push({
@@ -708,8 +900,11 @@ export function Palette() {
         },
       });
     }
+    // the tools, island groups, tabs and Settings pages last: an empty search keeps its first rows
+    list.push(...indexed);
     return list;
   }, [
+    indexed,
     library,
     cloudAi,
     offlineOnly,
