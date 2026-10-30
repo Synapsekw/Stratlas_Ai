@@ -150,6 +150,7 @@ describe('templateNarrative', () => {
           passed: [],
           released: [],
           unchecked: 0,
+          withCheckpoints: 0,
         },
       }),
       { todo: false },
