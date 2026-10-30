@@ -383,16 +383,16 @@ interface GlobeHook {
   };
 }
 
-/** Turn the view where it stands until south is up, as a drag with the middle button does. */
-async function faceSouth(win: Page) {
-  await win.evaluate(() => {
+/** Turn the view where it stands to a heading (radians, 0 north up), as a drag with the middle button does. */
+async function face(win: Page, heading: number) {
+  await win.evaluate((h) => {
     const el = document.querySelector('[data-testid="globe-canvas"]');
     const scene = (el as unknown as { __aioGlobe: GlobeHook }).__aioGlobe.widget.scene;
     scene.camera.setView({
-      orientation: { heading: Math.PI, pitch: scene.camera.pitch, roll: 0 },
+      orientation: { heading: h, pitch: scene.camera.pitch, roll: 0 },
     });
     scene.requestRender();
-  });
+  }, heading);
   await frames(win);
 }
 
@@ -1152,50 +1152,58 @@ test('chips that overlap gather into one, at any heading, and part again', async
       .toBeGreaterThan(from * 1.8);
     await frames(win);
   }
-  let northUp = await sharedChip();
+  let firstUp = await sharedChip();
+  // A gathered chip runs to the right of its dot: with site A on the right of the two, the view
+  // turns south up so site A comes out on the left, clear of the chip, as the two come apart.
+  let heading = 0;
+  if ((await pinInWindow(win, SITE_A.id))[0] > dotOf(firstUp)[0]) {
+    heading = Math.PI;
+    await face(win, heading);
+    firstUp = await sharedChip();
+  }
   // Like a site's own chip, the gathered one has its dot on its sites (their middle) and runs to
   // the right of it: no dot of a site inside it shows through as a second one.
-  const places = await Promise.all(northUp.sites.map((id) => pinInWindow(win, id)));
+  const places = await Promise.all(firstUp.sites.map((id) => pinInWindow(win, id)));
   const [midX, midY] = places
     .reduce(([x, y], [px, py]) => [x + px, y + py], [0, 0])
     .map((v) => v / places.length) as [number, number];
   expect(
-    Math.hypot(dotOf(northUp)[0] - midX, dotOf(northUp)[1] - midY),
+    Math.hypot(dotOf(firstUp)[0] - midX, dotOf(firstUp)[1] - midY),
     "the gathered chip's dot lies on the middle of its sites",
   ).toBeLessThan(4);
   // Site A's own place must lie clear of the gathered chip before anything is read there: under
   // the chip it is drawn in the chip's own colours, and "no dot of its own" would say nothing.
   // The gathered chip starts at the middle of the two, so from a little nearer (they still share
-  // a chip: their own are far wider than it) site A's place is out from under it.
+  // a chip: their own are far wider than it) site A's place, on the left, is out from under it.
   const underChip = async (chip: DrawnChip) => {
     const [x, y] = await pinInWindow(win, SITE_A.id);
     // (a dot is 8 px across; a pixel more for its soft edge)
     return overlap({ x: x - 5, y: y - 5, width: 10, height: 10 }, chip.box);
   };
-  for (let step = 0; step < 8 && (await underChip(northUp)); step++) {
+  for (let step = 0; step < 8 && (await underChip(firstUp)); step++) {
     await comeNearer(win, 0.1);
-    northUp = await sharedChip();
+    firstUp = await sharedChip();
   }
   expect(
-    await underChip(northUp),
-    `site A's place lies under the gathered chip (${edges(northUp.box)})`,
+    await underChip(firstUp),
+    `site A's place lies under the gathered chip (${edges(firstUp.box)})`,
   ).toBe(false);
   // The Globe says so, and it is what is drawn: where the gathered chip's dot is, the amber of a
   // chip that holds a site with an open issue (site A); and at site A's own place, clear of that
   // chip, no dot of its own.
   expect((await inspect(win))?.clusters).toContainEqual({
-    count: northUp.sites.length,
-    sites: northUp.sites,
+    count: firstUp.sites.length,
+    sites: firstUp.sites,
   });
   await expect
-    .poll(async () => amber(await drawnAt(win, ...dotOf(northUp))), {
-      message: `the amber dot of the gathered chip (${edges(northUp.box)})`,
+    .poll(async () => amber(await drawnAt(win, ...dotOf(firstUp))), {
+      message: `the amber dot of the gathered chip (${edges(firstUp.box)})`,
       timeout: 15_000,
     })
     .toBe(true);
   const ownPlace = await pinInWindow(win, SITE_A.id);
   expect(
-    Math.hypot(ownPlace[0] - dotOf(northUp)[0], ownPlace[1] - dotOf(northUp)[1]),
+    Math.hypot(ownPlace[0] - dotOf(firstUp)[0], ownPlace[1] - dotOf(firstUp)[1]),
     "site A's place lies off the gathered chip's dot",
   ).toBeGreaterThan(10);
   expect(
@@ -1204,34 +1212,34 @@ test('chips that overlap gather into one, at any heading, and part again', async
   ).toBe(false);
   // the gathered chip answers the pointer as one thing
   const hoverOf = async () => (await inspect(win))?.hover ?? null;
-  await pointAt(win, ...middleOf(northUp));
+  await pointAt(win, ...middleOf(firstUp));
   await expect
     .poll(hoverOf, { timeout: 15_000 })
-    .toEqual({ kind: 'cluster', count: northUp.sites.length });
+    .toEqual({ kind: 'cluster', count: firstUp.sites.length });
   // its words are on the chip: no label is added under the pointer
   await expect(win.getByTestId('globe-tag-hover')).toHaveText('');
   // neither site answers at its own place while it is gathered
   for (const id of pair) {
     const [x, y] = await pinInWindow(win, id);
     // (under the gathered chip its place answers as the chip does)
-    if (overlap({ x: x - 4, y: y - 4, width: 8, height: 8 }, northUp.box)) continue;
+    if (overlap({ x: x - 4, y: y - 4, width: 8, height: 8 }, firstUp.box)) continue;
     await pointAt(win, x, y);
     await frames(win);
     expect((await hoverOf())?.kind ?? 'nothing', `what is at the place of ${id}`).not.toBe('site');
   }
 
-  // with south up the two change sides, and still share one chip
+  // turned the other way up the two change sides, and still share one chip
   const [aBefore] = await pinInWindow(win, SITE_A.id);
   const [tBefore] = await pinInWindow(win, TINY_PROJECT_ID);
-  await faceSouth(win);
+  await face(win, heading === 0 ? Math.PI : 0);
   const [aAfter] = await pinInWindow(win, SITE_A.id);
   const [tAfter] = await pinInWindow(win, TINY_PROJECT_ID);
   expect(Math.sign(aAfter - tAfter)).toBe(-Math.sign(aBefore - tBefore));
-  const southUp = await sharedChip();
-  await pointAt(win, ...middleOf(southUp));
+  const turnedUp = await sharedChip();
+  await pointAt(win, ...middleOf(turnedUp));
   await expect
     .poll(hoverOf, { timeout: 15_000 })
-    .toEqual({ kind: 'cluster', count: southUp.sites.length });
+    .toEqual({ kind: 'cluster', count: turnedUp.sites.length });
 
   // A click on the gathered chip flies to its sites until they part. (Had a third site joined
   // the two, the first flight shows all three and the two may still share a chip: a person
