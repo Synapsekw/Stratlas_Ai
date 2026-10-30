@@ -74,6 +74,11 @@ function preview(r: IpcRequest<'ai:engineer'>): IpcRequest<'ai:engineerPreview'>
   };
 }
 
+// Every test here is a chain of small file reads and writes (spend, approval, cache) that takes
+// well under 100 ms alone, but more than the default 5 s while a full check loads the computer.
+// A test that times out keeps running into the next one, so give the disk the time it needs.
+vi.setConfig({ testTimeout: 30_000 });
+
 /** The project folder of the tests: runs `run-a` and `run-b` are saved (their run.json). */
 let root = '';
 beforeEach(async () => {
@@ -85,7 +90,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   vi.restoreAllMocks();
-  await rm(root, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true, maxRetries: 5 });
 });
 
 const runDir = (run = 'run-a') => join(root, 'engineering', run);
@@ -105,6 +110,8 @@ interface Opts {
 }
 
 function setup(o: Opts = {}) {
+  // this test's folder, kept even if the test outlives its timeout and the next one starts
+  const dir = root;
   const provider = o.provider ?? 'anthropic';
   let requests = 0;
   const scripted = createScriptedProvider(provider, true, {
@@ -141,7 +148,7 @@ function setup(o: Opts = {}) {
           ...(o.flags ?? { photos: false, scans: false }),
         });
       },
-      runDir: (_projectId, run) => (o.open === false ? undefined : join(root, 'engineering', run)),
+      runDir: (_projectId, run) => (o.open === false ? undefined : join(dir, 'engineering', run)),
       ...(o.now ? { now: o.now } : {}),
     },
   };
