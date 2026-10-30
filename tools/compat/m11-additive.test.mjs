@@ -89,7 +89,12 @@ describe('existing files 0.11 writes stay readable by 0.10', () => {
     expect(
       Object.keys(current.Settings.shape)
         .filter(
-          (k) => k !== 'processing' && k !== 'websiteAutoUpdate' && k !== 'autoPrepareSurfaces',
+          (k) =>
+            k !== 'processing' &&
+            k !== 'websiteAutoUpdate' &&
+            k !== 'autoPrepareSurfaces' &&
+            // agent thinking and prompt caching (30 Oct 2026): additive, absent means on
+            k !== 'agentThinking',
         )
         .sort(),
     ).toEqual(Object.keys(v010.Settings.shape).sort());
