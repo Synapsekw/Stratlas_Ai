@@ -1,6 +1,6 @@
 import type { EngineStage, SectionState } from '@aio/engine';
 import type { Layer } from '@aio/schema';
-import { videoRig } from '@aio/video';
+import { cameraModeOf, videoRig } from '@aio/video';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect } from 'react';
 import { Box3, Vector3 } from 'three';
@@ -239,7 +239,7 @@ export function useCutaway(stage: EngineStage | null): void {
       else releaseLooks();
 
       // drone-eye looks out of the drone: a cut toward that camera would remove what it films
-      if (mode === 'cut' && box && videoRig(stage).cameraMode !== 'drone') {
+      if (mode === 'cut' && box && cameraModeOf(stage) !== 'drone') {
         const at = drone && inside ? drone.pos : box.getCenter(new Vector3());
         const want = cutawayFor(at, stage.camera.position, stage.sectionOrigin(), inside ? 0.6 : 0);
         if (!applied || !sameCut(stage.section, want)) {

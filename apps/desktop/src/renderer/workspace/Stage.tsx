@@ -3,7 +3,7 @@ import { SightingPicker, useIssueOverlay, useMapDraw, usePinDisplay } from '@aio
 import { getActiveScene, SceneView, type EngineStage } from '@aio/engine';
 import { MapView, type MapController, type MapDrawSeam, type MapIssueDisplay } from '@aio/maps';
 import { Button, Icon, useT } from '@aio/ui';
-import { setDroneTelemetry, setFlightPaths, videoRig } from '@aio/video';
+import { cameraModeOf, setDroneTelemetry, setFlightPaths } from '@aio/video';
 import { useVolumeHint, VolumeHint, VolumetricStage } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
 import {
@@ -253,7 +253,7 @@ function StageStatus({ stage }: { stage: EngineStage | null }) {
                 type="button"
                 className="btn sm ghost"
                 onClick={() => {
-                  if (videoRig(stage).cameraMode === 'drone') return;
+                  if (cameraModeOf(stage) === 'drone') return;
                   insideView(stage);
                 }}
               >

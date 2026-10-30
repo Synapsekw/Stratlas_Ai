@@ -86,6 +86,9 @@ export interface DroneTelemetryOptions {
 }
 const telemetryChoice = new WeakMap<SceneHandle, DroneTelemetryOptions>();
 
+/** The view footprint switch per scene (the drone's frustum drawn), kept across rigs. */
+const frustumChoice = new WeakMap<SceneHandle, boolean>();
+
 const PATH_START = new Color('#5ab0ff');
 const PATH_END = new Color('#ff5a5a');
 
@@ -244,6 +247,7 @@ export class VideoRig {
     this.projector = new Projector(projectorOptions);
     const paths = pathChoice.get(handle);
     if (paths) this.setFlightPaths(paths);
+    this.frustumOn = frustumChoice.get(handle) ?? true;
     this.group.name = 'VideoRig';
     this.drone.name = 'Drone';
     this.drone.visible = false;
@@ -900,6 +904,14 @@ export function videoRig(handle: SceneHandle): VideoRig {
   return rig;
 }
 
+/**
+ * The scene's camera mode, read without building a rig: a scene with no video is in free view.
+ * Reading through `videoRig` would build one, and a rig that no video layer owns is never disposed.
+ */
+export function cameraModeOf(handle: SceneHandle): CameraMode {
+  return rigs.get(handle)?.cameraMode ?? 'free';
+}
+
 /** Try an orientation bias on the active clip (calibration); `null` restores the clip's own. */
 export function setCalibrationOrientation(
   handle: SceneHandle,
@@ -935,6 +947,20 @@ export function setCameraMode(handle: SceneHandle, mode: CameraMode): void {
 export function setFlightPaths(handle: SceneHandle, o: FlightPathOptions): void {
   pathChoice.set(handle, { ...pathChoice.get(handle), ...o });
   rigs.get(handle)?.setFlightPaths(o);
+}
+
+/**
+ * The view footprint switch for the UI: the drone's frustum drawn or not. Remembered for the
+ * scene, so a rig built later starts with it; it never builds a rig itself, since a rig listens to
+ * the workspace store until its last video layer disposes it, and a scene with no video has none
+ * (a rig built there kept every closed 3D view alive).
+ */
+export function setFrustumOn(handle: SceneHandle, on: boolean): void {
+  frustumChoice.set(handle, on);
+  const rig = rigs.get(handle);
+  if (!rig) return;
+  rig.frustumOn = on;
+  handle.requestRender();
 }
 
 /**

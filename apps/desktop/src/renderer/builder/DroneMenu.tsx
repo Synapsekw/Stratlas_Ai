@@ -2,7 +2,7 @@ import { clipCamera, clipKeys, clipPoseAt, localToProject, toWgs84 } from '@aio/
 import { frameProjection } from '@aio/maps';
 import { shiftLocal, type Layer } from '@aio/schema';
 import { arrowFocus, Icon, useFocusTrap, useT, type IconName } from '@aio/ui';
-import { setCameraMode, videoRig } from '@aio/video';
+import { setCameraMode, setFrustumOn, videoRig } from '@aio/video';
 import { dateShiftOf, nowOf, useWorkspace, workspace } from '@aio/workspace';
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
@@ -193,10 +193,8 @@ export function DroneMenu() {
     const m = map?.map;
     if (m?.getLayer('aio-drone-footprint'))
       m.setLayoutProperty('aio-drone-footprint', 'visibility', footprint ? 'visible' : 'none');
-    if (scene) {
-      videoRig(scene).frustumOn = footprint;
-      scene.requestRender();
-    }
+    // remembered for the scene: a rig is built only by a video layer, never for this switch
+    if (scene) setFrustumOn(scene, footprint);
   }, [footprint, map, scene]);
 
   // a click elsewhere closes the menu

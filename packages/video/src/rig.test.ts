@@ -12,7 +12,14 @@ import {
   type WebGLRenderer,
 } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { setDroneTelemetry, setFlightPaths, VideoRig } from './rig';
+import {
+  cameraModeOf,
+  setDroneTelemetry,
+  setFlightPaths,
+  setFrustumOn,
+  VideoRig,
+  videoRig,
+} from './rig';
 import { configureVideo } from './runtime';
 
 const flight = {
@@ -215,6 +222,23 @@ describe('VideoRig flight paths', () => {
     const rig = new VideoRig(h);
     expect(rig.flightPaths.mode).toBe('off');
     expect([...rig.flightPaths.hiddenClips]).toEqual(['v1']);
+    rig.dispose();
+  });
+
+  it('keeps the view footprint switch for a scene without building a rig on it', () => {
+    // A rig listens to the workspace store until disposed, and only its video layers dispose it:
+    // a rig built for a project with no video kept the closed 3D view alive (the nightly soak).
+    const frames: ((dtMs: number) => void)[] = [];
+    const h = handle(frames);
+    setFrustumOn(h, false);
+    expect(cameraModeOf(h)).toBe('free');
+    expect(h.scene.children).toHaveLength(0);
+    expect(frames).toHaveLength(0);
+    // a rig built later (the scene's first video layer) starts with the choice
+    const rig = videoRig(h);
+    expect(rig.frustumOn).toBe(false);
+    setFrustumOn(h, true);
+    expect(rig.frustumOn).toBe(true);
     rig.dispose();
   });
 

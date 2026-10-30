@@ -1,6 +1,6 @@
 import type { EngineStage } from '@aio/engine';
 import { EmptyState, Icon, useT, type MessageKey } from '@aio/ui';
-import { setCameraMode, videoRig } from '@aio/video';
+import { cameraModeOf, setCameraMode } from '@aio/video';
 import { useWorkspace } from '@aio/workspace';
 import { useEngineStage } from './StageTools';
 import { CUTAWAY_MODES, MAX_OPACITY, MIN_OPACITY, type CutawayMode } from './cutaway';
@@ -71,7 +71,7 @@ export function CutawayPanel({ stage }: { stage: EngineStage | null }) {
         title={inside ? t('stage.cutaway.insideViewTip') : t('stage.cutaway.droneOutside')}
         onClick={() => {
           if (!stage) return;
-          if (videoRig(stage).cameraMode === 'drone') setCameraMode(stage, 'free');
+          if (cameraModeOf(stage) === 'drone') setCameraMode(stage, 'free');
           insideView(stage);
         }}
       >

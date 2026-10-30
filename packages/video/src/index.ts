@@ -41,10 +41,12 @@ export {
   type ProjectorOptions,
 } from './projector';
 export {
+  cameraModeOf,
   registerVideoAdapters,
   setCameraMode,
   setDroneTelemetry,
   setFlightPaths,
+  setFrustumOn,
   setProjection,
   videoRig,
   type CameraMode,
