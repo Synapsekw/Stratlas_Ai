@@ -3,14 +3,15 @@
  * and accuracy, and per run **Open run**, **Create maps again** (`photo.products`) and
  * **Delete run's work files** (only `work/`, to the recycle bin, after asking) and **Export as OPF**
  * (`opf.export` into a folder the person picks), **Start over…** on a failed or cancelled run (the
- * wizard filled in from it) and **Delete run** (to the project trash, after the confirm). A photo
- * job selected in the Jobs list opens its run.
+ * wizard filled in from it) and, behind the run's **···** menu so it is never one slip away from
+ * **Delete work files**, **Delete run** (to the project trash, after the confirm). A photo job
+ * selected in the Jobs list opens its run.
  */
 import type { JobRecord, PhotoRunSummary } from '@aio/schema';
 import { useAnnotateReadOnly } from '@aio/annotate';
-import { Icon } from '@aio/ui';
+import { Button, IconButton, Menu } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { isActive } from '../jobs';
 import { bridge, useJobs, useShell } from '../shell';
 import { askRemove, useRemoval } from '../shell/removal';
@@ -99,16 +100,15 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
         <h2 className="caps">Maps from photos</h2>
       </header>
       {selectedRun && (
-        <button
-          type="button"
-          className="btn sm ph-open-job"
+        <Button
+          className="ph-open-job"
+          icon="link"
           onClick={() => {
             photoUi.getState().openRun(selectedRun);
           }}
         >
-          <Icon name="link" size={14} />
           Open run {selectedRun}
-        </button>
+        </Button>
       )}
       {error && <p className="nj-err">{error}</p>}
       {notice && (
@@ -137,19 +137,16 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
                   : ''}
               </p>
               <div className="ph-acts">
-                <button
-                  type="button"
-                  className="btn sm"
+                <Button
                   onClick={() => {
                     photoUi.getState().openRun(r.id);
                   }}
                 >
                   Open run
-                </button>
+                </Button>
                 {!pkg && ['aligned', 'adjusted', 'done', 'failed'].includes(r.status) && (
-                  <button
-                    type="button"
-                    className="btn sm ghost"
+                  <Button
+                    variant="quiet"
                     onClick={() => {
                       void startProducts(r.id, {
                         root: project.root,
@@ -163,12 +160,11 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
                     }}
                   >
                     Create maps again
-                  </button>
+                  </Button>
                 )}
                 {!pkg && ['aligned', 'adjusted', 'done'].includes(r.status) && (
-                  <button
-                    type="button"
-                    className="btn sm ghost"
+                  <Button
+                    variant="quiet"
                     onClick={() => {
                       void bridge
                         .call('dialog:openFolder', {
@@ -187,7 +183,7 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
                     }}
                   >
                     Export as OPF
-                  </button>
+                  </Button>
                 )}
                 {!pkg &&
                   (asking === r.id ? (
@@ -196,63 +192,48 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
                         Move this run&apos;s work files to the recycle bin? Its layers and reports
                         stay.
                       </span>
-                      <button
-                        type="button"
-                        className="btn sm ghost"
+                      <Button
+                        variant="quiet"
                         onClick={() => {
                           setAsking(null);
                         }}
                       >
                         Keep
-                      </button>
-                      <button
-                        type="button"
-                        className="btn sm danger"
-                        onClick={() => void clean(r.id)}
-                      >
+                      </Button>
+                      <Button variant="danger" onClick={() => void clean(r.id)}>
                         Delete work files
-                      </button>
+                      </Button>
                     </span>
                   ) : (
-                    <button
-                      type="button"
-                      className="btn sm ghost"
+                    <Button
+                      variant="quiet"
                       onClick={() => {
                         setAsking(r.id);
                       }}
                     >
                       Delete work files
-                    </button>
+                    </Button>
                   ))}
                 {canEdit && START_OVER.has(r.status) && !liveRuns.has(r.id) && (
-                  <button
-                    type="button"
-                    className="btn sm ghost"
+                  <Button
+                    variant="quiet"
                     data-testid={`run-start-over-${r.id}`}
                     onClick={() => {
                       void openStartOver(project.id, r.id, project.manifest.layers).then(setError);
                     }}
                   >
                     Start over…
-                  </button>
+                  </Button>
                 )}
                 {canEdit && (
-                  <button
-                    type="button"
-                    className="btn sm ghost danger"
-                    data-testid={`run-delete-${r.id}`}
-                    disabled={liveRuns.has(r.id)}
-                    title={
+                  <RunMore
+                    run={r.id}
+                    busyReason={
                       liveRuns.has(r.id)
                         ? `A job of run ${r.id} is still running. Cancel it first.`
                         : undefined
                     }
-                    onClick={() => {
-                      askRemove([{ run: r.id }]);
-                    }}
-                  >
-                    Delete run
-                  </button>
+                  />
                 )}
               </div>
             </li>
@@ -260,5 +241,51 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
         </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * The run's **···** menu: **Delete run**, kept apart from **Delete work files** so the two are
+ * never side by side. Choosing it asks first (the removal dialog); while a job of the run is at
+ * work it stays in the menu, greyed, with the reason.
+ */
+function RunMore({ run, busyReason }: { run: string; busyReason: string | undefined }) {
+  const [open, setOpen] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <IconButton
+        ref={opener}
+        icon="more"
+        label={`More for run ${run}`}
+        data-testid={`run-more-${run}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen((o) => !o);
+        }}
+      />
+      <Menu
+        open={open}
+        onClose={() => {
+          setOpen(false);
+        }}
+        opener={opener}
+        label={`Run ${run}`}
+        testId={`run-menu-${run}`}
+        items={[
+          {
+            id: 'delete',
+            label: 'Delete run',
+            icon: 'trash',
+            danger: true,
+            ...(busyReason ? { disabledReason: busyReason } : {}),
+            onSelect: () => {
+              askRemove([{ run }]);
+            },
+          },
+        ]}
+      />
+    </>
   );
 }
