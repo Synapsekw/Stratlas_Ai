@@ -11,6 +11,7 @@ related: [sessions/2026-10-30-2245-engineer-test-flake.md]
 ## What changed
 
 - `a4cdf0235`: more project writers now retry while Windows briefly refuses a rename because a scanner or indexer is reading the file or folder that was just written. These go through `renameWhenFree` (`import/rename.ts`, the package's existing helper): the folder of an extracted project (`package/unpack.ts`), a written package (`package/writer.ts`), import copies (`import/writer.ts`) and playback proxies (`import/proxy.ts`). The folder cleanups in `unpack`, `layerFiles`, `remove` and `walks` now retry through `rm`'s `maxRetries`.
+- `f4aeb5d52`: the update rollback's renames (`apps/desktop/src/main/update/rollback.ts`: the kept copy of the version, the journal and the restored install) now go through `renameWhenFree`, exported from `@aio/project/fs`, with the injected fs. One of them made `rollback.test.ts` fail in a loaded check with `EPERM`. A new test refuses each rename once and checks that the copy is kept. The next `pnpm check` was red only on `PlaceModel.test.tsx`, which timed out at 5 s in the renderer and passes alone.
 - `18ef08dfe`: `packages/project/vitest.config.ts` gives every `@aio/project` test and hook 30 s instead of vitest's 5 s and 10 s. These tests build projects on disk and finish well under a second alone, but a loaded check slows file work many times over. Every `afterEach` now removes its folder with retries (`ENOTEMPTY`, `EBUSY`, `EPERM`).
 
 ## Why
@@ -28,7 +29,6 @@ Nothing user-facing changes, apart from fewer "operation not permitted" failures
 ## Open threads
 
 - Tests still share a module-level folder variable per file. With the 30 s allowance a test no longer overruns into the next one, but moving to per-test fixtures (`test.extend`) would make that impossible rather than unlikely. That means about 650 references across the eight worst files.
-- Same kind of failure outside this package: `apps/desktop/src/main/update/rollback.ts:213` renames a freshly copied version folder into place with no Windows retry, and `rollback.test.ts` failed once in the check with `EPERM`. The test then fails, and on a real machine a rollback copy could fail too.
 - `manifestFile.ts` keeps its own short rename retry (about 2.5 s) next to `renameWhenFree` (about 30 s). One shared atomic writer is the engineering review's open item.
 
 ## Next session entry point
