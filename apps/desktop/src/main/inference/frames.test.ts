@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { testFfmpeg, writeMarkerVideo } from './fixtures/walkVideo';
 import {
   decodeFrame,
@@ -13,6 +13,10 @@ import {
   scaledHeight,
   videoSize,
 } from './frames';
+
+// These tests start real ffmpeg (and Node) processes: encoding the test video and decoding a frame
+// take a fraction of a second alone but many seconds while a full check loads the computer.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 describe('frame decode arguments', () => {
   it('seeks before the input with two decoder threads and writes one scaled RGBA frame', () => {
@@ -132,7 +136,7 @@ describe.skipIf(!testFfmpeg)('decoding a synthetic walk video with ffmpeg', () =
     ]);
   });
   afterAll(async () => {
-    await rm(dir, { recursive: true, force: true });
+    await rm(dir, { recursive: true, force: true, maxRetries: 5 });
   });
 
   const px = (img: { width: number; rgba: Uint8Array }, x: number, y: number) => [

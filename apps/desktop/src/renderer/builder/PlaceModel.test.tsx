@@ -68,6 +68,8 @@ vi.mock('./pick', () => ({
 const { PlaceModel } = await import('./PlaceModel');
 const { builder } = await import('./state');
 const { shell } = await import('../shell');
+// loaded here, not in its test: transforming the import panel's modules takes a second or more
+const { needsPlacing } = await import('./ImportPanel');
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -434,8 +436,7 @@ describe('Place model', () => {
 });
 
 describe('the import offers Place model', () => {
-  it('for a model that still needs placing or was placed by a first guess', async () => {
-    const { needsPlacing } = await import('./ImportPanel');
+  it('for a model that still needs placing or was placed by a first guess', () => {
     const layers = [
       mesh({ id: 'a', placement: 'needed' }),
       mesh({ id: 'b', placement: 'provisional' }),
