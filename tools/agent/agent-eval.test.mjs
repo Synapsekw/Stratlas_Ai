@@ -375,6 +375,11 @@ describe('summarizeSuite', () => {
     expect(text).toContain('2/2 passed, 2/2 judged');
     expect(text).toContain('1/1 passed, 1/2 judged PARTIAL');
     expect(text).toContain('1 partial case(s)');
+    // a case that is all gap turns does not read as passed when it failed
+    const gapText = formatSummary(
+      suite([kase('g', [attempt('gap', []), attempt('gap', [])], { gap: 'A2', turnGaps: ['A2'] })]),
+    );
+    expect(gapText).toContain('known gap (A2)  0/2 passed');
   });
   it('has no bar when the suite has none', () => {
     const s = summarizeSuite(suite([kase('a', [attempt('fail', [])])], { passPercent: null }));

@@ -93,6 +93,8 @@ export interface CaseSummary {
   judged: number;
   /** Judged attempts whose turns that are not known gaps all passed. */
   passed: number;
+  /** Judged attempts that passed every turn, gap turns included. */
+  full: number;
   provider: number;
   /** The run asked it this many times (the suite's k). */
   k: number;
@@ -157,6 +159,7 @@ export function summarizeCase(c: CaseTrace, k = c.attempts.length): CaseSummary 
     scored,
     judged: judged.length,
     passed,
+    full,
     provider: c.attempts.length - judged.length,
     k,
     partial: judged.length < k,
@@ -223,9 +226,12 @@ const STATUS_LABEL: Record<CaseStatus, string> = {
   'no-verdict': 'no verdict',
 };
 
-/** "2/3 passed, 3/3 judged", with PARTIAL when fewer than k attempts have a verdict. */
+/**
+ * "2/3 passed, 3/3 judged", with PARTIAL when fewer than k attempts have a verdict. A case whose
+ * every turn is a gap counts the attempts that passed all of it; another counts its non-gap turns.
+ */
 const counts = (c: CaseSummary): string =>
-  `${String(c.passed)}/${String(c.judged)} passed, ${String(c.judged)}/${String(c.k)} judged${c.partial ? ' PARTIAL' : ''}`;
+  `${String(c.scored ? c.passed : c.full)}/${String(c.judged)} passed, ${String(c.judged)}/${String(c.k)} judged${c.partial ? ' PARTIAL' : ''}`;
 
 /** The suite as a table for the run's log: one block per case, then the totals. */
 export function formatSummary(s: SuiteTrace): string {
