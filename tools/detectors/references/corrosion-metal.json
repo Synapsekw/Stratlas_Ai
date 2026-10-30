@@ -1,0 +1,14 @@
+{
+  "schema": "aio.detector-bench-ref/1",
+  "detector": "corrosion-metal",
+  "detectorVersion": 1,
+  "model": null,
+  "date": null,
+  "datasetHash": null,
+  "split": "bench",
+  "threshold": 0.8,
+  "iouMin": 0.3,
+  "truthClasses": ["corrosion"],
+  "metrics": null,
+  "note": "No honest reference yet. The 29 Oct 2026 run on qwen3.5-9b-q4_k_m (centre rule, first 50 photos per split) had no reviewed corrosion truth in the bench split, so recall could not be measured. Re-tuning is deferred to the asset inspection focus; write the first reference with prerelease.py --update-references on a dataset with enough truth."
+}

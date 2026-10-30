@@ -30,7 +30,17 @@ python tools/analytics-pack/smoke.py --server <dir>/llama-server.exe --model <mo
 
 Result for pack 0.2.0 (Qwen3.5-9B) on an RTX 5070 Ti (16 GB), 29 Oct 2026, against the built pack: `SMOKE OK`. The server was healthy in 18.6 s (first start, model read from a cold file cache). The request without the key got HTTP 401. The red square at `[900, 300, 1100, 500]` in a 1344 x 1008 image came back as `[675, 296, 828, 496]` in the 0 to 1000 frame (expected about `[670, 298, 818, 496]`; worst corner 9.5 thousandths off, inside the 3 % check), in 1.2 s. P(yes) was 0.999 on the square and 0.000 on plain grey (1.4 s), and the logprobs had the shape the engine reads. The archive is 6.89 GB (`analytics-pack-0.2.0-win-x64.tar.gz`).
 
-Corrosion detector on Qwen3.5-9B (29 Oct 2026, unchanged detector text, threshold 0.8, `bench.py` with the first 50 photos of each split): no go, so the detector stays experimental and tuned on the old model. The reviewed rust truth inside those photos is too thin to measure recall (tune split: 1 truth item across three reference projects, 0 found; bench split: 0 truth items). False drafts were low on two projects (0.06 and 0.12 per photo) and 0.54 (tune) and 0.48 (bench) per photo on the chimney project, where every draft was unmatched.
+Corrosion detector on Qwen3.5-9B (29 Oct 2026, unchanged detector text, threshold 0.8, `bench.py` with the first 50 photos of each split): no go, so the detector stays experimental and tuned on the old model. The reviewed rust truth inside those photos is too thin to measure recall (tune split: 1 truth item across three reference projects, 0 found; bench split: 0 truth items). False drafts were low on two projects (0.06 and 0.12 per photo) and 0.54 (tune) and 0.48 (bench) per photo on the chimney project, where every draft was unmatched. That run used the old centre-contains rule; the bench now matches by IoU.
+
+## Detector check before a release
+
+Before a pack release, run the detector check for every shipped detector (`tools/detectors/README.md`, "Pre-release check"):
+
+```bash
+uv run --project python python tools/detectors/prerelease.py --dataset <reference projects> --server <llama-server URL>
+```
+
+It benches each detector on the `bench` split against its stored reference in `tools/detectors/references/` and exits 1 on a drop in precision, recall or F1 beyond the tolerance. It always warns when a detector's `tunedOn` names another model than `lock.json` ships (the corrosion detector still names Qwen2.5-VL). On a machine without the reference data, leave out `--dataset` (and `QUADRION_DETECTOR_BENCH_DATA`): it prints `skipped: no dataset` and exits 0.
 
 Result for pack 0.1.0 (Qwen2.5-VL-7B) on an RTX 5070 Ti (16 GB), 21 Oct 2026: `SMOKE OK`. The server was healthy in 4.1 s. The red square came back as `[899, 298, 1102, 503]` against `[900, 300, 1100, 500]` (3 px worst corner). P(yes) was 1.000 on the square and 0.026 on plain grey. A 1344 x 1008 image is about 1,750 prompt tokens, read in about 0.7 s, and generation ran at about 140 tokens per second. A second run on the same machine against the built pack (key in `LLAMA_API_KEY`) was also `SMOKE OK`, and the request without the key got HTTP 401.
 

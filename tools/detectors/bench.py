@@ -1,18 +1,22 @@
-"""Detector bench: run one vision-model detector over a reference project's photos and measure it.
+"""Detector bench: run one vision-model detector over reference projects' photos and measure it.
 
-    uv run --project python python tools/detectors/bench.py --project <dir> --detector <detector.json> \
-        --server <url> --split tune|bench [--truth-class <id>...] [--threshold 0.8] [--limit 50] --out <dir>
+    uv run --project python python tools/detectors/bench.py --project <dir> [--project <dir>...] \
+        --detector <detector.json> --server <url> --split tune|bench [--truth-class <id>...] \
+        [--threshold 0.8] [--iou 0.3] [--limit 50] [--compare <ref.json>] [--tolerance 0.05] \
+        [--write-reference <ref.json>] --out <dir>
 
-The project is only read, never written to. Photos come from the manifest's photo layers. Truth is
+Projects are only read, never written to. Photos come from the manifest's photo layers. Truth is
 every image sighting of an issue whose shape has bounds (box, rotated box, polygon), plus every
 accepted detection of ``detections/*.json``, filtered by ``--truth-class``. A draft at or above the
-threshold is a hit when its box contains the centre of a truth item. Output in ``--out``:
-``report.json``, ``drafts.json`` and ``sheet-<n>.jpg`` contact sheets.
+threshold is a true positive when it takes a truth item by IoU (at least ``--iou``, one to one, in
+score order; see ``metrics.py``). The old centre-contains rule is reported beside it. Output in
+``--out``: ``report.json``, ``drafts.json``, ``pr.csv``, ``pr.json`` and ``sheet-<n>.jpg``.
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import hashlib
 import json
 import math
@@ -25,9 +29,10 @@ from typing import Any
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python" / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import metrics
 from aio_pipelines.detect.engine import (
-    BoxFrame,
     VlmClient,
     VlmUnavailable,
     box_frame,
@@ -106,18 +111,20 @@ def _detection_box(d: dict[str, Any], size: tuple[int, int]) -> Box | None:
     return None  # a contact-sheet box has no photo grid here
 
 
-def load_truth(project: Path, classes: set[str], sizes: dict[str, tuple[int, int]]) -> dict[str, list[Box]]:
-    """Truth boxes per photo id, in photo pixels. ``classes`` empty: every class."""
-    truth: dict[str, list[Box]] = {}
+def load_truth(
+    project: Path, classes: set[str], sizes: dict[str, tuple[int, int]]
+) -> dict[str, list[dict[str, Any]]]:
+    """Truth items ``{"box", "class"}`` per photo id, boxes in photo pixels. ``classes`` empty: every class."""
+    truth: dict[str, list[dict[str, Any]]] = {}
 
-    def add(photo: str, box: Box | None) -> None:
+    def add(photo: str, box: Box | None, cls: Any) -> None:
         if box is None or photo not in sizes:
             return
         mine = truth.setdefault(photo, [])
         c = centre(box)
         # The same finding recorded as an issue and as an accepted detection counts once.
-        if not any(_contains(o, c) or _contains(box, centre(o)) for o in mine):
-            mine.append(box)
+        if not any(_contains(o["box"], c) or _contains(box, centre(o["box"])) for o in mine):
+            mine.append({"box": box, "class": str(cls)})
 
     doc = _read_json(project / "issues.json")
     issues = doc.get("issues", []) if isinstance(doc, dict) else doc
@@ -126,7 +133,7 @@ def load_truth(project: Path, classes: set[str], sizes: dict[str, tuple[int, int
             continue
         for s in issue.get("sightings", []):
             if isinstance(s, dict) and s.get("on") == "image" and isinstance(s.get("geom"), dict):
-                add(str(s.get("photo")), truth_box(s["geom"]))
+                add(str(s.get("photo")), truth_box(s["geom"]), issue.get("classId"))
     for f in sorted((project / "detections").glob("*.json")):
         pass_doc = _read_json(f)
         for d in pass_doc.get("detections", []) if isinstance(pass_doc, dict) else []:
@@ -136,7 +143,7 @@ def load_truth(project: Path, classes: set[str], sizes: dict[str, tuple[int, int
                 continue
             photo = str(d.get("photo"))
             if photo in sizes:
-                add(photo, _detection_box(d, sizes[photo]))
+                add(photo, _detection_box(d, sizes[photo]), d.get("class"))
     return truth
 
 
@@ -155,7 +162,7 @@ def _sheet(
     n: int,
     entries: list[dict[str, Any]],
     photos: dict[str, Path],
-    truth: dict[str, list[Box]],
+    truth: dict[str, list[dict[str, Any]]],
     out: Path,
     threshold: float,
 ) -> None:
@@ -167,8 +174,8 @@ def _sheet(
                 (max(1, int(src.width * scale)), max(1, int(src.height * scale)))
             )
         draw = ImageDraw.Draw(thumb)
-        for b in truth.get(e["photo"], []):
-            draw.rectangle([v * scale for v in b], outline=GREEN, width=3)
+        for t in truth.get(e["photo"], []):
+            draw.rectangle([v * scale for v in t["box"]], outline=GREEN, width=3)
         for d in e["drafts"]:
             at = d["score"] is not None and d["score"] >= threshold
             colour = (HIT if d["matched"] else DRAFT) if at else DIM
@@ -180,17 +187,38 @@ def _sheet(
     sheet.save(out / f"sheet-{n}.jpg", quality=88)
 
 
-def run(args: argparse.Namespace) -> int:
-    project = Path(args.project)
-    detector = json.loads(Path(args.detector).read_text("utf-8"))
-    all_photos = find_photos(project)
-    want_tune = args.split == "tune"
-    ids = sorted(p for p in all_photos if in_tune(p) == want_tune)[: args.limit]
-    photos = {p: all_photos[p] for p in ids}
+def load_set(
+    projects: list[Path], split: str, limit: int, classes: set[str]
+) -> tuple[list[str], dict[str, Path], dict[str, tuple[int, int]], dict[str, list[dict[str, Any]]]]:
+    """Photo keys, files, sizes and truth over every project. ``limit`` is per project; the split hashes
+    the photo id. With several projects a key is ``<project folder>/<photo id>``."""
+    want_tune = split == "tune"
+    keys: list[str] = []
+    photos: dict[str, Path] = {}
     sizes: dict[str, tuple[int, int]] = {}
-    for pid, path in photos.items():
-        with Image.open(path) as im:
-            sizes[pid] = (im.width, im.height)
+    truth: dict[str, list[dict[str, Any]]] = {}
+    for project in projects:
+        prefix = f"{project.name}/" if len(projects) > 1 else ""
+        found = find_photos(project)
+        ids = sorted(p for p in found if in_tune(p) == want_tune)[:limit]
+        local: dict[str, tuple[int, int]] = {}
+        for pid in ids:
+            with Image.open(found[pid]) as im:
+                local[pid] = (im.width, im.height)
+        for pid, items in load_truth(project, classes, local).items():
+            truth[prefix + pid] = items
+        for pid in ids:
+            keys.append(prefix + pid)
+            photos[prefix + pid] = found[pid]
+            sizes[prefix + pid] = local[pid]
+    return keys, photos, sizes, truth
+
+
+def run(args: argparse.Namespace) -> int:
+    projects = [Path(p) for p in args.project]
+    detector = json.loads(Path(args.detector).read_text("utf-8"))
+    classes = set(args.truth_class or [])
+    ids, photos, sizes, truth = load_set(projects, args.split, args.limit, classes)
     off_grid = sorted(pid for pid, (w, h) in sizes.items() if max(w, h) != REVIEW_LONG_EDGE)
     if off_grid:
         print(
@@ -199,11 +227,10 @@ def run(args: argparse.Namespace) -> int:
             "review-copy pixels, so recall and false alarms on them may be off.",
             file=sys.stderr,
         )
-    classes = set(args.truth_class or [])
-    truth = load_truth(project, classes, sizes)
 
     client = VlmClient(args.server, api_key=args.api_key)
-    frame = box_frame(args.model) if args.model else server_frame(args.server, args.api_key)
+    model = args.model or server_model(args.server, args.api_key)
+    frame = box_frame(model) if model else "pixels"
     entries: list[dict[str, Any]] = []
     failed = 0
     for pid in ids:
@@ -227,72 +254,128 @@ def run(args: argparse.Namespace) -> int:
         ]
         entries.append({"photo": pid, "drafts": drafts})
 
-    found = 0
-    for e in entries:
-        for t in truth.get(e["photo"], []):
-            hit = [
-                d
-                for d in e["drafts"]
-                if d["score"] is not None
-                and d["score"] >= args.threshold
-                and _contains(tuple(d["box"]), centre(t))
-            ]
-            if hit:
-                found += 1
-                for d in hit:
-                    d["matched"] = True
     drafts = [d for e in entries for d in e["drafts"]]
-    above = [d for d in drafts if d["score"] is not None and d["score"] >= args.threshold]
-    n_truth = sum(len(v) for v in truth.values())
+    det_class = str(detector.get("classId") or "")
+    for d, (j, v) in zip(drafts, metrics.match(drafts, truth, args.iou), strict=True):
+        at = d["score"] is not None and d["score"] >= args.threshold
+        d["matched"] = at and j is not None
+        d["iou"] = round(v, 3)
+        d["centreMatched"] = at and metrics.centre_matched(d, truth)
+    scores = metrics.evaluate(drafts, truth, args.threshold, args.iou, det_class, len(ids))
+    pr = metrics.pr_curve(drafts, truth, args.iou, det_class, len(ids))
     report = {
-        "photos": len(ids),
-        "truth": n_truth,
-        "found": found,
-        "recall": found / n_truth if n_truth else None,
-        "drafts": len(above),
-        "draftsPerPhoto": len(above) / len(ids) if ids else None,
-        "unmatchedDrafts": sum(1 for d in above if not d["matched"]),
-        "failedPhotos": failed,
-        "reviewGridMismatch": len(off_grid),
+        "detector": detector.get("id"),
+        "detectorVersion": detector.get("version"),
+        "classId": det_class,
+        "model": model,
         "split": args.split,
         "threshold": args.threshold,
-        "detector": detector.get("id"),
+        "iouMin": args.iou,
+        "truthClasses": sorted(classes),
+        "photos": len(ids),
+        "truth": sum(len(v) for v in truth.values()),
+        "found": scores["tp"],
+        "drafts": scores["drafts"],
+        "draftsPerPhoto": scores["draftsPerPhoto"],
+        "unmatchedDrafts": scores["fp"],
+        "tp": scores["tp"],
+        "fp": scores["fp"],
+        "fn": scores["fn"],
+        "precision": scores["precision"],
+        "recall": scores["recall"],
+        "f1": scores["f1"],
+        "perClass": scores["perClass"],
+        "centreRule": metrics.centre_rule(drafts, truth, args.threshold),
+        "failedPhotos": failed,
+        "reviewGridMismatch": len(off_grid),
+        "datasetHash": metrics.dataset_hash(ids, truth),
     }
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "report.json").write_text(json.dumps(report, indent=2), "utf-8")
     (out / "drafts.json").write_text(json.dumps(drafts, indent=2), "utf-8")
+    (out / "pr.json").write_text(json.dumps(pr, indent=2), "utf-8")
+    (out / "pr.csv").write_text(metrics.pr_csv(pr), "utf-8")
     per = SHEET_COLS * SHEET_ROWS
     for k in range(0, len(entries), per):
         _sheet(k // per + 1, entries[k : k + per], photos, truth, out, args.threshold)
-    print(json.dumps(report, indent=2))
-    return 0
+    print(json.dumps({k: v for k, v in report.items() if k != "perClass"}, indent=2))
+
+    code = 0
+    if args.compare:
+        reference = json.loads(Path(args.compare).read_text("utf-8"))
+        res = metrics.compare(report, reference, args.tolerance)
+        (out / "compare.json").write_text(json.dumps(res, indent=2), "utf-8")
+        for w in res["warnings"]:
+            print(f"Warning: {w}", file=sys.stderr)
+        if res["status"] == "no-reference":
+            print(f"No reference yet in {args.compare}: nothing to compare.")
+        elif res["status"] == "regression":
+            for r in res["regressions"]:
+                print(f"REGRESSION: {r}", file=sys.stderr)
+            code = 1
+        else:
+            print(f"Within {args.tolerance} of the reference.")
+    if args.write_reference:
+        Path(args.write_reference).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.write_reference).write_text(json.dumps(reference_of(report), indent=2) + "\n", "utf-8")
+    return code
 
 
-def server_frame(server: str, api_key: str | None) -> BoxFrame:
-    """The box frame of the model the server has loaded (first id of ``GET /v1/models``), else pixels."""
+REFERENCE_SCHEMA = "aio.detector-bench-ref/1"
+REFERENCE_METRICS = ("photos", "truth", "tp", "fp", "fn", "precision", "recall", "f1", "draftsPerPhoto")
+
+
+def reference_of(report: dict[str, Any], today: datetime.date | None = None) -> dict[str, Any]:
+    """The stored reference for a run: what was measured, on what, and the headline numbers."""
+    return {
+        "schema": REFERENCE_SCHEMA,
+        "detector": report["detector"],
+        "detectorVersion": report["detectorVersion"],
+        "model": report["model"],
+        "date": (today or datetime.date.today()).isoformat(),
+        "datasetHash": report["datasetHash"],
+        "split": report["split"],
+        "threshold": report["threshold"],
+        "iouMin": report["iouMin"],
+        "truthClasses": report["truthClasses"],
+        "metrics": {k: report[k] for k in REFERENCE_METRICS},
+        "centreRule": report["centreRule"],
+    }
+
+
+def server_model(server: str, api_key: str | None) -> str | None:
+    """The id of the model the server has loaded (first id of ``GET /v1/models``), else None."""
     req = urllib.request.Request(server.rstrip("/") + "/v1/models")
     if api_key:
         req.add_header("Authorization", f"Bearer {api_key}")
     try:
         with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=10) as r:
             data = json.load(r)
-        return box_frame(str(data["data"][0]["id"]))
+        return str(data["data"][0]["id"])
     except (OSError, ValueError, KeyError, IndexError, TypeError):
-        return "pixels"
+        return None
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Measure a detector on a reference project (read only).")
-    ap.add_argument("--project", required=True)
+    ap = argparse.ArgumentParser(description="Measure a detector on reference projects (read only).")
+    ap.add_argument(
+        "--project", required=True, action="append", help="a reference project; repeat for several"
+    )
     ap.add_argument("--detector", required=True, help="an aio.vlm-detector/1 file")
     ap.add_argument("--server", required=True, help="llama-server URL")
     ap.add_argument("--model", help="model id, picks the box frame (default: the server's loaded model)")
     ap.add_argument("--split", required=True, choices=("tune", "bench"))
     ap.add_argument("--truth-class", action="append", default=[], help="class id; repeat for several")
     ap.add_argument("--threshold", type=float, default=0.8)
-    ap.add_argument("--limit", type=int, default=50, help="most photos to run")
+    ap.add_argument(
+        "--iou", type=float, default=metrics.IOU_MIN, help="IoU a draft needs to take a truth item"
+    )
+    ap.add_argument("--limit", type=int, default=50, help="most photos to run per project")
     ap.add_argument("--api-key", default=os.environ.get("LLAMA_API_KEY"))
+    ap.add_argument("--compare", help="a stored reference (aio.detector-bench-ref/1); exit 1 on a regression")
+    ap.add_argument("--tolerance", type=float, default=0.05, help="largest drop in precision, recall or F1")
+    ap.add_argument("--write-reference", help="write this run as a reference file")
     ap.add_argument("--out", required=True)
     return run(ap.parse_args(argv))
 

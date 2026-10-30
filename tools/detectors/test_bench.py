@@ -14,8 +14,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[1] / "python" / "tests"))
 
-import bench
-from fake_vlm import FakeVlm, logprob_response, text_response
+import bench  # noqa: E402
+from fake_vlm import FakeVlm, logprob_response, text_response  # noqa: E402
 
 W, H = 392, 280  # a multiple of 28 each, so one tile is sent as it is
 CLASS = "cls-a"
@@ -170,16 +170,90 @@ def test_split_is_stable_and_30_percent():
     assert [bench.in_tune(p) for p in ids[:50]] == [bench.in_tune(p) for p in ids[:50]]
 
 
-def test_recall_counts_centre_hits(project):
+def test_recall_precision_and_f1_by_iou(project):
     with FakeVlm(_handler) as srv:
         report = _run(project, srv.url)
     assert report["photos"] == 10
     assert report["truth"] == 4
-    assert report["found"] == 3
+    assert report["found"] == report["tp"] == 3
+    assert report["fp"] == 1 and report["fn"] == 1
     assert report["recall"] == pytest.approx(0.75)
+    assert report["precision"] == pytest.approx(0.75)
+    assert report["f1"] == pytest.approx(0.75)
     assert report["drafts"] == 4  # three hits and the distractor
     assert report["draftsPerPhoto"] == pytest.approx(0.4)
     assert report["unmatchedDrafts"] == 1
+    assert report["iouMin"] == 0.3
+    assert report["perClass"][CLASS]["recall"] == pytest.approx(0.75)
+    # the old rule agrees here: every box is tight
+    assert report["centreRule"] == {"found": 3, "recall": 0.75, "precision": 0.75, "unmatchedDrafts": 1}
+    assert report["detectorVersion"] == 1 and len(report["datasetHash"]) == 64
+
+
+def _huge(body: dict) -> dict:
+    """A model that answers one box over the whole tile whenever it sees the square."""
+    if body.get("logprobs"):
+        return logprob_response([("Yes", -0.05), ("No", -3.0)])
+    reply = _handler(body)
+    content = reply["choices"][0]["message"]["content"]
+    if content == "[]":
+        return reply
+    return text_response(json.dumps([{"bbox_2d": [0, 0, W, H], "label": CLASS, "note": "everything"}]))
+
+
+def test_huge_boxes_pass_the_centre_rule_but_not_iou(project):
+    with FakeVlm(_huge) as srv:
+        report = _run(project, srv.url)
+    assert report["centreRule"]["found"] == 3
+    assert report["tp"] == 0 and report["recall"] == 0 and report["precision"] == 0
+    drafts = json.loads((project["out"] / "drafts.json").read_text("utf-8"))
+    assert all(not d["matched"] for d in drafts)
+    assert sum(1 for d in drafts if d["centreMatched"]) == 3
+
+
+def test_pr_curve_written(project):
+    with FakeVlm(_handler) as srv:
+        _run(project, srv.url)
+    rows = json.loads((project["out"] / "pr.json").read_text("utf-8"))
+    assert len(rows) == 21 and rows[0]["threshold"] == 0.0
+    csv = (project["out"] / "pr.csv").read_text("utf-8").splitlines()
+    assert csv[0] == "threshold,drafts,tp,fp,fn,precision,recall,f1" and len(csv) == 22
+
+
+MODEL = "test-model"  # not a Qwen3 id, so boxes stay in sent pixels as the fake model answers
+
+
+def test_write_reference_then_compare(project, tmp_path, capsys):
+    ref = tmp_path / "refs" / "red-square.json"
+    with FakeVlm(_handler) as srv:
+        _run(project, srv.url, "--model", MODEL, "--write-reference", str(ref))
+        stored = json.loads(ref.read_text("utf-8"))
+        assert stored["schema"] == "aio.detector-bench-ref/1"
+        assert stored["detector"] == "red-square" and stored["model"] == MODEL
+        assert stored["metrics"]["f1"] == pytest.approx(0.75)
+        _run(project, srv.url, "--model", MODEL, "--compare", str(ref))
+        assert "Within 0.05" in capsys.readouterr().out
+        stored["metrics"]["recall"] = 0.95
+        ref.write_text(json.dumps(stored), "utf-8")
+        code = bench.main(
+            ["--project", str(project["root"]), "--detector", str(project["detector"]), "--server", srv.url,
+             "--model", MODEL, "--split", "bench", "--truth-class", CLASS,
+             "--out", str(project["out"]), "--compare", str(ref)]
+        )  # fmt: skip
+    assert code == 1
+    assert "REGRESSION: recall" in capsys.readouterr().err
+    compared = json.loads((project["out"] / "compare.json").read_text("utf-8"))
+    assert compared["status"] == "regression"
+
+
+def test_several_projects_add_up(project, tmp_path):
+    import shutil
+
+    twin = tmp_path / "twin"
+    shutil.copytree(project["root"], twin)
+    with FakeVlm(_handler) as srv:
+        report = _run(project, srv.url, "--project", str(twin))
+    assert report["photos"] == 20 and report["truth"] == 8 and report["tp"] == 6
 
 
 def test_polygon_truth_uses_bounds_centre():
