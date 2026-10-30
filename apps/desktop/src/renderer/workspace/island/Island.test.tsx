@@ -611,7 +611,7 @@ describe('Island', () => {
     try {
       await render();
       openTools();
-      act(() => button('Ask the agent')?.click());
+      act(() => button('Ask AI')?.click());
       expect(shell.getState().rightCollapsed).toBe(false);
       expect(document.activeElement).toBe(panel.querySelector('textarea'));
     } finally {

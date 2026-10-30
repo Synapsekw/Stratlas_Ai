@@ -1,10 +1,10 @@
 /**
  * The connection in the sidebar's status row: the mode chip says the real mode (Online or Offline
- * only, the offline-only setting main checks) and the cloud AI chip beside it never contradicts it.
+ * only, the offline-only setting main checks) and the AI status chip beside it never contradicts it.
  *
  * - The mode chip opens the Connection menu: the switch, what the mode means, Download maps and
- *   Cloud AI. Keyboard: Enter opens, Space switches, Escape closes and returns focus.
- * - Offline only: the cloud chip is never on, Download maps is off in the menu, and Offline maps
+ *   AI. Keyboard: Enter opens, Space switches, Escape closes and returns focus.
+ * - Offline only: the AI chip is never green, Download maps is off in the menu, and Offline maps
  *   greys its Download button; main refuses a download. Online: all of it is offered again. No
  *   download is started.
  * - The mode survives a relaunch, and the command search has Go online / Work offline only.
@@ -47,7 +47,7 @@ async function start(data: DataRoot) {
 }
 
 const mode = (win: Page) => win.getByTestId('connection-chip');
-const cloud = (win: Page) => win.getByTestId('cloud-chip');
+const cloud = (win: Page) => win.getByTestId('ai-status-chip');
 const menu = (win: Page) => win.getByRole('dialog', { name: 'Connection' });
 const modeSwitch = (win: Page) => menu(win).getByRole('switch', { name: 'Online' });
 const offlineOnly = (win: Page) =>
@@ -64,12 +64,11 @@ async function command(win: Page, title: string) {
   await expect(palette).toBeHidden();
 }
 
-/** The green dot of the cloud chip: only ever beside "Online". */
+/** The AI chip is green: only when a request would run, so only ever beside "Online". */
 const cloudIsGreen = (win: Page) =>
   cloud(win)
-    .locator('.dot:not(.off)')
-    .count()
-    .then((n) => n > 0);
+    .getAttribute('data-tone')
+    .then((tone) => tone === 'ok');
 
 test('the status row shows the real mode, its menu switches it, and the mode survives a relaunch', async () => {
   const data = await createDataRoot();
@@ -79,10 +78,10 @@ test('the status row shows the real mode, its menu switches it, and the mode sur
     app = run.app;
     let { win, network } = run;
 
-    // A new install goes online with cloud AI on: the pair says exactly that.
+    // A new install goes online with cloud AI on, but no key yet: AI off, amber, never green.
     await expect(mode(win)).toHaveText('Online');
-    await expect(cloud(win)).toHaveText('Cloud AI');
-    expect(await cloudIsGreen(win)).toBe(true);
+    await expect(cloud(win)).toHaveText('AI off: no key');
+    expect(await cloudIsGreen(win)).toBe(false);
     // The rest of this walk starts from cloud AI off: save it, and load the screen again.
     await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: false }));
     await win.reload();
@@ -91,7 +90,7 @@ test('the status row shows the real mode, its menu switches it, and the mode sur
     await expect(mode(win)).toHaveText('Online');
     await expect(mode(win)).toHaveAttribute('aria-haspopup', 'dialog');
     await expect(mode(win)).toHaveAttribute('aria-expanded', 'false');
-    await expect(cloud(win)).toHaveText('Cloud AI off');
+    await expect(cloud(win)).toHaveText('AI off');
     expect(await cloudIsGreen(win)).toBe(false);
     await shot(win, 'conn-1-online-cloud-off', true);
 
@@ -103,7 +102,7 @@ test('the status row shows the real mode, its menu switches it, and the mode sur
     await expect(modeSwitch(win)).toBeFocused();
     await expect(modeSwitch(win)).toHaveAttribute('aria-checked', 'true');
     await expect(win.getByTestId('connection-text')).toContainText('You can download maps');
-    await expect(win.getByTestId('connection-cloud')).toContainText('Off');
+    await expect(win.getByTestId('connection-cloud')).toContainText('AI off');
     await expect(win.getByTestId('connection-no-network')).toHaveCount(0);
     await shot(win, 'conn-2-menu-online');
 
@@ -128,8 +127,8 @@ test('the status row shows the real mode, its menu switches it, and the mode sur
     await win.keyboard.press('Space');
     await expect(modeSwitch(win)).toHaveAttribute('aria-checked', 'false');
     await expect(mode(win)).toHaveText('Offline only');
-    await expect(cloud(win)).toHaveText('Cloud AI off');
-    await expect(cloud(win)).toHaveAttribute('title', /offline-only/);
+    await expect(cloud(win)).toHaveText('AI off: offline');
+    await expect(cloud(win)).toHaveAttribute('data-state', 'offline');
     await expect(win.getByTestId('connection-text')).toContainText('makes no network connections');
     await expect(maps).toBeDisabled();
     await expect(maps).toContainText('Go online first');
@@ -164,32 +163,36 @@ test('the status row shows the real mode, its menu switches it, and the mode sur
     app = run.app;
     ({ win, network } = run);
     await expect(mode(win)).toHaveText('Offline only');
-    await expect(cloud(win)).toHaveText('Cloud AI off');
+    await expect(cloud(win)).toHaveText('AI off: offline');
     expect(await offlineOnly(win)).toBe(true);
 
-    // The command search goes online, then turns cloud AI on: the pair turns green together.
+    // A key (a placeholder: checking a route sends nothing), then the command search goes
+    // online and turns cloud AI on: the pair turns green together.
+    await win.evaluate(() =>
+      window.aio.invoke('ai:setKey', { provider: 'anthropic', key: 'placeholder-not-a-key' }),
+    );
     await command(win, 'Go online');
     await expect(mode(win)).toHaveText('Online');
     await command(win, 'Turn cloud AI on');
-    await expect(cloud(win)).toHaveText('Cloud AI');
+    await expect(cloud(win)).toHaveText('AI ready');
     expect(await cloudIsGreen(win)).toBe(true);
     await shot(win, 'conn-6-online-cloud-on', true);
     await mode(win).click();
-    await expect(win.getByTestId('connection-cloud')).toContainText('On');
+    await expect(win.getByTestId('connection-cloud')).toContainText('AI ready');
     await shot(win, 'conn-7-menu-online-cloud-on');
 
     // Offline only with cloud AI switched on: blocked, never green, and the menu says why.
     await modeSwitch(win).click();
     await expect(mode(win)).toHaveText('Offline only');
-    await expect(cloud(win)).toHaveText('Cloud AI blocked');
-    await expect(cloud(win)).toHaveAttribute('title', /offline-only/);
+    await expect(cloud(win)).toHaveText('AI off: offline');
+    await expect(cloud(win)).toHaveAttribute('data-state', 'offline');
     expect(await cloudIsGreen(win)).toBe(false);
-    await expect(win.getByTestId('connection-cloud')).toContainText('Blocked');
+    await expect(win.getByTestId('connection-cloud')).toContainText('AI off: offline');
     await shot(win, 'conn-8-menu-offline-cloud-blocked');
     await win.keyboard.press('Escape');
     await shot(win, 'conn-9-offline-cloud-blocked', true);
 
-    // The cloud chip opens its setting, which is off and greyed for the same reason.
+    // The AI chip opens what fixes it, Privacy and cloud, greyed for the same reason.
     await cloud(win).click();
     await expect(win.locator('.set-page h1')).toHaveText('Privacy and cloud');
     await expect(win.getByRole('switch', { name: 'Allow cloud AI' })).toBeDisabled();
@@ -201,7 +204,7 @@ test('the status row shows the real mode, its menu switches it, and the mode sur
     // Back online from the command search: cloud AI is as it was set.
     await command(win, 'Go online');
     await expect(mode(win)).toHaveText('Online');
-    await expect(cloud(win)).toHaveText('Cloud AI');
+    await expect(cloud(win)).toHaveText('AI ready');
     await expect(win.getByRole('switch', { name: 'Offline-only workstation' })).toHaveAttribute(
       'aria-checked',
       'false',
@@ -219,7 +222,7 @@ test('the status row shows the real mode, its menu switches it, and the mode sur
     app = run.app;
     ({ win, network } = run);
     await expect(mode(win)).toHaveText('Online');
-    await expect(cloud(win)).toHaveText('Cloud AI');
+    await expect(cloud(win)).toHaveText('AI ready');
     expect(await network.outbound()).toEqual([]);
   } finally {
     await app?.close();
@@ -231,9 +234,9 @@ test('the connection fits the sidebar foot at the smallest window, in its longes
   const data = await createDataRoot();
   const { app, win, network } = await start(data);
   try {
-    // the longest pair, "Offline only" and "Cloud AI blocked", with a project's Share chip open
-    // a new install has cloud AI on already
-    await expect(cloud(win)).toHaveText('Cloud AI');
+    // a long pair, "Offline only" and "AI off: offline", with a project's Share chip open; a
+    // new install has cloud AI on already, without a key
+    await expect(cloud(win)).toHaveText('AI off: no key');
     await command(win, 'Work offline only');
     await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
     await expect(win.locator('.proj-switch')).toContainText('E2E tiny project');
@@ -246,7 +249,7 @@ test('the connection fits the sidebar foot at the smallest window, in its longes
     await win.setViewportSize({ width, height });
     await expect.poll(() => win.evaluate(() => window.innerWidth)).toBe(width);
     await expect(mode(win)).toHaveText('Offline only');
-    await expect(cloud(win)).toHaveText('Cloud AI blocked');
+    await expect(cloud(win)).toHaveText('AI off: offline');
 
     const fit = async () => {
       const area = await captionArea(win);

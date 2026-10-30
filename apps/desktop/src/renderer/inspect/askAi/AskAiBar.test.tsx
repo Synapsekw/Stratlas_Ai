@@ -18,6 +18,7 @@ const h = vi.hoisted(() => {
     loadPack: vi.fn(),
     readOnly: false,
     run,
+    ai: { state: 'no-key', fix: 'ai', checking: false },
   };
 });
 
@@ -51,6 +52,8 @@ vi.mock('../../analyticsPack', async () => {
     useAnalyticsPack: <T,>(sel: (s: object) => T) => useStore(analyticsPack, sel),
   };
 });
+// the one AI status (shell/aiStatus.test.ts covers how it is decided): its fix is the link
+vi.mock('../../shell/AiStatusChip', () => ({ useAiStatus: () => h.ai }));
 vi.mock('@aio/annotate', () => ({ useAnnotateReadOnly: () => h.readOnly }));
 vi.mock('../../thumbs/Thumb', () => ({ MediaThumb: () => <i data-testid="thumb" /> }));
 vi.mock('./runs', () => ({
@@ -142,6 +145,7 @@ beforeEach(() => {
   analyticsPack.setState({ status: PACK, hardware: CARD, hardwareError: null, error: null });
   h.readOnly = false;
   h.run = null;
+  h.ai = { state: 'no-key', fix: 'ai', checking: false };
   h.answers = {
     'inference:models': MODELS_ON,
     'detectors:list': NO_DETECTORS,
@@ -362,6 +366,14 @@ describe('AskAiBar', () => {
     expect(q('ask-ai-blocked')?.textContent).toContain('No AI can look at this.');
     await click('ask-ai-settings');
     expect(h.openSettingsPage).toHaveBeenCalledWith('ai');
+  });
+
+  it('links to what fixes the one AI status: the switch off opens Privacy and cloud', async () => {
+    h.answers['inference:models'] = MODELS_OFF;
+    h.ai = { state: 'cloud-off', fix: 'privacy', checking: false };
+    bar({ current: P1 });
+    await click('ask-ai-settings');
+    expect(h.openSettingsPage).toHaveBeenCalledWith('privacy');
   });
 
   it('shows the error when a run cannot start', async () => {

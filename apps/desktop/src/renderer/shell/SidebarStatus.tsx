@@ -1,16 +1,17 @@
 import { Chip, formatDate, Icon, t, Tip, useT } from '@aio/ui';
 import { ProcessingChip } from '../processing/ProcessingChip';
 import { shell, useShell } from '../shell';
-import { CloudChip, ConnectionStatus } from './ConnectionStatus';
+import { AiStatusChip } from './AiStatusChip';
+import { ConnectionStatus } from './ConnectionStatus';
 
 /**
- * The status row at the foot of the left sidebar ("● Online · Cloud AI off · 1 job"): the
- * connection, which opens the connection menu; cloud AI, which opens its setting; and the jobs,
- * which open the processing drawer. Under them, the package the project came from: a package
- * opened in place (read-only or not) or a folder extracted from one. The title bar held these
- * before it went. Folded to the rail, the row keeps what must stay in sight as glyphs: the
+ * The status row at the foot of the left sidebar ("● Online · AI ready · 1 job"): the
+ * connection, which opens the connection menu; the AI status, which opens Ask AI or what fixes it;
+ * and the jobs, which open the processing drawer. Under them, the package the project came from: a
+ * package opened in place (read-only or not) or a folder extracted from one. The title bar held
+ * these before it went. Folded to the rail, the row keeps what must stay in sight as glyphs: the
  * connection's dot, a running job or a job warning, and the package's mark, each still named
- * (styles.css).
+ * (styles.css; the AI chip keeps the row's `foot-cloud` place).
  */
 export function SidebarStatus() {
   useT();
@@ -20,7 +21,7 @@ export function SidebarStatus() {
     <div className="sb-status">
       <div className="sb-status-row">
         <ConnectionStatus store={shell} variant="foot" />
-        <CloudChip store={shell} className="foot-cloud" />
+        <AiStatusChip store={shell} className="foot-cloud" />
         <ProcessingChip />
       </div>
       {pkg && (

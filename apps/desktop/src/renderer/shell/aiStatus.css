@@ -1,0 +1,26 @@
+/* The AI status chip (shell/AiStatusChip.tsx): a dot and the state in words. Green only when a
+   request would run now, amber when something the person can fix stops it, a quiet ring for the
+   rest (Offline AI, offline only, the switch off, still checking). */
+.ai-chip {
+  gap: 6px;
+}
+.ai-chip > .ai-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  border: 1.5px solid var(--fg-3);
+  background: transparent;
+}
+.ai-chip[data-tone='ok'] > .ai-dot {
+  border-color: var(--ok);
+  background: var(--ok);
+}
+.ai-chip[data-tone='warn'] > .ai-dot {
+  border-color: var(--warn);
+  background: var(--warn);
+}
+.ai-chip[data-tone='neutral'] {
+  color: var(--fg-2);
+}

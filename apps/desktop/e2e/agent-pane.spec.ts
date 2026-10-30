@@ -20,7 +20,7 @@ const agent = (win: Page) => win.getByRole('region', { name: 'Agent' });
 const box = (win: Page) => agent(win).getByRole('textbox', { name: 'Message the agent' });
 const line = (win: Page) => win.locator('.right').getByRole('button', { name: /^Ask about/ });
 const offRow = (win: Page) =>
-  win.locator('.right').getByRole('button', { name: 'Agent off · Turn on' });
+  win.locator('.right').getByRole('button', { name: /^AI off.* · Turn on$/ });
 
 /** Heights in the right panel: the bench, the agent and the split they share. */
 const heights = (win: Page) =>
@@ -62,13 +62,13 @@ test('the agent pane: off row, maximise, minimise, a live tool, the divider and 
     await expect(agent(win).getByRole('button', { name: 'Check again' })).toBeFocused();
 
     // cloud AI on from the command search (the scripted provider stands in for the cloud): the
-    // panel checks its route again by itself, and the header's Cloud AI chip follows
+    // panel checks its route again by itself, and the header's AI status chip follows
     await win.keyboard.press('Control+K');
     const palette = win.getByRole('dialog', { name: 'Command search' });
     await palette.getByRole('combobox').fill('cloud AI');
     await palette.getByRole('option', { name: /Turn cloud AI on/ }).click();
     await expect(box(win)).toBeEnabled({ timeout: 15_000 });
-    await expect(agent(win).getByTestId('agent-cloud-chip')).toHaveText('Cloud AI');
+    await expect(agent(win).getByTestId('agent-ai-chip')).toHaveText('AI ready');
 
     // the header at 1100 px: the bound view's chip shows its whole window name ("3D view"),
     // the rest ellipsized; Minimise and Maximise are the panel's own borderless buttons

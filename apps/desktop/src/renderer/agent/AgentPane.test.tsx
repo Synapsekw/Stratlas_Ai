@@ -249,23 +249,23 @@ describe('AgentPane', () => {
     stop();
   });
 
-  it('with the AI off the agent is one row, Agent off · Turn on, until it is clicked', async () => {
+  it('with the AI off the agent is one row naming the AI status, AI off · Turn on, until it is clicked', async () => {
     await setReady(false);
     render();
-    const row = byName('Agent off');
-    expect(row?.textContent).toBe('Agent off · Turn on');
+    const row = byName('AI off');
+    expect(row?.textContent).toBe('AI off · Turn on');
     expect(shown(row)).toBe(true);
     expect(shown(input())).toBe(false);
     expect(shown(host.querySelector('[role="separator"]'))).toBe(false);
     click(row);
     expect(shown(input())).toBe(true);
-    expect(byName('Agent off')).toBeUndefined();
+    expect(byName('AI off')).toBeUndefined();
   });
 
   it('Turn on hands the focus to the opened panel', async () => {
     await setReady(false);
     render();
-    const row = byName('Agent off');
+    const row = byName('AI off');
     act(() => {
       row?.focus();
     });
@@ -283,7 +283,7 @@ describe('AgentPane', () => {
       openAgent();
     });
     expect(agentPane.getState().mode).toBe('normal');
-    expect(document.activeElement).toBe(byName('Agent off'));
+    expect(document.activeElement).toBe(byName('AI off'));
   });
 
   it('Ctrl+J opens a folded sidebar and a minimised agent, and puts the cursor in its input', () => {

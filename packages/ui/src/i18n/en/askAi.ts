@@ -138,7 +138,7 @@ export const enAskAi = {
   'askAi.cloud.preview': 'Preview what is sent',
 
   // Ask AI settings
-  'askAi.settings.title': 'AI for Ask AI',
+  'askAi.settings.title': 'Ask AI',
   'askAi.settings.backend': 'Which AI looks',
   'askAi.settings.auto':
     'Automatic: a local detector, then the local model, then cloud AI if the project allows it',

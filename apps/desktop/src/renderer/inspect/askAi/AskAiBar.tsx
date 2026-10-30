@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { analyticsPack, useAnalyticsPack } from '../../analyticsPack';
 import type { DetectItem } from '../../detections/convert';
 import { shell, useCall, useShell } from '../../shell';
+import { useAiStatus } from '../../shell/AiStatusChip';
 import { useModelsRevision } from './modelsRevision';
 import { cloudConfirm, reasonKey, resolveBackend, type Availability } from './backend';
 import { checkOptions, sameCheck, type AskCheck } from './checks';
@@ -246,6 +247,8 @@ export function AskAiBar({
       : null;
   const backend = withoutDetectors && withoutDetectors.kind !== 'none' ? withoutDetectors : listed;
   const detectorBlock = backend?.kind === 'detectors' ? packBlock : null;
+  // the one AI status, with what this photo would use: its fix is the link under the bar
+  const ai = useAiStatus(backend);
   const why =
     backend?.kind === 'none'
       ? [t(reasonKey(backend.reason)), backend.message].filter(Boolean).join(' ')
@@ -511,7 +514,7 @@ export function AskAiBar({
             className="btn link sm"
             data-testid="ask-ai-settings"
             onClick={() => {
-              shell.getState().openSettingsPage('ai');
+              shell.getState().openSettingsPage(ai.fix ?? 'ai');
             }}
           >
             {t('askAi.openSettings')}

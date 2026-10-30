@@ -116,7 +116,7 @@ describe('AgentDock', () => {
     const el = dock();
     expect(el?.tagName).toBe('ASIDE');
     expect(el?.className).toBe('agent-dock');
-    expect(el?.getAttribute('aria-label')).toBe('Agent');
+    expect(el?.getAttribute('aria-label')).toBe('Ask AI');
     expect(el?.getAttribute('aria-hidden')).toBe('true');
     expect(el?.hasAttribute('inert')).toBe(true);
     expect(mark()).toBeUndefined();
@@ -233,7 +233,7 @@ describe('AgentToggle', () => {
     expect(button?.tagName).toBe('BUTTON');
     expect(button?.type).toBe('button');
     expect(button?.classList.contains('btn')).toBe(true);
-    expect(button?.textContent).toBe('Agent');
+    expect(button?.textContent).toBe('Ask AI');
     // its tip is the shared Tip (described by), not a native title
     expect(button?.title).toBe('');
     expect(button?.getAttribute('aria-keyshortcuts')).toBeTruthy();

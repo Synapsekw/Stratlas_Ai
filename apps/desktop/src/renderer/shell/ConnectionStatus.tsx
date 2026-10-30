@@ -3,6 +3,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from
 import type { StoreApi } from 'zustand/vanilla';
 import { cloudAiBlocked } from '../player';
 import { useShellStore, type SettingsPage, type Shell } from '../store';
+import { AI_CHECKING, AI_LOOK } from './aiStatus';
+import { AiStatusChip, openAiFix, useAiStatus } from './AiStatusChip';
 import { connectionStatus, useNetworkUp } from './connection';
 
 /** The cloud AI state, read as the pair reads it. */
@@ -11,43 +13,6 @@ function useCloudStatus(store: StoreApi<Shell>) {
   const cloudAi = useShellStore(store, (s) => s.settings.cloudAi);
   const pkg = useShellStore(store, (s) => s.pkg);
   return connectionStatus({ offlineOnly, cloudAi, pkgBlocked: cloudAiBlocked(pkg) });
-}
-
-/**
- * The cloud AI chip on its own: what cloud AI is now, opening its setting (Settings, Privacy and
- * cloud). The sidebar's status row shows it on every screen (`cloud-chip`), and the agent's
- * header again (`agent-cloud-chip`, so the row's stays the one `cloud-chip`).
- */
-export function CloudChip({
-  store,
-  className = 'ag-cloud',
-  testId = 'cloud-chip',
-  onOpen,
-}: {
-  store: StoreApi<Shell>;
-  className?: string;
-  testId?: string;
-  /** Before the setting opens (the pair closes its menu). */
-  onOpen?: () => void;
-}) {
-  useT();
-  const status = useCloudStatus(store);
-  return (
-    <button
-      type="button"
-      className={`chip-status conn-cloud ${className}`}
-      title={t(status.cloudTip)}
-      data-state={status.cloud}
-      data-testid={testId}
-      onClick={() => {
-        onOpen?.();
-        store.getState().openSettingsPage('privacy');
-      }}
-    >
-      <span className={status.cloudActive ? 'dot' : 'dot off'} />
-      {t(status.cloudLabel)}
-    </button>
-  );
 }
 
 /** Where the menu opens from the foot of the sidebar: fixed above the chip, inside the window. */
@@ -65,9 +30,9 @@ function aboveStyle(opener: HTMLElement | null): CSSProperties | undefined {
 
 /**
  * The connection pair: the mode chip (Online or Offline only, the real
- * `settings.offlineOnly`) and the cloud AI chip beside it, both read from one status so they
- * cannot disagree. The mode chip opens a small menu: the switch between the two modes, what the
- * mode means, and the two things people go online for (map downloads, cloud AI).
+ * `settings.offlineOnly`) and the AI status chip beside it (AiStatusChip, the same one state as
+ * everywhere). The mode chip opens a small menu: the switch between the two modes, what the mode
+ * means, and the two things people go online for (map downloads, AI).
  */
 export function ConnectionStatus({
   store,
@@ -75,7 +40,7 @@ export function ConnectionStatus({
 }: {
   store: StoreApi<Shell>;
   /**
-   * `pair`: the mode chip and the cloud AI chip. `foot`: the mode alone, a dot and a word, for
+   * `pair`: the mode chip and the AI status chip. `foot`: the mode alone, a dot and a word, for
    * the left sidebar's status row (SidebarStatus); its menu opens above it.
    */
   variant?: 'pair' | 'foot';
@@ -83,6 +48,8 @@ export function ConnectionStatus({
   useT();
   const notSaved = useShellStore(store, (s) => s.settingsError);
   const status = useCloudStatus(store);
+  const ai = useAiStatus(null, store);
+  const aiLook = ai.checking ? AI_CHECKING : AI_LOOK[ai.state];
   const foot = variant === 'foot';
   const online = status.mode === 'online';
   const networkUp = useNetworkUp();
@@ -148,9 +115,9 @@ export function ConnectionStatus({
         {!foot && <Icon name="chevdown" size={12} className="conn-caret" />}
       </button>
       {!foot && (
-        <CloudChip
+        <AiStatusChip
           store={store}
-          className="conn-pair"
+          className="conn-cloud conn-pair"
           onOpen={() => {
             setOpen(false);
           }}
@@ -220,17 +187,18 @@ export function ConnectionStatus({
             <button
               type="button"
               className="conn-link"
-              title={t(status.cloudTip)}
+              title={t(aiLook.tip)}
               data-testid="connection-cloud"
               onClick={() => {
-                settings('privacy');
+                setOpen(false);
+                openAiFix(ai, store);
               }}
             >
               <Icon name="agent" size={14} />
               <span>{t('connection.cloud')}</span>
-              <span className="conn-hint" data-state={status.cloud}>
-                <span className={status.cloudActive ? 'dot' : 'dot off'} />
-                {t(status.cloudWord)}
+              <span className="conn-hint" data-state={ai.state === 'ready' ? 'on' : ai.state}>
+                <span className={ai.state === 'ready' ? 'dot' : 'dot off'} />
+                {t(aiLook.label)}
               </span>
             </button>
           </div>

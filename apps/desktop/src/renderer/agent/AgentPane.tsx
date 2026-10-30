@@ -2,8 +2,8 @@
  * The Scene's agent pane (stage island D21-D24): the workbench above and the agent below on the
  * foundation's `scene.ctxAgent` split. The agent can be maximised over the bench (the tab bar
  * stays), minimised to one line ("Ask about ‹context› · Ctrl J"), and drops to that line while a
- * tool is live unless the person sized it. With the AI off it is one row, "Agent off · Turn on",
- * until clicked.
+ * tool is live unless the person sized it. With the AI off it is one row naming the one AI status
+ * ("AI off: no key · Turn on", shell/aiStatus.ts), until clicked.
  */
 import type { AiTask, WindowKind } from '@aio/schema';
 import {
@@ -28,6 +28,8 @@ import {
   type ReactNode,
 } from 'react';
 import { useStore } from 'zustand';
+import { AI_CHECKING, AI_LOOK } from '../shell/aiStatus';
+import { useAiStatus } from '../shell/AiStatusChip';
 import { AgentHost } from './AgentHost';
 import {
   AGENT_SPLIT_DEFAULT,
@@ -131,6 +133,8 @@ export function AgentPane({
   const mode = useAgentPane((s) => s.mode);
   const focusSeq = useAgentPane((s) => s.focusSeq);
   const off = useAgentOff();
+  const ai = useAiStatus();
+  const aiLabel = t((ai.checking ? AI_CHECKING : AI_LOOK[ai.state]).label);
   // the off row opens the agent's own words on why it is off, and how to turn it on
   const [offOpen, setOffOpen] = useState(false);
   const layout = off && !offOpen ? 'off' : mode;
@@ -228,7 +232,7 @@ export function AgentPane({
               }}
             >
               <Icon name="agent" size={14} />
-              <span className="ag-line-t">{t('agent.offRow')}</span>
+              <span className="ag-line-t">{t('agent.offRow', { state: aiLabel })}</span>
             </button>
           )}
           {layout === 'min' && (

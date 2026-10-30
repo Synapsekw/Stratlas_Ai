@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StoreApi } from 'zustand/vanilla';
 import type { Bridge, Res } from '../bridge';
+import { appAgentSession } from '../agent/session';
 import { createShellStore, DEFAULT_SETTINGS, type Shell } from '../store';
 import { ConnectionStatus } from './ConnectionStatus';
 
@@ -44,7 +45,9 @@ const pkg = (aiPolicy: 'forbid' | 'allow'): PackageInfo => ({
 
 let host: HTMLDivElement;
 let root: Root | undefined;
-beforeEach(() => {
+beforeEach(async () => {
+  // no app bridge here: the agent says it is off, so a key is what the status asks for
+  await appAgentSession().refresh();
   host = document.createElement('div');
   document.body.append(host);
 });
@@ -80,28 +83,38 @@ describe('the title bar connection pair', () => {
         it(`never contradicts itself: ${name}`, () => {
           mount({ offlineOnly, cloudAi }, blocked ? pkg('forbid') : null);
           const mode = text('connection-chip');
-          const cloud = q('cloud-chip');
+          const ai = q('ai-status-chip');
           expect(mode).toBe(offlineOnly ? 'Offline only' : 'Online');
           expect(q('connection-chip')?.getAttribute('aria-label')).toBe(
             `Connection: ${String(mode)}`,
           );
-          const live = cloudAi && !offlineOnly && !blocked;
-          expect(cloud?.textContent).toBe(
-            live ? 'Cloud AI' : cloudAi ? 'Cloud AI blocked' : 'Cloud AI off',
+          // offline only first, then the switch, then the package; with all clear, the agent
+          // (no key here)
+          const state = offlineOnly
+            ? 'offline'
+            : !cloudAi
+              ? 'cloud-off'
+              : blocked
+                ? 'project-off'
+                : 'no-key';
+          expect(ai?.getAttribute('data-state')).toBe(state);
+          expect(ai?.textContent).toBe(
+            {
+              offline: 'AI off: offline',
+              'cloud-off': 'AI off',
+              'project-off': 'AI off for this project',
+              'no-key': 'AI off: no key',
+            }[state],
           );
-          // the green dot only ever sits beside "Online"
-          expect(cloud?.querySelector('.dot:not(.off)') !== null).toBe(live);
-          expect(cloud?.getAttribute('data-state')).toBe(live ? 'on' : cloudAi ? 'blocked' : 'off');
-          if (offlineOnly) expect(cloud?.getAttribute('title')).toContain('offline-only');
-          else if (blocked)
-            expect(cloud?.getAttribute('title')).toContain('This package does not allow cloud AI');
+          // never green: nothing here would run
+          expect(ai?.getAttribute('data-tone')).not.toBe('ok');
         });
       }
 
   it('a package that allows cloud AI leaves the pair as the switches say', () => {
     mount({ cloudAi: true }, pkg('allow'));
     expect(text('connection-chip')).toBe('Online');
-    expect(text('cloud-chip')).toBe('Cloud AI');
+    expect(text('ai-status-chip')).toBe('AI off: no key');
   });
 
   it('opens a labelled menu from the chip, with a switch that says the mode', () => {
@@ -129,7 +142,7 @@ describe('the title bar connection pair', () => {
     act(() => q('connection-chip')?.click());
     expect(q('connection-maps')?.getAttribute('aria-disabled')).toBe('true');
     expect(text('connection-maps')).toContain('Go online first');
-    expect(text('connection-cloud')).toContain('Blocked');
+    expect(text('connection-cloud')).toContain('AI off: offline');
 
     act(() => q('connection-switch')?.click());
     await settle();
@@ -139,10 +152,10 @@ describe('the title bar connection pair', () => {
     // the menu stays open on the new mode
     expect(q('connection-switch')?.getAttribute('aria-checked')).toBe('true');
     expect(text('connection-chip')).toBe('Online');
-    expect(text('cloud-chip')).toBe('Cloud AI');
+    expect(text('ai-status-chip')).toBe('AI off: no key');
     expect(text('connection-text')).toContain('You can download maps');
     expect(q('connection-maps')?.getAttribute('aria-disabled')).toBe('false');
-    expect(text('connection-cloud')).toContain('On');
+    expect(text('connection-cloud')).toContain('AI off: no key');
 
     // and back: offline only again, cloud AI blocked again, its own switch untouched
     act(() => q('connection-switch')?.click());
@@ -150,7 +163,7 @@ describe('the title bar connection pair', () => {
     expect(calls[1]).toEqual({ channel: 'settings:set', req: { offlineOnly: true } });
     expect(saved()).toMatchObject({ offlineOnly: true, cloudAi: true });
     expect(text('connection-chip')).toBe('Offline only');
-    expect(text('cloud-chip')).toBe('Cloud AI blocked');
+    expect(text('ai-status-chip')).toBe('AI off: offline');
   });
 
   it('says so when the setting could not be saved', async () => {
@@ -186,13 +199,21 @@ describe('the title bar connection pair', () => {
     expect(q('connection-menu')).toBeNull();
   });
 
-  it('the cloud AI chip and row open its setting, as the chip always did', () => {
+  it('the AI chip and row open what fixes the AI status', () => {
+    // no key: Settings, AI providers
     const { store, calls } = mount({ cloudAi: true });
-    act(() => q('cloud-chip')?.click());
-    expect(store.getState()).toMatchObject({ screen: 'settings', settingsPage: 'privacy' });
+    act(() => q('ai-status-chip')?.click());
+    expect(store.getState()).toMatchObject({ screen: 'settings', settingsPage: 'ai' });
     store.getState().go('projects');
     act(() => q('connection-chip')?.click());
     act(() => q('connection-cloud')?.click());
+    expect(store.getState()).toMatchObject({ screen: 'settings', settingsPage: 'ai' });
+    expect(q('connection-menu')).toBeNull();
+    // the switch off: Settings, Privacy and cloud
+    act(() => {
+      store.setState({ settings: { ...store.getState().settings, cloudAi: false } });
+    });
+    act(() => q('ai-status-chip')?.click());
     expect(store.getState()).toMatchObject({ screen: 'settings', settingsPage: 'privacy' });
     // neither changes a setting
     expect(calls).toEqual([]);

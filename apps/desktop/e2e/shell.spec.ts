@@ -111,8 +111,9 @@ test('open a project, drive the shell and keep the sidebar state', async () => {
     await expect(win.getByLabel('Anthropic API key')).toHaveAttribute('type', 'password');
     await expect(win.getByLabel('Provider for Agent chat')).toBeVisible();
     await expect(win.getByTestId('connection-chip')).toHaveText('Online');
-    await expect(win.getByTestId('cloud-chip')).toHaveText('Cloud AI');
-    await expect(win.getByTestId('cloud-chip')).toHaveAttribute('data-state', 'on');
+    // cloud AI is on, but no key yet: the one AI status says so, amber, never green
+    await expect(win.getByTestId('ai-status-chip')).toHaveText('AI off: no key');
+    await expect(win.getByTestId('ai-status-chip')).toHaveAttribute('data-tone', 'warn');
 
     // The command search knows the Processing tools page, also by the pack's older name.
     await win.keyboard.press('Control+K');

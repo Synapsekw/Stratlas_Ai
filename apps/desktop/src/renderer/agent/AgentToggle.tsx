@@ -3,7 +3,7 @@ import { shell, useShell } from '../shell';
 import { AGENT_DOCK_ID, useDockScreen } from './AgentDock';
 
 /**
- * The Agent button of a page header: folds and unfolds the agent column (AgentDock) on the screens
+ * The Ask AI button of a page header: folds and unfolds the agent column (AgentDock) on the screens
  * that have one. The Scene shows none yet: its agent is in the right panel, with its own handle.
  * Below 1280 px of window width it is the icon alone (styles.css); the name is still the button's.
  */

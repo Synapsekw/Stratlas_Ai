@@ -263,13 +263,15 @@ test.describe('@realdata HCl as a customer package', () => {
         expect(refused.ok).toBe(false);
         expect(refused.error).toMatch(/read-only/);
         // Cloud AI is on (the new-install default), and that does not unlock it for this package.
-        await win.getByTestId('cloud-chip').click();
-        await win.getByRole('button', { name: 'Privacy and cloud' }).click();
+        // the AI chip says so and opens Privacy and cloud
+        await expect(win.getByTestId('ai-status-chip')).toHaveText('AI off for this project');
+        await win.getByTestId('ai-status-chip').click();
+        await expect(win.locator('.set-page h1')).toHaveText('Privacy and cloud');
         await expect(win.getByRole('switch', { name: 'Allow cloud AI' })).toHaveAttribute(
           'aria-checked',
           'true',
         );
-        await expect(win.getByTestId('cloud-chip')).toHaveText('Cloud AI blocked');
+        await expect(win.getByTestId('ai-status-chip')).toHaveText('AI off for this project');
         await expect(win.getByText('does not allow cloud AI')).toBeVisible();
         await shot(win, 'n4-05-cloud-blocked');
         const ai = await win.evaluate(() =>

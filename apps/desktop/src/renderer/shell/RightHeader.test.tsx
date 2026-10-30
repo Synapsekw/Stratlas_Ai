@@ -53,7 +53,7 @@ afterEach(() => {
 describe('RightHeader', () => {
   it('has an Agent button on the Scene that takes the person to the agent', () => {
     const agent = q('agent-open');
-    expect(agent?.textContent).toBe('Agent');
+    expect(agent?.textContent).toBe('Ask AI');
     act(() => agent?.click());
     expect(document.activeElement).toBe(host.querySelector('.agent textarea'));
   });

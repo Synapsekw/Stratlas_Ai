@@ -1010,16 +1010,16 @@ test.describe('the agent column in the smallest window', () => {
     });
 
   /**
-   * Below 1280 px the chip is its icon alone, still named "Agent", and the page header keeps the
+   * Below 1280 px the chip is its icon alone, still named "Ask AI", and the page header keeps the
    * name of the screen: whole, or ending in an ellipsis, never cut mid letter.
    */
   async function expectNarrowChip(win: Page, screen?: string) {
-    await expect(toggle(win)).toHaveAccessibleName('Agent');
+    await expect(toggle(win)).toHaveAccessibleName('Ask AI');
     // its tip (the shared Tip, no native title) says what it does; the pointer comes from
     // elsewhere, so the hover is a new one
     await win.mouse.move(0, 400);
     await toggle(win).hover();
-    await expect(win.getByRole('tooltip')).toContainText('Show or hide the agent');
+    await expect(win.getByRole('tooltip')).toContainText('Show or hide Ask AI');
     await win.mouse.move(0, 400);
     await expect(toggle(win)).toHaveAttribute('aria-controls', 'agent-dock');
     const now = await chipAndCrumb(win);
@@ -1212,12 +1212,12 @@ test.describe('the agent column in the smallest window', () => {
     expect(await sidewaysScrollers(win)).toEqual([]);
     await shot(win, 'agent-show-08-small-reports');
 
-    // the connection pair in its longest wording, "Offline only" and "Cloud AI blocked", beside
-    // the Agent chip, the Processing chip and the project's Share chip (cloud AI is on for a new
+    // the connection pair in a long wording, "Offline only" and "AI off: offline", beside the
+    // Ask AI chip, the Processing chip and the project's Share chip (cloud AI is on for a new
     // install)
     await command(win, 'Work offline only');
     await expect(win.getByTestId('connection-chip')).toHaveText('Offline only');
-    await expect(win.getByTestId('cloud-chip')).toHaveText('Cloud AI blocked');
+    await expect(win.getByTestId('ai-status-chip')).toHaveText('AI off: offline');
     await expect(win.getByTestId('sync-chip')).toBeVisible();
     await expect(dock(win)).toBeVisible();
     await expectTitleBarFits(win);
@@ -1231,10 +1231,10 @@ test.describe('the agent column in the smallest window', () => {
       await win.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
 
-    // from 1280 px the chip reads "Agent" beside its icon
+    // from 1280 px the chip reads "Ask AI" beside its icon
     await setWidth(win, 1280);
-    await expect(toggle(win)).toHaveText('Agent');
-    await expect(toggle(win)).toHaveAccessibleName('Agent');
+    await expect(toggle(win)).toHaveText('Ask AI');
+    await expect(toggle(win)).toHaveAccessibleName('Ask AI');
     const wide = await chipAndCrumb(win);
     expect(wide.labelWidth).toBeGreaterThan(20);
     expect(wide.chipWidth).toBeGreaterThan(50);

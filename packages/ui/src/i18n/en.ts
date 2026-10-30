@@ -46,7 +46,7 @@ import { enLayoutSpike } from './en/layoutSpike';
  *   en/shell.ts: titlebar, nav, connection, status, syncNotice, diskChanged, announce, online, help, diag
  *   en/palette.ts: palette
  *   en/keys.ts: keys
- *   en/agent.ts: agent
+ *   en/agent.ts: agent, aiStatus
  *   en/settings.ts: settings, identity, classes, graphics, mapSources, tools, blobs
  *   en/library.ts: library, project, package, remove, trash, gate
  *   en/island.ts: island

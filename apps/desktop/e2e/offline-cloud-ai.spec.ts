@@ -103,10 +103,10 @@ test('offline-only: no cloud AI request leaves, and the app says why', async () 
     const offlineSwitch = win.getByRole('switch', { name: 'Offline-only workstation' });
     await cloudSwitch.click();
     await expect(cloudSwitch).toHaveAttribute('aria-checked', 'true');
-    const chip = win.getByTestId('cloud-chip');
+    const chip = win.getByTestId('ai-status-chip');
     const mode = win.getByTestId('connection-chip');
     await expect(mode).toHaveText('Online');
-    await expect(chip).toHaveText('Cloud AI');
+    await expect(chip).toHaveText('AI ready');
     const testConnection = () =>
       win.evaluate(() => window.aio.invoke('ai:testConnection', { provider: 'anthropic' }));
 
@@ -142,8 +142,8 @@ test('offline-only: no cloud AI request leaves, and the app says why', async () 
       'Off: this workstation is offline-only',
     );
     await expect(mode).toHaveText('Offline only');
-    await expect(chip).toHaveText('Cloud AI blocked');
-    await expect(chip).toHaveAttribute('title', /offline-only/);
+    await expect(chip).toHaveText('AI off: offline');
+    await expect(chip).toHaveAttribute('data-state', 'offline');
     await shot(win, 'offline-only-privacy');
 
     // AI providers: the notice, and Test connection answers with the reason.
@@ -170,7 +170,7 @@ test('offline-only: no cloud AI request leaves, and the app says why', async () 
     await expect(cloudSwitch).toBeEnabled();
     await expect(cloudSwitch).toHaveAttribute('aria-checked', 'true');
     await expect(mode).toHaveText('Online');
-    await expect(chip).toHaveText('Cloud AI');
+    await expect(chip).toHaveText('AI ready');
     await win.locator('.nav-item', { hasText: 'Scene' }).click();
     await expect(box(win)).toBeEnabled();
     await expect(agent(win)).not.toContainText('offline-only');

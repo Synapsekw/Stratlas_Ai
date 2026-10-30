@@ -16,26 +16,18 @@ describe('connectionStatus', () => {
   it('names the pair for every combination of the two switches and the package', () => {
     const on = true;
     const off = false;
-    expect(words({ offlineOnly: off, cloudAi: on, pkgBlocked: off })).toBe('Online + Cloud AI');
-    expect(words({ offlineOnly: off, cloudAi: off, pkgBlocked: off })).toBe(
-      'Online + Cloud AI off',
-    );
-    expect(words({ offlineOnly: off, cloudAi: on, pkgBlocked: on })).toBe(
-      'Online + Cloud AI blocked',
-    );
-    expect(words({ offlineOnly: off, cloudAi: off, pkgBlocked: on })).toBe('Online + Cloud AI off');
+    expect(words({ offlineOnly: off, cloudAi: on, pkgBlocked: off })).toBe('Online + AI allowed');
+    expect(words({ offlineOnly: off, cloudAi: off, pkgBlocked: off })).toBe('Online + AI off');
+    expect(words({ offlineOnly: off, cloudAi: on, pkgBlocked: on })).toBe('Online + AI blocked');
+    expect(words({ offlineOnly: off, cloudAi: off, pkgBlocked: on })).toBe('Online + AI off');
     expect(words({ offlineOnly: on, cloudAi: on, pkgBlocked: off })).toBe(
-      'Offline only + Cloud AI blocked',
+      'Offline only + AI blocked',
     );
-    expect(words({ offlineOnly: on, cloudAi: off, pkgBlocked: off })).toBe(
-      'Offline only + Cloud AI off',
-    );
+    expect(words({ offlineOnly: on, cloudAi: off, pkgBlocked: off })).toBe('Offline only + AI off');
     expect(words({ offlineOnly: on, cloudAi: on, pkgBlocked: on })).toBe(
-      'Offline only + Cloud AI blocked',
+      'Offline only + AI blocked',
     );
-    expect(words({ offlineOnly: on, cloudAi: off, pkgBlocked: on })).toBe(
-      'Offline only + Cloud AI off',
-    );
+    expect(words({ offlineOnly: on, cloudAi: off, pkgBlocked: on })).toBe('Offline only + AI off');
   });
 
   it('never shows cloud AI as on while offline only, or while the package forbids it', () => {
@@ -47,7 +39,7 @@ describe('connectionStatus', () => {
       expect(s.cloudActive, JSON.stringify(i)).toBe(i.cloudAi && !i.offlineOnly && !i.pkgBlocked);
       expect(s.cloud === 'on', JSON.stringify(i)).toBe(s.cloudActive);
       if (s.mode === 'offline') {
-        expect(t(s.cloudLabel), JSON.stringify(i)).not.toBe('Cloud AI');
+        expect(t(s.cloudLabel), JSON.stringify(i)).not.toBe('AI allowed');
         expect(s.cloudStoppedBy).toBe('offline');
       }
       // "blocked" means the person switched it on and something else stops it
@@ -61,10 +53,10 @@ describe('connectionStatus', () => {
     const tip = (i: ConnectionInput) => t(connectionStatus(i).cloudTip);
     for (const cloudAi of BOOL) {
       for (const pkgBlocked of BOOL)
-        expect(tip({ offlineOnly: true, cloudAi, pkgBlocked })).toContain('offline-only');
+        expect(tip({ offlineOnly: true, cloudAi, pkgBlocked })).toContain('offline only');
       // a package that forbids cloud AI keeps its own tip, whatever the switch says
       expect(tip({ offlineOnly: false, cloudAi, pkgBlocked: true })).toBe(
-        'This package does not allow cloud AI. Nothing is sent to any provider.',
+        'This package does not allow AI. Nothing is sent to any provider.',
       );
     }
     expect(tip({ offlineOnly: false, cloudAi: true, pkgBlocked: false })).toContain('allowed');

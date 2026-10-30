@@ -3,7 +3,7 @@ import type { AiTask, WindowKind } from '@aio/schema';
 import { useEffect, type ReactNode } from 'react';
 import { cloudAiBlocked } from '../player';
 import { shell, useShell } from '../shell';
-import { CloudChip } from '../shell/ConnectionStatus';
+import { AiStatusChip } from '../shell/AiStatusChip';
 import { AgentFixCard } from '../workspace/AgentFixCard';
 import { appAgentSession, setAgentTask, setAgentWindow } from './session';
 
@@ -44,7 +44,12 @@ export function AgentHost({
     return (
       <>
         <div className="agent-blocked-h">
-          <CloudChip store={shell} testId="agent-cloud-chip" />
+          <AiStatusChip
+            store={shell}
+            className="ag-cloud"
+            testId="agent-ai-chip"
+            placement="bottom"
+          />
         </div>
         <p className="faint small" style={{ padding: 12 }} data-testid="agent-blocked">
           This package does not allow cloud AI. Nothing from it is sent to any provider.
@@ -60,8 +65,15 @@ export function AgentHost({
       settingsKey={aiKey}
       className={className ? `agent-host ${className}` : 'agent-host'}
       renderFix={(controls) => <AgentFixCard {...controls} />}
-      // cloud AI as it is now, in the header (the title bar showed it before it went)
-      status={<CloudChip store={shell} testId="agent-cloud-chip" />}
+      // the one AI status, in the header, the same as the sidebar's
+      status={
+        <AiStatusChip
+          store={shell}
+          className="ag-cloud"
+          testId="agent-ai-chip"
+          placement="bottom"
+        />
+      }
       actions={actions}
     />
   );

@@ -60,10 +60,11 @@ describe('SidebarStatus', () => {
     expect(q('origin-chip')?.textContent).toBe('Copy of site.aio');
     expect(q('readonly-chip')).toBeNull();
   });
-  it('says whether cloud AI is on, on every screen', () => {
+  it('says the one AI status, on every screen', () => {
     shell.setState({ settings: { ...shell.getState().settings, cloudAi: false } });
     render();
-    expect(q('cloud-chip')?.textContent).toBe('Cloud AI off');
+    expect(q('ai-status-chip')?.textContent).toBe('AI off');
+    expect(q('ai-status-chip')?.getAttribute('data-tone')).toBe('neutral');
   });
 
   it('says the connection and opens its menu', () => {
