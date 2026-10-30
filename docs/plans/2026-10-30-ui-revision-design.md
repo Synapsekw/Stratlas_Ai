@@ -134,6 +134,8 @@ Only these slots exist (`workspace/overlaySlots.ts` becomes the single source):
 | AI off: offline only    | neutral dot, "AI off: offline"       | Settings > Privacy and cloud |
 | AI off for this project | amber dot, "AI off for this project" | Project settings             |
 
+Reserved (section 13, not built here): an "Offline agent ready" state for the bundled local model, between AI ready and Local model; `AiState` and the chip leave room for it.
+
 Green means a request would run now, never "permitted". The agent pane's footer row ("Agent off, Turn on", `agent/AgentPane.tsx`) and Inspect's "No AI can look at this" read the same state and offer the same fix.
 
 - **One name.** The feature is **Ask AI** everywhere: the agent dock ("Ask AI", Ctrl+J), the island tile, the photo button ("Ask AI about this photo"), the settings page section ("Ask AI" settings move into AI providers). "Agent", "Ask agent", "AI for Ask AI" and "Cloud AI" go from the UI; "cloud" alone means online, and the 3D data is always "point cloud". (Open decision 1 if the founder prefers another name.)
@@ -198,6 +200,20 @@ The twelve defects of the review's checklist, each with its fix in the plan (W1a
 - Accessibility: the issue select toggle (`IssueRegister.tsx:372`), the click handlers on a div (`Island.tsx:643`) and a table row (`InventoryPane.tsx:274`) become buttons or get keyboard handlers.
 - Buttons move to `<Button>` / `<IconButton>` file by file as a file is touched for any other reason (a standing rule, not a workstream).
 - Naming glossary (`docs/design/glossary.md`): one AI name, "point cloud", no app-invented terms in the UI ("Every date", "bench", "island", "File them").
+
+## 13. Reserved homes for proposed AI surfaces (not built here)
+
+The intelligence review (branch `docs/intelligence-review`, `docs/design/intelligence-review-2026-10/README.md`) proposes new AI surfaces. None is built and each waits on the founder's picks. This project plans **no build work** for them; it only keeps a place free so the layout does not need another reshuffle when they come:
+
+| Surface                                                                                                                   | Reserved home                                                                                                                                                         |
+| ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Site digest (typed insights, each with evidence and a next action), trends and days-to-empty, QA fitness flags on figures | **Project** tab: a "Digest" section slot at the top of the section list (above the preset's first section), and a flag slot on each figure row in Volumes and Changes |
+| Suggested prompts, plan and batch-approval cards                                                                          | **Agent dock** at the foot of the right panel: a prompt row above the input and a card list inside the conversation                                                   |
+| Detector bench results, learning status, "apply suggested threshold", optional add-on packs                               | **Settings > Models and detection**: sections after the detector library and the Analytics pack                                                                       |
+| "Offline agent ready" for the bundled local model                                                                         | **AI chip**: one more state (section 6)                                                                                                                               |
+| Automatic "survey QA and change compute after a new date" switch                                                          | **Settings > Processing tools**, in the same section as "Prepare surfaces when a project opens"                                                                       |
+
+W7 (Project tab sections), W2 (`AiState`) and W6 (Settings page layout) keep these slots possible: section order is data, `AiState` is a union that can grow, and the Models and detection page is a list of sections.
 
 ## Non-goals
 
