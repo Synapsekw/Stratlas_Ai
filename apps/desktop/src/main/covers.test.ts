@@ -1,10 +1,25 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type * as FsPromises from 'node:fs/promises';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { coverFile, coverHash, coverStamp, registerCoverIpc, setCover } from './covers';
 import { libraryKey } from './libraryView';
 import { collectHandlers } from './notYet';
+
+/** Renames to refuse once, the way Windows does while a scanner reads the file just written. */
+const refuseOnce = vi.hoisted(() => new Set<string>());
+vi.mock('node:fs/promises', async (original) => {
+  const fs = await original<typeof FsPromises>();
+  return {
+    ...fs,
+    rename: (from: string, to: string) => {
+      if (refuseOnce.delete(to))
+        return Promise.reject(Object.assign(new Error(`EPERM: rename ${from}`), { code: 'EPERM' }));
+      return fs.rename(from, to);
+    },
+  };
+});
 
 let dir: string;
 
@@ -13,7 +28,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await rm(dir, { recursive: true, force: true, maxRetries: 5 });
 });
 
 describe('covers (read side)', () => {
@@ -173,6 +188,23 @@ describe('setCover', () => {
       ok: true,
       thumbnail: expect.stringContaining('aio://project/p1/thumbnail.jpg?v=') as unknown,
     });
+  });
+
+  it('tries again when Windows briefly refuses the rename, writing and putting back', async () => {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { ...platform, value: 'win32' });
+    try {
+      await writeFile(join(proj, 'thumbnail.jpg'), JPEG(9));
+      refuseOnce.add(join(proj, 'thumbnail.jpg'));
+      expect(await setCover({ ...base(), data: JPEG(1) })).toMatchObject({ ok: true });
+      expect(new Uint8Array(await readFile(join(proj, 'thumbnail.jpg')))).toEqual(JPEG(1));
+      refuseOnce.add(join(proj, 'thumbnail.jpg'));
+      expect(await setCover({ ...base(), data: null })).toMatchObject({ ok: true });
+      expect(new Uint8Array(await readFile(join(proj, 'thumbnail.jpg')))).toEqual(JPEG(9));
+      expect(refuseOnce.size).toBe(0);
+    } finally {
+      if (platform) Object.defineProperty(process, 'platform', platform);
+    }
   });
 
   it('a folder cover removes an older custom cover of the same key', async () => {

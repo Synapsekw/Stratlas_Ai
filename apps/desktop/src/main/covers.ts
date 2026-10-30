@@ -4,10 +4,11 @@
  * project's own `thumbnail.jpg` on the card. `setCover` is the write side of
  * `library:setThumbnail`. The journal does not track `thumbnail.jpg`, so it needs no wrapping.
  */
+import { renameWhenFree } from '@aio/project/fs';
 import type { IpcResponse } from '@aio/schema';
 import { createHash, randomBytes } from 'node:crypto';
 import { constants } from 'node:fs';
-import { copyFile, lstat, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { detectFolder, THUMBNAIL_ORIGINAL } from './library';
 import { libraryKey } from './libraryView';
@@ -51,7 +52,8 @@ async function writeAtomic(file: string, data: Uint8Array): Promise<void> {
   const tmp = `${file}.${randomBytes(4).toString('hex')}.tmp`;
   try {
     await writeFile(tmp, data);
-    await rename(tmp, file);
+    // a scanner reading the picture just written makes Windows refuse the rename for a moment
+    await renameWhenFree(tmp, file);
   } catch (e) {
     await rm(tmp, { force: true });
     throw e;
@@ -106,7 +108,7 @@ export async function setCover(o: {
     await rm(custom, { force: true });
     if (inFolder && (await isFile(original))) {
       assertWritable(file, 'put the project thumbnail back');
-      await rename(original, file);
+      await renameWhenFree(original, file);
     }
     return { ok: true, thumbnail: await ownThumbnail(o.id, o.path, o.isPackage) };
   }
