@@ -929,7 +929,7 @@ export function SettingsScreen() {
                 ))}
               </div>
               <Routing />
-{/* general AI switches (the agent, Ask AI) sit here, after routing */}
+              {/* general AI switches (the agent, Ask AI) sit here, after routing */}
               <AgentThinking />
               <AskAiSettings />
             </>
