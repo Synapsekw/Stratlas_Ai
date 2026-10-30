@@ -279,7 +279,7 @@ describe('Tabs', () => {
       render(<Over onChange={onChange} />);
       const c = lastItems()[0];
       if (c === 'separator' || !c) throw new Error('no item');
-      c.onSelect();
+      c.onSelect?.();
       expect(onChange).toHaveBeenCalledWith('c');
     });
 
