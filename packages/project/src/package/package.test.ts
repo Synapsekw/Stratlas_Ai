@@ -56,7 +56,7 @@ beforeEach(async () => {
   }
 });
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await rm(dir, { recursive: true, force: true, maxRetries: 5 });
 });
 
 describe('scanProject', () => {

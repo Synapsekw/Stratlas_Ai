@@ -15,7 +15,7 @@ beforeEach(async () => {
   await mkdir(root);
 });
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await rm(dir, { recursive: true, force: true, maxRetries: 5 });
 });
 
 const vide = (w: number, h: number, codec = 'hvc1', fps = 59.94): WalkTrack => ({

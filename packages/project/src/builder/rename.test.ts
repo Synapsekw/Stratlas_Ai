@@ -10,7 +10,7 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'aio-rename-'));
 });
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await rm(dir, { recursive: true, force: true, maxRetries: 5 });
 });
 
 it('renames a layer of any kind, keeping everything else, with a backup', async () => {

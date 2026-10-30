@@ -10,7 +10,7 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'aio-zpc-'));
 });
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await rm(dir, { recursive: true, force: true, maxRetries: 5 });
 });
 
 /** A LAS 1.2 header (227 bytes) with the file creation day and year set. */

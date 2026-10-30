@@ -26,7 +26,7 @@ describe('expandImportPaths', () => {
     }
   });
   afterEach(async () => {
-    await rm(root, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true, maxRetries: 5 });
   });
 
   it('expands a folder, skips hidden entries and summarises the left-out files', async () => {

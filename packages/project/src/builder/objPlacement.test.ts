@@ -17,7 +17,7 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'aio-objplace-'));
 });
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await rm(dir, { recursive: true, force: true, maxRetries: 5 });
 });
 
 const ORIGIN: Vec3 = [500_000, 3_200_000, 20];

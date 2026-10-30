@@ -20,7 +20,7 @@ beforeEach(async () => {
   ({ dir, root } = await makeRemoveProject());
 });
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await rm(dir, { recursive: true, force: true, maxRetries: 5 });
 });
 const ids = (xs: readonly { id: string }[]) => xs.map((x) => x.id).sort();
 const put = async (rel: string, text = 'x') => {

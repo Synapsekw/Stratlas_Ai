@@ -12,7 +12,7 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'aio-glbgeoref-'));
 });
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await rm(dir, { recursive: true, force: true, maxRetries: 5 });
 });
 
 const IDENTITY: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];

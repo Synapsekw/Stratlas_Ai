@@ -45,7 +45,7 @@ afterEach(async () => {
   vi.mocked(rename).mockImplementation(realRename);
   vi.mocked(rm).mockReset();
   vi.mocked(rm).mockImplementation(realRm);
-  await rm(dir, { recursive: true, force: true });
+  await rm(dir, { recursive: true, force: true, maxRetries: 5 });
 });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

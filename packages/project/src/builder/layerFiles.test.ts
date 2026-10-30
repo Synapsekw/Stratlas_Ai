@@ -29,7 +29,7 @@ beforeEach(async () => {
   await writeFile(join(root, 'photos', 'ph', 'b.jpg'), Buffer.alloc(20, 3));
 });
 afterEach(async () => {
-  await rm(base, { recursive: true, force: true });
+  await rm(base, { recursive: true, force: true, maxRetries: 5 });
 });
 
 const mesh = {

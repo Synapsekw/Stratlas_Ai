@@ -19,7 +19,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'aio-trash-'));
 });
 afterEach(async () => {
-  await rm(root, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true, maxRetries: 5 });
 });
 
 const NOW = new Date('2026-10-13T08:15:30.000Z');

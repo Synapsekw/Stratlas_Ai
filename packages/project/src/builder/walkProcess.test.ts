@@ -10,7 +10,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'aio-walk-process-'));
 });
 afterEach(async () => {
-  await rm(root, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true, maxRetries: 5 });
 });
 
 const record = (walk: string, o: Partial<WalkProcessFile> = {}): WalkProcessFile => ({

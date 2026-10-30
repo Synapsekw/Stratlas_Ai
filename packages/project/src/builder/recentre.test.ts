@@ -13,7 +13,7 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'aio-recentre-'));
 });
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await rm(dir, { recursive: true, force: true, maxRetries: 5 });
 });
 
 /** A 227-byte LAS header with the given bounds. */

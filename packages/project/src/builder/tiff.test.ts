@@ -181,7 +181,7 @@ describe('the header of a TIFF file, wherever its directory lies', () => {
     dir = await mkdtemp(join(tmpdir(), 'aio-tiff-'));
   });
   afterEach(async () => {
-    await rm(dir, { recursive: true, force: true });
+    await rm(dir, { recursive: true, force: true, maxRetries: 5 });
   });
   // 200 x 120 colour pixels: 72 000 bytes of image, more than the 64 KB read from the start
   const sheet = (directoryLast: boolean) =>

@@ -37,7 +37,7 @@ beforeEach(async () => {
   await mkdir(card);
 });
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await rm(dir, { recursive: true, force: true, maxRetries: 5 });
 });
 
 /** A point `e` m east and `n` m north of the project origin, as GPS. */

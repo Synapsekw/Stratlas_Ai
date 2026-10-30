@@ -17,7 +17,7 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'aio-export-'));
 });
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await rm(dir, { recursive: true, force: true, maxRetries: 5 });
 });
 
 const FILES = {
