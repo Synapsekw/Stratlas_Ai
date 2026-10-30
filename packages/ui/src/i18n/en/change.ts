@@ -14,6 +14,29 @@ export const enChange = {
     'The stockpiles held {total} on the survey of {date} ({base}), a change of {change} since the survey of {since}.',
   'narr.summary.volumesOne': 'The stockpiles held {total} on the survey of {date} ({base}).',
   'narr.summary.road': 'The network PCI is {pci} ({rating}) over {km} km.',
+  // Narrative template, survey facts (I1): pile count, the piles that moved most, piles left out,
+  // the survey QA verdicts
+  'narr.summary.introNoDate': '{project} was surveyed.',
+  'narr.summary.introSiteNoDate': '{project} at {site} was surveyed.',
+  'narr.summary.piles_one': 'One stockpile is measured.',
+  'narr.summary.piles_other': '{n} stockpiles are measured.',
+  'narr.summary.movers_one': 'The largest move was {list}.',
+  'narr.summary.movers_other': 'The largest moves were {list}.',
+  'narr.mover.up': '{pile}, up {volume}',
+  'narr.mover.down': '{pile}, down {volume}',
+  'narr.summary.notCounted_one':
+    '{n} stockpile has no figure on the survey of {date} and is left out of the total.',
+  'narr.summary.notCounted_other':
+    '{n} stockpiles have no figure on the survey of {date} and are left out of the total.',
+  'narr.summary.held_one':
+    'The survey of {dates} is on hold after its quality check; check it before relying on its figures.',
+  'narr.summary.held_other':
+    'The surveys of {dates} are on hold after their quality check; check them before relying on their figures.',
+  'narr.summary.qaPassed_one': 'The survey passed its quality check.',
+  'narr.summary.qaPassed_other': 'All {n} checked surveys passed their quality check.',
+  'narr.method.qa':
+    'Each checked survey was compared with the survey before it at the site quality level, and against checkpoints where given.',
+  'narr.method.noQa': 'The surveys have not been quality checked in the app.',
   'narr.summary.todo': '[Add the purpose of the survey and the main conclusion for the client.]',
   'narr.method.capture': 'Data was captured on {dates}: {data}.',
   'narr.method.review':

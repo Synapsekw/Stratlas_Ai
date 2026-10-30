@@ -229,6 +229,7 @@ export const SETTINGS_RULES = {
   processing: { fields: { odm: { fields: { gpu: 'keep' } } } },
   autoPrepareSurfaces: 'keep',
   agentThinking: 'keep',
+  autoCheckNewDates: 'keep',
   // M9: sync preferences only. Device keys, server enrolment and invite codes live in the vault
   // and never in settings; a field added to `team` stays out of bundles until listed here.
   team: {

@@ -5,6 +5,7 @@ import {
   defaultIssuePages,
   houseKind,
   houseReportModel,
+  houseVolumesOf,
   issueAction,
   narrativeFacts,
   pciRating,
@@ -175,10 +176,82 @@ describe('houseReportModel', () => {
       change: '9.8 m³',
       since: '2026-01-01',
       date: '2026-02-01',
+      movers: [],
+      notCounted: 0,
     });
+    expect(narrativeFacts(h).qa).toBeNull();
     const none = houseReportModel({ manifest: sampleManifest(), issues: [], branding, now });
     expect(none.volumes).toBeNull();
     expect(narrativeFacts(none).volumes).toBeNull();
+  });
+
+  it('names the piles that moved most and counts the ones left out', () => {
+    const rows = [
+      {
+        date: '2026-01-01',
+        label: 'Jan',
+        totalM3: 300,
+        parts: [
+          { id: 'a', valueM3: 100 },
+          { id: 'b', valueM3: 100 },
+          { id: 'c', valueM3: 100 },
+        ],
+      },
+      {
+        date: '2026-02-01',
+        label: 'Feb',
+        totalM3: 290,
+        parts: [
+          { id: 'a', valueM3: 160 },
+          { id: 'b', valueM3: 30 },
+          { id: 'c', valueM3: 100 },
+        ],
+        change: { m3: -10 },
+        notCounted: [{ id: 'd', reason: 'missing' }],
+      },
+    ];
+    const names: Record<string, string> = { a: 'North pile', b: 'Sand', c: 'Gravel' };
+    const v = houseVolumesOf(
+      rows,
+      ['Toe', 'Toe', 'Toe', 'Toe'],
+      (m3) => `${String(m3)} m³`,
+      (id) => names[id] ?? id,
+    );
+    expect(v?.movers).toEqual([
+      { label: 'Sand', changeM3: -70, change: '70 m³' },
+      { label: 'North pile', changeM3: 60, change: '60 m³' },
+    ]);
+    expect(v?.notCounted).toBe(1);
+    // without names, none are worked out
+    expect(houseVolumesOf(rows, ['Toe'], String)?.movers).toBeUndefined();
+  });
+
+  it('carries the survey QA verdicts by date, holds named', () => {
+    const manifest = ProjectManifest.parse({
+      ...sampleManifest(),
+      captures: [
+        { id: 'c1', label: 'Survey Jan', date: '2026-01-02' },
+        { id: 'c2', label: 'Survey Feb', date: '2026-02-02' },
+        { id: 'c3', label: 'Survey Mar', date: '2026-03-02' },
+      ],
+    });
+    const h = houseReportModel({
+      manifest,
+      issues: [],
+      branding,
+      now,
+      qa: [
+        { capture: 'c3', status: 'hold' },
+        { capture: 'c1', status: 'pass' },
+        { capture: 'c2', status: 'released' },
+      ],
+    });
+    expect(narrativeFacts(h).qa).toEqual({
+      held: [{ label: 'Survey Mar', date: '2026-03-02' }],
+      passed: 1,
+      released: 1,
+      unchecked: 0,
+    });
   });
 
   it('rates road sample units under the headline severity', () => {

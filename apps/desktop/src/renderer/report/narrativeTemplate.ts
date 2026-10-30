@@ -1,6 +1,9 @@
 // The report narrative made from the project statistics without AI (BLD-7): the text the house
 // report prints when nothing was saved, and the draft offered when cloud AI is off. With
-// `todo`, the parts that need the author's judgement are left as [bracketed] prompts.
+// `todo`, the parts that need the author's judgement are left as [bracketed] prompts. Rule-based,
+// like the volumetric report's "In short" (I1): the pile count, the piles that moved most, piles
+// left out of the total and the survey QA verdicts are told from the facts, so the report has a
+// full narrative offline and for local-only projects; an AI draft is optional polish on top.
 import type { NarrativeSectionId } from '@aio/schema';
 import type { NarrativeFacts } from '@aio/project/export';
 import { t } from '@aio/ui';
@@ -57,6 +60,49 @@ function dates(f: NarrativeFacts): string {
   return listOf(f.captures.map((c) => longDate(c.date)));
 }
 
+/** "North pile, up 60 m³ and Sand, down 70 m³" (largest first, as the facts list them). */
+function moversLine(movers: NonNullable<NarrativeFacts['volumes']>['movers']): string {
+  return listOf(
+    movers.map((m) =>
+      t(m.changeM3 > 0 ? 'narr.mover.up' : 'narr.mover.down', { pile: m.label, volume: m.change }),
+    ),
+  );
+}
+
+/** The survey sentences of the summary: pile count, movers, piles left out, QA verdicts. */
+export function surveySentences(f: NarrativeFacts): string[] {
+  const out: string[] = [];
+  const v = f.volumes;
+  if (v && v.piles > 0) {
+    out.push(t('narr.summary.piles', { count: v.piles, n: num(v.piles) }));
+    if (v.movers.length > 0)
+      out.push(t('narr.summary.movers', { count: v.movers.length, list: moversLine(v.movers) }));
+    if (v.notCounted > 0 && v.date !== '')
+      out.push(
+        t('narr.summary.notCounted', {
+          count: v.notCounted,
+          n: num(v.notCounted),
+          date: longDate(v.date),
+        }),
+      );
+  }
+  const q = f.qa;
+  if (q) {
+    if (q.held.length > 0)
+      out.push(
+        t('narr.summary.held', {
+          count: q.held.length,
+          dates: listOf(q.held.map((h) => longDate(h.date))),
+        }),
+      );
+    else if (q.passed > 0 && q.unchecked === 0)
+      out.push(
+        t('narr.summary.qaPassed', { count: q.passed + q.released, n: num(q.passed + q.released) }),
+      );
+  }
+  return out;
+}
+
 const sentences = (...s: (string | false | null | undefined)[]) =>
   s.filter((x): x is string => Boolean(x)).join(' ');
 
@@ -76,9 +122,13 @@ export function templateNarrative(
 
   const summary = [
     sentences(
-      f.site
-        ? t('narr.summary.introSite', { project: f.project, site: f.site, dates: dates(f) })
-        : t('narr.summary.intro', { project: f.project, dates: dates(f) }),
+      f.captures.length === 0
+        ? f.site
+          ? t('narr.summary.introSiteNoDate', { project: f.project, site: f.site })
+          : t('narr.summary.introNoDate', { project: f.project })
+        : f.site
+          ? t('narr.summary.introSite', { project: f.project, site: f.site, dates: dates(f) })
+          : t('narr.summary.intro', { project: f.project, dates: dates(f) }),
       data && t('narr.summary.data', { data }),
       i.total > 0
         ? t('narr.summary.issues', { issues, bySeverity })
@@ -103,6 +153,7 @@ export function templateNarrative(
               base: v.base,
               date: longDate(v.date),
             })),
+      ...surveySentences(f),
       r?.networkPci != null &&
         t('narr.summary.road', { pci: num1(r.networkPci), rating: r.rating, km: num1(r.lengthKm) }),
     ),
@@ -112,13 +163,14 @@ export function templateNarrative(
   const scale = f.severityScale.map((s) => s.label.toLowerCase());
   const method = [
     sentences(
-      data && t('narr.method.capture', { dates: dates(f), data }),
+      data && f.captures.length > 0 && t('narr.method.capture', { dates: dates(f), data }),
       i.total > 0 &&
         t('narr.method.review', {
           levels: listOf(scale),
           placed: num(i.placed),
           total: num(i.total),
         }),
+      f.qa ? t('narr.method.qa') : v && v.piles > 0 ? t('narr.method.noQa') : null,
       t('narr.method.limits'),
     ),
     opts.todo ? t('narr.method.todo') : '',

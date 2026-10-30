@@ -94,7 +94,8 @@ describe('existing files 0.11 writes stay readable by 0.10', () => {
             k !== 'websiteAutoUpdate' &&
             k !== 'autoPrepareSurfaces' &&
             // agent thinking and prompt caching (30 Oct 2026): additive, absent means on
-            k !== 'agentThinking',
+            k !== 'agentThinking' &&
+            k !== 'autoCheckNewDates',
         )
         .sort(),
     ).toEqual(Object.keys(v010.Settings.shape).sort());

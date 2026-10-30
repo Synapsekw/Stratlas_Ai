@@ -129,6 +129,7 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
       [
         'anthropicWorkspaceId',
         'agentThinking',
+        'autoCheckNewDates',
         'autoPrepareSurfaces',
         'change',
         'cloudAi',

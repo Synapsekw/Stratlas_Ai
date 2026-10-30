@@ -109,6 +109,39 @@ describe('the Changes store', () => {
     expect(s.getState().run).toBeNull();
   });
 
+  it('computes a given pair without moving the panel, and says how the run ended', async () => {
+    const { invoke } = fakeBridge();
+    const s = createChangeStore();
+    await s.getState().load('p');
+    s.getState().setPair({ from: 'd1', to: 'd2' });
+    expect(await s.getState().compute(['issue'], { from: 'd2', to: 'd3' })).toBe(true);
+    expect(invoke).toHaveBeenCalledWith(
+      'change:compute',
+      expect.objectContaining({ from: 'd2', to: 'd3' }),
+    );
+    expect(s.getState().pair).toEqual({ from: 'd1', to: 'd2' });
+    expect(s.getState().lastOutcome).toBe('done');
+
+    // a run the person cancels ends `cancelled`, a refused one `failed`
+    let release: (v: { ok: boolean; error?: string }) => void = () => undefined;
+    invoke.mockImplementation((channel: string) =>
+      channel === 'change:compute'
+        ? new Promise<{ ok: boolean; error?: string }>((r) => {
+            release = r;
+          })
+        : Promise.resolve({ ok: true }),
+    );
+    const running = s.getState().compute(['issue'], { from: 'd2', to: 'd3' });
+    await Promise.resolve();
+    await s.getState().cancel();
+    release({ ok: false, error: 'Cancelled.' });
+    expect(await running).toBe(false);
+    expect(s.getState().lastOutcome).toBe('cancelled');
+    invoke.mockImplementation(() => Promise.resolve({ ok: false, error: 'no' }));
+    await s.getState().compute(['issue'], { from: 'd2', to: 'd3' });
+    expect(s.getState().lastOutcome).toBe('failed');
+  });
+
   it('keeps a refused run for the panel until a run starts or the project changes', async () => {
     fakeBridge();
     const s = createChangeStore();

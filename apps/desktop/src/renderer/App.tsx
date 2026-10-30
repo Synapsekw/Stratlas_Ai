@@ -38,6 +38,8 @@ import { startLineUpSession } from './lineup/lineUpStart';
 import { makeKitSurfaces, refreshSurfaces } from './survey/compareStore';
 import { preparedSurfaces } from './survey/surfaceStates';
 import { connectSurfacesWatch } from './survey/surfacesWatch';
+import { connectNewDatesWatch } from './survey/newDatesWatch';
+import { qaStore, refreshQa } from './survey/qaStore';
 import { connectKitReady } from './survey/kitAccept';
 import { kitSurfaceDates } from './survey/kitSurface';
 import { InspectScreen } from './screens/Inspect';
@@ -471,6 +473,47 @@ export function App() {
         if (manifest) await makeKitSurfaces(projectId, manifest, surfaces, dates);
       },
     });
+    // a new survey date's surface is ready: its survey QA and the change compute against the date
+    // before, quietly and one at a time (Settings.autoCheckNewDates, absent means on)
+    const stopNewDates = connectNewDatesWatch({
+      workspace,
+      jobs,
+      setting: () =>
+        shell.getState().settings.autoCheckNewDates !== false &&
+        window.aio.flags?.newDateChecks !== false,
+      writable: () => shell.getState().pkg === null && !measureStore.getState().readOnly,
+      hasPython: () => jobs.getState().runtime?.found === true,
+      busy: () => qaStore.getState().busy !== null || changeStore.getState().run !== null,
+      readSurfaces: async (projectId) => {
+        const r = await bridge.call('survey:surfaces', { projectId });
+        return r.ok && r.value.ok ? r.value.surfaces : null;
+      },
+      readChecked: async (projectId) => {
+        const r = await bridge.call('survey:readQa', { projectId });
+        return r.ok && r.value.ok ? r.value.files.map((f) => f.capture) : null;
+      },
+      readPairs: async (projectId) => {
+        const r = await bridge.call('change:list', { projectId });
+        return r.ok && r.value.ok ? r.value.sets.map((s) => ({ from: s.from, to: s.to })) : null;
+      },
+      qaLevel: async (projectId) => {
+        const r = await bridge.call('survey:readSettings', { projectId });
+        return r.ok && r.value.ok ? r.value.settings.qa.level : 'off';
+      },
+      startQa: (req) => jobs.getState().startQuiet(req),
+      computeChange: async (projectId, pair) => {
+        const cs = changeStore.getState();
+        if (cs.projectId !== projectId) await cs.load(projectId);
+        if (changeStore.getState().projectId !== projectId) return 'failed';
+        await changeStore.getState().compute(undefined, pair);
+        return changeStore.getState().lastOutcome ?? 'failed';
+      },
+      refresh: async (projectId) => {
+        if (qaStore.getState().projectId === projectId) await refreshQa();
+        if (changeStore.getState().projectId === projectId)
+          await changeStore.getState().load(projectId);
+      },
+    });
     // converted kit piles take the standard-base figure once their dates' surfaces are ready
     // (ADR 0013 point 4): heights repaired, then accepted once per pile, in writable projects
     const stopKitReady = connectKitReady({
@@ -653,6 +696,7 @@ export function App() {
       stopFarWatch();
       stopLineUp();
       stopSurfaces();
+      stopNewDates();
       stopKitReady();
       stopChangeReload();
       stopIssueReload();

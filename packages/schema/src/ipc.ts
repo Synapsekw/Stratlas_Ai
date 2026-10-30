@@ -562,6 +562,11 @@ export const Settings = z.object({
    * caching does not depend on it: it is always on.
    */
   agentThinking: z.boolean().optional(),
+  /**
+   * After a new survey date's surface is prepared, run its survey QA and the in-app change
+   * compute against the date before, quietly (`survey/newDatesWatch.ts`). Absent: on.
+   */
+  autoCheckNewDates: z.boolean().optional(),
 });
 
 /** West, south, east, north in WGS84 degrees. */
@@ -4812,9 +4817,12 @@ export interface AioBridge {
    * Switches for this run, read before the first frame. `autoFold`: the left sidebar may fold to
    * its rail on its own in a narrow window; false when main started the window with
    * `--quadrion-autofold=0` (an e2e run, unless QUADRION_E2E_AUTOFOLD=1). Optional: absent outside
-   * Electron means false.
+   * Electron means false. `newDateChecks`: the checks after a new survey date may run (with
+   * `Settings.autoCheckNewDates`); false when main started the window with
+   * `--quadrion-newdatechecks=0` (an e2e run, unless QUADRION_E2E_NEWDATECHECKS=1), so specs on
+   * multi-date demos keep their state. Absent means true.
    */
-  flags?: { autoFold: boolean };
+  flags?: { autoFold: boolean; newDateChecks?: boolean };
 }
 
 /** See `AioBridge.launchGate`. */

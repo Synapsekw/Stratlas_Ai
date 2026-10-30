@@ -68,6 +68,8 @@ export interface ChangeState {
   /** A run the pipeline refused because the two dates sit apart (the panel offers a line-up). */
   misaligned: Misaligned | null;
   error: string | null;
+  /** How the last computation ended (`cancelled`: the person pressed Cancel), null before one. */
+  lastOutcome: 'done' | 'failed' | 'cancelled' | null;
   /** Bumped on every change, for overlays. */
   version: number;
 }
@@ -86,8 +88,11 @@ export interface ChangeActions {
   setMisaligned(m: Misaligned | null): void;
   /** Show (or clear, with null) an error line in the panel. */
   setError(error: string | null): void;
-  /** Run the in-app producers for the pair; true when sets were written. */
-  compute(kinds?: readonly ChangeKind[]): Promise<boolean>;
+  /**
+   * Run the in-app producers for the pair (or for `pair`, without changing the one the panel
+   * shows: the checks after a new date); true when sets were written.
+   */
+  compute(kinds?: readonly ChangeKind[], pair?: { from: string; to: string }): Promise<boolean>;
   cancel(): Promise<void>;
   /** Save a person's review of one item (null clears it). */
   review(sel: SelectedItem, review: ChangeReview | null): Promise<boolean>;
@@ -127,10 +132,13 @@ const initial: ChangeState = {
   run: null,
   misaligned: null,
   error: null,
+  lastOutcome: null,
   version: 0,
 };
 
 let runSeq = 0;
+/** Runs the person cancelled, by job id. */
+const cancelled = new Set<string>();
 
 export function createChangeStore() {
   return createStore<ChangeStore>()((set, get) => {
@@ -198,8 +206,9 @@ export function createChangeStore() {
       setError(error) {
         bump({ error });
       },
-      async compute(kinds = IN_APP_KINDS) {
-        const { projectId, pair } = get();
+      async compute(kinds = IN_APP_KINDS, given) {
+        const projectId = get().projectId;
+        const pair = given ?? get().pair;
         if (!projectId || !pair || get().run) return false;
         runSeq += 1;
         const jobId = `change-${String(Date.now())}-${String(runSeq)}`;
@@ -219,13 +228,17 @@ export function createChangeStore() {
           kinds: [...kinds],
         });
         off?.();
-        bump({ run: null, ...(r.ok ? {} : { error: r.error }) });
+        const stopped = cancelled.delete(jobId);
+        const lastOutcome = r.ok ? 'done' : stopped ? 'cancelled' : 'failed';
+        bump({ run: null, lastOutcome, ...(r.ok ? {} : { error: r.error }) });
         if (r.ok) await get().load(projectId);
         return r.ok;
       },
       async cancel() {
         const run = get().run;
-        if (run) await call('change:cancel', { jobId: run.jobId });
+        if (!run) return;
+        cancelled.add(run.jobId);
+        await call('change:cancel', { jobId: run.jobId });
       },
       async review(sel, review) {
         const s = get().sets[sel.setId];

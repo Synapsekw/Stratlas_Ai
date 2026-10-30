@@ -103,6 +103,7 @@ describe('M10 additive rule: no layer kind, raster format, derived kind or recor
       [
         'anthropicWorkspaceId',
         'agentThinking',
+        'autoCheckNewDates',
         'autoPrepareSurfaces',
         'change',
         'cloudAi',

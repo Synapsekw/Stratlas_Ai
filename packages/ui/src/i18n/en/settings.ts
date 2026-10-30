@@ -389,6 +389,9 @@ export const enSettings = {
   'settings.task.engineerSends': 'Measurements, photos, scan views',
   'settings.autoPrepare.label': 'Prepare survey surfaces when a project opens',
   'settings.autoPrepare.hint': 'Runs in the background and shows in Jobs. You can cancel it.',
+  'settings.autoCheck.label': 'Check a new survey date when its surface is ready',
+  'settings.autoCheck.hint':
+    'Runs the survey QA against the date before and works out what changed between them. One at a time, in Jobs and Changes. You can cancel it.',
   'settings.angles.title': 'Angles',
   'settings.angles.decimal': 'Decimal degrees',
   'settings.angles.dms': 'Degrees, minutes, seconds',

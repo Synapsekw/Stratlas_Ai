@@ -2699,9 +2699,14 @@ function createWindow(): BrowserWindow {
       webSecurity: true,
       devTools: dev,
       // an e2e run pins the left sidebar open (the preload's `flags.autoFold`), so a spec at the
-      // CI window width (1100) finds it as it expects; QUADRION_E2E_AUTOFOLD=1 lets it fold
-      additionalArguments:
-        e2eRun && process.env.QUADRION_E2E_AUTOFOLD !== '1' ? ['--quadrion-autofold=0'] : [],
+      // CI window width (1100) finds it as it expects; QUADRION_E2E_AUTOFOLD=1 lets it fold. The
+      // checks after a new survey date stay off in an e2e run unless QUADRION_E2E_NEWDATECHECKS=1.
+      additionalArguments: [
+        ...(e2eRun && process.env.QUADRION_E2E_AUTOFOLD !== '1' ? ['--quadrion-autofold=0'] : []),
+        ...(e2eRun && process.env.QUADRION_E2E_NEWDATECHECKS !== '1'
+          ? ['--quadrion-newdatechecks=0']
+          : []),
+      ],
     },
   });
   win.once('ready-to-show', () => {

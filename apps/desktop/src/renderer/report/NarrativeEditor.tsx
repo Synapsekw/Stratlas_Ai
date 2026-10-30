@@ -30,6 +30,7 @@ import { reportIfChangedOnDisk, useDiskChanged } from '../diskChanged';
 import { standardBaseName } from '../reportPage/house/surveyData';
 import { bridge } from '../shell';
 import { useMeasure } from '../survey/measureStore';
+import { useQa } from '../survey/qaStore';
 import { useInventory } from '../survey/useInventory';
 import {
   changedParts,
@@ -197,8 +198,15 @@ export function NarrativeEditor({ onClose }: { onClose: () => void }) {
         return m.items[0] ? standardBaseName(m.items[0].from) : '';
       }),
       (x) => formatQuantity(x, 'volume', units, settings.precision, locale),
+      (id) => piles.find((m) => m.id === id)?.label ?? id,
     );
   }, [stack, piles, settings]);
+  // the survey QA verdicts the report's narrative tells (holds named)
+  const qaFiles = useQa((s) => s.qa);
+  const qa = useMemo(
+    () => Object.values(qaFiles).map((f) => ({ capture: f.capture, status: f.status })),
+    [qaFiles],
+  );
   const [file, setFile] = useState<NarrativeFile | null>(null);
   const [readOnly, setReadOnly] = useState(false);
   const [loaded, setLoaded] = useState<string | null>(null);
@@ -221,9 +229,10 @@ export function NarrativeEditor({ onClose }: { onClose: () => void }) {
         branding: resolveReportBranding(undefined, brand.productName),
         volumes,
         road: extras.road,
+        qa,
       }),
     );
-  }, [project, issues, extras, volumes]);
+  }, [project, issues, extras, volumes, qa]);
 
   useEffect(() => {
     if (!projectId || !facts || loaded === loadKey) return;

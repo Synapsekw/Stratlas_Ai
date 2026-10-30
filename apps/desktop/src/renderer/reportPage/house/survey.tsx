@@ -707,6 +707,7 @@ export function houseVolumes(data: ReportSurveyData | null | undefined): HouseVo
     data.volumes.inventory,
     data.volumes.piles.map((x) => x.carried ?? x.base),
     formatsOf(data).volume,
+    (id) => data.volumes.piles.find((x) => x.id === id)?.label ?? id,
   );
 }
 

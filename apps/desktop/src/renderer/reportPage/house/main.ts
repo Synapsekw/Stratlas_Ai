@@ -32,6 +32,7 @@ import {
   photoRunDir,
   PhotoRunId,
   ReportContentsSettings,
+  SurveyQa,
   type NarrativeSectionId,
   type Issue as IssueT,
   type ProjectManifest,
@@ -239,10 +240,16 @@ async function run(): Promise<void> {
     .parse(await json(assetUrl(projectId, { path: 'issues.json' })));
   const wanted = ids ? new Set(ids.split(',')) : null;
   const issues = wanted ? file.issues.filter((i) => wanted.has(i.id)) : file.issues;
-  const [narrativeRaw, roadRaw] = await Promise.all([
+  const [narrativeRaw, roadRaw, qaRaw] = await Promise.all([
     optional(projectId, 'report/narrative.json'),
     optional(projectId, 'road.json'),
+    // the survey QA verdicts, for the narrative (a date never checked has no file)
+    Promise.all(manifest.captures.map((c) => optional(projectId, `survey/qa/${c.id}.json`))),
   ]);
+  const qa = qaRaw.flatMap((raw) => {
+    const r = raw === null ? null : SurveyQa.safeParse(raw);
+    return r?.success ? [{ capture: r.data.capture, status: r.data.status }] : [];
+  });
   const narrative = parsed(NarrativeFile, narrativeRaw, 'report/narrative.json');
   const signoff = parseSignOff(params.get('signoff'));
   const road = roadRaw === null ? null : parseRoadModel(roadRaw);
@@ -377,6 +384,7 @@ async function run(): Promise<void> {
     audit,
     processing,
     surveySections,
+    qa,
   });
   document.title = only
     ? `${h.base.title} accuracy report`

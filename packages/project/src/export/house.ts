@@ -6,6 +6,7 @@ import {
   type IssuePagesRule,
   type Layer,
   type ProjectManifest,
+  type QaStatus,
   type ReportContentsSettings,
   type ReportSectionId,
   type RoadModel,
@@ -31,6 +32,8 @@ export interface HouseInput extends ExportContext {
   audit?: AuditSummary | null | undefined;
   /** M10: the accuracy of the project's latest finished processing run (photogrammetry). */
   processing?: ProcessingSummary | null | undefined;
+  /** The survey QA verdicts (`survey/qa/<capture>.json`), one per checked date; none: unchecked. */
+  qa?: readonly { capture: string; status: QaStatus }[] | undefined;
   /**
    * M11: the survey sections that have something to print (`SURVEY_SECTIONS`, and `RUN_SECTIONS`
    * for a project with haul-road or hydrology runs).
@@ -99,6 +102,13 @@ export interface HouseVolumes {
   changeM3: number | null;
   /** The latest date, its total, the change and the date that is since, in the site's units. */
   text: { date: string; total: string; change: string | null; since: string | null };
+  /**
+   * Up to two piles that moved most since the date before (counted on both), largest first, with
+   * the change in the site's units (unsigned; `changeM3` carries the sign). Absent: not worked out.
+   */
+  movers?: { label: string; changeM3: number; change: string }[];
+  /** Piles left out of the latest total (no survey data, stale, failed). */
+  notCounted?: number;
 }
 
 /** A survey date's row of the site inventory (`@aio/survey` `StackRow`, the fields read here). */
@@ -108,6 +118,8 @@ export interface InventoryDate {
   totalM3: number;
   parts: readonly unknown[];
   change?: { m3: number } | null;
+  /** Piles left out of the total. */
+  notCounted?: readonly unknown[];
 }
 
 /**
@@ -119,11 +131,37 @@ export function houseVolumesOf(
   rows: readonly InventoryDate[],
   bases: readonly string[],
   volume: (m3: number) => string,
+  /** A pile's name by its id, for the piles that moved most; absent: none named. */
+  labels?: (id: string) => string,
 ): HouseVolumes | null {
   if (bases.length === 0) return null;
   const cur = rows.at(-1);
   const prev = cur?.change ? rows.slice(0, -1).findLast((r) => r.parts.length > 0) : undefined;
+  const movers: NonNullable<HouseVolumes['movers']> = [];
+  if (labels && cur && prev) {
+    const before = new Map(
+      prev.parts.flatMap((x) => {
+        const p = x as { id?: unknown; valueM3?: unknown };
+        return typeof p.id === 'string' && typeof p.valueM3 === 'number'
+          ? [[p.id, p.valueM3] as const]
+          : [];
+      }),
+    );
+    for (const x of cur.parts) {
+      const p = x as { id?: unknown; valueM3?: unknown };
+      if (typeof p.id !== 'string' || typeof p.valueM3 !== 'number') continue;
+      const was = before.get(p.id);
+      if (was === undefined || p.valueM3 === was) continue;
+      const d = p.valueM3 - was;
+      movers.push({ label: labels(p.id), changeM3: d, change: volume(Math.abs(d)) });
+    }
+    movers.sort((a, b) => Math.abs(b.changeM3) - Math.abs(a.changeM3));
+    movers.splice(2);
+  }
+  const notCounted = cur?.notCounted?.length ?? 0;
   return {
+    ...(labels ? { movers } : {}),
+    ...(notCounted > 0 ? { notCounted } : {}),
     base: [...new Set(bases.filter((b) => b !== ''))].join(', '),
     piles: bases.length,
     dates: rows
@@ -199,6 +237,8 @@ export interface HouseModel {
   audit: AuditSummary | null;
   /** M10: the latest processing run's accuracy; null for a project without one. */
   processing: ProcessingSummary | null;
+  /** The survey QA verdicts by date, oldest first; empty when no date was checked. */
+  qa: { label: string; date: string; status: QaStatus }[];
 }
 
 /** What kind of report to print: the builder type, else what the project holds. */
@@ -492,6 +532,12 @@ export function houseReportModel(input: HouseInput): HouseModel {
     plan,
     audit: input.audit ?? null,
     processing: input.processing ?? null,
+    qa: [...m.captures]
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .flatMap((c) => {
+        const q = input.qa?.find((x) => x.capture === c.id);
+        return q ? [{ label: noDashes(c.label), date: c.date, status: q.status }] : [];
+      }),
   };
 }
 
@@ -533,6 +579,20 @@ export interface NarrativeFacts {
     change: string | null;
     since: string | null;
     date: string;
+    /** The piles that moved most since the date before, largest first (signed m³). */
+    movers: { label: string; changeM3: number; change: string }[];
+    /** Piles left out of the latest total. */
+    notCounted: number;
+  } | null;
+  /**
+   * The survey QA verdicts: the dates on hold (a failed check nobody released), and how many
+   * passed, were released or measured without a verdict. Null when no date was checked.
+   */
+  qa: {
+    held: { label: string; date: string }[];
+    passed: number;
+    released: number;
+    unchecked: number;
   } | null;
   road: {
     lengthKm: number;
@@ -584,8 +644,25 @@ export function narrativeFacts(h: HouseModel): NarrativeFacts {
           change: h.volumes.text.change,
           since: h.volumes.text.since,
           date: h.volumes.text.date,
+          movers: (h.volumes.movers ?? []).map((x) => ({
+            label: x.label,
+            changeM3: round(x.changeM3, 0),
+            change: x.change,
+          })),
+          notCounted: h.volumes.notCounted ?? 0,
         }
       : null,
+    qa:
+      h.qa.length === 0
+        ? null
+        : {
+            held: h.qa
+              .filter((q) => q.status === 'hold' || q.status === 'fail')
+              .map((q) => ({ label: q.label, date: q.date })),
+            passed: h.qa.filter((q) => q.status === 'pass').length,
+            released: h.qa.filter((q) => q.status === 'released').length,
+            unchecked: h.qa.filter((q) => q.status === 'unchecked').length,
+          },
     road: road
       ? {
           lengthKm: round(road.lengthKm, 2),

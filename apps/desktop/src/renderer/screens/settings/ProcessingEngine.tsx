@@ -7,7 +7,9 @@
  * Other screens get here with `openProcessingEngine()` (renderer/odm.ts).
  *
  * Below it, the switch for preparing survey surfaces in the background when a project opens
- * (`Settings.autoPrepareSurfaces`, absent means on; `survey/surfacesWatch.ts`).
+ * (`Settings.autoPrepareSurfaces`, absent means on; `survey/surfacesWatch.ts`), and the one for
+ * checking a new survey date once its surface is ready (`Settings.autoCheckNewDates`, absent means
+ * on; `survey/newDatesWatch.ts`).
  */
 import { Icon, t, type IconName } from '@aio/ui';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
@@ -47,6 +49,33 @@ function AutoPrepareSurfaces() {
           aria-labelledby="auto-prepare-l"
           aria-describedby="auto-prepare-h"
           onClick={() => void shell.getState().updateSettings({ autoPrepareSurfaces: !on })}
+        />
+      </div>
+    </section>
+  );
+}
+
+/** "Check a new survey date when its surface is ready": on unless the setting says `false`. */
+function AutoCheckNewDates() {
+  const on = useShell((s) => s.settings.autoCheckNewDates !== false);
+  return (
+    <section className="opt-card" data-testid="auto-check-row" aria-labelledby="auto-check-l">
+      <div className="pe-gpu">
+        <div className="pe-gpu-t">
+          <span id="auto-check-l">{t('settings.autoCheck.label')}</span>
+          <span className="faint" id="auto-check-h">
+            {t('settings.autoCheck.hint')}
+          </span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          className="switch"
+          data-testid="auto-check"
+          aria-checked={on}
+          aria-labelledby="auto-check-l"
+          aria-describedby="auto-check-h"
+          onClick={() => void shell.getState().updateSettings({ autoCheckNewDates: !on })}
         />
       </div>
     </section>
@@ -404,6 +433,7 @@ export function ProcessingEngine() {
         </div>
       </section>
       <AutoPrepareSurfaces />
+      <AutoCheckNewDates />
     </>
   );
 }
