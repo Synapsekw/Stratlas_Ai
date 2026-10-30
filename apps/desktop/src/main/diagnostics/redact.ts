@@ -228,6 +228,7 @@ export const SETTINGS_RULES = {
   // ODM's GPU setting (`auto` or `off`, ADR 0012); a later processing field stays out until named
   processing: { fields: { odm: { fields: { gpu: 'keep' } } } },
   autoPrepareSurfaces: 'keep',
+  agentThinking: 'keep',
   // M9: sync preferences only. Device keys, server enrolment and invite codes live in the vault
   // and never in settings; a field added to `team` stays out of bundles until listed here.
   team: {

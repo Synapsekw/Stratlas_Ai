@@ -544,7 +544,7 @@ export function Routing() {
  * One switch for the cloud agent: it thinks before it acts and reuses the unchanged start of each
  * request (prompt caching). On by default.
  */
-function AgentThinking() {
+export function AgentThinking() {
   const on = useShell((s) => s.settings.agentThinking !== false);
   return (
     <div className="sblock">
