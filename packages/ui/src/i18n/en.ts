@@ -31,6 +31,7 @@ import { enAskPanel } from './en/askAiPanel';
 import { enAskFields } from './en/askAiFields';
 import { enAskSettings } from './en/askAiSettings';
 import { enAskReport } from './en/askAiReport';
+import { enLayoutSpike } from './en/layoutSpike';
 
 /**
  * English UI strings for the main shell (title bar, sidebar, settings). The source catalogue:
@@ -70,6 +71,7 @@ import { enAskReport } from './en/askAiReport';
  *   en/road.ts: road, roadBench
  *   en/team.ts: team, teamServer
  *   en/common.ts: dialog
+ *   en/layoutSpike.ts: layoutSpike
  *   en/askAi*.ts: custom analytics, one module per UI task (askAi, askPanel, fields, house, report, settings keys)
  */
 export const en = {
@@ -107,6 +109,7 @@ export const en = {
   ...enAskFields,
   ...enAskSettings,
   ...enAskReport,
+  ...enLayoutSpike,
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

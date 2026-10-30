@@ -89,6 +89,8 @@ import { connectPileFigures } from './workspace/pileFigures';
 import { connectKitPilePick, connectKitPilesShown } from './survey/pile/kitPileLink';
 import { connectVolumeChange } from './workspace/VolumeTools';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
+import { useLayoutSpike } from './layoutSpike/flag';
+import { SpikeShell } from './layoutSpike/SpikeShell';
 import { BuilderLayer } from './builder/BuilderLayer';
 import { DrawingsLayer } from './drawings/DrawingsLayer';
 import { ModellerLayer } from './modeller/ModellerLayer';
@@ -357,6 +359,8 @@ export function App() {
   const motion = useShell((s) => s.settings.motion);
   const screen = useShell((s) => s.screen);
   const agentDockOpen = useAgentDockOpen();
+  // the Wave 2 layout spike, behind Ctrl+Alt+L (UI revision W4; removed in W12)
+  const layoutSpike = useLayoutSpike();
   // the date bar follows the open project whichever screen shows
   useTimelineSync();
   // a picture of the 3D view as a project's scene is left, for Change thumbnail
@@ -767,15 +771,22 @@ export function App() {
       data-screen={screen}
       data-agent-dock={agentDockOpen ? 'open' : undefined}
       data-platform={PLATFORM}
+      data-layout={layoutSpike ? 'spike' : undefined}
       style={CAPTION_VARS}
     >
       <AnnotateStyles />
       <VolumetricStyles />
-      <Sidebar resize={sidebarResize} />
-      <main className="main">
-        <Screen />
-        <AgentDock />
-      </main>
+      {layoutSpike ? (
+        <SpikeShell screen={<Screen />} dock={<AgentDock />} />
+      ) : (
+        <>
+          <Sidebar resize={sidebarResize} />
+          <main className="main">
+            <Screen />
+            <AgentDock />
+          </main>
+        </>
+      )}
       <Palette />
       <ProcessingDrawer />
       <PipelineDialog />

@@ -229,7 +229,7 @@ function NavItem({
   );
 }
 
-function Datasets({ collapsed }: { collapsed: boolean }) {
+export function Datasets({ collapsed }: { collapsed: boolean }) {
   const project = useWorkspace((s) => s.project);
   const issues = useWorkspace((s) => s.issues);
   const hidden = useWorkspace((s) => s.hidden);
