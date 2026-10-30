@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { isSpikeToggle, LAYOUT_SPIKE_KEY, layoutSpikeOn, toggleLayoutSpike } from './flag';
+import {
+  inEditable,
+  isSpikeToggle,
+  LAYOUT_SPIKE_KEY,
+  layoutSpikeOn,
+  toggleLayoutSpike,
+} from './flag';
 
 function memory(): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> & {
   map: Map<string, string>;
@@ -17,15 +23,28 @@ function memory(): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> & {
   };
 }
 
-const key = (over: Partial<KeyboardEvent>) => ({
-  key: 'l',
+const key = (
+  over: Partial<Pick<KeyboardEvent, 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>> & {
+    altGraph?: boolean;
+    target?: EventTarget | null;
+  } = {},
+) => ({
   code: 'KeyL',
   ctrlKey: false,
   metaKey: false,
   altKey: false,
   shiftKey: false,
+  target: null,
   ...over,
+  getModifierState: (k: string) => k === 'AltGraph' && over.altGraph === true,
 });
+
+/** A stand-in element: `closest` answers for the selectors a field matches. */
+const element = (field: boolean, editable = false) =>
+  ({
+    isContentEditable: editable,
+    closest: () => (field ? {} : null),
+  }) as unknown as EventTarget;
 
 describe('layout spike flag', () => {
   it('is off by default, on with the key', () => {
@@ -62,11 +81,25 @@ describe('layout spike flag', () => {
     expect(toggleLayoutSpike(broken)).toBe(false);
   });
 
-  it('toggles on Ctrl+Alt+L only', () => {
+  it('toggles on Ctrl+Alt+L only, by the physical key', () => {
     expect(isSpikeToggle(key({ ctrlKey: true, altKey: true }))).toBe(true);
     expect(isSpikeToggle(key({ metaKey: true, altKey: true }))).toBe(true);
     expect(isSpikeToggle(key({ ctrlKey: true }))).toBe(false);
     expect(isSpikeToggle(key({ altKey: true }))).toBe(false);
     expect(isSpikeToggle(key({ ctrlKey: true, altKey: true, shiftKey: true }))).toBe(false);
+    expect(isSpikeToggle(key({ ctrlKey: true, altKey: true, code: 'KeyK' }))).toBe(false);
+  });
+
+  it('never toggles on AltGr', () => {
+    expect(isSpikeToggle(key({ ctrlKey: true, altKey: true, altGraph: true }))).toBe(false);
+  });
+
+  it('never toggles while typing in a field', () => {
+    const typed = (target: EventTarget) => key({ ctrlKey: true, altKey: true, target });
+    expect(isSpikeToggle(typed(element(true)))).toBe(false);
+    expect(isSpikeToggle(typed(element(false, true)))).toBe(false);
+    expect(isSpikeToggle(typed(element(false)))).toBe(true);
+    expect(inEditable(element(true))).toBe(true);
+    expect(inEditable(null)).toBe(false);
   });
 });

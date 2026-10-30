@@ -51,16 +51,28 @@ function subscribe(cb: () => void): () => void {
   };
 }
 
-/** Ctrl+Alt+L (Cmd+Alt+L on macOS), without Shift. */
-export function isSpikeToggle(
-  e: Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
-): boolean {
+/** A key press typed into a field: text inputs, text areas, selects and editable content. */
+export function inEditable(target: EventTarget | null): boolean {
+  const el = target as { closest?: (s: string) => unknown; isContentEditable?: boolean } | null;
+  if (!el?.closest) return false;
   return (
-    (e.ctrlKey || e.metaKey) &&
-    e.altKey &&
-    !e.shiftKey &&
-    (e.code === 'KeyL' || e.key.toLowerCase() === 'l')
+    el.isContentEditable === true ||
+    el.closest('input, textarea, select, [contenteditable]') !== null
   );
+}
+
+/**
+ * Ctrl+Alt+L (Cmd+Alt+L on macOS), without Shift, by the physical key. AltGr (Ctrl+Alt on many
+ * layouts, which types characters) and a key typed into a field never toggle.
+ */
+export function isSpikeToggle(
+  e: Pick<
+    KeyboardEvent,
+    'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'target' | 'getModifierState'
+  >,
+): boolean {
+  if (e.getModifierState('AltGraph') || inEditable(e.target)) return false;
+  return (e.ctrlKey || e.metaKey) && e.altKey && !e.shiftKey && e.code === 'KeyL';
 }
 
 /** The flag as App reads it, with the Ctrl+Alt+L listener that flips it. */

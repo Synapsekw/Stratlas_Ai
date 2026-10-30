@@ -41,6 +41,7 @@ import { SpikeRail } from './SpikeRail';
 import { SpikeRightPanel } from './SpikeRightPanel';
 import { SpikeStageUi } from './SpikeStageUi';
 import { SpikeTitleBar } from './SpikeTitleBar';
+import { inEditable } from './flag';
 import { spike, useSpike } from './spikeStore';
 import './spike.css';
 
@@ -73,6 +74,16 @@ function useProjectData(): ProjectData | null {
  * pop-out (one player, one place). Anything that asks to show the stage's video again (the V key,
  * the old island tile) brings the spike's tile back instead.
  */
+function useStageModeKept() {
+  // the presets set the stage mode; leaving the spike gives today's shell the mode it had
+  useEffect(() => {
+    const { stageMode, stageAuto } = shell.getState();
+    return () => {
+      shell.setState({ stageMode, stageAuto });
+    };
+  }, []);
+}
+
 function useStageVideoAside() {
   useEffect(() => {
     const was = shell.getState().videoHidden;
@@ -131,6 +142,7 @@ function SpikeScene() {
   const rightPx = clampRight(band, dragged ?? sizes.rightPx);
   const { ref: shareRef, share } = useStageShare();
   useStageVideoAside();
+  useStageModeKept();
 
   // the preset's defaults on project open and on another preset (D7: defaults only)
   // (again when the project's data arrives: the road and the piles load after the manifest)
@@ -155,6 +167,7 @@ function SpikeScene() {
   // Ctrl+L toggles Layers; Escape closes it while it lies over the stage
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (inEditable(e.target)) return;
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.code === 'KeyL') {
         e.preventDefault();
         spike.getState().setLayers(!layersOpen);

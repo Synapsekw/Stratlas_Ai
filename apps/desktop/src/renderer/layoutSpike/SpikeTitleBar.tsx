@@ -70,7 +70,8 @@ export function SpikeTitleBar({
         )}
       </nav>
       <span className="spk-title-fill" />
-      {share !== null && (
+      {/* debug readout: only while the overlay slots are outlined */}
+      {slots && share !== null && (
         <Tip content={t('layoutSpike.stageShareTip')}>
           <span className="spk-share mono" tabIndex={0} data-testid="spike-stage-share">
             {t('layoutSpike.stageShare', { pct: String(share) })}
