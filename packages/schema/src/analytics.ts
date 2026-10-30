@@ -87,6 +87,12 @@ export const VlmDetector = z
     ignore: z.string().max(2000),
     question: z.string().min(1).max(1000),
     tiles: VlmTiles,
+    /**
+     * Typical size of the object in metres. With it, a near-nadir photo whose ground sample
+     * distance is known gets its tile count from the size (`detect.vlm`, pipeline pack 0.28.0);
+     * without it, or without a GSD, `tiles.n` applies.
+     */
+    objectSizeM: z.number().min(0.01).max(100).optional(),
     threshold: z.number().min(0).max(1),
     tunedOn: z.object({ model: z.string(), modelSha256: Sha256 }).strict(),
     author: z.string().max(120),

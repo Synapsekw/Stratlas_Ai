@@ -127,7 +127,7 @@ def test_writes_pass_with_scores_and_threshold(tmp_path):
     assert d["id"] == "run-a-p1-rust-spots-0" and d["photo"] == "p1" and d["class"] == "rust"
     assert d["severity"] == "uncertain" and d["status"] == "draft" and d["space"] == "source"
     assert (d["width"], d["height"]) == (400, 300)
-    assert d["note"] == "big one"
+    assert d["note"] == "small one"  # listed first, checked first, highest score first
     assert d["origin"] == {
         "runId": "run-a",
         "model": "qwen-test",
@@ -336,6 +336,10 @@ def test_changed_photo_refuses_resume(tmp_path):
         lambda p: p["detectors"][0].update(where="elsewhere"),
         lambda p: p["detectors"][0]["detector"]["tiles"].update(sendW=1000),
         lambda p: p["detectors"][0]["detector"].update(schema="other"),
+        lambda p: p["detectors"][0]["detector"].update(objectSizeM=0),
+        lambda p: p["detectors"][0]["detector"].update(objectSizeM=500),
+        lambda p: p["detectors"][0]["detector"].update(objectSizeM="1"),
+        lambda p: p["detectors"][0]["detector"].update(objectSizeM=True),
     ],
 )
 def test_validate_rejects_bad_params(tmp_path, mutate):
@@ -451,3 +455,48 @@ def test_job_passes_the_box_frame_from_the_model_param(tmp_path):
         out[name] = {tuple(round(v) for v in d["bbox"]) for d in pass_of(root)["detections"]}
     assert (240, 150, 400, 240) in out["rel"]  # [600, 500, 1000, 800] of 1000 on a 400 x 300 photo
     assert (179, 149, 298, 238) in out["px"]  # the same numbers as pixels of the 1344 x 1008 frame
+
+
+def test_validate_accepts_an_object_size(tmp_path):
+    p = params(str((tmp_path / "s.json").resolve()))
+    p["detectors"][0]["detector"]["objectSizeM"] = 0.5
+    assert pipeline().validate(p)["detectors"][0]["detector"]["objectSizeM"] == 0.5
+
+
+def test_a_capped_photo_is_counted_in_the_job_result(tmp_path):
+    root = make_project(tmp_path / "p")
+    many = "[" + ", ".join(f'{{"bbox_2d": [{40 * i}, 10, {40 * i + 30}, 40]}}' for i in range(31)) + "]"
+
+    def handle(body):
+        return (
+            logprob_response([("Yes", -0.01), ("No", -4.5)]) if body.get("logprobs") else text_response(many)
+        )
+
+    with FakeVlm(handle) as vlm:
+        result, rec = run_job(pipeline(), root, params(state_file(root, vlm.url), photos=("p1", "p2")))
+    assert result["outputs"]["detect"]["capped"] == 2
+    assert result["outputs"]["commit"]["capped"] == 2
+    assert pass_of(root)["run"]["detections"] == 60
+    assert any("more than 30 candidates" in m["message"] for m in rec.of("log") if m["level"] == "warn")
+
+
+def test_tiles_follow_the_object_size_when_the_gsd_is_known(tmp_path, monkeypatch):
+    from aio_pipelines.detect import pipeline as detect_pipeline
+
+    monkeypatch.setattr(detect_pipeline, "_gsd", lambda path, w, h: 0.01)
+    detects = {}
+    for name, size in (("small", 0.2), ("large", 20.0)):
+        root = make_project(tmp_path / name, sizes=((2688, 2016),))
+        dets = [{"where": "project", "detector": detector(n=2, objectSizeM=size), "threshold": 0.8}]
+        with FakeVlm(scoring([0.9])) as vlm:
+            run_job(pipeline(), root, params(state_file(root, vlm.url), photos=("p1",), detectors=dets))
+            detects[name] = len([r for r in vlm.requests if not r.get("logprobs")])
+    assert detects == {"small": 16, "large": 1}  # 4 x 4 tiles for 20 px objects, whole for 2000 px
+
+
+def test_tiles_stay_as_the_detector_says_without_a_gsd(tmp_path):
+    root = make_project(tmp_path / "p", sizes=((2688, 2016),))
+    dets = [{"where": "project", "detector": detector(n=2, objectSizeM=0.2), "threshold": 0.8}]
+    with FakeVlm(scoring([0.9])) as vlm:
+        run_job(pipeline(), root, params(state_file(root, vlm.url), photos=("p1",), detectors=dets))
+        assert len([r for r in vlm.requests if not r.get("logprobs")]) == 4

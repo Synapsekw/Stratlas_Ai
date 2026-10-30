@@ -7,17 +7,23 @@ import pytest
 from PIL import Image
 
 from aio_pipelines.detect.engine import (
+    CAPPED_WARNING,
+    MAX_CANDIDATES,
     Candidate,
     VlmClient,
     VlmUnavailable,
     box_frame,
+    cap_candidates,
     check_prompt,
+    choose_tiles,
+    dedupe,
     detect_prompt,
-    merge,
+    gsd_from_meta,
     parse_boxes,
     parse_boxes_ex,
     run_detector,
     score_from_top,
+    suppress,
     tile_grid,
 )
 from fake_vlm import FakeVlm, logprob_response, text_response
@@ -34,8 +40,8 @@ ONE_TILE = {**DET, "tiles": {"n": 1, "overlap": 0.2, "sendW": 1344, "sendH": 100
 YES = [("Yes", -0.01), ("No", -4.5)]
 
 
-def cand(box, note="x"):
-    return Candidate(box=box, note=note)
+def cand(box, note="x", score=None):
+    return Candidate(box=box, note=note, score=score)
 
 
 def boxes_json(*boxes):
@@ -70,6 +76,7 @@ def test_tile_grid_n1_is_whole_image():
 
 def test_prompts_follow_the_template():
     p = detect_prompt(DET)
+    assert f"Report at most {MAX_CANDIDATES} areas, the clearest first." in p
     assert "Find: orange-brown rust on steel\nDo NOT report: intact painted bands\n" in p
     assert '"label": "corrosion"' in p
     assert p.endswith("Output [] if there is none.")
@@ -100,13 +107,60 @@ def test_parse_drops_non_finite_numbers():
     assert parse_boxes(reply) == [([5.0, 6.0, 70.0, 80.0], "ok")]
 
 
-def test_merge_drops_mostly_inside():
-    big = cand((0, 0, 100, 100))
-    # The small box is 100 x 10; 70 px of it lies inside the big one.
-    assert merge([big, cand((30, 40, 130, 50))]) == [big]
-    kept = merge([big, cand((50, 40, 150, 50))])
-    assert len(kept) == 2
-    assert kept[0] is big
+def test_suppress_containment_keeps_the_higher_score():
+    big, small = cand((0, 0, 100, 100), score=0.6), cand((30, 40, 60, 70), score=0.9)
+    assert suppress([big, small]) == [small]
+    big.score, small.score = 0.95, 0.5
+    assert suppress([small, big]) == [big]
+
+
+def test_suppress_containment_tie_keeps_the_smaller_box():
+    big, small = cand((0, 0, 100, 100), score=0.8), cand((30, 40, 60, 70), score=0.8)
+    assert suppress([big, small]) == [small]
+    big.score = small.score = None
+    assert suppress([big, small]) == [small]
+
+
+def test_suppress_mostly_inside_counts_as_contained():
+    big = cand((0, 0, 100, 100), score=0.9)
+    # The small box is 100 x 10; 70 px of it lies inside the big one (share 0.7), then 50 px (0.5).
+    assert suppress([big, cand((30, 40, 130, 50), score=0.5)]) == [big]
+    assert len(suppress([big, cand((50, 40, 150, 50), score=0.5)])) == 2
+
+
+def test_suppress_unscored_loses_to_scored():
+    unscored, scored = cand((0, 0, 100, 100)), cand((10, 10, 100, 100), score=0.1)
+    assert suppress([unscored, scored]) == [scored]
+
+
+def test_suppress_by_iou_and_keeps_separate_boxes():
+    a, b = cand((0, 0, 100, 100), score=0.7), cand((20, 0, 120, 100), score=0.9)  # IoU 0.67
+    far = cand((500, 500, 600, 600), score=0.2)
+    side = cand((60, 0, 160, 100), score=0.5)  # IoU 0.25, 40 % inside: both stay
+    assert suppress([a, b, far]) == [b, far]
+    assert suppress([a, side]) == [a, side]
+
+
+def test_suppress_orders_by_score():
+    boxes = [cand((i * 200, 0, i * 200 + 100, 100), score=s) for i, s in enumerate((0.2, 0.9, 0.5))]
+    assert [c.score for c in suppress(boxes)] == [0.9, 0.5, 0.2]
+
+
+def test_dedupe_drops_overlap_copies_in_order():
+    first, copy = cand((0, 0, 100, 100), "first"), cand((2, 2, 101, 101), "copy")
+    inside = cand((30, 30, 60, 60), "inside")  # contained, not a copy: left for suppress
+    assert dedupe([first, copy, inside]) == [first, inside]
+
+
+def test_cap_candidates_round_robin_across_tiles():
+    ranked = [
+        (r, t, cand((t * 100, r, t * 100 + 50, r + 50), f"{t}-{r}")) for t in range(2) for r in range(20)
+    ]
+    kept, capped = cap_candidates(ranked, cap=30)
+    assert capped and len(kept) == 30
+    assert [c.note for c in kept[:4]] == ["0-0", "1-0", "0-1", "1-1"]
+    assert {c.note for c in kept} == {f"{t}-{r}" for t in range(2) for r in range(15)}
+    assert cap_candidates(ranked[:5], cap=30) == ([c for _, _, c in ranked[:5]], False)
 
 
 def test_score_case_variants():
@@ -320,3 +374,84 @@ def test_repaired_reply_adds_a_warning():
         res = run_detector(VlmClient(fake.url), img, ONE_TILE)
     assert len(res.candidates) == 1
     assert "reply repaired" in res.warnings
+
+
+def grid_boxes(count, per_row=10, step=40, size=30):
+    return [
+        (
+            10 + step * (i % per_row),
+            10 + step * (i // per_row),
+            10 + step * (i % per_row) + size,
+            10 + step * (i // per_row) + size,
+        )
+        for i in range(count)
+    ]
+
+
+def test_cap_per_tile_and_per_photo_bounds_the_checks():
+    # 40 separate boxes in every tile reply: each tile keeps 30, the photo keeps 30: 30 yes/no calls
+    img = Image.new("RGB", (2560, 1920), (120, 120, 120))
+    with FakeVlm(tile_handler(boxes_json(*grid_boxes(40)))) as fake:
+        res = run_detector(VlmClient(fake.url), img, DET)
+        checks = [r for r in fake.requests if r.get("logprobs")]
+    assert res.capped and CAPPED_WARNING in res.warnings
+    assert len(res.candidates) == MAX_CANDIDATES == len(checks)
+
+
+def test_cap_in_one_tile_keeps_the_first_answers():
+    img = Image.new("RGB", (1344, 1008), (120, 120, 120))
+    with FakeVlm(tile_handler(boxes_json(*grid_boxes(31, per_row=31)))) as fake:
+        res = run_detector(VlmClient(fake.url), img, ONE_TILE)
+    assert res.capped and len(res.candidates) == MAX_CANDIDATES
+    assert max(c.box[0] for c in res.candidates) == pytest.approx(10 + 40 * 29)
+
+
+def test_under_the_cap_is_not_capped():
+    img = Image.new("RGB", (1344, 1008), (120, 120, 120))
+    with FakeVlm(tile_handler(boxes_json([100, 100, 300, 300]))) as fake:
+        res = run_detector(VlmClient(fake.url), img, ONE_TILE)
+    assert not res.capped and CAPPED_WARNING not in res.warnings
+
+
+def test_small_precise_box_inside_a_large_one_survives_when_it_scores_higher():
+    calls = {"n": 0}
+
+    def handler(req):
+        if req.get("logprobs"):
+            calls["n"] += 1  # the small box is checked first: the model listed it first
+            return logprob_response(YES if calls["n"] == 1 else [("Yes", -3.0), ("No", -0.05)])
+        return text_response(boxes_json([400, 400, 450, 450], [100, 100, 900, 900]))
+
+    img = Image.new("RGB", (1344, 1008), (120, 120, 120))
+    with FakeVlm(handler) as fake:
+        res = run_detector(VlmClient(fake.url), img, ONE_TILE)
+    assert [c.box for c in res.candidates] == [pytest.approx((400, 400, 450, 450))]
+
+
+TILES = {"n": 2, "overlap": 0.2, "sendW": 1344, "sendH": 1008}
+
+
+def test_choose_tiles_falls_back_without_gsd_or_size():
+    assert choose_tiles(5472, 3648, TILES, None, 0.05) == 2
+    assert choose_tiles(5472, 3648, TILES, 0.01, None) == 2
+    assert choose_tiles(5472, 3648, {**TILES, "n": 3}, None, None) == 3
+
+
+def test_choose_tiles_from_object_size_and_gsd():
+    # 5472 x 3648 at 1 cm/px. A 2 m object is 200 px of source: 49 sent px whole, 88 at n = 2.
+    assert choose_tiles(5472, 3648, TILES, 0.01, 2.0) == 2
+    # a 10 m object is big enough whole
+    assert choose_tiles(5472, 3648, TILES, 0.01, 10.0) == 1
+    # 1.1 m: 27 sent px whole, 49 at n = 2, 70 at n = 3
+    assert choose_tiles(5472, 3648, TILES, 0.01, 1.1) == 3
+    # a 0.2 m object never reaches 64 sent px: the most tiles
+    assert choose_tiles(5472, 3648, TILES, 0.01, 0.2) == 4
+
+
+def test_gsd_from_meta_near_nadir_only():
+    meta = {"focal35": 24.0, "RelativeAltitude": 60.0, "GimbalPitchDegree": -90.0}
+    assert gsd_from_meta(meta, 5472, 3648) == pytest.approx(60 * 43.27 / (24 * 6576.4), rel=1e-3)
+    assert gsd_from_meta({**meta, "GimbalPitchDegree": -30.0}, 5472, 3648) is None
+    assert gsd_from_meta({**meta, "RelativeAltitude": -2.0}, 5472, 3648) is None
+    for key in meta:
+        assert gsd_from_meta({k: v for k, v in meta.items() if k != key}, 5472, 3648) is None

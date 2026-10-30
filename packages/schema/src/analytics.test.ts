@@ -33,6 +33,13 @@ describe('analytics contracts', () => {
     const bad = { ...detector, samples: [{ photo: 'p001', file: '../x.jpg' }] };
     expect(VlmDetector.safeParse(bad).success).toBe(false);
   });
+  it('takes an optional object size from 1 cm to 100 m', () => {
+    expect(VlmDetector.parse({ ...detector, objectSizeM: 0.5 }).objectSizeM).toBe(0.5);
+    expect(VlmDetector.parse(detector).objectSizeM).toBeUndefined();
+    for (const objectSizeM of [0, 0.005, 101, '1']) {
+      expect(VlmDetector.safeParse({ ...detector, objectSizeM }).success).toBe(false);
+    }
+  });
   it('refuses tiles not multiples of 28', () => {
     const bad = { ...detector, tiles: { ...detector.tiles, sendW: 1300 } };
     expect(VlmDetector.safeParse(bad).success).toBe(false);

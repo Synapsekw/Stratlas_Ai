@@ -7,7 +7,10 @@ Steps (each resumable):
 2. detect: reads the server state file (the model server is started by the app), then for each
    photo and detector runs the engine (`engine.run_detector`) and stages `results/<n>-<photo>--<detector>.json`.
    A result already staged is not run again, so a cancelled or stopped job continues with the
-   photos left. Results with every tile failed are not staged (a resume tries them again).
+   photos left. Results with every tile failed are not staged (a resume tries them again). A
+   detector with ``objectSizeM`` gets its tile count from the photo's ground sample distance when
+   prepare could read one (near-nadir photos); a result cut to ``engine.MAX_CANDIDATES`` is staged
+   with ``capped`` and counted in the step outputs (``capped``).
 3. commit: assembles `detections/vlm-<run>.json` (an `aio.detections/1` pass of draft detections)
    from the staged results and moves it into the project.
 
@@ -45,9 +48,10 @@ NO_PHOTOS = "None of the chosen photos could be opened. Check that the photo fil
 _DETECTOR_KEYS = {
     "schema", "id", "name", "version", "classId", "assetTypes", "looksLike", "ignore", "question",
     "tiles", "threshold", "tunedOn", "author", "createdAt", "updatedAt", "source", "status",
-    "samples", "examples",
+    "samples", "examples", "objectSizeM",
 }  # fmt: skip
-_DETECTOR_REQUIRED = _DETECTOR_KEYS - {"samples", "examples"}
+_DETECTOR_REQUIRED = _DETECTOR_KEYS - {"samples", "examples", "objectSizeM"}
+OBJECT_SIZE_M = (0.01, 100.0)
 _ITEM_KEYS = {"where", "detector", "threshold"}
 _KEYS = {"run", "layer", "photos", "detectors", "serverFile", "modelSha256", "model"}
 
@@ -101,6 +105,9 @@ def _validate_detector(det: Any) -> dict[str, Any]:
             raise JobError(f"A detector's {key} must be text of {lo} to {hi} characters.")
     if not _is_number(det["threshold"]) or not 0 <= det["threshold"] <= 1:
         raise JobError("A detector's threshold must be between 0 and 1.")
+    size = det.get("objectSizeM")
+    if size is not None and (not _is_number(size) or not OBJECT_SIZE_M[0] <= size <= OBJECT_SIZE_M[1]):
+        raise JobError(f"A detector's objectSizeM must be from {OBJECT_SIZE_M[0]} to {OBJECT_SIZE_M[1]:g} m.")
     out = dict(det)
     out["tiles"] = _validate_tiles(det["tiles"])
     return out
@@ -190,7 +197,15 @@ class DetectVlm:
                 if size is None:
                     ctx.log(f"Photo {photo_id} cannot be opened as an image; skipped.", "warn")
                     continue
-                photos.append({"id": photo_id, "path": str(path), "width": size[0], "height": size[1]})
+                photos.append(
+                    {
+                        "id": photo_id,
+                        "path": str(path),
+                        "width": size[0],
+                        "height": size[1],
+                        "gsdM": _gsd(path, size[0], size[1]),
+                    }
+                )
                 ctx.progress((k + 1) / max(1, len(found)))
             if not photos:
                 raise JobError(NO_PHOTOS)
@@ -212,13 +227,13 @@ class DetectVlm:
         def detect_step(ctx: StepContext) -> dict[str, Any]:
             from PIL import Image
 
-            from .engine import VlmUnavailable, box_frame, run_detector
+            from .engine import MAX_CANDIDATES, VlmUnavailable, box_frame, run_detector
 
             photos: list[dict[str, Any]] = ctx.outputs("prepare")["photos"]
             client = _client(params["serverFile"])
             frame = box_frame(params["model"])
             total = len(photos) * len(detectors)
-            done = ok = failed = streak = 0
+            done = ok = failed = streak = capped = 0
             for pi, photo in enumerate(photos):
                 for entry in detectors:
                     det = entry["detector"]
@@ -229,6 +244,7 @@ class DetectVlm:
                     if staged.exists():
                         ok += 1
                         streak = 0
+                        capped += bool(json.loads(staged.read_text("utf-8")).get("capped"))
                         continue
                     try:
                         with Image.open(photo["path"]) as im:
@@ -236,7 +252,7 @@ class DetectVlm:
                             result = run_detector(
                                 client,
                                 im,
-                                _fit_tiles(det, im.width, im.height),
+                                _fit_tiles(det, im.width, im.height, photo.get("gsdM")),
                                 frame=frame,
                             )
                     except VlmUnavailable as e:
@@ -260,6 +276,7 @@ class DetectVlm:
                         continue
                     streak = 0
                     ok += 1
+                    capped += result.capped
                     atomic_write_json(
                         staged,
                         {
@@ -269,12 +286,19 @@ class DetectVlm:
                                 {"box": list(c.box), "note": c.note, "score": c.score}
                                 for c in result.candidates
                             ],
+                            "capped": result.capped,
                         },
                     )
             if ok == 0:
                 raise JobError(ALL_FAILED)
+            if capped:
+                ctx.log(
+                    f"{capped} photo results had more than {MAX_CANDIDATES} candidates; "
+                    f"kept the first {MAX_CANDIDATES} of each.",
+                    "warn",
+                )
             ctx.progress(1.0)
-            return {"results": ok, "failed": failed}
+            return {"results": ok, "failed": failed, "capped": capped}
 
         def commit_step(ctx: StepContext) -> dict[str, Any]:
             ctx.progress(0.0, "Saving the detections")
@@ -286,6 +310,7 @@ class DetectVlm:
             created = now_iso()
             assessed: list[str] = []
             dets: list[dict[str, Any]] = []
+            capped = 0  # photo results cut to MAX_CANDIDATES
             for pi, photo in enumerate(photos):
                 # assessed only when every detector of the run has a result for the photo: one
                 # that failed must not read as "checked, nothing found"
@@ -297,6 +322,7 @@ class DetectVlm:
                         ran_all = False
                         continue
                     result = json.loads(staged.read_text("utf-8"))
+                    capped += bool(result.get("capped"))
                     for k, c in enumerate(result["candidates"]):
                         score = c.get("score")
                         d: dict[str, Any] = {
@@ -368,7 +394,12 @@ class DetectVlm:
             commit_files(ctx, [(rel, f"detections/{rel}")])
             ctx.log(f"{len(dets)} candidates on {len(assessed)} photos.")
             ctx.progress(1.0)
-            return {"pass": f"detections/{rel}", "photos": len(assessed), "detections": len(dets)}
+            return {
+                "pass": f"detections/{rel}",
+                "photos": len(assessed),
+                "detections": len(dets),
+                "capped": capped,
+            }
 
         return [
             Step("prepare", "Finding the photos", prepare_step, 0.05),
@@ -438,13 +469,29 @@ def _image_size(path: Path) -> tuple[int, int] | None:
         return None
 
 
-def _fit_tiles(det: dict[str, Any], width: int, height: int) -> dict[str, Any]:
-    """A photo no bigger than the size sent to the model is sent whole (n = 1): tiling it would
-    only enlarge pieces of it further."""
+def _gsd(path: Path, width: int, height: int) -> float | None:
+    """The photo's ground sample distance in metres per pixel, or None (see ``engine.gsd_from_meta``)."""
+    from ..aik.cameras import read_meta
+    from .engine import gsd_from_meta
+
+    try:
+        return gsd_from_meta(read_meta(path), width, height)
+    except (OSError, ValueError, TypeError, ZeroDivisionError):
+        return None
+
+
+def _fit_tiles(det: dict[str, Any], width: int, height: int, gsd_m: float | None = None) -> dict[str, Any]:
+    """The detector with the tile count for this photo. With an ``objectSizeM`` and a known GSD
+    the count comes from ``engine.choose_tiles``; otherwise the detector's own ``tiles`` apply. A
+    photo no bigger than the size sent to the model is sent whole (n = 1): tiling it would only
+    enlarge pieces of it further."""
+    from .engine import choose_tiles
+
     tiles = det["tiles"]
-    if tiles["n"] > 1 and width <= tiles["sendW"] and height <= tiles["sendH"]:
-        return {**det, "tiles": {**tiles, "n": 1}}
-    return det
+    n = choose_tiles(width, height, tiles, gsd_m, det.get("objectSizeM"))
+    if n > 1 and width <= tiles["sendW"] and height <= tiles["sendH"]:
+        n = 1
+    return det if n == tiles["n"] else {**det, "tiles": {**tiles, "n": n}}
 
 
 def _client(server_file: str):
