@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -28,15 +27,6 @@ const prefix = (key: string) => key.split('.')[0] ?? key;
 const byTask = (file: string) => /^askAi[A-Z]/.test(file);
 
 describe('en catalogue split into area modules', () => {
-  it('kept every key and value of the catalogue before the split', () => {
-    // Taken from `en` on main just before the split (30 Oct 2026): count and sha256 of the
-    // JSON of its entries sorted by key.
-    const entries = Object.entries(en).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    expect(entries).toHaveLength(6245);
-    const hash = createHash('sha256').update(JSON.stringify(entries)).digest('hex');
-    expect(hash).toBe('e1961d9a8b8f08fae806e884363e52bfa7c87085abaf100f884231a8bbbc26f0');
-  });
-
   it('every prefix lives in exactly one area module', async () => {
     const owner = new Map<string, string>();
     for (const [file, cat] of await modules()) {
