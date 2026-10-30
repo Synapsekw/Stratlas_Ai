@@ -212,6 +212,10 @@ test.describe('with the bundled demos', () => {
       };
     });
     expect(fit).toEqual({ whole: true, inBar: true, spill: [] });
+    // a narrow bar drops zoom in and out (Ctrl + wheel zooms), never Fit
+    await expect(
+      win.getByTestId('lane-timeline').getByRole('button', { name: 'Fit', exact: true }),
+    ).toBeVisible();
     await shot(win, 'footage-clock');
   });
 });

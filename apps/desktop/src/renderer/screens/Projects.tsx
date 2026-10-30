@@ -1,3 +1,4 @@
+import { isAnnotateReadOnly, useAnnotateReadOnly } from '@aio/annotate';
 import { brand } from '@aio/brand';
 import type { LibraryEntry } from '@aio/schema';
 import {
@@ -90,12 +91,16 @@ function Thumb({ entry }: { entry: LibraryEntry }) {
   );
 }
 
-/** Open the project (unless it is open), then Create maps from photos, if it opened as editable. */
-async function createMapsIn(path: string): Promise<void> {
+/**
+ * Open the project (unless it is open), then Create maps from photos, if it opened as editable: not
+ * in a package, not for a reviewer who may only look.
+ */
+export async function createMapsIn(path: string): Promise<void> {
   const open = workspace.getState().project?.root;
   if (open === undefined || !samePathText(open, path)) await shell.getState().openProject(path);
   const now = workspace.getState().project?.root;
-  if (now === undefined || !samePathText(now, path) || shell.getState().pkg) return;
+  if (now === undefined || !samePathText(now, path)) return;
+  if (shell.getState().pkg || isAnnotateReadOnly()) return;
   photoUi.getState().openWizard();
 }
 
@@ -116,7 +121,9 @@ function ProjectCard({
 }) {
   const counts = entry.layerCounts ?? {};
   const chips = LAYER_CHIPS.filter((c) => (counts[c.key] ?? 0) > 0);
-  const offerMaps = !entry.package && photosWithoutMaps(counts);
+  // the open project to a reviewer who may only look: nothing to make there
+  const lookOnly = useAnnotateReadOnly();
+  const offerMaps = !entry.package && photosWithoutMaps(counts) && !(current && lookOnly);
   const where = [entry.customer, entry.site].filter(Boolean).join(' · ');
   const [menu, setMenu] = useState<MenuAt | null>(null);
   const [dragged, setDragged] = useState(false);

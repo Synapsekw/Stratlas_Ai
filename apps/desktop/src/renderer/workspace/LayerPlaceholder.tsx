@@ -13,7 +13,7 @@ import { Button, t, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useMemo, useState } from 'react';
 import { photoUi } from '../photogrammetry/store';
-import { useShell } from '../shell';
+import { useJobs, useShell } from '../shell';
 import { Files, LayerFileRow, useLayerFiles } from '../team/Files';
 import { needsAttention } from '../team/filesModel';
 
@@ -30,12 +30,14 @@ export function photosWithoutMaps(counts: Readonly<Record<string, number>>): boo
 
 export function LayerPlaceholder() {
   const project = useWorkspace((s) => s.project);
+  const openSeq = useWorkspace((s) => s.openSeq);
   if (!project) return null;
   // a new project starts with a fresh state
   return (
     <>
       <ProjectFiles key={`${project.id}|${project.root}`} projectId={project.id} />
-      <PhotosOffer key={`offer|${project.id}`} />
+      {/* each open of the project starts afresh, so Not now lasts until the project is reopened */}
+      <PhotosOffer key={`offer|${String(openSeq)}`} />
     </>
   );
 }
@@ -46,6 +48,9 @@ function PhotosOffer() {
   const layers = useWorkspace((s) => s.project?.manifest.layers);
   const pkg = useShell((s) => s.pkg !== null);
   const lookOnly = useAnnotateReadOnly();
+  // without the processing tools Create maps opens the dialog that says so: not the primary then,
+  // as in the Processing drawer
+  const toolsMissing = useJobs((s) => s.runtime?.found === false);
   const [later, setLater] = useState(false);
   const photoOnly = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -63,7 +68,7 @@ function PhotosOffer() {
       <p className="small">{t('processing.photoOnly.body')}</p>
       <div className="maps-offer-acts">
         <Button
-          variant="primary"
+          variant={toolsMissing ? 'secondary' : 'primary'}
           icon="photo"
           data-testid="photos-create-maps"
           onClick={() => {

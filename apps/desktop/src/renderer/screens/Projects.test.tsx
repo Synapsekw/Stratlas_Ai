@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { setAnnotateReadOnly } from '@aio/annotate';
 import type { LibraryEntry, LibraryFolder } from '@aio/schema';
 import { workspace, type Workspace } from '@aio/workspace';
 import { act } from 'react';
@@ -6,7 +7,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { shell } from '../shell';
 import { DRAG_TYPE } from './libraryFolderModel';
-import { ProjectsScreen } from './Projects';
+import { photoUi } from '../photogrammetry/store';
+import { createMapsIn, ProjectsScreen } from './Projects';
 
 /** The value, or a failed test when it is missing. */
 function must<T>(v: T | null | undefined): T {
@@ -170,5 +172,43 @@ describe('ProjectsScreen folders', () => {
     act(() => {
       workspace.setState({ project: null } as unknown as Partial<Workspace>);
     });
+  });
+});
+
+describe('Create maps from a library card', () => {
+  const path = 'D:/data/projects/photos-only';
+  afterEach(() => {
+    act(() => {
+      setAnnotateReadOnly(false);
+      workspace.setState({ project: null } as unknown as Partial<Workspace>);
+    });
+  });
+  const run = async () => {
+    // the project is open already: nothing to open first
+    act(() => {
+      workspace.setState({
+        project: {
+          id: 'photos-only',
+          root: path,
+          manifest: { name: 'Photos only', layers: [], captures: [] },
+        },
+      } as unknown as Partial<Workspace>);
+    });
+    const wizard = vi.spyOn(photoUi.getState(), 'openWizard').mockImplementation(() => undefined);
+    await createMapsIn(path);
+    const calls = wizard.mock.calls.length;
+    wizard.mockRestore();
+    return calls;
+  };
+
+  it('opens the wizard for a project that may be edited', async () => {
+    expect(await run()).toBe(1);
+  });
+
+  it('opens nothing for a reviewer who may only look', async () => {
+    act(() => {
+      setAnnotateReadOnly(true);
+    });
+    expect(await run()).toBe(0);
   });
 });

@@ -2210,6 +2210,11 @@ button.chip-status:hover {
 .stage[data-mode='split'] .stage-slot:is([data-slot='tl'], [data-slot='bl']) {
   max-inline-size: calc(var(--pane-start-w, 50%) - var(--sp-5) - var(--sp-3));
 }
+/* a notice up top (Compare's low tier notice) stops short of the left pane's map zoom buttons at
+   its top end (10 px margin, 29 px buttons), which sit at the same height */
+.stage[data-mode='split'] .stage-slot[data-slot='tl'] {
+  max-inline-size: calc(var(--pane-start-w, 50%) - var(--sp-5) - 10px - 29px - var(--sp-4));
+}
 .stage[data-mode='split'] .stage-slot[data-slot='tr'] {
   max-inline-size: calc(var(--pane-end-w, 50%) - var(--slot-end) - 10px - var(--sp-3));
 }
@@ -2919,10 +2924,15 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
     display: none;
   }
 }
-/* the narrowest bar (the CI window with both sidebars open, about 380 px): the zoom buttons go
-   too; Ctrl + wheel still zooms, and the clock, the transport and the rate keep one row */
+/* the narrowest bar (the CI window with both sidebars open, about 380 px): zoom in and out go
+   too, Fit stays; Ctrl + wheel still zooms, and the clock, the transport and the rate keep one
+   row */
 @container (max-width: 420px) {
-  .tl-wrap[data-switch] .lt .tl-h > .seg.icons {
+  .tl-wrap[data-switch]
+    .lt
+    .tl-h
+    > .seg.icons
+    > :is([aria-label='Zoom in'], [aria-label='Zoom out']) {
     display: none;
   }
 }
