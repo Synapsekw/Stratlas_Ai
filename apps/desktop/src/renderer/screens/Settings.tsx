@@ -22,7 +22,7 @@ import {
   shortcutHint,
 } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { GPU_TIERS, TIER_ORDER, graphics, useGraphics, type GpuTier } from '../graphics';
 import { cloudAiBlocked } from '../player';
 import { bridge, shell, useCall, useShell } from '../shell';
@@ -35,7 +35,7 @@ import { HelpLink } from '../help/HelpPanel';
 import { SETTINGS_HELP } from '../help/store';
 import { About } from './settings/About';
 import { AskAiSettings } from './settings/AskAiSettings';
-import { DetectionModels } from './settings/DetectionModels';
+import { Datums } from './settings/Datums';
 import { IdentitySettings } from './settings/Identity';
 import { Appearance } from './settings/Appearance';
 import { Keyboard } from './settings/Keyboard';
@@ -43,72 +43,18 @@ import { LocalModel } from './settings/LocalModel';
 import { MapPacks } from './settings/MapPacks';
 import { MapSources } from './settings/MapSources';
 import { Classes } from './settings/Classes';
+import { ModelsDetection } from './settings/ModelsDetection';
+import { MovedNote } from './settings/MovedNote';
 import { ProcessingTools } from './settings/ProcessingTools';
-import { ProjectPrivacy } from './settings/ProjectPrivacy';
+import { ProjectSettings } from './settings/ProjectSettings';
 import { ProviderConnection } from './settings/ProviderConnection';
 import { ReportBranding } from './settings/ReportBranding';
+import { SCROLL_FOCUS, SETTINGS_GROUP_LABEL, visibleSettingsPages } from './settings/settingsPages';
+import './settings/settingsPages.css';
 import { TeamServer } from './settings/TeamServer';
 import { PageHeader } from '../shell/PageHeader';
 
 type Page = SettingsPage;
-
-const PAGES: { page: Page; label: MessageKey; icon: IconName; group: MessageKey }[] = [
-  { page: 'ai', label: 'settings.page.ai', icon: 'agent', group: 'settings.group.intelligence' },
-  {
-    page: 'usage',
-    label: 'settings.page.usage',
-    icon: 'report',
-    group: 'settings.group.intelligence',
-  },
-  {
-    page: 'privacy',
-    label: 'settings.page.privacy',
-    icon: 'shield',
-    group: 'settings.group.intelligence',
-  },
-  { page: 'identity', label: 'identity.page', icon: 'key', group: 'settings.group.data' },
-  { page: 'data', label: 'settings.page.data', icon: 'layers', group: 'settings.group.data' },
-  { page: 'tools', label: 'settings.page.tools', icon: 'download', group: 'settings.group.data' },
-  { page: 'maps', label: 'settings.page.maps', icon: 'map', group: 'settings.group.data' },
-  {
-    page: 'map-sources',
-    label: 'settings.page.mapSources',
-    icon: 'globe',
-    group: 'settings.group.data',
-  },
-  {
-    page: 'severity',
-    label: 'settings.page.severity',
-    icon: 'issues',
-    group: 'settings.group.data',
-  },
-  {
-    page: 'classes',
-    label: 'settings.page.classes',
-    icon: 'issues',
-    group: 'settings.group.data',
-  },
-  {
-    page: 'branding',
-    label: 'settings.page.branding',
-    icon: 'report',
-    group: 'settings.group.data',
-  },
-  {
-    page: 'graphics',
-    label: 'settings.page.graphics',
-    icon: 'scene',
-    group: 'settings.group.app',
-  },
-  {
-    page: 'appearance',
-    label: 'settings.page.appearance',
-    icon: 'sun',
-    group: 'settings.group.app',
-  },
-  { page: 'keyboard', label: 'settings.page.keyboard', icon: 'key', group: 'settings.group.app' },
-  { page: 'about', label: 'settings.page.about', icon: 'refresh', group: 'settings.group.app' },
-];
 
 const millions = (n: number) => `${String(n / 1e6)} M`;
 
@@ -450,10 +396,10 @@ export function Routing() {
           </button>
         </span>
       </h2>
-      <table className="tbl">
+      <table className="tbl routing-tbl">
         <thead>
           <tr>
-            <th style={{ width: '32%' }}>Task</th>
+            <th>Task</th>
             <th>Provider</th>
             <th>Model</th>
             <th>Sends</th>
@@ -518,7 +464,7 @@ export function Routing() {
                     ))}
                   </datalist>
                 </td>
-                <td className="faint nowrap">{sends}</td>
+                <td className="faint">{sends}</td>
                 <td>
                   <input
                     type="checkbox"
@@ -669,7 +615,7 @@ function Privacy() {
         </div>
       </div>
       <OfflineOnly />
-      <ProjectPrivacy />
+      <ProjectPrivacyMoved />
       <div className="sblock">
         <h2>Always on</h2>
         <div className="opt">
@@ -711,6 +657,20 @@ function Privacy() {
         </div>
       )}
     </>
+  );
+}
+
+/** The open project's privacy switch lives in Project settings now: a pointer to it. */
+function ProjectPrivacyMoved() {
+  const open = useWorkspace((s) => s.project !== null);
+  if (!open) return null;
+  return (
+    <MovedNote
+      text="settings.privacy.projectMoved"
+      action="settings.privacy.openProject"
+      to="project-privacy"
+      testId="privacy-project-moved"
+    />
   );
 }
 
@@ -846,8 +806,36 @@ function Severity() {
   );
 }
 
+/** A page without its own help topic opens the topic of the page its sections came from. */
+const HELP_FROM: Partial<Record<Page, Page>> = {
+  'local-model': 'ai',
+  models: 'tools',
+  datums: 'maps',
+  project: 'privacy',
+};
+
+/**
+ * Bring a moved section into view when Settings was opened on it (`openSettings(focus)`), then
+ * forget the focus. Sections with their own focus handling (the workspace ID field, raster packs,
+ * the processing engine) are left to it.
+ */
+function useScrollToFocus(page: Page): void {
+  const focus = useShell((s) => s.settingsFocus);
+  useEffect(() => {
+    if (!focus || !SCROLL_FOCUS.has(focus)) return;
+    const el = document.querySelector(`[data-settings-focus="${focus}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'start' });
+    shell.getState().clearSettingsFocus();
+  }, [focus, page]);
+}
+
 const HEAD: Record<Page, { title: MessageKey; text: MessageKey }> = {
   ai: { title: 'settings.page.ai', text: 'settings.ai.text' },
+  'local-model': { title: 'settings.page.localModel', text: 'settings.localModel.text' },
+  models: { title: 'settings.page.models', text: 'settings.models.text' },
+  datums: { title: 'settings.page.datums', text: 'settings.datums.text' },
+  project: { title: 'settings.page.project', text: 'settings.project.text' },
   usage: { title: 'settings.page.usage', text: 'settings.usage.text' },
   privacy: { title: 'settings.page.privacy', text: 'settings.privacy.text' },
   identity: { title: 'identity.page', text: 'identity.page.text' },
@@ -872,25 +860,30 @@ export function SettingsScreen() {
   const asked = useShell((s) => s.settingsPage);
   const page = asked ?? picked;
   const error = useShell((s) => s.settingsError);
+  const projectOpen = useWorkspace((s) => s.project !== null);
+  const pages = visibleSettingsPages(projectOpen);
+  const help = SETTINGS_HELP[page] ?? SETTINGS_HELP[HELP_FROM[page] ?? page];
+  useScrollToFocus(page);
   const screen = (
     <section className="screen settings" aria-label={t('settings.title')}>
       <nav className="set-nav" aria-label={t('settings.sections')}>
         <h2>{t('settings.title')}</h2>
-        {PAGES.map((p, i) => {
-          const head = i === 0 || PAGES[i - 1]?.group !== p.group ? p.group : null;
+        {pages.map((p, i) => {
+          const head = i === 0 || pages[i - 1]?.group !== p.group ? p.group : null;
           return (
-            <div key={p.page}>
-              {head && <div className="grp caps">{t(head)}</div>}
+            <div key={p.id}>
+              {head && <div className="grp caps">{t(SETTINGS_GROUP_LABEL[head])}</div>}
               <button
                 type="button"
-                aria-current={page === p.page}
+                aria-current={page === p.id}
+                data-settings-page={p.id}
                 onClick={() => {
-                  setPicked(p.page);
+                  setPicked(p.id);
                   shell.getState().clearSettingsPage();
                 }}
               >
                 <Icon name={p.icon} />
-                {t(p.label)}
+                {t(p.labelKey)}
               </button>
             </div>
           );
@@ -903,7 +896,7 @@ export function SettingsScreen() {
               <h1>{t(HEAD[page].title)}</h1>
               <p>{t(HEAD[page].text, { product: brand.productName })}</p>
             </div>
-            {SETTINGS_HELP[page] && <HelpLink topic={SETTINGS_HELP[page]} />}
+            {help && <HelpLink topic={help} />}
           </header>
           {error && (
             <p className="notice warn" role="status">
@@ -916,19 +909,23 @@ export function SettingsScreen() {
               <CloudAiOffline />
               <div className="sblock">
                 <h2>
-                  Providers <span className="sub">{PROVIDERS.length} supported</span>
+                  {t('settings.providers.title')}{' '}
+                  <span className="sub">
+                    {t('settings.providers.count', { count: PROVIDERS.length })}
+                  </span>
                 </h2>
                 {PROVIDERS.map((p) => (
                   <ProviderRow key={p} provider={p} />
                 ))}
               </div>
-              <LocalModel />
               <Routing />
+{/* general AI switches (the agent, Ask AI) sit here, after routing */}
               <AgentThinking />
+              <AskAiSettings />
             </>
           )}
-          {page === 'ai' && <DetectionModels />}
-          {page === 'ai' && <AskAiSettings />}
+          {page === 'local-model' && <LocalModel />}
+          {page === 'models' && <ModelsDetection />}
           {page === 'usage' && <Usage />}
           {page === 'privacy' && <Privacy />}
           {page === 'identity' && <IdentitySettings />}
@@ -936,6 +933,7 @@ export function SettingsScreen() {
           {page === 'data' && <TeamServer />}
           {page === 'tools' && <ProcessingTools />}
           {page === 'maps' && <MapPacks />}
+          {page === 'datums' && <Datums />}
           {page === 'map-sources' && <MapSources />}
           {page === 'severity' && <Severity />}
           {page === 'classes' && <Classes />}
@@ -944,6 +942,7 @@ export function SettingsScreen() {
           {page === 'appearance' && <Appearance />}
           {page === 'keyboard' && <Keyboard />}
           {page === 'about' && <About />}
+          {page === 'project' && <ProjectSettings />}
         </div>
       </div>
     </section>

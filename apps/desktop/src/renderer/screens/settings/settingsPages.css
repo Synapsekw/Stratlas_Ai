@@ -1,0 +1,26 @@
+/* Settings grouped by topic: the pointer left where a section moved, and the Keyboard search. */
+.settings-moved {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.keymap-search {
+  width: 100%;
+}
+
+/* AI providers, Model routing: the table fits the page at the smallest window */
+.routing-tbl {
+  width: 100%;
+  table-layout: fixed;
+}
+.routing-tbl th:nth-child(1) {
+  width: 26%;
+}
+.routing-tbl th:nth-child(5) {
+  width: 14%;
+}
+.routing-tbl .input {
+  width: 100%;
+  min-width: 0;
+}

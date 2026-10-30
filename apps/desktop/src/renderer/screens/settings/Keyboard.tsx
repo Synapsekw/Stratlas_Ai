@@ -54,7 +54,7 @@ export function Keyboard() {
         </label>
         <input
           id={searchId}
-          className="input"
+          className="input keymap-search"
           type="search"
           value={query}
           placeholder={t('settings.keyboard.searchHint')}

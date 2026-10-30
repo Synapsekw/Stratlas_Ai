@@ -24,6 +24,7 @@ import {
 import { isPlayer } from './player';
 import { sidebarFolded } from './shell/autoFold';
 import { samePathText } from './screens/projectMenuModel';
+import { FOCUS_PAGE } from './screens/settings/settingsPages';
 import { videoFirst } from './stageDefault';
 
 export type Screen =
@@ -45,14 +46,26 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 /**
- * A Settings field to focus when Settings opens: the agent panel's "Open AI settings", and
- * "Offline maps" of the map type picker (Imagery and terrain, where packs are imported).
+ * A Settings field or section to focus when Settings opens: the agent panel's "Open AI settings",
+ * "Offline maps" of the map type picker (Imagery and terrain, where packs are imported), and the
+ * sections that moved when Settings was grouped by topic (`screens/settings/settingsPages.ts`).
  */
-export type SettingsFocus = 'anthropic-workspace' | 'raster-packs' | 'processing-engine';
+export type SettingsFocus =
+  | 'anthropic-workspace'
+  | 'raster-packs'
+  | 'processing-engine'
+  | 'detection-models'
+  | 'detector-library'
+  | 'analytics-pack'
+  | 'geoid'
+  | 'project-privacy'
+  | 'project-maps';
 
-/** The pages of the Settings screen. */
+/** The pages of the Settings screen (their order, groups and icons: `settingsPages.ts`). */
 export type SettingsPage =
   | 'ai'
+  | 'local-model'
+  | 'models'
   | 'usage'
   | 'privacy'
   | 'identity'
@@ -60,20 +73,15 @@ export type SettingsPage =
   | 'tools'
   | 'maps'
   | 'map-sources'
+  | 'datums'
   | 'severity'
   | 'classes'
   | 'branding'
   | 'graphics'
   | 'appearance'
   | 'keyboard'
-  | 'about';
-
-/** The Settings page each focus target is on. */
-const FOCUS_PAGE: Record<SettingsFocus, SettingsPage> = {
-  'anthropic-workspace': 'ai',
-  'raster-packs': 'maps',
-  'processing-engine': 'tools',
-};
+  | 'about'
+  | 'project';
 
 export interface ShellState {
   screen: Screen;

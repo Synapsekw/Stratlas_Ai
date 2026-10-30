@@ -62,6 +62,7 @@ async function corruptModel(dir: string, card: string) {
 
 async function importDetector(app: ElectronApplication, win: Page, root: string, truth: Truth) {
   await win.locator('.nav-item', { hasText: 'Settings' }).click();
+  await win.locator('.set-nav button', { hasText: 'Models and detection' }).click();
   await win.getByTestId('detection-models').scrollIntoViewIfNeeded();
   await win.getByTestId('infer-accept').check();
   await nextOpenDialog(app, join(root, truth.detector.card));
@@ -171,8 +172,9 @@ test('local detection: import the demo detector, find the markers of both dates,
   const truth = demoProject.truth as Truth;
   await prepare(app, win);
 
-  // Settings, AI providers, Detection models: the runtime is found, on CPU.
+  // Settings, Models and detection: the runtime is found, on CPU.
   await win.locator('.nav-item', { hasText: 'Settings' }).click();
+  await win.locator('.set-nav button', { hasText: 'Models and detection' }).click();
   const section = win.getByTestId('detection-models');
   await section.scrollIntoViewIfNeeded();
   await expect(win.getByTestId('infer-runtime')).toContainText(/onnxruntime \d+\.\d+.* on CPU/);

@@ -47,6 +47,36 @@ export const enSettings = {
   'settings.page.appearance': 'Appearance',
   'settings.page.about': 'About and updates',
   'settings.page.graphics': 'Graphics quality',
+  'settings.group.project': 'This project',
+  'settings.page.localModel': 'Local model',
+  'settings.page.models': 'Models and detection',
+  'settings.page.datums': 'Datums',
+  'settings.page.project': 'Project settings',
+  'settings.localModel.text':
+    'A model served on this computer or your own network. It answers when cloud AI is off and costs nothing per token.',
+  'settings.models.text':
+    'The models that find objects in photos and frames, the detectors you have trained or imported, and the Analytics pack that runs them on this computer.',
+  'settings.datums.text':
+    'Geoid grids that turn ellipsoid heights into heights above sea level. They are shared by every project on this workstation.',
+  'settings.project.text': 'Settings that belong to the open project and travel with it.',
+  'settings.project.none': 'Open a project to change its settings.',
+  'settings.project.maps.title': 'Street map',
+  'settings.project.maps.detail': 'A detailed street map covers this site.',
+  'settings.project.maps.overview': 'Only an overview map covers this site.',
+  'settings.project.maps.none': 'No street map covers this site yet.',
+  'settings.project.maps.noLocation':
+    'This project is not placed on the Earth, so no street map applies.',
+  'settings.project.maps.unknown': 'Street maps are checked for the projects in your library.',
+  'settings.project.maps.open': 'Maps for your projects',
+  'settings.providers.title': 'Providers',
+  'settings.providers.count': '{count} supported',
+  'settings.privacy.projectMoved': "The open project's own privacy switch is in Project settings.",
+  'settings.privacy.openProject': 'Open Project settings',
+  'settings.tools.modelsMoved':
+    'Detection models, the detector library and the Analytics pack are in Models and detection.',
+  'settings.tools.openModels': 'Open Models and detection',
+  'settings.maps.geoidMoved': 'Geoid grids for heights above sea level are in Datums.',
+  'settings.maps.openDatums': 'Open Datums',
   'settings.notSaved': 'Settings are not being saved: {error}',
 
   // Page introductions

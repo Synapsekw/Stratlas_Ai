@@ -89,7 +89,7 @@ test('a geoid grid imported in Settings is offered in Site settings and removed 
   ) as { licence: string; attribution: string };
 
   await win.locator('.nav-item', { hasText: 'Settings' }).click();
-  await win.locator('.set-nav button', { hasText: 'Offline maps' }).click();
+  await win.locator('.set-nav button', { hasText: 'Datums' }).click();
   const block = win.getByTestId('geoid-packs');
   await expect(block).toBeVisible();
   await nextOpenDialog(app, grid);
@@ -131,7 +131,7 @@ test('a geoid grid imported in Settings is offered in Site settings and removed 
 
   // Remove asks once more, then the pack is gone
   await win.locator('.nav-item', { hasText: 'Settings' }).click();
-  await win.locator('.set-nav button', { hasText: 'Offline maps' }).click();
+  await win.locator('.set-nav button', { hasText: 'Datums' }).click();
   await block.getByTestId('geoid-remove-Synthetic-geoid').click();
   await block.getByTestId('geoid-remove-confirm-Synthetic-geoid').click();
   await expect(block.getByTestId('geoid-pack-Synthetic-geoid')).toHaveCount(0);

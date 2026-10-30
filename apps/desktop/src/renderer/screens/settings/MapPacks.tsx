@@ -11,7 +11,7 @@ import { formatBytes, formatDate, Icon, t } from '@aio/ui';
 import { useEffect, useMemo, useState } from 'react';
 import { mapCoverage } from '../../mapCoverage/store';
 import { bridge, useShell } from '../../shell';
-import { GeoidPacks } from './GeoidPacks';
+import { MovedNote } from './MovedNote';
 import { ProjectMaps } from './ProjectMaps';
 import { RasterPacks } from './RasterPacks';
 
@@ -417,17 +417,19 @@ export function MapPacks() {
 
   return (
     <>
-      <ProjectMaps
-        offlineOnly={offlineOnly}
-        onShow={(b) => {
-          setPreview(b);
-          setFocus(b);
-        }}
-        onChanged={refresh}
-        confirm={confirm}
-        setConfirm={setConfirm}
-        remove={remove}
-      />
+      <div data-settings-focus="project-maps">
+        <ProjectMaps
+          offlineOnly={offlineOnly}
+          onShow={(b) => {
+            setPreview(b);
+            setFocus(b);
+          }}
+          onChanged={refresh}
+          confirm={confirm}
+          setConfirm={setConfirm}
+          remove={remove}
+        />
+      </div>
 
       <div className="sblock">
         <h2>
@@ -612,8 +614,13 @@ export function MapPacks() {
       {/* M10 G7: imagery and terrain packs */}
       <RasterPacks />
 
-      {/* M11: geoid grids for orthometric heights */}
-      <GeoidPacks />
+      {/* M11: geoid grids for orthometric heights live on Datums */}
+      <MovedNote
+        text="settings.maps.geoidMoved"
+        action="settings.maps.openDatums"
+        to="geoid"
+        testId="maps-geoid-moved"
+      />
     </>
   );
 }

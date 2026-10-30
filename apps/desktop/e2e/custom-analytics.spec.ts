@@ -417,7 +417,8 @@ test('a project kept on this PC offers no cloud model', async ({ demoProject }) 
   const { win, root } = demoProject;
   await reportWindow(win);
   await cloudOn(win);
-  // Settings, Privacy and cloud, This project: keep its images on this PC
+  // Settings, This project, Project settings: keep its images on this PC
+  await win.locator('.set-nav button', { hasText: 'Project settings' }).click();
   const keep = win.locator('[data-testid="keep-local"] button');
   await expect(keep).toHaveAttribute('aria-checked', 'false');
   await keep.click();

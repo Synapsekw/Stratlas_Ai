@@ -183,8 +183,9 @@ test.describe('local detection on 360 video', () => {
     await win.reload();
     await openWalkProject(win);
 
-    // Settings, Detection models: import the marker detector
+    // Settings, Models and detection: import the marker detector
     await win.locator('.nav-item', { hasText: 'Settings' }).click();
+    await win.locator('.set-nav button', { hasText: 'Models and detection' }).click();
     await win.getByTestId('detection-models').scrollIntoViewIfNeeded();
     await win.getByTestId('infer-accept').check();
     await nextOpenDialog(app, card);
@@ -193,7 +194,8 @@ test.describe('local detection on 360 video', () => {
       'Imported Marker test detector.',
     );
 
-    // Settings, Ask AI: the local model answers
+    // Settings, AI providers, Ask AI: the local model answers
+    await win.locator('.set-nav button', { hasText: 'AI providers' }).click();
     const panel = win.getByTestId('ask-ai-settings-panel');
     await panel.scrollIntoViewIfNeeded();
     await win.getByTestId('ask-ai-backend-local').check();

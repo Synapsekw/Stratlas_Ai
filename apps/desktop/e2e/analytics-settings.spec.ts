@@ -1,5 +1,5 @@
 /**
- * Settings, Processing tools: the Analytics pack section and the detector library. The graphics
+ * Settings, Models and detection: the Analytics pack section and the detector library. The graphics
  * card check is the real one, so `ap-hw` names the card on a computer with a suitable NVIDIA card
  * and says why not on one without (CI). A detector saved to the library through IPC is listed with
  * "No reviews yet". No pack is installed, so the section offers the install.
@@ -40,7 +40,7 @@ test('the Analytics pack section shows the hardware check and the detector libra
   await win.locator('.nav-item', { hasText: 'Settings' }).click();
   await win
     .getByRole('navigation', { name: 'Settings sections' })
-    .getByRole('button', { name: 'Processing tools' })
+    .getByRole('button', { name: 'Models and detection' })
     .click();
 
   // the pack section: the card check answered (a card with its memory, or why not)

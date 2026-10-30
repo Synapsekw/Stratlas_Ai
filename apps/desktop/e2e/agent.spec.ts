@@ -188,7 +188,7 @@ test('agent: preview, history, restored approval, export and meter', async () =>
     await expect(table).toContainText('E2E tiny project');
     await expect(table).toContainText('Anthropic');
     await shot(win, 'settings-usage');
-    await win.getByRole('button', { name: 'AI providers' }).click();
+    await win.locator('.set-nav button', { hasText: 'Local model' }).click();
     await expect(win.getByText('Use a local model')).toBeVisible();
     await shot(win, 'settings-local-model');
     await close(run.app, run.network);

@@ -78,7 +78,7 @@ const agent = (win: Page) => win.getByRole('region', { name: 'Agent' });
 
 async function openSettings(win: Page) {
   await win.getByRole('button', { name: 'Settings' }).first().click();
-  await win.getByRole('button', { name: 'AI providers' }).click();
+  await win.locator('.set-nav button', { hasText: 'Local model' }).click();
 }
 
 /** Settings, Local model: type the fake's address, Find models, choose `model`, Test. */

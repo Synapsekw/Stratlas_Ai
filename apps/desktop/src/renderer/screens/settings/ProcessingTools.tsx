@@ -14,8 +14,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { AdvancedPipelines } from '../../processing/AdvancedPipelines';
 import { processingTools, resumeAfterTools, useProcessingTools } from '../../processingTools';
 import { useShell } from '../../shell';
-import { AnalyticsPack } from './AnalyticsPack';
-import { DetectorLibrary } from './DetectorLibrary';
+import { MovedNote } from './MovedNote';
 import { progressText } from './packProgress';
 import { ProcessingEngine } from './ProcessingEngine';
 import './processingTools.css';
@@ -339,8 +338,12 @@ export function ProcessingTools() {
         <Status status={status} />
         <Install />
       </div>
-      <AnalyticsPack />
-      <DetectorLibrary />
+      <MovedNote
+        text="settings.tools.modelsMoved"
+        action="settings.tools.openModels"
+        to="analytics-pack"
+        testId="tools-models-moved"
+      />
       {/* a development pack is not ours to manage: its folders are left alone */}
       {status && status.state !== 'dev' && (
         <OtherPacks packs={status.others} disabled={installing} />
