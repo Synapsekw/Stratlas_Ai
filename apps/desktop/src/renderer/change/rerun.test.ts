@@ -61,7 +61,7 @@ describe('run again', () => {
   });
 
   it('runs an in-app comparison through the store, and nothing unknown', async () => {
-    const compute = vi.spyOn(changeStore.getState(), 'compute').mockResolvedValue(true);
+    const compute = vi.spyOn(changeStore.getState(), 'compute').mockResolvedValue('done');
     expect(await rerunProducer('issues', ctx)).toBeNull();
     expect(compute).toHaveBeenCalledTimes(1);
     expect(await rerunProducer('mystery', ctx)).toBe('This comparison cannot be run again here.');
