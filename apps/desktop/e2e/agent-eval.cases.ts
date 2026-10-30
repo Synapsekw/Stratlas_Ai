@@ -41,15 +41,37 @@ export interface EvalState {
   };
   /** A finding's photo is open beside the 3D view. */
   evidenceOpen: boolean;
-  /** The tools that ran to the end, in order. A step that failed or was rejected is not here. */
+  /** Issues in the open project. */
+  issueCount: number;
+  /**
+   * The tools that ran to the end in the last reply, in order. A step that failed or was rejected
+   * is not here.
+   */
   toolCalls: string[];
+  /** Every tool step of the last reply with how it ended and its input. */
+  steps: { name: string; status: string; input?: unknown }[];
   /** What the agent said. */
   reply: string;
+}
+
+/** A follow-up typed in the same conversation, after the reply before it. */
+export interface EvalTurn {
+  ask: string;
+  /** Null when the app did what was asked, else the reason it did not. */
+  expect: (state: EvalState) => string | null;
 }
 
 export interface EvalCase {
   /** What the person types. */
   ask: string;
+  /** Follow-ups in the same conversation, each judged after its own reply. */
+  then?: EvalTurn[];
+  /**
+   * The roadmap item expected to close this gap (A1: tool results kept in history; A2: read tools
+   * for survey dates and volumes). Failing it is known and left out of the pass rate; passing it
+   * every time is reported as closed, so the marker can go.
+   */
+  gap?: string;
   /** The tag of an asset that is selected when the request is typed. */
   select?: string;
   /** The screen the request is typed on; Scene when left out. */
@@ -85,7 +107,7 @@ export interface DemoFacts {
  * Where the generator puts the findings (tools/demo/scene.mjs). The app links a finding to the
  * smallest tagged asset around its position, which the demo's files do not record.
  */
-const PLACES: {
+export const PLACES: {
   asset: { tag: string; codes: readonly string[] };
   areaOfAsset: { name: string; said: string; codes: readonly string[] };
   area: { name: string; codes: readonly string[] };
@@ -110,7 +132,7 @@ const OPEN_IMAGES = 'Open up images with the highest level of severity';
  * change-tool-specs.ts and collab-tool-specs.ts). A question is answered with one of these and
  * leaves the screen alone.
  */
-const READ_TOOLS: readonly string[] = [
+export const READ_TOOLS: readonly string[] = [
   'list_layers',
   'list_clips',
   'find_clips_near',
@@ -129,10 +151,10 @@ const READ_TOOLS: readonly string[] = [
   'list_assets',
 ];
 
-const rank = (s: EvalLevel): number => (s === 'uncertain' ? -1 : s);
+export const rank = (s: EvalLevel): number => (s === 'uncertain' ? -1 : s);
 
 /** Codes in the order the issue register lists them: the prefix, then the number. */
-function byCode(a: string, b: string): number {
+export function byCode(a: string, b: string): number {
   const pa = /^([A-Z]*)(\d*)$/.exec(a);
   const pb = /^([A-Z]*)(\d*)$/.exec(b);
   const prefixA = pa?.[1] ?? a;
@@ -142,19 +164,19 @@ function byCode(a: string, b: string): number {
 }
 
 /** Worst first, findings of one level in code order: the pick the app makes, the same every time. */
-const worstFirst = (a: DemoFinding, b: DemoFinding): number =>
+export const worstFirst = (a: DemoFinding, b: DemoFinding): number =>
   rank(b.severity) - rank(a.severity) || byCode(a.code, b.code);
 
-const isOpen = (f: DemoFinding): boolean => f.status !== 'closed';
+export const isOpen = (f: DemoFinding): boolean => f.status !== 'closed';
 
 /** The most severe open finding, of the whole project or among `codes`. */
-function worstOpen(demo: DemoFacts, codes?: readonly string[]): DemoFinding | undefined {
+export function worstOpen(demo: DemoFacts, codes?: readonly string[]): DemoFinding | undefined {
   return demo.findings
     .filter((f) => isOpen(f) && (!codes || codes.includes(f.code)))
     .sort(worstFirst)[0];
 }
 
-const photosOf = (findings: readonly DemoFinding[]): string[] => [
+export const photosOf = (findings: readonly DemoFinding[]): string[] => [
   ...new Set(findings.flatMap((f) => f.photos)),
 ];
 
@@ -162,7 +184,7 @@ const photosOf = (findings: readonly DemoFinding[]): string[] => [
  * The highest level on the photos and the photos that carry it. Inspect counts every finding marked
  * on a photo, closed ones too, so this does as well.
  */
-function worstOnPhotos(demo: DemoFacts): { level: EvalLevel | null; photos: string[] } {
+export function worstOnPhotos(demo: DemoFacts): { level: EvalLevel | null; photos: string[] } {
   const marked = demo.findings.filter((f) => f.photos.length > 0);
   const top = [...marked].sort(worstFirst)[0];
   if (!top) return { level: null, photos: [] };
@@ -172,19 +194,20 @@ function worstOnPhotos(demo: DemoFacts): { level: EvalLevel | null; photos: stri
   };
 }
 
-const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
+export const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && [...a].sort().join('\n') === [...b].sort().join('\n');
 
-const list = (items: readonly string[]): string => (items.length > 0 ? items.join(', ') : 'none');
+export const list = (items: readonly string[]): string =>
+  items.length > 0 ? items.join(', ') : 'none';
 
-const selected = (s: EvalState): string =>
+export const selected = (s: EvalState): string =>
   s.selection ? (s.selection.code ?? `${s.selection.kind} ${s.selection.id}`) : 'nothing';
 
 const names = (reply: string, word: string): boolean =>
   word !== '' && reply.toLowerCase().includes(word.toLowerCase());
 
 /** Words that say there is nothing to show: "no photos", "none", "0 findings", "does not have any". */
-const SAYS_NOTHING =
+export const SAYS_NOTHING =
   /\b(no|none|nothing|zero|0|without)\b|n['’]t (any|have|find|see|show)|\bnot (any|find|found|have|show)/i;
 
 /**
@@ -239,6 +262,33 @@ export function checkDemo(demo: DemoFacts): string[] {
   return problems;
 }
 
+/** Show a finding: it is selected on Scene, with its photo open beside the 3D view or not. */
+export const showsFinding =
+  (finding: DemoFinding | undefined, withPhoto: boolean) =>
+  (s: EvalState): string | null => {
+    if (!finding) return 'the demo has no such finding';
+    if (s.screen !== 'scene') return `the screen is ${s.screen}, not scene`;
+    if (s.selection?.code !== finding.code)
+      return `${selected(s)} is selected, not ${finding.code}`;
+    if (!withPhoto) return null;
+    if (!s.evidenceOpen) return `the photo of ${finding.code} is not open beside the 3D view`;
+    if (!s.toolCalls.includes('show_issue')) return 'show_issue did not run';
+    return null;
+  };
+
+/** Show photos: Inspect lists exactly these, however the model named them. */
+export const showsPhotos =
+  (photos: readonly string[], level?: EvalLevel | null) =>
+  (s: EvalState): string | null => {
+    if (s.screen !== 'inspect') return `the screen is ${s.screen}, not inspect`;
+    const shown = s.media.shown ?? [];
+    if (!sameSet(shown, photos)) return `Inspect lists ${list(shown)}, not ${list(photos)}`;
+    if (level !== undefined && s.media.severity !== level)
+      return `the Severity filter of Inspect is ${String(s.media.severity)}, not ${String(level)}`;
+    if (!s.toolCalls.includes('show_photos')) return 'show_photos did not run';
+    return null;
+  };
+
 /** About 20 plain requests on the tank farm, each with what the app must show afterwards. */
 export function evalCases(demo: DemoFacts): EvalCase[] {
   const worst = worstOpen(demo);
@@ -252,19 +302,6 @@ export function evalCases(demo: DemoFacts): EvalCase[] {
   const onPhotos = worstOnPhotos(demo);
   const areaPhotos = photosOf(demo.findings.filter((f) => PLACES.area.codes.includes(f.code)));
 
-  /** Show a finding: it is selected on Scene, with its photo open beside the 3D view or not. */
-  const showsFinding =
-    (finding: DemoFinding | undefined, withPhoto: boolean) =>
-    (s: EvalState): string | null => {
-      if (!finding) return 'the demo has no such finding';
-      if (s.screen !== 'scene') return `the screen is ${s.screen}, not scene`;
-      if (s.selection?.code !== finding.code)
-        return `${selected(s)} is selected, not ${finding.code}`;
-      if (!withPhoto) return null;
-      if (!s.evidenceOpen) return `the photo of ${finding.code} is not open beside the 3D view`;
-      if (!s.toolCalls.includes('show_issue')) return 'show_issue did not run';
-      return null;
-    };
   const photoOpened = (s: EvalState): string => `photo opened: ${s.evidenceOpen ? 'yes' : 'no'}`;
   /**
    * The founder's own sentence: the finding is selected on Scene and its photo is open beside the
@@ -282,19 +319,6 @@ export function evalCases(demo: DemoFacts): EvalCase[] {
     expect: showsFinding(finding, false),
     note: photoOpened,
   });
-
-  /** Show photos: Inspect lists exactly these, however the model named them. */
-  const showsPhotos =
-    (photos: readonly string[], level?: EvalLevel | null) =>
-    (s: EvalState): string | null => {
-      if (s.screen !== 'inspect') return `the screen is ${s.screen}, not inspect`;
-      const shown = s.media.shown ?? [];
-      if (!sameSet(shown, photos)) return `Inspect lists ${list(shown)}, not ${list(photos)}`;
-      if (level !== undefined && s.media.severity !== level)
-        return `the Severity filter of Inspect is ${String(s.media.severity)}, not ${String(level)}`;
-      if (!s.toolCalls.includes('show_photos')) return 'show_photos did not run';
-      return null;
-    };
 
   return [
     // The founder's first request and four other ways to say it.

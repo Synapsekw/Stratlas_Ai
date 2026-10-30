@@ -15,6 +15,8 @@
     "test": "vitest run --retry=0",
     "test:watch": "vitest",
     "test:e2e": "pnpm -F @aio/desktop test:e2e",
+    "eval:agent": "pnpm build && pnpm -F @aio/desktop exec playwright test e2e/agent-eval.spec.ts --workers=1",
+    "eval:agent:compare": "node tools/agent/agent-eval-compare.mjs",
     "dev": "pnpm -F @aio/desktop dev",
     "build": "pnpm -F @aio/desktop build",
     "analytics-pack": "node tools/analytics-pack/build.mjs",

@@ -8,6 +8,8 @@ coverage/
 *.tsbuildinfo
 playwright-report/
 test-results/
+# agent eval traces (apps/desktop/e2e/agent-eval.spec.ts, pnpm eval:agent)
+.agent-eval/
 .playwright-mcp/
 *.log
 
