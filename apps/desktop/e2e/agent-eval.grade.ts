@@ -7,7 +7,9 @@
  * vitest file load this file directly with Node's type stripping.
  */
 
-const MON = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?';
+/** A month by its name or abbreviation, as a word of its own ("Mar", "March", not "marked"). */
+const MON =
+  '(?:january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)\\b\\.?';
 /** Calendar dates in a text: their parts are no figures ("2026-03-02" is not 2026, 3 and 2). */
 const DATES = new RegExp(
   [
@@ -47,10 +49,12 @@ export function hasNumberNear(text: string, value: number, relTol: number): bool
   return numbersIn(text).some((n) => Math.abs(Math.abs(n) - want) <= relTol * want);
 }
 
+/** Going up: a change phrase or a figure signed +. A bare "up" ("set up") is not one. */
 const UP =
-  /\b(grew|grown|grows|growing|increas(?:e|ed|es|ing)|rose|risen|up|added|gain(?:ed|s)?|larger|bigger)\b|(?<![\w.])\+\s?\d/i;
+  /\b(grew|grown|grows|growing|increas(?:e|ed|es|ing)|rose|risen|added|gain(?:ed|s)?|larger|bigger|(?:went|gone|goes|go|is|was|moved) up|up by)\b|(?<![\w.])\+\s?\d/i;
+/** Going down: a change phrase or a figure signed -. A bare "down" ("shut down") is not one. */
 const DOWN =
-  /\b(shrank|shrunk|shrinks|shrinking|decreas(?:e|ed|es|ing)|fell|fallen|down|lost|smaller|reduc(?:ed|es|tion)|dropped)\b|(?<![\w.-])[-−]\d/i;
+  /\b(shrank|shrunk|shrinks|shrinking|decreas(?:e|ed|es|ing)|fell|fallen|lost|smaller|reduc(?:ed|es|tion)|dropped|(?:went|gone|goes|go|is|was|moved) down|down by)\b|(?<![\w.-])[-−]\d/i;
 
 /**
  * The reply says which way a change went: up (grew, increased, added, +12) for a positive

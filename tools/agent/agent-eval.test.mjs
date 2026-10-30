@@ -54,6 +54,14 @@ describe('numbersIn', () => {
     expect(numbersIn('Between 2026-03-02 and 13 April 2026 it grew by 115 m³')).toEqual([115]);
     expect(numbersIn('From March 2, 2026 to Apr 13: 38.9 m³')).toEqual([38.9]);
     expect(hasNumberNear('Surveyed on 2026-03-02.', 2026, 0.01)).toBe(false);
+    expect(numbersIn('Surveyed 12 Mar 2026, then 115 m³')).toEqual([115]);
+    expect(numbersIn('Mar. 12: 40 m³')).toEqual([40]);
+  });
+  it('keeps figures after words that only start like a month', () => {
+    expect(numbersIn('SP2 decreased 38.9 m³')).toEqual([38.9]);
+    expect(numbersIn('marked 40 findings')).toEqual([40]);
+    expect(numbersIn('a margin 12 m wide')).toEqual([12]);
+    expect(numbersIn('octagonal 8 sides, decent 5 m')).toEqual([8, 5]);
   });
 });
 
@@ -81,6 +89,12 @@ describe('saysDirection', () => {
     expect(saysDirection('The change of SP2 is 300 m³', -300)).toBe(false);
     // the hyphen of an id or a date is no minus sign
     expect(saysDirection('T-101 on 2026-03-02: 300 m³', -300)).toBe(false);
+  });
+  it('takes no bare "up" or "down" for a change', () => {
+    expect(saysDirection('I set up the comparison: 300 m³', 300)).toBe(false);
+    expect(saysDirection('The pump was shut down; 300 m³', -300)).toBe(false);
+    expect(saysDirection('SP2 went down by 300 m³', -300)).toBe(true);
+    expect(saysDirection('The volume went up 115 m³', 115)).toBe(true);
   });
 });
 
