@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cataloguesProblem, updateClasses } from './classes';
+import { withManifest } from './manifestFile';
 
 const manifest = (): ProjectManifest => ({
   schema: 'aio.project/1',
@@ -129,12 +130,23 @@ describe('updateClasses', () => {
 
   it('checks issues.json when its turn comes, not when the call starts', async () => {
     const rust = manifest().classCatalogues[0]?.classes[1];
+    // an earlier save holds the turn until the issue is written, so the order never depends on
+    // how fast the disk is (under load the check could read issues.json half written)
+    let release!: () => void;
+    const held = new Promise<void>((r) => {
+      release = r;
+    });
+    const earlier = withManifest(dir, () => held);
     const p = updateClasses(dir, withClasses(rust ? [rust] : []));
+    // handled at once, so its rejection is never reported as unhandled while the write runs
+    const refused = expect(p).rejects.toThrow(/Class "crack" still has issues/);
     await writeFile(
       join(dir, 'issues.json'),
       JSON.stringify({ schema: 'aio.issues/1', issues: [{ id: 'i2', classId: 'crack' }] }),
     );
-    await expect(p).rejects.toThrow(/Class "crack" still has issues/);
+    release();
+    await earlier;
+    await refused;
   });
 
   it('refuses clearly when issues.json is damaged', async () => {
