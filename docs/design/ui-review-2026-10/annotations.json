@@ -1,0 +1,713 @@
+[
+  {
+    "file": "10-scene-default.png",
+    "title": "Default scene: the model is the smallest thing on screen",
+    "caption": "On open, the stage gets about 44% of the window width and a third of that is covered by the video window, a toast, a tooltip and labels. Mission promised the stage as the hero.",
+    "callouts": [
+      {
+        "x": 20.4,
+        "y": 55.2,
+        "w": 21.7,
+        "h": 23.3,
+        "n": 1,
+        "severity": "P1",
+        "note": "Video window floats open by default over a quarter of the stage. Open it on demand, or dock it as a strip above the timeline."
+      },
+      {
+        "x": 42.0,
+        "y": 61.7,
+        "w": 15.4,
+        "h": 13.4,
+        "n": 2,
+        "severity": "P2",
+        "note": "'Preparing survey surfaces' toast stacks on the video window. Move job progress to the status bar's jobs chip, and put toasts in one corner that never overlaps."
+      },
+      {
+        "x": 56.4,
+        "y": 76.1,
+        "w": 11.1,
+        "h": 3.6,
+        "n": 3,
+        "severity": "P3",
+        "note": "'Collapse the timeline' tooltip still showing after the pointer left. Hide tooltips on pointer leave and on focus change."
+      },
+      {
+        "x": 0.6,
+        "y": 13.0,
+        "w": 18.3,
+        "h": 4.6,
+        "n": 4,
+        "severity": "P1",
+        "note": "The loudest element in the app is 'Create maps from photos', which is an occasional job. Move it to Projects and the Processing panel. In the sidebar, show at most a quiet secondary action."
+      },
+      {
+        "x": 1.1,
+        "y": 49.9,
+        "w": 16.6,
+        "h": 11.7,
+        "n": 5,
+        "severity": "P2",
+        "note": "Hint card sits inside the dataset tree and pushes Models, Video and Photos below the fold. Show it as a one-line banner, or as a badge on the 'Every date' row."
+      },
+      {
+        "x": 53.3,
+        "y": 52.6,
+        "w": 10.4,
+        "h": 2.9,
+        "n": 6,
+        "severity": "P2",
+        "note": "'Pile 02 · 329.6 m³' label is clipped by the right panel edge. Clamp labels to the stage bounds."
+      },
+      {
+        "x": 64.6,
+        "y": 37.2,
+        "w": 34.5,
+        "h": 16.4,
+        "n": 7,
+        "severity": "good",
+        "note": "The Volumes table has right-aligned mono figures, signed and coloured deltas, and a material group row. This is precise survey UI."
+      }
+    ]
+  },
+  {
+    "file": "10-scene-default-1100x720.png",
+    "title": "At 1100 x 720 the stage is a 390 px slot",
+    "caption": "At the CI window size the side panels keep their full width, so the 3D view shrinks to a column. The video covers most of it and the Show control wraps.",
+    "callouts": [
+      {
+        "x": 22.7,
+        "y": 0.0,
+        "w": 35.1,
+        "h": 77.1,
+        "n": 1,
+        "severity": "P1",
+        "note": "The stage is 390 px wide, 35% of the window. Below about 1280 px, auto-collapse the dataset tree to the 52 px rail and narrow the right panel to 320 px."
+      },
+      {
+        "x": 23.7,
+        "y": 50.3,
+        "w": 25.2,
+        "h": 25.8,
+        "n": 2,
+        "severity": "P1",
+        "note": "The video window covers about 70% of the stage width. At this size, dock it into the bottom strip."
+      },
+      {
+        "x": 34.7,
+        "y": 9.4,
+        "w": 4.9,
+        "h": 5.0,
+        "n": 3,
+        "severity": "P2",
+        "note": "'Cut & fill' wraps onto two lines inside the segmented control. Use one line with an ellipsis, or move this control into the right panel."
+      },
+      {
+        "x": 48.6,
+        "y": 41.7,
+        "w": 9.2,
+        "h": 8.1,
+        "n": 4,
+        "severity": "P2",
+        "note": "Pile labels are cut by the right panel. Collapse them to dots when they are off-stage."
+      },
+      {
+        "x": 24.6,
+        "y": 59.2,
+        "w": 11.8,
+        "h": 4.5,
+        "n": 5,
+        "severity": "P3",
+        "note": "An 'Annotate 0:00.0' chip sits on top of the video picture."
+      }
+    ]
+  },
+  {
+    "file": "13-island-view.png",
+    "title": "The island drops over the top third of the stage",
+    "caption": "The notch opens into a 460 x 210 px tool panel over the model and pushes the Show control down. Its group tabs are icons only.",
+    "callouts": [
+      {
+        "x": 23.8,
+        "y": 0.0,
+        "w": 35.6,
+        "h": 26.3,
+        "n": 1,
+        "severity": "P1",
+        "note": "The open island covers the top of the model, which is where the user is aiming. Open it as a single 44 px toolbar row, with the large-icon grid only on request."
+      },
+      {
+        "x": 28.8,
+        "y": 5.6,
+        "w": 9.9,
+        "h": 3.1,
+        "n": 2,
+        "severity": "P2",
+        "note": "Five tool groups are icon-only (ruler, layers, cloud, terrain, video). Label them, or show the group name on hover as well as on focus."
+      },
+      {
+        "x": 20.4,
+        "y": 27.3,
+        "w": 13.9,
+        "h": 9.9,
+        "n": 3,
+        "severity": "P2",
+        "note": "The Show control (Photo, Elevation, Cut & fill) moves to make room and now collides with the model. Give stage overlays fixed slots."
+      },
+      {
+        "x": 36.3,
+        "y": 18.4,
+        "w": 5.9,
+        "h": 7.2,
+        "n": 4,
+        "severity": "good",
+        "note": "The toggled state on Timeline and Right panel is clear: a tinted fill with a border, not colour alone."
+      }
+    ]
+  },
+  {
+    "file": "13-island-annotate.png",
+    "title": "Active group label lies",
+    "caption": "Hovering the annotate group shows the annotate tools, but the label still reads 'View'.",
+    "callouts": [
+      {
+        "x": 24.1,
+        "y": 5.2,
+        "w": 4.6,
+        "h": 3.7,
+        "n": 1,
+        "severity": "P2",
+        "note": "The highlighted label says 'View' while the row shows Annotate tools. The labelled pill should follow the group being previewed."
+      },
+      {
+        "x": 30.8,
+        "y": 18.4,
+        "w": 6.0,
+        "h": 7.2,
+        "n": 2,
+        "severity": "P3",
+        "note": "'All tools' opens a third tool catalogue: see the Project tab and the armed-tool chips."
+      }
+    ]
+  },
+  {
+    "file": "15-wb-more-tabs.png",
+    "title": "Right panel tabs reshuffle themselves",
+    "caption": "Opening a tool group from the island adds a pinned tab, pushes Issues, Volumes and Changes into an overflow menu, and narrows the panel from 470 px to 360 px.",
+    "callouts": [
+      {
+        "x": 73.1,
+        "y": 5.0,
+        "w": 22.8,
+        "h": 4.5,
+        "n": 1,
+        "severity": "P1",
+        "note": "The tab set changes with each tool: 'Annotate' plus pin and close is inserted at the front. Keep the core tabs fixed and open tools in a sub-view inside a fixed Tools tab."
+      },
+      {
+        "x": 85.5,
+        "y": 8.9,
+        "w": 13.9,
+        "h": 12.4,
+        "n": 2,
+        "severity": "P1",
+        "note": "Issues and Volumes, two of the main reasons to open a project, are hidden behind '··· 3'."
+      },
+      {
+        "x": 73.1,
+        "y": 10.5,
+        "w": 7.7,
+        "h": 2.6,
+        "n": 3,
+        "severity": "P2",
+        "note": "The 'Selection' tab shows the project when nothing is selected. Show an empty state ('Click an asset, issue or pile') instead."
+      },
+      {
+        "x": 72.1,
+        "y": 0.0,
+        "w": 27.9,
+        "h": 100.0,
+        "n": 4,
+        "severity": "P2",
+        "note": "This panel is 360 px wide; on the Volumes tab it is 470 px. Fix one width that the user can resize and that is remembered."
+      }
+    ]
+  },
+  {
+    "file": "23-measure-distance-tool.png",
+    "title": "Armed tool: good feedback, a second tool catalogue",
+    "caption": "The tool card and the island chip show clearly which tool is armed. Below them, the grouped tool list turns into a cloud of 18 chips.",
+    "callouts": [
+      {
+        "x": 73.1,
+        "y": 13.6,
+        "w": 26.0,
+        "h": 22.6,
+        "n": 1,
+        "severity": "good",
+        "note": "The tool card states the step ('Click on the site'), shows live values, and has Undo, Stop and Save with their keys."
+      },
+      {
+        "x": 52.6,
+        "y": 0.6,
+        "w": 7.9,
+        "h": 3.2,
+        "n": 2,
+        "severity": "good",
+        "note": "The island shows the armed tool as a chip, so the state is visible on the stage itself."
+      },
+      {
+        "x": 73.1,
+        "y": 65.8,
+        "w": 26.0,
+        "h": 16.1,
+        "n": 3,
+        "severity": "P1",
+        "note": "The same tools now appear as 18 ungrouped chips, while before arming they were 10 accordions. Keep one tool list, grouped the same way everywhere."
+      },
+      {
+        "x": 73.8,
+        "y": 60.5,
+        "w": 24.7,
+        "h": 3.0,
+        "n": 4,
+        "severity": "P2",
+        "note": "'Autosave / Save' is about measurements but sits in the tool area. Move it next to the Measurements list."
+      }
+    ]
+  },
+  {
+    "file": "17-project-switch-menu.png",
+    "title": "Project switcher shows one letter per project",
+    "caption": "The customer column takes the width, so the project names, which are what you switch by, are cut to 'D...'.",
+    "callouts": [
+      {
+        "x": 1.1,
+        "y": 13.6,
+        "w": 4.2,
+        "h": 14.6,
+        "n": 1,
+        "severity": "P1",
+        "note": "Project names are cut to one letter. Put the name first at full width with the customer as a second line, or drop the customer column inside one customer."
+      },
+      {
+        "x": 1.1,
+        "y": 29.8,
+        "w": 17.8,
+        "h": 10.7,
+        "n": 2,
+        "severity": "P3",
+        "note": "'Audit trail' is a project-level page hidden in a switcher menu. It belongs in the project's own area, for example the Reports screen."
+      }
+    ]
+  },
+  {
+    "file": "18-command-palette-query.png",
+    "title": "Command palette does not know the tools",
+    "caption": "Typing 'measure' returns two exports, not Distance, Area, Volume or Elevation.",
+    "callouts": [
+      {
+        "x": 25.8,
+        "y": 15.6,
+        "w": 48.5,
+        "h": 9.2,
+        "n": 1,
+        "severity": "P1",
+        "note": "The palette does not index the scene tools. Add every tool and every right-panel tab as commands with their shortcuts, for example 'Distance  M'."
+      }
+    ]
+  },
+  {
+    "file": "30-issues.png",
+    "title": "Issues register: solid rows, heavy filter chrome",
+    "caption": "The rows are well built. The filters take two lines of eight controls before the first issue, and the list ends halfway down a mostly empty column.",
+    "callouts": [
+      {
+        "x": 20.4,
+        "y": 10.2,
+        "w": 46.3,
+        "h": 12.2,
+        "n": 1,
+        "severity": "P2",
+        "note": "Eight filter controls in two rows (severity chips, search, classes, status, dataset, Mine, My work, sort, grouping). Keep search, severity and status visible and put the rest under a Filters button."
+      },
+      {
+        "x": 19.5,
+        "y": 27.5,
+        "w": 48.0,
+        "h": 35.7,
+        "n": 2,
+        "severity": "good",
+        "note": "Mono codes, plain titles, class and evidence metadata, and severity badges with a number and colour: scannable."
+      },
+      {
+        "x": 22.1,
+        "y": 35.1,
+        "w": 2.2,
+        "h": 20.2,
+        "n": 3,
+        "severity": "P3",
+        "note": "F02 and F05 codes turn orange (draft?) with no legend. Show the state as a word or an icon as well as the colour."
+      },
+      {
+        "x": 0.6,
+        "y": 13.0,
+        "w": 18.3,
+        "h": 4.6,
+        "n": 4,
+        "severity": "P2",
+        "note": "'Create maps from photos' is still the primary button on the Issues screen."
+      }
+    ]
+  },
+  {
+    "file": "33-analytics-custom.png",
+    "title": "Status bar says Cloud AI while no AI can run",
+    "caption": "The footer shows a green 'Cloud AI' dot. The same screen says 'No AI can look at this' and 'Cannot run yet'.",
+    "callouts": [
+      {
+        "x": 6.6,
+        "y": 87.3,
+        "w": 5.5,
+        "h": 2.5,
+        "n": 1,
+        "severity": "P1",
+        "note": "Green 'Cloud AI' means 'allowed', not 'working'. Show 'AI off' or 'No key' in amber when nothing can run."
+      },
+      {
+        "x": 38.5,
+        "y": 13.6,
+        "w": 37.0,
+        "h": 5.2,
+        "n": 2,
+        "severity": "P2",
+        "note": "The 'No AI' notice takes the photo toolbar band. Show it once in the Ask AI button's disabled state or tooltip."
+      },
+      {
+        "x": 77.7,
+        "y": 60.5,
+        "w": 21.4,
+        "h": 3.7,
+        "n": 3,
+        "severity": "P2",
+        "note": "The 'Class: Pick at acc…' and 'Severity: Pick at a…' dropdowns are truncated. Stack them, or shorten the labels to 'Class' and 'Severity'."
+      },
+      {
+        "x": 77.8,
+        "y": 79.4,
+        "w": 21.4,
+        "h": 19.2,
+        "n": 4,
+        "severity": "good",
+        "note": "The blocked state says why it is blocked and links to the fix, and the Run button is disabled."
+      }
+    ]
+  },
+  {
+    "file": "36-globe.png",
+    "title": "Globe: decorative atmosphere, marker on its label",
+    "caption": "The starfield and blue rim glow belong to a consumer earth viewer. The cluster dot is drawn over its own text.",
+    "callouts": [
+      {
+        "x": 57.1,
+        "y": 50.7,
+        "w": 5.3,
+        "h": 3.1,
+        "n": 1,
+        "severity": "P2",
+        "note": "The cluster dot sits on its label, so '3 sites' reads '3•tes'. Offset the dot to the left of the text."
+      },
+      {
+        "x": 32.5,
+        "y": 9.9,
+        "w": 54.3,
+        "h": 85.6,
+        "n": 2,
+        "severity": "P3",
+        "note": "Starfield and glowing atmosphere are decoration ('decorative neon' anti-reference). Use a flat dark sphere with a hairline limb."
+      },
+      {
+        "x": 82.6,
+        "y": 45.9,
+        "w": 12.8,
+        "h": 2.9,
+        "n": 3,
+        "severity": "P3",
+        "note": "The 'Photo processing demo' label hangs off the globe limb. Hide labels for back-facing or limb sites."
+      }
+    ]
+  },
+  {
+    "file": "01-first-start.png",
+    "title": "Library: onboarding card owns the fold",
+    "caption": "A 520 px welcome card fills the screen, and it stays there after setup and while a project is open (37). The projects themselves start at the bottom edge.",
+    "callouts": [
+      {
+        "x": 21.4,
+        "y": 25.7,
+        "w": 52.7,
+        "h": 64.9,
+        "n": 1,
+        "severity": "P2",
+        "note": "The welcome card is permanent and pushes the project cards below the fold. Collapse it to a one-line 'Set up this workstation (2 of 4)' strip once a project exists."
+      },
+      {
+        "x": 21.4,
+        "y": 93.7,
+        "w": 52.7,
+        "h": 6.3,
+        "n": 2,
+        "severity": "P2",
+        "note": "The project cards, the main content of this screen, are only 50 px into view."
+      },
+      {
+        "x": 76.9,
+        "y": 5.0,
+        "w": 23.1,
+        "h": 24.8,
+        "n": 3,
+        "severity": "P3",
+        "note": "The data folder and map packs repeat what the welcome card says, in a third column. Show them once."
+      },
+      {
+        "x": 65.7,
+        "y": 19.6,
+        "w": 8.4,
+        "h": 3.5,
+        "n": 4,
+        "severity": "good",
+        "note": "New project is the single primary action, placed where expected."
+      }
+    ]
+  },
+  {
+    "file": "40-settings-06-processing-tools.png",
+    "title": "Settings: run-together text, odd toggle placement",
+    "caption": "The title and description of one setting run together, and its toggle sits below the text instead of at the right like every other toggle.",
+    "callouts": [
+      {
+        "x": 40.8,
+        "y": 53.1,
+        "w": 48.4,
+        "h": 2.4,
+        "n": 1,
+        "severity": "P3",
+        "note": "'…when a project opensRuns in the background…' has no space. Put the description on its own line, as elsewhere."
+      },
+      {
+        "x": 40.8,
+        "y": 55.3,
+        "w": 2.4,
+        "h": 2.6,
+        "n": 2,
+        "severity": "P3",
+        "note": "The toggle sits under the text. Align it right, as for 'Graphics card' just above."
+      },
+      {
+        "x": 84.8,
+        "y": 22.8,
+        "w": 11.2,
+        "h": 3.0,
+        "n": 3,
+        "severity": "good",
+        "note": "One primary action per card, with the cost stated (234 MB, 1.0 GB installed) and the licence linked."
+      }
+    ]
+  },
+  {
+    "file": "52-compare-dates-1100x720.png",
+    "title": "Compare dates at 1100 x 720 breaks",
+    "caption": "Two 190 px panes, a clipped island and overlapping chips. The Changes tab next to it offers six run buttons of equal weight.",
+    "callouts": [
+      {
+        "x": 37.8,
+        "y": 0.0,
+        "w": 5.0,
+        "h": 5.0,
+        "n": 1,
+        "severity": "P1",
+        "note": "The island is clipped off the top-left of the stage. Centre it over the full stage, not over one pane."
+      },
+      {
+        "x": 23.2,
+        "y": 16.8,
+        "w": 16.5,
+        "h": 4.4,
+        "n": 2,
+        "severity": "P2",
+        "note": "The pane header '3D view' is cut to '3…'. Drop the view name or the date at this width."
+      },
+      {
+        "x": 35.8,
+        "y": 11.8,
+        "w": 9.0,
+        "h": 4.7,
+        "n": 3,
+        "severity": "P2",
+        "note": "The 'Can't line up' chip floats over both panes with no explanation. Attach it to the divider and add an action ('Align dates…')."
+      },
+      {
+        "x": 58.9,
+        "y": 26.2,
+        "w": 39.7,
+        "h": 7.4,
+        "n": 4,
+        "severity": "P2",
+        "note": "Six run buttons of similar weight. Keep 'Find changes' as the one primary action and put the per-kind runs in its split menu."
+      },
+      {
+        "x": 43.9,
+        "y": 5.5,
+        "w": 9.4,
+        "h": 2.2,
+        "n": 5,
+        "severity": "P3",
+        "note": "The 'How compare works' link is drawn over the stage under the island."
+      }
+    ]
+  },
+  {
+    "file": "60-road-scene.png",
+    "title": "Road project opens on an empty black map",
+    "caption": "The fit leaves the 300 m corridor as a strip in the top-left corner. The chainage strip below is the best idea on the screen.",
+    "callouts": [
+      {
+        "x": 22.6,
+        "y": 24.4,
+        "w": 23.5,
+        "h": 8.3,
+        "n": 1,
+        "severity": "P1",
+        "note": "Fit to data on open: the road should fill the stage width, rotated along the corridor if needed."
+      },
+      {
+        "x": 19.6,
+        "y": 33.5,
+        "w": 52.6,
+        "h": 52.1,
+        "n": 2,
+        "severity": "P2",
+        "note": "About 75% of the stage is black. Without a map pack, use a subtle grid and the ortho extent, not a void."
+      },
+      {
+        "x": 73.1,
+        "y": 19.6,
+        "w": 20.5,
+        "h": 15.9,
+        "n": 3,
+        "severity": "P2",
+        "note": "Fourteen filter chips (3 severities and 11 defect types) before the list. Make severity the chips and defect type a dropdown."
+      },
+      {
+        "x": 19.6,
+        "y": 86.8,
+        "w": 52.6,
+        "h": 12.4,
+        "n": 4,
+        "severity": "good",
+        "note": "The chainage histogram by severity, with click to go and drag to filter, is a domain-specific control that earns its place."
+      }
+    ]
+  },
+  {
+    "file": "71-processing-panel.png",
+    "title": "Processing panel: clear blocked state, risky button row",
+    "caption": "The panel states why processing cannot run and offers the fix. 'Create maps from photos' now appears twice on screen, and 'Delete run' sits beside benign actions.",
+    "callouts": [
+      {
+        "x": 70.2,
+        "y": 20.1,
+        "w": 28.7,
+        "h": 13.2,
+        "n": 1,
+        "severity": "good",
+        "note": "The blocked state gives the reason and the fix ('Update processing tools') in one place."
+      },
+      {
+        "x": 70.2,
+        "y": 14.9,
+        "w": 28.7,
+        "h": 3.6,
+        "n": 2,
+        "severity": "P2",
+        "note": "A second 'Create maps from photos' button, also in the sidebar at the top left. Keep this one and remove the sidebar one."
+      },
+      {
+        "x": 80.5,
+        "y": 56.2,
+        "w": 5.6,
+        "h": 3.1,
+        "n": 3,
+        "severity": "P2",
+        "note": "'Delete run' is the only outlined button in a row of text buttons, next to 'Delete work files'. Move destructive actions into a ··· menu with confirmation."
+      },
+      {
+        "x": 62.4,
+        "y": 21.1,
+        "w": 6.8,
+        "h": 3.7,
+        "n": 4,
+        "severity": "P3",
+        "note": "The panel overlays the map and cuts the 'Streets' control at its edge."
+      }
+    ]
+  },
+  {
+    "file": "16-context-menu-layer.png",
+    "title": "Layer right-click menu: 15 items",
+    "caption": "Every action is reachable, as the founder asked, but the menu is as tall as the window.",
+    "callouts": [
+      {
+        "x": 9.9,
+        "y": 24.6,
+        "w": 22.1,
+        "h": 74.4,
+        "n": 1,
+        "severity": "P2",
+        "note": "Fifteen items in five groups run to the window edge. Keep Hide, Zoom to, Rename, File under ▸ and Delete at the top level and move the georeferencing actions into a 'Position ▸' submenu."
+      },
+      {
+        "x": 10.8,
+        "y": 62.7,
+        "w": 20.9,
+        "h": 11.5,
+        "n": 2,
+        "severity": "P3",
+        "note": "The date options take three rows. Make 'File under' a submenu."
+      }
+    ]
+  },
+  {
+    "file": "11-left-sidebar-collapsed.png",
+    "title": "Collapsed rail gives the model room",
+    "caption": "With the left sidebar collapsed, the stage gains about 200 px and the scene reads as a workspace. This should be the default below 1440 px.",
+    "callouts": [
+      {
+        "x": 4.0,
+        "y": 0.0,
+        "w": 59.6,
+        "h": 80.0,
+        "n": 1,
+        "severity": "good",
+        "note": "The stage at 770 px wide: the model, labels and piles fit without clipping."
+      },
+      {
+        "x": 0.6,
+        "y": 13.0,
+        "w": 2.8,
+        "h": 4.6,
+        "n": 2,
+        "severity": "P3",
+        "note": "The teal 'Create maps' icon stays the brightest thing in the rail."
+      },
+      {
+        "x": 34.2,
+        "y": 68.5,
+        "w": 23.2,
+        "h": 6.6,
+        "n": 3,
+        "severity": "P3",
+        "note": "The hint card floats mid-stage over the model. Anchor hints to the bottom-left status slot."
+      }
+    ]
+  }
+]
