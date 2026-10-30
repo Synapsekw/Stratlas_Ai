@@ -182,7 +182,9 @@ export function templateNarrative(
       f.qa
         ? f.qa.held.length + f.qa.passed.length + f.qa.released.length === 0
           ? t('narr.method.qaNoVerdict')
-          : t('narr.method.qa')
+          : f.qa.withCheckpoints > 0
+            ? t('narr.method.qa')
+            : t('narr.method.qaNoCheckpoints')
         : v && v.piles > 0
           ? t('narr.method.noQa')
           : null,

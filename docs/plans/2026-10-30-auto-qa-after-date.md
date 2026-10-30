@@ -28,9 +28,13 @@ when a project opens".
   date's surface gets no compute; within one open each step is tried once, and a new prepare of a
   date clears its steps from the tried set (a re-prepared date is checked again). A compute that
   did not start because a person's compute was running is not counted as tried.
-- The QA compares with the nearest earlier date that has a prepared surface (as `runQa` does) and
-  passes the site's checkpoints the way the panel offers them: the control file of the newest
-  processing run that has points. The change pair is always (date before, new date).
+- The QA compares with the nearest earlier date that has a prepared surface (as `runQa` does). The
+  change pair is always (date before, new date).
+- Decision (31 Oct, parent session): the automatic run uses **no checkpoints**. A processing run's
+  GCPs built the surface, so they are not independent checkpoints and would overstate accuracy.
+  The report's method line says so: checks without checkpoints were "measured against the previous
+  survey without checkpoints"; a hand run that had checkpoints keeps the checkpoints wording
+  (`NarrativeFacts.qa.withCheckpoints`).
 - Known limit: a date inserted later with an earlier date than existing ones gets its own pair
   (date before, inserted date) but not the pair (inserted date, the date after it), which only a
   person's compute makes.

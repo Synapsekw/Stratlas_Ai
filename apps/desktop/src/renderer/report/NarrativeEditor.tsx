@@ -204,7 +204,12 @@ export function NarrativeEditor({ onClose }: { onClose: () => void }) {
   // the survey QA verdicts the report's narrative tells (holds named)
   const qaFiles = useQa((s) => s.qa);
   const qa = useMemo(
-    () => Object.values(qaFiles).map((f) => ({ capture: f.capture, status: f.status })),
+    () =>
+      Object.values(qaFiles).map((f) => ({
+        capture: f.capture,
+        status: f.status,
+        checkpoints: f.checkpoints !== undefined,
+      })),
     [qaFiles],
   );
   const [file, setFile] = useState<NarrativeFile | null>(null);

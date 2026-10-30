@@ -27,7 +27,9 @@ export async function rerunProducer(
   // store runs them. Nothing else is run blindly.
   const inApp = (Object.values(IN_APP_PRODUCERS) as string[]).includes(name);
   if (ctx && inApp) {
-    await changeStore.getState().compute();
+    // null: another comparison holds the store's single run, so this one did not start
+    const outcome = await changeStore.getState().compute();
+    if (outcome === null) return t('change.busyRun');
     return changeStore.getState().error;
   }
   return t('lineUp.rerun.unavailable');

@@ -4,9 +4,10 @@
  * prepared that has an earlier date gets, quietly and one step at a time:
  *
  * 1. the site-level survey QA (`survey.qa` against the nearest earlier survey with a prepared
- *    surface, at the site's QA level, as the QA panel's own run, with the site's checkpoints when
- *    it has them), a quiet job listed in Jobs with Cancel; a failed check holds the survey as a
- *    hand run does, and at level Off it measures the change without a verdict;
+ *    surface, at the site's QA level, without checkpoints: a processing run's GCPs built the
+ *    surface, so they are not independent checks), a quiet job listed in Jobs with Cancel; a failed
+ *    check holds the survey as a hand run does, and at level Off it measures the change without a
+ *    verdict;
  * 2. the in-app change compute for the pair (previous date, new date), shown in the Changes panel
  *    with its Cancel; its verdicts stay proposals.
  *
@@ -38,9 +39,6 @@ export type NewDateStep =
 /** The key a step is remembered by within one open. */
 export const stepKey = (s: NewDateStep): string =>
   s.kind === 'qa' ? `qa:${s.capture}` : `change:${s.from}>${s.to}`;
-
-/** The checkpoints of a QA run: a CSV or the GCP file of a processing run. */
-export type QaCheckpoints = NonNullable<SurveyQaParams['checkpoints']>;
 
 const RANK: Record<string, number> = { dsm: 1, cloud: 2, dtm: 3 };
 
@@ -141,8 +139,6 @@ export interface NewDatesWatchDeps {
   readPairs(projectId: string): Promise<{ from: string; to: string; createdAt: string }[] | null>;
   /** The site's QA level (`survey/settings.json`). */
   qaLevel(projectId: string): Promise<QaLevel>;
-  /** The site's checkpoints, as the QA panel offers them; null without any. */
-  checkpoints?(projectId: string): Promise<QaCheckpoints | null>;
   /** Start the QA job quietly (`jobs.startQuiet`). */
   startQa(req: {
     pipeline: 'survey.qa';
@@ -257,12 +253,11 @@ export function connectNewDatesWatch(deps: NewDatesWatchDeps): () => void {
       if (!busy) break;
       await wait(IDLE_POLL_MS);
     }
-    const [surfaces, checked, pairs, level, checkpoints] = await Promise.all([
+    const [surfaces, checked, pairs, level] = await Promise.all([
       deps.readSurfaces(mine.id),
       deps.readChecked(mine.id),
       deps.readPairs(mine.id),
       deps.qaLevel(mine.id).catch((): QaLevel => 'off'),
-      deps.checkpoints ? deps.checkpoints(mine.id).catch(() => null) : Promise.resolve(null),
     ]);
     if (!still()) return;
     const now = current();
@@ -291,7 +286,6 @@ export function connectNewDatesWatch(deps: NewDatesWatchDeps): () => void {
           capture: step.capture,
           surface: step.surface,
           level,
-          ...(checkpoints ? { checkpoints } : {}),
           previous: step.previous,
         },
       });
@@ -349,6 +343,8 @@ export function connectNewDatesWatch(deps: NewDatesWatchDeps): () => void {
 
   const unWorkspace = deps.workspace.subscribe((s, prev) => {
     if (s.project?.id === prev.project?.id) return;
+    // the project closed or switched: the chain's compute in flight is of no use any more
+    if (computing) deps.cancelChange?.(computing);
     giveUp();
     open = s.project
       ? { id: s.project.id, fresh: new Set(), tried: new Set(), cancelled: false }

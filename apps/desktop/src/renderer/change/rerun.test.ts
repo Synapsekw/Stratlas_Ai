@@ -68,6 +68,13 @@ describe('run again', () => {
     expect(compute).toHaveBeenCalledTimes(1);
     expect(await rerunProducer('raster', null)).toBe('This comparison cannot be run again here.');
   });
+
+  it('says another comparison is running when the in-app one did not start', async () => {
+    vi.spyOn(changeStore.getState(), 'compute').mockResolvedValue(null);
+    expect(await rerunProducer('issues', ctx)).toBe(
+      'Another comparison is running. Run this one again when it ends.',
+    );
+  });
 });
 
 describe('rerunScoped', () => {

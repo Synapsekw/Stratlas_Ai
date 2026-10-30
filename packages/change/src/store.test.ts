@@ -143,6 +143,39 @@ describe('the Changes store', () => {
     expect(await s.getState().compute(['issue'], { from: 'd2', to: 'd3' })).toBe('failed');
   });
 
+  it('leaves the next project alone when a compute ends after a project switch', async () => {
+    const { invoke } = fakeBridge();
+    const s = createChangeStore();
+    await s.getState().load('p');
+    const releases: ((v: { ok: boolean; ids?: string[] }) => void)[] = [];
+    invoke.mockImplementation((channel: string) =>
+      channel === 'change:compute'
+        ? new Promise<{ ok: boolean; ids?: string[] }>((r) => {
+            releases.push(r);
+          })
+        : Promise.resolve({ ok: true, sets: [], problems: [], readOnly: false }),
+    );
+    const old = s.getState().compute(['issue'], { from: 'd1', to: 'd2' });
+    await Promise.resolve();
+    // the project switches; the person starts a compute in the new one
+    await s.getState().load('q');
+    s.getState().setPair({ from: 'e1', to: 'e2' });
+    const mine = s.getState().compute(['issue']);
+    await Promise.resolve();
+    const run = s.getState().run;
+    expect(run?.pair).toEqual({ from: 'e1', to: 'e2' });
+    invoke.mockClear();
+    releases[0]?.({ ok: true, ids: ['d1-d2-issues'] });
+    expect(await old).toBe('done');
+    // the old run neither cleared the new run nor loaded the old project's sets
+    expect(s.getState().projectId).toBe('q');
+    expect(s.getState().run).toEqual(run);
+    expect(invoke).not.toHaveBeenCalledWith('change:list', { projectId: 'p' });
+    releases[1]?.({ ok: true, ids: [] });
+    expect(await mine).toBe('done');
+    expect(s.getState().run).toBeNull();
+  });
+
   it("leaves the panel's refused run and error alone when it computes another pair", async () => {
     const { invoke } = fakeBridge();
     const s = createChangeStore();

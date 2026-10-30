@@ -32,8 +32,11 @@ export interface HouseInput extends ExportContext {
   audit?: AuditSummary | null | undefined;
   /** M10: the accuracy of the project's latest finished processing run (photogrammetry). */
   processing?: ProcessingSummary | null | undefined;
-  /** The survey QA verdicts (`survey/qa/<capture>.json`), one per checked date; none: unchecked. */
-  qa?: readonly { capture: string; status: QaStatus }[] | undefined;
+  /**
+   * The survey QA verdicts (`survey/qa/<capture>.json`), one per checked date, and whether the check
+   * had checkpoints (an automatic run after a new date has none); none: unchecked.
+   */
+  qa?: readonly { capture: string; status: QaStatus; checkpoints?: boolean }[] | undefined;
   /**
    * M11: the survey sections that have something to print (`SURVEY_SECTIONS`, and `RUN_SECTIONS`
    * for a project with haul-road or hydrology runs).
@@ -238,7 +241,7 @@ export interface HouseModel {
   /** M10: the latest processing run's accuracy; null for a project without one. */
   processing: ProcessingSummary | null;
   /** The survey QA verdicts by date, oldest first; empty when no date was checked. */
-  qa: { label: string; date: string; status: QaStatus }[];
+  qa: { label: string; date: string; status: QaStatus; checkpoints: boolean }[];
 }
 
 /** What kind of report to print: the builder type, else what the project holds. */
@@ -536,7 +539,16 @@ export function houseReportModel(input: HouseInput): HouseModel {
       .sort((a, b) => a.date.localeCompare(b.date))
       .flatMap((c) => {
         const q = input.qa?.find((x) => x.capture === c.id);
-        return q ? [{ label: noDashes(c.label), date: c.date, status: q.status }] : [];
+        return q
+          ? [
+              {
+                label: noDashes(c.label),
+                date: c.date,
+                status: q.status,
+                checkpoints: q.checkpoints === true,
+              },
+            ]
+          : [];
       }),
   };
 }
@@ -597,6 +609,8 @@ export interface NarrativeFacts {
     passed: { label: string; date: string }[];
     released: { label: string; date: string }[];
     unchecked: number;
+    /** Checked dates whose check had checkpoints (the rest: against the previous survey only). */
+    withCheckpoints: number;
   } | null;
   road: {
     lengthKm: number;
@@ -674,6 +688,7 @@ export function narrativeFacts(h: HouseModel): NarrativeFacts {
             passed: datesWith(h.qa, (q) => q.status === 'pass'),
             released: datesWith(h.qa, (q) => q.status === 'released'),
             unchecked: h.qa.filter((q) => q.status === 'unchecked').length,
+            withCheckpoints: h.qa.filter((q) => q.checkpoints).length,
           },
     road: road
       ? {

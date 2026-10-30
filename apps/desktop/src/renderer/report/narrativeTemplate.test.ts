@@ -104,7 +104,7 @@ describe('the survey sentences of the narrative', () => {
     );
   });
 
-  const none = { held: [], passed: [], released: [], unchecked: 0 };
+  const none = { held: [], passed: [], released: [], unchecked: 0, withCheckpoints: 0 };
   const jan = { label: 'Jan', date: '2026-01-31' };
   const feb = { label: 'Feb', date: '2026-02-28' };
 
@@ -159,7 +159,10 @@ describe('templateNarrative', () => {
     expect(n.summary).toContain('3 stockpiles are measured.');
     expect(n.summary).toContain('The largest move was Sand, down 70 m³.');
     expect(n.summary).toContain('is on hold after its quality check');
-    expect(n.method).toContain('compared with the survey before it');
+    // an automatic check has no checkpoints, and says so
+    expect(n.method).toContain(
+      'Each checked survey was measured against the previous survey without checkpoints',
+    );
     expect(n.findings).toBe('No issues were recorded.');
     for (const text of Object.values(n)) expect(text).not.toMatch(/[–—]|\[/);
   });
@@ -169,9 +172,25 @@ describe('templateNarrative', () => {
     expect(n.method).toContain('The surveys have not been quality checked in the app.');
   });
 
+  it('keeps the checkpoints wording for a hand run that had them', () => {
+    const feb = { label: 'Feb', date: '2026-02-28' };
+    const n = templateNarrative(
+      facts({
+        volumes: volumes(),
+        qa: { held: [], passed: [feb], released: [], unchecked: 0, withCheckpoints: 1 },
+      }),
+      { todo: false },
+    );
+    expect(n.method).toContain('and against checkpoints where given');
+    expect(n.method).not.toContain('without checkpoints');
+  });
+
   it('says the checks gave no verdict when every one was measured without one', () => {
     const n = templateNarrative(
-      facts({ volumes: volumes(), qa: { held: [], passed: [], released: [], unchecked: 2 } }),
+      facts({
+        volumes: volumes(),
+        qa: { held: [], passed: [], released: [], unchecked: 2, withCheckpoints: 0 },
+      }),
       { todo: false },
     );
     expect(n.method).toContain('measured without a verdict, as the site has no quality level set');

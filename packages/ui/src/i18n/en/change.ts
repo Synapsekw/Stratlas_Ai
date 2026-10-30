@@ -40,6 +40,8 @@ export const enChange = {
     'The surveys of {dates} failed their quality check and were released by a person with a note.',
   'narr.method.qa':
     'Each checked survey was compared with the survey before it at the site quality level, and against checkpoints where given.',
+  'narr.method.qaNoCheckpoints':
+    'Each checked survey was measured against the previous survey without checkpoints, at the site quality level.',
   'narr.method.qaNoVerdict':
     'Each checked survey was compared with the survey before it and measured without a verdict, as the site has no quality level set.',
   'narr.method.noQa': 'The surveys have not been quality checked in the app.',
@@ -70,6 +72,7 @@ export const enChange = {
   'change.run': 'Compare issues, detections and map layers',
   'change.runShort': 'Find changes',
   'change.running': 'Finding changes: {phase}',
+  'change.busyRun': 'Another comparison is running. Run this one again when it ends.',
   'change.runningOther': 'Finding what changed on a new survey date',
   'change.cancel': 'Cancel',
   'change.readOnly': 'Read only',

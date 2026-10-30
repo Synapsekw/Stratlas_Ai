@@ -150,7 +150,6 @@ function setup(
     pairs?: { from: string; to: string; createdAt: string }[];
     busy?: () => boolean;
     change?: () => Promise<Outcome>;
-    checkpoints?: { gcp: string } | null;
     wait?: (ms: number) => Promise<void>;
     readSurfaces?: NewDatesWatchDeps['readSurfaces'];
   } = {},
@@ -188,7 +187,6 @@ function setup(
     readChecked: () => Promise.resolve(data.checked),
     readPairs: () => Promise.resolve(data.pairs),
     qaLevel: () => Promise.resolve(opts.level ?? 'moderate'),
-    checkpoints: () => Promise.resolve(opts.checkpoints ?? null),
     startQa,
     computeChange,
     cancelChange,
@@ -246,7 +244,7 @@ function setup(
 
 describe('connectNewDatesWatch', () => {
   it('runs the QA job then the change compute after a new date is prepared', async () => {
-    const w = setup({ level: 'strict', checkpoints: { gcp: 'photogrammetry/r1/gcp.json' } });
+    const w = setup({ level: 'strict' });
     w.open();
     w.prepared(['d3']);
     await flush();
@@ -258,7 +256,6 @@ describe('connectNewDatesWatch', () => {
         capture: 'd3',
         surface: 'dsm-d3',
         level: 'strict',
-        checkpoints: { gcp: 'photogrammetry/r1/gcp.json' },
         previous: { capture: 'd2', surface: 'dsm-d2' },
       },
     });
@@ -339,6 +336,7 @@ describe('connectNewDatesWatch', () => {
     w.prepared(['d3']);
     await flush();
     expect(w.startQa.mock.calls[0]?.[0].params).toMatchObject({ capture: 'd3', level: 'off' });
+    // never checkpoints: a processing run's GCPs built the surface
     expect(w.startQa.mock.calls[0]?.[0].params).not.toHaveProperty('checkpoints');
   });
 
@@ -433,6 +431,26 @@ describe('connectNewDatesWatch', () => {
     w.endQa('done');
     await flush();
     expect(w.computeChange).not.toHaveBeenCalled();
+    expect(w.refresh).not.toHaveBeenCalled();
+  });
+
+  it('cancels its compute in flight when the project switches', async () => {
+    let finish: (o: Outcome) => void = () => undefined;
+    const w = setup({
+      python: false,
+      change: () =>
+        new Promise<Outcome>((r) => {
+          finish = r;
+        }),
+    });
+    w.open();
+    w.prepared(['d3']);
+    await flush();
+    expect(w.computeChange).toHaveBeenCalledTimes(1);
+    w.open(CAPTURES, 'other');
+    expect(w.cancelChange).toHaveBeenCalledWith({ from: 'd2', to: 'd3' });
+    finish('cancelled');
+    await flush();
     expect(w.refresh).not.toHaveBeenCalled();
   });
 

@@ -107,7 +107,8 @@ export interface ChangeActions {
     kinds?: readonly ChangeKind[],
     pair?: { from: string; to: string },
   ): Promise<ChangeOutcome | null>;
-  cancel(): Promise<void>;
+  /** Cancel the running computation, or the one with `jobId` (still running after a project switch). */
+  cancel(jobId?: string): Promise<void>;
   /** Save a person's review of one item (null clears it). */
   review(sel: SelectedItem, review: ChangeReview | null): Promise<boolean>;
   /** Replace one set and save it. */
@@ -244,15 +245,18 @@ export function createChangeStore() {
         off?.();
         const stopped = cancelled.delete(jobId);
         const outcome: ChangeOutcome = r.ok ? 'done' : stopped ? 'cancelled' : 'failed';
+        // the project changed meanwhile (its store was reset, maybe a new run started): this run
+        // no longer owns the store's state
+        if (get().projectId !== projectId || get().run?.jobId !== jobId) return outcome;
         bump({ run: null, ...(r.ok || !panel ? {} : { error: r.error }) });
         if (r.ok) await get().load(projectId);
         return outcome;
       },
-      async cancel() {
-        const run = get().run;
-        if (!run) return;
-        cancelled.add(run.jobId);
-        await call('change:cancel', { jobId: run.jobId });
+      async cancel(given) {
+        const jobId = given ?? get().run?.jobId;
+        if (!jobId) return;
+        cancelled.add(jobId);
+        await call('change:cancel', { jobId });
       },
       async review(sel, review) {
         const s = get().sets[sel.setId];

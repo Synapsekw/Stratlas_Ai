@@ -248,7 +248,15 @@ async function run(): Promise<void> {
   ]);
   const qa = qaRaw.flatMap((raw) => {
     const r = raw === null ? null : SurveyQa.safeParse(raw);
-    return r?.success ? [{ capture: r.data.capture, status: r.data.status }] : [];
+    return r?.success
+      ? [
+          {
+            capture: r.data.capture,
+            status: r.data.status,
+            checkpoints: r.data.checkpoints !== undefined,
+          },
+        ]
+      : [];
   });
   const narrative = parsed(NarrativeFile, narrativeRaw, 'report/narrative.json');
   const signoff = parseSignOff(params.get('signoff'));

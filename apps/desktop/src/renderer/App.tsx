@@ -475,6 +475,8 @@ export function App() {
     });
     // a new survey date's surface is ready: its survey QA and the change compute against the date
     // before, quietly and one at a time (Settings.autoCheckNewDates, absent means on)
+    /** The change compute the checks after a new date are running, by job id. */
+    let chainChange: { jobId: string; pair: { from: string; to: string } } | null = null;
     const stopNewDates = connectNewDatesWatch({
       workspace,
       jobs,
@@ -504,28 +506,24 @@ export function App() {
         const r = await bridge.call('survey:readSettings', { projectId });
         return r.ok && r.value.ok ? r.value.settings.qa.level : 'off';
       },
-      // the site's checkpoints as the QA panel offers them: the control file of the newest
-      // processing run that has points (its check points, else its control points)
-      checkpoints: async (projectId) => {
-        const r = await bridge.call('photo:runs', { projectId });
-        if (!r.ok || !r.value.ok) return null;
-        const runs = [...r.value.runs].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-        for (const run of runs) {
-          const g = await bridge.call('photo:readGcp', { projectId, run: run.id });
-          if (g.ok && g.value.ok && g.value.gcp?.points.some((p) => !p.disabled))
-            return { gcp: `photogrammetry/${run.id}/gcp.json` };
-        }
-        return null;
-      },
       startQa: (req) => jobs.getState().startQuiet(req),
       computeChange: async (projectId, pair) => {
         const cs = changeStore.getState();
         if (cs.projectId !== projectId) await cs.load(projectId);
         if (changeStore.getState().projectId !== projectId) return 'failed';
-        return changeStore.getState().compute(undefined, pair);
+        const running = changeStore.getState().compute(undefined, pair);
+        // the run starts at once: its job id, for a cancel after a project switch
+        const run = changeStore.getState().run;
+        chainChange = run && samePair(run.pair, pair) ? { jobId: run.jobId, pair } : null;
+        try {
+          return await running;
+        } finally {
+          chainChange = null;
+        }
       },
       cancelChange: (pair) => {
-        if (samePair(changeStore.getState().run?.pair, pair)) void changeStore.getState().cancel();
+        if (chainChange && samePair(chainChange.pair, pair))
+          void changeStore.getState().cancel(chainChange.jobId);
       },
       refresh: async (projectId) => {
         if (qaStore.getState().projectId === projectId) await refreshQa();

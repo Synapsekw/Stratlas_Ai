@@ -261,7 +261,7 @@ describe('houseReportModel', () => {
       now,
       qa: [
         { capture: 'c3', status: 'hold' },
-        { capture: 'c1', status: 'pass' },
+        { capture: 'c1', status: 'pass', checkpoints: true },
         { capture: 'c2', status: 'released' },
       ],
     });
@@ -270,6 +270,7 @@ describe('houseReportModel', () => {
       passed: [{ label: 'Survey Jan', date: '2026-01-02' }],
       released: [{ label: 'Survey Feb', date: '2026-02-02' }],
       unchecked: 0,
+      withCheckpoints: 1,
     });
   });
 
