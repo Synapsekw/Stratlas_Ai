@@ -10,7 +10,7 @@
  * model's limit. Never the setup's sources (photo paths), EXIF, or anything else.
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { EngineerProposal, type EngineerSetup, type ComponentObservation } from '@aio/schema';
 import {
@@ -50,6 +50,7 @@ import {
 } from './errors';
 import { estimateCostUsd as priceUsd } from './pricing';
 import type { ProviderRegistry } from './providers';
+import { renameOver } from './renameOver';
 import { missingKeyMessage, PROVIDER_LABELS, type ModelRoute } from './routes';
 
 /** Maximum AI wall time of one engineer call; the caller enforces the remaining run allowance. */
@@ -1230,7 +1231,7 @@ export function fileEngineerCache(dir: string): EngineerHost['cache'] {
       const tmp = `${file}.tmp-${randomUUID()}`;
       try {
         await writeFile(tmp, JSON.stringify({ promptVersion: PROMPT_VERSION, proposal }), 'utf8');
-        await rename(tmp, file);
+        await renameOver(tmp, file);
       } catch (e) {
         await rm(tmp, { force: true });
         throw e;

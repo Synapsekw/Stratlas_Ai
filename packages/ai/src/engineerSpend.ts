@@ -6,10 +6,11 @@
  * process only. Written atomically (temporary file, then rename).
  */
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DETAIL_BUDGETS, type Detail } from '@aio/schema';
 import { z } from 'zod';
+import { renameOver } from './renameOver';
 
 export const SPEND_SCHEMA = 'aio.engineer-spend/1';
 
@@ -103,7 +104,7 @@ export async function writeRunSpend(runDir: string, spend: RunSpend): Promise<vo
   const tmp = `${file}.tmp-${randomUUID()}`;
   try {
     await writeFile(tmp, JSON.stringify({ schema: SPEND_SCHEMA, ...spend }), 'utf8');
-    await rename(tmp, file);
+    await renameOver(tmp, file);
   } catch (e) {
     await rm(tmp, { force: true });
     throw e;

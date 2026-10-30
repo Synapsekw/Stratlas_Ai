@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { EngineerCall } from './engineer';
+import { renameOver } from './renameOver';
 import type { ModelRoute } from './routes';
 
 /** Exact evidence pool, settings and effective source frame; generated comparisons may evolve. */
@@ -52,6 +53,11 @@ export async function writeApproval(dir: string, approval: RunApproval): Promise
   await mkdir(join(dir, 'ai'), { recursive: true });
   const path = join(dir, 'ai', 'approval.json');
   const tmp = `${path}.${randomUUID()}.tmp`;
-  await writeFile(tmp, JSON.stringify(approval), 'utf8');
-  await rename(tmp, path);
+  try {
+    await writeFile(tmp, JSON.stringify(approval), 'utf8');
+    await renameOver(tmp, path);
+  } catch (e) {
+    await rm(tmp, { force: true });
+    throw e;
+  }
 }
