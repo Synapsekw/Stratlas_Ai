@@ -303,6 +303,8 @@ describe('agent session conversation', () => {
     });
     await flush();
     expect(t.session.getState().steps.c1?.result).toBe('{"layer":"m1","visible":false}');
+    // main names the provider that answered the step
+    t.emit({ type: 'usage', runId: 'id1', inputTokens: 1, outputTokens: 1, provider: 'openai' });
     t.emit({ type: 'text', runId: 'id1', delta: 'Hidden.' });
     t.emit({ type: 'done', runId: 'id1' });
     await t.session.send('Show it again');
@@ -347,15 +349,45 @@ describe('agent session conversation', () => {
       });
     call('c1');
     call('c2');
-    t.emit({ type: 'usage', runId: 'id1', inputTokens: 1, outputTokens: 1 });
+    t.emit({ type: 'usage', runId: 'id1', inputTokens: 1, outputTokens: 1, provider: 'openai' });
     call('c3');
     await flush();
-    const steps = t.session.getState().steps;
+    let steps = t.session.getState().steps;
+    // the step still running has no provider until main reports it
     expect([steps.c1, steps.c2, steps.c3].map((s) => [s?.provider, s?.batch])).toEqual([
       ['openai', 0],
       ['openai', 0],
-      ['openai', 1],
+      [undefined, 1],
     ]);
+    t.emit({ type: 'usage', runId: 'id1', inputTokens: 1, outputTokens: 1, provider: 'google' });
+    steps = t.session.getState().steps;
+    expect(steps.c3?.provider).toBe('google');
+  });
+
+  it('labels a step with the provider main used, not the route the panel expected (AI-6)', async () => {
+    // the panel's route is a cloud one (openai), but main answered on the local model
+    const t = setup();
+    await t.session.refresh();
+    await t.session.send('where is it');
+    t.emit({
+      type: 'tool-call',
+      runId: 'id1',
+      callId: 'c1',
+      name: 'set_layer_visible',
+      input: { layerId: 'm1', visible: false },
+      risk: 'navigate',
+    });
+    await flush();
+    t.emit({ type: 'usage', runId: 'id1', inputTokens: 1, outputTokens: 1, provider: 'local' });
+    t.emit({ type: 'text', runId: 'id1', delta: 'Hidden.' });
+    t.emit({ type: 'done', runId: 'id1' });
+    expect(t.session.getState().steps.c1?.provider).toBe('local');
+    await t.session.send('And now?');
+    const second = t.sent('ai:send')[1]?.req as IpcRequest<'ai:send'>;
+    const json = JSON.stringify(second.messages);
+    // the summary of the step went, not its result
+    expect(json).not.toContain('\\"visible\\":false');
+    expect(json).toContain(t.session.getState().steps.c1?.summary ?? 'no summary');
   });
 
   it('sends only the summary of a local model step to a cloud provider (AI-6)', async () => {

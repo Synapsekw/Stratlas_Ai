@@ -172,7 +172,10 @@ export function historyFromConversation(
   options: HistoryOptions = {},
 ): ChatMessage[] {
   const resultOf = (s: ConversationStep): ChatToolResult =>
-    options.cloud && s.provider === 'local'
+    // a local model's result, or one whose model is not known, goes to a cloud provider as its
+    // summary only (AI-6)
+    options.cloud &&
+    (s.provider === 'local' || (s.provider === undefined && s.result !== undefined))
       ? stepResult({ ...s, result: s.summary ?? 'Done.' })
       : stepResult(s);
   const out: ChatMessage[] = [];

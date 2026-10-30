@@ -9,6 +9,7 @@
  */
 import {
   CONVERSATION_SCHEMA,
+  AiProvider as AiProviderSchema,
   CHAT_MESSAGES_MAX,
   needsApproval,
   type AgentFacts,
@@ -146,8 +147,11 @@ export class AgentSession {
   private runId: string | null = null;
   /** The model step of the running reply, counted by its usage events (`Step.batch`). */
   private batch = 0;
-  /** The provider the running reply goes to (`Step.provider`). */
-  private runProvider: AiProvider | undefined;
+  /**
+   * Calls of the running model step. Main's usage event for the step names the provider that
+   * really answered (a fallback to the local model included), and they are labelled with it.
+   */
+  private stepCalls: string[] = [];
   private off: (() => void) | null = null;
   private readonly newId: () => string;
   private readonly now: () => Date;
@@ -403,7 +407,7 @@ export class AgentSession {
     };
     this.runId = runId;
     this.batch = 0;
-    this.runProvider = target?.route.provider;
+    this.stepCalls = [];
     this.live.clear();
     this.set({ turns: [...this.state.turns, user, reply], busy: true, fix: null });
     const messages: ChatMessage[] = [...history, { role: 'user', content: text }];
@@ -658,8 +662,12 @@ export class AgentSession {
         this.onToolCall(e);
         break;
       case 'usage': {
-        // one usage event per model step: later calls belong to the next step
-        if (e.runId === this.runId) this.batch += 1;
+        // one usage event per model step: its calls get the provider main used, and later calls
+        // belong to the next step
+        if (e.runId === this.runId) {
+          this.labelStep(e.provider);
+          this.batch += 1;
+        }
         const u = this.state.usage;
         const projectUsage = e.provider
           ? addProviderUsage(this.state.projectUsage, {
@@ -694,6 +702,21 @@ export class AgentSession {
     }
   }
 
+  /** Label the calls of the step that just ended with the provider main says answered it. */
+  private labelStep(name: string | undefined): void {
+    const calls = this.stepCalls;
+    this.stepCalls = [];
+    const known = AiProviderSchema.safeParse(name);
+    if (!known.success || calls.length === 0) return;
+    const provider: AiProvider = known.data;
+    const steps = { ...this.state.steps };
+    for (const id of calls) {
+      const s = steps[id];
+      if (s) steps[id] = { ...s, provider };
+    }
+    this.set({ steps });
+  }
+
   private onToolCall(e: Extract<IpcEvent<'ai:event'>, { type: 'tool-call' }>): void {
     const step: Step = {
       callId: e.callId,
@@ -703,8 +726,8 @@ export class AgentSession {
       status: needsApproval(e.risk) ? 'awaiting' : 'running',
       canUndo: false,
       ...(e.runId === this.runId ? { batch: this.batch } : {}),
-      ...(e.runId === this.runId && this.runProvider ? { provider: this.runProvider } : {}),
     };
+    if (e.runId === this.runId) this.stepCalls.push(e.callId);
     this.live.add(e.callId);
     this.updateReply(e.runId, (t) => ({
       ...t,

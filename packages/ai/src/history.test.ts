@@ -333,6 +333,16 @@ describe('history limits and privacy', () => {
     expect(outputs(false)).toEqual(['{"secret":1}', '{"id":"T-1"}']);
   });
 
+  it('treats a result whose model is unknown like a local one on a cloud send', () => {
+    const steps = { u: step({ callId: 'u', result: '{"secret":2}', summary: '2 places' }) };
+    const out = (cloud: boolean) =>
+      historyFromConversation([callsTurn(['u'])], steps, { cloud }).flatMap((m) =>
+        m.role === 'tool' ? m.results.map((r) => r.output) : [],
+      );
+    expect(out(true)).toEqual(['2 places']);
+    expect(out(false)).toEqual(['{"secret":2}']);
+  });
+
   it('always removes images and never throws', () => {
     expect(compactValue({ image: 'data:image/png;base64,AAAA', id: 'x' })).toBe(
       '{"image":"[image]","id":"x"}',
