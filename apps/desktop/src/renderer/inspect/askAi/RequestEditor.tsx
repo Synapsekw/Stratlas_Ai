@@ -224,11 +224,16 @@ export function RequestEditor({
           <span className="askp-label" id={`${id}-defaults`}>
             {t('askPanel.defaults')}
           </span>
+          {/* each choice named beside its list, so the list shows its whole placeholder in a
+              narrow panel (side by side it read "Class: Pick at acc") */}
           <div className="askp-pair">
+            <label className="askp-sub" htmlFor={`${id}-def-class`}>
+              {t('askPanel.defaults.class')}
+            </label>
             <select
+              id={`${id}-def-class`}
               className="input"
               data-testid="ask-default-class"
-              aria-label={t('askPanel.defaults.class')}
               value={state.classId ?? ''}
               disabled={disabled}
               onChange={(e) => {
@@ -239,19 +244,20 @@ export function RequestEditor({
                 set({ classId, severity: keep ? state.severity : null });
               }}
             >
-              <option value="">
-                {t('askPanel.defaults.class')}: {t('askPanel.defaults.none')}
-              </option>
+              <option value="">{t('askPanel.defaults.none')}</option>
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.label}
                 </option>
               ))}
             </select>
+            <label className="askp-sub" htmlFor={`${id}-def-severity`}>
+              {t('askPanel.defaults.severity')}
+            </label>
             <select
+              id={`${id}-def-severity`}
               className="input"
               data-testid="ask-default-severity"
-              aria-label={t('askPanel.defaults.severity')}
               value={state.severity === null ? '' : String(state.severity)}
               disabled={disabled || severities.length === 0}
               onChange={(e) => {
@@ -259,9 +265,7 @@ export function RequestEditor({
                 set({ severity: v === '' ? null : v === 'uncertain' ? v : Number(v) });
               }}
             >
-              <option value="">
-                {t('askPanel.defaults.severity')}: {t('askPanel.defaults.none')}
-              </option>
+              <option value="">{t('askPanel.defaults.none')}</option>
               {severities.map((s) => (
                 <option key={String(s.value)} value={String(s.value)}>
                   {s.label}

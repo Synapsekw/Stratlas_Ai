@@ -127,11 +127,17 @@
 }
 .askp-pair {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--sp-2);
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
 }
 .askp-pair .input {
   width: 100%;
+  min-width: 0;
+}
+.askp-sub {
+  color: var(--fg-2);
+  font-size: var(--t-12);
 }
 
 /* the other dates, one row each */
