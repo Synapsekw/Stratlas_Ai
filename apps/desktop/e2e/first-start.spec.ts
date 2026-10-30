@@ -140,6 +140,16 @@ test('a clean first start explains what is missing and opens the demo project', 
 
   // the road demo opens in the road workspace
   await win.locator('.nav-item', { hasText: 'Projects' }).first().click();
+  // a project exists now: the welcome folds to one setup line, which opens the same checklist
+  await expect(win.getByTestId('first-start')).toHaveCount(0);
+  const strip = win.getByTestId('setup-strip-toggle');
+  await expect(strip).toHaveText(/Workstation setup 1 of 4/);
+  await expect(strip).toHaveAttribute('aria-expanded', 'false');
+  await strip.click();
+  await expect(win.getByTestId('setup-strip').getByTestId('setup-pipeline')).toContainText(
+    'Not installed',
+  );
+  await shot(win, 'library-setup-strip');
   await win.getByTestId('project-card').filter({ hasText: 'Demo access road' }).click();
   await expect.poll(async () => (await inspect()).id, { timeout: 60_000 }).toBe('demo-access-road');
   await expect(win.getByTestId('defect-count')).toHaveText('14 of 14 defects', { timeout: 60_000 });

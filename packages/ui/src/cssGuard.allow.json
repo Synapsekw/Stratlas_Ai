@@ -147,9 +147,6 @@
     "colour": 2,
     "shadow": 2
   },
-  "apps/desktop/src/renderer/photogrammetry/PhotoRuns.tsx": {
-    "title": 1
-  },
   "apps/desktop/src/renderer/pointcloud/cleanup.css": {
     "shadow": 4,
     "zIndex": 4
@@ -348,9 +345,6 @@
   },
   "apps/desktop/src/renderer/workspace/SelectionCard.tsx": {
     "title": 2
-  },
-  "apps/desktop/src/renderer/workspace/SplitPanes.tsx": {
-    "title": 7
   },
   "apps/desktop/src/renderer/workspace/spot/spot.css": {
     "fontPx": 2,

@@ -151,6 +151,21 @@ export function CompareButton({
           </button>
         )}
         {twin && COMPARE_TOOLS.map((Tool, i) => <Tool key={i} split={split} />)}
+        {/* a window under 1280 px: "How compare works" folds into the tools row as a "?", so
+            the group beside the island is no wider than its tools (styles.css) */}
+        {twin && (
+          <button
+            type="button"
+            className="tool compare-how-q"
+            aria-label={t('compare.how')}
+            onClick={() => {
+              help.getState().openHelp({ chapter: 'compare-dates' });
+            }}
+          >
+            <span aria-hidden="true">?</span>
+            <span className="tip">{t('compare.how')}</span>
+          </button>
+        )}
       </div>
       {/* under the tools, so the group stays narrow beside the island */}
       {twin && (

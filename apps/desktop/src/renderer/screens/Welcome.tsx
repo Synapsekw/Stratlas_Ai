@@ -1,5 +1,5 @@
 import { packageEditAllowed } from '@aio/schema';
-import { formatBytes, formatDate, Icon, t } from '@aio/ui';
+import { Button, formatBytes, formatDate, Icon, t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
 import { welcomeTips } from '../player';
@@ -90,24 +90,19 @@ export function WelcomeScreen() {
               ))}
             </ol>
             <div className="acts">
-              <button
-                type="button"
-                className="btn primary"
-                onClick={start}
-                data-testid="welcome-start"
-              >
+              <Button size="md" variant="primary" onClick={start} data-testid="welcome-start">
                 Start exploring
-              </button>
+              </Button>
               {issueCount > 0 && (
-                <button
-                  type="button"
-                  className="btn ghost"
+                <Button
+                  size="md"
+                  variant="quiet"
                   onClick={() => {
                     shell.getState().go('issues');
                   }}
                 >
                   Open the issue register
-                </button>
+                </Button>
               )}
             </div>
             {packageEditAllowed(pkg.header) && (

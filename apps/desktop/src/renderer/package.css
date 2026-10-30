@@ -219,6 +219,12 @@
   gap: 32px;
   align-content: start;
 }
+/* a narrow window: the welcome's two columns stack, the text first */
+@media (max-width: 1100px) {
+  .welcome-in {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .welcome .kicker {
   display: inline-flex;
   align-items: center;

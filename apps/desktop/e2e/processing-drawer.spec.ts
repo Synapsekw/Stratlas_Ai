@@ -380,28 +380,25 @@ test.describe('with the runtime', () => {
   });
 });
 
-test('Create maps from photos sits under the project name, and opens the wizard', async ({
+test("Create maps is the drawer's primary action, and the sidebar has no copy of it", async ({
   win,
 }) => {
-  // no project: nothing to make maps in
-  await expect(win.getByTestId('sidebar-create-maps')).toHaveCount(0);
   await openTiny(win);
-  const button = win.getByTestId('sidebar-create-maps');
-  await expect(button).toBeVisible();
-  await expect(button.locator('.lbl')).toHaveText('Create maps from photos');
-  await shot(win, 'sidebar-create-maps');
+  // one home for the app's main job: the Processing drawer, not a second button in the sidebar
+  await expect(win.getByTestId('sidebar-create-maps')).toHaveCount(0);
+  const drawer = await openProcessing(win);
+  const button = drawer.getByTestId('create-maps');
+  await expect(button).toHaveText('Create maps from photos');
+  // the primary, unless the tools are missing: then updating them is
+  if ((await drawer.getByTestId('proc-tools').count()) === 0) {
+    await expect(button).toHaveClass(/(^|\s)primary(\s|$)/);
+  } else {
+    await expect(button).not.toHaveClass(/(^|\s)primary(\s|$)/);
+  }
+  await shot(win, 'drawer-create-maps');
   await button.click();
   const wizard = win.getByRole('dialog', { name: 'Create maps from photos' });
   await expect(wizard).toBeVisible();
   await win.keyboard.press('Escape');
   await expect(wizard).toHaveCount(0);
-
-  // folded to the rail: the glyph stays, named by its tip
-  await win.getByTestId('sidebar-toggle').click();
-  await expect(win.locator('.app')).toHaveAttribute('data-sb', 'collapsed');
-  await expect(button).toBeVisible();
-  await expect(button).toHaveAccessibleName('Create maps from photos');
-  await button.hover();
-  await expect(button.locator('.tip')).toHaveCSS('opacity', '1');
-  await shot(win, 'sidebar-create-maps-rail');
 });

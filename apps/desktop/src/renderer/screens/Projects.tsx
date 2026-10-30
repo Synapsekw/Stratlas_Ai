@@ -4,18 +4,21 @@ import {
   formatBytes,
   formatCompact,
   formatDate,
+  Button,
   Icon,
   t,
   type IconName,
   shortcutHint,
 } from '@aio/ui';
-import { useWorkspace } from '@aio/workspace';
+import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useState } from 'react';
 import { builder } from '../builder/state';
 import { build, formatBuildTime } from '../buildStamp';
 import { shell, useCall, useShell } from '../shell';
 import { BrandLoader } from '../shell/BrandMotion';
-import { FirstStart, SetupChecklist } from './FirstStart';
+import { photoUi } from '../photogrammetry/store';
+import { photosWithoutMaps } from '../workspace/LayerPlaceholder';
+import { FirstStart, SetupChecklist, SetupStrip, welcomeShape } from './FirstStart';
 import {
   DRAG_TYPE,
   folderCounts,
@@ -87,6 +90,15 @@ function Thumb({ entry }: { entry: LibraryEntry }) {
   );
 }
 
+/** Open the project (unless it is open), then Create maps from photos, if it opened as editable. */
+async function createMapsIn(path: string): Promise<void> {
+  const open = workspace.getState().project?.root;
+  if (open === undefined || !samePathText(open, path)) await shell.getState().openProject(path);
+  const now = workspace.getState().project?.root;
+  if (now === undefined || !samePathText(now, path) || shell.getState().pkg) return;
+  photoUi.getState().openWizard();
+}
+
 function ProjectCard({
   entry,
   opening,
@@ -104,6 +116,7 @@ function ProjectCard({
 }) {
   const counts = entry.layerCounts ?? {};
   const chips = LAYER_CHIPS.filter((c) => (counts[c.key] ?? 0) > 0);
+  const offerMaps = !entry.package && photosWithoutMaps(counts);
   const where = [entry.customer, entry.site].filter(Boolean).join(' · ');
   const [menu, setMenu] = useState<MenuAt | null>(null);
   const [dragged, setDragged] = useState(false);
@@ -197,6 +210,20 @@ function ProjectCard({
           )}
         </div>
       </button>
+      {/* photos and no maps yet: the app's main job, one click from the card (it opens the
+          project, then the dialog) */}
+      {offerMaps && (
+        // secondary: New project stays the one teal action of the library
+        <Button
+          icon="photo"
+          className="pc-act"
+          data-testid="card-create-maps"
+          disabled={opening}
+          onClick={() => void createMapsIn(entry.path)}
+        >
+          {t('processing.createMaps')}
+        </Button>
+      )}
       <ProjectMenu entry={entry} current={current} opening={opening} at={menu} onAt={setMenu} />
     </div>
   );
@@ -267,33 +294,28 @@ function EmptyLibrary({ dataRoot, error }: { dataRoot: string; error: string | n
           </dd>
         </dl>
         <div className="le-acts">
-          <button
-            type="button"
-            className="btn"
-            onClick={() => void shell.getState().addProjectFolder()}
-          >
-            <Icon name="import" size={14} />
+          <Button size="md" icon="import" onClick={() => void shell.getState().addProjectFolder()}>
             Add project folder
-          </button>
-          <button
-            type="button"
-            className="btn primary"
+          </Button>
+          <Button
+            size="md"
+            variant="primary"
+            icon="plus"
             onClick={() => {
               builder.getState().openWizard();
             }}
             data-testid="new-project"
           >
-            <Icon name="plus" size={14} />
             New project
-          </button>
-          <button
-            type="button"
-            className="btn ghost"
+          </Button>
+          <Button
+            size="md"
+            variant="quiet"
+            icon="import"
             onClick={() => void shell.getState().chooseDataRoot()}
           >
-            <Icon name="import" size={14} />
             Change data folder
-          </button>
+          </Button>
         </div>
         {error && (
           <p className="notice warn" role="status">
@@ -317,13 +339,7 @@ function Workstation() {
       <section className="hs-sec">
         <h2 className="caps">Data folder</h2>
         <div className="hs-path mono">{dataRoot || 'Not set'}</div>
-        <button
-          type="button"
-          className="btn sm"
-          onClick={() => void shell.getState().chooseDataRoot()}
-        >
-          Change
-        </button>
+        <Button onClick={() => void shell.getState().chooseDataRoot()}>Change</Button>
       </section>
       <section className="hs-sec">
         <h2 className="caps">
@@ -439,9 +455,10 @@ export function ProjectsScreen() {
 
   const total = (library ?? []).reduce((n, e) => n + (e.sizeBytes ?? 0), 0);
   const empty = library !== null && library.length === 0;
-  // only the bundled demo projects so far: the first-start welcome
+  // only the bundled demo projects so far and nothing open: the first-start welcome; once a
+  // project is open or of your own, the welcome folds to one setup line
   const demos = (library ?? []).filter((e) => e.demo);
-  const firstStart = demos.length > 0 && demos.length === (library ?? []).length;
+  const welcome = welcomeShape(library, currentRoot !== undefined);
 
   const page = (
     <section className="screen home" aria-label="Projects">
@@ -504,34 +521,32 @@ export function ProjectsScreen() {
                 <NewFolderButton />
               </>
             )}
-            <button
-              type="button"
-              className="btn"
+            <Button
+              size="md"
+              icon="lock"
               onClick={() => void shell.getState().openPackageFile()}
               data-testid="open-package"
             >
-              <Icon name="lock" size={14} />
               Open package
-            </button>
-            <button
-              type="button"
-              className="btn"
+            </Button>
+            <Button
+              size="md"
+              icon="import"
               onClick={() => void shell.getState().addProjectFolder()}
             >
-              <Icon name="import" size={14} />
               Add project folder
-            </button>
-            <button
-              type="button"
-              className="btn primary"
+            </Button>
+            <Button
+              size="md"
+              variant="primary"
+              icon="plus"
               onClick={() => {
                 builder.getState().openWizard();
               }}
               data-testid="new-project"
             >
-              <Icon name="plus" size={14} />
               New project
-            </button>
+            </Button>
           </div>
         </header>
         {openError && (
@@ -540,26 +555,18 @@ export function ProjectsScreen() {
             <span>
               <b>The project did not open.</b> {openError}
             </span>
-            <button
-              type="button"
-              className="btn ghost sm"
-              onClick={shell.getState().dismissOpenError}
-            >
+            <Button variant="quiet" onClick={shell.getState().dismissOpenError}>
               Dismiss
-            </button>
+            </Button>
           </div>
         )}
         {libraryNotice && (
           <div className="notice" role="status" data-testid="library-notice">
             <Icon name="check" size={14} />
             <span>{libraryNotice}</span>
-            <button
-              type="button"
-              className="btn ghost sm"
-              onClick={shell.getState().dismissLibraryNotice}
-            >
+            <Button variant="quiet" onClick={shell.getState().dismissLibraryNotice}>
               {t('library.dismiss')}
-            </button>
+            </Button>
           </div>
         )}
         {library === null && (
@@ -570,7 +577,8 @@ export function ProjectsScreen() {
           </div>
         )}
         {empty && <EmptyLibrary dataRoot={dataRoot} error={libraryError} />}
-        {firstStart && <FirstStart demos={demos} />}
+        {welcome === 'card' && <FirstStart demos={demos} />}
+        {welcome === 'strip' && <SetupStrip />}
         {library !== null && !empty && (
           <>
             {libraryError && (
@@ -583,15 +591,14 @@ export function ProjectsScreen() {
               <div className="notice danger" role="alert">
                 <Icon name="warn" size={14} />
                 <span>{moveError}</span>
-                <button
-                  type="button"
-                  className="btn ghost sm"
+                <Button
+                  variant="quiet"
                   onClick={() => {
                     setMoveError(null);
                   }}
                 >
                   {t('library.dismiss')}
-                </button>
+                </Button>
               </div>
             )}
             {!searching && place.kind === 'all' && (

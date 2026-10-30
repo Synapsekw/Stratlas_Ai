@@ -217,7 +217,7 @@ export function PaneHeader({
                 style={{ background: dateTags(index.captures)[capture]?.colour }}
                 aria-hidden="true"
               />
-              {captureLabel(index, capture)}
+              <span className="pane-date-t">{captureLabel(index, capture)}</span>
             </Chip>
           </span>
         )}
@@ -398,60 +398,45 @@ function EvidencePhotos({ open }: { open: EvidenceOpen }) {
     <div className="pane-col" data-testid="evidence-photo" data-issue={issue.id}>
       <div className="pane-bar">
         <b className="mono">{issue.code}</b>
-        <button
-          type="button"
-          className="btn icon sm ghost"
-          aria-label={t('lightbox.prev')}
-          title={t('lightbox.prev')}
+        <IconButton
+          icon="back"
+          label={t('lightbox.prev')}
           disabled={photos.length < 2}
           onClick={() => {
             stepEvidence(-1, photos.length);
           }}
-        >
-          <Icon name="back" size={14} />
-        </button>
+        />
         <span className="mono" data-testid="evidence-photo-id">
           {ev.photo}
         </span>
         <span className="mono faint">
           {t('stage.pane.photoCount', { n: index + 1, total: photos.length })}
         </span>
-        <button
-          type="button"
-          className="btn icon sm ghost"
-          aria-label={t('lightbox.next')}
-          title={t('lightbox.next')}
+        <IconButton
+          icon="fwd"
+          label={t('lightbox.next')}
           disabled={photos.length < 2}
           onClick={() => {
             stepEvidence(1, photos.length);
           }}
-        >
-          <Icon name="fwd" size={14} />
-        </button>
+        />
         <span className="grow" />
-        <button
-          type="button"
-          className="btn icon sm ghost"
-          aria-label={t('evidence.full')}
-          title={t('evidence.full')}
+        <IconButton
+          icon="maximize"
+          label={t('evidence.full')}
           onClick={() => {
             openLightbox(issue.id, index);
           }}
-        >
-          <Icon name="maximize" size={14} />
-        </button>
-        <button
-          type="button"
-          className="btn icon sm ghost"
-          aria-label={t('evidence.close')}
-          title={`${t('evidence.close')} (Esc)`}
+        />
+        <IconButton
+          icon="x"
+          label={t('evidence.close')}
+          tip={`${t('evidence.close')} (Esc)`}
           data-testid="evidence-close"
           onClick={() => {
             closeEvidence();
           }}
-        >
-          <Icon name="x" size={14} />
-        </button>
+        />
       </div>
       <PhotoViewer
         key={ev.key}
@@ -499,32 +484,24 @@ function SetPhotoPane() {
     <div className="pane-col">
       <div className="pane-bar">
         <DateBadge layerId={set.id} />
-        <button
-          type="button"
-          className="btn icon sm ghost"
-          aria-label={t('stage.pane.prevPhoto')}
-          title={t('stage.pane.prevPhoto')}
+        <IconButton
+          icon="back"
+          label={t('stage.pane.prevPhoto')}
           onClick={() => {
             go(-1);
           }}
-        >
-          <Icon name="back" size={14} />
-        </button>
+        />
         <span className="mono">{photo.id}</span>
         <span className="mono faint">
           {t('stage.pane.photoCount', { n: index + 1, total: set.items.length })}
         </span>
-        <button
-          type="button"
-          className="btn icon sm ghost"
-          aria-label={t('stage.pane.nextPhoto')}
-          title={t('stage.pane.nextPhoto')}
+        <IconButton
+          icon="fwd"
+          label={t('stage.pane.nextPhoto')}
           onClick={() => {
             go(1);
           }}
-        >
-          <Icon name="fwd" size={14} />
-        </button>
+        />
         <SameViewButton source={{ kind: 'photo', layer: set.id, photo: photo.id }} />
         <SpotHistoryButton open={{ item: { kind: 'photo', layer: set.id, photo: photo.id } }} />
       </div>
@@ -673,18 +650,16 @@ export function SplitPane({ side, split }: { side: Side; split: SplitModel }) {
         split={split}
         end={
           kind === 'video' && videoEvidence ? (
-            <button
-              type="button"
-              className="btn icon sm overlay-box pane-close"
-              aria-label={t('evidence.close')}
-              title={`${t('evidence.close')} (Esc)`}
+            <IconButton
+              icon="x"
+              label={t('evidence.close')}
+              tip={`${t('evidence.close')} (Esc)`}
+              className="overlay-box pane-close"
               data-testid="evidence-close"
               onClick={() => {
                 closeEvidence();
               }}
-            >
-              <Icon name="x" size={14} />
-            </button>
+            />
           ) : undefined
         }
       />

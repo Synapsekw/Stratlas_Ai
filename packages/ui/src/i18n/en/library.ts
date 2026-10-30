@@ -132,6 +132,8 @@ export const enLibrary = {
   'library.move.confirm': 'Move',
   'library.cancel': 'Cancel',
   'library.build': '{product} {version} · built {date}',
+  // the welcome, folded to one line once a project is open or of your own
+  'library.setup.strip': 'Workstation setup {done} of {total}',
   // delete datasets, runs and survey dates (delete and start over)
   'remove.title.one': 'Delete {name}?',
   'remove.title.many_one': 'Delete {count} dataset?',

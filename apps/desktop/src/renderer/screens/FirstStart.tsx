@@ -1,6 +1,6 @@
 import { brand } from '@aio/brand';
 import type { LibraryEntry, SetupStatus } from '@aio/schema';
-import { Icon, type IconName } from '@aio/ui';
+import { Button, Icon, t, useT, type IconName } from '@aio/ui';
 import { useEffect, useState } from 'react';
 import { openProcessingTools } from '../processingTools';
 import { shell, useCall, useShell } from '../shell';
@@ -100,6 +100,25 @@ function useOnline(): boolean {
   return online;
 }
 
+/** How many of the setup lines are ready, of how many. */
+export function setupProgress(rows: readonly Row[]): { done: number; total: number } {
+  return { done: rows.filter((r) => r.state === 'ok').length, total: rows.length };
+}
+
+/**
+ * What the library shows above the projects: the whole welcome while the library holds only the
+ * bundled demos and nothing is open, the one-line setup strip once a project is open or one of
+ * your own is in the library, nothing on an empty library (it has its own page).
+ */
+export function welcomeShape(
+  library: readonly LibraryEntry[] | null,
+  projectOpen: boolean,
+): 'card' | 'strip' | null {
+  if (library === null || library.length === 0) return null;
+  const demosOnly = library.every((e) => e.demo);
+  return demosOnly && !projectOpen ? 'card' : 'strip';
+}
+
 /** What this workstation has and lacks: data folder, map packs, pipeline pack, network. */
 export function SetupChecklist() {
   const dataRoot = useShell((s) => s.settings.dataRoot);
@@ -125,9 +144,9 @@ export function SetupChecklist() {
             <p>{r.explain}</p>
           </div>
           {r.action && (
-            <button type="button" className="btn sm ghost" onClick={r.action.run}>
+            <Button variant="quiet" onClick={r.action.run}>
               {r.action.label}
-            </button>
+            </Button>
           )}
         </li>
       ))}
@@ -158,27 +177,22 @@ export function FirstStart({ demos }: { demos: LibraryEntry[] }) {
           synthetic data made for trying things out, and your changes stay on this computer.
         </p>
         <div className="le-acts">
-          <button
-            type="button"
-            className="btn primary"
+          <Button
+            size="md"
+            variant="primary"
+            icon="play"
             disabled={busy}
             aria-busy={busy}
             onClick={() => void shell.getState().openProject(primary.path)}
             data-testid="open-demo"
           >
-            <Icon name="play" size={14} />
             {busy ? 'Opening the demo project' : 'Open the demo project'}
-          </button>
+          </Button>
           {others.map((o) => (
-            <button
-              key={o.id}
-              type="button"
-              className="btn"
-              onClick={() => void shell.getState().openProject(o.path)}
-            >
+            <Button size="md" key={o.id} onClick={() => void shell.getState().openProject(o.path)}>
               <Icon name={o.kind === 'road' ? 'road' : 'projects'} size={14} />
               {o.name}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -186,6 +200,39 @@ export function FirstStart({ demos }: { demos: LibraryEntry[] }) {
         <h3 className="caps">This workstation</h3>
         <SetupChecklist />
       </div>
+    </section>
+  );
+}
+
+/**
+ * The welcome folded to one line once a project exists: "Workstation setup 3 of 4", which opens
+ * the same checklist in place. Gone once everything is ready.
+ */
+export function SetupStrip() {
+  useT();
+  const dataRoot = useShell((s) => s.settings.dataRoot);
+  const status = useCall('app:setupStatus', {}, dataRoot);
+  const online = useOnline();
+  const [open, setOpen] = useState(false);
+  if (!status?.ok) return null;
+  const { done, total } = setupProgress(setupRows(status.value, online));
+  if (done === total && !open) return null;
+  return (
+    <section className="setup-strip" data-testid="setup-strip" data-open={open ? '' : undefined}>
+      <button
+        type="button"
+        className="setup-strip-h"
+        aria-expanded={open}
+        data-testid="setup-strip-toggle"
+        onClick={() => {
+          setOpen((o) => !o);
+        }}
+      >
+        <Icon name="settings" size={14} />
+        <span>{t('library.setup.strip', { done, total })}</span>
+        <Icon name={open ? 'chevup' : 'chevdown'} size={14} />
+      </button>
+      {open && <SetupChecklist />}
     </section>
   );
 }

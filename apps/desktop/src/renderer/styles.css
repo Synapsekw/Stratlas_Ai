@@ -731,33 +731,6 @@ button.chip-status:hover {
      there (the chevron sat 7 to 21 px into the 3D view) */
   pointer-events: none;
 }
-/* Create maps from photos, under the switcher (shell/CreateMapsButton.tsx): full width open,
-   its glyph alone in the rail, named by its tip there */
-.sb-create-maps {
-  position: relative;
-  width: 100%;
-  margin-top: var(--sp-3);
-  height: 36px;
-  transition: padding var(--panel-ms) var(--ease);
-}
-.sb-create-maps .lbl {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.app[data-sb='collapsed'] .sb-create-maps {
-  justify-content: flex-start;
-  padding: 0 9px;
-}
-.app[data-sb='collapsed'] .sb-create-maps .lbl {
-  opacity: 0;
-  pointer-events: none;
-}
-.app[data-sb='collapsed'] .sb-create-maps:hover .tip,
-.app[data-sb='collapsed'] .sb-create-maps:focus-visible .tip {
-  opacity: 1;
-  transform: translate(0, -50%);
-}
 .proj-menu {
   position: absolute;
   inset-inline-start: 0;
@@ -793,13 +766,29 @@ button.chip-status:hover {
 .proj-menu button[aria-current='true'] svg {
   color: var(--acc);
 }
+/* a library entry: its full name first, its customer under it in mono, so a long customer never
+   cuts the name to a letter (the menu is the sidebar's width) */
+.proj-menu button:has(.pm-c) {
+  height: auto;
+  min-height: 30px;
+  padding-block: var(--sp-1);
+}
+.proj-menu .pm-t {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .proj-menu .pm-n {
+  flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
 }
-.proj-menu .mono {
-  margin-inline-start: auto;
+.proj-menu .pm-c {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
   color: var(--fg-3);
   font-size: 11px;
 }
@@ -2067,6 +2056,8 @@ button.chip-status:hover {
    the corner slots keep below it */
 .pane-head {
   --pane-head-h: 32px;
+  /* a narrow pane (Compare dates at 1100 px) folds the view's name first, the date last */
+  container: pane-head / inline-size;
   position: absolute;
   top: var(--pane-head-top);
   inset-inline: var(--sp-3);
@@ -2092,13 +2083,21 @@ button.chip-status:hover {
 }
 .pane-head .pane-date {
   display: flex;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-inline-size: 0;
 }
 .pane-head .pane-date .tag {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-3);
+  min-inline-size: 0;
+  max-inline-size: 100%;
   white-space: nowrap;
+}
+.pane-head .pane-date-t {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .pane-head select.input {
   min-inline-size: 0;
@@ -2112,6 +2111,22 @@ button.chip-status:hover {
 }
 .pane-head select.input:hover {
   border-color: var(--line);
+}
+/* too narrow for the date and the view's name: the view list keeps only its chevron (its tip and
+   label still name it) and the leading glyph goes, so the date stays whole */
+@container pane-head (max-width: 280px) {
+  .pane-head-main > svg:first-child {
+    display: none;
+  }
+  .pane-head select.input {
+    flex: none;
+    inline-size: 26px;
+    padding-inline: 0;
+    color: transparent;
+  }
+  .pane-head select.input :is(option, optgroup) {
+    color: var(--fg-0);
+  }
 }
 .pane-head .pane-link {
   flex-shrink: 0;
@@ -2135,14 +2150,33 @@ button.chip-status:hover {
 .stage-panes.split > .split-handle {
   z-index: var(--z-stage-ui);
 }
-/* Compare's tools beside the island, "How compare works" under them; the pane headers below */
+/* Compare's tools beside the island, "How compare works" under them; the pane headers below.
+   Under 1280 px the link folds into the tools row as a "?" (CompareControls.tsx): the group
+   beside the island is no wider than its tools, and the headers move up a row */
+@media (min-width: 1280px) {
+  .stage:has(.isl-aside .compare-how) {
+    --compare-how-row: var(--compare-how-h);
+  }
+  .compare-group .compare-how-q {
+    display: none;
+  }
+}
+@media (max-width: 1279.98px) {
+  .compare-group > .compare-how {
+    display: none;
+  }
+}
+.compare-how-q > span[aria-hidden] {
+  font-size: var(--t-13);
+  font-weight: 600;
+}
 .stage:has(.isl-aside .compare-how) {
-  --pane-head-top: calc(var(--isl-row-b) + var(--compare-how-h));
+  --pane-head-top: calc(var(--isl-row-b) + var(--compare-how-row, 0px));
 }
 /* and two maps or orthos compared: Side by side, Swipe and Blend (MapSwipe.tsx) take the row above
    the headers */
 .stage:has(.stage-panes > .compare-view) {
-  --pane-head-top: calc(var(--isl-row-b) + var(--compare-how-h) + var(--compare-view-h));
+  --pane-head-top: calc(var(--isl-row-b) + var(--compare-how-row, 0px) + var(--compare-view-h));
 }
 .compare-group {
   display: flex;
@@ -2868,13 +2902,29 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
 .tl-wrap[data-switch] .tl-h {
   padding-inline-start: calc(var(--tl-switch-w) + 2 * var(--sp-4));
 }
-/* the switch takes room from the footage bar: at the CI window its time readout gives way too
-   (after the clip tag and the clock label), so the controls keep one row inside the bar */
+/* the switch takes room from the footage bar. The clock (HH:MM:SS.ff) never gives way: it is
+   what the bar is for. The clip tag goes first, then the clock label shrinks to an ellipsis and,
+   in a narrow bar, goes too and the gaps tighten, so the controls keep one row inside the bar */
 .tl-wrap[data-switch] .lt .tl-h > .tc {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: none;
+  min-width: max-content;
+  overflow: visible;
+  font-variant-numeric: tabular-nums;
+}
+@container (max-width: 560px) {
+  .tl-wrap[data-switch] .lt .tl-h {
+    gap: var(--sp-2);
+  }
+  .tl-wrap[data-switch] .lt .tl-h .lt-clock {
+    display: none;
+  }
+}
+/* the narrowest bar (the CI window with both sidebars open, about 380 px): the zoom buttons go
+   too; Ctrl + wheel still zooms, and the clock, the transport and the rate keep one row */
+@container (max-width: 420px) {
+  .tl-wrap[data-switch] .lt .tl-h > .seg.icons {
+    display: none;
+  }
 }
 
 /* right panel */
@@ -4027,6 +4077,59 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
   .first-start {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+/* the welcome folded to one line once a project exists (FirstStart.tsx SetupStrip): quiet, not
+   teal; it opens the same checklist in place */
+.setup-strip {
+  margin: var(--sp-5) 0 var(--sp-6);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-6);
+  background: var(--bg-1);
+}
+.setup-strip-h {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  inline-size: 100%;
+  padding: var(--sp-4) var(--sp-5);
+  border: 0;
+  background: none;
+  color: var(--fg-1);
+  font-size: var(--t-12);
+  text-align: start;
+  cursor: pointer;
+}
+.setup-strip-h > span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.setup-strip-h:hover {
+  color: var(--fg-0);
+}
+.setup-strip .setup-list {
+  padding: 0 var(--sp-5) var(--sp-4);
+}
+
+/* Create maps from photos under a library card whose project has photos and no maps */
+.pcard-wrap > .pc-act {
+  margin-top: var(--sp-3);
+  justify-self: start;
+}
+
+/* the scene of a photo-only project: Create maps from photos where the scene would be
+   (LayerPlaceholder.tsx), in the files card's place */
+.maps-offer {
+  gap: var(--sp-3);
+}
+.maps-offer p {
+  margin: 0;
+  color: var(--fg-2);
+}
+.maps-offer-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  margin-top: var(--sp-3);
 }
 
 /* ---------- settings: map packs ---------- */

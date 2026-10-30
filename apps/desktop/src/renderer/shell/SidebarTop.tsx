@@ -5,7 +5,6 @@ import { openAuditTrail } from '../audit/auditView';
 import { shell, useShell } from '../shell';
 import { isSidebarFolded } from '../store';
 import { BrandSymbol, BrandWordmark } from './BrandMark';
-import { CreateMapsButton } from './CreateMapsButton';
 
 function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
   const manifest = useWorkspace((s) => s.project?.manifest);
@@ -89,8 +88,10 @@ function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
               }}
             >
               <Icon name={e.path === root ? 'check' : 'layers'} size={14} />
-              <span className="pm-n">{e.name}</span>
-              {e.customer && <span className="mono">{e.customer}</span>}
+              <span className="pm-t">
+                <span className="pm-n">{e.name}</span>
+                {e.customer && <span className="pm-c mono">{e.customer}</span>}
+              </span>
             </button>
           ))}
           {(library ?? []).length === 0 && <div className="pm-empty">The library is empty.</div>}
@@ -167,7 +168,6 @@ export function SidebarTop() {
       </div>
       <div className="sb-sec sb-proj">
         <ProjectSwitcher collapsed={collapsed} />
-        <CreateMapsButton />
       </div>
     </>
   );

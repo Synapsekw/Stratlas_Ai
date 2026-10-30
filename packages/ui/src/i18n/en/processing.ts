@@ -164,6 +164,11 @@ export const enProcessing = {
   'processing.chip.tip': 'What is processing, and what finished',
   'processing.close': 'Close',
   'processing.createMaps': 'Create maps from photos',
+  // a project with photos and no maps: the offer over the scene
+  'processing.photoOnly.title': 'Photos, no maps yet',
+  'processing.photoOnly.body':
+    'Make a 3D model, a point cloud and a map of the site from these photos.',
+  'processing.photoOnly.later': 'Not now',
   'processing.toolsMissing':
     'Processing cannot run yet: the processing tools are missing or need an update.',
   'processing.toolsUpdate': 'Update processing tools',
