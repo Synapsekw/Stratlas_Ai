@@ -45,6 +45,16 @@ const SOURCES = [
   'tools/demo/check-no-client-data.mjs',
 ];
 
+/** Files every built demo must have; a cache missing one (stripped or half built) is rebuilt. */
+const DEMO_FILES = ['truth.json', 'manifest.json'];
+
+/** The required files missing from a built folder, across all four demos (empty when complete). */
+export function missingSurveyDemoFiles(dir: string): string[] {
+  return Object.values(SURVEY_DEMOS).flatMap((d) =>
+    DEMO_FILES.map((f) => join(dir, d.id, f)).filter((p) => !existsSync(p)),
+  );
+}
+
 let built: { dir: string | null; reason: string } | null = null;
 
 /**
@@ -55,9 +65,14 @@ export function surveyDemoFolder(): { dir: string | null; reason: string } {
   if (built) return built;
   const given = process.env.QUADRION_E2E_SURVEY_DEMO;
   if (given) {
-    built = existsSync(join(given, SURVEY_DEMOS.earthworks.id, 'truth.json'))
-      ? { dir: given, reason: '' }
-      : { dir: null, reason: `no survey demos in QUADRION_E2E_SURVEY_DEMO (${given})` };
+    const missing = missingSurveyDemoFiles(given);
+    built =
+      missing.length === 0
+        ? { dir: given, reason: '' }
+        : {
+            dir: null,
+            reason: `incomplete survey demos in QUADRION_E2E_SURVEY_DEMO (${given}); missing ${missing.join(', ')}`,
+          };
     return built;
   }
   const hash = createHash('sha256');
@@ -65,10 +80,12 @@ export function surveyDemoFolder(): { dir: string | null; reason: string } {
   const key = hash.digest('hex').slice(0, 16);
   const root = join(tmpdir(), 'quadrion-e2e-survey-demo');
   const dir = join(root, key);
-  if (existsSync(join(dir, SURVEY_DEMOS.landfill.id, 'truth.json'))) {
+  if (missingSurveyDemoFiles(dir).length === 0) {
     built = { dir, reason: '' };
     return built;
   }
+  // an old partial cache: clear it so the rebuild can take its place
+  rmSync(dir, { recursive: true, force: true });
   const work = join(root, `${key}.${String(process.pid)}.tmp`);
   rmSync(work, { recursive: true, force: true });
   const r = spawnSync(
