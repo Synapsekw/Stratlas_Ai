@@ -7,6 +7,7 @@ import {
   TOOL_LABELS,
   type TelecomTool,
 } from '@aio/survey';
+import { useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useMemo, useSyncExternalStore } from 'react';
 import { shell, useShell } from '../shell';
@@ -55,14 +56,15 @@ export function useTelecomUnavailable(): string | null {
   const pkg = useShell((s) => s.pkg);
   const readOnly = useMeasure((s) => s.readOnly) || pkg !== null;
   const ready = useMeasure((s) => s.status === 'ready');
+  const t = useT();
   return readOnly
-    ? 'This package is read only. Open a writable project to draw.'
+    ? t('palette.unavailable.telecomReadOnly')
     : mode === 'map'
-      ? 'Switch to 3D or Split to pick points on a point cloud or mesh.'
+      ? t('palette.unavailable.telecomMap')
       : !stage
-        ? 'Open the 3D view to pick points on a point cloud or mesh.'
+        ? t('palette.unavailable.telecomNo3d')
         : !ready
-          ? 'Measurements are loading or unavailable.'
+          ? t('palette.unavailable.telecomLoading')
           : null;
 }
 

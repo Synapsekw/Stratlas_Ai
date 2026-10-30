@@ -24,4 +24,10 @@ export const enPalette = {
   'palette.group.settings': 'Settings',
   'palette.unavailable.readOnly': 'Read only here: open a writable project to measure',
   'palette.unavailable.needs3d': 'Open the 3D view first',
+  'palette.unavailable.telecomReadOnly':
+    'This package is read only. Open a writable project to draw.',
+  'palette.unavailable.telecomMap':
+    'Switch to 3D or Split to pick points on a point cloud or mesh.',
+  'palette.unavailable.telecomNo3d': 'Open the 3D view to pick points on a point cloud or mesh.',
+  'palette.unavailable.telecomLoading': 'Measurements are loading or unavailable.',
 } as const satisfies Record<string, string>;

@@ -57,6 +57,26 @@ export function useHasVolumeMeasurements(): boolean {
 }
 
 /**
+ * The tabs the sidebar shows (pure): Volumes only with volumes to show, Changes only with two
+ * dates to compare, the cloud tabs only where the project has a cloud (D6). A remembered pin of a
+ * tab that does not apply stays in the store but is not shown, nor offered elsewhere (the palette).
+ */
+export function visibleTabs(
+  all: readonly Tab[],
+  has: { volumes: boolean; dated: boolean; clouds: boolean },
+): Tab[] {
+  return all.filter((tab) =>
+    tab.id === 'volumes'
+      ? has.volumes
+      : tab.id === 'changes'
+        ? has.dated
+        : tab.id === 'clouds' || tab.id === 'cleanup'
+          ? has.clouds
+          : true,
+  );
+}
+
+/**
  * The tabs the sidebar shows and the one in front: Volumes in a volumetric project or one with a
  * volume measurement, and Changes only with two dates to compare; a front tab that is not shown
  * is Selection.
@@ -69,18 +89,12 @@ export function useWorkbenchView(): { tabs: Tab[]; front: Tab } {
   const volumes = kit || piles;
   const captureIx = useCaptureIndex();
   const dated = captureIx !== null && canCompare(captureIx);
-  const tabs = useMemo(
-    () =>
-      all.filter((tab) => (tab.id === 'volumes' ? volumes : tab.id === 'changes' ? dated : true)),
-    [all, volumes, dated],
-  );
-  // the cloud tabs only where the project has a cloud (D6)
   const clouds = useWorkspace((s) =>
     (s.project?.manifest.layers ?? []).some((l) => l.kind === 'pointcloud'),
   );
   const shown = useMemo(
-    () => (clouds ? tabs : tabs.filter((tab) => tab.id !== 'clouds' && tab.id !== 'cleanup')),
-    [tabs, clouds],
+    () => visibleTabs(all, { volumes, dated, clouds }),
+    [all, volumes, dated, clouds],
   );
   const front = shown.find((tab) => tab.id === chosen) ?? SELECTION;
   return { tabs: shown, front };

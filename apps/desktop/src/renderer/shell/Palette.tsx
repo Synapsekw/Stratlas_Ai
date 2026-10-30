@@ -5,17 +5,19 @@ import type { Layer } from '@aio/schema';
 import {
   CommandPalette,
   formatDate,
+  getLocale,
   t,
+  useT,
   type IconName,
   type MessageKey,
   type PaletteCommand,
+  type ShortcutId,
   shortcutHint,
 } from '@aio/ui';
 import { isTelecomTool } from '@aio/survey';
 import { useVolumetric } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo } from 'react';
-import { useStore } from 'zustand';
 import { actionAllowed, allowedActions } from '../exports/exportModel';
 import { runExportAction } from '../exports/exports';
 import { alignCamera } from '../builder/alignSession';
@@ -41,15 +43,14 @@ import {
 } from '../survey/measureCatalogue';
 import { measureStore, startTool, useMeasure } from '../survey/measureStore';
 import { startTelecomTool, useTelecomUnavailable } from '../survey/TelecomTools';
-import { GROUP_ICON, GROUP_NAME, MODES } from '../workspace/island/groups';
+import { GROUP_ICON, GROUP_NAME } from '../workspace/island/groups';
 import { GROUP_TAB, openBenchFromIsland } from '../workspace/island/islandBench';
 import { islandGroups } from '../workspace/island/islandModel';
 import { useRoad } from '../road/store';
 import { useEngineStage } from '../workspace/StageTools';
 import { toggleMeasure, toggleSection } from '../workspace/tools/measure';
 import { showBench } from '../workspace/workbench/followTool';
-import { useHasVolumeMeasurements } from '../workspace/workbench/view';
-import { workbench } from '../workspace/workbench/workbenchStore';
+import { useHasVolumeMeasurements, useWorkbenchView } from '../workspace/workbench/view';
 import { paletteIndex, type PaletteTool } from './paletteIndex';
 import './palette.css';
 import { PATH_MODES, setPathMode, togglePaths } from '../workspace/flightPaths';
@@ -106,7 +107,12 @@ const SCREENS: { screen: Screen; title: string; icon: IconName }[] = [
 ];
 
 /** The island's key for a stage view (1, 2, 3). */
-const modeKey = (mode: StageMode): string | undefined => MODES.find((m) => m.mode === mode)?.keys;
+const MODE_KEY: Record<StageMode, ShortcutId> = {
+  '3d': 'scene.mode3d',
+  map: 'scene.modeMap',
+  split: 'scene.modeSplit',
+};
+const modeKey = (mode: StageMode): string => shortcutHint(MODE_KEY[mode]);
 
 // ---------------------------------------------------------------- Settings pages
 // The Settings pages by name, in the order of the Settings screen's list. One block: when the
@@ -163,7 +169,11 @@ function useIndexedCommands(): PaletteCommand[] {
   const telecomOff = useTelecomUnavailable();
   const favourites = useFavourites((s) => s.favourites);
   const recent = useFavourites((s) => s.recent);
-  const tabs = useStore(workbench, (s) => s.tabs);
+  // the tabs the panel shows: a remembered tab that does not apply here is not offered
+  const tabs = useWorkbenchView().tabs;
+  // names are read in the language in use: a change of language builds the list again
+  useT();
+  const locale = getLocale();
   const kitVolumes = useVolumetric((x) => x.status === 'ready');
   const piles = useHasVolumeMeasurements();
   const road = useRoad((x) => x.status === 'ready');
@@ -244,6 +254,7 @@ function useIndexedCommands(): PaletteCommand[] {
       })),
       settingsPages,
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `locale`: the names are read in it
   }, [
     project,
     pkg,
@@ -254,6 +265,7 @@ function useIndexedCommands(): PaletteCommand[] {
     favourites,
     recent,
     tabs,
+    locale,
     kitVolumes,
     piles,
     road,
