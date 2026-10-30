@@ -8,8 +8,8 @@
 //
 // Exit code 1 when a name is found, 0 otherwise.
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { closeSync, openSync, readFileSync, readSync } from 'node:fs';
+import { extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { FORBIDDEN, referenceSites } from '../demo/check-no-client-data.mjs';
 import { envVar } from '../../packages/brand/src/env.ts';
@@ -21,6 +21,24 @@ export function forbiddenWords(names = []) {
     ...FORBIDDEN,
     ...names.map((n) => [new RegExp(`(^|[^A-Za-z0-9])${escape(n)}([^A-Za-z0-9]|$)`, 'i'), n]),
   ];
+}
+
+const BINARY_EXTENSIONS = new Set([
+  ...['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.bmp', '.ico', '.tif', '.tiff', '.heic'],
+  ...['.woff', '.woff2', '.ttf', '.otf', '.eot', '.zip', '.gz', '.tgz', '.7z', '.rar', '.tar'],
+  ...['.pdf', '.mp4', '.webm', '.mov', '.mkv', '.mp3', '.wav', '.exe', '.dll', '.node'],
+]);
+
+/** True for a binary file: a known binary extension, or a NUL byte in the first 8 KB. */
+export function isBinaryFile(file) {
+  if (BINARY_EXTENSIONS.has(extname(file).toLowerCase())) return true;
+  const fd = openSync(file, 'r');
+  try {
+    const buf = Buffer.alloc(8192);
+    return buf.subarray(0, readSync(fd, buf, 0, buf.length, 0)).includes(0);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** Findings for one text: `<where>:<line>: <what>`, one per matching word and line. */
@@ -49,7 +67,16 @@ function main() {
   const { names } = referenceSites(join(dataRoot, 'projects'));
   const words = forbiddenWords(names);
   const findings = [];
-  for (const file of files) findings.push(...findNames(readFileSync(file, 'utf8'), file, words));
+  const skipped = [];
+  for (const file of files) {
+    if (isBinaryFile(file)) skipped.push(file);
+    else findings.push(...findNames(readFileSync(file, 'utf8'), file, words));
+  }
+  if (skipped.length) {
+    console.log(
+      `Skipped ${skipped.length} binary file(s), check these by eye: ${skipped.join(', ')}`,
+    );
+  }
   if (range) {
     const log = execFileSync('git', ['log', '--format=%h %B%x00', range], { encoding: 'utf8' });
     for (const entry of log.split('\0').filter((e) => e.trim())) {
@@ -62,7 +89,9 @@ function main() {
     for (const f of findings) console.error(`  - ${f}`);
     process.exit(1);
   }
-  console.log(`No client or site names in ${files.length} file(s)${range ? ` and ${range}` : ''}.`);
+  console.log(
+    `No client or site names in ${files.length - skipped.length} file(s)${range ? ` and ${range}` : ''}.`,
+  );
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) main();

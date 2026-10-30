@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseArgs as parseStart } from './start-task.mjs';
 import {
@@ -7,7 +10,7 @@ import {
   parseArgs as parseFinish,
 } from './finish-task.mjs';
 import { parseArgs as parseWatch, summariseChecks } from './watch-ci.mjs';
-import { findNames, forbiddenWords } from './check-public-text.mjs';
+import { findNames, forbiddenWords, isBinaryFile } from './check-public-text.mjs';
 
 describe('check-public-text', () => {
   it('finds manifest names and the built-in list, line by line', () => {
@@ -18,6 +21,19 @@ describe('check-public-text', () => {
       'note.md:3: DJI camera file name',
     ]);
     expect(findNames('Northgate Quarrying Ltd', 'x', forbiddenWords(['Quarry']))).toEqual([]);
+  });
+
+  it('treats images by extension and NUL-bearing files as binary, text as text', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'public-text-'));
+    const png = join(dir, 'shot.webp');
+    const blob = join(dir, 'data.bin');
+    const note = join(dir, 'note.md');
+    writeFileSync(png, 'text-looking');
+    writeFileSync(blob, Buffer.from([0x41, 0x00, 0x42]));
+    writeFileSync(note, '# hello');
+    expect(isBinaryFile(png)).toBe(true);
+    expect(isBinaryFile(blob)).toBe(true);
+    expect(isBinaryFile(note)).toBe(false);
   });
 });
 
