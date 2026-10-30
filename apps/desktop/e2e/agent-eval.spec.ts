@@ -14,7 +14,7 @@
  * Cases marked `gap` (A1, A2) are expected to fail until that roadmap item lands: they are listed
  * as known gaps, or as closed when they pass every time, and never counted in the pass rate.
  *
- * Profiles (QUADRION_EVAL_PROFILE; without one, the variables below pick it):
+ * Profiles (QUADRION_EVAL_PROFILE, which must be set: a key alone starts nothing):
  * - `anthropic`: QUADRION_EVAL_ANTHROPIC_KEY (and QUADRION_EVAL_ANTHROPIC_WORKSPACE for a key not
  *   scoped to a workspace). The model is QUADRION_EVAL_MODEL, `claude-haiku-5-5` by default.
  * - `local`: an OpenAI-compatible server on this machine, QUADRION_EVAL_LOCAL_URL (for example
@@ -23,11 +23,12 @@
  *   zero-network guard lets through that address only, so it must be on this machine.
  * - `scripted`: the keyword stand-in model of the other specs. No key, no network, no cost. Its
  *   verdicts say nothing about a model; it proves the harness (turns, traces, pass^k) runs.
- * Without a profile every test here is skipped, and in CI always.
+ * Without QUADRION_EVAL_PROFILE every test here is skipped, and in CI always.
  *
  * Other variables: QUADRION_EVAL_K repeats each case k times from a known start (pass^k, default
  * 1); QUADRION_EVAL_CASES runs only the cases whose id or request contains one of its comma-separated texts;
- * QUADRION_EVAL_OUT moves the traces (default `.agent-eval/` at the repository root, git-ignored).
+ * QUADRION_EVAL_OUT moves the traces (default `.agent-eval/` at the repository root, git-ignored);
+ * QUADRION_EVAL_RUN_ID names the run's folder (`pnpm eval:agent` sets it once per run).
  *
  * How to run it, at the repository root, with the demos built (`pnpm demo:build --quick` and
  * `pnpm demo:change --quick`) and the app built (`pnpm build`): `pnpm eval:agent`. Each run writes
@@ -37,10 +38,11 @@
  * The key is never typed on a command line, where the shell's history would keep it: copy it, then
  *
  *   PowerShell:  $env:QUADRION_EVAL_ANTHROPIC_KEY = Get-Clipboard
+ *                $env:QUADRION_EVAL_PROFILE = 'anthropic'
  *                pnpm eval:agent
  *                Remove-Item Env:QUADRION_EVAL_ANTHROPIC_KEY
  *   bash:        read -rs QUADRION_EVAL_ANTHROPIC_KEY; export QUADRION_EVAL_ANTHROPIC_KEY
- *                pnpm eval:agent
+ *                QUADRION_EVAL_PROFILE=anthropic pnpm eval:agent
  *                unset QUADRION_EVAL_ANTHROPIC_KEY
  *
  * (in bash, paste the key after the first line and press Enter: nothing is shown). Run it with
@@ -86,7 +88,7 @@
  */
 import { defaultRoutes, offlineRoutes, type ModelRoute } from '@aio/ai/routes';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
@@ -97,7 +99,7 @@ import {
   type EvalLevel,
   type EvalState,
 } from './agent-eval.cases';
-import { caseId, turnVerdict } from './agent-eval.grade';
+import { attemptResult, caseId } from './agent-eval.grade';
 import {
   changeCases,
   checkChangeDemo,
@@ -162,20 +164,13 @@ const env = (name: string): string => (process.env[name] ?? '').trim();
 /** The profile the variables ask for, or why there is none. */
 function pickProfile(): Profile | string {
   const asked = env('QUADRION_EVAL_PROFILE').toLowerCase();
+  // Only an explicit profile runs anything: a key left in the shell must not start a paid run.
   const kind: ProfileKind | '' =
-    asked === 'anthropic' || asked === 'local' || asked === 'scripted'
-      ? asked
-      : asked
-        ? ''
-        : env('QUADRION_EVAL_ANTHROPIC_KEY')
-          ? 'anthropic'
-          : env('QUADRION_EVAL_LOCAL_URL')
-            ? 'local'
-            : '';
+    asked === 'anthropic' || asked === 'local' || asked === 'scripted' ? asked : '';
   if (asked && !kind)
     return `QUADRION_EVAL_PROFILE is "${asked}": use anthropic, local or scripted`;
   if (!kind)
-    return 'Agent eval: set QUADRION_EVAL_ANTHROPIC_KEY, QUADRION_EVAL_LOCAL_URL or QUADRION_EVAL_PROFILE=scripted to run it. A real model spends tokens.';
+    return 'Agent eval: set QUADRION_EVAL_PROFILE to anthropic, local or scripted to run it (pnpm eval:agent). A real model spends tokens.';
   if (kind === 'anthropic') {
     if (!env('QUADRION_EVAL_ANTHROPIC_KEY'))
       return 'Agent eval: the anthropic profile needs QUADRION_EVAL_ANTHROPIC_KEY.';
@@ -210,6 +205,10 @@ function pickProfile(): Profile | string {
 }
 
 const PROFILE = pickProfile();
+
+// No Playwright trace or attachment of steps: a trace keeps the parameters of every call, and the
+// anthropic profile hands the key to the app through one of them (ai:setKey).
+test.use({ trace: 'off', screenshot: 'off', video: 'off' });
 
 // Said first: no shard of CI runs this, whatever its secrets hold.
 test.skip(
@@ -402,6 +401,8 @@ interface Probe {
       getState(): { open: { issueId: string } | null };
       setState(state: { open: null }): void;
     };
+    /** The open project's measurements as held in memory (bootstrap.ts). */
+    measurements?: () => { measurements?: unknown[] } | null;
   };
 }
 
@@ -490,7 +491,7 @@ const readTurn = (win: Page) =>
 
 /** What the app shows now: the part of `EvalState` that is not the conversation. */
 const appState = (win: Page) =>
-  win.evaluate((): Omit<EvalState, 'toolCalls' | 'steps' | 'reply'> => {
+  win.evaluate((): Omit<EvalState, 'toolCalls' | 'steps' | 'reply' | 'start'> => {
     const s = (window as unknown as Probe).__stratlas;
     const ws = s.workspace.getState();
     const screen = s.shell.getState().screen;
@@ -542,6 +543,7 @@ const appState = (win: Page) =>
       },
       evidenceOpen: s.evidence.getState().open !== null,
       issueCount: ws.issues.length,
+      measurementCount: s.measurements?.()?.measurements?.length ?? null,
     };
   });
 
@@ -622,6 +624,8 @@ async function ask(win: Page, text: string, n: number): Promise<boolean> {
   await box.press('Enter');
   const preview = win.getByRole('dialog', { name: /Send to/ });
   const reject = win.locator(`${PANEL} .approve button`, { hasText: 'Reject' });
+  // the reply is over when two reads in a row find it done: one read can fall between two steps
+  let settled = 0;
   return expect
     .poll(
       async () => {
@@ -637,7 +641,8 @@ async function ask(win: Page, text: string, n: number): Promise<boolean> {
             .dispatchEvent('click')
             .catch(() => undefined);
         const turn = await readTurn(win);
-        return turn.asked >= n && turn.replied && !turn.busy;
+        settled = turn.asked >= n && turn.replied && !turn.busy ? settled + 1 : 0;
+        return settled >= 2;
       },
       { timeout: REPLY_MS, intervals: [500] },
     )
@@ -684,8 +689,10 @@ async function attempt(
 ): Promise<AttemptTrace> {
   const started = Date.now();
   await knownState(win, c, home, selection);
-  const turns = [{ ask: c.ask, expect: c.expect }, ...(c.then ?? [])];
-  const reasons: (string | null)[] = [];
+  const before = await appState(win);
+  const start = { issueCount: before.issueCount, measurementCount: before.measurementCount };
+  const turns = [{ ask: c.ask, expect: c.expect, gap: c.gap }, ...(c.then ?? [])];
+  const verdicts: { why: string | null; gap?: string | null }[] = [];
   const traces: TurnTrace[] = [];
   let busy = false;
   let last: EvalState | null = null;
@@ -697,6 +704,7 @@ async function attempt(
       turn = await readTurn(win);
       return {
         ...(await appState(win)),
+        start,
         toolCalls: turn.steps.filter((s) => s.status === 'done').map((s) => s.name),
         steps: turn.steps,
         reply: turn.reply,
@@ -720,22 +728,26 @@ async function attempt(
       }
     }
     if (answered && PROVIDER_BUSY.test(error)) busy = true;
-    reasons.push(why);
+    // no reply or a failed reply is never excused as a known gap
+    const gap = answered && !error ? (t.gap ?? null) : null;
+    verdicts.push({ why, gap });
     traces.push({
       ask: t.ask,
       steps: turn.steps,
       reply: turn.reply,
       ...(error ? { error } : {}),
+      ...(why !== null ? { why } : {}),
+      ...(t.gap ? { gap: t.gap } : {}),
     });
     last = state;
     // no reply: the conversation cannot go on
     if (!answered || busy) break;
   }
-  const why = turnVerdict(reasons);
+  const verdict = attemptResult(verdicts);
   const note = last && c.note ? c.note(last) : '';
   return {
-    result: why === null ? 'pass' : busy ? 'provider' : 'fail',
-    why: why ?? '',
+    result: busy && verdict.result !== 'pass' ? 'provider' : verdict.result,
+    why: verdict.why,
     turns: traces,
     ...(note ? { note } : {}),
     ms: Date.now() - started,
@@ -760,26 +772,20 @@ async function run(win: Page, c: EvalCase, home: Home, selection: Picked | null)
 // ------------------------------------------------------------------------------ traces on disk
 
 /**
- * This run's folder under `OUT`, the same for every test of the run: a worker that starts again
- * after a failed test finds it through a marker named after the runner's process.
+ * The run's id, the name of its folder under `OUT`: set once per run by `pnpm eval:agent`
+ * (tools/agent/agent-eval-run.mjs), so every test of the run writes into one folder, a worker
+ * started again after a failed test too. A run started with `playwright test` directly gets one
+ * per worker process instead, and says so.
  */
+const RUN_ID =
+  env('QUADRION_EVAL_RUN_ID') ||
+  `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}-worker-${String(process.pid)}`;
+
+/** This run's folder under `OUT`. */
 function runFolder(profile: Profile): string {
-  mkdirSync(OUT, { recursive: true });
-  const marker = join(OUT, `.run-${String(process.ppid)}`);
-  try {
-    // a marker of an earlier run whose runner had the same process id is not this run's
-    if (Date.now() - statSync(marker).mtimeMs < 24 * 3_600_000) {
-      const dir = readFileSync(marker, 'utf8').trim();
-      if (dir && existsSync(dir)) return dir;
-    }
-  } catch {
-    // no marker yet: this is the run's first test
-  }
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const name = `${stamp}-${profile.kind}-${profile.model.replace(/[^\w.-]+/g, '_')}`;
-  const dir = join(OUT, name);
+  const id = RUN_ID.replace(/[^\w.-]+/g, '_');
+  const dir = join(OUT, `${id}-${profile.kind}-${profile.model.replace(/[^\w.-]+/g, '_')}`);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(marker, dir);
   return dir;
 }
 
@@ -1117,6 +1123,8 @@ async function runSuite(
   for (const [i, c] of def.cases.entries()) {
     const id = caseId(def.suite, c);
     const asks = [c.ask, ...(c.then ?? []).map((t) => t.ask)];
+    const turnGaps = [c.gap ?? null, ...(c.then ?? []).map((t) => t.gap ?? null)];
+    const gaps = turnGaps.filter((g): g is string => g !== null);
     const entry: CaseTrace = {
       id,
       suite: def.suite,
@@ -1124,7 +1132,8 @@ async function runSuite(
         ' / ',
       ),
       turns: asks.length,
-      ...(c.gap ? { gap: c.gap } : {}),
+      ...(gaps.length > 0 ? { gap: [...new Set(gaps)].join(', ') } : {}),
+      turnGaps,
       core: def.core,
       attempts: [],
     };
@@ -1141,7 +1150,7 @@ async function runSuite(
           })));
       entry.attempts.push(outcome);
       say(
-        `${String(i + 1).padStart(2)} of ${String(def.cases.length)}${K > 1 ? ` #${String(k)}` : ''} ${outcome.result}${c.gap && outcome.result === 'fail' ? ` (known gap, ${c.gap})` : ''}  ${entry.ask}`,
+        `${String(i + 1).padStart(2)} of ${String(def.cases.length)}${K > 1 ? ` #${String(k)}` : ''} ${outcome.result}${outcome.result === 'gap' ? ' (known gap)' : ''}  ${entry.ask}`,
       );
     }
     writeTrace(trace, folder, session.safe);
@@ -1188,7 +1197,8 @@ function judge(profile: Profile, traces: readonly SuiteTrace[]): void {
   for (const t of traces) {
     const s = summarizeSuite(t);
     const noVerdict = s.providerErrors * 100 > s.attempts * PROVIDER_ERROR_PERCENT;
-    expect(
+    // a suite without a bar reports only: too many refusals are said, not failed on
+    (t.passPercent === null ? expect.soft : expect)(
       noVerdict,
       `${t.suite}: not a verdict: the provider refused ${String(s.providerErrors)} of ${String(s.attempts)} requests for its rate limit or for being overloaded, more than ${String(PROVIDER_ERROR_PERCENT)} percent. Run it again later, or with a key on a higher usage tier`,
     ).toBe(false);
@@ -1281,7 +1291,9 @@ function changeFacts(): ChangeFacts {
   const dir = join(DEMO_FOLDER, CHANGE_SITE.id);
   const read = (file: string): unknown => JSON.parse(readFileSync(join(dir, file), 'utf8'));
   const manifest = read('manifest.json') as { captures: { id: string; date: string }[] };
-  const issues = (read('issues.json') as { issues: { id: string; code: string }[] }).issues;
+  const issues = (
+    read('issues.json') as { issues: { id: string; code: string; capture?: string }[] }
+  ).issues;
   const truth = read('truth.json') as {
     changes: {
       issue: { items: { verdict: string; from?: string; to?: string }[] };
@@ -1290,8 +1302,13 @@ function changeFacts(): ChangeFacts {
   };
   const code = (id: string | undefined) => issues.find((i) => i.id === id)?.code ?? String(id);
   const items = truth.changes.issue.items;
+  const captures = [...manifest.captures].sort((x, y) => x.date.localeCompare(y.date));
+  const codesOf = (capture: string | undefined) =>
+    issues.filter((i) => i.capture === capture).map((i) => i.code);
   return {
-    dates: manifest.captures.map((c) => c.date).sort(),
+    dates: captures.map((c) => c.date),
+    earlierCodes: codesOf(captures[0]?.id),
+    laterCodes: codesOf(captures.at(-1)?.id),
     newCodes: items.filter((i) => i.verdict === 'new').map((i) => code(i.to)),
     resolvedCodes: items.filter((i) => i.verdict === 'resolved').map((i) => code(i.from)),
     stockpileFillM3:
@@ -1342,32 +1359,33 @@ test('@eval quarry: stockpile volumes over three surveys', async () => {
   const built = surveyDemoFolder();
   test.skip(built.dir === null, built.reason);
   const data = await createDataRoot();
-  const project = await createSurveyProject(data.root, built.dir ?? '', 'quarry');
-  const manifest = JSON.parse(readFileSync(join(project.dir, 'manifest.json'), 'utf8')) as {
-    captures: { id: string; date: string }[];
-  };
-  const stock = (project.truth.stockpiles ?? {}) as Record<
-    string,
-    { dates: Record<string, { volumeM3: number; tonnes: number }> }
-  >;
-  const facts: QuarryFacts = {
-    dates: [...manifest.captures].sort((a, b) => a.date.localeCompare(b.date)),
-    piles: Object.fromEntries(Object.entries(stock).map(([id, p]) => [id, p.dates])),
-  };
-  expect(checkQuarry(facts), 'the quarry demo no longer matches the cases').toEqual([]);
-  const def: SuiteDef = {
-    suite: 'quarry',
-    demo: SURVEY_DEMOS.quarry.id,
-    cases: picked('quarry', quarryCases(facts)),
-    passPercent: null,
-    core: false,
-  };
-  test.skip(def.cases.length === 0, `QUADRION_EVAL_CASES (${CASE_FILTER}) picks no quarry case`);
-  test.setTimeout(budget([def], SURVEYS_MS));
-
-  const folder = runFolder(profile);
-  const session = await startSession(profile, data, PIPELINE_ENV);
+  let session: Session | undefined;
   try {
+    const project = await createSurveyProject(data.root, built.dir ?? '', 'quarry');
+    const manifest = JSON.parse(readFileSync(join(project.dir, 'manifest.json'), 'utf8')) as {
+      captures: { id: string; date: string }[];
+    };
+    const stock = (project.truth.stockpiles ?? {}) as Record<
+      string,
+      { dates: Record<string, { volumeM3: number; tonnes: number }> }
+    >;
+    const facts: QuarryFacts = {
+      dates: [...manifest.captures].sort((a, b) => a.date.localeCompare(b.date)),
+      piles: Object.fromEntries(Object.entries(stock).map(([id, p]) => [id, p.dates])),
+    };
+    expect(checkQuarry(facts), 'the quarry demo no longer matches the cases').toEqual([]);
+    const def: SuiteDef = {
+      suite: 'quarry',
+      demo: SURVEY_DEMOS.quarry.id,
+      cases: picked('quarry', quarryCases(facts)),
+      passPercent: null,
+      core: false,
+    };
+    test.skip(def.cases.length === 0, `QUADRION_EVAL_CASES (${CASE_FILTER}) picks no quarry case`);
+    test.setTimeout(budget([def], SURVEYS_MS));
+
+    const folder = runFolder(profile);
+    session = await startSession(profile, data, PIPELINE_ENV);
     const { page } = session;
     await openDemo(page, project.name, project.id);
     await ready(page);
@@ -1387,6 +1405,8 @@ test('@eval quarry: stockpile volumes over three surveys', async () => {
     await sayMeter(page, home);
     judge(profile, [trace]);
   } finally {
-    await session.finish();
+    // the session removes the data root as it ends; without one it goes here
+    if (session) await session.finish();
+    else await rm(data.base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });

@@ -43,6 +43,10 @@ export interface EvalState {
   evidenceOpen: boolean;
   /** Issues in the open project. */
   issueCount: number;
+  /** Measurements in the open project; null when the app keeps none in memory. */
+  measurementCount: number | null;
+  /** The counts as the conversation started, before its first request. */
+  start: { issueCount: number; measurementCount: number | null };
   /**
    * The tools that ran to the end in the last reply, in order. A step that failed or was rejected
    * is not here.
@@ -59,6 +63,8 @@ export interface EvalTurn {
   ask: string;
   /** Null when the app did what was asked, else the reason it did not. */
   expect: (state: EvalState) => string | null;
+  /** This follow-up is a known gap (see `EvalCase.gap`). */
+  gap?: string;
 }
 
 export interface EvalCase {
@@ -67,9 +73,11 @@ export interface EvalCase {
   /** Follow-ups in the same conversation, each judged after its own reply. */
   then?: EvalTurn[];
   /**
-   * The roadmap item expected to close this gap (A1: tool results kept in history; A2: read tools
-   * for survey dates and volumes). Failing it is known and left out of the pass rate; passing it
-   * every time is reported as closed, so the marker can go.
+   * The first request is a known gap: the roadmap item expected to close it (A1: tool results
+   * kept in history; A2: read tools for survey dates and volumes). A follow-up carries its own
+   * `gap`. A gap turn that fails is known and left out of the pass rate; a turn that is no gap
+   * still has to pass. A case whose gap turns all pass every time is reported as closed, so the
+   * marker can go.
    */
   gap?: string;
   /** The tag of an asset that is selected when the request is typed. */

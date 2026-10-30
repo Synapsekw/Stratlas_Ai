@@ -6,6 +6,10 @@
  *   pnpm eval:agent:compare <before> <after>      two run folders (or single suite files)
  *   pnpm eval:agent:compare --summary [<run>]     one run's table (the newest by default)
  *   --dir <folder>                                where the runs are (default .agent-eval/)
+ *   --force                                       compare runs of another profile, model or k
+ *
+ * Two runs of a different profile, model or k are refused (exit 2) unless --force is given:
+ * such a comparison measures the setup, not the change.
  *
  * Prints per case what moved (fixed, broke, new, removed) and where the tool sequence changed,
  * then pass@1 and pass^k before and after. Exit 0 when it could compare, 2 on bad input. It
@@ -18,6 +22,7 @@ import {
   compareRuns,
   formatComparison,
   formatSummary,
+  runMismatch,
   TRACE_SCHEMA,
 } from '../../apps/desktop/e2e/agent-eval.trace.ts';
 
@@ -63,6 +68,8 @@ function runs(dir) {
 }
 
 const args = process.argv.slice(2);
+const forced = args.includes('--force');
+if (forced) args.splice(args.indexOf('--force'), 1);
 let dir = DEFAULT_DIR;
 const at = args.indexOf('--dir');
 if (at >= 0) {
@@ -87,5 +94,9 @@ else if (args.length === 0) {
   [before, after] = all.slice(-2);
 } else fail('give two runs, or none for the two newest');
 
+const [a, b] = [load(before), load(after)];
+const mismatch = runMismatch(a, b);
+if (mismatch && !forced) fail(`${mismatch}; pass --force to compare them anyway`);
 process.stdout.write(`before: ${basename(before)}\nafter:  ${basename(after)}\n\n`);
-process.stdout.write(`${formatComparison(compareRuns(load(before), load(after)))}\n`);
+if (mismatch) process.stdout.write(`(forced: ${mismatch})\n\n`);
+process.stdout.write(`${formatComparison(compareRuns(a, b))}\n`);

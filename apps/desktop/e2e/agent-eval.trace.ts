@@ -27,11 +27,19 @@ export interface TurnTrace {
   reply: string;
   /** Why the reply failed, when it did. */
   error?: string;
+  /** Why this turn did not do what was asked; absent when it did. */
+  why?: string;
+  /** The roadmap item expected to close this turn's gap (A1, A2...), when it is one. */
+  gap?: string;
 }
 
 export interface AttemptTrace {
-  /** `provider`: refused for its rate limit or load, twice; neither a pass nor a fail. */
-  result: 'pass' | 'fail' | 'provider';
+  /**
+   * `pass`: every turn did what was asked. `fail`: a turn that is not a known gap did not.
+   * `gap`: only turns that are known gaps did not. `provider`: refused for its rate limit or
+   * load, twice; no verdict either way.
+   */
+  result: 'pass' | 'fail' | 'gap' | 'provider';
   /** Why it did not pass; empty for a pass. */
   why: string;
   turns: TurnTrace[];
@@ -47,8 +55,10 @@ export interface CaseTrace {
   /** The requests, joined with " / ". */
   ask: string;
   turns: number;
-  /** The roadmap item expected to close this gap (A1, A2...): failing is known, passing is news. */
+  /** The gaps of its turns, joined (A1, A2...): for the table. */
   gap?: string;
+  /** Per turn, the roadmap item expected to close it, or null for a turn that must pass now. */
+  turnGaps?: (string | null)[];
   /** Counted in the suite's pass bar. */
   core: boolean;
   attempts: AttemptTrace[];
@@ -77,13 +87,20 @@ export interface CaseSummary {
   ask: string;
   gap?: string;
   core: boolean;
+  /** The case has a turn that must pass now: its attempts count in the pass rate. */
+  scored: boolean;
   /** Attempts with a verdict (not refused by the provider). */
   judged: number;
+  /** Judged attempts whose turns that are not known gaps all passed. */
   passed: number;
   provider: number;
-  /** Share of judged attempts that passed; null without any. */
+  /** The run asked it this many times (the suite's k). */
+  k: number;
+  /** Fewer attempts were judged than k: the provider refused some, or the run was cut short. */
+  partial: boolean;
+  /** Share of judged attempts that passed; null without any, or when every turn is a gap. */
   passAt1: number | null;
-  /** Every judged attempt passed; null without any. */
+  /** Every judged attempt passed; null as `passAt1`. */
   passHatK: boolean | null;
   status: CaseStatus;
   /** Every attempt ran the same tool sequence. */
@@ -114,24 +131,37 @@ function mostCommon(items: readonly string[]): string {
   return best;
 }
 
-export function summarizeCase(c: CaseTrace): CaseSummary {
+/**
+ * One case over its attempts. A failure on a turn that is not a known gap is a failure, whatever
+ * the other turns; a case whose only failures are on gap turns is a known gap, and one whose every
+ * attempt passed all its turns, gaps included, is a closed gap.
+ */
+export function summarizeCase(c: CaseTrace, k = c.attempts.length): CaseSummary {
   const judged = c.attempts.filter((a) => a.result !== 'provider');
-  const passed = judged.filter((a) => a.result === 'pass').length;
+  const passed = judged.filter((a) => a.result !== 'fail').length;
+  const full = judged.filter((a) => a.result === 'pass').length;
+  const failed = judged.length - passed;
+  const scored = c.turnGaps ? c.turnGaps.some((g) => !g) : !c.gap;
   const sequences = c.attempts.map(toolSequence);
   let status: CaseStatus;
   if (judged.length === 0) status = 'no-verdict';
-  else if (c.gap) status = passed === judged.length ? 'gap-closed' : 'gap';
-  else status = passed === judged.length ? 'pass' : passed === 0 ? 'fail' : 'flaky';
+  else if (failed > 0) status = passed === 0 ? 'fail' : 'flaky';
+  else if (c.gap) status = full === judged.length ? 'gap-closed' : 'gap';
+  else status = 'pass';
+  const rated = scored && judged.length > 0;
   return {
     id: c.id,
     ask: c.ask,
     ...(c.gap ? { gap: c.gap } : {}),
     core: c.core,
+    scored,
     judged: judged.length,
     passed,
     provider: c.attempts.length - judged.length,
-    passAt1: judged.length > 0 ? passed / judged.length : null,
-    passHatK: judged.length > 0 ? passed === judged.length : null,
+    k,
+    partial: judged.length < k,
+    passAt1: rated ? passed / judged.length : null,
+    passHatK: rated ? passed === judged.length : null,
     status,
     consistent: new Set(sequences).size <= 1,
     tools: mostCommon(sequences),
@@ -140,14 +170,16 @@ export function summarizeCase(c: CaseTrace): CaseSummary {
 
 export interface SuiteSummary {
   cases: CaseSummary[];
-  /** Mean pass rate over the judged attempts of the cases that are not gaps. */
+  /** Mean pass rate over the judged attempts, on the turns that are not known gaps. */
   passAt1: number | null;
-  /** Share of the judged cases (not gaps) whose every attempt passed. */
+  /** Share of the rated cases whose every judged attempt passed. */
   passHatK: number | null;
-  /** Attempts of the core cases (not gaps): what the bar is checked on. */
+  /** Attempts of the core cases: what the bar is checked on. */
   core: { judged: number; passed: number };
   gaps: number;
   gapsClosed: number;
+  /** Cases with fewer judged attempts than k. */
+  partial: number;
   /** Attempts the provider refused. */
   providerErrors: number;
   attempts: number;
@@ -156,20 +188,21 @@ export interface SuiteSummary {
 }
 
 export function summarizeSuite(s: SuiteTrace): SuiteSummary {
-  const cases = s.cases.map(summarizeCase);
-  const scored = cases.filter((c) => !c.gap && c.judged > 0);
-  const judged = scored.reduce((n, c) => n + c.judged, 0);
-  const passed = scored.reduce((n, c) => n + c.passed, 0);
-  const core = cases.filter((c) => c.core && !c.gap);
+  const cases = s.cases.map((c) => summarizeCase(c, s.k));
+  const rated = cases.filter((c) => c.scored && c.judged > 0);
+  const judged = rated.reduce((n, c) => n + c.judged, 0);
+  const passed = rated.reduce((n, c) => n + c.passed, 0);
+  const core = rated.filter((c) => c.core);
   const coreJudged = core.reduce((n, c) => n + c.judged, 0);
   const corePassed = core.reduce((n, c) => n + c.passed, 0);
   return {
     cases,
     passAt1: judged > 0 ? passed / judged : null,
-    passHatK: scored.length > 0 ? scored.filter((c) => c.passHatK).length / scored.length : null,
+    passHatK: rated.length > 0 ? rated.filter((c) => c.passHatK).length / rated.length : null,
     core: { judged: coreJudged, passed: corePassed },
     gaps: cases.filter((c) => c.status === 'gap').length,
     gapsClosed: cases.filter((c) => c.status === 'gap-closed').length,
+    partial: cases.filter((c) => c.partial).length,
     providerErrors: cases.reduce((n, c) => n + c.provider, 0),
     attempts: s.cases.reduce((n, c) => n + c.attempts.length, 0),
     barMet:
@@ -190,6 +223,10 @@ const STATUS_LABEL: Record<CaseStatus, string> = {
   'no-verdict': 'no verdict',
 };
 
+/** "2/3 passed, 3/3 judged", with PARTIAL when fewer than k attempts have a verdict. */
+const counts = (c: CaseSummary): string =>
+  `${String(c.passed)}/${String(c.judged)} passed, ${String(c.judged)}/${String(c.k)} judged${c.partial ? ' PARTIAL' : ''}`;
+
 /** The suite as a table for the run's log: one block per case, then the totals. */
 export function formatSummary(s: SuiteTrace): string {
   const sum = summarizeSuite(s);
@@ -199,9 +236,12 @@ export function formatSummary(s: SuiteTrace): string {
   for (const [i, c] of sum.cases.entries()) {
     const trace = s.cases[i];
     lines.push(
-      `${String(i + 1).padStart(2)}  ${STATUS_LABEL[c.status]}${c.gap ? ` (${c.gap})` : ''}  ${String(c.passed)}/${String(c.judged)}  ${c.ask}`,
+      `${String(i + 1).padStart(2)}  ${STATUS_LABEL[c.status]}${c.gap ? ` (${c.gap})` : ''}  ${counts(c)}  ${c.ask}`,
     );
-    const why = trace?.attempts.find((a) => a.result === 'fail')?.why;
+    const why = (
+      trace?.attempts.find((a) => a.result === 'fail') ??
+      trace?.attempts.find((a) => a.result === 'gap')
+    )?.why;
     if (why) lines.push(`    why:   ${why}`);
     lines.push(
       `    tools: ${c.tools || 'none'}${c.consistent ? '' : ' (varies between attempts)'}`,
@@ -210,8 +250,9 @@ export function formatSummary(s: SuiteTrace): string {
     if (note) lines.push(`    note:  ${note}`);
   }
   lines.push(
-    `pass@1 ${pct(sum.passAt1)}, pass^${String(s.k)} ${pct(sum.passHatK)} over the cases that are not known gaps; ` +
+    `pass@1 ${pct(sum.passAt1)}, pass^${String(s.k)} ${pct(sum.passHatK)} on the turns that are not known gaps; ` +
       `${String(sum.gaps)} known gap(s), ${String(sum.gapsClosed)} closed; ` +
+      `${String(sum.partial)} partial case(s); ` +
       `${String(sum.providerErrors)} of ${String(sum.attempts)} attempt(s) refused by the provider`,
   );
   if (s.passPercent !== null)
@@ -222,7 +263,8 @@ export function formatSummary(s: SuiteTrace): string {
   return lines.join('\n');
 }
 
-export type CaseChange = 'fixed' | 'broke' | 'same' | 'new' | 'removed';
+/** `unknown`: one side has no verdict (the provider refused every attempt). */
+export type CaseChange = 'fixed' | 'broke' | 'same' | 'unknown' | 'new' | 'removed';
 
 export interface ComparisonRow {
   id: string;
@@ -240,6 +282,7 @@ export interface Comparison {
     fixed: number;
     broke: number;
     same: number;
+    unknown: number;
     new: number;
     removed: number;
     toolsChanged: number;
@@ -256,7 +299,7 @@ function pooled(suites: readonly SuiteTrace[]): {
 } {
   const cases = suites
     .flatMap((s) => summarizeSuite(s).cases)
-    .filter((c) => !c.gap && c.judged > 0);
+    .filter((c) => c.scored && c.judged > 0);
   const judged = cases.reduce((n, c) => n + c.judged, 0);
   return {
     passAt1: judged > 0 ? cases.reduce((n, c) => n + c.passed, 0) / judged : null,
@@ -270,7 +313,7 @@ export function compareRuns(
   after: readonly SuiteTrace[],
 ): Comparison {
   const index = (runs: readonly SuiteTrace[]) =>
-    new Map(runs.flatMap((s) => s.cases.map((c) => [c.id, summarizeCase(c)] as const)));
+    new Map(runs.flatMap((s) => s.cases.map((c) => [c.id, summarizeCase(c, s.k)] as const)));
   const a = index(before);
   const b = index(after);
   const ids = [...new Set([...a.keys(), ...b.keys()])];
@@ -281,11 +324,13 @@ export function compareRuns(
       ? 'new'
       : !y
         ? 'removed'
-        : good(x) === good(y)
-          ? 'same'
-          : good(y)
-            ? 'fixed'
-            : 'broke';
+        : x.status === 'no-verdict' || y.status === 'no-verdict'
+          ? 'unknown'
+          : good(x) === good(y)
+            ? 'same'
+            : good(y)
+              ? 'fixed'
+              : 'broke';
     return {
       id,
       ask: (y ?? x)?.ask ?? id,
@@ -302,6 +347,7 @@ export function compareRuns(
       fixed: count('fixed'),
       broke: count('broke'),
       same: count('same'),
+      unknown: count('unknown'),
       new: count('new'),
       removed: count('removed'),
       toolsChanged: rows.filter((r) => r.toolsChanged).length,
@@ -315,12 +361,13 @@ const CHANGE_LABEL: Record<CaseChange, string> = {
   fixed: 'fixed',
   broke: 'BROKE',
   same: 'same',
+  unknown: 'unknown',
   new: 'new',
   removed: 'removed',
 };
 
 const verdict = (c: CaseSummary | null): string =>
-  c ? `${STATUS_LABEL[c.status]} ${String(c.passed)}/${String(c.judged)}` : '-';
+  c ? `${STATUS_LABEL[c.status]} ${counts(c)}` : '-';
 
 const toolsOf = (c: CaseSummary | null): string => (c && c.tools !== '' ? c.tools : 'none');
 
@@ -329,7 +376,7 @@ const MAX_LISTED = 10;
 
 /** The comparison for a terminal: changed cases first, then the totals. */
 export function formatComparison(cmp: Comparison): string {
-  const order: CaseChange[] = ['broke', 'fixed', 'new', 'removed', 'same'];
+  const order: CaseChange[] = ['broke', 'unknown', 'fixed', 'new', 'removed', 'same'];
   const rows = [...cmp.rows].sort(
     (p, q) => order.indexOf(p.change) - order.indexOf(q.change) || p.id.localeCompare(q.id),
   );
@@ -353,11 +400,32 @@ export function formatComparison(cmp: Comparison): string {
       );
   const t = cmp.totals;
   lines.push(
-    `${String(t.fixed)} fixed, ${String(t.broke)} broke, ${String(t.same)} same, ${String(t.new)} new, ${String(t.removed)} removed; ` +
+    `${String(t.fixed)} fixed, ${String(t.broke)} broke, ${String(t.same)} same, ${String(t.unknown)} unknown (no verdict on one side), ${String(t.new)} new, ${String(t.removed)} removed; ` +
       `tool sequence changed in ${String(t.toolsChanged)}`,
   );
   lines.push(
-    `pass@1 ${pct(cmp.before.passAt1)} -> ${pct(cmp.after.passAt1)}, pass^k ${pct(cmp.before.passHatK)} -> ${pct(cmp.after.passHatK)} (cases that are not known gaps)`,
+    `pass@1 ${pct(cmp.before.passAt1)} -> ${pct(cmp.after.passAt1)}, pass^k ${pct(cmp.before.passHatK)} -> ${pct(cmp.after.passHatK)} (turns that are not known gaps)`,
   );
   return lines.join('\n');
+}
+
+/**
+ * Why two runs are not comparable, or null: they differ in profile, model or k (or a run mixes
+ * them). Comparing such runs measures the setup, not a prompt or tool change.
+ */
+export function runMismatch(
+  before: readonly SuiteTrace[],
+  after: readonly SuiteTrace[],
+): string | null {
+  const keys = (runs: readonly SuiteTrace[]) => ({
+    profile: [...new Set(runs.map((s) => s.profile))].join('+'),
+    model: [...new Set(runs.map((s) => s.model))].join('+'),
+    k: [...new Set(runs.map((s) => String(s.k)))].join('+'),
+  });
+  const a = keys(before);
+  const b = keys(after);
+  const diff = (['profile', 'model', 'k'] as const)
+    .filter((key) => a[key] !== b[key] || a[key].includes('+'))
+    .map((key) => `${key} ${a[key]} vs ${b[key]}`);
+  return diff.length > 0 ? `the runs differ: ${diff.join(', ')}` : null;
 }
