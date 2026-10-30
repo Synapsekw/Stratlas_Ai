@@ -78,14 +78,14 @@ describe('size budgets (M10 decision 6)', () => {
 
   it('holds the Analytics pack to its own budget', () => {
     expect(BUDGETS.analyticsPack).toEqual({
-      unpackedBytes: 8_000_000_000,
-      compressedBytes: 7_000_000_000,
+      unpackedBytes: 9_500_000_000,
+      compressedBytes: 8_500_000_000,
     });
     expect(
-      packBudgetProblems({ unpackedBytes: 6.9e9, compressedBytes: 6.62e9 }, BUDGETS.analyticsPack),
+      packBudgetProblems({ unpackedBytes: 7.35e9, compressedBytes: 6.89e9 }, BUDGETS.analyticsPack),
     ).toEqual([]);
     expect(
-      packBudgetProblems({ unpackedBytes: 8.1e9, compressedBytes: 7.1e9 }, BUDGETS.analyticsPack),
+      packBudgetProblems({ unpackedBytes: 9.6e9, compressedBytes: 8.6e9 }, BUDGETS.analyticsPack),
     ).toHaveLength(2);
   });
 
