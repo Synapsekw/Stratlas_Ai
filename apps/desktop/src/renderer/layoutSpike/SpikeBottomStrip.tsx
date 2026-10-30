@@ -85,8 +85,8 @@ function VideoTile({ clip }: { clip: { id: string; name: string } }) {
 }
 
 const MIN_W = 320;
-/** First placed top-left, under the island's row and clear of the top-right slot (D4). */
-const FIRST_PLACE: FloatRect = { x: 12, y: 64, w: 340 };
+/** First placed top-left, under the opened island (two rows), clear of the top-right slot (D4). */
+const FIRST_PLACE: FloatRect = { x: 12, y: 112, w: 340 };
 const ASPECT = 9 / 16;
 
 /** The window inside the stage: at least 320 x 180, at most 80 % of the stage, aspect kept. */
