@@ -1,0 +1,116 @@
+/* Dialog (@aio/ui Dialog.tsx): one scrim, a centred box, title row, body, footer.
+   Dialogs stack: the one on top dims the page once; scrims under it go clear. */
+.q-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--sp-8) var(--sp-6) var(--sp-6);
+  padding-top: max(var(--sp-8), 10vh);
+  background: color-mix(in oklch, var(--scrim) 65%, transparent);
+  opacity: 1;
+  transition: opacity var(--d-1) var(--ease);
+}
+.q-scrim[data-under] {
+  background: transparent;
+}
+/* a dialog opened from inside another modal (PortalRoot sets data-layer) sits above it */
+[data-layer='top'] > .q-scrim {
+  z-index: var(--z-top);
+}
+.q-dialog {
+  box-sizing: border-box;
+  width: min(560px, 100%);
+  max-height: calc(100vh - 2 * var(--sp-8));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-6);
+  box-shadow: var(--el-3);
+  color: var(--fg-1);
+  font-size: var(--t-13);
+  overflow: hidden;
+  outline: none;
+  /* a modal is not anchored to a trigger: it grows from its centre */
+  transform-origin: center;
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--d-2) var(--ease-x),
+    transform var(--d-2) var(--ease-x);
+}
+.q-dialog[data-size='sm'] {
+  width: min(400px, 100%);
+}
+.q-dialog[data-size='lg'] {
+  width: min(760px, 100%);
+}
+@starting-style {
+  .q-scrim {
+    opacity: 0;
+  }
+  .q-dialog {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.q-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-5) var(--sp-5) var(--sp-4) var(--sp-6);
+}
+.q-dialog-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--t-title);
+  font-weight: var(--fw-title);
+  color: var(--fg-0);
+  overflow-wrap: anywhere;
+}
+.q-dialog-close {
+  flex: none;
+}
+.q-dialog-desc {
+  margin: 0;
+  padding: 0 var(--sp-6) var(--sp-4);
+  color: var(--fg-2);
+  line-height: 1.5;
+}
+.q-dialog-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-4) var(--sp-6) var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+.q-dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-5) var(--sp-6);
+  border-top: 1px solid var(--line-soft);
+}
+/* reduced motion: no scale, a short fade only (the sheet-wide rule also shortens it) */
+@media (prefers-reduced-motion: reduce) {
+  .q-dialog {
+    transform: none;
+    transition: opacity var(--d-1) linear;
+  }
+  @starting-style {
+    .q-dialog {
+      transform: none;
+    }
+  }
+}
+:root[data-motion='reduce'] .q-dialog {
+  transform: none;
+  transition: opacity var(--d-1) linear;
+}

@@ -1,0 +1,92 @@
+/* Toast host (@aio/ui toast/ToastHost.tsx): one toast at a time, bottom left of the stage or
+   bottom right of the window. It rises a few pixels as it fades in. */
+.q-toasts {
+  position: absolute;
+  inset-inline-start: var(--sp-6);
+  bottom: var(--sp-6);
+  z-index: var(--z-toast);
+  width: min(360px, calc(100% - 2 * var(--sp-6)));
+  pointer-events: none;
+}
+.q-toasts[data-placement='window'] {
+  position: fixed;
+  inset-inline-start: auto;
+  inset-inline-end: var(--sp-6);
+}
+.q-toast-region:empty {
+  display: none;
+}
+.q-toast {
+  pointer-events: auto;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  min-height: 40px;
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-5);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  box-shadow: var(--el-2);
+  color: var(--fg-1);
+  font-size: var(--t-13);
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--d-2) var(--ease),
+    transform var(--d-2) var(--ease);
+}
+@starting-style {
+  .q-toast {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.q-toast-icon {
+  flex: none;
+  color: var(--acc);
+}
+.q-toast[data-tone='ok'] .q-toast-icon {
+  color: var(--ok);
+}
+.q-toast[data-tone='warn'] .q-toast-icon {
+  color: var(--warn-ink);
+}
+.q-toast[data-tone='error'] .q-toast-icon {
+  color: var(--s5);
+}
+.q-toast[data-tone='error'] {
+  border-color: var(--danger-line);
+}
+.q-toast-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: var(--sp-1);
+  padding-block: var(--sp-2);
+}
+.q-toast-msg {
+  color: var(--fg-0);
+  overflow-wrap: anywhere;
+}
+.q-toast-detail {
+  color: var(--fg-2);
+  font-size: var(--t-12);
+  overflow-wrap: anywhere;
+}
+/* reduced motion: it fades, it does not move */
+@media (prefers-reduced-motion: reduce) {
+  .q-toast {
+    transform: none;
+    transition: opacity var(--d-1) linear;
+  }
+  @starting-style {
+    .q-toast {
+      transform: none;
+    }
+  }
+}
+:root[data-motion='reduce'] .q-toast {
+  transform: none;
+  transition: opacity var(--d-1) linear;
+}

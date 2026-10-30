@@ -148,4 +148,239 @@ describe('Menu', () => {
     const pop = document.body.querySelector('.menu-pop');
     expect(pop?.parentElement?.hasAttribute('data-layer')).toBe(false);
   });
+  it('arrow keys rove: only the current item is in the tab order', () => {
+    show(abc);
+    const r = rows();
+    expect(document.activeElement).toBe(r[0]);
+    expect(r.map((x) => x.tabIndex)).toEqual([0, -1, -1]);
+    key(document.activeElement, 'ArrowDown');
+    expect(document.activeElement).toBe(r[1]);
+    expect(r.map((x) => x.tabIndex)).toEqual([-1, 0, -1]);
+  });
+
+  it('typeahead jumps to the next item starting with what was typed', () => {
+    vi.useFakeTimers();
+    try {
+      show([
+        { id: 'copy', label: 'Copy', onSelect: vi.fn() },
+        { id: 'cut', label: 'Cut', onSelect: vi.fn() },
+        { id: 'paste', label: 'Paste', onSelect: vi.fn() },
+        { id: 'clear', label: 'Clear', onSelect: vi.fn() },
+      ]);
+      const r = rows();
+      key(document.activeElement, 'p');
+      expect(document.activeElement).toBe(r[2]);
+      vi.advanceTimersByTime(600);
+      // "c" again and again walks the C items from where focus is
+      key(document.activeElement, 'c');
+      expect(document.activeElement).toBe(r[3]);
+      vi.advanceTimersByTime(600);
+      key(document.activeElement, 'c');
+      expect(document.activeElement).toBe(r[0]);
+      vi.advanceTimersByTime(600);
+      // a quick "cu" is one prefix
+      key(document.activeElement, 'c');
+      key(document.activeElement, 'u');
+      expect(document.activeElement).toBe(r[1]);
+      // no match leaves focus where it is
+      vi.advanceTimersByTime(600);
+      key(document.activeElement, 'z');
+      expect(document.activeElement).toBe(r[1]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('Space still presses the focused item', () => {
+    show([{ id: 'a', label: 'A', onSelect: vi.fn() }]);
+    const e = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+    act(() => {
+      document.activeElement?.dispatchEvent(e);
+    });
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it('Tab closes the menu instead of cycling inside it', () => {
+    const onClose = vi.fn();
+    show(abc, onClose);
+    const e = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    act(() => {
+      document.activeElement?.dispatchEvent(e);
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it('marks a button opener with aria-haspopup and aria-expanded', () => {
+    function H() {
+      const opener = useRef<HTMLButtonElement>(null);
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button
+            ref={opener}
+            type="button"
+            data-testid="opener"
+            onClick={() => {
+              setOpen(true);
+            }}
+          >
+            open
+          </button>
+          <Menu
+            open={open}
+            onClose={() => {
+              setOpen(false);
+            }}
+            opener={opener}
+            label="Actions"
+            items={abc}
+          />
+        </>
+      );
+    }
+    root = createRoot(host);
+    act(() => root?.render(<H />));
+    const opener = host.querySelector<HTMLButtonElement>('[data-testid="opener"]');
+    expect(opener?.getAttribute('aria-haspopup')).toBe('menu');
+    expect(opener?.getAttribute('aria-expanded')).toBe('false');
+    act(() => opener?.click());
+    expect(opener?.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('leaves a non-button opener (a tree row) alone', () => {
+    function H() {
+      const opener = useRef<HTMLDivElement>(null);
+      return (
+        <>
+          <div ref={opener} role="treeitem" aria-expanded="true" tabIndex={0} data-testid="row">
+            row
+          </div>
+          <Menu open onClose={vi.fn()} opener={opener} label="Actions" items={abc} />
+        </>
+      );
+    }
+    root = createRoot(host);
+    act(() => root?.render(<H />));
+    const row = host.querySelector('[data-testid="row"]');
+    expect(row?.hasAttribute('aria-haspopup')).toBe(false);
+    expect(row?.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  describe('submenus', () => {
+    const fileUnder = vi.fn();
+    const nested: MenuEntry[] = [
+      { id: 'rename', label: 'Rename', onSelect: vi.fn() },
+      {
+        id: 'file',
+        label: 'File under',
+        testId: 'file-under',
+        children: [
+          { id: 'd1', label: '3 Oct 2026', onSelect: fileUnder },
+          { id: 'd2', label: '17 Oct 2026', onSelect: vi.fn() },
+        ],
+      },
+      { id: 'locked', label: 'Position', disabledReason: 'Locked', children: [] },
+    ];
+    const menus = () => [...document.body.querySelectorAll<HTMLElement>('[role="menu"]')];
+    const parent = () => document.body.querySelector<HTMLElement>('[data-testid="file-under"]');
+
+    it('an item with children says it has a submenu', () => {
+      show(nested);
+      expect(parent()?.getAttribute('aria-haspopup')).toBe('menu');
+      expect(parent()?.getAttribute('aria-expanded')).toBe('false');
+      expect(parent()?.querySelector('.menu-chev')).not.toBeNull();
+    });
+
+    it('right arrow opens a submenu, left closes it', () => {
+      show(nested);
+      parent()?.focus();
+      key(document.activeElement, 'ArrowRight');
+      expect(menus()).toHaveLength(2);
+      const sub = menus()[1];
+      expect(sub?.getAttribute('aria-label')).toBe('File under');
+      expect(parent()?.getAttribute('aria-expanded')).toBe('true');
+      expect(parent()?.getAttribute('aria-controls')).toBe(sub?.id);
+      expect(document.activeElement?.textContent).toBe('3 Oct 2026');
+      key(document.activeElement, 'ArrowDown');
+      expect(document.activeElement?.textContent).toBe('17 Oct 2026');
+      key(document.activeElement, 'ArrowLeft');
+      expect(menus()).toHaveLength(1);
+      expect(document.activeElement).toBe(parent());
+    });
+
+    it('Escape in a submenu closes only the submenu', () => {
+      const onClose = vi.fn();
+      show(nested, onClose);
+      parent()?.focus();
+      key(document.activeElement, 'ArrowRight');
+      key(document.activeElement, 'Escape');
+      expect(onClose).not.toHaveBeenCalled();
+      expect(menus()).toHaveLength(1);
+      expect(document.activeElement).toBe(parent());
+    });
+
+    it('a click opens it; choosing in it closes the whole menu, then runs', () => {
+      const order: string[] = [];
+      fileUnder.mockImplementation(() => order.push('select'));
+      show(nested, () => order.push('close'));
+      act(() => parent()?.click());
+      expect(menus()).toHaveLength(2);
+      const item = menus()[1]?.querySelector<HTMLElement>('[role="menuitem"]');
+      act(() => item?.click());
+      expect(order).toEqual(['close', 'select']);
+    });
+
+    it('hovering opens it without taking focus; hovering a plain item closes it', () => {
+      show(nested);
+      const first = rows()[0];
+      act(() => {
+        parent()?.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+      });
+      expect(menus()).toHaveLength(2);
+      expect(document.activeElement).toBe(first);
+      act(() => {
+        first?.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+      });
+      expect(menus()).toHaveLength(1);
+    });
+
+    it('a disabled parent does not open', () => {
+      show(nested);
+      const locked = rows().find((r) => r.textContent === 'Position');
+      locked?.focus();
+      key(locked ?? null, 'ArrowRight');
+      act(() => locked?.click());
+      expect(menus()).toHaveLength(1);
+    });
+
+    it('the submenu sits inside the menu box, so a press on it is not outside', () => {
+      const onClose = vi.fn();
+      show(nested, onClose);
+      parent()?.focus();
+      key(document.activeElement, 'ArrowRight');
+      const pop = document.body.querySelector('.menu-pop');
+      expect(pop?.contains(menus()[1] ?? null)).toBe(true);
+      act(() => {
+        menus()[1]?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+      });
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('in a right-to-left page the arrows swap', () => {
+      document.documentElement.style.direction = 'rtl';
+      try {
+        show(nested);
+        parent()?.focus();
+        key(document.activeElement, 'ArrowRight');
+        expect(menus()).toHaveLength(1);
+        key(document.activeElement, 'ArrowLeft');
+        expect(menus()).toHaveLength(2);
+        key(document.activeElement, 'ArrowRight');
+        expect(menus()).toHaveLength(1);
+      } finally {
+        document.documentElement.style.direction = '';
+      }
+    });
+  });
 });
