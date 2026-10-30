@@ -6,13 +6,11 @@
   z-index: 3;
 }
 .globe-map-chip {
-  background: color-mix(in oklch, var(--bg-1) 90%, transparent);
-  backdrop-filter: blur(16px) saturate(1.15);
+  background: var(--bg-1);
   box-shadow: 0 12px 32px var(--shadow);
 }
 .globe-map .mm-pop {
-  background: color-mix(in oklch, var(--bg-1) 94%, transparent);
-  backdrop-filter: blur(16px) saturate(1.15);
+  background: var(--bg-1);
 }
 .globe-map .mm-notice {
   margin: 0;

@@ -9,8 +9,7 @@
 
 .globe-search-in,
 .globe-search-pop {
-  background: color-mix(in oklch, var(--bg-1) 90%, transparent);
-  backdrop-filter: blur(16px) saturate(1.15);
+  background: var(--bg-1);
   border: 1px solid var(--line);
   border-radius: var(--r-6);
   box-shadow: 0 12px 32px var(--shadow);

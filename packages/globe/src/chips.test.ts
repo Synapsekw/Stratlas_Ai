@@ -3,6 +3,7 @@ import {
   CARD_GAP,
   CHIP,
   CHIP_GAP,
+  chipBox,
   chipMetrics,
   fitLabel,
   groupChips,
@@ -57,6 +58,13 @@ describe('chipMetrics', () => {
     expect(m.nameX).toBe(CHIP.dotX + CHIP.nameGap);
     expect(m.badge).toBeNull();
     expect(m.width).toBe(Math.ceil(m.nameX + 70.4 + CHIP.endPad));
+  });
+
+  it('cluster chip label starts after the dot', () => {
+    // a gathered chip ("3 sites") has no badge: its words start clear of its dot
+    const m = chipMetrics(42, null);
+    expect(m.nameX).toBeGreaterThan(CHIP.dotX + CHIP.dotRadius);
+    expect(m.badge).toBeNull();
   });
 
   it('puts the badge after the name, at least as wide as it is high', () => {
@@ -128,32 +136,48 @@ describe('groupChips', () => {
   });
 
   it('takes in a chip that the gathered chip would cover', () => {
-    // `a` and `b` are stacked; their chip is centred on them and reaches left to 60, where `c`,
-    // clear of both by 30 px, ends at 58
-    const a = chip('a', 100, 100, 60);
-    const b = chip('b', 100, 120, 60);
-    const c = chip('c', 10, 110, 60);
+    // `a` and `b` are stacked and end at 128; their chip runs from their dot to 168, where `c`,
+    // clear of both by 44 px, starts at 172
+    const a = chip('a', 100, 100, 40);
+    const b = chip('b', 100, 120, 40);
+    const c = chip('c', 172 + CHIP.dotX, 110, 60);
     expect(members([c, a])).toEqual([['a'], ['c']]);
     expect(members([c, b])).toEqual([['b'], ['c']]);
     expect(members([c, a, b])).toEqual([['a', 'b', 'c']]);
   });
 
+  it('runs a gathered chip to the right of its dot, at the middle of its sites', () => {
+    // `c` ends at 270, 18 px left of the pair's own chips: a chip centred on the pair (from 260)
+    // would reach it; one that starts at the pair's dot (288) does not
+    const a = chip('a', 300, 100, 40);
+    const b = chip('b', 300, 120, 40);
+    const c = chip('c', 230 + CHIP.dotX, 110, 40);
+    const [pair] = groupChips([a, b], clusterSize);
+    expect(pair).toEqual({ ids: ['a', 'b'], x: 300, y: 110 });
+    expect(members([a, b, c])).toEqual([['a', 'b'], ['c']]);
+    expect(chipBox(300, 110, 80, CHIP.height)).toEqual({
+      left: 300 - CHIP.dotX,
+      top: 110 - CHIP.height / 2,
+      right: 300 - CHIP.dotX + 80,
+      bottom: 110 + CHIP.height / 2,
+    });
+  });
+
   it('goes on for as long as a gathered chip reaches another', () => {
-    // a gathered chip that widens by 200 px with every pair it takes in, and narrow chips 100 px
-    // apart on both sides of it: each round it reaches the next one on either side, and no more
+    // a gathered chip that widens by 100 px with every chip it takes in, and narrow chips 100 px
+    // apart to the right of it: each round it reaches further along the row, until all are in
     const widening = (count: number) => ({ width: 100 + 100 * count, height: CHIP.height });
-    const pairs = Array.from({ length: 10 }, (_, k) => 150 + 100 * k);
+    const row = Array.from({ length: 10 }, (_, k) => 150 + 100 * k);
     const chips = [
       chip('a', 0, 100, 20),
       chip('b', 0, 110, 20),
-      ...pairs.map((x, k) => chip(`left ${String(k)}`, -x, 105, 20)),
-      ...pairs.map((x, k) => chip(`right ${String(k)}`, x, 105, 20)),
+      ...row.map((x, k) => chip(`right ${String(k)}`, x, 105, 20)),
     ];
     // on their own the narrow chips are apart
-    expect(groupChips(chips.slice(2), widening)).toHaveLength(20);
+    expect(groupChips(chips.slice(2), widening)).toHaveLength(10);
     const all = groupChips(chips, widening);
     expect(all).toHaveLength(1);
-    expect(all[0]?.ids).toHaveLength(22);
+    expect(all[0]?.ids).toHaveLength(12);
   });
 
   it('gathers the same chips when the view faces the other way', () => {

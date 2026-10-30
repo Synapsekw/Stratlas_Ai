@@ -103,11 +103,21 @@ export interface ChipGroup {
 /** Chips nearer than this, edge to edge, gather: the clear room of two sprites. */
 export const CHIP_GAP = 2 * CHIP.pad;
 
-interface Box {
+export interface Box {
   left: number;
   top: number;
   right: number;
   bottom: number;
+}
+
+/**
+ * The box of a chip whose dot is at (`x`, `y`): every chip, a site's own or a gathered one, runs
+ * to the right of its dot.
+ */
+export function chipBox(x: number, y: number, width: number, height: number): Box {
+  const left = x - CHIP.dotX;
+  const top = y - height / 2;
+  return { left, top, right: left + width, bottom: top + height };
 }
 
 const middle = (members: readonly PlacedChip[]): { x: number; y: number } => ({
@@ -117,8 +127,8 @@ const middle = (members: readonly PlacedChip[]): { x: number; y: number } => ({
 
 /**
  * Which chips are drawn as one because they would overlap, or come nearer than `gap`. A chip
- * alone runs to the right of its dot; a gathered one is centred on the middle of its members'
- * dots, `clusterSize(count)` large, and takes in whatever it reaches in turn. The answer does not
+ * runs to the right of its dot (`chipBox`): a gathered one has its dot on the middle of its
+ * members' dots, is `clusterSize(count)` large, and takes in whatever it reaches in turn. The answer does not
  * depend on the order of `chips`, nor on which way the view faces: groups come by their first id.
  */
 export function groupChips(
@@ -128,19 +138,9 @@ export function groupChips(
 ): ChipGroup[] {
   const boxOf = (members: readonly PlacedChip[]): Box => {
     const [only] = members;
-    if (only && members.length === 1) {
-      const left = only.x - CHIP.dotX;
-      const top = only.y - only.height / 2;
-      return { left, top, right: left + only.width, bottom: top + only.height };
-    }
-    const { x, y } = middle(members);
-    const { width, height } = clusterSize(members.length);
-    return {
-      left: x - width / 2,
-      top: y - height / 2,
-      right: x + width / 2,
-      bottom: y + height / 2,
-    };
+    const { x, y } = only && members.length === 1 ? only : middle(members);
+    const { width, height } = only && members.length === 1 ? only : clusterSize(members.length);
+    return chipBox(x, y, width, height);
   };
   const near = (a: Box, b: Box) =>
     a.left < b.right + gap &&

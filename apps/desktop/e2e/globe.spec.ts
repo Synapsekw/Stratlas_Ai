@@ -1153,9 +1153,19 @@ test('chips that overlap gather into one, at any heading, and part again', async
     await frames(win);
   }
   let northUp = await sharedChip();
+  // Like a site's own chip, the gathered one has its dot on its sites (their middle) and runs to
+  // the right of it: no dot of a site inside it shows through as a second one.
+  const places = await Promise.all(northUp.sites.map((id) => pinInWindow(win, id)));
+  const [midX, midY] = places
+    .reduce(([x, y], [px, py]) => [x + px, y + py], [0, 0])
+    .map((v) => v / places.length) as [number, number];
+  expect(
+    Math.hypot(dotOf(northUp)[0] - midX, dotOf(northUp)[1] - midY),
+    "the gathered chip's dot lies on the middle of its sites",
+  ).toBeLessThan(4);
   // Site A's own place must lie clear of the gathered chip before anything is read there: under
   // the chip it is drawn in the chip's own colours, and "no dot of its own" would say nothing.
-  // The gathered chip stands in the middle of the two, so from a little nearer (they still share
+  // The gathered chip starts at the middle of the two, so from a little nearer (they still share
   // a chip: their own are far wider than it) site A's place is out from under it.
   const underChip = async (chip: DrawnChip) => {
     const [x, y] = await pinInWindow(win, SITE_A.id);

@@ -25,16 +25,15 @@
   display: none;
 }
 
-/* One surface for everything that floats over the map: nearly solid, a little of the map's light
-   through it, the hairline and shadow of the app's popovers. The field and the Map button wear
+/* One surface for everything that floats over the map: solid, with the hairline and shadow of
+   the app's popovers. The field and the Map button wear
    the same in their own files. */
 .globe-card,
 .globe-controls,
 .globe-credits,
 .globe-readout,
 .globe-notice {
-  background: color-mix(in oklch, var(--bg-1) 90%, transparent);
-  backdrop-filter: blur(16px) saturate(1.15);
+  background: var(--bg-1);
   border: 1px solid var(--line);
   border-radius: var(--r-6);
   box-shadow: 0 12px 32px var(--shadow);

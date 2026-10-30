@@ -278,6 +278,8 @@ export class GlobeController {
   private readonly gatheredChips = new BillboardCollection();
   /** The groups now drawn: the ids of their sites, in order. */
   private gathered: string[][] = [];
+  /** The sites (entity ids) that stand in a gathered chip now. */
+  private gatheredSites = new Set<string>();
   /** The groups and their drawings at the last pass: the same again changes nothing. */
   private gatheredAs = '';
   /** The view the chips were last gathered for. */
@@ -1124,6 +1126,9 @@ export class GlobeController {
       else this.hidden.delete(entity.id);
       changed = true;
     }
+    // a gathered site's issue pins go with its own chip: they would show through the gathered one
+    this.gatheredSites = new Set(groups.flatMap((group) => group.ids));
+    if (this.hideGatheredIssues()) changed = true;
 
     const drawn = groups.map(({ ids }) => ({
       ids,
@@ -1156,7 +1161,10 @@ export class GlobeController {
               position,
               // sprites are drawn in device pixels; CesiumJS sizes billboards in CSS pixels
               scale: 1 / this.g.pixelRatio,
+              // like a site's own chip: it runs to the right of its dot, on the sites' middle
+              horizontalOrigin: HorizontalOrigin.LEFT,
               verticalOrigin: VerticalOrigin.CENTER,
+              pixelOffset: CHIP_OFFSET,
               disableDepthTestDistance: Number.POSITIVE_INFINITY,
             });
       billboard.position = position;
@@ -1191,8 +1199,25 @@ export class GlobeController {
         },
       });
     }
+    this.hideGatheredIssues();
     this.issues.entities.resumeEvents();
     this.scene.requestRender();
+  }
+
+  /**
+   * The issue pins of a site whose chip is gathered are not drawn (the gathered chip stands for
+   * the site); they come back with the site's own chip. Says whether any changed.
+   */
+  private hideGatheredIssues(): boolean {
+    let changed = false;
+    for (const entity of this.issues.entities.values) {
+      const [projectId = ''] = entity.id.slice(ISSUE_PREFIX.length).split('|');
+      const show = !this.gatheredSites.has(`${SITE_PREFIX}${projectId}`);
+      if (entity.show === show) continue;
+      entity.show = show;
+      changed = true;
+    }
+    return changed;
   }
 
   /**
@@ -1261,7 +1286,8 @@ export class GlobeController {
   /**
    * The room a flight to these sites (entity ids) leaves at each edge of the view: what the
    * screen's own controls take, then what a chip takes around its site. A site's own chip runs
-   * to the right of its dot; gathered, the sites share one chip centred on the middle of them.
+   * to the right of its dot; gathered, the sites share one chip that runs to the right of the
+   * middle of them.
    */
   private chipRoom(ids: readonly string[]): Insets {
     let east = 0;
@@ -1269,16 +1295,21 @@ export class GlobeController {
       const chip = this.chips.get(id);
       if (chip) east = Math.max(east, chipSize(chip.name, chip.open, this.font).width - CHIP.dotX);
     }
-    const half =
-      ids.length > 1 ? chipSize(this.clusterWords(ids.length), 0, this.font).width / 2 : 0;
+    // the gathered chip starts at the middle of the sites, so it never runs further than the
+    // width past their east edge
+    if (ids.length > 1)
+      east = Math.max(
+        east,
+        chipSize(this.clusterWords(ids.length), 0, this.font).width - CHIP.dotX,
+      );
     // and the clear room of a sprite: an outline stays whole, a pixel of rounding costs nothing
     const above = CHIP.height / 2 + CHIP.pad;
     const edge = this.cardInsets;
     return {
       top: edge.top + above,
-      right: edge.right + Math.max(east, half) + CHIP.pad,
+      right: edge.right + east + CHIP.pad,
       bottom: edge.bottom + above,
-      left: edge.left + Math.max(CHIP.dotX, half) + CHIP.pad,
+      left: edge.left + CHIP.dotX + CHIP.pad,
     };
   }
 
@@ -1627,7 +1658,8 @@ export class GlobeController {
           : undefined;
       if (!at) return;
       const { width, height } = chipSize(this.clusterWords(sites.length), 0, this.font);
-      boxes.push({ sites, x: at.x - width / 2, y: at.y - height / 2, width, height });
+      // the dot is the middle of the sites; the chip runs to the right of it
+      boxes.push({ sites, x: at.x - CHIP.dotX, y: at.y - height / 2, width, height });
     });
     return boxes;
   }
