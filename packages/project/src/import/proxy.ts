@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
-import { rename, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
+import { renameWhenFree } from './rename';
 import { promisify } from 'node:util';
 import { programPath } from '../fs/program';
 
@@ -314,7 +315,7 @@ export async function makeProxy(
         maxBuffer: 1 << 24,
         windowsHide: true,
       });
-      await rename(tmp, out);
+      await renameWhenFree(tmp, out);
       return { encoder: a.encoder, seconds: (Date.now() - t0) / 1000, source };
     } catch (e) {
       last = e;

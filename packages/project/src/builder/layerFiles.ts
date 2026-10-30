@@ -248,7 +248,7 @@ export async function exportLayers(
       }
       written++;
     } catch (e) {
-      await rm(folder, { recursive: true, force: true });
+      await rm(folder, { recursive: true, force: true, maxRetries: 5 });
       if (e instanceof Escaping) {
         skipped.push(l.name);
         continue;

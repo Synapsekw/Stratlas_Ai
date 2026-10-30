@@ -8,8 +8,9 @@ import {
   type PackageHeader,
   type ProjectManifest,
 } from '@aio/schema';
-import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { renameWhenFree } from '../import/rename';
 import { volumeFreeBytes } from './package';
 import type { ZipArchive } from './reader';
 import type { ZipProgress } from './writer';
@@ -108,7 +109,7 @@ export async function extractProject(
   });
 
   const tmp = join(projects, `.${id}.extracting-${String(process.pid)}`);
-  await rm(tmp, { recursive: true, force: true });
+  await rm(tmp, { recursive: true, force: true, maxRetries: 5 });
   await mkdir(tmp, { recursive: true });
   const progress: ZipProgress = {
     bytesDone: 0,
@@ -158,10 +159,11 @@ export async function extractProject(
     await writeFile(join(tmp, 'manifest.json'), json(checked.value));
     progress.filesDone += 2;
     delete progress.current;
-    await rename(tmp, root);
+    // a scanner reading the files just written holds the folder for a moment on Windows
+    await renameWhenFree(tmp, root, { giveUp: () => exists(root) });
     report(true);
   } catch (err) {
-    await rm(tmp, { recursive: true, force: true }).catch(() => undefined);
+    await rm(tmp, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined);
     throw err;
   }
   return { root, id, manifest: checked.value };

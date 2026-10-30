@@ -212,7 +212,7 @@ export async function sweepStaging(root: string, move?: RenameOptions): Promise<
     try {
       const done = await finishedIn(staging);
       if (!done) {
-        await rm(staging, { recursive: true, force: true });
+        await rm(staging, { recursive: true, force: true, maxRetries: 5 });
         continue;
       }
       const poster = await exists(join(staging, 'poster.jpg'));

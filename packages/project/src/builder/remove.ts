@@ -165,7 +165,7 @@ export async function removeItems(
       );
     }
     if (entry !== null && !flat)
-      await rm(entry, { recursive: true, force: true }).catch(() => undefined);
+      await rm(entry, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined);
     // a walk's folder came back carrying the entry's own files
     if (flat)
       for (const mv of moved)

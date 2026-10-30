@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { copyFile, link, mkdir, rename, stat, utimes } from 'node:fs/promises';
+import { copyFile, link, mkdir, stat, utimes } from 'node:fs/promises';
+import { renameWhenFree } from './rename';
 import {
   existsSync,
   mkdirSync,
@@ -49,7 +50,7 @@ export class PackageWriter {
     const tmp = `${dst}.partial`;
     await copyFile(src, tmp);
     await utimes(tmp, s.atime, s.mtime);
-    await rename(tmp, dst);
+    await renameWhenFree(tmp, dst);
     return this.done(rel, 'written');
   }
 

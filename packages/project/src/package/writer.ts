@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { open, rename, rm, type FileHandle } from 'node:fs/promises';
+import { open, rm, type FileHandle } from 'node:fs/promises';
+import { renameWhenFree } from '../import/rename';
 import { crc32 } from 'node:zlib';
 import { AES_OVERHEAD, AES_SALT_BYTES, AesMemberEncryptor, deriveAesKeys } from './aes';
 import {
@@ -167,7 +168,7 @@ export async function writeZip(
     await put(endRecords({ entries: records.length, cdOffset, cdSize, forceZip64: force }));
     await fh.close();
     fh = null;
-    await rename(partial, out);
+    await renameWhenFree(partial, out);
     delete progress.current;
     report(true);
     return { bytes: pos };
