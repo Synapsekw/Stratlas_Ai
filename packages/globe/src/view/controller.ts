@@ -280,6 +280,8 @@ export class GlobeController {
   private gathered: string[][] = [];
   /** The sites (entity ids) that stand in a gathered chip now. */
   private gatheredSites = new Set<string>();
+  /** The issue pins (entity ids) hidden because their site is gathered. */
+  private readonly hiddenIssues = new Set<string>();
   /** The groups and their drawings at the last pass: the same again changes nothing. */
   private gatheredAs = '';
   /** The view the chips were last gathered for. */
@@ -1183,6 +1185,7 @@ export class GlobeController {
     // on its own, before the new ones go in: within one batch CesiumJS sets the removal of an
     // id against its addition, tells nobody, and the old pin stays drawn
     this.issues.entities.removeAll();
+    this.hiddenIssues.clear();
     this.issues.entities.suspendEvents();
     for (const p of pins) {
       const [x, y, z] = localToEcef(p.local, georef);
@@ -1212,9 +1215,12 @@ export class GlobeController {
     let changed = false;
     for (const entity of this.issues.entities.values) {
       const [projectId = ''] = entity.id.slice(ISSUE_PREFIX.length).split('|');
-      const show = !this.gatheredSites.has(`${SITE_PREFIX}${projectId}`);
-      if (entity.show === show) continue;
-      entity.show = show;
+      const hide = this.gatheredSites.has(`${SITE_PREFIX}${projectId}`);
+      if (!entity.billboard || hide === this.hiddenIssues.has(entity.id)) continue;
+      // by its size, as a site's chip is hidden: a billboard not shown comes back a frame late
+      entity.billboard.scale = new ConstantProperty(hide ? 0 : 1 / this.g.pixelRatio);
+      if (hide) this.hiddenIssues.add(entity.id);
+      else this.hiddenIssues.delete(entity.id);
       changed = true;
     }
     return changed;

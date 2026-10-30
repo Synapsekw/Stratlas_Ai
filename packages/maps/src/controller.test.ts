@@ -443,6 +443,73 @@ describe('map pointer session (placing a walk: hover, click, handles)', () => {
   });
 });
 
+describe('framing the project when the map is resized', () => {
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+  const sized = (map: FakeMap, width: number, height: number) => {
+    Object.defineProperty(map.canvas, 'clientWidth', { value: width, configurable: true });
+    Object.defineProperty(map.canvas, 'clientHeight', { value: height, configurable: true });
+  };
+  const issueAt = (id: string, lon: number, lat: number) => ({
+    id,
+    code: id,
+    classId: 'crack',
+    severityModelId: 'm',
+    severity: 3,
+    status: 'open',
+    title: id,
+    note: '',
+    author: 'a',
+    createdAt: '2026-10-03T00:00:00Z',
+    updatedAt: '2026-10-03T00:00:00Z',
+    source: 'human',
+    sightings: [{ on: 'map', layer: 'm', geojson: { type: 'Point', coordinates: [lon, lat] } }],
+  });
+  const open = (store: ReturnType<typeof createWorkspace>, id: string, issues: unknown[]) => {
+    store.setState({
+      issues,
+      project: {
+        id,
+        manifest: {
+          crs: { epsg: 32633 },
+          origin: [500_000, 4_000_000, 0],
+          layers: [],
+          captures: [],
+        },
+      },
+    } as unknown as Partial<ReturnType<typeof store.getState>>);
+  };
+
+  it('frames the project again while the camera is still its own, and not once moved', async () => {
+    const { store, map } = start();
+    sized(map, 800, 600);
+    open(store, 'p1', [issueAt('a', 15, 36), issueAt('b', 15.01, 36.01)]);
+    await settle();
+    const first = map.getZoom();
+    sized(map, 1600, 1200);
+    map.fire('resize');
+    expect(map.getZoom()).toBeCloseTo(first + 1, 6);
+    // the person zooms: a new size leaves the camera alone
+    map.jumpTo({ zoom: 10 });
+    sized(map, 800, 600);
+    map.fire('resize');
+    expect(map.getZoom()).toBe(10);
+  });
+
+  it('never frames the last project while the next one opens', async () => {
+    const { store, map } = start();
+    sized(map, 800, 600);
+    open(store, 'p1', [issueAt('a', 15, 36), issueAt('b', 15.01, 36.01)]);
+    await settle();
+    const first = map.getZoom();
+    open(store, 'p2', []);
+    sized(map, 1600, 1200);
+    map.fire('resize');
+    expect(map.getZoom()).toBe(first);
+  });
+});
+
 describe('framing the project while a walk is placed on the map', () => {
   const settle = async () => {
     for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));

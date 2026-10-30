@@ -1364,6 +1364,9 @@ export function createMapController(
   // ----- project lifecycle -----
   async function openProject(s: Workspace): Promise<void> {
     clearProject();
+    // the last project's frame goes with it: a resize while this one loads frames nothing
+    projectBox = null;
+    framedHome = false;
     // the camera request standing when the map was created; a later one (made while the style and
     // the project load) is shown instead of the project's extent
     const startCamera = projectOpened ? s.lastCamera : createdWithCamera;
@@ -1459,6 +1462,9 @@ export function createMapController(
             Math.abs(c.lat - fit.center[1]) > 1e-7
           )
             return;
+          // the map may have changed size on the way: land on the frame for the size it has now
+          const now = homeCamera();
+          if (now) map.jumpTo(now);
           ownCamera = cameraKey();
           framedHome = true;
         });

@@ -107,7 +107,10 @@ export function MapView({
   // The no pack note: one map on screen shows it, and hidden once it stays hidden this session.
   const [noteId] = useState(() => Symbol('map'));
   const wantsNote = status === 'ready' && noPacks && !hidden;
-  useEffect(() => (wantsNote ? claimNoPackNotice(noteId) : undefined), [wantsNote, noteId]);
+  useEffect(
+    () => (wantsNote ? claimNoPackNotice(noteId, primary) : undefined),
+    [wantsNote, noteId, primary],
+  );
   const showsNote = useSyncExternalStore(subscribeNoPackNotice, () => showsNoPackNotice(noteId));
   // The controller reads the latest seam on each click.
   const drawRef = useRef<MapDrawSeam | null>(draw ?? null);

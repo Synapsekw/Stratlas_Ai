@@ -24,6 +24,17 @@ describe('the no map pack note', () => {
     expect(showsNoPackNotice(b)).toBe(true);
   });
 
+  it('shows on the main map before a compared one', () => {
+    const compared = Symbol('compared');
+    const main = Symbol('main');
+    claimNoPackNotice(compared, false);
+    const leaveMain = claimNoPackNotice(main, true);
+    expect(showsNoPackNotice(main)).toBe(true);
+    expect(showsNoPackNotice(compared)).toBe(false);
+    leaveMain();
+    expect(showsNoPackNotice(compared)).toBe(true);
+  });
+
   it('notice shows once per session', () => {
     const a = Symbol('a');
     const leave = claimNoPackNotice(a);
