@@ -9,12 +9,40 @@ describe('vector style to map layers', () => {
       label: { field: 'label' },
       minZoom: 12,
     });
-    expect(layers.map((l) => l.type)).toEqual(['line', 'symbol']);
+    expect(layers.map((l) => l.type)).toEqual(['line', 'symbol', 'symbol']);
     const line = layers[0];
     expect(line?.paint).toMatchObject({ 'line-color': '#ffffff', 'line-width': 2 });
     expect(line?.paint?.['line-dasharray']).toEqual([3, 3]);
     expect(line?.minzoom).toBe(12);
     expect(layers[1]?.layout?.['text-field']).toEqual(['get', 'label']);
+  });
+
+  it('labels lines along the line and keeps every label clear of the others', () => {
+    const layers = styleLayers({ line: { color: '#ffffff', width: 2 }, label: { field: 'name' } });
+    const point = layers.find((l) => l.id === 'label');
+    const along = layers.find((l) => l.id === 'label-line');
+    expect(point?.layout?.['symbol-placement']).toBe('point');
+    expect(along?.layout?.['symbol-placement']).toBe('line');
+    expect(along?.layout?.['symbol-spacing']).toBeGreaterThan(0);
+    // a line feature is labelled once, by the line layer only
+    expect(point?.filter).toEqual([
+      'match',
+      ['geometry-type'],
+      ['LineString', 'MultiLineString'],
+      false,
+      true,
+    ]);
+    expect(along?.filter).toEqual([
+      'match',
+      ['geometry-type'],
+      ['LineString', 'MultiLineString'],
+      true,
+      false,
+    ]);
+    for (const l of [point, along]) {
+      expect(l?.layout?.['text-padding']).toBeGreaterThan(0);
+      expect(l?.layout?.['text-allow-overlap']).toBe(false);
+    }
   });
 
   it('colours fills by a numeric property with step stops', () => {

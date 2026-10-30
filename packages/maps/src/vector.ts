@@ -95,23 +95,56 @@ export function styleLayers(style: VectorStyle | undefined): OverlayLayer[] {
     });
   }
   if (s.label) {
+    const text = {
+      'text-field': ['get', s.label.field],
+      'text-font': ['Noto Sans Medium'],
+      'text-size': s.label.size ?? 11,
+      // labels keep clear of each other: a label that would touch another is left out
+      'text-padding': LABEL_PADDING,
+      'text-allow-overlap': false,
+    };
+    const paint = {
+      'text-color': '#eaedf1',
+      'text-halo-color': '#080a0d',
+      'text-halo-width': 1.5,
+    };
+    // points and areas: one label under the point or at the area's middle
     out.push({
       id: 'label',
       type: 'symbol',
+      filter: ['match', ['geometry-type'], ['LineString', 'MultiLineString'], false, true],
       layout: {
-        'text-field': ['get', s.label.field],
-        'text-font': ['Noto Sans Medium'],
-        'text-size': s.label.size ?? 11,
+        ...text,
         'symbol-placement': 'point',
         'text-offset': [0, 1.1],
         'text-anchor': 'top',
       },
-      paint: { 'text-color': '#eaedf1', 'text-halo-color': '#080a0d', 'text-halo-width': 1.5 },
+      paint,
+      ...zoom,
+    });
+    // lines: the label follows the line, repeated only every so often along it
+    out.push({
+      id: 'label-line',
+      type: 'symbol',
+      filter: ['match', ['geometry-type'], ['LineString', 'MultiLineString'], true, false],
+      layout: {
+        ...text,
+        'symbol-placement': 'line',
+        'symbol-spacing': LABEL_SPACING,
+        'text-max-angle': 30,
+        'text-keep-upright': true,
+      },
+      paint,
       ...zoom,
     });
   }
   return out;
 }
+
+/** Clear space around each overlay label, in pixels. */
+const LABEL_PADDING = 6;
+/** Distance between repeats of a label along a line, in pixels. */
+const LABEL_SPACING = 320;
 
 // ---- geodesic measures (WGS84, local ellipsoid radii; centimetre-level over a site) ----
 

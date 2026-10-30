@@ -1,9 +1,15 @@
 import type { AioBridge, Vec3 } from '@aio/schema';
 import { workspace, type Workspace } from '@aio/workspace';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { StoreApi } from 'zustand/vanilla';
 import { setActiveMap } from './capture';
 import { MAP_SURFACE } from './ink';
+import {
+  claimNoPackNotice,
+  dismissNoPackNotice,
+  showsNoPackNotice,
+  subscribeNoPackNotice,
+} from './noPackNotice';
 import type { IssueColorBy, MapController, MapPointerSession } from './controller';
 import type { MapDrawSeam } from './draw';
 import { ALL_ISSUES, type MapIssueDisplay } from './overlays';
@@ -98,6 +104,11 @@ export function MapView({
   }, [onController]);
   const [status, setStatus] = useState<Status>('loading');
   const [noPacks, setNoPacks] = useState(false);
+  // The no pack note: one map on screen shows it, and hidden once it stays hidden this session.
+  const [noteId] = useState(() => Symbol('map'));
+  const wantsNote = status === 'ready' && noPacks && !hidden;
+  useEffect(() => (wantsNote ? claimNoPackNotice(noteId) : undefined), [wantsNote, noteId]);
+  const showsNote = useSyncExternalStore(subscribeNoPackNotice, () => showsNoPackNotice(noteId));
   // The controller reads the latest seam on each click.
   const drawRef = useRef<MapDrawSeam | null>(draw ?? null);
   const ctlRef = useRef<MapController | null>(null);
@@ -232,10 +243,20 @@ export function MapView({
           {MESSAGES[status]}
         </div>
       )}
-      {status === 'ready' && noPacks && (
+      {wantsNote && showsNote && (
         // laid out with the scale bar and the credits at the foot of the map (map.css)
         <div role="note" data-testid="map-no-packs" className="aio-map-note">
           No map pack installed: project layers only. Add a pack in Settings, Offline maps.
+          <button
+            type="button"
+            className="aio-map-note-close"
+            aria-label="Hide this note"
+            onClick={dismissNoPackNotice}
+          >
+            <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
+              <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+          </button>
         </div>
       )}
     </div>

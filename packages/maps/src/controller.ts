@@ -53,6 +53,7 @@ import {
   type ShiftOf,
 } from './overlays';
 import { shiftedGeoJson } from './shiftGeoJson';
+import { type FitCamera, fitFor } from './fitView';
 import { bboxOf, orderPacks, type MapPack } from './packs';
 import { pyramidView, type PyramidIndex } from './pyramid';
 import {
@@ -1409,22 +1410,37 @@ export function createMapController(
     }
     // a walk is being placed here and the person has framed the map: keep their view
     if (session && cameraKey() !== ownCamera) return;
-    if (box) {
-      map.fitBounds(
-        [
-          [box[0], box[1]],
-          [box[2], box[3]],
-        ],
-        { padding: 40, maxZoom: 17, duration: 0 },
-      );
-    } else {
-      map.jumpTo({ center: proj.toLonLat([0, 0, 0]), zoom: 15 });
-    }
+    const fit = homeCamera();
+    if (fit) map.jumpTo(fit);
+    else map.jumpTo({ center: proj.toLonLat([0, 0, 0]), zoom: 15 });
     ownCamera = cameraKey();
+    framedHome = fit !== null;
   }
 
   /** What the project covers (rasters, flights, issues, photos), for the home view. */
   let projectBox: ReturnType<typeof bboxOf> = null;
+  /** The camera is the project's home framing the map set itself: a resize frames it again. */
+  let framedHome = false;
+
+  /** The camera that frames the project in the map as it is sized now, or null. */
+  function homeCamera(): FitCamera | null {
+    if (!projectBox) return null;
+    const canvas = map.getCanvas();
+    return fitFor([projectBox], { width: canvas.clientWidth, height: canvas.clientHeight });
+  }
+
+  // While the camera is still the map's own home framing, a new map size frames the project again
+  // (the side panel opening, the window resized, Split). Once the person moves it, it stays.
+  map.on('resize', () => {
+    if (!framedHome || cameraKey() !== ownCamera) {
+      framedHome = false;
+      return;
+    }
+    const fit = homeCamera();
+    if (!fit) return;
+    map.jumpTo(fit);
+    ownCamera = cameraKey();
+  });
 
   /** A camera request (fly to a point or an issue) moves the map too; the 3D view consumes it. */
   function followCamera(s: Workspace): void {
@@ -1432,14 +1448,22 @@ export function createMapController(
     if (!req || !proj) return;
     const t = req.target;
     if (t.kind === 'home') {
-      if (projectBox)
-        map.fitBounds(
-          [
-            [projectBox[0], projectBox[1]],
-            [projectBox[2], projectBox[3]],
-          ],
-          { padding: 40, maxZoom: 17, duration: ms(500) },
-        );
+      const fit = homeCamera();
+      if (fit) {
+        // framed again once it lands where it was sent (the person may take the camera on the way)
+        map.once('moveend', () => {
+          const c = map.getCenter();
+          if (
+            Math.abs(map.getZoom() - fit.zoom) > 1e-3 ||
+            Math.abs(c.lng - fit.center[0]) > 1e-7 ||
+            Math.abs(c.lat - fit.center[1]) > 1e-7
+          )
+            return;
+          ownCamera = cameraKey();
+          framedHome = true;
+        });
+        map.easeTo({ ...fit, duration: ms(500) });
+      }
     } else if (t.kind === 'site') {
       // Centre on project: the origin, close enough to see the site
       map.easeTo({ center: proj.toLonLat([0, 0, 0]), zoom: 16, duration: ms(500) });

@@ -111,6 +111,30 @@
   /* the host's overlays at the foot of the map can stand above it (the app's coverage legend) */
   anchor-name: --aio-map-note;
 }
+/* hides the note for the rest of the session (noPackNotice.ts) */
+.aio-map-note-close {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin: -2px -4px -2px var(--sp-2, 4px);
+  padding: 0;
+  vertical-align: middle;
+  border: 0;
+  border-radius: var(--r-2, 2px);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.aio-map-note-close:hover {
+  color: var(--fg-0, #eaedf1);
+  background: var(--bg-3, rgb(255 255 255 / 0.08));
+}
+.aio-map-note-close:focus-visible {
+  outline: 2px solid var(--acc, #5fd0b4);
+  outline-offset: 1px;
+}
 @position-try --aio-map-note-above {
   bottom: calc(max(anchor(--aio-map-scale top, 0px), anchor(--aio-map-credits top, 0px)) + 6px);
   left: 10px;
