@@ -116,7 +116,7 @@ The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) 
 | Space      | Play or pause the video and the timeline |
 | Alt ←      | Go to the previous survey date           |
 | Alt →      | Go to the next survey date               |
-| Ctrl J     | Ask the agent                            |
+| Ctrl J     | Ask AI                                   |
 | F1         | Open or close the user guide             |
 
 ### Scene: 3D, map and split
@@ -307,7 +307,7 @@ The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) 
 | Enter | Run the highlighted command |
 | Esc   | Close                       |
 
-### Agent message box
+### Ask AI message box
 
 | Keys        | Does             |
 | ----------- | ---------------- |
