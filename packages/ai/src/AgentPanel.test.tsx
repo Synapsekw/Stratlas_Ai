@@ -194,7 +194,7 @@ describe('AgentPanel', () => {
       suggestions[0]?.click();
       await new Promise((r) => setTimeout(r, 0));
     });
-    expect(t.sent[0]?.messages[0]?.content).toBe(suggestions[0]?.textContent);
+    expect(t.sent[0]?.messages[0]).toEqual({ role: 'user', content: suggestions[0]?.textContent });
     await act(async () => {
       t.emit({ type: 'text', runId: t.sent[0]?.runId ?? '', delta: 'Two clips.' });
       t.emit({

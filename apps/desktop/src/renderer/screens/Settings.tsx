@@ -540,6 +540,27 @@ export function Routing() {
   );
 }
 
+/**
+ * One switch for the cloud agent: it thinks before it acts and reuses the unchanged start of each
+ * request (prompt caching). On by default.
+ */
+function AgentThinking() {
+  const on = useShell((s) => s.settings.agentThinking !== false);
+  return (
+    <div className="sblock">
+      <div className="opt" data-testid="agent-thinking">
+        <b>{t('settings.agentThinking')}</b>
+        <span>{t(on ? 'settings.agentThinkingOn' : 'settings.agentThinkingOff')}</span>
+        <Switch
+          checked={on}
+          label={t('settings.agentThinking')}
+          onChange={(v) => void shell.getState().updateSettings({ agentThinking: v })}
+        />
+      </div>
+    </div>
+  );
+}
+
 const usd = (n: number, known: boolean) =>
   `${known ? '' : 'at least '}$${n < 0.01 && n > 0 ? '<0.01' : n.toFixed(2)}`;
 
@@ -906,6 +927,7 @@ export function SettingsScreen() {
               </div>
               <LocalModel />
               <Routing />
+              <AgentThinking />
             </>
           )}
           {page === 'ai' && <DetectionModels />}

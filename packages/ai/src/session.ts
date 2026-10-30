@@ -10,6 +10,7 @@
 import {
   CONVERSATION_SCHEMA,
   needsApproval,
+  type AgentFacts,
   type AiErrorCode,
   type AiPolicy,
   type AiTask,
@@ -26,6 +27,7 @@ import {
 } from '@aio/schema';
 import { assembleContext } from './context';
 import { conversationMarkdown } from './exporting';
+import { compactValue, historyFromConversation } from './history';
 import { addProviderUsage, type ProviderUsageRow, type UsageTotals } from './pricing';
 import { runRendererTool, ToolError, type RendererToolContext } from './renderer-tools';
 import type { ModelRoute } from './routes';
@@ -111,6 +113,11 @@ export interface SessionDeps {
   saveDelayMs?: number;
   /** The route the next message goes to (`build` while the Model builder is open); default chat. */
   task?: () => AiTask | undefined;
+  /**
+   * Whether the open project has a procedural or engineering model, so the modelling tools are
+   * offered only when they can work; absent or undefined: unknown, they are offered.
+   */
+  hasModel?: () => Promise<boolean | undefined> | boolean | undefined;
 }
 
 export const SESSION_TEXT = {
@@ -391,11 +398,13 @@ export class AgentSession {
     const messages: ChatMessage[] = [...history, { role: 'user', content: text }];
     const projectId = this.projectId();
     try {
+      const facts = await this.facts();
       const res = await bridge.invoke('ai:send', {
         runId,
         window: this.window,
         context,
         messages,
+        ...(facts ? { facts } : {}),
         ...(projectId ? { projectId } : {}),
         ...(image ? { image } : {}),
         ...(task ? { task } : {}),
@@ -594,19 +603,29 @@ export class AgentSession {
 
   // internals ----------------------------------------------------------------------------------
 
+  /** Earlier turns with their tool calls and compacted results, so follow-ups can use them. */
   private history(): ChatMessage[] {
-    const out: ChatMessage[] = [];
-    for (const t of this.state.turns) {
-      if (t.kind === 'user') out.push({ role: 'user', content: t.text });
-      else {
-        const text = t.parts
-          .map((p) => (p.type === 'text' ? p.text : ''))
-          .join('')
-          .trim();
-        if (text) out.push({ role: 'assistant', content: text });
-      }
+    return historyFromConversation(this.state.turns, this.state.steps);
+  }
+
+  /** What the open project has, so the model is offered only the tools that can work there. */
+  private async facts(): Promise<AgentFacts | null> {
+    const project = this.deps.toolContext().workspace.getState().project;
+    if (!project) return null;
+    const layers = project.manifest.layers;
+    let models: boolean | undefined;
+    try {
+      models = await this.deps.hasModel?.();
+    } catch {
+      models = undefined;
     }
-    return out;
+    return {
+      captures: project.manifest.captures.length,
+      photos: layers.some((l) => l.kind === 'photos' && l.items.length > 0),
+      clips: layers.some((l) => l.kind === 'video'),
+      pointClouds: layers.some((l) => l.kind === 'pointcloud'),
+      ...(models !== undefined ? { models } : {}),
+    };
   }
 
   private onEvent(e: IpcEvent<'ai:event'>): void {
@@ -685,6 +704,7 @@ export class AgentSession {
         status: 'done',
         summary: r.summary,
         canUndo: this.undos.has(step.callId),
+        result: compactValue(r.result),
       });
       await this.deps.bridge?.invoke('ai:toolResult', {
         runId,
@@ -719,6 +739,7 @@ export class AgentSession {
         status: 'done',
         summary: r.summary,
         canUndo: this.undos.has(step.callId),
+        result: compactValue(r.result),
       });
       note = `Approved later and run: ${step.name}, ${r.summary}.`;
     } catch (e) {

@@ -315,8 +315,141 @@ describe('agent runtime', () => {
     };
     await t.runtime.send(req());
     expect((await t.end('r1')).type).toBe('done');
-    expect(t.chat.doStreamCalls).toHaveLength(8);
+    // 20 steps, then one summary call without tools (this mock says nothing: the fixed line)
+    expect(t.chat.doStreamCalls).toHaveLength(21);
+    expect(t.chat.doStreamCalls[20]?.toolChoice).toEqual({ type: 'none' });
     expect(text(t.events)).toContain(MESSAGES.stepLimit);
+    expect(MESSAGES.stepLimit).toContain('20 steps');
+  });
+
+  it('summarises what was done and what is left when the step cap is hit', async () => {
+    let calls = 0;
+    const t = setup({
+      doStream: () => {
+        calls += 1;
+        return Promise.resolve(
+          stream(
+            calls <= 20
+              ? toolStep(`c${String(calls)}`, 'list_layers', {})
+              : textStep('I listed the layers 20 times. Left: compare the volumes.'),
+          ),
+        );
+      },
+    });
+    const origEmit = t.events.push.bind(t.events);
+    t.events.push = (...items: AiEvent[]) => {
+      const n = origEmit(...items);
+      for (const e of items)
+        queueMicrotask(() => {
+          if (e.type === 'tool-call')
+            t.runtime.toolResult({ runId: 'r1', callId: e.callId, approved: true, result: [] });
+        });
+      return n;
+    };
+    await t.runtime.send(req());
+    expect((await t.end('r1')).type).toBe('done');
+    const last = t.chat.doStreamCalls[20];
+    expect(JSON.stringify(last?.prompt)).toContain('used all the steps for this message');
+    expect(text(t.events)).toContain('Left: compare the volumes.');
+    expect(text(t.events)).not.toContain(MESSAGES.stepLimit);
+    expect(t.events.filter((e) => e.type === 'tool-call')).toHaveLength(20);
+  });
+
+  it('sends earlier tool calls and results back to the model', async () => {
+    const t = setup({ steps: [textStep('Flying to T-2.')] });
+    await t.runtime.send(
+      req({
+        messages: [
+          { role: 'user', content: 'Which tanks?' },
+          {
+            role: 'assistant',
+            content: '',
+            toolCalls: [{ callId: 'toolu:1', name: 'find_places', input: { query: 'tank' } }],
+          },
+          {
+            role: 'tool',
+            results: [
+              {
+                callId: 'toolu:1',
+                name: 'find_places',
+                status: 'ok',
+                output: '{"places":[{"id":"T-1"},{"id":"T-2"}]}',
+              },
+            ],
+          },
+          { role: 'assistant', content: 'T-1 and T-2.' },
+          { role: 'user', content: 'Fly to the second one' },
+        ],
+      }),
+    );
+    await t.end('r1');
+    const prompt = t.chat.doStreamCalls[0]?.prompt ?? [];
+    expect(prompt.map((m) => m.role)).toEqual([
+      'system',
+      'user',
+      'assistant',
+      'tool',
+      'assistant',
+      'user',
+    ]);
+    expect(prompt[2]?.content).toEqual([
+      expect.objectContaining({
+        type: 'tool-call',
+        toolCallId: 'toolu_1',
+        toolName: 'find_places',
+      }),
+    ]);
+    expect(JSON.stringify(prompt[3])).toContain('T-2');
+  });
+
+  it('thinks and caches on Anthropic by default', async () => {
+    const t = setup({ steps: [textStep('ok')] });
+    await t.runtime.send(
+      req({
+        messages: [
+          { role: 'user', content: 'Hi' },
+          { role: 'assistant', content: 'Hello.' },
+          { role: 'user', content: 'How many issues?' },
+        ],
+      }),
+    );
+    await t.end('r1');
+    const call = t.chat.doStreamCalls[0];
+    expect(call?.reasoning).toBe('medium');
+    const cached = (call?.prompt ?? []).map(
+      (m) => (m.providerOptions?.anthropic as { cacheControl?: unknown } | undefined)?.cacheControl,
+    );
+    // system, the end of the older history, and the newest message of the step
+    expect(cached).toEqual([
+      { type: 'ephemeral' },
+      undefined,
+      { type: 'ephemeral' },
+      { type: 'ephemeral' },
+    ]);
+  });
+
+  it('neither thinks nor caches when the setting is off', async () => {
+    const t = setup({ steps: [textStep('ok')], host: { agentThinking: () => false } });
+    await t.runtime.send(req());
+    await t.end('r1');
+    const call = t.chat.doStreamCalls[0];
+    expect(call?.reasoning).toBe('none');
+    expect(JSON.stringify(call?.prompt)).not.toContain('cacheControl');
+  });
+
+  it('offers only the tools the project can use', async () => {
+    const t = setup({ steps: [textStep('ok')] });
+    await t.runtime.send(
+      req({
+        facts: { captures: 1, photos: false, clips: false, pointClouds: false, models: false },
+      }),
+    );
+    await t.end('r1');
+    const names = (t.chat.doStreamCalls[0]?.tools ?? []).map((x) => x.name);
+    expect(names).toContain('fly_to');
+    expect(names).not.toContain('compare_captures');
+    expect(names).not.toContain('play_clip');
+    expect(names).not.toContain('build_model');
   });
 
   it('rejects a second run with the same id while the first is busy', async () => {
@@ -723,7 +856,8 @@ describe('the local agent on a small model (AI-9)', () => {
     };
     await t.runtime.send(req());
     expect((await t.end('r1')).type).toBe('done');
-    expect(t.model.doStreamCalls).toHaveLength(6);
+    // six steps, then one summary call without tools (this mock says nothing: the fixed line)
+    expect(t.model.doStreamCalls).toHaveLength(7);
     expect(text(t.events)).toContain('I stopped after 6 steps.');
   });
 

@@ -43,6 +43,16 @@ describe('the system prompt', () => {
     expect(p).toContain('show_photos');
   });
 
+  it('says how to work: plan, gather, act, check, report numbers with units and source', () => {
+    const p = systemPrompt('scene3d');
+    expect(p).toContain('How to work:');
+    expect(p).toContain('first decide the steps');
+    expect(p).toContain('read it back');
+    expect(p).toContain('units and where they came from');
+    expect(p).toContain('Earlier tool calls and their results');
+    expect(systemPrompt('scene3d', 'compact')).not.toContain('How to work:');
+  });
+
   it('is the same for the same window, so it caches', () => {
     expect(systemPrompt('map')).toBe(systemPrompt('map'));
   });

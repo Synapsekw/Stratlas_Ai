@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AiErrorCode, AiProvider, AiTask, ToolRisk, WindowKind } from './agent';
+import { AgentFacts, AiErrorCode, AiProvider, AiTask, ToolRisk, WindowKind } from './agent';
 import { Issue } from './annotation';
 import { Conversation, ConversationId, ConversationSummary } from './conversation';
 import {
@@ -557,6 +557,11 @@ export const Settings = z.object({
   processing: ProcessingSettings.optional(),
   /** Prepare survey surfaces in the background when a project opens. Absent: on. */
   autoPrepareSurfaces: z.boolean().optional(),
+  /**
+   * The cloud agent thinks before it acts (provider reasoning) and reuses the unchanged start of
+   * each request (Anthropic prompt caching). Absent: on.
+   */
+  agentThinking: z.boolean().optional(),
 });
 
 /** West, south, east, north in WGS84 degrees. */
@@ -802,10 +807,39 @@ export const ReportFile = z.object({
   sizeBytes: z.number().int().nonnegative(),
 });
 
-export const ChatMessage = z.object({
-  role: z.enum(['user', 'assistant']),
-  content: z.string(),
+/** One tool call the agent made in an earlier turn, sent back so it remembers it. */
+export const ChatToolCall = z.object({
+  callId: z.string().min(1).max(128),
+  name: z.string().min(1).max(64),
+  /** The call's input as the model sent it (compacted when large). */
+  input: z.unknown(),
 });
+
+/**
+ * The outcome of an earlier tool call. `output` is compact JSON or text of about 2 KB at most
+ * (`compactValue` in @aio/ai history.ts): ids, names, positions and numbers kept, images removed.
+ */
+export const ChatToolResult = z.object({
+  callId: z.string().min(1).max(128),
+  name: z.string().min(1).max(64),
+  status: z.enum(['ok', 'error', 'declined']),
+  output: z.string().max(8000),
+});
+
+/**
+ * One message of the conversation sent with `ai:send`. A user or assistant message is text (the
+ * shape every older caller sends); an assistant message may carry the tool calls it made, and a
+ * `tool` message carries their results, in order, so a follow-up ("the second one") can use them.
+ */
+export const ChatMessage = z.union([
+  z.object({ role: z.literal('user'), content: z.string() }),
+  z.object({
+    role: z.literal('assistant'),
+    content: z.string(),
+    toolCalls: z.array(ChatToolCall).max(64).optional(),
+  }),
+  z.object({ role: z.literal('tool'), results: z.array(ChatToolResult).min(1).max(64) }),
+]);
 
 export const LicenseEntry = z.object({
   name: z.string(),
@@ -1134,6 +1168,8 @@ export const ipc = {
         /** Snapshot of the window context: selection, time, visible layers, frame info. */
         context: z.record(z.string(), z.unknown()),
         messages: z.array(ChatMessage).min(1),
+        /** What the project has, to offer only the tools it can use. Absent: every tool. */
+        facts: AgentFacts.optional(),
         /** Optional image (data URL) such as the current video frame. */
         image: z.string().startsWith('data:image/').optional(),
         /**
@@ -4721,6 +4757,8 @@ export type PackJob = z.infer<typeof PackJob>;
 export type LicenseEntry = z.infer<typeof LicenseEntry>;
 export type ThemeSetting = Settings['theme'];
 export type ChatMessage = z.infer<typeof ChatMessage>;
+export type ChatToolCall = z.infer<typeof ChatToolCall>;
+export type ChatToolResult = z.infer<typeof ChatToolResult>;
 export type LocalModelSettings = z.infer<typeof LocalModelSettings>;
 export type LocalModelInfo = z.infer<typeof LocalModelInfo>;
 export type FailureCode = z.infer<typeof FailureCode>;

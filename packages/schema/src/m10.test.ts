@@ -102,6 +102,7 @@ describe('M10 additive rule: no layer kind, raster format, derived kind or recor
     expect(keysOf(Settings)).toEqual(
       [
         'anthropicWorkspaceId',
+        'agentThinking',
         'autoPrepareSurfaces',
         'change',
         'cloudAi',

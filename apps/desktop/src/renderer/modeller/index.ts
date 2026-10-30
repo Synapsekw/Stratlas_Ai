@@ -1,7 +1,9 @@
 import { assetUrl, workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
+import { setAgentModelCheck } from '../agent/session';
 import { bridge, jobs } from '../shell';
 import { registerModellingTools } from './agentTools';
+import { activeEngineerSession } from './engineerTools';
 import { createModeller, type Modeller } from './store';
 
 /** The Model builder of this window (BLD-11). */
@@ -43,4 +45,14 @@ registerModellingTools({
     (workspace.getState().project?.manifest.layers ?? [])
       .filter((l) => l.kind === 'pointcloud')
       .map((l) => ({ id: l.id, name: l.name })),
+});
+
+// The agent is offered the modelling tools only in a project with a model, or while one is open.
+setAgentModelCheck(async () => {
+  const s = modeller.getState();
+  if (activeEngineerSession() || s.open || s.model) return true;
+  const p = workspace.getState().project;
+  if (!p) return undefined;
+  const r = await bridge.call('model:list', { projectId: p.id });
+  return r.ok && r.value.ok ? r.value.models.length > 0 : undefined;
 });

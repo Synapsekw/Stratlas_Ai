@@ -28,6 +28,12 @@ export const ConversationStep = z.object({
   status: StepStatus,
   summary: z.string().max(500).optional(),
   canUndo: z.boolean(),
+  /**
+   * What the tool returned, compacted (about 2 KB of JSON or text, images removed), sent back with
+   * later messages so the agent remembers it. Absent in conversations saved before it existed:
+   * those are read back with `summary` as the result.
+   */
+  result: z.string().max(8000).optional(),
 });
 
 export const ConversationPart = z.discriminatedUnion('type', [

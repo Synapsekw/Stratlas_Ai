@@ -12,6 +12,7 @@ import {
   type AiProvider,
   type AiTask,
   type AntennaAiLabel,
+  type ChatMessage,
   type IpcEvent,
   type IpcRequest,
   type IpcResponse,
@@ -75,10 +76,13 @@ import {
   type LanguageModel,
   type LanguageModelUsage,
   type ModelMessage,
+  type SystemModelMessage,
+  type TextStreamPart,
   type Tool,
   type ToolSet,
   type UserContent,
 } from 'ai';
+import { flattenHistory, pairToolHistory, safeCallId } from './history';
 import { parseDataUrl, runAsk } from './askRun';
 import { engineerReady } from './capabilities';
 import {
@@ -105,6 +109,7 @@ import {
   localGate,
   outputBudget,
   trimConversation,
+  type PlainMessage,
 } from './local';
 import { estimateCostUsd } from './pricing';
 import { contextBlock, summaryBlock, systemPrompt, type PromptProfile } from './prompt';
@@ -123,7 +128,7 @@ import {
   TEST_MODELS,
   type ModelRoute,
 } from './routes';
-import { allToolSpecs, riskOf, toolsForWindow, type ToolProfile } from './tools';
+import { allToolSpecs, riskOf, toolsForWindow, type ToolFit, type ToolProfile } from './tools';
 
 export {
   BudgetReachedError,
@@ -194,6 +199,11 @@ export interface AgentRuntimeHost {
   localModel?(): LocalModelSettings | undefined;
   /** The open project's AI policy (from its package manifest); `forbid` blocks cloud providers. */
   policy?(projectId: string): Promise<AiPolicy>;
+  /**
+   * Settings, AI providers: the cloud agent thinks before it acts and Anthropic prompt caching is
+   * used. Absent: on.
+   */
+  agentThinking?(): boolean;
   /** Called for every model step with tokens and the estimated cost, for the per-project meter. */
   recordUsage?(projectId: string, usage: StepUsage): void;
   /** The engineering model's AI step (`ai:engineerPreview`, `ai:engineer`); absent: refused. */
@@ -336,7 +346,18 @@ export interface AgentRuntimeOptions {
   maxRetries?: number;
 }
 
-const MAX_STEPS = 8;
+/** Model calls per message on cloud; the compact profile for small local models keeps 6. */
+const MAX_STEPS = 20;
+
+/** Asked of the model when a message used all its steps: one more answer, without tools. */
+const STEP_LIMIT_PROMPT =
+  'You have used all the steps for this message. Do not call any tool. In a few short sentences, say what you did, the figures you found (with units and where they came from), and what is left to do; the person can send another message to continue.';
+
+/** Reasoning effort for the cloud agent while thinking is on (Settings, AI providers). */
+const THINKING_EFFORT = 'medium' as const;
+
+/** Anthropic prompt cache breakpoint (5 minutes). */
+const CACHE = { anthropic: { cacheControl: { type: 'ephemeral' } } } as const;
 
 const stepLimitAfter = (n: number) =>
   `I stopped after ${String(n)} steps. Send another message to continue.`;
@@ -468,9 +489,10 @@ export function createAgentRuntime(
     window: WindowKind,
     profile: ToolProfile = 'full',
     watchdog?: Watchdog,
+    fit: ToolFit = {},
   ): ToolSet {
     const set: ToolSet = {};
-    for (const spec of toolsForWindow(window, profile)) {
+    for (const spec of toolsForWindow(window, profile, fit)) {
       const name = spec.meta.name;
       const t: Tool<unknown, Outcome> = {
         description: spec.meta.description,
@@ -704,33 +726,43 @@ export function createAgentRuntime(
       : toolProfile === 'compact'
         ? 'compact'
         : 'full';
-    // Small context windows: the newest turns, the older ones as a short summary.
+    // Cloud: the history with its tool calls and results. Small local models: the same as text,
+    // and in a small context window the newest turns, the older ones as a short summary.
     const trimmed = local
-      ? trimConversation(req.messages, local.contextTokens)
-      : { messages: req.messages, summary: null };
-    const instructions = trimmed.summary
-      ? `${systemPrompt(req.window, promptProfile)}\n\n${summaryBlock(trimmed.summary)}`
-      : systemPrompt(req.window, promptProfile);
+      ? trimConversation(flattenHistory(req.messages), local.contextTokens)
+      : null;
+    const prompt = systemPrompt(req.window, promptProfile);
+    const instructionText = trimmed?.summary
+      ? `${prompt}\n\n${summaryBlock(trimmed.summary)}`
+      : prompt;
+    // Thinking and prompt caching (Settings, AI providers; on by default): cloud routes only.
+    const boost = !local && o.cloud && (host.agentThinking?.() ?? true);
+    const cache = boost && route.provider === 'anthropic';
+    const instructions: string | SystemModelMessage = cache
+      ? { role: 'system', content: instructionText, providerOptions: CACHE }
+      : instructionText;
+    const messages = trimmed
+      ? withContext(req, trimmed.messages)
+      : withContext(req, toStructuredMessages(pairToolHistory(req.messages)));
+    // The end of the older history is a cache breakpoint: it stays the same on the next message.
+    const historyEnd = cache ? lastUserIndex(messages) - 1 : -1;
+    const sent = historyEnd >= 0 ? markCache(messages, [historyEnd]) : messages;
     const signal = watchdog
       ? AbortSignal.any([run.controller.signal, watchdog.signal])
       : run.controller.signal;
     const tools = o.answerOnly
       ? undefined
-      : buildTools(runId, run, req.window, toolProfile, watchdog);
-    const result = streamText({
+      : buildTools(runId, run, req.window, toolProfile, watchdog, {
+          facts: req.facts,
+          task: route.task,
+        });
+    const common = {
       model,
       instructions,
-      messages: toModelMessages({ ...req, messages: trimmed.messages }),
-      ...(tools ? { tools } : {}),
-      stopWhen: stepCountIs(limit),
-      // Offline-only turned on during the run (while an approval waited): no further step goes out.
-      prepareStep: () => {
-        if (o.cloud && offlineOnly()) throw new OfflineOnlyError();
-        return {};
-      },
       abortSignal: signal,
       maxRetries: options.maxRetries ?? 2,
       maxOutputTokens: local ? outputBudget(local.contextTokens) : 16_000,
+      ...(!local && o.cloud ? { reasoning: boost ? THINKING_EFFORT : ('none' as const) } : {}),
       ...(local
         ? {
             // Small models: repair almost-JSON tool calls, and one call at a time.
@@ -741,42 +773,91 @@ export function createAgentRuntime(
       // Errors arrive as stream parts and are logged below, sanitised; the SDK default would
       // print the raw error to the console (and so to the log file).
       onError: () => undefined,
+    };
+    // Offline-only turned on during the run (while an approval waited): no further step goes out.
+    // With caching, the newest message of each step is a breakpoint too, so the next step reads
+    // the whole run so far from the cache (system, older history and newest: three of four).
+    const prepareStep = ({ messages: now }: { messages: ModelMessage[] }) => {
+      if (o.cloud && offlineOnly()) throw new OfflineOnlyError();
+      if (!cache) return {};
+      const keep = historyEnd >= 0 ? [historyEnd, now.length - 1] : [now.length - 1];
+      return { messages: markCache(now, keep) };
+    };
+    const result = streamText({
+      ...common,
+      messages: sent,
+      ...(tools ? { tools } : {}),
+      stopWhen: stepCountIs(limit),
+      prepareStep,
     });
-    for await (const part of result.stream) {
-      watchdog?.kick();
-      if (run.controller.signal.aborted) throw new Cancelled();
-      switch (part.type) {
-        case 'text-delta':
-          if (part.text) host.emit({ type: 'text', runId, delta: part.text });
-          break;
-        case 'finish-step':
-          progress.steps += 1;
-          progress.lastFinish = part.finishReason;
-          {
-            const event = usageEvent(runId, route, part.usage);
-            host.emit(event);
-            if (req.projectId && event.type === 'usage') {
-              host.recordUsage?.(req.projectId, {
-                provider: route.provider,
-                model: route.model,
-                inputTokens: event.inputTokens,
-                outputTokens: event.outputTokens,
-                ...(event.costUsd !== undefined ? { costUsd: event.costUsd } : {}),
-              });
-            }
-          }
-          break;
-        case 'error':
-          throw part.error;
-        case 'abort':
-          throw new Cancelled();
-        default:
-          break;
-      }
-    }
+    const said = await consume(result.stream);
     if (run.controller.signal.aborted) throw new Cancelled();
-    if (progress.steps >= limit && progress.lastFinish === 'tool-calls') {
-      host.emit({ type: 'text', runId, delta: `\n\n${stepLimitAfter(limit)}` });
+    if (!(progress.steps >= limit && progress.lastFinish === 'tool-calls')) return;
+    // The step cap: one more answer without tools, saying what was done and what is left.
+    let summarised = false;
+    const stopped = () => run.controller.signal.aborted;
+    try {
+      const done = await result.responseMessages;
+      const final = streamText({
+        ...common,
+        messages: [...sent, ...done, { role: 'user', content: STEP_LIMIT_PROMPT }],
+        // the tools stay declared (earlier calls refer to them) but cannot run
+        ...(tools ? { tools: inert(tools), toolChoice: 'none' as const } : {}),
+        stopWhen: stepCountIs(1),
+        prepareStep,
+      });
+      summarised = (await consume(final.stream, said)) > said;
+    } catch (e) {
+      if (e instanceof Cancelled || stopped()) throw new Cancelled();
+      if (e instanceof OfflineOnlyError) throw e;
+      console.warn('agent step-limit summary failed');
+    }
+    if (!summarised) host.emit({ type: 'text', runId, delta: `\n\n${stepLimitAfter(limit)}` });
+
+    /** Emit a stream's text and usage; returns how many text characters were said in all. */
+    async function consume(
+      parts: AsyncIterable<TextStreamPart<ToolSet>>,
+      before = 0,
+    ): Promise<number> {
+      let chars = before;
+      for await (const part of parts) {
+        watchdog?.kick();
+        if (run.controller.signal.aborted) throw new Cancelled();
+        switch (part.type) {
+          case 'text-delta':
+            if (part.text) {
+              // a summary after the step cap starts on its own paragraph
+              const delta = chars === before && before > 0 ? `\n\n${part.text}` : part.text;
+              host.emit({ type: 'text', runId, delta });
+              chars += part.text.length;
+            }
+            break;
+          case 'finish-step':
+            progress.steps += 1;
+            progress.lastFinish = part.finishReason;
+            {
+              const event = usageEvent(runId, route, part.usage);
+              host.emit(event);
+              if (req.projectId && event.type === 'usage') {
+                host.recordUsage?.(req.projectId, {
+                  provider: route.provider,
+                  model: route.model,
+                  inputTokens: event.inputTokens,
+                  outputTokens: event.outputTokens,
+                  ...(event.costUsd !== undefined ? { costUsd: event.costUsd } : {}),
+                });
+              }
+            }
+            break;
+          case 'error':
+            throw part.error;
+          case 'abort':
+            throw new Cancelled();
+          default:
+            break;
+        }
+      }
+      return chars;
     }
   }
 
@@ -1894,24 +1975,109 @@ export function createAgentRuntime(
 /** A custom request for this PC's model goes to the app's local runner, not this runtime. */
 const LOCAL_ASK_IN_APP = 'Local requests run in the app.';
 
-function toModelMessages(req: IpcRequest<'ai:send'>): ModelMessage[] {
-  let lastUser = -1;
-  req.messages.forEach((m, i) => {
-    if (m.role === 'user') lastUser = i;
-  });
-  const out: ModelMessage[] = req.messages.map((m, i) => {
-    if (i !== lastUser) return { role: m.role, content: m.content };
-    const content: UserContent = [
-      { type: 'text', text: contextBlock(req.window, req.context) },
-      { type: 'text', text: m.content },
-    ];
-    const img = req.image ? parseDataUrl(req.image) : null;
-    if (img) content.push({ type: 'file', data: img.base64, mediaType: img.mediaType });
-    return { role: 'user', content };
-  });
-  if (lastUser === -1) {
-    out.push({ role: 'user', content: contextBlock(req.window, req.context) });
+/** The cloud history as AI SDK messages: text, tool calls and their results. */
+function toStructuredMessages(history: readonly ChatMessage[]): ModelMessage[] {
+  const out: ModelMessage[] = [];
+  for (const m of history) {
+    if (m.role === 'user') {
+      out.push({ role: 'user', content: m.content });
+    } else if (m.role === 'assistant') {
+      const calls = m.toolCalls ?? [];
+      if (calls.length === 0) {
+        // an empty text block is refused by some providers
+        if (m.content.trim()) out.push({ role: 'assistant', content: m.content });
+        continue;
+      }
+      out.push({
+        role: 'assistant',
+        content: [
+          ...(m.content.trim() ? [{ type: 'text' as const, text: m.content }] : []),
+          ...calls.map((c) => ({
+            type: 'tool-call' as const,
+            toolCallId: safeCallId(c.callId),
+            toolName: c.name,
+            input: c.input,
+          })),
+        ],
+      });
+    } else {
+      out.push({
+        role: 'tool',
+        content: m.results.map((r) => ({
+          type: 'tool-result' as const,
+          toolCallId: safeCallId(r.callId),
+          toolName: r.name,
+          output:
+            r.status === 'ok'
+              ? { type: 'text' as const, value: r.output }
+              : r.status === 'declined'
+                ? { type: 'execution-denied' as const, reason: r.output }
+                : { type: 'error-text' as const, value: r.output },
+        })),
+      });
+    }
   }
+  return out;
+}
+
+function lastUserIndex(messages: readonly ModelMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) if (messages[i]?.role === 'user') return i;
+  return -1;
+}
+
+/**
+ * The messages with an Anthropic cache breakpoint on the given indexes only (a mark left from an
+ * earlier step is taken off, so there are never more than four).
+ */
+function markCache(messages: readonly ModelMessage[], at: readonly number[]): ModelMessage[] {
+  return messages.map((m, i) => {
+    const keep = at.includes(i);
+    if (!keep && !m.providerOptions?.anthropic) return m;
+    const { anthropic, ...others } = m.providerOptions ?? {};
+    const mine = { ...anthropic };
+    delete mine.cacheControl;
+    if (keep) Object.assign(mine, CACHE.anthropic);
+    return {
+      ...m,
+      providerOptions: { ...others, ...(Object.keys(mine).length > 0 ? { anthropic: mine } : {}) },
+    };
+  });
+}
+
+/** The same tools without their executors: declared for the history, never run. */
+function inert(tools: ToolSet): ToolSet {
+  const out: ToolSet = {};
+  for (const [name, t] of Object.entries(tools)) {
+    out[name] = {
+      inputSchema: t.inputSchema,
+      ...(t.description ? { description: t.description } : {}),
+    };
+  }
+  return out;
+}
+
+/**
+ * The newest user message with the window context in front and the attached image after; plain
+ * history messages (local models) are user and assistant text already.
+ */
+function withContext(
+  req: IpcRequest<'ai:send'>,
+  history: readonly (ModelMessage | PlainMessage)[],
+): ModelMessage[] {
+  const out = history.map((m) => m as ModelMessage);
+  const lastUser = lastUserIndex(out);
+  const m = out[lastUser];
+  if (!m || typeof m.content !== 'string') {
+    out.push({ role: 'user', content: contextBlock(req.window, req.context) });
+    return out;
+  }
+  const content: UserContent = [
+    { type: 'text', text: contextBlock(req.window, req.context) },
+    { type: 'text', text: m.content },
+  ];
+  const img = req.image ? parseDataUrl(req.image) : null;
+  if (img) content.push({ type: 'file', data: img.base64, mediaType: img.mediaType });
+  out[lastUser] = { role: 'user', content };
   return out;
 }
 

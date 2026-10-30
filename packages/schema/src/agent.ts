@@ -39,5 +39,22 @@ export type AiTask = z.infer<typeof AiTask>;
 export type AiErrorCode = z.infer<typeof AiErrorCode>;
 export type ToolMeta = z.infer<typeof ToolMeta>;
 
+/**
+ * What the open project has, sent with each agent message (`ai:send`) so the model is offered only
+ * the tools the project can use. `models` absent: unknown, the modelling tools stay.
+ */
+export const AgentFacts = z
+  .object({
+    /** Survey dates (capture dates) of the project. */
+    captures: z.number().int().nonnegative(),
+    photos: z.boolean(),
+    clips: z.boolean(),
+    pointClouds: z.boolean(),
+    /** A procedural or engineering model exists (or the Model builder is open). */
+    models: z.boolean().optional(),
+  })
+  .strict();
+export type AgentFacts = z.infer<typeof AgentFacts>;
+
 /** Write and send actions always need the person's approval. */
 export const needsApproval = (risk: ToolRisk): boolean => risk === 'write' || risk === 'send';

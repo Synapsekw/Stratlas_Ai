@@ -255,3 +255,49 @@ describe('photo tools', () => {
     expect(() => getToolSpec('process_photos')?.input.parse({ products: [] })).toThrow();
   });
 });
+
+describe('tools that fit the project', () => {
+  const rich = { captures: 3, photos: true, clips: true, pointClouds: true, models: true };
+  const names = (fit: Parameters<typeof toolsForWindow>[2]) =>
+    toolsForWindow('scene3d', 'full', fit).map((s) => s.meta.name);
+
+  it('offers every tool without facts and in a project that has everything', () => {
+    const all = toolsForWindow('scene3d').map((s) => s.meta.name);
+    expect(names({})).toEqual(all);
+    expect(names({ facts: rich })).toEqual(all);
+  });
+
+  it('drops the change tools with one survey date and the clip and photo tools without them', () => {
+    const got = names({ facts: { ...rich, captures: 1, clips: false, photos: false } });
+    for (const n of ['compare_captures', 'list_changes', 'show_change', 'run_change_detection'])
+      expect(got).not.toContain(n);
+    for (const n of ['list_clips', 'find_clips_near', 'play_clip', 'show_photos', 'process_photos'])
+      expect(got).not.toContain(n);
+    expect(got).toContain('fly_to');
+    expect(got).toContain('list_issues');
+  });
+
+  it('drops the modelling tools without a model, except on the Model builder route', () => {
+    const none = { ...rich, models: false };
+    expect(names({ facts: none })).not.toContain('build_model');
+    expect(names({ facts: none })).not.toContain('list_model_corrections');
+    expect(names({ facts: none, task: 'build' })).toContain('build_model');
+    // unknown: kept
+    const unknown = { captures: 3, photos: true, clips: true, pointClouds: true };
+    expect(names({ facts: unknown })).toContain('build_model');
+  });
+
+  it('drops the point cloud fit without a point cloud', () => {
+    expect(names({ facts: { ...rich, pointClouds: false }, task: 'build' })).not.toContain(
+      'fit_primitives',
+    );
+  });
+
+  it('filters the compact profile too', () => {
+    const compact = toolsForWindow('scene3d', 'compact', {
+      facts: { ...rich, captures: 0 },
+    }).map((s) => s.meta.name);
+    expect(compact).not.toContain('compare_captures');
+    expect(compact).toContain('find_places');
+  });
+});

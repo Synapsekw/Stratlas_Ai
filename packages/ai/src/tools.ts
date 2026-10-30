@@ -3,7 +3,15 @@
  * renderer (which runs them). Each spec pairs `ToolMeta` from @aio/schema with a zod input schema.
  * Executors live in renderer-tools.ts.
  */
-import { needsApproval, ToolMeta, Vec3, type ToolRisk, type WindowKind } from '@aio/schema';
+import {
+  needsApproval,
+  ToolMeta,
+  Vec3,
+  type AgentFacts,
+  type AiTask,
+  type ToolRisk,
+  type WindowKind,
+} from '@aio/schema';
 import { z } from 'zod';
 import { CHANGE_TOOL_SPECS } from './change-tool-specs';
 import { COLLAB_TOOL_SPECS } from './collab-tool-specs';
@@ -681,9 +689,54 @@ export const COMPACT_TOOLS: Readonly<Record<string, string>> = {
   accuracy_summary: 'How accurate a photo run is: checkpoint RMSE and ground control.',
 };
 
-/** Tools offered to the agent bound to a window, in the full or the compact profile. */
-export function toolsForWindow(window: WindowKind, profile: ToolProfile = 'full'): ToolSpec[] {
-  const here = allToolSpecs().filter((s) => !s.meta.windows || s.meta.windows.includes(window));
+/** What the project has and the route in use, to offer only the tools that can work. */
+export interface ToolFit {
+  /** Absent: unknown, every tool stays. */
+  facts?: AgentFacts | undefined;
+  /** The route of the message; `build` (the Model builder) keeps the modelling tools. */
+  task?: AiTask | undefined;
+}
+
+/** Tools that need two survey dates or more. */
+const CHANGE_TOOLS = new Set(['compare_captures', ...CHANGE_TOOL_SPECS.map((s) => s.meta.name)]);
+/** Tools that need video clips. */
+const CLIP_TOOLS = new Set(['list_clips', 'find_clips_near', 'play_clip']);
+/** Tools that need photos. */
+const PHOTO_TOOLS = new Set(['show_photos', 'process_photos', 'accuracy_summary']);
+/** Tools that need a procedural or engineering model. */
+const MODEL_TOOLS = new Set(
+  [...MODELLING_TOOL_SPECS, ...CORRECTION_TOOL_SPECS].map((s) => s.meta.name),
+);
+
+/**
+ * True when a tool can do something in this project: no change tools with fewer than two survey
+ * dates, no clip tools without clips, no photo tools without photos, no modelling tools without a
+ * model (the Model builder's route keeps them, it is where a model starts), no point cloud fit
+ * without a point cloud. Unknown facts keep the tool.
+ */
+export function fitsProject(name: string, fit: ToolFit): boolean {
+  const f = fit.facts;
+  if (!f) return true;
+  if (CHANGE_TOOLS.has(name)) return f.captures >= 2;
+  if (CLIP_TOOLS.has(name)) return f.clips;
+  if (PHOTO_TOOLS.has(name)) return f.photos;
+  if (name === 'fit_primitives' && !f.pointClouds) return false;
+  if (MODEL_TOOLS.has(name)) return fit.task === 'build' || f.models !== false;
+  return true;
+}
+
+/**
+ * Tools offered to the agent bound to a window, in the full or the compact profile, without the
+ * ones the project cannot use (`fitsProject`).
+ */
+export function toolsForWindow(
+  window: WindowKind,
+  profile: ToolProfile = 'full',
+  fit: ToolFit = {},
+): ToolSpec[] {
+  const here = allToolSpecs().filter(
+    (s) => (!s.meta.windows || s.meta.windows.includes(window)) && fitsProject(s.meta.name, fit),
+  );
   if (profile === 'full') return here;
   return here.flatMap((s) => {
     const description = COMPACT_TOOLS[s.meta.name];

@@ -290,6 +290,61 @@ describe('agent session conversation', () => {
     expect(t.session.getState().steps.c1?.status).toBe('undone');
   });
 
+  it('keeps the compacted result and sends the tool work with the next message', async () => {
+    const t = setup();
+    await t.session.send('hide the mesh');
+    t.emit({
+      type: 'tool-call',
+      runId: 'id1',
+      callId: 'c1',
+      name: 'set_layer_visible',
+      input: { layerId: 'm1', visible: false },
+      risk: 'navigate',
+    });
+    await flush();
+    expect(t.session.getState().steps.c1?.result).toBe('{"layer":"m1","visible":false}');
+    t.emit({ type: 'text', runId: 'id1', delta: 'Hidden.' });
+    t.emit({ type: 'done', runId: 'id1' });
+    await t.session.send('Show it again');
+    const second = t.sent('ai:send')[1]?.req as IpcRequest<'ai:send'>;
+    expect(second.messages).toEqual([
+      { role: 'user', content: 'hide the mesh' },
+      {
+        role: 'assistant',
+        content: '',
+        toolCalls: [
+          { callId: 'c1', name: 'set_layer_visible', input: { layerId: 'm1', visible: false } },
+        ],
+      },
+      {
+        role: 'tool',
+        results: [
+          {
+            callId: 'c1',
+            name: 'set_layer_visible',
+            status: 'ok',
+            output: '{"layer":"m1","visible":false}',
+          },
+        ],
+      },
+      { role: 'assistant', content: 'Hidden.' },
+      { role: 'user', content: 'Show it again' },
+    ]);
+  });
+
+  it('sends what the project has, so only fitting tools are offered', async () => {
+    const t = setup();
+    await t.session.send('What is here?');
+    const req = t.sent('ai:send')[0]?.req as IpcRequest<'ai:send'>;
+    expect(req.facts).toMatchObject({
+      captures: expect.any(Number) as unknown,
+      photos: expect.any(Boolean) as unknown,
+      clips: expect.any(Boolean) as unknown,
+      pointClouds: expect.any(Boolean) as unknown,
+    });
+    expect(req.facts).not.toHaveProperty('models');
+  });
+
   it('waits for approval of a write tool, then runs it', async () => {
     const t = setup();
     await t.session.send('draft it');
