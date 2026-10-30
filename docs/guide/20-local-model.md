@@ -16,7 +16,7 @@ You install the model, so its licence terms apply to you. Check them before you 
 
 ## Connect it
 
-1. Open **Settings**, **AI providers** and find **Local model**.
+1. Open **Settings**, **Local model**.
 2. Switch on **Use a local model**.
 3. Check the **Address**, for example `http://localhost:11434/v1` for Ollama.
 4. Click **Find models**. {product} looks on this computer and lists what the server has, for example "Ollama at http://localhost:11434: 3 models". Badges show **Tools**, **Vision** and the context size.

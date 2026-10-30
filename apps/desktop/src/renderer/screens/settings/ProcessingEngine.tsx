@@ -26,10 +26,9 @@ const STATE_ICON: Record<'ok' | 'warn' | 'plain', IconName | null> = {
   plain: null,
 };
 
-/** "Prepare survey surfaces when a project opens": on unless the setting says `false`. */
 /**
- * "Prepare surfaces when a project opens": a switch row inside the engine card, laid out like the
- * graphics card row (text left, switch right). Further automatic-work switches (for example an
+ * "Prepare surfaces when a project opens" (on unless the setting says `false`): a switch row inside
+ * the engine card, laid out like the graphics card row (text left, switch right). Further automatic-work switches (for example an
  * automatic survey check after a new date) belong next to it, in this card.
  */
 function AutoPrepareSurfaces() {

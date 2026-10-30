@@ -26,7 +26,7 @@ Heights that need a geoid grid which is not installed are refused with the pack'
 
 ## Geoid packs
 
-**Settings**, **Offline maps**, **Geoid packs** lists the geoid grids heights can use: EGM96 and EGM2008 from the pipeline pack (tagged **Pipeline pack**), and regional grids. Each row shows the **Region** it covers, the **Vertical datum** (an EPSG code, or "Not stated"), the **Licence**, the attribution and the size.
+**Settings**, **Datums**, **Geoid packs** lists the geoid grids heights can use: EGM96 and EGM2008 from the pipeline pack (tagged **Pipeline pack**), and regional grids. Each row shows the **Region** it covers, the **Vertical datum** (an EPSG code, or "Not stated"), the **Licence**, the attribution and the size.
 
 To add a regional grid, for example the geoid model of your country:
 

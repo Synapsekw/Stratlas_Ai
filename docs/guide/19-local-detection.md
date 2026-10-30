@@ -4,7 +4,7 @@
 
 ## Detection models in Settings
 
-Open **Settings**, **AI providers** and scroll to **Detection models**.
+Open **Settings**, **Models and detection**. **Detection models** comes first.
 
 - The first line says whether local detection can run, for example "onnxruntime 1.30.0 on DirectML (graphics card)". Without a usable graphics card it runs on **CPU**.
 - **Run on**: **Graphics card when available** (the default) or **CPU only**. If the graphics card cannot load a model, {product} uses the CPU.

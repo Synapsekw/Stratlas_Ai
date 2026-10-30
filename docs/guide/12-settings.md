@@ -2,9 +2,10 @@
 
 Click **Settings** at the bottom of the sidebar. The pages are grouped:
 
-- **Intelligence**: **AI providers**, **Usage and cost**, **Privacy and cloud** (see [AI agent](07-ai-agent.md)). **AI providers** also holds the **Local model** (see [Set up a local model](20-local-model.md)), the **Detection models** (see [Local detection with ONNX models](19-local-detection.md)) and **AI for Ask AI**, which decides which AI the **Ask AI** button in **Inspect** uses (see [AI for Ask AI](#ai-for-ask-ai)).
-- **Data**: **Identity and team** (see [Identity and team](21-identity-and-team.md)), **Data folder**, **Processing tools**, **Offline maps** (see [Maps](06-maps.md)), **Map sources** (online maps and their keys, see [Online maps](06-maps.md#online-maps)), **Severity models**, **Report branding** (see [Reports](10-reports-and-exports.md#report-branding)).
+- **Intelligence**: **AI providers**, **Local model** (see [Set up a local model](20-local-model.md)), **Models and detection**, **Usage and cost**, **Privacy and cloud** (see [AI agent](07-ai-agent.md)). **AI providers** holds the providers, the model routing and **AI for Ask AI**, which decides which AI the **Ask AI** button in **Inspect** uses (see [AI for Ask AI](#ai-for-ask-ai)). **Models and detection** holds the **Detection models** (see [Local detection with ONNX models](19-local-detection.md)), the **Analytics pack** and the detector library.
+- **Data**: **Identity and team** (see [Identity and team](21-identity-and-team.md)), **Data folder**, **Processing tools**, **Offline maps** (see [Maps](06-maps.md)), **Map sources** (online maps and their keys, see [Online maps](06-maps.md#online-maps)), **Datums** (geoid grids for heights, see [Geoid packs](34-site-coordinates-and-calibration.md#geoid-packs)), **Severity models**, **Classes**, **Report branding** (see [Reports](10-reports-and-exports.md#report-branding)).
 - **App**: **Graphics quality**, **Appearance**, **Keyboard** (see [Keyboard shortcuts](#keyboard-shortcuts)), **About and updates**.
+- **This project** (only while a project is open): **Project settings** (see [Project settings](#project-settings)).
 
 The **?** at the top right of each page opens its section of this guide.
 
@@ -21,6 +22,10 @@ Two chips in the status row at the foot of the left sidebar open a page directly
 - **Review queue: lowest confidence shown at first** sets where the confidence slider of the review queue starts (50 % until you change it). Suggestions under the slider are hidden, the ones a local detector scored under its own threshold too.
 
 Cloud AI still needs its key and the switch (see [Switch cloud AI on](07-ai-agent.md#switch-cloud-ai-on)); choosing **Cloud** here does not turn it on.
+
+## Project settings
+
+**Project settings** holds what belongs to the open project. **Keep this project's images on this PC** stops every cloud request for the project, whatever **Cloud AI** says in **Privacy and cloud**. **Street map** says whether a detailed street map covers the site; **Maps for your projects** opens that panel in **Offline maps**, which plans street maps for every project in your library.
 
 ## Data folder
 

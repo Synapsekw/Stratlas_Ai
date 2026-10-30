@@ -24,7 +24,7 @@ import {
 import { isPlayer } from './player';
 import { sidebarFolded } from './shell/autoFold';
 import { samePathText } from './screens/projectMenuModel';
-import { FOCUS_PAGE } from './screens/settings/settingsPages';
+import { resolveSettingsTarget } from './screens/settings/settingsPages';
 import { videoFirst } from './stageDefault';
 
 export type Screen =
@@ -349,13 +349,14 @@ export function createShellStore(
       set({
         screen: 'settings',
         settingsFocus: focus ?? null,
-        settingsPage: focus ? FOCUS_PAGE[focus] : null,
+        settingsPage: focus ? resolveSettingsTarget(focus).page : null,
       });
     },
 
     openSettingsPage: (page) => {
       leaveScene('settings');
-      set({ screen: 'settings', settingsPage: page });
+      // an id from before Settings was grouped by topic still lands on a page
+      set({ screen: 'settings', settingsPage: resolveSettingsTarget(page).page });
     },
 
     clearSettingsPage: () => {

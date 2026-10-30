@@ -94,7 +94,7 @@ export const enAskAi = {
   'askAi.check.detector': '{name} (local detector)',
   'askAi.none': 'No AI can look at this. {reason}',
   'askAi.openSettings': 'Open AI settings',
-  'askAi.openTools': 'Open Processing tools',
+  'askAi.openTools': 'Open Models and detection',
   'askAi.detectors.checking': 'Checking the Analytics pack and the graphics card.',
   'askAi.reason.noBackend':
     'Install a local model or detector in Settings, or allow cloud AI for this project.',

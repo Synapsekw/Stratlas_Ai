@@ -521,7 +521,7 @@ export function AskAiBar({
           </button>
         </p>
       ) : detectorBlock && !detectorBlock.checking ? (
-        // the pack and the card live in Settings, Processing tools
+        // the pack and the card live in Settings, Models and detection
         <p className="ask-note" data-testid="ask-ai-blocked">
           <span>{detectorBlock.reason}</span>
           <button
@@ -529,7 +529,7 @@ export function AskAiBar({
             className="btn link sm"
             data-testid="ask-ai-settings"
             onClick={() => {
-              shell.getState().openSettingsPage('tools');
+              shell.getState().openSettings('analytics-pack');
             }}
           >
             {t('askAi.openTools')}

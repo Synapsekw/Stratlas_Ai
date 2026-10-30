@@ -88,6 +88,8 @@ test('moved sections are reached from where they used to be', async ({ win }) =>
   await win.getByTestId('tools-models-moved').getByRole('button').click();
   await expect(h1(win)).toHaveText('Models and detection');
   await expect(win.getByTestId('analytics-pack')).toBeInViewport();
+  // keyboard focus follows the moved section
+  await expect(win.locator('[data-settings-focus="analytics-pack"]')).toBeFocused();
   await expect(win.getByTestId('detection-models')).toBeAttached();
   await expect(win.getByTestId('detector-library')).toBeAttached();
 

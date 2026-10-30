@@ -15,6 +15,7 @@ const h = vi.hoisted(() => {
     answers,
     start: vi.fn(),
     openSettingsPage: vi.fn(),
+    openSettings: vi.fn(),
     loadPack: vi.fn(),
     readOnly: false,
     run,
@@ -33,7 +34,9 @@ vi.mock('../../shell', async () => {
       return (typeof a === 'function' ? (a as (k: unknown) => unknown)(key) : a) ?? null;
     },
     useShell: <T,>(sel: (s: { settings: Record<string, unknown> }) => T) => useStore(settings, sel),
-    shell: { getState: () => ({ openSettingsPage: h.openSettingsPage }) },
+    shell: {
+      getState: () => ({ openSettingsPage: h.openSettingsPage, openSettings: h.openSettings }),
+    },
     settingsStore: settings,
   };
 });
@@ -140,6 +143,7 @@ beforeEach(() => {
   h.start.mockReset();
   h.start.mockResolvedValue(undefined);
   h.openSettingsPage.mockReset();
+  h.openSettings.mockReset();
   h.loadPack.mockReset();
   settingsStore.setState({ settings: { cloudAi: false } });
   analyticsPack.setState({ status: PACK, hardware: CARD, hardwareError: null, error: null });
@@ -559,7 +563,7 @@ describe('AskAiBar', () => {
       await click('ask-ai');
       expect(h.start).not.toHaveBeenCalled();
       await click('ask-ai-settings');
-      expect(h.openSettingsPage).toHaveBeenCalledWith('tools');
+      expect(h.openSettings).toHaveBeenCalledWith('analytics-pack');
     });
 
     it('names why an installed pack cannot be used', () => {

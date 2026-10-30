@@ -36,6 +36,10 @@ export function useHelp<T>(selector: (s: HelpState) => T): T {
 /** Where each Settings page is explained. */
 export const SETTINGS_HELP: Record<string, HelpTopic> = {
   ai: { chapter: 'ai-agent', anchor: 'add-a-provider-and-a-key' },
+  'local-model': { chapter: 'local-model', anchor: 'connect-it' },
+  models: { chapter: 'local-detection', anchor: 'detection-models-in-settings' },
+  datums: { chapter: 'site-coordinates-and-calibration', anchor: 'geoid-packs' },
+  project: { chapter: 'settings', anchor: 'project-settings' },
   usage: { chapter: 'ai-agent', anchor: 'what-is-sent-and-when' },
   privacy: { chapter: 'ai-agent', anchor: 'what-is-sent-and-when' },
   data: { chapter: 'settings', anchor: 'data-folder' },

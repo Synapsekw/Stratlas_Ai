@@ -826,6 +826,11 @@ function useScrollToFocus(page: Page): void {
     const el = document.querySelector(`[data-settings-focus="${focus}"]`);
     if (!el) return;
     el.scrollIntoView({ block: 'start' });
+    // keyboard focus follows, so it does not fall back to the page body
+    if (el instanceof HTMLElement) {
+      el.tabIndex = -1;
+      el.focus({ preventScroll: true });
+    }
     shell.getState().clearSettingsFocus();
   }, [focus, page]);
 }
@@ -858,10 +863,15 @@ export function SettingsScreen() {
   // a page asked for from outside (the connection menu's Download maps, "Offline maps" of the map type
   // picker) holds until one is picked here
   const asked = useShell((s) => s.settingsPage);
-  const page = asked ?? picked;
   const error = useShell((s) => s.settingsError);
   const projectOpen = useWorkspace((s) => s.project !== null);
   const pages = visibleSettingsPages(projectOpen);
+  // the project closed while its page was shown: back to where Settings opens
+  if (!projectOpen && picked === 'project') setPicked('ai');
+  const page = !projectOpen && asked === 'project' ? 'ai' : (asked ?? picked);
+  useEffect(() => {
+    if (!projectOpen && asked === 'project') shell.getState().clearSettingsPage();
+  }, [projectOpen, asked]);
   const help = SETTINGS_HELP[page] ?? SETTINGS_HELP[HELP_FROM[page] ?? page];
   useScrollToFocus(page);
   const screen = (
