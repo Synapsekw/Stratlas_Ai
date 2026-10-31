@@ -316,7 +316,9 @@ describe('the four panel tabs (D2)', () => {
     const project = (d = NO_PANEL_DATA, opened = new Set<TabId>()) =>
       sectionsOf('project', d, opened).map((s) => s.id);
     expect(project()).toEqual(['project.inThisProject', 'project.issues', 'project.jobs']);
+    // the site digest first, with two survey dates or more
     expect(project({ ...NO_PANEL_DATA, volumes: true, dated: true, road: true })).toEqual([
+      'project.digest',
       'project.inThisProject',
       'project.volumes',
       'project.changes',

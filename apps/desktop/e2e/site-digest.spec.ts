@@ -1,6 +1,6 @@
 /**
  * The site digest (intelligence review I2) in the real app, on the change demo (two dates,
- * synthetic, zero network): at the top of the Project tab it says what is worth a look. The later
+ * synthetic, zero network): first in the Project tab it says what is worth a look. The later
  * date has no survey QA yet, so the digest says so first. Then the in-app change compute for the
  * pair runs (the same compute the checks after a new date, I1, start on their own; here it is
  * started from the Changes tab, since the chain needs a surface preparation job), and the digest
@@ -14,6 +14,7 @@
 import { expectAccessible } from './a11y';
 import { expect, reportWindow, test } from './fixtures';
 import { openBench } from './island';
+import { expectBench, openSection } from './panel';
 
 test('the site digest shows what to look at once a date lands', async ({
   demoProject,
@@ -36,8 +37,9 @@ test('the site digest shows what to look at once a date lands', async ({
     if (g.tier === 'low') g.setOverride('medium');
   });
 
-  const project = await openBench(win, 'measure');
-  const digest = project.getByTestId('site-digest');
+  // first in the Project tab (UI revision D2)
+  await openSection(win, 'project', 'project.digest');
+  const digest = win.getByTestId('site-digest');
   await expect(digest).toBeVisible();
   await expect(digest.getByRole('heading', { name: /Site digest/ })).toBeVisible();
   // the later date was never checked: a note, with the action that answers it
@@ -45,8 +47,9 @@ test('the site digest shows what to look at once a date lands', async ({
   await expect(unchecked).toHaveCount(1);
   await expect(unchecked).toContainText('has not been checked yet');
   await expect(digest.locator('[data-rule="change-review"]')).toHaveCount(0);
-  // the digest only reads: nothing for the measurements to save
-  const saving = project.getByRole('group', { name: 'Saving measurements' });
+  // the digest only reads: nothing for the measurements to save (Tools > Measure's save line)
+  await openBench(win, 'measure');
+  const saving = win.getByRole('group', { name: 'Saving measurements' });
   await expect(saving.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
   await expect(saving.getByRole('status')).toHaveText('All saved');
 
@@ -60,7 +63,7 @@ test('the site digest shows what to look at once a date lands', async ({
   });
 
   // the digest follows: the changes to review on the latest pair
-  await openBench(win, 'measure');
+  await openSection(win, 'project', 'project.digest');
   const review = digest.locator('[data-rule="change-review"]');
   await expect(review).toHaveCount(1);
   await expect(review).toContainText(/\d+ changes? from .+ to .+ to review/);
@@ -69,21 +72,18 @@ test('the site digest shows what to look at once a date lands', async ({
 
   // its action opens Changes on that pair
   await review.getByTestId('site-digest-action-insights.openChanges').click();
-  await expect(win.locator('.ws > .right #wb-tab-changes')).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expectBench(win, 'changes');
   const panel = win.getByTestId('change-panel');
   await expect(panel.getByTestId('change-from')).toHaveValue(truth.captures.from);
   await expect(panel.getByTestId('change-to')).toHaveValue(truth.captures.to);
 
   // the unchecked date's action opens Survey QA
-  await openBench(win, 'measure');
+  await openSection(win, 'project', 'project.digest');
   await unchecked.getByTestId('site-digest-action-insights.openQa').click();
-  await expect(win.locator('.ws > .right #wb-tab-qa')).toHaveAttribute('aria-selected', 'true');
+  await expectBench(win, 'qa');
 
   // Compare dates on the change line runs the right-click registry's item: two views
-  await openBench(win, 'measure');
+  await openSection(win, 'project', 'project.digest');
   await expect(digest.locator('[data-rule="change-review"]')).toHaveCount(1);
   await digest
     .locator('[data-rule="change-review"]')

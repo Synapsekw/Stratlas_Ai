@@ -326,6 +326,7 @@ export const enWorkbench = {
   'wb.sec.clouds': 'Point cloud',
   'wb.sec.overlays': 'Terrain overlays',
   'wb.sec.cutaway': 'Section planes',
+  'wb.sec.digest': 'Site digest',
   'wb.sec.inThisProject': 'In this project',
   'wb.sec.volumes': 'Volumes',
   'wb.sec.changes': 'Changes',

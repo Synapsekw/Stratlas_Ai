@@ -7,6 +7,7 @@ import { Icon, IconButton, useT } from '@aio/ui';
 import { useVolumetric } from '@aio/volumetric';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useId, useMemo, useRef } from 'react';
+import { SiteDigest } from '../../../insights/SiteDigest';
 import { useIsRoad } from '../../../road/useRoadMap';
 import { FrontBody } from '../FrontBody';
 import { usePanelData } from '../panelData';
@@ -28,6 +29,7 @@ function useSectionCount(def: SectionDef): number | undefined {
 
 function SectionBody({ def }: { def: SectionDef }) {
   const road = useIsRoad();
+  if (def.id === 'project.digest') return <SiteDigest />;
   if (def.id === 'project.inThisProject') return <ProjectList />;
   if (def.body === null) return null;
   return <FrontBody front={def.body} road={road} />;

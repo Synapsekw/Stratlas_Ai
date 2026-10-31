@@ -195,6 +195,7 @@ export type SectionId =
   | 'layers.clouds'
   | 'layers.overlays'
   | 'layers.cutaway'
+  | 'project.digest'
   | 'project.inThisProject'
   | 'project.volumes'
   | 'project.changes'
@@ -282,6 +283,8 @@ export const SECTIONS: readonly SectionDef[] = [
   { id: 'layers.clouds', label: 'wb.sec.clouds', body: 'clouds', needs: (d) => d.pointcloud },
   { id: 'layers.overlays', label: 'wb.sec.overlays', body: 'overlays', needs: (d) => d.surface },
   { id: 'layers.cutaway', label: 'wb.sec.cutaway', body: 'cutaway', needs: (d) => d.model3d },
+  // what is worth a look on the site now (intelligence review I2): with two survey dates or more
+  { id: 'project.digest', label: 'wb.sec.digest', body: null, needs: (d) => d.dated },
   { id: 'project.inThisProject', label: 'wb.sec.inThisProject', body: null },
   {
     id: 'project.volumes',
@@ -377,6 +380,7 @@ export const TAB_FRONT: Readonly<Record<PanelTab, TabId>> = {
 export const DEFAULT_OPEN: readonly SectionId[] = [
   'tools.measure',
   'layers.display',
+  'project.digest',
   'project.inThisProject',
   'project.issues',
 ];
