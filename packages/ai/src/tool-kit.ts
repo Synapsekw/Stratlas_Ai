@@ -221,12 +221,12 @@ export interface AppHooks {
   surveyMeasurements?: (
     projectId: string,
   ) => { measurements: SurveyMeasurement[]; settings: SurveySettings } | null;
+  /** A UI string from the app's catalogue (step summaries shown in the panel); null: unknown key. */
+  say?: (key: string, vars: Record<string, string | number>) => string | null;
   /**
    * What the open project has beyond its manifest (measurements, volumes, detections, thermal,
    * walks), so the agent is offered only the read tools that can answer. A key left out: unknown.
    */
-  /** A UI string from the app's catalogue (step summaries shown in the panel); null: unknown key. */
-  say?: (key: string, vars: Record<string, string | number>) => string | null;
   agentFacts?: () => Partial<
     Pick<AgentFacts, 'measurements' | 'volumes' | 'detections' | 'thermal' | 'walks'>
   >;

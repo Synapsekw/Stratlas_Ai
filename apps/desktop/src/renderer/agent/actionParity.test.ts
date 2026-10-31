@@ -77,9 +77,10 @@ describe('agent coverage of the action registry', () => {
       .filter((a) => /askRemove|askDelete|\.confirm\(/.test(a.run.toString()))
       .map((a) => a.id);
     // the check reads the run's code, so it must still see the known ones; a run behind a
-    // wrapper (date.delete, through the date folder helper) is held by its table line instead
+    // wrapper (date.delete, through the date folder helper) is held by its table line instead,
+    // and one that asks inside a longer flow (Re-read photos) stays with the person
     expect(asking).toEqual(expect.arrayContaining(['layer.delete', 'antenna.delete']));
-    for (const id of ['date.delete', 'layers.rereadPhotos']) {
+    for (const id of ['date.delete']) {
       const e = AGENT_ACTIONS[id];
       expect(e && 'risk' in e ? e.then : undefined, id).toBe('confirm');
     }

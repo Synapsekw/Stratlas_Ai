@@ -34,9 +34,10 @@ export const enAgentTools = {
   'agentTool.summary.ran': '{action}',
   'agentTool.summary.confirm': '{action}: waiting for you to confirm in the app',
   'agentTool.summary.finish': '{action}: opened for you to finish',
-  'agentTool.summary.kept_one': '{action}: {count} layer kept its date (its name carries one)',
+  'agentTool.summary.kept_one':
+    '{action}: {count} layer kept its date (from its name or the volumes)',
   'agentTool.summary.kept_other':
-    '{action}: {count} layers kept their date (their names carry one)',
+    '{action}: {count} layers kept their date (from their names or the volumes)',
   // approval cards
   'agentTool.card.run': '{action}: {target}',
   'agentTool.card.accept_one': 'Accept {count} detection as a draft issue',

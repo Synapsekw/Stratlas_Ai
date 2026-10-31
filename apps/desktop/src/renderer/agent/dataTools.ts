@@ -101,17 +101,18 @@ define('set_survey_date', (input, ctx) => {
   return {
     result: { inView: { id: c.id, date: c.date, name: c.label } },
     summary: t('agentTool.summary.inView', { date: formatDate(c.date) }),
-    ...(before !== c.id
+    // back to the date before, through the timeline (its layers and the volumes' survey with
+    // it); refused in another project or once the date in view was changed since. With no date
+    // in view before there is nothing to go back to: clearing the focus would leave the layers
+    // that focusing this date showed and hid, so that step offers no undo.
+    ...(before !== null && before !== c.id
       ? {
-          // back to the date before, or to none; refused in another project or once the date
-          // in view was changed since
           undo: () => {
             const now = timeline.getState();
             if (workspace.getState().project?.id !== p.id || now.projectId !== p.id)
               return t('agentTool.undo.otherProject');
             if (now.focus !== c.id) return t('agentTool.undo.dateMovedSince');
-            if (before) now.focusSurvey(before);
-            else timeline.setState({ focus: null });
+            now.focusSurvey(before);
             return null;
           },
         }

@@ -120,7 +120,7 @@ describe('survey dates', () => {
     expect(focusSurvey).toHaveBeenLastCalledWith('c2');
   });
 
-  it('clears the focus on undo when no date was in view before', async () => {
+  it('offers no undo when no date was in view before: the layers it showed would stay', async () => {
     timeline.setState({ projectId: 'p', index: captureIndex(manifest), focus: null } as never);
     timeline.setState({
       focusSurvey: (id: string) => {
@@ -129,8 +129,7 @@ describe('survey dates', () => {
     } as never);
     const r = await runRendererTool('set_survey_date', { date: 'latest' }, ctx());
     expect(timeline.getState().focus).toBe('c2');
-    expect(r.undo?.()).toBeNull();
-    expect(timeline.getState().focus).toBeNull();
+    expect(r.undo).toBeUndefined();
   });
 
   it('refuses the undo after a project switch, or once the date in view changed since', async () => {
