@@ -160,6 +160,9 @@ export const AGENT_ACTIONS: Readonly<Record<string, AgentActionEntry>> = {
   'antenna.reject': WRITE,
   'antenna.redraw': { exclude: HAND_WORK },
   'antenna.delete': CONFIRM,
+  // the issue register rows
+  'issue.placeOnModel': { exclude: 'Needs a click on the model in the view.' },
+  'finding.movePoint': { exclude: 'Needs a click on the model in the view.' },
 };
 
 /** The target kinds the agent can name (the menu's `group` heading stays with the person). */

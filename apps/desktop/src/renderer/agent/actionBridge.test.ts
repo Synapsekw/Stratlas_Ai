@@ -30,7 +30,7 @@ vi.mock('../shell/removal', async (orig) => ({
   askRemove: vi.fn(),
 }));
 
-const { describeRun, listActions, runAction } = await import('./actionBridge');
+const { describeRun, listActions, runAction, targetText } = await import('./actionBridge');
 const { setLayersCapture } = await import('../change/SurveyDate');
 const { askRemove } = await import('../shell/removal');
 const { shell } = await import('../shell');
@@ -213,6 +213,16 @@ describe('run_action', () => {
     const move = { action: 'layer.moveToDate', target: { kind: 'layers', ids: ['v'] } };
     await expect(runAction(move)).rejects.toThrow(/needs a pick/);
     await expect(runAction({ ...move, pick: 'jan' })).rejects.toThrow(/No pick "jan"/);
+  });
+
+  it('reads the issue-row menu target and keeps the finding actions off the agent', async () => {
+    expect(targetText({ kind: 'issues', ids: ['i1'], clicked: 'i1' }, manifest)).toBe(
+      'the Issues rows',
+    );
+    const r = await listActions({ target: { kind: 'annotations', row: 'issues' } });
+    const ids = (r.result as Listed).actions.map((a) => a.id);
+    expect(ids).not.toContain('finding.movePoint');
+    expect(ids).not.toContain('issue.placeOnModel');
   });
 
   it('refuses an excluded action with its reason', async () => {

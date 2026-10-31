@@ -132,6 +132,8 @@ export function targetText(menu: MenuTarget, manifest: ProjectManifest): string 
       const layer = menu.picks[0]?.layerId ?? '';
       return t('agentTool.target.photos', { count: menu.picks.length, layer: layerName(layer) });
     }
+    case 'issues':
+      return t('agentTool.target.issues');
     case 'annotations':
       return t(menu.row === 'issues' ? 'agentTool.target.issues' : 'agentTool.target.drafts');
   }
