@@ -154,3 +154,25 @@ describe('layer state', () => {
     expect(projectCacheKey('/x')).toMatch(/^[a-f0-9]{16}$/);
   });
 });
+
+describe('layer files of a flight line', () => {
+  it('lists the pose file', () => {
+    const m = ProjectManifest.parse({
+      ...manifest,
+      layers: [
+        {
+          kind: 'flightline',
+          id: 'fl1',
+          name: 'Flight 1',
+          src: { path: 'imports/flyability/s1/poses/f1.json' },
+          flight: 'f1',
+          bootStartS: 0,
+          space: 's1',
+        },
+      ],
+    });
+    expect(layerFiles(m).map((f) => `${f.layer}:${f.path}`)).toEqual([
+      'fl1:imports/flyability/s1/poses/f1.json',
+    ]);
+  });
+});

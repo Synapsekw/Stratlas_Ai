@@ -100,7 +100,7 @@ vi.mock('../workspace/siteTiles', () => ({
 }));
 vi.mock('./street', () => ({ GLOBE_PALETTE: {}, useStreetTiles: () => null }));
 
-import GlobeScreen from './GlobeScreen';
+import GlobeScreen, { georefOf } from './GlobeScreen';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -733,5 +733,16 @@ describe('the sites in focus on the Globe', () => {
     pickInField('Harbour yard');
     await settle();
     expect(outputs().map((o) => o.projectId)).toEqual(['quarry']);
+  });
+});
+
+describe('georefOf', () => {
+  it('places a project on the Earth, and leaves a local frame off the globe', () => {
+    expect(georefOf({ crs: { epsg: 32639 }, origin: [1, 2, 3] })).toEqual({
+      crs: { epsg: 32639 },
+      origin: [1, 2, 3],
+      heightOffset: 0,
+    });
+    expect(georefOf({ crs: { local: 'flyability' }, origin: [0, 0, 0] })).toBeNull();
   });
 });

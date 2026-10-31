@@ -1,4 +1,4 @@
-import type { Layer } from '@aio/schema';
+import { Layer } from '@aio/schema';
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -12,7 +12,14 @@ import {
   makeRemoveProject,
 } from './removeFixture';
 import { readManifestFile, writeManifestFile } from './create';
-import { areaLayerId, namesAny, ownedPaths, planRemoval, valuesUnder } from './removePlan';
+import {
+  areaLayerId,
+  layerRefs,
+  namesAny,
+  ownedPaths,
+  planRemoval,
+  valuesUnder,
+} from './removePlan';
 
 let dir: string;
 let root: string;
@@ -538,5 +545,20 @@ describe('helpers', () => {
     ]).toEqual(['x', 'y']);
     expect(namesAny({ p: [{ q: 'dsm-b' }] }, new Set(['dsm-b']))).toBe('dsm-b');
     expect(namesAny({ p: 3 }, new Set(['dsm-b']))).toBeNull();
+  });
+});
+
+describe('layerRefs', () => {
+  it('names the pose file of a flight line', () => {
+    const fl = Layer.parse({
+      kind: 'flightline',
+      id: 'fl1',
+      name: 'Flight 1',
+      src: { path: 'imports/flyability/s1/poses/f1.json' },
+      flight: 'f1',
+      bootStartS: 0,
+      space: 's1',
+    });
+    expect(layerRefs(fl)).toEqual(['imports/flyability/s1/poses/f1.json']);
   });
 });

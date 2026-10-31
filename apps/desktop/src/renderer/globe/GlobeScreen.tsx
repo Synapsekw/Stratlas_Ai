@@ -121,7 +121,9 @@ function startOf(
 }
 
 /** How a manifest sits on the Earth, for issue pins and the hand-off (heights as ellipsoidal). */
-export function georefOf(m: Pick<ProjectManifest, 'crs' | 'origin'>): SiteGeoref {
+export function georefOf(m: Pick<ProjectManifest, 'crs' | 'origin'>): SiteGeoref | null {
+  // a project in a local frame has no place on the Earth
+  if ('local' in m.crs) return null;
   return { crs: m.crs, origin: m.origin, heightOffset: 0 };
 }
 
@@ -281,9 +283,11 @@ export default function GlobeScreen() {
   );
   const pins = useMemo(() => {
     if (!project || prefs.showIssues === false) return null;
+    const georef = georefOf(project.manifest);
+    if (!georef) return null;
     return {
       projectId: project.id,
-      georef: georefOf(project.manifest),
+      georef,
       pins: issuePins(issues, project.manifest, (layerId) =>
         dateShiftOf(project.manifest, layerId),
       ),
@@ -360,8 +364,9 @@ export default function GlobeScreen() {
       handedTo = null;
       return;
     }
-    if (camera && !issueId)
-      shell.getState().saveView(opened.id, globeToSite(camera, georefOf(opened.manifest)));
+    const openedGeoref = georefOf(opened.manifest);
+    if (camera && !issueId && openedGeoref)
+      shell.getState().saveView(opened.id, globeToSite(camera, openedGeoref));
     if (issueId) workspace.getState().select({ kind: 'issue', id: issueId });
     shell.getState().go('scene');
   };

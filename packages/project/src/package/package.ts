@@ -172,6 +172,7 @@ function requiredFiles(layer: Layer): string[] {
     case 'mesh':
     case 'pointcloud':
     case 'raster':
+    case 'flightline':
       refs.push(layer.src);
       break;
     case 'video':

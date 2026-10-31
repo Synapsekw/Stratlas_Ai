@@ -95,6 +95,11 @@ describe('spaces', () => {
     expect(ProjectManifest.safeParse(dup).success).toBe(false);
   });
 
+  test('a listed space cannot take the id main', () => {
+    const bad = { ...withSpaces, spaces: [localSpace('main')] };
+    expect(ProjectManifest.safeParse(bad).success).toBe(false);
+  });
+
   test('a flightline layer parses and an issue keeps external', () => {
     const fl = {
       kind: 'flightline',
@@ -128,5 +133,7 @@ describe('spaces', () => {
     expect(spaceFrame(m, 's-a')).toEqual({ crs: { local: 'flyability' }, origin: [0, 0, 0] });
     expect(spaceFrame(m, 'main')).toEqual({ crs: m.crs, origin: m.origin });
     expect(spaceFrame(m, 'nope')).toBeNull();
+    // main is not listed when every layer names a space
+    expect(spaceFrame(ProjectManifest.parse(withSpaces), 'main')).toBeNull();
   });
 });

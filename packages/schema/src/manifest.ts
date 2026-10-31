@@ -4,6 +4,7 @@ import { CaptureLineUp, CaptureLineUpTurn } from './dateShift';
 import { Layer } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
 import { AiPolicy } from './package';
+import { DEFAULT_SPACE_ID } from './spaces';
 import { ProjectPurpose, ProjectType, VerticalDatum } from './builder';
 
 export const SCHEMA_VERSION = 'aio.project/1' as const;
@@ -128,7 +129,16 @@ export const ProjectManifest = z
   .superRefine(uniqueIds('severityModels'))
   .superRefine(uniqueIds('captures'))
   .superRefine((m, ctx) => {
-    if (m.spaces) uniqueIds('spaces')({ spaces: m.spaces }, ctx);
+    if (!m.spaces) return;
+    uniqueIds('spaces')({ spaces: m.spaces }, ctx);
+    m.spaces.forEach((s, i) => {
+      if (s.id === DEFAULT_SPACE_ID)
+        ctx.addIssue({
+          code: 'custom',
+          message: `The space id "${DEFAULT_SPACE_ID}" is the project's own space and cannot be listed`,
+          path: ['spaces', i, 'id'],
+        });
+    });
   });
 
 export type Crs = z.infer<typeof Crs>;

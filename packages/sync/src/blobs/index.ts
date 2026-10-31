@@ -68,6 +68,7 @@ export function layerFiles(manifest: Pick<ProjectManifest, 'layers'>): LayerFile
       case 'pointcloud':
       case 'raster':
       case 'vector':
+      case 'flightline':
         add(layer.src);
         break;
       case 'video':

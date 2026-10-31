@@ -37,7 +37,5 @@ export function spaceOfIssue(m: ProjectManifest, issue: Issue): string {
 /** The frame (crs and origin) of a space, or null when the project has no such space. */
 export function spaceFrame(m: ProjectManifest, spaceId: string): { crs: Crs; origin: Vec3 } | null {
   const s = spacesOf(m).find((x) => x.id === spaceId);
-  if (s) return { crs: s.crs, origin: s.origin };
-  if (spaceId === DEFAULT_SPACE_ID) return { crs: m.crs, origin: m.origin };
-  return null;
+  return s ? { crs: s.crs, origin: s.origin } : null;
 }

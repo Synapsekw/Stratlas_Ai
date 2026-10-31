@@ -436,6 +436,20 @@ describe('georefToLayerTransform', () => {
 });
 
 describe('layerTransformToGeoref', () => {
+  it('needs a project on the Earth: a local frame is refused, never given a made-up CRS', () => {
+    const local: ProjectGeo = { crs: { local: 'flyability' }, origin: [0, 0, 0] };
+    const r = georefToLayerTransform(g(), local);
+    expect(r.kind).toBe('needed');
+    expect(() =>
+      layerTransformToGeoref(
+        [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+        local,
+        null,
+        'engineer',
+      ),
+    ).toThrow(/local frame/);
+  });
+
   it('saving again and again after a cross-CRS placement never drifts the scale', () => {
     const geo = g({
       modelToCrs: enhMatrix([400010, 5600020, 15], 0, 1.25),

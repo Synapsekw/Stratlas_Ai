@@ -119,6 +119,9 @@ function ownership(layer: Layer): { files: string[]; prefixes: string[]; kept: s
       if (layer.format === 'kit-pyramid') folderOf(layer.src);
       else add(layer.src);
       break;
+    case 'flightline':
+      add(layer.src);
+      break;
     case 'video':
       add(layer.src);
       add(layer.poster);

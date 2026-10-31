@@ -917,3 +917,46 @@ describe('removeCapture', () => {
     );
   });
 });
+
+describe('spaces through the project writer', () => {
+  it('keeps spaces, layer.space and a local crs across a write, an update and a read', async () => {
+    const m = parseManifest({
+      schema: 'aio.project/1',
+      id: 'sp',
+      name: 'Spaces',
+      crs: { epsg: 32636 },
+      origin: [1, 2, 3],
+      captures: [],
+      severityModels: [],
+      classCatalogues: [],
+      spaces: [
+        {
+          id: 's-a',
+          name: 'Tank A',
+          crs: { local: 'flyability' },
+          origin: [0, 0, 0],
+          source: { kind: 'flyability', inspectionId: 'i1' },
+        },
+      ],
+      layers: [
+        { kind: 'photos', id: 'p', name: 'P', items: [], space: 's-a' },
+        {
+          kind: 'flightline',
+          id: 'fl',
+          name: 'F',
+          src: { path: 'imports/flyability/s-a/poses/f.json' },
+          flight: 'f',
+          bootStartS: 1,
+          space: 's-a',
+        },
+      ],
+    });
+    if (!m.ok) throw new Error(m.error);
+    await writeManifestFile(dir, m.value);
+    await updateManifestFile(dir, (cur) => ({ manifest: { ...cur, name: 'Renamed' } }));
+    const back = JSON.parse(await readFile(join(dir, 'manifest.json'), 'utf8')) as ProjectManifest;
+    expect(back.name).toBe('Renamed');
+    expect(back.spaces).toEqual(m.value.spaces);
+    expect(back.layers.map((l) => l.space)).toEqual(['s-a', 's-a']);
+  });
+});

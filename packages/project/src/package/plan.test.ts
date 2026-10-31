@@ -395,3 +395,28 @@ describe('rf path-loss folders named by run.json', () => {
     ).toEqual([`${run}/cached-not/keep.txt`, `${run}/rsrp.tif`, `${run}/run.json`]);
   });
 });
+
+describe('planPackage with a flight line', () => {
+  it('carries the pose file of a flight line', () => {
+    const m = manifest();
+    const withFlight = ProjectManifest.parse({
+      ...m,
+      layers: [
+        ...m.layers,
+        {
+          kind: 'flightline',
+          id: 'fl1',
+          name: 'Flight 1',
+          src: { path: 'imports/flyability/s1/poses/f1.json' },
+          flight: 'f1',
+          bootStartS: 0,
+          space: 's1',
+        },
+      ],
+    });
+    const pose = 'imports/flyability/s1/poses/f1.json';
+    const p = planPackage(withFlight, [...files, { path: pose, size: 12 }], []);
+    expect(paths(p)).toContain(pose);
+    expect(p.layers.find((l) => l.id === 'fl1')?.bytes).toBe(12);
+  });
+});

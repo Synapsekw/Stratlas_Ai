@@ -93,6 +93,31 @@ describe('layer files', () => {
     expect(crsSidecar(m, vector)).toBeNull();
   });
 
+  it('treats a flight line as local frame and writes its own space frame', () => {
+    const flight = {
+      kind: 'flightline',
+      id: 'fl',
+      name: 'Flight',
+      visible: true,
+      src: { path: 'imports/flyability/s1/poses/f.json' },
+      flight: 'f',
+      bootStartS: 0,
+      space: 's1',
+    } as unknown as Layer;
+    const inSpace = {
+      ...m,
+      layers: [...m.layers, flight],
+      spaces: [{ id: 's1', name: 'Tank', crs: { local: 'flyability' }, origin: [0, 0, 0] }],
+    } as unknown as ProjectManifest;
+    expect(isLocalFrame(flight)).toBe(true);
+    expect(crsSidecar(inSpace, flight)).toMatchObject({
+      crs: { local: 'flyability' },
+      origin: [0, 0, 0],
+    });
+    // a layer of the main space keeps the project's own frame
+    expect(crsSidecar(inSpace, mesh)).toMatchObject({ crs: { epsg: 32639 } });
+  });
+
   it('writes the date shift into the sidecar', () => {
     expect(crsSidecar(m, mesh, { eastM: 2.5, northM: -1 })).toMatchObject({
       dateShiftM: { eastM: 2.5, northM: -1 },

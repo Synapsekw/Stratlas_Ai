@@ -188,6 +188,7 @@ export function layerRefs(layer: Layer): string[] {
     case 'pointcloud':
     case 'raster':
     case 'vector':
+    case 'flightline':
       add(layer.src);
       break;
     case 'video':

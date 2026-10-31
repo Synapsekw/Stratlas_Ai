@@ -517,6 +517,10 @@ export function layerTransformToGeoref(
   prev: Georef | null,
   by: 'place-model' | 'engineer',
 ): Georef {
+  // a georeference needs a CRS on the Earth: a local frame has none, so never invent one
+  if ('local' in project.crs)
+    throw new Error('A project in a local frame cannot hold a georeferenced model.');
+  const georefCrs = 'epsg' in project.crs ? { epsg: project.crs.epsg } : { wkt: project.crs.wkt };
   const modelToCrs = localToEnh(transform, project.origin);
   const modelAnchor: Vec3 = (prev
     ? solve(prev.modelToCrs, [prev.anchor[0], prev.anchor[1], prev.anchor[2]])
@@ -561,12 +565,7 @@ export function layerTransformToGeoref(
       };
   return {
     schema: 'aio.georef/1',
-    crs:
-      'epsg' in project.crs
-        ? { epsg: project.crs.epsg }
-        : 'wkt' in project.crs
-          ? { wkt: project.crs.wkt }
-          : { wkt: '' },
+    crs: georefCrs,
     anchor,
     axes: 'x-east,y-up,z-south',
     units: 'm',

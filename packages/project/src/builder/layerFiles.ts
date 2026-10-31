@@ -6,7 +6,7 @@ import type {
   ProjectManifest,
   Vec3,
 } from '@aio/schema';
-import { shiftedBox, turnOf } from '@aio/schema';
+import { shiftedBox, spaceFrame, spaceOfLayer, turnOf } from '@aio/schema';
 import { constants } from 'node:fs';
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
@@ -85,11 +85,12 @@ export function crsSidecar(
   shift: DateShift | null = null,
 ): Record<string, unknown> | null {
   if (!isLocalFrame(l)) return null;
+  const frame = spaceFrame(m, spaceOfLayer(l)) ?? { crs: m.crs, origin: m.origin };
   const turn = turnOf(shift);
   return {
     schema: 'aio.layer-crs/1',
-    crs: m.crs,
-    origin: m.origin,
+    crs: frame.crs,
+    origin: frame.origin,
     frame: 'local metres from origin: x east, y up, z south',
     ...(l.kind === 'mesh' ? { transform: l.transform } : {}),
     ...(l.kind === 'raster' && l.corners ? { corners: l.corners } : {}),
@@ -180,7 +181,7 @@ export async function readLayerInfo(
       : l.kind === 'walk'
         ? shiftedBox(await walkExtent(root, l), shift)
         : await fullLayerExtent(root, m, l, orientation, shift),
-    crs: m.crs,
+    crs: (spaceFrame(m, spaceOfLayer(l)) ?? m).crs,
     importedAt: mainStat ? mainStat.born.toISOString() : null,
     mainFile: main,
   };
