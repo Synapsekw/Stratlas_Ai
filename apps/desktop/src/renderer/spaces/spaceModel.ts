@@ -1,4 +1,3 @@
-import { frameProjection } from '@aio/maps';
 import {
   layersOfSpace,
   spaceFrame,
@@ -23,10 +22,13 @@ export function switcherShown(m: ProjectManifest): boolean {
   return spacesOf(m).length > 1;
 }
 
-/** False for a space with a `{ local }` frame, or one whose frame has no map projection. */
+/**
+ * False only for a space with a `{ local }` frame (or no such space). A georeferenced crs the map
+ * cannot project (WKT, a state plane or national grid) still has the map view.
+ */
 export function mapAvailable(m: ProjectManifest, spaceId: string): boolean {
   const frame = spaceFrame(m, spaceId);
-  return frame !== null && frameProjection(frame.crs, frame.origin) !== null;
+  return frame !== null && !('local' in frame.crs);
 }
 
 /** Ids of the layers that belong to another space. */

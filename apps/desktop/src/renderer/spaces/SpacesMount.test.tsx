@@ -148,6 +148,46 @@ describe('SpacesMount', () => {
     expect(toastQueue().some((x) => x.id === 'fly-map-local')).toBe(true);
   });
 
+  it('a project in a crs the map cannot project stays on the map view', () => {
+    for (const crs of [{ epsg: 2229 }, { wkt: 'PROJCS["Custom grid",GEOGCS["WGS 84"]]' }]) {
+      open(ProjectManifest.parse({ ...base, crs, layers: [photos('l1')] }));
+      setActiveSpace('p1', 'main');
+      shellStore.setState({ stageMode: 'map' });
+      mount(null);
+      expect(shellStore.getState().stageMode).toBe('map');
+      expect(toastQueue().some((x) => x.id === 'fly-map-local')).toBe(false);
+      act(() => {
+        root?.unmount();
+      });
+      root = undefined;
+    }
+  });
+
+  it('a project without listed spaces never has its stage mode changed', () => {
+    open(ProjectManifest.parse({ ...base, crs: { local: 'site' }, layers: [photos('l1')] }));
+    setActiveSpace('p1', 'main');
+    shellStore.setState({ stageMode: 'map' });
+    mount(null);
+    expect(shellStore.getState().stageMode).toBe('map');
+    expect(toastQueue().some((x) => x.id === 'fly-map-local')).toBe(false);
+  });
+
+  it('an empty flight-line list is not redrawn', () => {
+    open(withSpaces([photos('lm'), photos('l2')]));
+    setActiveSpace('p1', 'main');
+    const render = vi.fn();
+    scene = new Scene();
+    const st = { scene, requestRender: render } as unknown as EngineStage;
+    mount(st);
+    act(() => {
+      workspace.getState().setLayersVisible(['l2'], false);
+    });
+    act(() => {
+      workspace.getState().setLayersVisible(['l2'], true);
+    });
+    expect(render).not.toHaveBeenCalled();
+  });
+
   it('a hidden flight line is not drawn', async () => {
     open(withSpaces([flight('f1', 's-a'), flight('f2', 's-a')]));
     setActiveSpace('p1', 's-a');

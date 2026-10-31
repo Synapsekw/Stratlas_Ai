@@ -75,6 +75,17 @@ describe('space model', () => {
     expect(mapAvailable(two, 'missing')).toBe(false);
   });
 
+  it('a project crs the map cannot project still has the map view', () => {
+    const plane = ProjectManifest.parse({ ...base, crs: { epsg: 2229 }, layers: [photos('l1')] });
+    const wkt = ProjectManifest.parse({
+      ...base,
+      crs: { wkt: 'PROJCS["Custom grid",GEOGCS["WGS 84"]]' },
+      layers: [photos('l1')],
+    });
+    expect(mapAvailable(plane, 'main')).toBe(true);
+    expect(mapAvailable(wkt, 'main')).toBe(true);
+  });
+
   it('lists the layers outside a space', () => {
     expect(offSpaceLayers(two, 's-a')).toEqual(['lm']);
     expect(offSpaceLayers(two, 'main')).toEqual(['la', 'lb']);

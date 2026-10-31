@@ -85,25 +85,31 @@ export function SpacesMount({ stage }: { stage: EngineStage | null }): null {
     if (hide.length > 0) workspace.getState().applyVisibility([], hide);
   }, [manifest, hidden, spaceId]);
 
-  // (2) minimum map guard: a space with its own frame has no map
+  // (2) minimum map guard: a listed space with a `{ local }` frame has no map. A project without
+  // listed spaces keeps whatever stage mode it is in.
+  const listed = (manifest?.spaces?.length ?? 0) > 0;
   useEffect(() => {
-    if (mapAvailable || stageMode !== 'map') return;
+    if (!listed || mapAvailable || stageMode !== 'map') return;
     shell.getState().setStageMode('3d');
     toast(t('fly.map.local'), { tone: 'info', id: 'fly-map-local' });
-  }, [mapAvailable, stageMode]);
+  }, [listed, mapAvailable, stageMode]);
 
   // (3) flight lines of the active space; a project switch forgets what was loaded
   useEffect(() => {
     clearFlightlines();
   }, [projectId, openSeq]);
   const view = useRef<FlightlineView | null>(null);
+  // whether the view holds any line: an empty list is not drawn again (no needless render)
+  const drawn = useRef(false);
   useEffect(() => {
     if (!stage) return;
     const v = attachFlightlines(stage);
     view.current = v;
+    drawn.current = false;
     return () => {
       v.dispose();
       view.current = null;
+      drawn.current = false;
     };
   }, [stage]);
   // the active space's flight lines and whether each is switched off: the draw ignores the rest
@@ -120,7 +126,8 @@ export function SpacesMount({ stage }: { stage: EngineStage | null }): null {
     const off = workspace.getState().hidden;
     const shown = layers.filter((l) => !off[l.id]);
     if (shown.length === 0) {
-      v.set([]);
+      if (drawn.current) v.set([]);
+      drawn.current = false;
       return;
     }
     let live = true;
@@ -128,20 +135,21 @@ export function SpacesMount({ stage }: { stage: EngineStage | null }): null {
       shown.map(async (l) => ({ l, points: await loadFlightline(projectId, l) })),
     ).then((loaded) => {
       if (!live) return;
-      v.set(
-        loaded.flatMap(({ l, points }) =>
-          points
-            ? [
-                {
-                  id: l.id,
-                  points,
-                  colour: flightlineColour(l, layers.indexOf(l)),
-                  visible: true,
-                },
-              ]
-            : [],
-        ),
+      const draws = loaded.flatMap(({ l, points }) =>
+        points
+          ? [
+              {
+                id: l.id,
+                points,
+                colour: flightlineColour(l, layers.indexOf(l)),
+                visible: true,
+              },
+            ]
+          : [],
       );
+      if (draws.length === 0 && !drawn.current) return;
+      v.set(draws);
+      drawn.current = draws.length > 0;
     });
     return () => {
       live = false;
