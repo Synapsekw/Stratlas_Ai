@@ -206,9 +206,9 @@ export function moreTankFarmCases(demo: DemoFacts): EvalCase[] {
       expect: (s) =>
         s.hidden.length <= (s.start.hidden?.length ?? 0)
           ? `no more layers are hidden than before (${list(s.steps.map((p) => `${p.name} ${p.status}`))})`
-          : ranAction(s, 'project.hideAll') || s.toolCalls.includes('run_action')
+          : ranAction(s, 'project.hideAll')
             ? null
-            : `the layers were hidden without the menu action (${list(s.toolCalls)})`,
+            : `the layers were hidden without the menu action project.hideAll (${list(s.toolCalls)})`,
       then: [
         {
           ask: 'Show them again',
@@ -225,7 +225,18 @@ export function moreTankFarmCases(demo: DemoFacts): EvalCase[] {
         ran('rank_locations')(s) ??
         (s.screen !== 'scene' ? `the screen changed to ${s.screen}` : null),
     },
-    { ask: 'Which processing jobs ran in this project?', expect: ran('list_jobs') },
+    {
+      ask: 'Which processing jobs ran in this project?',
+      expect: (s) => {
+        const why = ran('list_jobs')(s);
+        if (why) return why;
+        const n = s.jobCount ?? -1;
+        // the count of this project's jobs as the Jobs store holds it, or "no jobs"
+        if (n >= 0 && hasNumberNear(s.reply, n, 0)) return null;
+        if (n === 0 && /\bno (processing )?jobs\b|\bnone\b|"total":0/i.test(s.reply)) return null;
+        return `the reply does not give the ${String(n)} jobs of this project`;
+      },
+    },
     {
       // the tank farm has no thermal photos: the agent says so and shows nothing
       ask: 'Show me the thermal hot spots',
@@ -334,6 +345,8 @@ export function changeCases(f: ChangeFacts): EvalCase[] {
         if (step?.status !== 'done')
           return `set_survey_date did not run (${list(s.steps.map((p) => `${p.name} ${p.status}`))})`;
         const first = f.dates[0] ?? '';
+        if (s.surveyFocus !== first)
+          return `the date in view is ${String(s.surveyFocus)}, not the earliest ${first}`;
         return namesDates(s.reply, [first]) ? null : `the reply does not name ${first}`;
       },
     },
@@ -432,7 +445,20 @@ export function quarryCases(f: QuarryFacts): EvalCase[] {
       ask: 'List the measurements of this project',
       expect: (s) => ran('list_measurements')(s) ?? mentions('SP1')(s),
     },
-    { ask: 'Give me the stockpile volumes per survey', expect: ran('get_volume') },
+    {
+      ask: 'Give me the stockpile volumes per survey',
+      expect: (s) => {
+        const why = ran('get_volume')(s);
+        if (why) return why;
+        // a figure of the quarry's truth: some pile on some date, within five percent
+        const figures = Object.values(f.piles).flatMap((dates) =>
+          Object.values(dates).map((x) => x.volumeM3),
+        );
+        return figures.some((v) => hasNumberNear(s.reply, v, 0.05))
+          ? null
+          : 'the reply gives no pile volume of the quarry';
+      },
+    },
     { ask: 'What is the volume of Stockpile SP9?', expect: notFound('Stockpile SP9') },
     {
       ask: 'Delete every stockpile measurement',

@@ -363,6 +363,7 @@ interface Probe {
         selection: Picked | null;
         issues: { id: string; code: string }[];
         hidden: Record<string, boolean | undefined>;
+        project: { root: string; manifest: { captures: { id: string; date: string }[] } } | null;
         select(selection: Picked | null): void;
         setLayersVisible(ids: string[], visible: boolean): void;
       };
@@ -405,6 +406,10 @@ interface Probe {
     };
     /** The open project's measurements as held in memory (bootstrap.ts). */
     measurements?: () => { measurements?: unknown[] } | null;
+    /** The survey date in view (bootstrap.ts). */
+    timeline?: { getState(): { focus: string | null } };
+    /** The Jobs store (bootstrap.ts). */
+    jobs?: { getState(): { jobs: { project: string; quiet?: boolean }[] } };
   };
 }
 
@@ -547,6 +552,22 @@ const appState = (win: Page) =>
       issueCount: ws.issues.length,
       measurementCount: s.measurements?.()?.measurements?.length ?? null,
       hidden: Object.keys(ws.hidden).filter((id) => ws.hidden[id] === true),
+      surveyFocus: (() => {
+        const focus = s.timeline?.getState().focus ?? null;
+        return ws.project?.manifest.captures.find((c) => c.id === focus)?.date ?? null;
+      })(),
+      jobCount: (() => {
+        const folder = (p: string) =>
+          p
+            .replace(/[\\/]+$/, '')
+            .replace(/\\/g, '/')
+            .toLowerCase();
+        const root = ws.project ? folder(ws.project.root) : null;
+        const all = s.jobs?.getState().jobs;
+        return all && root !== null
+          ? all.filter((j) => !j.quiet && folder(j.project) === root).length
+          : null;
+      })(),
     };
   });
 

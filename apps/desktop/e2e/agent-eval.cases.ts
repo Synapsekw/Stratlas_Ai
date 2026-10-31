@@ -47,6 +47,10 @@ export interface EvalState {
   measurementCount: number | null;
   /** Ids of the layers hidden now. */
   hidden: string[];
+  /** The date (YYYY-MM-DD) of the survey date in view, or null. */
+  surveyFocus: string | null;
+  /** This project's jobs in the Jobs store; null when the store is not there. */
+  jobCount: number | null;
   /** The counts as the conversation started, before its first request. */
   start: { issueCount: number; measurementCount: number | null; hidden?: string[] };
   /**
