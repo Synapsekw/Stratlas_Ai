@@ -1,15 +1,17 @@
 /**
  * The open notch under its line (Island.tsx, which draws the line once so it never moves): the
- * group tabs, Jobs, Keep open and Close, then the shown group's quick row. Hovering or focusing a
- * tab previews its row; clicking it picks the group and opens its workbench in the right sidebar
- * (D4). Left and Right move along a row (mirrored right to left, as the foundation's Tabs do), Up
+ * labelled mode tabs (UI revision W8: View, Measure, Annotate, Volumes, Compare, Video, Road),
+ * Jobs, Keep open and Close, then the shown mode's slim row of its top tools. Hovering or focusing
+ * a tab previews its row; clicking it picks the mode and opens its section in the right panel.
+ * A mode that cannot be picked here is greyed out with its reason. Left and Right move along a row (mirrored right to left, as the foundation's Tabs do), Up
  * and Down (and Tab) between the rows, the line's among them (`moveFocus`).
  */
 import { Button, focusables, Icon, Tip, useT, type ShortcutId } from '@aio/ui';
 import { useId, useRef, type Dispatch, type KeyboardEvent, type ReactNode } from 'react';
 import { shell } from '../../shell';
 import type { StageMode } from '../../store';
-import { GROUP_ICON, GROUP_NAME, MODES, quickRow, type GroupCtx } from './groups';
+import type { IslandModeDef } from '../../tools/registry';
+import { ModeRow, MODES, type GroupCtx } from './groups';
 import type { GroupId, IslandEvent } from './islandModel';
 
 const MODE_KEY: Record<StageMode, ShortcutId> = {
@@ -99,23 +101,26 @@ export function IslandTools({
   ctx,
   dispatch,
   onPick,
+  onJobs,
   end,
 }: {
-  groups: readonly GroupId[];
+  groups: readonly IslandModeDef[];
   /** The picked group (the selected tab). */
   group: GroupId;
   /** The group whose row shows while a tab is hovered or focused. */
   preview: GroupId | null;
   ctx: GroupCtx;
   dispatch: Dispatch<IslandEvent>;
-  /** A group's tab clicked: the group is picked and its workbench opens. */
+  /** A mode's tab clicked: the mode is picked and its section opens. */
   onPick: (g: GroupId) => void;
+  /** Jobs: its section in the right panel. */
+  onJobs: () => void;
   /** After Jobs at the tab row's end: Keep open and Close. */
   end: ReactNode;
 }) {
   const t = useT();
   const id = useId();
-  const shown = preview && groups.includes(preview) ? preview : group;
+  const shown = preview && groups.some((m) => m.id === preview) ? preview : group;
   // Where the pointer last moved over the tabs. Previewing a tab can widen it (its name shows on
   // a narrow stage), which slides the tabs under a pointer that has not moved; the browser then
   // reports a move at the same spot, and acting on it would bounce the preview between tabs.
@@ -124,32 +129,39 @@ export function IslandTools({
     <div className="isl-tools">
       <div className="isl-tabs" data-isl-row="">
         <div className="seg isl-groups" role="tablist" aria-label={t('island.tools')}>
-          {groups.map((g) => (
-            <button
-              key={g}
-              type="button"
-              role="tab"
-              id={`${id}-${g}`}
-              aria-selected={g === group}
-              aria-controls={`${id}-panel`}
-              className={g === shown ? 'isl-shown' : undefined}
-              onPointerMove={(event) => {
-                const at = { x: event.clientX, y: event.clientY };
-                const still = last.current?.x === at.x && last.current.y === at.y;
-                last.current = at;
-                if (!still && g !== shown) dispatch({ type: 'hoverGroup', group: g });
-              }}
-              onFocus={() => {
-                if (g !== shown) dispatch({ type: 'hoverGroup', group: g });
-              }}
-              onClick={() => {
-                onPick(g);
-              }}
-            >
-              <Icon name={GROUP_ICON[g]} size={14} />
-              <span className="isl-gl">{t(GROUP_NAME[g])}</span>
-            </button>
-          ))}
+          {groups.map((m) => {
+            const g = m.id;
+            const can = m.available(ctx.tool);
+            const reason = can === true ? undefined : t(can.reason);
+            return (
+              <button
+                key={g}
+                type="button"
+                role="tab"
+                id={`${id}-${g}`}
+                aria-selected={g === group}
+                aria-controls={`${id}-panel`}
+                aria-disabled={reason ? true : undefined}
+                title={reason}
+                className={g === shown ? 'isl-shown' : undefined}
+                onPointerMove={(event) => {
+                  const at = { x: event.clientX, y: event.clientY };
+                  const still = last.current?.x === at.x && last.current.y === at.y;
+                  last.current = at;
+                  if (!still && g !== shown) dispatch({ type: 'hoverGroup', group: g });
+                }}
+                onFocus={() => {
+                  if (g !== shown) dispatch({ type: 'hoverGroup', group: g });
+                }}
+                onClick={() => {
+                  if (!reason) onPick(g);
+                }}
+              >
+                <Icon name={m.icon} size={14} />
+                <span className="isl-gl">{t(m.labelKey)}</span>
+              </button>
+            );
+          })}
         </div>
         {/* Jobs is always reachable (I-R47), from every group: its workbench, with jobs running,
             quiet ones or none (a running job's reading also opens it) */}
@@ -159,9 +171,7 @@ export function IslandTools({
           data-testid="island-jobs"
           aria-label={t('island.tile.jobsName')}
           tip={t('island.tile.jobsName')}
-          onClick={() => {
-            ctx.openBench('jobs');
-          }}
+          onClick={onJobs}
         >
           <Icon name="clock" size={14} />
         </Button>
@@ -171,11 +181,11 @@ export function IslandTools({
         className="isl-r2"
         role="tabpanel"
         id={`${id}-panel`}
-        aria-label={t(GROUP_NAME[shown])}
+        aria-label={t(groups.find((m) => m.id === shown)?.labelKey ?? 'island.tools')}
         data-isl-row=""
         key={shown}
       >
-        {quickRow(shown, ctx)}
+        <ModeRow mode={shown} ctx={ctx} />
       </div>
     </div>
   );

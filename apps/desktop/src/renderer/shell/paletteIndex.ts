@@ -1,10 +1,18 @@
 /**
- * The command palette's index of the workspace's tools, island groups, workbench tabs and Settings
+ * The command palette's index of the workspace's tools, island modes, workbench tabs and Settings
  * pages (UI revision W5). Pure: the caller resolves every name in the language in use and hands
- * in what each entry does, so the index is the same in a test as in the app. The tool list maps
- * one to one onto the tool registry's `ToolDef` (W8) once that lands.
+ * in what each entry does, so the index is the same in a test as in the app. The tools come from
+ * the tool registry (W8, `registryTools`): every registered tool, each once.
  */
 import { shortcutHint, t, type IconName, type PaletteCommand, type ShortcutId } from '@aio/ui';
+import {
+  availability,
+  GROUPS,
+  runTool,
+  TOOLS,
+  type ToolCtx,
+  type ToolDef,
+} from '../tools/registry';
 import type { TabId } from '../workspace/workbench/tabsModel';
 
 export interface PaletteTool {
@@ -123,4 +131,26 @@ export function paletteIndex(input: PaletteIndexInput): PaletteCommand[] {
     });
   }
   return list;
+}
+
+/**
+ * The registry's tools as the palette lists them, in the language in use: "Measure: Distance",
+ * every one of them, those that cannot start here with their reason.
+ */
+export function registryTools(ctx: ToolCtx, tools: readonly ToolDef[] = TOOLS): PaletteTool[] {
+  return tools.map((d) => {
+    const can = availability(d, ctx);
+    return {
+      id: d.id,
+      group: t(GROUPS[d.group].labelKey),
+      label: t(d.nameKey ?? d.labelKey),
+      icon: d.icon,
+      ...(d.shortcutId ? { shortcutId: d.shortcutId } : {}),
+      keywords: [...(d.nameKey ? [t(d.labelKey)] : []), ...(d.keywords ?? []).map((k) => t(k))],
+      available: can === true ? true : { reason: t(can.reason) },
+      start: () => {
+        runTool(d, ctx);
+      },
+    };
+  });
 }

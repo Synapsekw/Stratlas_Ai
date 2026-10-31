@@ -181,12 +181,15 @@ export const PANEL_TAB_LABEL: Readonly<Record<PanelTab, MessageKey>> = {
 /** A section of a tab: `<tab>.<name>`. */
 export type SectionId =
   | 'selection.selected'
+  | 'tools.view'
   | 'tools.measure'
   | 'tools.annotate'
+  | 'tools.volumes'
   | 'tools.pointcloud'
   | 'tools.terrain'
   | 'tools.checks'
   | 'tools.video'
+  | 'tools.road'
   | 'tools.engineering'
   | 'tools.coverage'
   | 'tools.thermal'
@@ -247,8 +250,12 @@ export interface SectionDef {
 /** Every section, in its tab's order (a preset may lead with some of them later, W13). */
 export const SECTIONS: readonly SectionDef[] = [
   { id: 'selection.selected', label: 'wb.panel.selection', body: 'selection' },
+  // the Tools tab follows the tool registry's group order (tools/registry.ts, W8); View, Volumes
+  // and Road hold only the registry's tools (their benches are Project's)
+  { id: 'tools.view', label: 'wb.sec.view', body: null },
   { id: 'tools.measure', label: 'wb.sec.measure', body: 'measure' },
   { id: 'tools.annotate', label: 'wb.sec.annotate', body: 'annotate' },
+  { id: 'tools.volumes', label: 'wb.sec.volumes', body: null, needs: (d) => d.volumes },
   {
     id: 'tools.pointcloud',
     label: 'wb.sec.pointcloud',
@@ -258,6 +265,7 @@ export const SECTIONS: readonly SectionDef[] = [
   { id: 'tools.terrain', label: 'wb.sec.terrain', body: 'hydro', needs: (d) => d.surface },
   { id: 'tools.checks', label: 'wb.sec.checks', body: 'qa', needs: (d) => d.surface },
   { id: 'tools.video', label: 'wb.sec.video', body: 'video', needs: (d) => d.video },
+  { id: 'tools.road', label: 'wb.sec.road', body: null, needs: (d) => d.road },
   {
     id: 'tools.engineering',
     label: 'wb.sec.engineering',

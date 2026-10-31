@@ -1,26 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
-  islandGroups,
   islandInitial,
   islandReducer,
   islandRest,
   pickLive,
-  type GroupId,
   type IslandState,
   type LiveItem,
 } from './islandModel';
 
 const job = (id: string): LiveItem => ({ kind: 'job', id, label: id, progress: 0.5, more: 0 });
 const tool: LiveItem = { kind: 'tool', label: 'Distance', reading: '4.2 m' };
-const flags = {
-  map: true,
-  mode: 'map' as const,
-  clouds: true,
-  volumes: true,
-  video: true,
-  road: true,
-  pkg: false,
-};
 
 describe('islandRest', () => {
   it('maps survey date counts', () => {
@@ -54,36 +43,6 @@ describe('pickLive', () => {
   });
 });
 
-describe('islandGroups', () => {
-  it('excludes annotate for packages and road in 3d', () => {
-    expect(islandGroups({ ...flags, pkg: true })).not.toContain('annotate');
-    expect(islandGroups({ ...flags, mode: '3d' })).not.toContain('road');
-    expect(islandGroups({ ...flags, mode: 'split' })).toContain('road');
-  });
-  it('hides point clouds and volumes in the map view', () => {
-    const g = islandGroups({ ...flags, map: true });
-    expect(g).not.toContain('clouds');
-    expect(g).not.toContain('volumes');
-    expect(islandGroups({ ...flags, map: false, mode: '3d' })).toContain('clouds');
-  });
-  it('keeps the fixed order and hides groups without data', () => {
-    const all: GroupId[] = [
-      'view',
-      'measure',
-      'display',
-      'clouds',
-      'volumes',
-      'video',
-      'road',
-      'annotate',
-    ];
-    expect(islandGroups({ ...flags, map: false })).toEqual(all);
-    expect(
-      islandGroups({ ...flags, clouds: false, volumes: false, video: false, road: false }),
-    ).toEqual(['view', 'measure', 'display', 'annotate']);
-  });
-});
-
 describe('islandReducer', () => {
   const rest: IslandState = islandInitial(false);
   const pinned: IslandState = islandInitial(true);
@@ -98,10 +57,10 @@ describe('islandReducer', () => {
     expect(islandReducer(t, { type: 'toggleTools' }).open).toBe('rest');
   });
   it('previews on hover and commits on pick, the tools still open', () => {
-    const h = islandReducer({ ...rest, open: 'tools' }, { type: 'hoverGroup', group: 'display' });
-    expect(h).toMatchObject({ preview: 'display', group: 'view' });
-    expect(islandReducer(h, { type: 'pickGroup', group: 'display' })).toMatchObject({
-      group: 'display',
+    const h = islandReducer({ ...rest, open: 'tools' }, { type: 'hoverGroup', group: 'annotate' });
+    expect(h).toMatchObject({ preview: 'annotate', group: 'view' });
+    expect(islandReducer(h, { type: 'pickGroup', group: 'annotate' })).toMatchObject({
+      group: 'annotate',
       preview: null,
       open: 'tools',
     });
@@ -136,7 +95,7 @@ describe('islandReducer', () => {
     expect(islandReducer(sw, { type: 'pickGroup', group: 'view' }).swapped).toBe(true);
   });
   it('clears the preview on escape, and escapes the date', () => {
-    const hov = { ...rest, open: 'tools' as const, preview: 'display' as const };
+    const hov = { ...rest, open: 'tools' as const, preview: 'annotate' as const };
     expect(islandReducer(hov, { type: 'escape' })).toMatchObject({ open: 'rest', preview: null });
     const date = islandReducer(rest, { type: 'openDate' });
     expect(islandReducer(date, { type: 'escape' }).open).toBe('rest');

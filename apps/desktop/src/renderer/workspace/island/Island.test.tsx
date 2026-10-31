@@ -305,7 +305,10 @@ describe('Island', () => {
     expect(button('3D')?.getAttribute('aria-pressed')).toBe('true');
     expect(tab('View')?.getAttribute('aria-selected')).toBe('true');
     expect(tab('Measure')).toBeDefined();
-    expect(tab('Display')).toBeDefined();
+    expect(tab('Annotate')).toBeDefined();
+    // the labelled modes (W8): Display and Point cloud are the right panel's, not modes
+    expect(tab('Display')).toBeUndefined();
+    expect(tab('Compare')).toBeDefined();
     expect(host.querySelector('[role="tabpanel"]')?.getAttribute('aria-label')).toBe('View');
     expect(button('Whole site')).not.toBeNull();
   });
@@ -342,24 +345,24 @@ describe('Island', () => {
     await render();
     openTools();
     act(() => {
-      hoverTab('Display');
+      hoverTab('Annotate');
     });
-    expect(host.querySelector('[role="tabpanel"]')?.getAttribute('aria-label')).toBe('Display');
+    expect(host.querySelector('[role="tabpanel"]')?.getAttribute('aria-label')).toBe('Annotate');
     expect(tab('View')?.getAttribute('aria-selected')).toBe('true');
-    expect(tab('Display')?.getAttribute('aria-selected')).toBe('false');
+    expect(tab('Annotate')?.getAttribute('aria-selected')).toBe('false');
   });
 
   it('ignores a pointer move without movement (a tab shifted under a still pointer)', async () => {
     await render();
     openTools();
     act(() => {
-      hoverTab('Display', 40);
+      hoverTab('Annotate', 40);
     });
     // the tabs reflow, Measure now lies under the pointer that has not moved
     act(() => {
       hoverTab('Measure', 40);
     });
-    expect(host.querySelector('[role="tabpanel"]')?.getAttribute('aria-label')).toBe('Display');
+    expect(host.querySelector('[role="tabpanel"]')?.getAttribute('aria-label')).toBe('Annotate');
     act(() => {
       hoverTab('Measure', 41);
     });
@@ -567,16 +570,27 @@ describe('Island', () => {
     }
   });
 
-  it('gives Compare dates one owner: the View tile, not while comparing', async () => {
+  it('gives Compare dates one owner: the Compare tile, greyed while comparing', async () => {
+    const tile = () => host.querySelector<HTMLButtonElement>('[data-testid="compare-dates"]');
     await render();
     openTools();
+    act(() => {
+      hoverTab('Compare');
+    });
     expect(host.querySelectorAll('[data-testid="compare-dates"]')).toHaveLength(1);
-    act(() => host.querySelector<HTMLButtonElement>('[data-testid="compare-dates"]')?.click());
+    act(() => tile()?.click());
     expect(compareOpen).toHaveBeenCalled();
     comparing = true;
+    compareOpen.mockClear();
     await render();
     openTools();
-    expect(host.querySelector('[data-testid="compare-dates"]')).toBeNull();
+    act(() => {
+      hoverTab('Compare');
+    });
+    // leaving is the button beside the island: the tile says so and does nothing
+    expect(tile()?.getAttribute('aria-disabled')).toBe('true');
+    act(() => tile()?.click());
+    expect(compareOpen).not.toHaveBeenCalled();
   });
 
   it('hangs the bubble beside the capsule, outside its centring', async () => {
@@ -655,21 +669,25 @@ describe('Island: the groups open their workbench', () => {
     expect(tab('Measure')?.getAttribute('aria-selected')).toBe('true');
   });
 
-  it("opens the same workbench from the row's All tools tile", async () => {
+  it("shows a mode's top tools: the favourites first, at most five", async () => {
     await render();
     openTools();
     act(() => {
       hoverTab('Measure');
     });
-    act(() => button('Measure: All tools')?.click());
-    expect(front()).toBe('measure');
-    expect(island()?.dataset.state).toBe('rest');
+    const tiles = [...host.querySelectorAll('[role="tabpanel"] button')].map((b) =>
+      b.getAttribute('aria-label'),
+    );
+    expect(tiles.slice(0, 4)).toEqual(['Distance', 'Elevation', 'Area', 'Volume']);
+    expect(tiles).toHaveLength(5);
+    // no All tools tile: picking the mode opens its section
+    expect(button('Measure: All tools')).toBeNull();
   });
 
-  it("opens each group's own workbench: Display and Annotate", async () => {
+  it("opens each mode's own section: Annotate and Video", async () => {
     for (const [name, id] of [
-      ['Display', 'display'],
       ['Annotate', 'annotate'],
+      ['Video', 'video'],
     ] as const) {
       await render();
       openTools();
@@ -704,9 +722,9 @@ describe('Island: the groups open their workbench', () => {
     shell.setState({ rightCollapsed: true });
     await render();
     openTools();
-    act(() => tab('Display')?.click());
+    act(() => tab('Annotate')?.click());
     expect(shell.getState().rightCollapsed).toBe(true);
-    expect(front()).toBe('display');
+    expect(front()).toBe('annotate');
   });
 
   it('opens the Jobs workbench from any group with no job running (I-R47)', async () => {
@@ -720,32 +738,22 @@ describe('Island: the groups open their workbench', () => {
   it('keeps the tools open on View, which has no workbench', async () => {
     await render();
     openTools();
-    act(() => tab('Display')?.click());
+    act(() => tab('Annotate')?.click());
     openTools();
     act(() => tab('View')?.click());
     expect(island()?.dataset.state).toBe('tools');
     expect(tab('View')?.getAttribute('aria-selected')).toBe('true');
-    expect(front()).toBe('display');
+    expect(front()).toBe('annotate');
   });
 
   it('has no full set of its own any more', async () => {
     await render(false, fakeStage());
-    for (const name of ['View', 'Measure', 'Display', 'Annotate']) {
+    for (const name of ['View', 'Measure', 'Annotate', 'Compare']) {
       openTools();
       act(() => tab(name)?.click());
       expect(document.querySelector('.isl-full')).toBeNull();
       key('Escape');
     }
-  });
-
-  it("calls Display's way to its workbench Layers (D5)", async () => {
-    await render();
-    openTools();
-    act(() => {
-      hoverTab('Display');
-    });
-    act(() => button('Display: Layers')?.click());
-    expect(front()).toBe('display');
   });
 
   it("brings the live item's tab to the front on a click on its reading (D10)", async () => {

@@ -131,9 +131,14 @@ describe('stage keys', () => {
     expect(measureStore.getState().tool).toBeNull();
   });
 
-  it('the timeline toggles from View', async () => {
+  it('the timeline toggles from Compare', async () => {
     await render();
     key('t', document.body);
+    // the Compare mode's row (focus on its tab shows it)
+    const compare = [...host.querySelectorAll<HTMLElement>('[role="tab"]')].find(
+      (b) => b.textContent === 'Compare',
+    );
+    act(() => compare?.focus());
     const tile = host.querySelector<HTMLButtonElement>('[data-testid="timeline-toggle"]');
     // a project with video starts with the timeline shown
     expect(tile?.getAttribute('aria-pressed')).toBe('true');
@@ -149,7 +154,7 @@ describe('stage keys', () => {
     await render();
     key('t', document.body);
     const notice = () => host.querySelector('[data-testid="t-notice"]');
-    expect(notice()?.textContent).toBe('T now opens the tools; the timeline is in View');
+    expect(notice()?.textContent).toBe('T now opens the tools; the timeline is in Compare');
     key('t', document.body);
     key('t', document.body);
     expect(notice()).toBeNull();

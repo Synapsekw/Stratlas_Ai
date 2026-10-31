@@ -246,7 +246,7 @@ test('@realdata stage polish: island tools in view, label modes, annotate tools 
   await (
     await islandRow(win, 'measure')
   )
-    .getByRole('button', { name: 'Measure a distance' })
+    .getByRole('button', { name: 'Distance', exact: true })
     .click();
   await win.keyboard.press('Space');
   await expect.poll(async () => (await clock(win)).playing).toBe(true);

@@ -131,15 +131,6 @@
   justify-content: space-between;
   gap: var(--sp-3);
 }
-/* while live, the catalogue is a strip of short text buttons (several Line tools share a glyph) */
-.meb-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-1);
-  padding-block: var(--sp-2);
-  border-block-end: 1px solid var(--line);
-}
-
 /* the picked measurement and the save controls sit in the column, not over the stage */
 .meb .sv-card,
 .wb-body .qa-side .sv-card,

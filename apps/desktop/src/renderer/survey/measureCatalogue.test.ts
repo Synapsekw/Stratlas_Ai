@@ -79,14 +79,8 @@ describe('measure catalogue', () => {
     expect(familiesFor(false).flatMap((f) => f.tools)).toHaveLength(15);
   });
 
-  it('a survey or construction project has no Telecom family; a telecom or unknown one has', () => {
-    const ids = (kind: Parameters<typeof familiesFor>[1]) =>
-      familiesFor(false, kind).map((f) => f.id);
-    expect(ids('survey')).not.toContain('telecom');
-    expect(ids('construction')).not.toContain('telecom');
-    expect(ids('telecom')).toContain('telecom');
-    expect(ids('vertical-asset')).toContain('telecom');
-    expect(ids(null)).toContain('telecom');
+  it('every project keeps the Telecom family: the project type never gates a tool', () => {
+    expect(familiesFor(false).map((f) => f.id)).toContain('telecom');
   });
 
   it('searches the tool names, not their hints', () => {

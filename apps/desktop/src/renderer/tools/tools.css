@@ -1,0 +1,22 @@
+/* The Tools tab (UI revision W8): a group's switches under its tools, and the armed tool's way
+   back to the list. */
+.tool-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  padding-block: var(--sp-2);
+}
+.tool-controls .isl-choice {
+  block-size: auto;
+  align-items: flex-start;
+  padding-inline: 0;
+}
+.tools-armed {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+}
+.tools-back {
+  align-self: flex-start;
+  margin: var(--sp-2) var(--sp-3) 0;
+}

@@ -10,16 +10,18 @@ import type { TabId } from '../workbench/tabsModel';
 import { workbench, type WorkbenchState } from '../workbench/workbenchStore';
 import type { GroupId } from './islandModel';
 
-/** Each group's workbench; View has none (its tiles and caret panels are the whole group). */
+/**
+ * Each mode's workbench body (the old tab id its section shows); View has none (its section is
+ * the registry's tools alone). Picking a mode opens it (`openMode`, tools/registry.ts).
+ */
 export const GROUP_TAB: Record<GroupId, TabId | null> = {
   view: null,
   measure: 'measure',
-  display: 'display',
-  clouds: 'clouds',
+  annotate: 'annotate',
   volumes: 'volumes',
+  compare: 'changes',
   video: 'video',
   road: 'road',
-  annotate: 'annotate',
 };
 
 /**

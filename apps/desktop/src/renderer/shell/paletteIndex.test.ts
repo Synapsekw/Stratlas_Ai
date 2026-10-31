@@ -1,6 +1,13 @@
+// @vitest-environment jsdom
 import { rankCommands } from '@aio/ui';
 import { describe, expect, it, vi } from 'vitest';
-import { paletteIndex, type PaletteIndexInput, type PaletteTool } from './paletteIndex';
+import { EMPTY_CTX, TOOLS } from '../tools/registry';
+import {
+  paletteIndex,
+  registryTools,
+  type PaletteIndexInput,
+  type PaletteTool,
+} from './paletteIndex';
 
 const tool = (id: string, label: string, extra: Partial<PaletteTool> = {}): PaletteTool => ({
   id,
@@ -100,5 +107,20 @@ describe('paletteIndex', () => {
     expect(titles).toContain('Settings: AI providers');
     expect(titles).toContain('Settings: Keyboard');
     expect(titles).not.toContain('Settings: Processing tools');
+  });
+
+  it('takes its tools from the registry: every one once, those that cannot start with why', () => {
+    const tools = registryTools(EMPTY_CTX);
+    expect(tools.map((x) => x.id)).toEqual(TOOLS.map((d) => d.id));
+    const distance = tools.find((x) => x.id === 'measure.distance');
+    expect(distance).toMatchObject({ group: 'Measure', label: 'Distance', available: true });
+    expect(distance?.shortcutId).toBe('scene.measure');
+    // no 3D view: the section plane says so
+    expect(tools.find((x) => x.id === 'measure.section-plane')?.available).toEqual({
+      reason: 'Open the 3D view first',
+    });
+    const titles = paletteIndex(input({ tools })).map((c) => c.title);
+    expect(titles).toContain('Measure: Distance');
+    expect(titles).toContain('View: Centre on project');
   });
 });

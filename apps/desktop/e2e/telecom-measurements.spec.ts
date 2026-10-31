@@ -10,7 +10,7 @@ import {
   measureControl,
   measureFilter,
   measureSaved,
-  measureStrip,
+  backToTools,
   measureTree,
   selectMeasure,
   stageMode,
@@ -92,26 +92,14 @@ async function expectValue(win: Page, key: string, expected: number) {
 }
 
 /**
- * From the focused button of the Measure workbench's live strip, Shift+Tab past the strip
- * buttons before it, out of the strip, and past everything the Project tab puts between the
- * card and the strip (the save controls `survey-saved` and the "In this project" list
- * `project-list`): into the live card above them. It walks the real tab stops, one key at a
- * time, rather than counting them up front.
+ * From "Back to tools" above the armed tool's card (UI revision W8), Tab through the card's stops
+ * one key at a time until `target` has the focus: the card's controls come right after it.
  */
-async function shiftTabOutOfStrip(win: Page) {
-  const before = await measureStrip(win)
-    .locator('button')
-    .evaluateAll((all) => all.indexOf(document.activeElement as HTMLButtonElement));
-  expect(before, 'the focus is in the strip').toBeGreaterThanOrEqual(0);
-  const between = () =>
-    win.evaluate(() => {
-      const at = document.activeElement;
-      return Boolean(
-        at?.closest('.meb-strip, [data-testid="survey-saved"], [data-testid="project-list"]'),
-      );
-    });
-  for (let i = 0; i < 200 && (await between()); i++) await win.keyboard.press('Shift+Tab');
-  expect(await between(), 'Shift+Tab leaves the strip, the save controls and the list').toBe(false);
+async function tabInto(win: Page, target: ReturnType<Page['getByRole']>) {
+  await expect(backToTools(win)).toBeFocused();
+  for (let i = 0; i < 40 && !(await target.evaluate((el) => el === document.activeElement)); i++)
+    await win.keyboard.press('Tab');
+  await expect(target).toBeFocused();
 }
 
 async function saved(dir: string) {
@@ -250,29 +238,20 @@ for (const kind of ['mesh', 'cloud'] as const) {
       const cancelButton = panel.getByRole('button', { name: 'Cancel', exact: true });
       await azimuthButton.focus();
       await win.keyboard.press('Enter');
-      // live, the bench is a strip of tools: the focus stays on the live one, the next one Tab on
-      await expect(azimuthButton).toHaveAttribute('aria-pressed', 'true');
-      await expect(azimuthButton).toBeFocused();
-      await win.keyboard.press('Tab');
-      await expect(win.getByTestId('telecom-tool-antenna-tilt')).toBeFocused();
-      // the live card sits above the strip: Shift+Tab back past the strip's first tools reaches
-      // its Cancel (Undo is disabled with no point yet)
-      await win.keyboard.press('Shift+Tab');
-      await expect(azimuthButton).toBeFocused();
-      await shiftTabOutOfStrip(win);
-      await expect(cancelButton).toBeFocused();
+      // armed, the card replaces the list (W8): the focus lands on Back to tools above it, and Tab
+      // reaches its Cancel (Undo is disabled with no point yet)
+      await expect(azimuthButton).toHaveCount(0);
+      await tabInto(win, cancelButton);
       await win.keyboard.press('Space');
       await expect(cancelButton).toHaveCount(0);
 
       await (await measureControl(win, 'telecom-tool-azimuth')).click();
       await pick(win, [-2, 3, 0]);
       await expect(panel).toContainText('1 / 3 points picked');
-      // from the live tool in the strip, back to the card: Cancel, then the enabled Undo
-      await azimuthButton.focus();
-      await shiftTabOutOfStrip(win);
-      await expect(cancelButton).toBeFocused();
-      await win.keyboard.press('Shift+Tab');
-      await expect(panel.getByRole('button', { name: 'Undo last point' })).toBeFocused();
+      // from Back to tools into the card: the enabled Undo, then Cancel
+      await backToTools(win).focus();
+      const undo = panel.getByRole('button', { name: 'Undo last point' });
+      await tabInto(win, undo);
       await win.keyboard.press('Enter');
       await expect(panel).toContainText('0 / 3 points picked');
       await win.keyboard.press('Tab');

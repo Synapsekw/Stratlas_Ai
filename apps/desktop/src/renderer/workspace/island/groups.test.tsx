@@ -9,24 +9,48 @@ import { threeDates } from '../__fixtures__/threeDates';
 import { shell } from '../../shell';
 import { timelinePref } from '../timelinePref';
 import { annotateStage } from '../workbench/benches/annotateStage';
-import { quickRow, type GroupCtx } from './groups';
-import type { GroupId } from './islandModel';
+import { EMPTY_CTX, type IslandMode, type ToolCtx, type ToolGroup } from '../../tools/registry';
+import { GroupControls, ModeRow, type GroupCtx } from './groups';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
 let root: Root | undefined;
 
-const ctx: GroupCtx = {
-  stage: null,
-  map: false,
-  openBench: vi.fn(),
-  done: vi.fn(),
-  compare: { available: false, twin: false, label: '', open: vi.fn() },
+const DATA = {
+  pointcloud: true,
+  model3d: true,
+  surface: true,
+  video: true,
+  photos: false,
+  dated: true,
+  volumes: true,
+  road: false,
 };
 
-const render = (g: GroupId) => {
+/** The registry's context: everything shown in 3D unless a test says otherwise. */
+const toolCtx = (over: Partial<ToolCtx> = {}): ToolCtx => ({
+  ...EMPTY_CTX,
+  data: DATA,
+  stage3d: true,
+  ...over,
+});
+
+const ctxOf = (over: Partial<ToolCtx> = {}): GroupCtx => ({
+  stage: null,
+  tool: toolCtx(over),
+  done: vi.fn(),
+});
+
+/** A mode's slim row of top tools. */
+const render = (m: IslandMode, over: Partial<ToolCtx> = {}) => {
   root ??= createRoot(host);
-  act(() => root?.render(<>{quickRow(g, ctx)}</>));
+  act(() => root?.render(<ModeRow mode={m} ctx={ctxOf(over)} />));
+};
+
+/** A group's switches, as the Tools tab shows them. */
+const renderControls = (g: ToolGroup) => {
+  root ??= createRoot(host);
+  act(() => root?.render(<GroupControls group={g} stage={null} mode="3d" />));
 };
 const button = (name: string) =>
   host.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`);
@@ -57,9 +81,9 @@ afterEach(() => {
   shell.setState({ annotating: false });
 });
 
-describe('the Point cloud quick row (D5)', () => {
+describe('the Point cloud switches (Tools > Point cloud)', () => {
   it('has the colour switch RGB / Elevation / Intensity / Flight', () => {
-    render('clouds');
+    renderControls('pointcloud');
     expect(options('Colour')).toEqual(['RGB', 'Elevation', 'Intensity', 'Flight']);
     expect(pressed('Colour')).toBe('RGB');
     act(() => {
@@ -73,21 +97,21 @@ describe('the Point cloud quick row (D5)', () => {
 
   it('presses none while the cloud is coloured another way (classification)', () => {
     pointcloudSettings.getState().setColourMode('classification');
-    render('clouds');
+    renderControls('pointcloud');
     expect(pressed('Colour')).toBeUndefined();
   });
 });
 
-describe('the Annotate quick row (D5)', () => {
+describe('the Annotate mode row', () => {
   it('has the 3D tiles while the stage shows the model, and starts annotating with one', () => {
     annotateStage.setState({ show3d: true });
     render('annotate');
+    // the top five: the Annotate tile and the tools that work in 3D
     for (const name of [
       'Pin on the model',
       'Line on the model',
       'Area on the model',
       'Point on the cloud',
-      'Box on the cloud',
     ])
       expect(button(name), name).not.toBeNull();
     expect(button('Point on the map')).toBeNull();
@@ -113,8 +137,9 @@ describe('the Annotate quick row (D5)', () => {
       undo: vi.fn(),
       cancel: vi.fn(),
     });
-    render('annotate');
-    expect(button('Pin on the model')).toBeNull();
+    render('annotate', { mode: 'map', tools: 'map', stage3d: false });
+    // the 3D tools step behind, greyed out with their reason
+    expect(button('Pin on the model')?.getAttribute('aria-disabled')).toBe('true');
     for (const name of ['Point on the map', 'Line on the map', 'Area on the map'])
       expect(button(name), name).not.toBeNull();
     act(() => button('Area on the map')?.click());
@@ -128,17 +153,18 @@ describe('the Annotate quick row (D5)', () => {
   });
 });
 
-describe('the Volumes quick row', () => {
+describe('the Volumes mode row and switches', () => {
   afterEach(() => {
     volumetric.setState({ status: 'idle', file: null, surface: 'photo', change: null });
   });
 
-  it('without the stockpile kit (a survey project with volumes) has only All tools', () => {
+  it('without the stockpile kit (a survey project with volumes) leads with the table', () => {
     volumetric.setState({ status: 'idle', file: null });
     render('volumes');
     expect(choice('Survey date')).toBeNull();
     expect(choice('Surface')).toBeNull();
-    expect(button('Volumes: All tools')).not.toBeNull();
+    expect(host.querySelector('button')?.getAttribute('aria-label')).toBe('Open the volumes table');
+    expect(button('Swipe between surveys')?.getAttribute('aria-disabled')).toBe('true');
   });
 
   it('has no date or Surface choice: Swipe, the bodies and the section line stay', () => {
@@ -157,10 +183,11 @@ describe('the Volumes quick row', () => {
         ],
       } as never,
     });
-    render('volumes');
+    renderControls('volumes');
     expect(choice('Survey date')).toBeNull();
     expect(choice('Surface')).toBeNull();
     expect(options('Bodies')).toEqual(['Lifted', 'In place', 'Hidden']);
+    render('volumes', { kit: true, kitDates: 2 });
     const swipe = button('Swipe between surveys');
     expect(swipe?.getAttribute('aria-pressed')).toBe('false');
     act(() => swipe?.click());
@@ -184,8 +211,8 @@ describe('the Volumes quick row', () => {
         captures: [{ epoch: 'e1', captureId: 'c1', date: '2026-01-12', label: '12 Jan 2026' }],
       } as never,
     });
-    render('volumes');
-    expect(button('Swipe between surveys')?.disabled).toBe(true);
+    render('volumes', { kit: true, kitDates: 1 });
+    expect(button('Swipe between surveys')?.getAttribute('aria-disabled')).toBe('true');
   });
 
   it('shows the two surveys Cut / fill compares, and picks them', () => {
@@ -203,7 +230,7 @@ describe('the Volumes quick row', () => {
         ],
       } as never,
     });
-    render('volumes');
+    renderControls('volumes');
     expect(host.querySelector('[data-testid="vol-change-from"]')).toBeNull();
     act(() => {
       volumetric.getState().setSurface('change');
@@ -218,7 +245,7 @@ describe('the Volumes quick row', () => {
   });
 });
 
-describe('the View quick row: the Timeline tile', () => {
+describe('the Compare mode row: the Timeline tile', () => {
   const tile = () => host.querySelector<HTMLButtonElement>('[data-testid="timeline-toggle"]');
   // one dated survey and no clips: nothing for a timeline to show
   const oneDate = {
@@ -233,7 +260,7 @@ describe('the View quick row: the Timeline tile', () => {
   it('waits for a second survey date without video: greyed, with the reason', () => {
     workspace.getState().openProject({ id: 'p3', root: '/p3', manifest: oneDate });
     timelinePref.getState().set('p3', true);
-    render('view');
+    render('compare', { data: { ...DATA, video: false, dated: false } });
     const b = tile();
     expect(b?.getAttribute('aria-disabled')).toBe('true');
     // a timeline left open in that state reads as closed
@@ -245,7 +272,7 @@ describe('the View quick row: the Timeline tile', () => {
   });
 
   it('stays on with video or a second date', () => {
-    render('view');
+    render('compare');
     expect(tile()?.getAttribute('aria-disabled')).toBeNull();
     expect(tile()?.getAttribute('aria-describedby')).toBeNull();
   });

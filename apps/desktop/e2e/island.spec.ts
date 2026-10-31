@@ -27,7 +27,7 @@ import {
   openIslandTools,
   stageMode,
 } from './island';
-import { benchBody, expectBench } from './panel';
+import { benchBody, expectBench, openSection } from './panel';
 import { openDemo } from './surveyJobs';
 
 /** A view that was just created (the map loads its style, the 3D scene its model) takes a while. */
@@ -140,7 +140,7 @@ test.describe('the island on a project with two dates', () => {
   }) => {
     await openCard(win, 'E2E two dates', twoDateProject.id);
     const tab = (bar: Locator, name: string) => bar.getByRole('tab', { name, exact: true });
-    for (const name of ['Measure', 'Display']) {
+    for (const name of ['Measure', 'Annotate']) {
       const bar = await openIslandTools(win);
       await islandSettled(win);
       // hovering shows the group's row, and the tab stays under the pointer (the first row
@@ -162,14 +162,14 @@ test.describe('the island on a project with two dates', () => {
       // a tab that showed its name already does not move at all
       if (named) expect(after).toEqual(before);
       await tab(bar, name).click();
-      // the group's section opens in the right panel (D2: Tools > Measure, Layers & display >
-      // Display), and the island folds back
+      // the mode's section opens in the right panel (D2, W8: Tools > Measure, Tools >
+      // Annotate), and the island folds back
       await expect(bar).not.toHaveAttribute('data-state', 'tools');
-      const id = name === 'Measure' ? 'measure' : 'display';
+      const id = name === 'Measure' ? 'measure' : 'annotate';
       await expectBench(win, id);
-      await expect(
-        benchBody(win, id).getByTestId(name === 'Measure' ? 'survey-tools' : 'display-bench'),
-      ).toBeVisible();
+      await expect(benchBody(win, id)).toBeVisible();
+      if (id === 'measure')
+        await expect(benchBody(win, id).getByTestId('survey-tools')).toBeVisible();
       // the island has no full set of its own any more
       await expect(win.locator('.isl-full')).toHaveCount(0);
       // opened again, the tools show the picked group
@@ -753,15 +753,19 @@ test.describe('right to left', () => {
   });
 });
 
-test.describe('the quick rows (D5, I-R48)', () => {
-  test('Point cloud: the colour switch RGB / Elevation / Intensity / Flight', async ({
+test.describe('the mode rows and the Tools tab (D5, W8)', () => {
+  test('Point cloud: the colour switch RGB / Elevation / Intensity / Flight, in Tools', async ({
     dataRoot,
     win,
   }, info) => {
     await writeNoisyProject(dataRoot.projectDir);
     await openCard(win, 'E2E tiny project', TINY_PROJECT_ID);
-    const row = await islandRow(win, 'clouds');
-    const colour = row.getByRole('group', { name: 'Colour', exact: true });
+    // no Point cloud mode on the island any more (W8): its switch sits in Tools > Point cloud
+    const bar = await openIslandTools(win);
+    await expect(bar.getByRole('tab', { name: 'Point cloud', exact: true })).toHaveCount(0);
+    await closeIslandTools(win);
+    const section = await openSection(win, 'tools', 'tools.pointcloud');
+    const colour = section.getByRole('group', { name: 'Colour', exact: true });
     await expect(colour.getByRole('button')).toHaveText([
       'RGB',
       'Elevation',
@@ -783,13 +787,10 @@ test.describe('the quick rows (D5, I-R48)', () => {
           ).__stratlas.pointcloud.getState().colourMode,
       );
     await expect.poll(mode).toBe('height');
-    await islandSettled(win);
-    // at 1100 px the row is one line: All tools does not wrap under it alone (T20 M3)
-    const tiles = row.locator('.isl-tile');
-    const first = await tiles.first().boundingBox();
-    const all = await tiles.last().boundingBox();
-    expect(Math.round(all?.y ?? -1)).toBe(Math.round(first?.y ?? -2));
-    await shot(win, info, 'island-row-clouds-colour.png');
+    // its tools are rows of the section: Show and Clean up
+    await expect(section.getByTestId('tool-pointcloud.show')).toBeVisible();
+    await expect(section.getByTestId('tool-pointcloud.cleanUp')).toBeVisible();
+    await shot(win, info, 'tools-pointcloud-colour.png');
     // the workbench's own switch says the same
     const bench = await islandGroup(win, 'clouds');
     await expect(
@@ -803,14 +804,15 @@ test.describe('the quick rows (D5, I-R48)', () => {
   }, info) => {
     await openCard(win, 'E2E two dates', twoDateProject.id);
     let row = await islandRow(win, 'annotate');
+    // the mode's top five (W8): the Annotate tile and the first tools that work in 3D
     for (const name of [
       'Pin on the model',
       'Line on the model',
       'Area on the model',
       'Point on the cloud',
-      'Box on the cloud',
     ])
       await expect(row.getByRole('button', { name, exact: true })).toBeVisible();
+    await expect(row.locator('.isl-tile')).toHaveCount(5);
     await expect(row.getByRole('button', { name: 'Point on the map' })).toHaveCount(0);
     await islandSettled(win);
     await shot(win, info, 'island-row-annotate-3d.png');
@@ -826,7 +828,7 @@ test.describe('the quick rows (D5, I-R48)', () => {
       'true',
     );
 
-    // in Split the map's tools are there as well
+    // in Split the map's tools lead the row
     await stageMode(win, 'Split');
     row = await islandRow(win, 'annotate');
     for (const name of ['Point on the map', 'Line on the map', 'Area on the map'])

@@ -3,9 +3,9 @@
  * D18, D19); its "In this project" list is Project's section now (`project/ProjectList.tsx`). The
  * picked measurement's card, then the tools as they always were: the save controls, search,
  * Favourites and recent, every measuring tool by family, Site data, Drawing aids and Templates.
- * While a tool is live it morphs in place: the live card on top (the shared measurement card in
- * its live variant, then the points, Undo, Stop and Save with their keys) and the catalogue
- * shrinks to a strip of tool buttons. A picked measurement shows its detail card on top.
+ * While a tool is live the live card is the whole bench (the shared measurement card in its live
+ * variant, then the points, Undo, Stop and Save with their keys); the Tools tab shows it in place
+ * of its list with "Back to tools" (W8). A picked measurement shows its detail card on top.
  * How the sidebar follows the tools is `workbench/measureFollow.ts`.
  */
 import type { EngineStage } from '@aio/engine';
@@ -38,7 +38,6 @@ import {
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
-import { projectKind } from '../../../builder/model';
 import { useShell } from '../../../shell';
 import { cardModel, MeasureCard, TOOL_ICON } from '../../../survey/card';
 import { useCardTerrain } from '../../../survey/card/slots';
@@ -396,39 +395,6 @@ function LiveCard() {
       </div>
       <PendingNote />
     </section>
-  );
-}
-
-/** While a tool is live: every tool as a short text button, to switch without leaving (D13). */
-function Strip({ families, stage }: { families: readonly Family[]; stage: EngineStage | null }) {
-  const t = useT();
-  const state = useToolState(stage);
-  const ref = useRef<HTMLDivElement>(null);
-  // started from a catalogue row that the morph took away: focus the live tool's button
-  useEffect(() => {
-    if (document.activeElement === document.body || document.activeElement === null)
-      ref.current?.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus();
-  }, []);
-  return (
-    <div ref={ref} className="meb-strip" role="group" aria-label={t('measureBench.strip')}>
-      {families.flatMap((f) =>
-        f.tools.map((e) => (
-          <Button
-            key={e.tool}
-            variant="quiet"
-            size="sm"
-            pressed={state.on(e.tool)}
-            disabled={state.disabled(e.tool)}
-            data-testid={testIdOf(e.tool)}
-            onClick={() => {
-              startEntry(e.tool, stage);
-            }}
-          >
-            {e.label}
-          </Button>
-        )),
-      )}
-    </div>
   );
 }
 
@@ -877,11 +843,7 @@ export function MeasureBench() {
   const stage = useEngineStage();
   const readOnly = useReadOnly();
   const live = useMeasure((s) => s.tool !== null && s.draw !== null);
-  const kind = useWorkspace((s) => {
-    const manifest = s.project?.manifest;
-    return manifest ? projectKind(manifest) : null;
-  });
-  const families = useMemo(() => familiesFor(readOnly, kind), [readOnly, kind]);
+  const families = useMemo(() => familiesFor(readOnly), [readOnly]);
   const [query, setQuery] = useState('');
   const searching = !live && query.trim() !== '';
   useCollapseEndsSearch(setQuery);
@@ -893,11 +855,8 @@ export function MeasureBench() {
       <SelectedCard searching={searching} />
       {/* a search is about the tools: the save controls step aside until it is cleared */}
       {!searching && <SavedFooter />}
-      {live ? (
-        <Strip families={families} stage={stage} />
-      ) : (
-        <Catalogue families={families} stage={stage} query={query} onQuery={setQuery} />
-      )}
+      {/* while a tool draws, the card is the bench (the Tools tab's "Back to tools" returns) */}
+      {!live && <Catalogue families={families} stage={stage} query={query} onQuery={setQuery} />}
     </div>
   );
 }

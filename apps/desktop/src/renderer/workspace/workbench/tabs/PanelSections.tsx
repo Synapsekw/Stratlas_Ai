@@ -6,7 +6,7 @@
 import { Icon, IconButton, useT } from '@aio/ui';
 import { useVolumetric } from '@aio/volumetric';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useId, useMemo, useRef } from 'react';
+import { useEffect, useId, useMemo, useRef, type ReactNode } from 'react';
 import { SiteDigest } from '../../../insights/SiteDigest';
 import { useIsRoad } from '../../../road/useRoadMap';
 import { FrontBody } from '../FrontBody';
@@ -27,15 +27,26 @@ function useSectionCount(def: SectionDef): number | undefined {
   return undefined;
 }
 
-function SectionBody({ def }: { def: SectionDef }) {
+function SectionBody({ def, lead }: { def: SectionDef; lead?: ReactNode }) {
   const road = useIsRoad();
+  if (lead !== undefined)
+    return (
+      <>
+        {lead}
+        {def.body !== null && <FrontBody front={def.body} road={road} />}
+      </>
+    );
   if (def.id === 'project.digest') return <SiteDigest />;
   if (def.id === 'project.inThisProject') return <ProjectList />;
   if (def.body === null) return null;
   return <FrontBody front={def.body} road={road} />;
 }
 
-export function PanelSection({ def }: { def: SectionDef }) {
+/**
+ * A section: its header and, open, its body. `lead` goes above the body (the Tools tab's
+ * registry tools and switches, W8).
+ */
+export function PanelSection({ def, lead }: { def: SectionDef; lead?: ReactNode }) {
   const t = useT();
   const bodyId = useId();
   const open = useWorkbench((s) => s.sections[def.id] === true);
@@ -92,7 +103,7 @@ export function PanelSection({ def }: { def: SectionDef }) {
       )}
       <div className="wb-section-body" id={bodyId} inert={!open}>
         <div className="wb-section-inner wb-psec-inner" data-front={def.body ?? undefined}>
-          {open ? <SectionBody def={def} /> : null}
+          {open ? <SectionBody def={def} lead={lead} /> : null}
         </div>
       </div>
     </section>

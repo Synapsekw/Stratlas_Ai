@@ -12,8 +12,6 @@
 import { annotateUi } from '@aio/annotate';
 import type { EngineStage } from '@aio/engine';
 import { announce, Button, Icon, matchShortcut, useFocusTrap, useT } from '@aio/ui';
-import { useVolumetric } from '@aio/volumetric';
-import { useWorkspace } from '@aio/workspace';
 import {
   useCallback,
   useEffect,
@@ -26,7 +24,6 @@ import {
 } from 'react';
 import { isTyping } from '../../keys';
 import { layoutSpikeOn } from '../../layoutSpike/flag';
-import { useRoad } from '../../road/store';
 import { useShell } from '../../shell';
 import type { StageMode } from '../../store';
 import { CompareButton, useCompareDates } from '../CompareControls';
@@ -37,19 +34,14 @@ import { useTimeline } from '../timeline';
 import type { TabId } from '../workbench/tabsModel';
 import type { GroupCtx } from './groups';
 import { drawerStore } from '../workbench/drawerStore';
-import { liveTab, useHasVolumeMeasurements } from '../workbench/view';
+import { liveTab } from '../workbench/view';
+import { islandModes, openMode } from '../../tools/registry';
+import { usePublishCompare, useToolCtx } from '../../tools/useToolCtx';
 import { GROUP_TAB, openBenchFromIsland } from './islandBench';
 import { IslandCalendar, IslandDate, islandDates } from './IslandDate';
 import { IslandLive, LiveGlyph, liveSay, liveText } from './IslandLive';
 import { IslandModes, IslandTools, moveFocus } from './IslandTools';
-import {
-  islandGroups,
-  islandInitial,
-  islandReducer,
-  islandRest,
-  pickLive,
-  type GroupId,
-} from './islandModel';
+import { islandInitial, islandReducer, islandRest, pickLive, type GroupId } from './islandModel';
 import { livePairKey, useIslandLive } from './useIslandLive';
 import './island.css';
 
@@ -120,23 +112,6 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   const appStill = useShell((x) => x.settings.motion === 'reduce');
   const motion = osStill || appStill;
 
-  // which groups the project has data for (D6)
-  const map = tools === 'map';
-  const pkg = useShell((x) => x.pkg !== null);
-  const clouds = useWorkspace((x) =>
-    (x.project?.manifest.layers ?? []).some((l) => l.kind === 'pointcloud'),
-  );
-  const video = useWorkspace((x) =>
-    (x.project?.manifest.layers ?? []).some((l) => l.kind === 'video'),
-  );
-  // the stockpile kit's project, or any with a volume measurement (its piles are in the view)
-  const kitVolumes = useVolumetric((x) => x.status === 'ready');
-  const piles = useHasVolumeMeasurements();
-  const volumes = kitVolumes || piles;
-  const road = useRoad((x) => x.status === 'ready');
-  const groups = islandGroups({ map, mode: tools, clouds, volumes, video, road, pkg });
-  const group = groups.includes(s.group) ? s.group : 'view';
-
   // the date: the date bar's, or the last focused pane's in Split (D7)
   const index = useTimeline((x) => x.index);
   const focus = useTimeline((x) => x.focus);
@@ -165,6 +140,11 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   }, []);
   const rest = islandRest(dates ? dates.order.length : 0);
   const compareDates = useCompareDates(split);
+  // the island's modes, from the tool registry: what the project holds, never its type (W8)
+  const toolCtx = useToolCtx({ compare: compareDates, tools, stage });
+  usePublishCompare(compareDates);
+  const groups = islandModes(toolCtx);
+  const group = groups.some((m) => m.id === s.group) ? s.group : 'view';
   const left = splitting ? paneCapture(split, 'left') : undefined;
   const right = splitting ? paneCapture(split, 'right') : undefined;
   const onCompare =
@@ -227,16 +207,17 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     },
     [done],
   );
-  // a group tab: the group is picked, and its workbench opens (View has none: its row stays)
+  // a mode's tab: the mode is picked and its section opens in the right panel; one with a bench
+  // brings it forward and the notch rests, View and Compare keep their row up
   const pickGroup = useCallback(
     (g: GroupId) => {
       dispatch({ type: 'pickGroup', group: g });
-      const tab = GROUP_TAB[g];
-      if (tab) showBench(tab);
+      openMode(g, toolCtx);
+      if (GROUP_TAB[g] && g !== 'compare') done();
     },
-    [showBench],
+    [toolCtx, done],
   );
-  const ctx: GroupCtx = { stage, map, openBench: showBench, done, compare: compareDates };
+  const ctx: GroupCtx = { stage, tool: toolCtx, done };
 
   // size morph: the capsule takes its content's size (CSS animates width and height)
   useLayoutEffect(() => {
@@ -527,6 +508,9 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
         ctx={ctx}
         dispatch={dispatch}
         onPick={pickGroup}
+        onJobs={() => {
+          showBench('jobs');
+        }}
         end={end}
       />
     );

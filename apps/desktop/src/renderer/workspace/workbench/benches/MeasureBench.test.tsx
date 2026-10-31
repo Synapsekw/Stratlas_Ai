@@ -233,26 +233,18 @@ describe('the Measure workbench', () => {
     expect(host.querySelector('.empty-state')).not.toBeNull();
   });
 
-  it('the live strip shows text labels', () => {
+  it('while a tool draws, the card is the bench: no strip of tools, no catalogue', () => {
     render();
     act(() => {
       startTool('grade');
     });
     expect(q('survey-tools')).toBeNull();
-    const strip = host.querySelector('.meb-strip');
-    const buttons = [...(strip?.querySelectorAll('button') ?? [])];
-    expect(buttons.map((b) => b.textContent)).toEqual(
-      expect.arrayContaining(['Distance', 'Grade and slope', 'Area', 'Antenna azimuth']),
-    );
-    for (const b of buttons) expect(b.textContent.trim().length).toBeGreaterThan(0);
-    expect(
-      buttons.filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.textContent),
-    ).toEqual(['Grade and slope']);
-    // a strip button switches the tool without leaving
+    expect(host.querySelector('.meb-strip')).toBeNull();
+    expect(q('survey-drawbar')).not.toBeNull();
     act(() => {
-      buttons.find((b) => b.textContent === 'Area')?.click();
+      stopTool();
     });
-    expect(measureStore.getState().tool?.tool).toBe('area');
+    expect(q('survey-tools')).not.toBeNull();
   });
 });
 
@@ -270,9 +262,9 @@ describe('Tools > Measure: the tools only', () => {
     expect(q('project-caption')).toBeNull();
     expect(q('project-tools-caption')).toBeNull();
     expect(before(host.querySelector('.sv-saved'), q('survey-tools'))).toBe(true);
-    // a live tool's card stays first, above the strip
+    // a live tool's card stays first, above the save controls
     press('m');
-    expect(before(q('survey-drawbar'), host.querySelector('.meb-strip'))).toBe(true);
+    expect(before(q('survey-drawbar'), host.querySelector('.sv-saved'))).toBe(true);
     act(() => {
       stopTool();
     });

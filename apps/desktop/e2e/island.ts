@@ -6,20 +6,30 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import type { TabId } from '../src/renderer/workspace/workbench/tabsModel';
 import { benchBody, openBench as openPanelBench } from './panel';
 
-/** The island's group tabs, by the short names it shows (`island.group.*`). */
-export type GroupId =
-  'view' | 'measure' | 'display' | 'clouds' | 'volumes' | 'video' | 'road' | 'annotate';
+/**
+ * The island's labelled modes (UI revision W8), by the short names it shows (`island.group.*`):
+ * View, Measure, Annotate, Volumes, Compare, Video and Road.
+ */
+export type ModeId = 'view' | 'measure' | 'annotate' | 'volumes' | 'compare' | 'video' | 'road';
 
-const GROUP_NAME: Record<GroupId, string> = {
+/**
+ * A group's full set as the specs ask for it: an island mode, or one of the right panel's
+ * sections the island used to open as a group (Display, Point cloud), opened there directly.
+ */
+export type GroupId = ModeId | 'display' | 'clouds';
+
+const GROUP_NAME: Record<ModeId, string> = {
   view: 'View',
   measure: 'Measure',
-  display: 'Display',
-  clouds: 'Point cloud',
+  annotate: 'Annotate',
   volumes: 'Volumes',
+  compare: 'Compare',
   video: 'Video',
   road: 'Road',
-  annotate: 'Annotate',
 };
+
+/** Display and Point cloud are no island modes any more: their sections open in the panel. */
+const isMode = (g: GroupId): g is ModeId => g !== 'display' && g !== 'clouds';
 
 /** The island itself, a toolbar named "Stage tools". */
 export const island = (win: Page): Locator => win.getByRole('toolbar', { name: 'Stage tools' });
@@ -42,7 +52,7 @@ export async function islandSettled(win: Page): Promise<void> {
     .toBe(0);
 }
 
-/** Open the island's tools (the view switch, the group tabs and a quick row). */
+/** Open the island's tools (the view switch, the mode tabs and a mode's row of top tools). */
 export async function openIslandTools(win: Page): Promise<Locator> {
   const bar = island(win);
   if ((await bar.getAttribute('data-state')) !== 'tools') {
@@ -64,28 +74,33 @@ export async function closeIslandTools(win: Page): Promise<void> {
   await expect(bar).not.toHaveAttribute('data-state', 'tools');
 }
 
-/** A group's quick row: the tools opened on that group's tab. */
-export async function islandRow(win: Page, g: GroupId): Promise<Locator> {
+/** A mode's row: its top tools, shown on that mode's tab (hovered, not picked). */
+export async function islandRow(win: Page, g: ModeId): Promise<Locator> {
   const bar = await openIslandTools(win);
   const tab = bar.getByRole('tab', { name: GROUP_NAME[g], exact: true });
   await tab.hover();
   return bar.getByRole('tabpanel');
 }
 
-/** The View row's timeline tile, which shows and folds the timeline (pressed while it shows). */
+/** The Compare row's timeline tile, which shows and folds the timeline (pressed while it shows). */
 export async function timelineToggle(win: Page): Promise<Locator> {
-  const row = await islandRow(win, 'view');
+  const row = await islandRow(win, 'compare');
   return row.getByTestId('timeline-toggle');
 }
 
 /**
- * Compare dates: the View row's tile (the island's tools open), or beside the island while
+ * Compare dates: the Compare row's tile (the island's tools open), or beside the island while
  * comparing, where it leaves the comparison.
  */
 export async function compareDatesButton(win: Page): Promise<Locator> {
-  // the View row has the tile only while not comparing, so its absence says which one it is
-  const tile = (await islandRow(win, 'view')).getByTestId('compare-dates');
-  if ((await tile.count()) > 0) return tile;
+  // the Compare mode shows with two dates or a video; its tile is greyed while comparing (the
+  // button beside the island leaves), so that says which one it is
+  const bar = await openIslandTools(win);
+  if ((await bar.getByRole('tab', { name: 'Compare', exact: true }).count()) > 0) {
+    const tile = (await islandRow(win, 'compare')).getByTestId('compare-dates');
+    if ((await tile.count()) > 0 && (await tile.getAttribute('aria-disabled')) !== 'true')
+      return tile;
+  }
   await closeIslandTools(win);
   // (none at all when the project has nothing to compare)
   return win.locator('.isl-aside').getByTestId('compare-dates');
@@ -98,12 +113,18 @@ export async function toggleCompareDates(win: Page): Promise<void> {
 }
 
 /**
- * A group's full set: its workbench in the right sidebar (D4, D12), opened from the group's tab,
- * with every folded section of it opened. View has no workbench: its set is its quick row (its
- * caret tiles open the Environment and Cutaway tabs).
+ * A group's full set: its section in the right panel (D2), opened from the mode's tab, with every
+ * folded section of it opened. View and Compare have no workbench: their set is their row (View's
+ * caret tiles open the Environment and Cutaway sections). Display and Point cloud open in the
+ * panel directly.
  */
 export async function islandGroup(win: Page, g: GroupId): Promise<Locator> {
-  if (g === 'view') return islandRow(win, 'view');
+  if (g === 'view' || g === 'compare') return islandRow(win, g);
+  if (!isMode(g)) {
+    const body = await openPanelBench(win, g);
+    await unfoldAll(body);
+    return body;
+  }
   // the group's section in the right panel (D2), open
   const bench = benchBody(win, g);
   await pickGroupTab(win, g, bench);
@@ -112,11 +133,11 @@ export async function islandGroup(win: Page, g: GroupId): Promise<Locator> {
 }
 
 /**
- * Pick a group's tab in the open island, by key: the capsule is still morphing to its open size,
+ * Pick a mode's tab in the open island, by key: the capsule is still morphing to its open size,
  * so a click could land beside the tab. An Enter pressed while it morphs can be lost too, so the
  * pick is tried again until the island is back at rest with `bench` showing.
  */
-export async function pickGroupTab(win: Page, g: GroupId, bench: Locator): Promise<void> {
+export async function pickGroupTab(win: Page, g: ModeId, bench: Locator): Promise<void> {
   const bar = island(win);
   let tries = 0;
   await expect(async () => {
@@ -259,7 +280,7 @@ export async function islandCutOff(win: Page): Promise<string[]> {
 /**
  * The Measure workbench in the right sidebar, opened from the island's Measure tab (unless it
  * shows already): its catalogue, `survey-tools`, with every tool, Site data, Drawing aids and
- * Templates in collapsible sections. While a tool is live the catalogue is a strip instead.
+ * Templates in collapsible sections. While a tool is live the live card is the whole bench.
  */
 export async function measureBench(win: Page): Promise<Locator> {
   const bench = win.getByTestId('survey-tools');
@@ -383,7 +404,7 @@ export async function markMeasure(win: Page, label: string): Promise<void> {
 
 /**
  * The save controls of the measurements (`survey-saved`) under the Measure bench: Autosave, the
- * status line and Save. They show under the live strip too, while a tool draws.
+ * status line and Save. They show under the live card too, while a tool draws.
  */
 export async function measureSaved(win: Page): Promise<Locator> {
   const saved = win.getByTestId('survey-saved');
@@ -393,11 +414,11 @@ export async function measureSaved(win: Page): Promise<Locator> {
 }
 
 /**
- * The live tool strip of the Measure workbench (the catalogue while a tool draws): the tools as
- * short text buttons, by its accessible name.
+ * The way back from an armed tool's card to the Tools tab's list (UI revision W8): it puts the
+ * tool down, as Esc does.
  */
-export function measureStrip(win: Page): Locator {
-  return win.getByRole('group', { name: 'Measure tools', exact: true });
+export function backToTools(win: Page): Locator {
+  return win.getByTestId('tools-back');
 }
 
 /**

@@ -1,5 +1,4 @@
 import { pinDisplay, useAnnotateReadOnly } from '@aio/annotate';
-import { getActiveStage } from '@aio/engine';
 import { COLOUR_MODES, pointcloudSettings } from '@aio/pointcloud';
 import type { Layer } from '@aio/schema';
 import {
@@ -14,8 +13,6 @@ import {
   type ShortcutId,
   shortcutHint,
 } from '@aio/ui';
-import { isTelecomTool } from '@aio/survey';
-import { useVolumetric } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo } from 'react';
 import { actionAllowed, allowedActions } from '../exports/exportModel';
@@ -33,26 +30,13 @@ import { openProcessingTools } from '../processingTools';
 import { shell, useShell } from '../shell';
 import { layoutSpikeOn } from '../layoutSpike/flag';
 import { isSidebarFolded, type Screen, type SettingsPage, type StageMode } from '../store';
-import { TOOL_ICON } from '../survey/card';
-import {
-  ALL_TOOLS,
-  favouritesAndRecent,
-  familyOf,
-  measureFavourites,
-  useFavourites,
-  type CatalogueTool,
-} from '../survey/measureCatalogue';
-import { measureStore, startTool, useMeasure } from '../survey/measureStore';
-import { startTelecomTool, useTelecomUnavailable } from '../survey/TelecomTools';
-import { GROUP_ICON, GROUP_NAME } from '../workspace/island/groups';
-import { GROUP_TAB, openBenchFromIsland } from '../workspace/island/islandBench';
-import { islandGroups } from '../workspace/island/islandModel';
-import { useRoad } from '../road/store';
-import { useEngineStage } from '../workspace/StageTools';
-import { toggleMeasure, toggleSection } from '../workspace/tools/measure';
+import { favouritesAndRecent, useFavourites } from '../survey/measureCatalogue';
+import { islandModes, measureToolId, openMode } from '../tools/registry';
+import { useToolCtx } from '../tools/useToolCtx';
+import { GROUP_TAB } from '../workspace/island/islandBench';
 import { showBench } from '../workspace/workbench/followTool';
-import { useHasVolumeMeasurements, useWorkbenchView } from '../workspace/workbench/view';
-import { paletteIndex, type PaletteTool } from './paletteIndex';
+import { useWorkbenchView } from '../workspace/workbench/view';
+import { paletteIndex, registryTools } from './paletteIndex';
 import './palette.css';
 import { PATH_MODES, setPathMode, togglePaths } from '../workspace/flightPaths';
 import { updateFlightPaths } from '../workspace/pathModel';
@@ -143,38 +127,16 @@ const SETTINGS_PAGE_LABEL: Record<SettingsPage, MessageKey> = {
   project: 'settings.page.project',
 };
 
-// ---------------------------------------------------------------- tools, island groups, tabs
-
-/** Start a measuring tool from the palette: on the stage, and left on when it already is. */
-function startCatalogueTool(tool: CatalogueTool): void {
-  shell.getState().go('scene');
-  const stage = getActiveStage();
-  if (tool === 'section-plane') {
-    measureFavourites.getState().used(tool);
-    if (stage && !stage.section.enabled) toggleSection(stage);
-    return;
-  }
-  const active = measureStore.getState().tool;
-  if (active?.tool === tool && !active.template) return;
-  if (tool === 'distance') toggleMeasure(stage);
-  else if (isTelecomTool(tool)) startTelecomTool(tool);
-  else {
-    if (stage && stage.tool !== 'select') stage.setTool('select');
-    startTool(tool);
-  }
-}
+// ---------------------------------------------------------------- tools, island modes, tabs
 
 /**
- * The palette's tools, island groups, workbench tabs and Settings pages (`paletteIndex`), read
- * from what the stage and the right sidebar offer now. Tools, groups and tabs need an open project.
+ * The palette's tools (the tool registry, W8), island modes, workbench tabs and Settings pages
+ * (`paletteIndex`), read from what the project holds and the view in use. Tools, modes and tabs
+ * need an open project; a tool that cannot start here stays listed with its reason.
  */
 function useIndexedCommands(): PaletteCommand[] {
   const project = useWorkspace((s) => s.project);
-  const pkg = useShell((s) => s.pkg !== null);
-  const stageMode = useShell((s) => s.stageMode);
-  const readOnly = useMeasure((s) => s.readOnly) || pkg;
-  const stage = useEngineStage();
-  const telecomOff = useTelecomUnavailable();
+  const ctx = useToolCtx();
   const favourites = useFavourites((s) => s.favourites);
   const recent = useFavourites((s) => s.recent);
   // the tabs the panel shows: a remembered tab that does not apply here is not offered
@@ -182,9 +144,6 @@ function useIndexedCommands(): PaletteCommand[] {
   // names are read in the language in use: a change of language builds the list again
   useT();
   const locale = getLocale();
-  const kitVolumes = useVolumetric((x) => x.status === 'ready');
-  const piles = useHasVolumeMeasurements();
-  const road = useRoad((x) => x.status === 'ready');
   return useMemo(() => {
     const settingsPages = (Object.keys(SETTINGS_PAGE_LABEL) as SettingsPage[])
       .filter((id) => project !== null || id !== 'project')
@@ -200,60 +159,25 @@ function useIndexedCommands(): PaletteCommand[] {
       shell.getState().go('scene');
       fn();
     };
-    const measure = t(GROUP_NAME.measure);
-    const tools: PaletteTool[] = ALL_TOOLS.map((e) => {
-      const reason =
-        readOnly && e.saves
-          ? t('palette.unavailable.readOnly')
-          : e.tool === 'section-plane'
-            ? stage
-              ? null
-              : t('palette.unavailable.needs3d')
-            : isTelecomTool(e.tool)
-              ? telecomOff
-              : null;
-      const family = familyOf(e.tool);
-      return {
-        id: e.tool,
-        group: measure,
-        label: e.label,
-        icon: e.tool === 'section-plane' ? 'section' : TOOL_ICON[e.tool],
-        ...(e.key ? { shortcutId: e.key } : {}),
-        keywords: [e.hint, ...(family ? [t(`measureCat.family.${family}`)] : [])],
-        available: reason === null ? true : { reason },
-        start: () => {
-          startCatalogueTool(e.tool);
-        },
-      };
-    });
-    const layers = project.manifest.layers;
-    const groups = islandGroups({
-      map: stageMode === 'map',
-      mode: stageMode,
-      clouds: layers.some((l) => l.kind === 'pointcloud'),
-      volumes: kitVolumes || piles,
-      video: layers.some((l) => l.kind === 'video'),
-      road,
-      pkg,
-    }).flatMap((g) => {
-      const tab = GROUP_TAB[g];
-      // View has no workbench: its tiles are the whole group
-      if (!tab) return [];
+    const groups = islandModes(ctx).flatMap((m) => {
+      const tab = GROUP_TAB[m.id];
+      // View has no bench and Compare's is Changes, listed with the tabs: their tools are listed
+      if (!tab || m.id === 'compare') return [];
       return [
         {
-          id: g,
-          label: t(GROUP_NAME[g]),
-          icon: GROUP_ICON[g],
+          id: m.id,
+          label: t(m.labelKey),
+          icon: m.icon,
           tab,
           open: onStage(() => {
-            openBenchFromIsland(tab);
+            openMode(m.id, ctx);
           }),
         },
       ];
     });
     return paletteIndex({
-      tools,
-      preferred: favouritesAndRecent({ favourites, recent }),
+      tools: registryTools(ctx),
+      preferred: favouritesAndRecent({ favourites, recent }).map(measureToolId),
       groups,
       tabs: tabs.map((tab) => ({
         id: tab.id,
@@ -265,21 +189,7 @@ function useIndexedCommands(): PaletteCommand[] {
       settingsPages,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `locale`: the names are read in it
-  }, [
-    project,
-    pkg,
-    stageMode,
-    readOnly,
-    stage,
-    telecomOff,
-    favourites,
-    recent,
-    tabs,
-    locale,
-    kitVolumes,
-    piles,
-    road,
-  ]);
+  }, [project, ctx, favourites, recent, tabs, locale]);
 }
 
 export function Palette() {

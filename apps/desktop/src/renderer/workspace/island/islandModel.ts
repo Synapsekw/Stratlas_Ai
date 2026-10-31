@@ -1,8 +1,8 @@
 /** Pure state of the stage notch: live priority, rest content, tool groups, open and pinned. */
-import type { StageMode } from '../../store';
+import type { IslandMode } from '../../tools/registry';
 
-export type GroupId =
-  'view' | 'measure' | 'display' | 'clouds' | 'volumes' | 'video' | 'road' | 'annotate';
+/** The island's labelled modes (UI revision W8): the tool registry's `IslandMode`. */
+export type GroupId = IslandMode;
 
 /** Whose tool a live `tool` item is: the survey tools (the default), the road's measure, Annotate. */
 export type ToolSource = 'measure' | 'road' | 'annotate';
@@ -45,27 +45,8 @@ export function islandRest(dateCount: number): IslandRest {
   return dateCount === 1 ? 'date' : 'dateSteps';
 }
 
-export function islandGroups(input: {
-  map: boolean;
-  mode: StageMode;
-  clouds: boolean;
-  volumes: boolean;
-  video: boolean;
-  road: boolean;
-  pkg: boolean;
-}): GroupId[] {
-  const groups: GroupId[] = ['view', 'measure', 'display'];
-  // the map has no point clouds or volumes
-  if (input.clouds && !input.map) groups.push('clouds');
-  if (input.volumes && !input.map) groups.push('volumes');
-  if (input.video) groups.push('video');
-  if (input.road && input.mode !== '3d') groups.push('road');
-  if (!input.pkg) groups.push('annotate');
-  return groups;
-}
-
 export interface IslandState {
-  /** At rest the notch's one line; `tools` adds the group tabs and a quick row; `date` the calendar. */
+  /** At rest the notch's one line; `tools` adds the mode tabs and a mode's row; `date` the calendar. */
   open: 'rest' | 'tools' | 'date';
   group: GroupId;
   preview: GroupId | null;

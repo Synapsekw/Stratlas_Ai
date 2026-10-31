@@ -58,8 +58,8 @@ export const annotateStage = createStore<AnnotateStageState>()((set, get) => ({
   },
 }));
 
-/** The map drawing, with its actions going to the stage's latest one. */
-const FORWARD: Omit<MapDraw, 'mode' | 'state'> = {
+/** The map drawing, with its actions going to the stage's latest one (the tool registry starts it). */
+export const FORWARD: Omit<MapDraw, 'mode' | 'state'> = {
   setMode: (m) => {
     current?.setMode(m);
   },

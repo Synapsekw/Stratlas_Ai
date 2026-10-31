@@ -1,13 +1,13 @@
 /**
- * The Measure workbench's catalogue (stage island D12): every measuring tool in its family, with
- * a one-line hint and its key, and the person's favourites (a per-computer view preference, D17).
- * No React: the bench renders what this lists.
+ * The Measure group's layout (stage island D12): every measuring tool in its family, with a
+ * one-line hint and its key, and the person's favourites (a per-computer view preference, D17).
+ * The tools themselves are registered once in the tool registry (`tools/registry.ts`, UI revision
+ * W8), which reads them from here; the bench renders the families. No React.
  */
 import type { MeasurementTool } from '@aio/schema';
 import { t, type ShortcutId } from '@aio/ui';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
-import type { ProjectKind } from '../builder/model';
 import { browserStorage } from '../workspace/stagePrefs';
 
 /**
@@ -22,6 +22,9 @@ export interface CatalogueEntry {
   tool: CatalogueTool;
   label: string;
   hint: string;
+  /** The name's and hint's keys, for the registry (`measureCat.tool.*`, `measureCat.hint.*`). */
+  labelKey: `measureCat.tool.${ToolName}`;
+  hintKey: `measureCat.hint.${ToolName}`;
   key?: ShortcutId;
   /** The tool writes a measurement: hidden in a read-only package (D6). */
   saves: boolean;
@@ -34,7 +37,7 @@ export interface Family {
 }
 
 /** The catalogue's names for its tools: `measureCat.tool.<name>` and `measureCat.hint.<name>`. */
-type ToolName =
+export type ToolName =
   | 'elevation'
   | 'elevationDiff'
   | 'annotation'
@@ -60,6 +63,8 @@ const entry = (
   key?: ShortcutId,
 ): CatalogueEntry => ({
   tool,
+  labelKey: `measureCat.tool.${name}`,
+  hintKey: `measureCat.hint.${name}`,
   get label() {
     return t(`measureCat.tool.${name}`);
   },
@@ -111,22 +116,16 @@ export const entryOf = (tool: CatalogueTool): CatalogueEntry | undefined =>
 export const familyOf = (tool: CatalogueTool): FamilyId | undefined =>
   FAMILIES.find((f) => f.tools.some((e) => e.tool === tool))?.id;
 
-/** The project kinds with no tower to measure: their catalogue has no Telecom family. */
-const TOWERLESS: ReadonlySet<ProjectKind> = new Set(['survey', 'construction']);
-
 /**
  * The families the open project offers: a read-only package only the tools that read without
- * saving (D6), a survey or construction project no Telecom family. Any other kind, or none known,
- * keeps it.
+ * saving (D6). Never decided by the project type (founder, 30 Oct 2026): a survey project reaches
+ * the Telecom family too, and its tools say why they cannot start where they cannot.
  */
-export function familiesFor(readOnly: boolean, kind: ProjectKind | null = null): Family[] {
-  const towerless = kind !== null && TOWERLESS.has(kind);
-  return FAMILIES.filter((f) => !(towerless && f.id === 'telecom'))
-    .map((f) => ({
-      ...f,
-      tools: readOnly ? f.tools.filter((e) => !e.saves) : [...f.tools],
-    }))
-    .filter((f) => f.tools.length > 0);
+export function familiesFor(readOnly: boolean): Family[] {
+  return FAMILIES.map((f) => ({
+    ...f,
+    tools: readOnly ? f.tools.filter((e) => !e.saves) : [...f.tools],
+  })).filter((f) => f.tools.length > 0);
 }
 
 /** A tool's name matches the search (case-insensitive, on the name only, not the hint). */
