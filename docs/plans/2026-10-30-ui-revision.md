@@ -16,37 +16,47 @@
 
 Status: todo / in progress / handed over / landed. Owner: the session that holds the branch. Update this table on the workstream's own branch when its status changes (one row edit, no other lines), so the tracker rides with the work.
 
-| Id   | Title                                                                           | Wave | Branch                     | Depends on                                               | Status | Owner   |
-| ---- | ------------------------------------------------------------------------------- | ---- | -------------------------- | -------------------------------------------------------- | ------ | ------- |
-| W0   | Split `en.ts` into area modules (mechanical, no key changes)                    | 0    | `chore/i18n-split`         | none                                                     | todo   |         |
-| W1a  | Polish: shell, library, compare, processing                                     | 1    | `fix/ui-polish-shell`      | W0                                                       | todo   |         |
-| W1b  | Polish: stage, timeline, tooltips, island label                                 | 1    | `fix/ui-polish-stage`      | W0                                                       | todo   |         |
-| W1c  | Polish: map framing and labels, Globe                                           | 1    | `fix/ui-polish-maps`       | W0                                                       | todo   |         |
-| W1d  | Layout guards at 1100 x 720 and 1366 x 768                                      | 1    | `test/ui-layout-guards`    | W1a, W1b, W1c                                            | todo   |         |
-| W2   | One truthful AI status chip and one AI name                                     | 1    | `feat/ai-status-chip`      | W0                                                       | todo   |         |
-| W3   | `@aio/ui` Dialog, toast host, Menu hardening (no call sites)                    | 3    | `feat/ui-primitives`       | W0                                                       | todo   |         |
-| W4   | Wave 2 layout spike behind a dev flag                                           | 2    | `feat/layout-spike`        | W0                                                       | todo   |         |
-| W5   | Palette indexes tools, tabs, modes and Settings                                 | 1    | `feat/palette-tools`       | W0                                                       | todo   |         |
-| W6   | Settings by topic, Project settings, AI page split                              | 2    | `feat/settings-reorg`      | W0                                                       | todo   |         |
-| G1   | Founder approves the spike                                                      | 2    | none                       | W4                                                       | todo   | founder |
-| W7   | Right panel: four fixed tabs, sections, one width                               | 2    | `feat/right-panel-tabs`    | G1                                                       | todo   |         |
-| W8   | One tool registry: Tools tab, island modes, palette source                      | 2    | `feat/tool-registry`       | W7, W5                                                   | todo   |         |
-| W9   | Video docked tile and pop-out window                                            | 2    | `feat/video-dock`          | G1                                                       | todo   |         |
-| W10  | Fixed stage overlay slots, one hint or toast, labels clamped                    | 2    | `feat/stage-slots`         | W7, W9, W3                                               | todo   |         |
-| W11  | Rail, Layers column, title bar breadcrumb                                       | 2    | `feat/shell-rail`          | G1, W2, W6                                               | todo   |         |
-| W12  | Responsive bands; spike removed                                                 | 2    | `feat/responsive-bands`    | W7, W11                                                  | todo   |         |
-| W13  | Layout presets per project type                                                 | 2    | `feat/layout-presets`      | W8, W9, W10, W12                                         | todo   |         |
-| W14  | Decision walls: Changes split button, Issues filters, road chips, menu submenus | 2    | `feat/decision-walls`      | W0                                                       | todo   |         |
-| W15a | Shell dialogs and menus onto `Dialog` and `Menu`                                | 3    | `refactor/shell-dialogs`   | W3, W11, W12                                             | todo   |         |
-| W15b | Feature dialogs onto `Dialog` (incl. PictureProgress focus trap)                | 3    | `refactor/feature-dialogs` | W3                                                       | todo   |         |
-| W16  | Toasts onto the toast host                                                      | 3    | `refactor/toasts`          | W3, W6                                                   | todo   |         |
-| W17  | Feature menus onto `Menu`                                                       | 3    | `refactor/feature-menus`   | W3, W2                                                   | todo   |         |
-| W18  | Token ratchet and anti-patterns                                                 | 3    | `chore/token-ratchet`      | W1a, W12, W15a, W16, W17                                 | todo   |         |
-| W19  | Accessibility fixes                                                             | 3    | `fix/ui-a11y`              | W8, W14                                                  | todo   |         |
-| W20  | Naming glossary and copy sweep                                                  | 3    | `docs/ui-glossary`         | W13 (all string work landed)                             | todo   |         |
-| W21  | Lazy-mount the always-mounted overlays in `App.tsx`                             | 3    | `perf/lazy-overlays`       | W12; heap-snapshot evidence from the engineering session | todo   |         |
+| Id   | Title                                                                           | Wave | Branch                     | Depends on                                               | Status                               | Owner   |
+| ---- | ------------------------------------------------------------------------------- | ---- | -------------------------- | -------------------------------------------------------- | ------------------------------------ | ------- |
+| W0   | Split `en.ts` into area modules (mechanical, no key changes)                    | 0    | `chore/i18n-split`         | none                                                     | landed cb12bf3c9                     |         |
+| W1a  | Polish: shell, library, compare, processing                                     | 1    | `fix/ui-polish-shell`      | W0                                                       | landed 563195b04                     |         |
+| W1b  | Polish: stage, timeline, tooltips, island label                                 | 1    | `fix/ui-polish-stage`      | W0                                                       | landed a9adde2e4                     |         |
+| W1c  | Polish: map framing and labels, Globe                                           | 1    | `fix/ui-polish-maps`       | W0                                                       | landed ee13d2b2f                     |         |
+| W1d  | Layout guards at 1100 x 720 and 1366 x 768                                      | 1    | `test/ui-layout-guards`    | W1a, W1b, W1c                                            | todo                                 |         |
+| W2   | One truthful AI status chip and one AI name                                     | 1    | `feat/ai-status-chip`      | W0                                                       | landed b904e8b26                     |         |
+| W3   | `@aio/ui` Dialog, toast host, Menu hardening (no call sites)                    | 3    | `feat/ui-primitives`       | W0                                                       | landed 7f1c54591                     |         |
+| W4   | Wave 2 layout spike behind a dev flag                                           | 2    | `feat/layout-spike`        | W0                                                       | landed 8b7b513cd (behind Ctrl+Alt+L) |         |
+| W5   | Palette indexes tools, tabs, modes and Settings                                 | 1    | `feat/palette-tools`       | W0                                                       | landed adb36dc1b                     |         |
+| W6   | Settings by topic, Project settings, AI page split                              | 2    | `feat/settings-reorg`      | W0                                                       | landed 8bcc3cb9e                     |         |
+| G1   | Founder approves the spike                                                      | 2    | none                       | W4                                                       | awaiting founder verdict             | founder |
+| W7   | Right panel: four fixed tabs, sections, one width                               | 2    | `feat/right-panel-tabs`    | G1                                                       | todo                                 |         |
+| W8   | One tool registry: Tools tab, island modes, palette source                      | 2    | `feat/tool-registry`       | W7, W5                                                   | todo                                 |         |
+| W9   | Video docked tile and pop-out window                                            | 2    | `feat/video-dock`          | G1                                                       | todo                                 |         |
+| W10  | Fixed stage overlay slots, one hint or toast, labels clamped                    | 2    | `feat/stage-slots`         | W7, W9, W3                                               | todo                                 |         |
+| W11  | Rail, Layers column, title bar breadcrumb                                       | 2    | `feat/shell-rail`          | G1, W2, W6                                               | todo                                 |         |
+| W12  | Responsive bands; spike removed                                                 | 2    | `feat/responsive-bands`    | W7, W11                                                  | todo                                 |         |
+| W13  | Layout presets per project type                                                 | 2    | `feat/layout-presets`      | W8, W9, W10, W12                                         | todo                                 |         |
+| W14  | Decision walls: Changes split button, Issues filters, road chips, menu submenus | 2    | `feat/decision-walls`      | W0                                                       | todo                                 |         |
+| W15a | Shell dialogs and menus onto `Dialog` and `Menu`                                | 3    | `refactor/shell-dialogs`   | W3, W11, W12                                             | todo                                 |         |
+| W15b | Feature dialogs onto `Dialog` (incl. PictureProgress focus trap)                | 3    | `refactor/feature-dialogs` | W3                                                       | todo                                 |         |
+| W16  | Toasts onto the toast host                                                      | 3    | `refactor/toasts`          | W3, W6                                                   | todo                                 |         |
+| W17  | Feature menus onto `Menu`                                                       | 3    | `refactor/feature-menus`   | W3, W2                                                   | todo                                 |         |
+| W18  | Token ratchet and anti-patterns                                                 | 3    | `chore/token-ratchet`      | W1a, W12, W15a, W16, W17                                 | todo                                 |         |
+| W19  | Accessibility fixes                                                             | 3    | `fix/ui-a11y`              | W8, W14                                                  | todo                                 |         |
+| W20  | Naming glossary and copy sweep                                                  | 3    | `docs/ui-glossary`         | W13 (all string work landed)                             | todo                                 |         |
+| W21  | Lazy-mount the always-mounted overlays in `App.tsx`                             | 3    | `perf/lazy-overlays`       | W12; heap-snapshot evidence from the engineering session | todo                                 |         |
 
 Each workstream is one branch of a few days at most, cut with `node tools/agent/start-task.mjs <name> --type <type>` and rebased at once onto the **local** `main` while a batch is open. It ends with `pnpm check`, its e2e specs the CI way, `/wrapup`, `node tools/agent/finish-task.mjs` and a hand-over to the merge coordinator (CLAUDE.md). Out of scope here, owned by the engineering session: minification and moving three.js and pdfjs out of the entry chunk (`electron.vite.config.ts`).
+
+## Follow-ups found in Batch A
+
+- Compare at 1100 px still clips the resting island (`island.css` `--isl-aside-w`): W1d or W7.
+- Faint grid shows when there is no map pack: W1d or a polish pass.
+- Corridor rotation of the map is not done (map rotation is disabled, so north-up stays).
+- The new Settings pages have no guide shots yet.
+- The agent panel's accessible name is still "Agent" (about 10 e2e specs locate it by name): rename once in W20.
+- W2's "project off" state opens Privacy and cloud until W6's Project settings is wired to it.
+- Can start without G1: W1d, W14, W15b, W16, W17. W7 onward waits for G1.
 
 ## Global Constraints
 
