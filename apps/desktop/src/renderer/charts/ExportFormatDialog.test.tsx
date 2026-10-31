@@ -73,15 +73,16 @@ describe('ExportFormatDialog', () => {
     const h = mount({ onClose });
     act(() => h.querySelector<HTMLButtonElement>('button[aria-label="Close"]')?.click());
     expect(onClose).toHaveBeenCalledTimes(1);
-    const scrim = h.querySelector<HTMLElement>('.sv-scrim');
-    act(() => {
-      scrim?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    });
+    const press = (el: Element | null) => {
+      act(() => {
+        el?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+        el?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+    };
+    press(h.querySelector('[data-testid="export-format-dialog-scrim"]'));
     expect(onClose).toHaveBeenCalledTimes(2);
     // a press inside the panel does not close it
-    act(() => {
-      h.querySelector('.xf-dialog')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    });
+    press(h.querySelector('[data-testid="export-format-dialog"]'));
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 });

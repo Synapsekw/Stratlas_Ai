@@ -85,32 +85,23 @@
   margin-left: 8px;
 }
 
-/* ---------- run panel ---------- */
-.ph-panel {
+/* ---------- run panel: an @aio/ui Dialog, tabs over the tab body ---------- */
+.q-dialog.ph-run[data-size] {
   width: min(1040px, 100%);
-  height: min(720px, 100%);
-  display: grid;
-  grid-template-rows: auto auto 1fr;
-  background: var(--bg-1);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-6);
-  box-shadow: 0 24px 64px oklch(0.08 0.01 250 / 0.6);
+  height: 720px;
+}
+.ph-run .q-dialog-body {
+  flex: 1;
+  gap: 0;
+  padding: 0;
   overflow: hidden;
 }
-.ph-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 18px 8px;
+.ph-run .ph-body {
+  flex: 1;
 }
-.ph-head h2 {
-  margin: 0;
-  font-size: var(--t-16);
-  font-weight: 600;
-}
-.ph-head p {
-  margin: 2px 0 0;
+/* the lines under a photo dialog's title */
+.ph-line {
+  display: block;
 }
 .ph-tabs {
   display: flex;
@@ -530,20 +521,17 @@
 }
 
 /* ---------- create maps from photos: one screen ---------- */
-.ph-simple {
-  width: min(680px, 100%);
-  max-height: min(760px, 100%);
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  background: var(--bg-1);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-6);
-  box-shadow: 0 24px 64px oklch(0.08 0.01 250 / 0.6);
-  overflow: hidden;
-  animation: cmdk-in 180ms var(--ease-x);
+/* the dialog box; a drop anywhere on it chooses photos (the wrapper only catches events) */
+.ph-drop-wrap {
+  display: contents;
 }
-.ph-simple .ph-head {
-  padding: 16px 24px 4px;
+.q-dialog.ph-simple[data-size] {
+  width: min(680px, 100%);
+  max-height: min(760px, calc(100vh - 2 * var(--sp-8)));
+}
+.ph-simple .q-dialog-body {
+  gap: 0;
+  padding: 0;
 }
 .ph-simple .b-body {
   padding-top: 12px;
@@ -726,7 +714,7 @@
   justify-content: center;
   margin-top: 12px;
 }
-.ph-simple .b-foot .hint {
+.ph-simple .q-dialog-foot .hint {
   font-size: var(--t-12);
 }
 

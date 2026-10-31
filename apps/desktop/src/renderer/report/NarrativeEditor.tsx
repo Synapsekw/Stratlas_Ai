@@ -22,7 +22,7 @@ import {
   type RoadModel,
 } from '@aio/schema';
 import { brand } from '@aio/brand';
-import { Icon, t, useFocusTrap } from '@aio/ui';
+import { Dialog, Icon, t } from '@aio/ui';
 import { assetUrl, dateShiftOf, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { authorName } from '../author';
@@ -100,45 +100,25 @@ function useExtras(projectId: string | null) {
 function PreviewDialog({ preview, project }: { preview: Preview; project: string }) {
   const [always, setAlways] = useState(false);
   const send = useRef<HTMLButtonElement>(null);
-  const dlg = useRef<HTMLDivElement>(null);
-  useFocusTrap(dlg, true, { initial: () => send.current });
+  const cancel = () => {
+    preview.resolve(null);
+  };
   return (
-    <div className="dlg-scrim">
-      <div
-        ref={dlg}
-        className="dlg wide"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="nar-prev-h"
-        data-testid="narrative-preview"
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') preview.resolve(null);
-        }}
-      >
-        <div className="dlg-h">
-          <Icon name="send" size={16} />
-          <h2 id="nar-prev-h">
-            {tk('reports.text.previewTitle', { provider: PROVIDER_LABELS[preview.route.provider] })}
-          </h2>
-        </div>
-        <div className="dlg-b">
-          <p className="muted small">{tk('reports.text.previewText', { project })}</p>
-          <dl className="nar-sent">
-            <dt className="caps">{tk('reports.text.previewModel')}</dt>
-            <dd className="mono">
-              {PROVIDER_LABELS[preview.route.provider]} · {preview.route.model}
-            </dd>
-            <dt className="caps">{tk('reports.text.previewSystem')}</dt>
-            <dd>
-              <pre>{preview.request.system}</pre>
-            </dd>
-            <dt className="caps">{tk('reports.text.previewPrompt')}</dt>
-            <dd>
-              <pre>{preview.request.prompt}</pre>
-            </dd>
-          </dl>
-        </div>
-        <div className="dlg-f">
+    <Dialog
+      open
+      size="lg"
+      hideClose
+      dismissable={false}
+      className="nar-preview"
+      testId="narrative-preview"
+      title={tk('reports.text.previewTitle', {
+        provider: PROVIDER_LABELS[preview.route.provider],
+      })}
+      description={tk('reports.text.previewText', { project })}
+      initialFocus={send}
+      onClose={cancel}
+      footer={
+        <>
           <label className="nar-always grow">
             <input
               type="checkbox"
@@ -149,13 +129,7 @@ function PreviewDialog({ preview, project }: { preview: Preview; project: string
             />
             {tk('reports.text.always')}
           </label>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => {
-              preview.resolve(null);
-            }}
-          >
+          <button type="button" className="btn" onClick={cancel}>
             {tk('reports.text.cancel')}
           </button>
           <button
@@ -169,9 +143,24 @@ function PreviewDialog({ preview, project }: { preview: Preview; project: string
             <Icon name="send" size={14} />
             {tk('reports.text.send')}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <dl className="nar-sent">
+        <dt className="caps">{tk('reports.text.previewModel')}</dt>
+        <dd className="mono">
+          {PROVIDER_LABELS[preview.route.provider]} · {preview.route.model}
+        </dd>
+        <dt className="caps">{tk('reports.text.previewSystem')}</dt>
+        <dd>
+          <pre>{preview.request.system}</pre>
+        </dd>
+        <dt className="caps">{tk('reports.text.previewPrompt')}</dt>
+        <dd>
+          <pre>{preview.request.prompt}</pre>
+        </dd>
+      </dl>
+    </Dialog>
   );
 }
 

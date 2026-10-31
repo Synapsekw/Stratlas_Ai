@@ -12,7 +12,8 @@ import { fitOf, lineUpManifest, measureOf } from './testing';
 
 let root: Root | undefined;
 let host: HTMLElement;
-const byId = (id: string) => host.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+// the dialog portals to the body, outside the host
+const byId = (id: string) => document.body.querySelector<HTMLElement>(`[data-testid="${id}"]`);
 
 type Mat = [number, number, number, number, number, number];
 const IDENTITY: Mat = [1, 0, 0, 1, 0, 0];
@@ -258,7 +259,7 @@ describe('LineUpDialog', () => {
     expect(byId('lineup-keep-d1')?.textContent).toBe('Survey · 4 Sep 2024');
     expect(byId('lineup-keep-d2')?.textContent).toBe('Survey · 10 Sep 2024');
     click('lineup-keep-d1');
-    const sides = [...host.querySelectorAll('.lu-side')].map((e) => e.textContent);
+    const sides = [...document.body.querySelectorAll('.lu-side')].map((e) => e.textContent);
     expect(sides).toEqual(['Survey · 4 Sep 2024', 'Survey · 10 Sep 2024']);
   });
 });

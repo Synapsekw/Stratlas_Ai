@@ -76,9 +76,10 @@ const pad = {
 
 let host: HTMLDivElement;
 let root: Root | undefined;
-const q = (id: string) => host.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+// the dialog portals to the body
+const q = (id: string) => document.body.querySelector<HTMLElement>(`[data-testid="${id}"]`);
 const volumesBox = () =>
-  host.querySelector<HTMLInputElement>('[data-testid="area-compare-volumes"]');
+  document.body.querySelector<HTMLInputElement>('[data-testid="area-compare-volumes"]');
 const flush = async () => {
   await act(async () => {
     await Promise.resolve();

@@ -51,7 +51,8 @@ function render() {
     root.render(<PipelineDialog />);
   });
 }
-const q = (id: string) => host.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+// the dialog portals to the body
+const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
 
 beforeEach(() => {
   host = document.createElement('div');
@@ -77,7 +78,7 @@ describe('the start dialog', () => {
     });
     render();
     expect(q('pipeline-dialog')).not.toBeNull();
-    expect(document.activeElement?.closest('.dlg-b')).not.toBeNull();
+    expect(document.activeElement?.closest('.q-dialog-body')).not.toBeNull();
     expect(document.activeElement?.tagName).toMatch(/^(INPUT|SELECT)$/);
   });
 

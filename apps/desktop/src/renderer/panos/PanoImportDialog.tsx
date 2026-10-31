@@ -1,7 +1,7 @@
 ﻿import type { PanoQuality, PanoScan } from '@aio/schema';
-import { Icon, t, useFocusTrap } from '@aio/ui';
+import { Dialog, Icon, t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   blockedKeys,
   canUseHigh,
@@ -84,13 +84,11 @@ export function PanoImportDialog() {
   const open = usePanoImport((s) => s.open);
   const scanId = usePanoImport((s) => s.scan?.scanId ?? '');
   if (!open) return null;
-  return <Dialog key={scanId} />;
+  return <PanoImportStep key={scanId} />;
 }
 
-function Dialog() {
+function PanoImportStep() {
   const { scan, busy, error, notStarted } = usePanoImport((s) => s);
-  const dlg = useRef<HTMLDivElement>(null);
-  useFocusTrap(dlg, true);
   const localGrid = useWorkspace((s) => isLocalGrid(s.project?.manifest));
   const [keys, setKeys] = useState<Set<string>>(
     () => new Set(scan ? defaultKeys(scan, localGrid) : []),
@@ -123,210 +121,20 @@ function Dialog() {
     });
 
   return (
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) void closePanoImport();
-      }}
-    >
-      <div
-        ref={dlg}
-        className="dlg wide pano-import"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="pano-import-title"
-        data-testid="pano-import"
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') void closePanoImport();
-        }}
-      >
-        <div className="dlg-h">
-          <Icon name="pano" size={16} />
-          <h2 id="pano-import-title">{dialogTitle(scan)}</h2>
-          <button
-            type="button"
-            className="btn ghost icon sm"
-            aria-label={t('pano.preview.cancel')}
-            onClick={() => void closePanoImport()}
-          >
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-        <div className="dlg-b">
-          {busy?.phase === 'scan' && (
-            <p className="pano-busy" data-testid="pano-progress" aria-live="polite">
-              {t('pano.scanning', { done: busy.done, total: busy.total })}
-            </p>
-          )}
-          {error && (
-            <p className="notice danger" role="alert">
-              <Icon name="warn" size={14} />
-              {error}
-            </p>
-          )}
-          {blocked.size > 0 && !notStarted && (
-            <p className="notice" role="status" data-testid="pano-left-out">
-              <Icon name="warn" size={14} />
-              {t('pano.preview.leftOut', { count: blocked.size })}
-            </p>
-          )}
-          {notStarted && (
-            <p className="notice" role="status">
-              <Icon name="clock" size={14} />
-              {t('pano.preview.importedNote')} {notStarted}
-            </p>
-          )}
-          {scan && !notStarted && (
-            <>
-              <section className="dlg-sec pano-head">
-                <p data-testid="pano-summary">
-                  {found ? summaryText(scan, [...keys]) : t('pano.none')}
-                </p>
-                <SphereMap scan={scan} keys={keys} />
-              </section>
-              <section className="dlg-sec pano-rows">
-                {scan.spheres.map((s, i) => (
-                  <label
-                    key={s.key}
-                    className={`pano-row${keys.has(s.key) ? '' : ' off'}`}
-                    data-testid={`pano-row-${s.key}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={keys.has(s.key)}
-                      disabled={copying || blocked.has(s.key)}
-                      onChange={() => {
-                        toggle(s.key);
-                      }}
-                    />
-                    {s.thumb ? <img src={s.thumb} alt="" /> : <span className="pano-thumb" />}
-                    <span className="pano-row-t">
-                      <b>{t('pano.itemName', { n: i + 1 })}</b>
-                      <small>{rowText(s.frames, s.startedAt, s.relAlt)}</small>
-                    </span>
-                    {s.shape === 'wide' && (
-                      <span className="tbadge info">{t('pano.preview.wide')}</span>
-                    )}
-                    {s.incomplete && (
-                      <span className="tbadge warn">{t('pano.preview.incomplete')}</span>
-                    )}
-                    {blocked.has(s.key) && (
-                      <span className="tbadge warn">{t('pano.preview.needsCrs')}</span>
-                    )}
-                    {s.alreadyIn && (
-                      <span className="tbadge warn">
-                        {t('pano.preview.already', { layer: s.alreadyIn })}
-                      </span>
-                    )}
-                  </label>
-                ))}
-                {scan.ready.map((r, i) => (
-                  <label
-                    key={r.key}
-                    className={`pano-row${keys.has(r.key) ? '' : ' off'}`}
-                    data-testid={`pano-row-${r.key}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={keys.has(r.key)}
-                      disabled={copying || blocked.has(r.key)}
-                      onChange={() => {
-                        toggle(r.key);
-                      }}
-                    />
-                    {r.thumb ? <img src={r.thumb} alt="" /> : <span className="pano-thumb" />}
-                    <span className="pano-row-t">
-                      <b>{t('pano.itemName', { n: scan.spheres.length + i + 1 })}</b>
-                      <small>{r.file.split(/[\\/]/).pop()}</small>
-                    </span>
-                    <span className="tbadge info">{t('pano.preview.ready')}</span>
-                    {!placed(r) && <span className="tbadge">{t('pin.notPlaced')}</span>}
-                    {blocked.has(r.key) && (
-                      <span className="tbadge warn">{t('pano.preview.needsCrs')}</span>
-                    )}
-                  </label>
-                ))}
-              </section>
-              {scan.skipped.length > 0 && (
-                <details className="dlg-sec pano-skipped" data-testid="pano-skipped">
-                  <summary>
-                    {t('pano.preview.notPano')} ({scan.skipped.length})
-                  </summary>
-                  <ul>
-                    {scan.skipped.slice(0, 200).map((s) => (
-                      <li key={s.file}>
-                        <span className="mono">{s.file.split(/[\\/]/).pop()}</span>{' '}
-                        {panoSkipText(s.reason)}
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="dim">{t('pano.preview.photosHint')}</p>
-                </details>
-              )}
-              <section className="dlg-sec pano-fields">
-                <label>
-                  <span>{t('pano.preview.name')}</span>
-                  <input
-                    className="input"
-                    data-testid="pano-name"
-                    value={name}
-                    disabled={copying}
-                    onChange={(e) => {
-                      setName(e.target.value);
-                    }}
-                  />
-                </label>
-                <label>
-                  <span>{t('pano.preview.date')}</span>
-                  <input
-                    className="input"
-                    data-testid="pano-date"
-                    type="date"
-                    value={date}
-                    disabled={copying}
-                    onChange={(e) => {
-                      setDate(e.target.value);
-                    }}
-                  />
-                </label>
-                <fieldset>
-                  <legend>{t('pano.preview.quality')}</legend>
-                  <label>
-                    <input
-                      type="radio"
-                      name="pano-q"
-                      checked={quality === 'standard'}
-                      onChange={() => {
-                        setQuality('standard');
-                      }}
-                    />
-                    {t('pano.preview.standard')}
-                  </label>
-                  {high && (
-                    <label>
-                      <input
-                        data-testid="pano-quality-high"
-                        type="radio"
-                        name="pano-q"
-                        checked={quality === 'high'}
-                        onChange={() => {
-                          setQuality('high');
-                        }}
-                      />
-                      {t('pano.preview.high')}
-                    </label>
-                  )}
-                </fieldset>
-              </section>
-            </>
-          )}
-          {copying && (
-            <p className="pano-busy" data-testid="pano-progress" aria-live="polite">
-              {t('pano.preview.copying', { done: busy.done, total: busy.total })}
-            </p>
-          )}
-        </div>
-        <div className="dlg-f">
+    <Dialog
+      open
+      onClose={() => void closePanoImport()}
+      size="lg"
+      className="pano-import"
+      testId="pano-import"
+      title={
+        <>
+          <Icon name="pano" size={16} /> {dialogTitle(scan)}
+        </>
+      }
+      closeLabel={t('pano.preview.cancel')}
+      footer={
+        <>
           <button type="button" className="btn ghost" onClick={() => void closePanoImport()}>
             {notStarted ? t('pano.preview.close') : t('pano.preview.cancel')}
           </button>
@@ -341,8 +149,181 @@ function Dialog() {
               {t('pano.preview.import')}
             </button>
           )}
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      {busy?.phase === 'scan' && (
+        <p className="pano-busy" data-testid="pano-progress" aria-live="polite">
+          {t('pano.scanning', { done: busy.done, total: busy.total })}
+        </p>
+      )}
+      {error && (
+        <p className="notice danger" role="alert">
+          <Icon name="warn" size={14} />
+          {error}
+        </p>
+      )}
+      {blocked.size > 0 && !notStarted && (
+        <p className="notice" role="status" data-testid="pano-left-out">
+          <Icon name="warn" size={14} />
+          {t('pano.preview.leftOut', { count: blocked.size })}
+        </p>
+      )}
+      {notStarted && (
+        <p className="notice" role="status">
+          <Icon name="clock" size={14} />
+          {t('pano.preview.importedNote')} {notStarted}
+        </p>
+      )}
+      {scan && !notStarted && (
+        <>
+          <section className="dlg-sec pano-head">
+            <p data-testid="pano-summary">
+              {found ? summaryText(scan, [...keys]) : t('pano.none')}
+            </p>
+            <SphereMap scan={scan} keys={keys} />
+          </section>
+          <section className="dlg-sec pano-rows">
+            {scan.spheres.map((s, i) => (
+              <label
+                key={s.key}
+                className={`pano-row${keys.has(s.key) ? '' : ' off'}`}
+                data-testid={`pano-row-${s.key}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={keys.has(s.key)}
+                  disabled={copying || blocked.has(s.key)}
+                  onChange={() => {
+                    toggle(s.key);
+                  }}
+                />
+                {s.thumb ? <img src={s.thumb} alt="" /> : <span className="pano-thumb" />}
+                <span className="pano-row-t">
+                  <b>{t('pano.itemName', { n: i + 1 })}</b>
+                  <small>{rowText(s.frames, s.startedAt, s.relAlt)}</small>
+                </span>
+                {s.shape === 'wide' && (
+                  <span className="tbadge info">{t('pano.preview.wide')}</span>
+                )}
+                {s.incomplete && (
+                  <span className="tbadge warn">{t('pano.preview.incomplete')}</span>
+                )}
+                {blocked.has(s.key) && (
+                  <span className="tbadge warn">{t('pano.preview.needsCrs')}</span>
+                )}
+                {s.alreadyIn && (
+                  <span className="tbadge warn">
+                    {t('pano.preview.already', { layer: s.alreadyIn })}
+                  </span>
+                )}
+              </label>
+            ))}
+            {scan.ready.map((r, i) => (
+              <label
+                key={r.key}
+                className={`pano-row${keys.has(r.key) ? '' : ' off'}`}
+                data-testid={`pano-row-${r.key}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={keys.has(r.key)}
+                  disabled={copying || blocked.has(r.key)}
+                  onChange={() => {
+                    toggle(r.key);
+                  }}
+                />
+                {r.thumb ? <img src={r.thumb} alt="" /> : <span className="pano-thumb" />}
+                <span className="pano-row-t">
+                  <b>{t('pano.itemName', { n: scan.spheres.length + i + 1 })}</b>
+                  <small>{r.file.split(/[\\/]/).pop()}</small>
+                </span>
+                <span className="tbadge info">{t('pano.preview.ready')}</span>
+                {!placed(r) && <span className="tbadge">{t('pin.notPlaced')}</span>}
+                {blocked.has(r.key) && (
+                  <span className="tbadge warn">{t('pano.preview.needsCrs')}</span>
+                )}
+              </label>
+            ))}
+          </section>
+          {scan.skipped.length > 0 && (
+            <details className="dlg-sec pano-skipped" data-testid="pano-skipped">
+              <summary>
+                {t('pano.preview.notPano')} ({scan.skipped.length})
+              </summary>
+              <ul>
+                {scan.skipped.slice(0, 200).map((s) => (
+                  <li key={s.file}>
+                    <span className="mono">{s.file.split(/[\\/]/).pop()}</span>{' '}
+                    {panoSkipText(s.reason)}
+                  </li>
+                ))}
+              </ul>
+              <p className="dim">{t('pano.preview.photosHint')}</p>
+            </details>
+          )}
+          <section className="dlg-sec pano-fields">
+            <label>
+              <span>{t('pano.preview.name')}</span>
+              <input
+                className="input"
+                data-testid="pano-name"
+                value={name}
+                disabled={copying}
+                onChange={(e) => {
+                  setName(e.target.value);
+                }}
+              />
+            </label>
+            <label>
+              <span>{t('pano.preview.date')}</span>
+              <input
+                className="input"
+                data-testid="pano-date"
+                type="date"
+                value={date}
+                disabled={copying}
+                onChange={(e) => {
+                  setDate(e.target.value);
+                }}
+              />
+            </label>
+            <fieldset>
+              <legend>{t('pano.preview.quality')}</legend>
+              <label>
+                <input
+                  type="radio"
+                  name="pano-q"
+                  checked={quality === 'standard'}
+                  onChange={() => {
+                    setQuality('standard');
+                  }}
+                />
+                {t('pano.preview.standard')}
+              </label>
+              {high && (
+                <label>
+                  <input
+                    data-testid="pano-quality-high"
+                    type="radio"
+                    name="pano-q"
+                    checked={quality === 'high'}
+                    onChange={() => {
+                      setQuality('high');
+                    }}
+                  />
+                  {t('pano.preview.high')}
+                </label>
+              )}
+            </fieldset>
+          </section>
+        </>
+      )}
+      {copying && (
+        <p className="pano-busy" data-testid="pano-progress" aria-live="polite">
+          {t('pano.preview.copying', { done: busy.done, total: busy.total })}
+        </p>
+      )}
+    </Dialog>
   );
 }

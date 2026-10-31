@@ -1,14 +1,23 @@
 /* ---------- engineering model: setup dialog and run stages (engineer/) ----------
-   The setup uses the app's dialog frame (.dlg, package.css); sections are fieldsets so each
+   The setup uses the @aio/ui Dialog (.q-dialog); sections are fieldsets so each
    group of choices is announced with its name. Fits a 1100 x 720 window: the body scrolls. */
 
-.eng-setup .dlg-b {
-  gap: 12px;
+.eng-setup .q-dialog-body {
+  gap: var(--sp-5);
+}
+/* the key guard round the body adds no box: the steps stay the body's rows */
+.eng-setup-keys {
+  display: contents;
+}
+/* Back at the start of the footer; Cancel and Next or Start at the end */
+.eng-setup .q-dialog-foot .grow {
+  flex: 1;
+  min-width: 0;
 }
 .eng-setup [hidden] {
   display: none !important;
 }
-.eng-setup .dlg-b > div:not([hidden]) {
+.eng-setup .eng-setup-keys > div:not([hidden]) {
   display: grid;
   gap: 20px;
 }

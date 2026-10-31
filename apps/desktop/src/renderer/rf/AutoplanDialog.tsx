@@ -13,11 +13,11 @@
  * - The store and the planner hold no English: reasons, notes, errors and warnings are
  *   `rf.autoplan.*` keys with values (`planText`); a provider's own text is shown as it came.
  */
-import { PROVIDER_LABELS, SendDialog } from '@aio/ai';
+import { PROVIDER_LABELS } from '@aio/ai';
 import type { IpcResponse, RfCatalogueEntry, RfEquipment, RfTech } from '@aio/schema';
-import { Button, PortalRoot, Tip, useFocusTrap, useT, type MessageKey, type Vars } from '@aio/ui';
+import { Button, Dialog, Tip, useT, type MessageKey, type Vars } from '@aio/ui';
 import { assetUrl } from '@aio/workspace';
-import { useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { antennaStore } from '../telecom/antennaStore';
 import {
@@ -339,53 +339,52 @@ function SendPreview({ preview, t }: { preview: Preview; t: T }) {
   const provider = providerName(preview.provider);
   const photos = photosSent(preview);
   return (
-    <div data-testid="rf-autoplan" className="rf-autoplan-send">
-      <SendDialog
-        standalone
-        className="surface-dlg"
-        titleId="rf-autoplan-send-title"
-        title={t('rf.autoplan.send.title', { provider })}
-        onCancel={cancelAutoplan}
-        actions={
-          <>
-            <Button onClick={cancelAutoplan}>{t('rf.autoplan.cancel')}</Button>
-            <Button
-              variant="primary"
-              data-testid="rf-autoplan-send"
-              onClick={() => {
-                void confirmSend(preview.photosAllowed);
-              }}
-            >
-              {t('rf.autoplan.send.send')}
-            </Button>
-          </>
-        }
-      >
-        <p>{t('rf.autoplan.send.body', { provider })}</p>
-        <p className="mono">
-          {preview.model}, {costText(t, preview)}
-        </p>
-        {photos > 0 && projectId ? (
-          <>
-            <p>{t('rf.autoplan.send.photos', { count: photos })}</p>
-            <ul className="rf-autoplan-crops">
-              {preview.crops.map((c) => (
-                <li key={c.unitId}>
-                  <img
-                    src={assetUrl(projectId, { path: c.path })}
-                    alt={nameOf(c.unitId)}
-                    width={72}
-                    height={72}
-                  />
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : (
-          <p>{t('rf.autoplan.send.noPhotos')}</p>
-        )}
-      </SendDialog>
-    </div>
+    <Dialog
+      open
+      onClose={cancelAutoplan}
+      dismissable={false}
+      testId="rf-autoplan"
+      className="rf-autoplan-send"
+      title={t('rf.autoplan.send.title', { provider })}
+      footer={
+        <>
+          <Button onClick={cancelAutoplan}>{t('rf.autoplan.cancel')}</Button>
+          <Button
+            variant="primary"
+            data-testid="rf-autoplan-send"
+            onClick={() => {
+              void confirmSend(preview.photosAllowed);
+            }}
+          >
+            {t('rf.autoplan.send.send')}
+          </Button>
+        </>
+      }
+    >
+      <p>{t('rf.autoplan.send.body', { provider })}</p>
+      <p className="mono">
+        {preview.model}, {costText(t, preview)}
+      </p>
+      {photos > 0 && projectId ? (
+        <>
+          <p>{t('rf.autoplan.send.photos', { count: photos })}</p>
+          <ul className="rf-autoplan-crops">
+            {preview.crops.map((c) => (
+              <li key={c.unitId}>
+                <img
+                  src={assetUrl(projectId, { path: c.path })}
+                  alt={nameOf(c.unitId)}
+                  width={72}
+                  height={72}
+                />
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p>{t('rf.autoplan.send.noPhotos')}</p>
+      )}
+    </Dialog>
   );
 }
 
@@ -416,7 +415,6 @@ export function AutoplanDialog() {
   const [seenPhase, setSeenPhase] = useState<AutoplanPhase>(phase);
   const rfProject = useRf((s) => s.projectId);
   const [seenProject, setSeenProject] = useState(rfProject);
-  const dlg = useRef<HTMLDivElement>(null);
 
   // another project: what the last one's Apply said is not about this one (R17)
   if (seenProject !== rfProject) {
@@ -442,15 +440,8 @@ export function AutoplanDialog() {
     setProblem(null);
     if (phase !== 'idle') cancelAutoplan();
   };
-  useFocusTrap(dlg, open, { onEscape: close, returnTo: () => opener });
 
-  if (sendShown) {
-    return (
-      <PortalRoot opener={opener}>
-        <SendPreview preview={preview} t={t} />
-      </PortalRoot>
-    );
-  }
+  if (sendShown) return <SendPreview preview={preview} t={t} />;
   if (!open) return null;
 
   const providerId = storeProvider ?? lastPreview?.provider ?? null;
@@ -668,34 +659,25 @@ export function AutoplanDialog() {
   }
 
   return (
-    <PortalRoot opener={opener}>
-      <div
-        className="dlg-scrim"
-        onMouseDown={(e) => {
-          if (e.target === e.currentTarget) close();
-        }}
-      >
-        <div
-          ref={dlg}
-          className="dlg wide rf-autoplan"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="rf-autoplan-title"
-          data-testid="rf-autoplan"
-          data-phase={phase}
-        >
-          <div className="dlg-h">
-            <h2 id="rf-autoplan-title">
-              <span className="rf-autoplan-mark" aria-hidden="true">
-                ✦
-              </span>{' '}
-              {title}
-            </h2>
-          </div>
-          <div className="dlg-b">{body}</div>
-          <div className="dlg-f">{foot}</div>
-        </div>
-      </div>
-    </PortalRoot>
+    <Dialog
+      open
+      onClose={close}
+      returnFocus={() => opener}
+      size="lg"
+      className="rf-autoplan"
+      testId="rf-autoplan"
+      data={{ 'data-phase': phase }}
+      title={
+        <>
+          <span className="rf-autoplan-mark" aria-hidden="true">
+            ✦
+          </span>{' '}
+          {title}
+        </>
+      }
+      footer={foot}
+    >
+      {body}
+    </Dialog>
   );
 }

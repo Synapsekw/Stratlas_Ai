@@ -3,9 +3,9 @@
  * "Include volumes (cut and fill)" remembered per computer, and Compare. It starts the area runs
  * (`runAreaCompare`); a start error stays in the box, notes become toasts.
  */
-import { formatDate, Icon, useFocusTrap, useT } from '@aio/ui';
+import { Dialog, formatDate, Icon, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { toastHost } from '../../shell/actions/toastHost';
 import { useMeasure } from '../../survey/measureStore';
 import '../../survey/measure.css';
@@ -40,11 +40,9 @@ export function AreaCompareDialog({ request }: { request: AreaCompareRequest }) 
   const [wanted, setWanted] = useState(volumesPref);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
   const close = () => {
     areaCompare.getState().close();
   };
-  useFocusTrap(ref, true, { onEscape: close });
 
   const ctx = project ? pairContext(project.id, request.from, request.to) : null;
   const surfaces = ctx ? surfacePair(ctx) : null;
@@ -90,68 +88,15 @@ export function AreaCompareDialog({ request }: { request: AreaCompareRequest }) 
   };
 
   return (
-    <div
-      ref={ref}
-      className="sv-scrim"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="area-compare-title"
-      data-testid="area-compare-dialog"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !busy) close();
-      }}
-    >
-      <div className="sv-dialog" style={{ width: 'min(400px, 100%)' }}>
-        <header className="sv-head" role="none">
-          <Icon name="split" size={16} />
-          <h2 id="area-compare-title">{t('change.area.title')}</h2>
-          <button
-            type="button"
-            className="btn ghost sm"
-            aria-label={t('dialog.close')}
-            onClick={close}
-          >
-            <Icon name="x" size={14} />
-          </button>
-        </header>
-        <p className="small faint" data-testid="area-compare-name">
-          {name}
-        </p>
-        <p className="small" data-testid="area-compare-dates">
-          {t('change.area.dates', { from: dateOf(request.from), to: dateOf(request.to) })}
-        </p>
-        <div>
-          <label className="sv-check">
-            <input
-              type="checkbox"
-              data-testid="area-compare-volumes"
-              aria-describedby={noVolumes ? 'area-compare-volumes-reason' : undefined}
-              checked={noVolumes === null && wanted}
-              disabled={noVolumes !== null || busy}
-              onChange={(e) => {
-                setWanted(e.target.checked);
-              }}
-            />
-            {t('change.area.volumes')}
-          </label>
-          {noVolumes && (
-            <p
-              id="area-compare-volumes-reason"
-              className="small faint"
-              data-testid="area-compare-volumes-reason"
-            >
-              {noVolumes}
-            </p>
-          )}
-        </div>
-        {error && (
-          <p className="notice danger small" role="alert" data-testid="area-compare-error">
-            <Icon name="warn" size={14} />
-            {error}
-          </p>
-        )}
-        <footer className="sv-foot" role="none">
-          <span className="sv-grow" />
+    <Dialog
+      open
+      onClose={close}
+      title={t('change.area.title')}
+      size="sm"
+      dismissable={!busy}
+      testId="area-compare-dialog"
+      footer={
+        <>
           <button
             type="button"
             className="btn sm ghost"
@@ -172,8 +117,45 @@ export function AreaCompareDialog({ request }: { request: AreaCompareRequest }) 
           >
             {t('change.area.run')}
           </button>
-        </footer>
+        </>
+      }
+    >
+      <p className="small faint" data-testid="area-compare-name">
+        {name}
+      </p>
+      <p className="small" data-testid="area-compare-dates">
+        {t('change.area.dates', { from: dateOf(request.from), to: dateOf(request.to) })}
+      </p>
+      <div>
+        <label className="sv-check">
+          <input
+            type="checkbox"
+            data-testid="area-compare-volumes"
+            aria-describedby={noVolumes ? 'area-compare-volumes-reason' : undefined}
+            checked={noVolumes === null && wanted}
+            disabled={noVolumes !== null || busy}
+            onChange={(e) => {
+              setWanted(e.target.checked);
+            }}
+          />
+          {t('change.area.volumes')}
+        </label>
+        {noVolumes && (
+          <p
+            id="area-compare-volumes-reason"
+            className="small faint"
+            data-testid="area-compare-volumes-reason"
+          >
+            {noVolumes}
+          </p>
+        )}
       </div>
-    </div>
+      {error && (
+        <p className="notice danger small" role="alert" data-testid="area-compare-error">
+          <Icon name="warn" size={14} />
+          {error}
+        </p>
+      )}
+    </Dialog>
   );
 }

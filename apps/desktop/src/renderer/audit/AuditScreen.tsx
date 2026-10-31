@@ -7,7 +7,7 @@ import type {
   ChangeHow,
   VerifyReport,
 } from '@aio/schema';
-import { Icon, useFocusTrap, useT } from '@aio/ui';
+import { Dialog, Icon, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { auditApi, type AuditApi } from './api';
@@ -125,53 +125,19 @@ function RedactDialog({
 }) {
   const t = useT();
   const [reason, setReason] = useState('');
-  const dlg = useRef<HTMLDivElement>(null);
-  useFocusTrap(dlg, true, { onEscape: onCancel });
   return (
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !busy) onCancel();
+    <Dialog
+      open
+      role="alertdialog"
+      hideClose
+      testId="audit-redact-dialog"
+      title={t('audit.redact.title')}
+      description={t('audit.redact.text')}
+      onClose={() => {
+        if (!busy) onCancel();
       }}
-    >
-      <div
-        ref={dlg}
-        className="dlg"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="aud-redact-h"
-        aria-describedby="aud-redact-text"
-        data-testid="audit-redact-dialog"
-      >
-        <div className="dlg-h">
-          <Icon name="x" size={16} />
-          <h2 id="aud-redact-h">{t('audit.redact.title')}</h2>
-        </div>
-        <div className="dlg-b">
-          <p id="aud-redact-text" className="help">
-            {t('audit.redact.text')}
-          </p>
-          <label className="aud-field-l">
-            <span>{t('audit.redact.reason')}</span>
-            <textarea
-              className="input"
-              rows={2}
-              maxLength={500}
-              value={reason}
-              disabled={busy}
-              onChange={(e) => {
-                setReason(e.target.value);
-              }}
-            />
-          </label>
-          {error && (
-            <p className="prov-err" role="alert">
-              {error}
-            </p>
-          )}
-        </div>
-        <div className="dlg-f">
-          <span className="grow" />
+      footer={
+        <>
           <button type="button" className="btn ghost" disabled={busy} onClick={onCancel}>
             {t('audit.redact.cancel')}
           </button>
@@ -186,9 +152,28 @@ function RedactDialog({
           >
             {t('audit.redact.confirm')}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <label className="aud-field-l">
+        <span>{t('audit.redact.reason')}</span>
+        <textarea
+          className="input"
+          rows={2}
+          maxLength={500}
+          value={reason}
+          disabled={busy}
+          onChange={(e) => {
+            setReason(e.target.value);
+          }}
+        />
+      </label>
+      {error && (
+        <p className="prov-err" role="alert">
+          {error}
+        </p>
+      )}
+    </Dialog>
   );
 }
 

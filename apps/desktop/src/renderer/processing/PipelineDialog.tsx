@@ -3,9 +3,9 @@
  * Opened with `processing.getState().openDialog(draft)` from the screen the work belongs to
  * (Detections, road setup). When the job has started, the Processing drawer opens on it.
  */
-import { Icon, t, useFocusTrap, useT } from '@aio/ui';
+import { Dialog, Icon, t, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, type RefObject } from 'react';
 import { sameFolder } from '../jobs';
 import { openProcessingTools } from '../processingTools';
 import { useJobs, useShell } from '../shell';
@@ -21,7 +21,17 @@ export function PipelineDialog() {
   const name = useWorkspace((s) => s.project?.manifest.name);
   const pkg = useShell((s) => s.pkg !== null);
   const toolsMissing = useJobs((s) => s.runtime?.found === false);
-  const dlg = useRef<HTMLDivElement>(null);
+  // the first field takes the focus, not the "update the tools" button above the form
+  const firstField = useMemo<RefObject<HTMLElement | null>>(
+    () => ({
+      get current() {
+        return document.querySelector<HTMLElement>(
+          '[data-testid="pipeline-dialog"] .q-dialog-body :is(input, select, textarea)',
+        );
+      },
+    }),
+    [],
+  );
   const close = () => {
     processing.getState().closeDialog();
   };
@@ -36,70 +46,43 @@ export function PipelineDialog() {
   useEffect(() => {
     if (req !== null && !here) processing.getState().closeDialog();
   }, [req, here]);
-  // the trap needs the dialog in the DOM; the first field takes the focus, not the close button
-  useFocusTrap(dlg, here, {
-    onEscape: close,
-    initial: () => dlg.current?.querySelector<HTMLElement>('.dlg-b :is(input, select, textarea)'),
-  });
   if (!here) return null;
   return (
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
+    <Dialog
+      open
+      className="proc-dlg"
+      testId="pipeline-dialog"
+      title={jobTitle(req.pipeline)}
+      description={<span dir="auto">{t('processing.dialog.runsIn', { name })}</span>}
+      closeLabel={t('processing.close')}
+      initialFocus={firstField}
+      onClose={close}
     >
-      <div
-        ref={dlg}
-        className="dlg proc-dlg"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="proc-dlg-h"
-        data-testid="pipeline-dialog"
-      >
-        <div className="dlg-h">
-          <Icon name="clock" size={16} />
-          <h2 id="proc-dlg-h">{jobTitle(req.pipeline)}</h2>
-          <span className="sub" dir="auto">
-            {t('processing.dialog.runsIn', { name })}
-          </span>
+      {toolsMissing && (
+        <div className="proc-tools" data-testid="dialog-tools">
+          <Icon name="warn" size={14} />
+          <span>{t('processing.toolsMissing')}</span>
           <button
             type="button"
-            className="btn ghost icon sm"
-            aria-label={t('processing.close')}
-            onClick={close}
+            className="btn sm"
+            onClick={() => {
+              close();
+              openProcessingTools();
+            }}
           >
-            <Icon name="x" size={14} />
+            {t('processing.toolsUpdate')}
           </button>
         </div>
-        <div className="dlg-b">
-          {toolsMissing && (
-            <div className="proc-tools" data-testid="dialog-tools">
-              <Icon name="warn" size={14} />
-              <span>{t('processing.toolsMissing')}</span>
-              <button
-                type="button"
-                className="btn sm"
-                onClick={() => {
-                  close();
-                  openProcessingTools();
-                }}
-              >
-                {t('processing.toolsUpdate')}
-              </button>
-            </div>
-          )}
-          <PipelineForm
-            key={req.pipeline}
-            fixed
-            draft={req}
-            onClose={close}
-            onStarted={(id) => {
-              processing.getState().openDrawer(id);
-            }}
-          />
-        </div>
-      </div>
-    </div>
+      )}
+      <PipelineForm
+        key={req.pipeline}
+        fixed
+        draft={req}
+        onClose={close}
+        onStarted={(id) => {
+          processing.getState().openDrawer(id);
+        }}
+      />
+    </Dialog>
   );
 }

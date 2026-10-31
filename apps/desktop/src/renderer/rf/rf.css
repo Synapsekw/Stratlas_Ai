@@ -1,6 +1,6 @@
 /* RF coverage: the RF workbench tab (benches/RfBench.tsx), the catalogue picker and the CSV
-   import (spec D21, D22). Foundation tokens and logical properties only; the dialogs use the app's
-   dialog frame (.dlg, package.css) and the segmented look is the foundation's .seg. */
+   import (spec D21, D22). Foundation tokens and logical properties only; the dialogs use the
+   shared Dialog (@aio/ui) and the segmented look is the foundation's .seg. */
 
 /* ----------------------------------------------------------------------- the tab */
 .rf-bench {
@@ -471,7 +471,7 @@
 }
 
 /* ----------------------------------------------------------------------- the picker */
-.rf-cat-body {
+.rf-cat .q-dialog-body {
   gap: var(--sp-4);
 }
 .rf-cat-search {
@@ -564,7 +564,8 @@
 }
 
 /* -------------------------------------------------------------- Auto-plan review (simplify T9) */
-.dlg.rf-autoplan {
+/* wider than the lg size: the review table needs the room */
+.q-dialog.rf-autoplan[data-size] {
   inline-size: min(1100px, 94vw);
 }
 .rf-autoplan-mark {

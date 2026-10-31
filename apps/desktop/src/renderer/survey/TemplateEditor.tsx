@@ -36,8 +36,8 @@ import {
   uniqueId,
   updateField,
 } from '@aio/survey';
-import { EmptyState, Icon, t, useFocusTrap } from '@aio/ui';
-import { useRef, useState } from 'react';
+import { Dialog, EmptyState, Icon, t } from '@aio/ui';
+import { useState } from 'react';
 import { DEFAULT_MEASURE_COLOUR } from './measureColours';
 import {
   deleteTemplate,
@@ -82,11 +82,9 @@ export function TemplateEditor() {
   const [isNew, setIsNew] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
   const close = () => {
     openDialog(null);
   };
-  useFocusTrap(ref, true, { onEscape: close });
 
   const file = scope === 'project' ? templates.project : templates.user;
   const list = file?.templates ?? [];
@@ -102,136 +100,15 @@ export function TemplateEditor() {
   };
 
   return (
-    <div
-      ref={ref}
-      className="sv-scrim"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="sv-tpl-title"
-      data-testid="survey-templates"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
-    >
-      <div className="sv-dialog sv-tpl">
-        <header className="sv-head" role="none">
-          <h2 id="sv-tpl-title">Measurement templates</h2>
-          <button type="button" className="btn ghost sm" aria-label="Close" onClick={close}>
-            <Icon name="x" size={14} />
-          </button>
-        </header>
-        <div className="sv-tpl-body">
-          <nav className="sv-tpl-list" aria-label="Templates">
-            <div className="seg" role="group" aria-label="Where the templates are kept">
-              {(['project', 'user'] as const).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  aria-pressed={scope === s}
-                  onClick={() => {
-                    setScope(s);
-                    setDraft(null);
-                    setError(null);
-                  }}
-                >
-                  {s === 'project' ? 'This project' : 'My library'}
-                </button>
-              ))}
-            </div>
-            <ul>
-              {list.map((t) => (
-                <li key={t.id}>
-                  <button
-                    type="button"
-                    aria-current={draft?.id === t.id && !isNew ? 'true' : undefined}
-                    data-testid={`survey-template-${t.id}`}
-                    onClick={() => {
-                      setDraft(t);
-                      setIsNew(false);
-                      setError(null);
-                    }}
-                  >
-                    {t.bookmarked && <Icon name="flag" size={12} />}
-                    <span>{t.name}</span>
-                    <small className="faint">{TOOL_LABELS[t.tool]}</small>
-                  </button>
-                </li>
-              ))}
-              {list.length === 0 && (
-                <li>
-                  <EmptyState title={t('empty.templates.title')} />
-                </li>
-              )}
-            </ul>
-            <button
-              type="button"
-              className="btn sm"
-              disabled={projectLocked}
-              data-testid="survey-template-new"
-              onClick={() => {
-                setDraft(
-                  newTemplate(
-                    'New template',
-                    'distance',
-                    list.map((t) => t.id),
-                  ),
-                );
-                setIsNew(true);
-                setError(null);
-              }}
-            >
-              <Icon name="plus" size={12} /> New template
-            </button>
-            <fieldset className="sv-sets" data-testid="survey-template-sets">
-              <legend>Industry template sets</legend>
-              {IndustrySet.options.map((set) => (
-                <label key={set} className="sv-check">
-                  <input
-                    type="checkbox"
-                    checked={settings.templateSets.includes(set)}
-                    disabled={busy || readOnly || !projectId}
-                    data-testid={`survey-template-set-${set}`}
-                    onChange={(e) => {
-                      const on = e.target.checked;
-                      const next = IndustrySet.options.filter((x) =>
-                        x === set ? on : settings.templateSets.includes(x),
-                      );
-                      void run(saveSiteSettings({ ...settings, templateSets: next }));
-                    }}
-                  />
-                  {INDUSTRY_SET_LABELS[set]}{' '}
-                  <small className="faint">({String(industrySet(set).length)})</small>
-                </label>
-              ))}
-            </fieldset>
-          </nav>
-          <div className="sv-tpl-edit">
-            {!draft && (
-              <p className="faint small">
-                Pick a template to change it, or make a new one. Bookmarked templates show on the
-                toolbar.
-              </p>
-            )}
-            {draft && (
-              <TemplateForm
-                draft={draft}
-                locked={projectLocked}
-                onChange={(t) => {
-                  setDraft(t);
-                }}
-              />
-            )}
-          </div>
-        </div>
-        {(problems.length > 0 || error) && (
-          <ul className="sv-problems" role="alert">
-            {problems.map((p) => (
-              <li key={p}>{p}</li>
-            ))}
-            {error && <li>{error}</li>}
-          </ul>
-        )}
-        <footer className="sv-foot" role="none">
+    <Dialog
+      open
+      onClose={close}
+      title="Measurement templates"
+      size="lg"
+      className="sv-tpl"
+      testId="survey-templates"
+      footer={
+        <>
           {draft && !isNew && (
             <>
               <button
@@ -295,9 +172,121 @@ export function TemplateEditor() {
               Save template
             </button>
           )}
-        </footer>
+        </>
+      }
+    >
+      <div className="sv-tpl-body">
+        <nav className="sv-tpl-list" aria-label="Templates">
+          <div className="seg" role="group" aria-label="Where the templates are kept">
+            {(['project', 'user'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                aria-pressed={scope === s}
+                onClick={() => {
+                  setScope(s);
+                  setDraft(null);
+                  setError(null);
+                }}
+              >
+                {s === 'project' ? 'This project' : 'My library'}
+              </button>
+            ))}
+          </div>
+          <ul>
+            {list.map((t) => (
+              <li key={t.id}>
+                <button
+                  type="button"
+                  aria-current={draft?.id === t.id && !isNew ? 'true' : undefined}
+                  data-testid={`survey-template-${t.id}`}
+                  onClick={() => {
+                    setDraft(t);
+                    setIsNew(false);
+                    setError(null);
+                  }}
+                >
+                  {t.bookmarked && <Icon name="flag" size={12} />}
+                  <span>{t.name}</span>
+                  <small className="faint">{TOOL_LABELS[t.tool]}</small>
+                </button>
+              </li>
+            ))}
+            {list.length === 0 && (
+              <li>
+                <EmptyState title={t('empty.templates.title')} />
+              </li>
+            )}
+          </ul>
+          <button
+            type="button"
+            className="btn sm"
+            disabled={projectLocked}
+            data-testid="survey-template-new"
+            onClick={() => {
+              setDraft(
+                newTemplate(
+                  'New template',
+                  'distance',
+                  list.map((t) => t.id),
+                ),
+              );
+              setIsNew(true);
+              setError(null);
+            }}
+          >
+            <Icon name="plus" size={12} /> New template
+          </button>
+          <fieldset className="sv-sets" data-testid="survey-template-sets">
+            <legend>Industry template sets</legend>
+            {IndustrySet.options.map((set) => (
+              <label key={set} className="sv-check">
+                <input
+                  type="checkbox"
+                  checked={settings.templateSets.includes(set)}
+                  disabled={busy || readOnly || !projectId}
+                  data-testid={`survey-template-set-${set}`}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    const next = IndustrySet.options.filter((x) =>
+                      x === set ? on : settings.templateSets.includes(x),
+                    );
+                    void run(saveSiteSettings({ ...settings, templateSets: next }));
+                  }}
+                />
+                {INDUSTRY_SET_LABELS[set]}{' '}
+                <small className="faint">({String(industrySet(set).length)})</small>
+              </label>
+            ))}
+          </fieldset>
+        </nav>
+        <div className="sv-tpl-edit">
+          {!draft && (
+            <p className="faint small">
+              Pick a template to change it, or make a new one. Bookmarked templates show on the
+              toolbar.
+            </p>
+          )}
+          {draft && (
+            <TemplateForm
+              draft={draft}
+              locked={projectLocked}
+              onChange={(t) => {
+                setDraft(t);
+              }}
+            />
+          )}
+        </div>
       </div>
-    </div>
+      {(problems.length > 0 || error) && (
+        <ul className="sv-problems" role="alert">
+          {problems.map((p) => (
+            <li key={p}>{p}</li>
+          ))}
+          {error && <li>{error}</li>}
+        </ul>
+      )}
+    </Dialog>
   );
 }
 

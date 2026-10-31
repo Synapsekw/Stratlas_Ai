@@ -7,17 +7,7 @@
  */
 import { BANDS, catalogueVendors, entryBandRanges, searchCatalogue, type Band } from '@aio/rf';
 import type { RfCatalogueEntry } from '@aio/schema';
-import {
-  Button,
-  Chip,
-  EmptyState,
-  IconButton,
-  PortalRoot,
-  Row,
-  useFocusTrap,
-  useT,
-  type IconName,
-} from '@aio/ui';
+import { Button, Chip, Dialog, EmptyState, Row, useT, type IconName } from '@aio/ui';
 import { useMemo, useRef, useState } from 'react';
 import { importCatalogue, useRf } from './rfStore';
 import './rf.css';
@@ -165,13 +155,7 @@ export function CataloguePicker({
   const [bandOnly, setBandOnly] = useState(band !== null);
   const [pick, setPick] = useState<string | null>(selectedId ?? null);
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
-  const dlg = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
-  useFocusTrap(dlg, true, {
-    onEscape: onClose,
-    initial: () => search.current,
-    returnTo: () => opener,
-  });
 
   const ofKind = useMemo(() => entries.filter((e) => e.kind === kind), [entries, kind]);
   const vendorList = useMemo(() => catalogueVendors(ofKind), [ofKind]);
@@ -222,146 +206,133 @@ export function CataloguePicker({
   const msiReason = chosen?.kind === 'antenna' ? undefined : t('rf.picker.importMsiNeedsAntenna');
 
   return (
-    <PortalRoot opener={opener}>
-      <div
-        className="dlg-scrim"
-        onMouseDown={(e) => {
-          if (e.target === e.currentTarget) onClose();
+    <Dialog
+      open
+      onClose={onClose}
+      initialFocus={search}
+      returnFocus={() => opener}
+      size="lg"
+      className="rf-cat"
+      testId="rf-catalogue"
+      title={t('rf.picker.title')}
+      description={context}
+      closeLabel={t('rf.picker.close')}
+      footer={
+        <>
+          <span className="grow rf-cat-foot">{t('rf.picker.datasheetNote')}</span>
+          <Button icon="import" disabledReason={msiReason} onClick={() => void runImport('msi')}>
+            {t('rf.picker.importMsi')}
+          </Button>
+          <Button icon="import" onClick={() => void runImport('catalogue')}>
+            {t('rf.picker.importFile')}
+          </Button>
+          <Button onClick={onClose}>{t('rf.picker.cancel')}</Button>
+          <Button
+            variant="primary"
+            disabledReason={chosen ? blocked : t('rf.picker.chooseOne')}
+            data-testid="rf-cat-use"
+            onClick={() => {
+              use(chosen);
+            }}
+          >
+            {t(`rf.picker.use.${kind}`)}
+          </Button>
+        </>
+      }
+    >
+      {kinds.length > 1 && (
+        <div className="seg rf-seg-full" role="group" aria-label={t('rf.picker.kinds')}>
+          {kinds.map((k) => (
+            <button
+              key={k}
+              type="button"
+              aria-pressed={kind === k}
+              onClick={() => {
+                setKind(k);
+                setVendors(new Set());
+              }}
+            >
+              {kindLabel(k)}
+            </button>
+          ))}
+        </div>
+      )}
+      <input
+        ref={search}
+        className="input rf-cat-search"
+        type="search"
+        value={text}
+        placeholder={t('rf.picker.search')}
+        aria-label={t('rf.picker.search')}
+        autoComplete="off"
+        onChange={(e) => {
+          setText(e.target.value);
         }}
-      >
-        <div
-          ref={dlg}
-          className="dlg wide rf-cat"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="rf-cat-title"
-          data-testid="rf-catalogue"
-        >
-          <div className="dlg-h">
-            <h2 id="rf-cat-title">{t('rf.picker.title')}</h2>
-            <span className="sub">{context}</span>
-            <IconButton icon="x" label={t('rf.picker.close')} onClick={onClose} />
-          </div>
-          <div className="dlg-b rf-cat-body">
-            {kinds.length > 1 && (
-              <div className="seg rf-seg-full" role="group" aria-label={t('rf.picker.kinds')}>
-                {kinds.map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    aria-pressed={kind === k}
-                    onClick={() => {
-                      setKind(k);
-                      setVendors(new Set());
-                    }}
-                  >
-                    {kindLabel(k)}
-                  </button>
-                ))}
-              </div>
-            )}
-            <input
-              ref={search}
-              className="input rf-cat-search"
-              type="search"
-              value={text}
-              placeholder={t('rf.picker.search')}
-              aria-label={t('rf.picker.search')}
-              autoComplete="off"
-              onChange={(e) => {
-                setText(e.target.value);
+      />
+      <div className="rf-cat-filters" role="group" aria-label={t('rf.picker.filters')}>
+        <span className="caps">{t('rf.picker.vendor')}</span>
+        {vendorList.map((v) => (
+          <Button
+            key={v}
+            pressed={vendors.has(v)}
+            onClick={() => {
+              const next = new Set(vendors);
+              if (next.has(v)) next.delete(v);
+              else next.add(v);
+              setVendors(next);
+            }}
+          >
+            {v}
+          </Button>
+        ))}
+        {band !== null && (
+          <Button
+            pressed={bandOnly}
+            onClick={() => {
+              setBandOnly(!bandOnly);
+            }}
+          >
+            {t('rf.picker.supports', {
+              band:
+                bandName ??
+                (() => {
+                  const b = BANDS.find((x) => x.id === band);
+                  return b ? bandShort(b) : band;
+                })(),
+            })}
+          </Button>
+        )}
+      </div>
+      <div className="rf-cat-list" aria-label={t('rf.picker.list', { kind: kindLabel(kind) })}>
+        {list.length === 0 ? (
+          <EmptyState
+            icon="search"
+            title={t('rf.picker.noneTitle')}
+            body={t('rf.picker.noneBody')}
+            action={<Button onClick={clear}>{t('rf.picker.clearFilters')}</Button>}
+          />
+        ) : (
+          list.map((e) => (
+            <EntryRow
+              key={e.id}
+              entry={e}
+              band={band}
+              selected={pick === e.id}
+              onSelect={() => {
+                setPick(e.id);
+              }}
+              onUse={() => {
+                use(e);
               }}
             />
-            <div className="rf-cat-filters" role="group" aria-label={t('rf.picker.filters')}>
-              <span className="caps">{t('rf.picker.vendor')}</span>
-              {vendorList.map((v) => (
-                <Button
-                  key={v}
-                  pressed={vendors.has(v)}
-                  onClick={() => {
-                    const next = new Set(vendors);
-                    if (next.has(v)) next.delete(v);
-                    else next.add(v);
-                    setVendors(next);
-                  }}
-                >
-                  {v}
-                </Button>
-              ))}
-              {band !== null && (
-                <Button
-                  pressed={bandOnly}
-                  onClick={() => {
-                    setBandOnly(!bandOnly);
-                  }}
-                >
-                  {t('rf.picker.supports', {
-                    band:
-                      bandName ??
-                      (() => {
-                        const b = BANDS.find((x) => x.id === band);
-                        return b ? bandShort(b) : band;
-                      })(),
-                  })}
-                </Button>
-              )}
-            </div>
-            <div
-              className="rf-cat-list"
-              aria-label={t('rf.picker.list', { kind: kindLabel(kind) })}
-            >
-              {list.length === 0 ? (
-                <EmptyState
-                  icon="search"
-                  title={t('rf.picker.noneTitle')}
-                  body={t('rf.picker.noneBody')}
-                  action={<Button onClick={clear}>{t('rf.picker.clearFilters')}</Button>}
-                />
-              ) : (
-                list.map((e) => (
-                  <EntryRow
-                    key={e.id}
-                    entry={e}
-                    band={band}
-                    selected={pick === e.id}
-                    onSelect={() => {
-                      setPick(e.id);
-                    }}
-                    onUse={() => {
-                      use(e);
-                    }}
-                  />
-                ))
-              )}
-            </div>
-            {note && (
-              <p className={note.error ? 'rf-note rf-err' : 'rf-note'} role="status">
-                {note.text}
-              </p>
-            )}
-          </div>
-          <div className="dlg-f">
-            <span className="grow rf-cat-foot">{t('rf.picker.datasheetNote')}</span>
-            <Button icon="import" disabledReason={msiReason} onClick={() => void runImport('msi')}>
-              {t('rf.picker.importMsi')}
-            </Button>
-            <Button icon="import" onClick={() => void runImport('catalogue')}>
-              {t('rf.picker.importFile')}
-            </Button>
-            <Button onClick={onClose}>{t('rf.picker.cancel')}</Button>
-            <Button
-              variant="primary"
-              disabledReason={chosen ? blocked : t('rf.picker.chooseOne')}
-              data-testid="rf-cat-use"
-              onClick={() => {
-                use(chosen);
-              }}
-            >
-              {t(`rf.picker.use.${kind}`)}
-            </Button>
-          </div>
-        </div>
+          ))
+        )}
       </div>
-    </PortalRoot>
+      {note && (
+        <p className={note.error ? 'rf-note rf-err' : 'rf-note'} role="status">
+          {note.text}
+        </p>
+      )}
+    </Dialog>
   );
 }

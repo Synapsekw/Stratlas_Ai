@@ -80,7 +80,7 @@ const mount = async (start: WizardInitial = initial) => {
   await flush();
 };
 const startButton = () => {
-  const b = host.querySelector<HTMLButtonElement>('[data-testid="photo-start"]');
+  const b = document.body.querySelector<HTMLButtonElement>('[data-testid="photo-start"]');
   if (!b) throw new Error('no Create maps button');
   return b;
 };
@@ -136,8 +136,8 @@ afterEach(() => {
 describe('Start over in the process wizard', () => {
   it('opens as Start over and removes nothing when it is closed', async () => {
     await mount();
-    expect(host.querySelector('h2')?.textContent).toBe(`Start run ${OLD} over`);
-    const close = host.querySelector<HTMLButtonElement>('button[aria-label="Close"]');
+    expect(document.body.querySelector('h2')?.textContent).toBe(`Start run ${OLD} over`);
+    const close = document.body.querySelector<HTMLButtonElement>('button[aria-label="Close"]');
     act(() => close?.click());
     await flush();
     expect(startAlign).not.toHaveBeenCalled();
@@ -153,7 +153,7 @@ describe('Start over in the process wizard', () => {
     await flush();
     expect(startAlign).toHaveBeenCalledTimes(1);
     expect(removeNow).not.toHaveBeenCalled();
-    expect(host.textContent).toContain('No pipeline pack is installed.');
+    expect(document.body.textContent).toContain('No pipeline pack is installed.');
   });
 
   it('starts a new run under another id, then removes the old run once', async () => {
@@ -198,7 +198,7 @@ describe('Start over in the process wizard', () => {
     });
     await flush();
     // a click while the old run is being removed starts nothing either
-    host.querySelector<HTMLButtonElement>('[data-testid="photo-start"]')?.click();
+    document.body.querySelector<HTMLButtonElement>('[data-testid="photo-start"]')?.click();
     await act(async () => {
       removed('A file is held open.');
       await Promise.resolve();
@@ -269,7 +269,7 @@ describe('Start over in the process wizard', () => {
     };
     startAlign.mockResolvedValue(null);
     await mount();
-    const line = host.querySelector('[data-testid="start-over-removes"]')?.textContent;
+    const line = document.body.querySelector('[data-testid="start-over-removes"]')?.textContent;
     expect(line).toBe(
       `Run ${OLD} and what it made go to the project trash when this run starts. Also removes: 1 comparison (12 Oct to 26 Oct).`,
     );
@@ -291,7 +291,7 @@ describe('Start over in the process wizard', () => {
     };
     startAlign.mockResolvedValue(null);
     await mount();
-    expect(host.querySelector('[data-testid="start-over-removes"]')?.textContent).toBe(
+    expect(document.body.querySelector('[data-testid="start-over-removes"]')?.textContent).toBe(
       `Run ${OLD} stays when this run starts: Creating maps for run ${OLD} is still running. Cancel it first.`,
     );
     act(() => {
@@ -314,7 +314,7 @@ describe('Start over in the process wizard', () => {
       startButton().click();
     });
     await flush();
-    expect(host.textContent).toContain('The channel to main closed.');
+    expect(document.body.textContent).toContain('The channel to main closed.');
     expect(startButton().disabled).toBe(false);
     expect(removeNow).not.toHaveBeenCalled();
     act(() => {
@@ -330,10 +330,10 @@ describe('the wizard with the processing engine and Quick', () => {
   it('blocks with an install button until the engine is installed', async () => {
     probeOver = { processing: 'no-engine' };
     await mount();
-    expect(host.querySelector('[data-testid="photo-blocked"]')?.textContent).toContain(
+    expect(document.body.querySelector('[data-testid="photo-blocked"]')?.textContent).toContain(
       'Install the processing engine first',
     );
-    const fix = host.querySelector<HTMLButtonElement>('[data-testid="photo-fix"]');
+    const fix = document.body.querySelector<HTMLButtonElement>('[data-testid="photo-fix"]');
     expect(fix?.textContent).toBe('Install the processing engine');
     act(() => fix?.click());
     expect(openProcessingEngine).toHaveBeenCalledTimes(1);
@@ -342,7 +342,7 @@ describe('the wizard with the processing engine and Quick', () => {
   it('shows 3D mesh and 3D Tiles unchecked and disabled with Quick, with a note', async () => {
     await mount({ ...initial, preset: 'fast', products: ['ortho', 'mesh', 'tiles'] });
     const box = (label: string) =>
-      [...host.querySelectorAll<HTMLLabelElement>('.ph-check')]
+      [...document.body.querySelectorAll<HTMLLabelElement>('.ph-check')]
         .find((l) => l.textContent.includes(label))
         ?.querySelector('input');
     for (const label of ['Textured mesh', '3D Tiles']) {
@@ -350,6 +350,6 @@ describe('the wizard with the processing engine and Quick', () => {
       expect(box(label)?.disabled).toBe(true);
     }
     expect(box('Orthomosaic')?.checked).toBe(true);
-    expect(host.textContent).toContain('Quick makes no 3D model.');
+    expect(document.body.textContent).toContain('Quick makes no 3D model.');
   });
 });

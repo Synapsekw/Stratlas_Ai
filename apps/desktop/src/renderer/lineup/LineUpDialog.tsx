@@ -1,5 +1,5 @@
 import { hasTurn, type DateShift, type LineUpMeasure, type Vec3 } from '@aio/schema';
-import { Button, Icon, IconButton, useFocusTrap, useT } from '@aio/ui';
+import { Button, Dialog, Icon, useT } from '@aio/ui';
 import { captureIndex, dateTags, workspace as appWorkspace, type Workspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
@@ -201,7 +201,7 @@ function Preview({
   );
 }
 
-function Dialog({
+function LineUpStep({
   store,
   preview,
   workspace,
@@ -214,12 +214,10 @@ function Dialog({
   const d = useStore(store, (s) => s.dialog);
   const manifest = useStore(workspace, (s) => s.project?.manifest);
   const captures = manifest?.captures;
-  const ref = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
   const close = () => {
     store.getState().close();
   };
-  useFocusTrap(ref, d !== null, { onEscape: close });
   if (!d) return null;
   const labelOf = (id: string) => dateLabel(captures, id);
   const tags = dateTags(captures ?? []);
@@ -238,127 +236,20 @@ function Dialog({
     );
   const canSave = ok && d.keep !== null && !saving && !d.measuring;
   return (
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
-    >
-      <div
-        ref={ref}
-        className="dlg wide lu-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="lineup-title"
-        data-testid="lineup-dialog"
-      >
-        <div className="dlg-h">
-          <Icon name="crosshair" size={16} />
-          <h2 id="lineup-title">{t('lineUp.title')}</h2>
-          <IconButton icon="x" label={t('lineUp.cancel')} onClick={close} />
-        </div>
-        <div className="dlg-b">
-          <section className="dlg-sec lu-keep">
-            <h3 id="lineup-keep">{t('lineUp.keep')}</h3>
-            <p>{t('lineUp.keepHint')}</p>
-            <div className="lu-dates" role="radiogroup" aria-labelledby="lineup-keep">
-              {[d.a, d.b].map((id) => {
-                const on = d.keep === id;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    role="radio"
-                    aria-checked={on}
-                    className="lu-date"
-                    data-testid={`lineup-keep-${id}`}
-                    onClick={() => {
-                      store.getState().choose(id);
-                    }}
-                  >
-                    <i className="lu-swatch" style={{ background: tags[id]?.colour }} />
-                    <span className="lu-date-name" dir="auto">
-                      {labelOf(id)}
-                    </span>
-                    {on && <Icon name="pin" size={12} />}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-          {d.measuring && (
-            <p className="lu-busy" role="status">
-              <span className="lu-busy-bar" aria-hidden="true" />
-              {t('lineUp.measuring')}
-            </p>
-          )}
-          {d.error && (
-            <p className="notice danger lu-flush" role="alert" data-testid="lineup-refusal">
-              <Icon name="warn" size={14} />
-              <span>{d.error}</span>
-            </p>
-          )}
-          {m && ok && shift && (
-            <>
-              <dl className="lu-facts">
-                <dt>
-                  <Icon name="target" size={12} />
-                </dt>
-                <dd data-testid="lineup-shift">
-                  {shiftWords(shift.eastM, shift.northM, t, turned ? m.fit?.maxMoveM : undefined)}
-                </dd>
-                {turned && (
-                  <>
-                    <dt>
-                      <Icon name="refresh" size={12} />
-                    </dt>
-                    <dd data-testid="lineup-turn">{turnWords(turned, t)}</dd>
-                  </>
-                )}
-                {clouds && (
-                  <>
-                    <dt>
-                      <Icon name="cloud" size={12} />
-                    </dt>
-                    <dd data-testid="lineup-clouds">{t('lineUp.cloudsNoTurn')}</dd>
-                  </>
-                )}
-                <dt>
-                  <Icon name="check" size={12} />
-                </dt>
-                <dd data-testid="lineup-confidence">
-                  {t('lineUp.confident', {
-                    tiles: m.tiles,
-                    spread: formatMetres(m.spreadPx * m.cellM),
-                  })}
-                </dd>
-                {d.moves && (
-                  <>
-                    <dt>
-                      <Icon name="layers" size={12} />
-                    </dt>
-                    <dd data-testid="lineup-moves">
-                      {t('lineUp.moves', {
-                        date: labelOf(movedId),
-                        layers: t('lineUp.layers', { count: d.moves.layers }),
-                        items: t('lineUp.items', { count: d.moves.items }),
-                      })}
-                    </dd>
-                  </>
-                )}
-              </dl>
-              <Preview
-                measure={m}
-                keep={d.keep}
-                shift={shift}
-                keptLabel={labelOf(keptId)}
-                movedLabel={labelOf(movedId)}
-                preview={preview}
-              />
-            </>
-          )}
-        </div>
-        <div className="dlg-f">
+    <Dialog
+      open
+      onClose={close}
+      size="lg"
+      className="lu-dialog"
+      testId="lineup-dialog"
+      title={
+        <>
+          <Icon name="crosshair" size={16} /> {t('lineUp.title')}
+        </>
+      }
+      closeLabel={t('lineUp.cancel')}
+      footer={
+        <>
           <span className="grow" />
           <Button variant="quiet" data-testid="lineup-cancel" onClick={close}>
             {t('lineUp.cancel')}
@@ -380,9 +271,109 @@ function Dialog({
           >
             {t('lineUp.confirm')}
           </Button>
+        </>
+      }
+    >
+      <section className="dlg-sec lu-keep">
+        <h3 id="lineup-keep">{t('lineUp.keep')}</h3>
+        <p>{t('lineUp.keepHint')}</p>
+        <div className="lu-dates" role="radiogroup" aria-labelledby="lineup-keep">
+          {[d.a, d.b].map((id) => {
+            const on = d.keep === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                className="lu-date"
+                data-testid={`lineup-keep-${id}`}
+                onClick={() => {
+                  store.getState().choose(id);
+                }}
+              >
+                <i className="lu-swatch" style={{ background: tags[id]?.colour }} />
+                <span className="lu-date-name" dir="auto">
+                  {labelOf(id)}
+                </span>
+                {on && <Icon name="pin" size={12} />}
+              </button>
+            );
+          })}
         </div>
-      </div>
-    </div>
+      </section>
+      {d.measuring && (
+        <p className="lu-busy" role="status">
+          <span className="lu-busy-bar" aria-hidden="true" />
+          {t('lineUp.measuring')}
+        </p>
+      )}
+      {d.error && (
+        <p className="notice danger lu-flush" role="alert" data-testid="lineup-refusal">
+          <Icon name="warn" size={14} />
+          <span>{d.error}</span>
+        </p>
+      )}
+      {m && ok && shift && (
+        <>
+          <dl className="lu-facts">
+            <dt>
+              <Icon name="target" size={12} />
+            </dt>
+            <dd data-testid="lineup-shift">
+              {shiftWords(shift.eastM, shift.northM, t, turned ? m.fit?.maxMoveM : undefined)}
+            </dd>
+            {turned && (
+              <>
+                <dt>
+                  <Icon name="refresh" size={12} />
+                </dt>
+                <dd data-testid="lineup-turn">{turnWords(turned, t)}</dd>
+              </>
+            )}
+            {clouds && (
+              <>
+                <dt>
+                  <Icon name="cloud" size={12} />
+                </dt>
+                <dd data-testid="lineup-clouds">{t('lineUp.cloudsNoTurn')}</dd>
+              </>
+            )}
+            <dt>
+              <Icon name="check" size={12} />
+            </dt>
+            <dd data-testid="lineup-confidence">
+              {t('lineUp.confident', {
+                tiles: m.tiles,
+                spread: formatMetres(m.spreadPx * m.cellM),
+              })}
+            </dd>
+            {d.moves && (
+              <>
+                <dt>
+                  <Icon name="layers" size={12} />
+                </dt>
+                <dd data-testid="lineup-moves">
+                  {t('lineUp.moves', {
+                    date: labelOf(movedId),
+                    layers: t('lineUp.layers', { count: d.moves.layers }),
+                    items: t('lineUp.items', { count: d.moves.items }),
+                  })}
+                </dd>
+              </>
+            )}
+          </dl>
+          <Preview
+            measure={m}
+            keep={d.keep}
+            shift={shift}
+            keptLabel={labelOf(keptId)}
+            movedLabel={labelOf(movedId)}
+            preview={preview}
+          />
+        </>
+      )}
+    </Dialog>
   );
 }
 
@@ -401,7 +392,7 @@ export function LineUpDialog(props: {
   const store = props.store ?? app.store;
   if (!store) return null;
   return (
-    <Dialog
+    <LineUpStep
       store={store}
       preview={props.preview ?? app.preview}
       workspace={props.workspace ?? appWorkspace}

@@ -1,10 +1,10 @@
-import { Icon, t, useFocusTrap, type IconName } from '@aio/ui';
-import { useRef, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { Dialog, Icon, t, type IconName } from '@aio/ui';
+import { type ReactNode } from 'react';
 
 /**
- * A team dialog, portalled to the body: the chip that opens it sits in the title bar, whose drag
- * region would otherwise swallow the clicks.
+ * A team dialog on the shared Dialog, which portals to the body: the chip that opens it sits in
+ * the title bar, whose drag region would otherwise swallow the clicks. While `busy`, Escape, the
+ * scrim and the close button leave it open.
  */
 export function Modal(props: {
   id: string;
@@ -16,51 +16,25 @@ export function Modal(props: {
   footer: ReactNode;
   children: ReactNode;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useFocusTrap(ref, true);
   const close = () => {
     if (!props.busy) props.onClose();
   };
-  return createPortal(
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
+  return (
+    <Dialog
+      open
+      onClose={close}
+      testId={props.id}
+      className="team-dlg"
+      closeLabel={t('team.close')}
+      title={
+        <>
+          <Icon name={props.icon} size={16} /> {props.title}
+        </>
+      }
+      {...(props.sub ? { description: <span dir="auto">{props.sub}</span> } : {})}
+      footer={props.footer}
     >
-      <div
-        ref={ref}
-        className="dlg team-dlg"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={`${props.id}-title`}
-        data-testid={props.id}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') close();
-        }}
-      >
-        <div className="dlg-h">
-          <Icon name={props.icon} size={16} />
-          <h2 id={`${props.id}-title`}>{props.title}</h2>
-          {props.sub && (
-            <span className="sub" dir="auto">
-              {props.sub}
-            </span>
-          )}
-          <button
-            type="button"
-            className="btn ghost icon sm"
-            aria-label={t('team.close')}
-            disabled={props.busy}
-            onClick={close}
-          >
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-        <div className="dlg-b">{props.children}</div>
-        <div className="dlg-f">{props.footer}</div>
-      </div>
-    </div>,
-    document.body,
+      {props.children}
+    </Dialog>
   );
 }

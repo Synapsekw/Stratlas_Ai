@@ -72,7 +72,8 @@ afterEach(() => {
   host.remove();
 });
 
-const q = (id: string) => host.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+// the dialog portals to the body, outside the host
+const q = (id: string) => document.body.querySelector<HTMLElement>(`[data-testid="${id}"]`);
 
 describe('PanoImportDialog', () => {
   it('lists the spheres with the summary, the map and the files left out', () => {
@@ -181,7 +182,7 @@ describe('PanoImportDialog', () => {
       act(() => {
         root.render(<PanoImportDialog />);
       });
-      expect(host.querySelector('#pano-import-title')?.textContent).toBe('Add 360s');
+      expect(q('pano-import')?.querySelector('h2')?.textContent.trim()).toBe('Add 360s');
     });
   });
 

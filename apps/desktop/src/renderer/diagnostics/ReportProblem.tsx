@@ -1,5 +1,5 @@
-import { Icon, t, useFocusTrap } from '@aio/ui';
-import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
+import { Dialog, Icon, t } from '@aio/ui';
+import { useEffect, useId, useState, type SyntheticEvent } from 'react';
 import { build } from '../buildStamp';
 import { bridge, shell } from '../shell';
 import './diagnostics.css';
@@ -28,8 +28,7 @@ export function ReportProblemDialog() {
     [],
   );
 
-  const dlg = useRef<HTMLDivElement>(null);
-  useFocusTrap(dlg, open);
+  const formId = useId();
 
   if (!open) return null;
 
@@ -61,108 +60,93 @@ export function ReportProblemDialog() {
   };
 
   return (
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
-    >
-      {/* the dialog role sits on a div: a form may not take it (axe aria-allowed-role) */}
-      <div
-        ref={dlg}
-        className="dlg diag-problem"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="diag-problem-title"
-        data-testid="report-problem"
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') close();
-        }}
-      >
-        <form className="diag-form" onSubmit={(e) => void submit(e)}>
-          <div className="dlg-h">
-            <Icon name="bell" size={16} />
-            <h2 id="diag-problem-title">{t('diag.problem.title')}</h2>
-          </div>
-          <div className="dlg-b">
-            <p className="help diag-flush">{t('diag.problem.intro')}</p>
-            <p className="help diag-flush">{t('diag.problem.sendHelp')}</p>
-            <label className="diag-field">
-              <span>{t('diag.problem.what')}</span>
-              <textarea
-                className="input"
-                autoFocus
-                rows={4}
-                maxLength={8000}
-                placeholder={t('diag.problem.whatHint')}
-                data-testid="problem-what"
-                value={what}
-                disabled={saved !== null}
-                onChange={(e) => {
-                  setWhat(e.target.value);
-                }}
-              />
-            </label>
-            <label className="diag-field">
-              <span>{t('diag.problem.steps')}</span>
-              <textarea
-                className="input"
-                rows={4}
-                maxLength={8000}
-                placeholder={t('diag.problem.stepsHint')}
-                data-testid="problem-steps"
-                value={steps}
-                disabled={saved !== null}
-                onChange={(e) => {
-                  setSteps(e.target.value);
-                }}
-              />
-            </label>
-            {saved && (
-              <p className="notice ok diag-flush" role="status" data-testid="problem-saved">
-                <Icon name="check" size={14} />
-                <SavedPath path={saved} />
-              </p>
-            )}
-            {error && (
-              <p className="prov-err diag-flush" role="alert">
-                {error}
-              </p>
-            )}
-          </div>
-          <div className="dlg-f">
-            <button
-              type="button"
-              className="btn ghost"
-              data-testid="problem-send"
-              onClick={() => {
-                window.open(
-                  portalReportUrl(build.version, screenId(shell.getState())),
-                  '_blank',
-                  'noopener',
-                );
-              }}
-            >
-              {t('diag.problem.send')}
+    <Dialog
+      open
+      hideClose
+      className="diag-problem"
+      testId="report-problem"
+      title={t('diag.problem.title')}
+      description={t('diag.problem.intro')}
+      onClose={close}
+      footer={
+        <>
+          <button
+            type="button"
+            className="btn ghost"
+            data-testid="problem-send"
+            onClick={() => {
+              window.open(
+                portalReportUrl(build.version, screenId(shell.getState())),
+                '_blank',
+                'noopener',
+              );
+            }}
+          >
+            {t('diag.problem.send')}
+          </button>
+          <span className="grow" />
+          {saved ? (
+            <button type="button" className="btn primary" onClick={close}>
+              {t('diag.problem.done')}
             </button>
-            <span className="grow" />
-            {saved ? (
-              <button type="button" className="btn primary" onClick={close}>
-                {t('diag.problem.done')}
+          ) : (
+            <>
+              <button type="button" className="btn ghost" disabled={busy} onClick={close}>
+                {t('diag.problem.cancel')}
               </button>
-            ) : (
-              <>
-                <button type="button" className="btn ghost" disabled={busy} onClick={close}>
-                  {t('diag.problem.cancel')}
-                </button>
-                <button type="submit" className="btn primary" disabled={busy}>
-                  {busy ? t('diag.saving') : t('diag.problem.save')}
-                </button>
-              </>
-            )}
-          </div>
-        </form>
-      </div>
-    </div>
+              <button type="submit" form={formId} className="btn primary" disabled={busy}>
+                {busy ? t('diag.saving') : t('diag.problem.save')}
+              </button>
+            </>
+          )}
+        </>
+      }
+    >
+      <form id={formId} className="diag-form" onSubmit={(e) => void submit(e)}>
+        <p className="help diag-flush">{t('diag.problem.sendHelp')}</p>
+        <label className="diag-field">
+          <span>{t('diag.problem.what')}</span>
+          <textarea
+            className="input"
+            autoFocus
+            rows={4}
+            maxLength={8000}
+            placeholder={t('diag.problem.whatHint')}
+            data-testid="problem-what"
+            value={what}
+            disabled={saved !== null}
+            onChange={(e) => {
+              setWhat(e.target.value);
+            }}
+          />
+        </label>
+        <label className="diag-field">
+          <span>{t('diag.problem.steps')}</span>
+          <textarea
+            className="input"
+            rows={4}
+            maxLength={8000}
+            placeholder={t('diag.problem.stepsHint')}
+            data-testid="problem-steps"
+            value={steps}
+            disabled={saved !== null}
+            onChange={(e) => {
+              setSteps(e.target.value);
+            }}
+          />
+        </label>
+        {saved && (
+          <p className="notice ok diag-flush" role="status" data-testid="problem-saved">
+            <Icon name="check" size={14} />
+            <SavedPath path={saved} />
+          </p>
+        )}
+        {error && (
+          <p className="prov-err diag-flush" role="alert">
+            {error}
+          </p>
+        )}
+      </form>
+    </Dialog>
   );
 }

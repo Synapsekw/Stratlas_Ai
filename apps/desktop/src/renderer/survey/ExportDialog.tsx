@@ -10,9 +10,9 @@ import { cleanupRemoves, isEmptyCleanup } from '@aio/schema';
 import type { HeightTiles, IpcResponse, PointcloudCleanup } from '@aio/schema';
 import { unitName } from '@aio/geo';
 import { pointcloudCleanup } from '@aio/pointcloud';
-import { Icon, t, useFocusTrap } from '@aio/ui';
+import { Dialog, Icon, t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { bridge, useShell } from '../shell';
@@ -127,11 +127,9 @@ export function ExportDialog() {
   const recipes = useStore(pointcloudCleanup, (s) => s.recipes);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
   const close = () => {
     openExportDialog(false);
   };
-  useFocusTrap(ref, true, { onEscape: close });
 
   const projectId = project?.id ?? null;
   useEffect(() => {
@@ -270,247 +268,15 @@ export function ExportDialog() {
   };
 
   return (
-    <div
-      ref={ref}
-      className="sv-scrim"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="sv-export-title"
-      data-testid="survey-export-dialog"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
-    >
-      <div className="sv-dialog sv-export">
-        <header className="sv-head" role="none">
-          <h2 id="sv-export-title">Export survey data</h2>
-          <button type="button" className="btn ghost sm" aria-label="Close" onClick={close}>
-            <Icon name="x" size={14} />
-          </button>
-        </header>
-        <p className="small faint">
-          For Civil 3D, Trimble Business Center, 12d and GIS. You choose where the file goes first;
-          nothing is kept in the project.
-        </p>
-        <div className="sv-export-grid">
-          <label className="sv-field">
-            <span>Export</span>
-            <select
-              className="sv-input"
-              value={what}
-              data-testid="survey-export-what"
-              onChange={(e) => {
-                pickWhat(e.target.value as ExportWhat);
-              }}
-            >
-              {WHATS.map((w) => (
-                <option key={w} value={w}>
-                  {WHAT_LABELS[w]}
-                </option>
-              ))}
-            </select>
-          </label>
-          {what === 'measurements' || what === 'section' ? (
-            <label className="sv-field">
-              <span>{what === 'section' ? 'Along' : 'Which'}</span>
-              <select
-                className="sv-input"
-                value={pick}
-                data-testid="survey-export-measurements"
-                onChange={(e) => {
-                  setPick(e.target.value as MeasureChoice);
-                }}
-              >
-                <option value="selected">Selected ({selected.length})</option>
-                <option value="all">All {what === 'section' ? 'lines' : 'measurements'}</option>
-                {folders.map((f) => (
-                  <option key={f} value={`folder:${f}`}>
-                    Folder: {f}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <label className="sv-field">
-              <span>From</span>
-              <select
-                className="sv-input"
-                value={source?.key ?? ''}
-                data-testid="survey-export-source"
-                onChange={(e) => {
-                  setSourceKey(e.target.value);
-                }}
-              >
-                {sources.length === 0 && <option value="">Nothing to export yet</option>}
-                {sources.map((s) => (
-                  <option key={s.key} value={s.key}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {(what === 'measurements' || what === 'section') && (
-            <label className="sv-field">
-              <span>{what === 'section' ? 'Surface' : 'Terrain inside polygons'}</span>
-              <select
-                className="sv-input"
-                value={surface}
-                data-testid="survey-export-surface"
-                onChange={(e) => {
-                  setSurface(e.target.value);
-                }}
-              >
-                <option value="">
-                  {what === 'section' ? 'Current survey' : 'None (outlines only)'}
-                </option>
-                {surfaces.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <label className="sv-field">
-            <span>Format</span>
-            <select
-              className="sv-input"
-              value={format}
-              data-testid="survey-export-format"
-              onChange={(e) => {
-                pickFormat(e.target.value as ExportFormat);
-              }}
-            >
-              {MATRIX[what].map((f) => (
-                <option key={f} value={f}>
-                  {FORMAT_LABELS[f]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="sv-field">
-            <span>Coordinates</span>
-            <select
-              className="sv-input"
-              value={crsKind}
-              data-testid="survey-export-crs"
-              onChange={(e) => {
-                setCrsKind(e.target.value as CrsKind);
-              }}
-            >
-              <option value="site">Site grid{settings.calibration ? ' (calibrated)' : ''}</option>
-              <option value="wgs84">WGS 84 (longitude, latitude)</option>
-              <option value="epsg">EPSG code…</option>
-            </select>
-          </label>
-          {crsKind === 'epsg' && (
-            <label className="sv-field">
-              <span>EPSG code</span>
-              <input
-                className="sv-input mono"
-                inputMode="numeric"
-                value={epsg}
-                placeholder="32639"
-                data-testid="survey-export-epsg"
-                onChange={(e) => {
-                  setEpsg(e.target.value.replace(/\D/g, '').slice(0, 6));
-                }}
-              />
-            </label>
-          )}
-          <label className="sv-field">
-            <span>Units</span>
-            <select
-              className="sv-input"
-              value={units}
-              data-testid="survey-export-units"
-              onChange={(e) => {
-                setUnits(e.target.value as ExportUnits);
-              }}
-            >
-              {UNITS.map((u) => (
-                <option key={u} value={u}>
-                  {unitName(u)}
-                </option>
-              ))}
-            </select>
-          </label>
-          {hasDetail(what, format) && (
-            <label className="sv-field">
-              <span>Level of detail</span>
-              <select
-                className="sv-input"
-                value={String(detail)}
-                data-testid="survey-export-detail"
-                onChange={(e) => {
-                  setDetail(Number(e.target.value));
-                }}
-              >
-                {DETAIL.map((d) => (
-                  <option key={d.id} value={String(d.share)}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-        </div>
-        {recipe && (
-          <label className="sv-check">
-            <input
-              type="checkbox"
-              checked={applyCleanup}
-              data-testid="survey-export-cleanup"
-              onChange={(e) => {
-                setApplyCleanup(e.target.checked);
-              }}
-            />
-            <span>{t('cleanup.export.apply')}</span>
-            <span className="small faint" data-testid="survey-export-cleanup-summary">
-              {cleanupSummary(recipe)}
-            </span>
-          </label>
-        )}
-        {(what === 'measurements' || what === 'section') && (
-          <label className="sv-check">
-            <input
-              type="checkbox"
-              checked={each}
-              data-testid="survey-export-each"
-              onChange={(e) => {
-                setEach(e.target.checked);
-              }}
-            />
-            One file per {what === 'section' ? 'section' : 'measurement'} (choose a folder)
-          </label>
-        )}
-        <p className="small faint">
-          {perItem ? 'Each file is named ' : 'Offered as '}
-          <code className="mono" data-testid="survey-export-name">
-            {perItem
-              ? `<label>${suffix}.${fileName.slice(fileName.lastIndexOf('.') + 1)}`
-              : fileName}
-          </code>
-          . The file states its coordinate system, vertical datum, geoid, calibration and units.
-        </p>
-        {problem && !note && (
-          <p className="small faint" data-testid="survey-export-problem">
-            {problem}
-          </p>
-        )}
-        {note && (
-          <p
-            className={note.error ? 'notice danger small' : 'small faint'}
-            data-testid="survey-export-note"
-            role="status"
-          >
-            {note.error && <Icon name="warn" size={14} />}
-            {note.text}
-          </p>
-        )}
-        <footer className="sv-foot" role="none">
-          <span className="sv-grow" />
+    <Dialog
+      open
+      onClose={close}
+      title="Export survey data"
+      className="sv-export"
+      testId="survey-export-dialog"
+      description="For Civil 3D, Trimble Business Center, 12d and GIS. You choose where the file goes first; nothing is kept in the project."
+      footer={
+        <>
           <button type="button" className="btn sm ghost" onClick={close}>
             Close
           </button>
@@ -525,8 +291,224 @@ export function ExportDialog() {
           >
             <Icon name="download" size={12} /> Export…
           </button>
-        </footer>
+        </>
+      }
+    >
+      <div className="sv-export-grid">
+        <label className="sv-field">
+          <span>Export</span>
+          <select
+            className="sv-input"
+            value={what}
+            data-testid="survey-export-what"
+            onChange={(e) => {
+              pickWhat(e.target.value as ExportWhat);
+            }}
+          >
+            {WHATS.map((w) => (
+              <option key={w} value={w}>
+                {WHAT_LABELS[w]}
+              </option>
+            ))}
+          </select>
+        </label>
+        {what === 'measurements' || what === 'section' ? (
+          <label className="sv-field">
+            <span>{what === 'section' ? 'Along' : 'Which'}</span>
+            <select
+              className="sv-input"
+              value={pick}
+              data-testid="survey-export-measurements"
+              onChange={(e) => {
+                setPick(e.target.value as MeasureChoice);
+              }}
+            >
+              <option value="selected">Selected ({selected.length})</option>
+              <option value="all">All {what === 'section' ? 'lines' : 'measurements'}</option>
+              {folders.map((f) => (
+                <option key={f} value={`folder:${f}`}>
+                  Folder: {f}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label className="sv-field">
+            <span>From</span>
+            <select
+              className="sv-input"
+              value={source?.key ?? ''}
+              data-testid="survey-export-source"
+              onChange={(e) => {
+                setSourceKey(e.target.value);
+              }}
+            >
+              {sources.length === 0 && <option value="">Nothing to export yet</option>}
+              {sources.map((s) => (
+                <option key={s.key} value={s.key}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {(what === 'measurements' || what === 'section') && (
+          <label className="sv-field">
+            <span>{what === 'section' ? 'Surface' : 'Terrain inside polygons'}</span>
+            <select
+              className="sv-input"
+              value={surface}
+              data-testid="survey-export-surface"
+              onChange={(e) => {
+                setSurface(e.target.value);
+              }}
+            >
+              <option value="">
+                {what === 'section' ? 'Current survey' : 'None (outlines only)'}
+              </option>
+              {surfaces.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className="sv-field">
+          <span>Format</span>
+          <select
+            className="sv-input"
+            value={format}
+            data-testid="survey-export-format"
+            onChange={(e) => {
+              pickFormat(e.target.value as ExportFormat);
+            }}
+          >
+            {MATRIX[what].map((f) => (
+              <option key={f} value={f}>
+                {FORMAT_LABELS[f]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="sv-field">
+          <span>Coordinates</span>
+          <select
+            className="sv-input"
+            value={crsKind}
+            data-testid="survey-export-crs"
+            onChange={(e) => {
+              setCrsKind(e.target.value as CrsKind);
+            }}
+          >
+            <option value="site">Site grid{settings.calibration ? ' (calibrated)' : ''}</option>
+            <option value="wgs84">WGS 84 (longitude, latitude)</option>
+            <option value="epsg">EPSG code…</option>
+          </select>
+        </label>
+        {crsKind === 'epsg' && (
+          <label className="sv-field">
+            <span>EPSG code</span>
+            <input
+              className="sv-input mono"
+              inputMode="numeric"
+              value={epsg}
+              placeholder="32639"
+              data-testid="survey-export-epsg"
+              onChange={(e) => {
+                setEpsg(e.target.value.replace(/\D/g, '').slice(0, 6));
+              }}
+            />
+          </label>
+        )}
+        <label className="sv-field">
+          <span>Units</span>
+          <select
+            className="sv-input"
+            value={units}
+            data-testid="survey-export-units"
+            onChange={(e) => {
+              setUnits(e.target.value as ExportUnits);
+            }}
+          >
+            {UNITS.map((u) => (
+              <option key={u} value={u}>
+                {unitName(u)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {hasDetail(what, format) && (
+          <label className="sv-field">
+            <span>Level of detail</span>
+            <select
+              className="sv-input"
+              value={String(detail)}
+              data-testid="survey-export-detail"
+              onChange={(e) => {
+                setDetail(Number(e.target.value));
+              }}
+            >
+              {DETAIL.map((d) => (
+                <option key={d.id} value={String(d.share)}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
-    </div>
+      {recipe && (
+        <label className="sv-check">
+          <input
+            type="checkbox"
+            checked={applyCleanup}
+            data-testid="survey-export-cleanup"
+            onChange={(e) => {
+              setApplyCleanup(e.target.checked);
+            }}
+          />
+          <span>{t('cleanup.export.apply')}</span>
+          <span className="small faint" data-testid="survey-export-cleanup-summary">
+            {cleanupSummary(recipe)}
+          </span>
+        </label>
+      )}
+      {(what === 'measurements' || what === 'section') && (
+        <label className="sv-check">
+          <input
+            type="checkbox"
+            checked={each}
+            data-testid="survey-export-each"
+            onChange={(e) => {
+              setEach(e.target.checked);
+            }}
+          />
+          One file per {what === 'section' ? 'section' : 'measurement'} (choose a folder)
+        </label>
+      )}
+      <p className="small faint">
+        {perItem ? 'Each file is named ' : 'Offered as '}
+        <code className="mono" data-testid="survey-export-name">
+          {perItem ? `<label>${suffix}.${fileName.slice(fileName.lastIndexOf('.') + 1)}` : fileName}
+        </code>
+        . The file states its coordinate system, vertical datum, geoid, calibration and units.
+      </p>
+      {problem && !note && (
+        <p className="small faint" data-testid="survey-export-problem">
+          {problem}
+        </p>
+      )}
+      {note && (
+        <p
+          className={note.error ? 'notice danger small' : 'small faint'}
+          data-testid="survey-export-note"
+          role="status"
+        >
+          {note.error && <Icon name="warn" size={14} />}
+          {note.text}
+        </p>
+      )}
+    </Dialog>
   );
 }

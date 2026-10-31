@@ -127,6 +127,12 @@ describe('Dialog', () => {
     expect(d?.getAttribute('data-size')).toBe('sm');
   });
 
+  it('puts extra data attributes on its box', () => {
+    render(<Page data={{ 'data-phase': 'review' }} />);
+    openIt();
+    expect(q('dlg')?.getAttribute('data-phase')).toBe('review');
+  });
+
   it('moves focus inside: the first control, or initialFocus', () => {
     render(<Page />);
     openIt();

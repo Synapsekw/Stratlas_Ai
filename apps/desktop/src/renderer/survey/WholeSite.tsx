@@ -14,9 +14,9 @@ import {
   type SurveyMeasurement,
 } from '@aio/schema';
 import { deadbandFromStops, draftRegions, sideKey, sideOptions, TOOL_LABELS } from '@aio/survey';
-import { EmptyState, Icon, t, useFocusTrap } from '@aio/ui';
+import { Dialog, EmptyState, t } from '@aio/ui';
 import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { authorName } from '../author';
 import { bridge } from '../shell';
 import { timeline } from '../workspace/timeline';
@@ -71,11 +71,9 @@ export function WholeSite() {
   const [snapped, setSnapped] = useState<Set<number>>(() => new Set());
   const [snapNote, setSnapNote] = useState<string | null>(null);
   const [snapping, setSnapping] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
   const close = () => {
     openCompareDialog(null);
   };
-  useFocusTrap(ref, true, { onEscape: close });
   const units = settings.units;
   const v = (x: number) => formatQuantity(x, 'volume', units, settings.precision);
   const a = (x: number) => formatQuantity(x, 'area', units, settings.precision);
@@ -303,154 +301,138 @@ export function WholeSite() {
 
   const res = site?.result ?? null;
   return (
-    <div
-      ref={ref}
-      className="sv-scrim"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="sv-site-title"
-      data-testid="survey-site"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
+    <Dialog
+      open
+      onClose={close}
+      title="Whole site cut and fill"
+      testId="survey-site"
+      description="Compares two surfaces over their overlap in a background job, then suggests cut and fill regions you can keep as measurements."
     >
-      <div className="sv-dialog">
-        <header className="sv-head" role="none">
-          <h2 id="sv-site-title">Whole site cut and fill</h2>
-          <button type="button" className="btn ghost sm" aria-label="Close" onClick={close}>
-            <Icon name="x" size={14} />
-          </button>
-        </header>
-        <p className="small faint">
-          Compares two surfaces over their overlap in a background job, then suggests cut and fill
-          regions you can keep as measurements.
-        </p>
-        {surfaces.length === 0 && (
-          <p className="notice warn small">Prepare the survey surfaces first (in a comparison).</p>
-        )}
-        <div className="sv-row sv-wrap">
-          {pick('From', from, setFrom)}
-          {pick('To', to, setTo)}
-        </div>
-        <label className="sv-check">
-          <input
-            type="checkbox"
-            checked={useDb}
-            disabled={stopsDb <= 0}
-            onChange={(e) => {
-              setUseDb(e.target.checked);
-            }}
-          />
-          Use deadband in calculations (
-          {formatQuantity(stopsDb, 'distance', units, settings.precision)} from the heat map stops)
-        </label>
-        <div className="sv-row">
-          <button
-            type="button"
-            className="btn sm primary"
-            disabled={readOnly || surfaces.length === 0 || job !== null}
-            data-testid="survey-site-run"
-            onClick={() => {
-              void run();
-            }}
-          >
-            {job ? `Comparing… ${String(Math.round((site?.progress ?? 0) * 100))}%` : 'Compare'}
-          </button>
-        </div>
-        {(error ?? site?.error) && (
-          <p className="notice danger small" role="alert">
-            {error ?? site?.error}
-          </p>
-        )}
-        {res && (
-          <table className="sv-readout" data-testid="survey-site-result">
-            <caption className="sr-only">Whole-site result</caption>
-            <tbody>
-              <tr>
-                <th scope="row">Cut</th>
-                <td className="mono">{v(res.cutM3)}</td>
-                <td className="mono faint">{a(res.areaCutM2)}</td>
-              </tr>
-              <tr>
-                <th scope="row">Fill</th>
-                <td className="mono">{v(res.fillM3)}</td>
-                <td className="mono faint">{a(res.areaFillM2)}</td>
-              </tr>
-              <tr>
-                <th scope="row">Net</th>
-                <td className="mono">{v(res.netM3)}</td>
-                <td />
-              </tr>
-              <tr>
-                <th scope="row">Total</th>
-                <td className="mono">{v(res.totalM3)}</td>
-                <td className="mono faint">{a(res.areaM2)}</td>
-              </tr>
-            </tbody>
-          </table>
-        )}
-        {res?.status === 'partial' && (
-          <p className="notice warn small">Partly outside the survey: {res.reason}</p>
-        )}
-        {site && site.drafts.length > 0 && (
-          <fieldset className="sv-sub" data-testid="survey-site-drafts">
-            <legend>Suggested regions (drafts)</legend>
-            <ul className="sv-items">
-              {site.drafts.map((d, k) => (
-                <li key={k}>
-                  <label className="sv-check">
-                    <input
-                      type="checkbox"
-                      checked={picked.has(k)}
-                      data-testid="survey-site-draft"
-                      onChange={() => {
-                        const next = new Set(picked);
-                        if (next.has(k)) next.delete(k);
-                        else next.add(k);
-                        setPicked(next);
-                      }}
-                    />
-                    {d.kind === 'cut' ? 'Cut' : 'Fill'} region {k + 1}: about {v(d.volumeM3)} over{' '}
-                    {a(d.areaM2)}
-                    {snapped.has(k) && <span className="faint"> (snapped to the ortho)</span>}
-                  </label>
-                </li>
-              ))}
-            </ul>
-            <div className="sv-row">
-              <button
-                type="button"
-                className="btn sm"
-                disabled={readOnly || picked.size === 0}
-                data-testid="survey-site-accept"
-                onClick={accept}
-              >
-                Keep {picked.size || ''} as {TOOL_LABELS.volume.toLowerCase()} measurements
-              </button>
-              <button
-                type="button"
-                className="btn sm ghost"
-                disabled={picked.size === 0 || snapping}
-                data-testid="survey-site-snap"
-                title="The local model moves the ticked regions' boundaries to the edges seen in the ortho. They stay drafts."
-                onClick={() => {
-                  void snap();
-                }}
-              >
-                {snapping ? 'Snapping...' : 'Snap to ortho edges'}
-              </button>
-            </div>
-            {snapNote && (
-              <p className="small" role="status" data-testid="survey-site-snap-note">
-                {snapNote}
-              </p>
-            )}
-          </fieldset>
-        )}
-        {site && res && site.drafts.length === 0 && !job && (
-          <EmptyState title={t('empty.wholeSite.title')} />
-        )}
+      {surfaces.length === 0 && (
+        <p className="notice warn small">Prepare the survey surfaces first (in a comparison).</p>
+      )}
+      <div className="sv-row sv-wrap">
+        {pick('From', from, setFrom)}
+        {pick('To', to, setTo)}
       </div>
-    </div>
+      <label className="sv-check">
+        <input
+          type="checkbox"
+          checked={useDb}
+          disabled={stopsDb <= 0}
+          onChange={(e) => {
+            setUseDb(e.target.checked);
+          }}
+        />
+        Use deadband in calculations (
+        {formatQuantity(stopsDb, 'distance', units, settings.precision)} from the heat map stops)
+      </label>
+      <div className="sv-row">
+        <button
+          type="button"
+          className="btn sm primary"
+          disabled={readOnly || surfaces.length === 0 || job !== null}
+          data-testid="survey-site-run"
+          onClick={() => {
+            void run();
+          }}
+        >
+          {job ? `Comparing… ${String(Math.round((site?.progress ?? 0) * 100))}%` : 'Compare'}
+        </button>
+      </div>
+      {(error ?? site?.error) && (
+        <p className="notice danger small" role="alert">
+          {error ?? site?.error}
+        </p>
+      )}
+      {res && (
+        <table className="sv-readout" data-testid="survey-site-result">
+          <caption className="sr-only">Whole-site result</caption>
+          <tbody>
+            <tr>
+              <th scope="row">Cut</th>
+              <td className="mono">{v(res.cutM3)}</td>
+              <td className="mono faint">{a(res.areaCutM2)}</td>
+            </tr>
+            <tr>
+              <th scope="row">Fill</th>
+              <td className="mono">{v(res.fillM3)}</td>
+              <td className="mono faint">{a(res.areaFillM2)}</td>
+            </tr>
+            <tr>
+              <th scope="row">Net</th>
+              <td className="mono">{v(res.netM3)}</td>
+              <td />
+            </tr>
+            <tr>
+              <th scope="row">Total</th>
+              <td className="mono">{v(res.totalM3)}</td>
+              <td className="mono faint">{a(res.areaM2)}</td>
+            </tr>
+          </tbody>
+        </table>
+      )}
+      {res?.status === 'partial' && (
+        <p className="notice warn small">Partly outside the survey: {res.reason}</p>
+      )}
+      {site && site.drafts.length > 0 && (
+        <fieldset className="sv-sub" data-testid="survey-site-drafts">
+          <legend>Suggested regions (drafts)</legend>
+          <ul className="sv-items">
+            {site.drafts.map((d, k) => (
+              <li key={k}>
+                <label className="sv-check">
+                  <input
+                    type="checkbox"
+                    checked={picked.has(k)}
+                    data-testid="survey-site-draft"
+                    onChange={() => {
+                      const next = new Set(picked);
+                      if (next.has(k)) next.delete(k);
+                      else next.add(k);
+                      setPicked(next);
+                    }}
+                  />
+                  {d.kind === 'cut' ? 'Cut' : 'Fill'} region {k + 1}: about {v(d.volumeM3)} over{' '}
+                  {a(d.areaM2)}
+                  {snapped.has(k) && <span className="faint"> (snapped to the ortho)</span>}
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div className="sv-row">
+            <button
+              type="button"
+              className="btn sm"
+              disabled={readOnly || picked.size === 0}
+              data-testid="survey-site-accept"
+              onClick={accept}
+            >
+              Keep {picked.size || ''} as {TOOL_LABELS.volume.toLowerCase()} measurements
+            </button>
+            <button
+              type="button"
+              className="btn sm ghost"
+              disabled={picked.size === 0 || snapping}
+              data-testid="survey-site-snap"
+              title="The local model moves the ticked regions' boundaries to the edges seen in the ortho. They stay drafts."
+              onClick={() => {
+                void snap();
+              }}
+            >
+              {snapping ? 'Snapping...' : 'Snap to ortho edges'}
+            </button>
+          </div>
+          {snapNote && (
+            <p className="small" role="status" data-testid="survey-site-snap-note">
+              {snapNote}
+            </p>
+          )}
+        </fieldset>
+      )}
+      {site && res && site.drafts.length === 0 && !job && (
+        <EmptyState title={t('empty.wholeSite.title')} />
+      )}
+    </Dialog>
   );
 }

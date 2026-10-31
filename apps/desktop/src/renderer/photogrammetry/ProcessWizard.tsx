@@ -20,7 +20,7 @@ import type {
   PhotoProduct,
   PhotoSource,
 } from '@aio/schema';
-import { formatDate, Icon, useFocusTrap } from '@aio/ui';
+import { Dialog, formatDate, Icon } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { bridge, useShell } from '../shell';
@@ -118,7 +118,6 @@ interface Estimated {
 export function ProcessWizard() {
   const project = useWorkspace((s) => s.project);
   const pkg = useShell((s) => s.pkg);
-  const dlg = useRef<HTMLDivElement>(null);
   const close = () => {
     photoUi.getState().close();
   };
@@ -126,13 +125,10 @@ export function ProcessWizard() {
   // on close the focus goes back to whatever opened the dialog if it is still there, else to the
   // Processing chip, never to the page body.
   const [opener] = useState(() => document.activeElement);
-  useFocusTrap(dlg, true, {
-    onEscape: close,
-    returnTo: () =>
-      opener instanceof HTMLElement && opener !== document.body && opener.isConnected
-        ? opener
-        : document.querySelector<HTMLElement>('[data-testid="processing-chip"]'),
-  });
+  const returnFocus = () =>
+    opener instanceof HTMLElement && opener !== document.body && opener.isConnected
+      ? opener
+      : document.querySelector<HTMLElement>('[data-testid="processing-chip"]');
 
   const layers = useMemo(
     () => (project?.manifest.layers ?? []).filter((l) => l.kind === 'photos'),
@@ -444,7 +440,9 @@ export function ProcessWizard() {
         },
         onDragLeave: (e: DragEvent) => {
           e.stopPropagation();
-          if (!(e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)))
+          // the dialog portals out of this wrapper: a move within its scrim is not a leave
+          const scrim = e.target instanceof Element ? e.target.closest('.q-scrim') : null;
+          if (!(e.relatedTarget instanceof Node && scrim?.contains(e.relatedTarget)))
             setOver(false);
         },
         onDrop: (e: DragEvent) => {
@@ -456,44 +454,73 @@ export function ProcessWizard() {
       }
     : {};
 
+  const title = start ? `Start run ${start.replaces} over` : TITLE;
   return (
-    <div
-      ref={dlg}
-      className="b-scrim"
-      role="dialog"
-      aria-modal="true"
-      aria-label={start ? `Start run ${start.replaces} over` : TITLE}
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
-      {...dragProps}
-    >
-      <div className="ph-simple" data-testid="photo-wizard">
-        <header className="ph-head" role="none">
-          <div>
-            <h2>{start ? `Start run ${start.replaces} over` : TITLE}</h2>
-            <p className="small" data-testid="photo-project">
+    // a drop anywhere on the dialog reaches this wrapper through the portal
+    <div className="ph-drop-wrap" {...dragProps}>
+      <Dialog
+        open
+        onClose={close}
+        title={title}
+        className="ph-simple"
+        testId="photo-wizard"
+        returnFocus={returnFocus}
+        description={
+          <>
+            <span className="ph-line" data-testid="photo-project">
               Project: <b>{project.manifest.name}</b>
-            </p>
+            </span>
             {start && oldPlan && (
-              <p className="small" data-testid="start-over-removes">
+              <span className="ph-line" data-testid="start-over-removes">
                 {startOverLine(start.replaces, oldPlan, (id) => {
                   const c = project.manifest.captures.find((x) => x.id === id);
                   return c ? formatDate(c.date) : id;
                 })}
-              </p>
+              </span>
             )}
             {ready && (
-              <p className="small faint">
+              <span className="ph-line faint">
                 Choose the photos, then start. They are read where they are and never changed.
-              </p>
+              </span>
             )}
-          </div>
-          <button type="button" className="btn ghost sm" onClick={close} aria-label="Close">
-            <Icon name="x" size={14} />
-          </button>
-        </header>
-
+          </>
+        }
+        footer={
+          ready ? (
+            <>
+              {error ? (
+                <span className="err" role="alert">
+                  {error}
+                </span>
+              ) : (
+                <span className="grow">
+                  <span className="hint faint small" data-testid="photo-missing">
+                    {missing}
+                  </span>
+                  {missing === null && (
+                    <span className="hint faint small" data-testid="photo-destination">
+                      The maps are added to {project.manifest.name}.
+                    </span>
+                  )}
+                </span>
+              )}
+              <button type="button" className="btn ghost" onClick={close}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                data-testid="photo-start"
+                disabled={busy || cannotStart || estimating}
+                onClick={() => void go()}
+              >
+                <Icon name="play" size={14} />
+                {busy ? 'Starting' : 'Create maps'}
+              </button>
+            </>
+          ) : undefined
+        }
+      >
         {probe === undefined && !blocked && (
           <div className="b-body">
             <p className="faint small" role="status">
@@ -538,465 +565,429 @@ export function ProcessWizard() {
         )}
 
         {ready && (
-          <>
-            <div className="b-body">
-              {start?.missing && (
-                <p className="small faint" data-testid="start-over-missing">
-                  {start.missing}
-                </p>
-              )}
-              {layers.length > 0 && (
-                <div className="b-cards ph-source" role="group" aria-label="Photo source">
+          <div className="b-body">
+            {start?.missing && (
+              <p className="small faint" data-testid="start-over-missing">
+                {start.missing}
+              </p>
+            )}
+            {layers.length > 0 && (
+              <div className="b-cards ph-source" role="group" aria-label="Photo source">
+                <button
+                  type="button"
+                  className="b-card"
+                  aria-pressed={kind === 'layer'}
+                  onClick={() => {
+                    setKind('layer');
+                  }}
+                >
+                  <Icon name="photo" size={16} />
+                  <b>Photos in this project</b>
+                  <small>A photos layer you already imported.</small>
+                </button>
+                <button
+                  type="button"
+                  className="b-card"
+                  aria-pressed={kind === 'folders'}
+                  onClick={() => {
+                    setKind('folders');
+                  }}
+                >
+                  <Icon name="import" size={16} />
+                  <b>Folders of photos</b>
+                  <small>A flight&apos;s folders on this computer.</small>
+                </button>
+              </div>
+            )}
+            {kind === 'layer' ? (
+              <label className="b-field">
+                <span>Photos</span>
+                <select
+                  className="input"
+                  value={layerId}
+                  onChange={(e) => {
+                    setLayerId(e.target.value);
+                  }}
+                >
+                  {layerId === '' && (
+                    <option value="" disabled>
+                      Choose a photos layer
+                    </option>
+                  )}
+                  {layers.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name} ({l.items.length} photos)
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <div className={`ph-drop${over ? ' over' : ''}`} data-testid="photo-drop">
+                {folders.length > 0 && (
+                  <ul className="ph-folders" aria-label="Chosen folders">
+                    {folders.map((f) => (
+                      <li key={f}>
+                        <span className="mono">{f}</span>
+                        <button
+                          type="button"
+                          className="btn ghost sm"
+                          aria-label={`Remove ${baseName(f)}`}
+                          onClick={() => {
+                            setFolders((x) => x.filter((y) => y !== f));
+                          }}
+                        >
+                          <Icon name="x" size={12} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="ph-drop-act">
+                  {folders.length === 0 && <p>Drop a folder of photos here, or</p>}
                   <button
                     type="button"
-                    className="b-card"
-                    aria-pressed={kind === 'layer'}
-                    onClick={() => {
-                      setKind('layer');
-                    }}
+                    className={folders.length ? 'btn sm' : 'btn'}
+                    data-testid="photo-add-folder"
+                    onClick={() => void chooseFolder()}
                   >
-                    <Icon name="photo" size={16} />
-                    <b>Photos in this project</b>
-                    <small>A photos layer you already imported.</small>
-                  </button>
-                  <button
-                    type="button"
-                    className="b-card"
-                    aria-pressed={kind === 'folders'}
-                    onClick={() => {
-                      setKind('folders');
-                    }}
-                  >
-                    <Icon name="import" size={16} />
-                    <b>Folders of photos</b>
-                    <small>A flight&apos;s folders on this computer.</small>
+                    <Icon name="plus" size={14} />
+                    {folders.length ? 'Add another folder' : 'Choose a folder'}
                   </button>
                 </div>
-              )}
-              {kind === 'layer' ? (
-                <label className="b-field">
-                  <span>Photos</span>
-                  <select
-                    className="input"
-                    value={layerId}
-                    onChange={(e) => {
-                      setLayerId(e.target.value);
+                <p className="hint">JPEG or TIFF photos. Folders inside are read too.</p>
+              </div>
+            )}
+
+            {photos && (
+              <section className="ph-sum" aria-label="Summary" aria-live="polite">
+                {!summary && !error && <p className="faint small">Reading the photos</p>}
+                {noPhotos && (
+                  <p className="notice warn small" data-testid="photo-none">
+                    <Icon name="warn" size={14} />
+                    No photos were found there. Choose a folder with JPEG or TIFF photos.
+                  </p>
+                )}
+                {summary && estimate && !noPhotos && (
+                  <>
+                    <p className="ph-sum-line" data-testid="photo-summary">
+                      {summaryLine(summary)}
+                    </p>
+                    {reducedNote(estimate) && (
+                      <p className="small faint" data-testid="photo-reduced">
+                        {reducedNote(estimate)}
+                      </p>
+                    )}
+                    <p className="ph-sum-time" data-testid="photo-estimate">
+                      {fresh
+                        ? `${formatMinutes(estimate.minutes)} on this computer`
+                        : 'Working out the time'}
+                    </p>
+                    {fresh && (
+                      <p className="small faint" data-testid="photo-needs">
+                        Uses about {formatBytes(estimate.diskBytes)} of disk space and{' '}
+                        {formatBytes(estimate.memoryBytes)} of memory while it runs.
+                      </p>
+                    )}
+                    {fresh && (
+                      <p className="small" data-testid="photo-date">
+                        {dateSentence(pick, formatDate)}
+                        {pick.kind === 'none' && dateChoice === null
+                          ? ' These photos carry no date. Choose one in Options.'
+                          : ''}
+                      </p>
+                    )}
+                    {fresh && days && (
+                      <p className="small faint" data-testid="photo-days">
+                        {days}
+                      </p>
+                    )}
+                  </>
+                )}
+              </section>
+            )}
+
+            {disk && (
+              <div className="ph-q" role="group" aria-label="Disk space" data-testid="ask-disk">
+                <p>
+                  <Icon name="warn" size={14} />
+                  <span>
+                    Not enough free disk space: this needs {disk.needs} on the data drive, and it
+                    has {disk.has}. Free some space
+                    {alt ? `, or use ${presetLabel(alt)} quality, which needs less.` : '.'}
+                  </span>
+                </p>
+                {alt && (
+                  <button
+                    type="button"
+                    className="btn sm"
+                    onClick={() => {
+                      choosePreset(alt);
                     }}
                   >
-                    {layerId === '' && (
-                      <option value="" disabled>
-                        Choose a photos layer
-                      </option>
-                    )}
-                    {layers.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.name} ({l.items.length} photos)
-                      </option>
+                    Use {presetLabel(alt)}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {!optionsOpen && timeHint}
+
+            {zone && (
+              <div
+                className="ph-q"
+                role="group"
+                aria-label="Coordinate system"
+                data-testid="ask-zone"
+              >
+                <p>
+                  <Icon name="globe" size={14} />
+                  <span>
+                    These photos were taken in {zone.photos.name}, but this project uses{' '}
+                    {zone.project.name}. Which should the maps use?
+                  </span>
+                </p>
+                <div className="ph-q-choice">
+                  <button
+                    type="button"
+                    className="btn sm"
+                    aria-pressed={epsg === zone.project.epsg}
+                    onClick={() => {
+                      setEpsg(zone.project.epsg);
+                    }}
+                  >
+                    The project&apos;s ({zone.project.name})
+                  </button>
+                  <button
+                    type="button"
+                    className="btn sm"
+                    aria-pressed={epsg === zone.photos.epsg}
+                    onClick={() => {
+                      setEpsg(zone.photos.epsg);
+                    }}
+                  >
+                    The photos&apos; ({zone.photos.name})
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {gps && (
+              <p className="ph-note small" data-testid="photo-gps">
+                <Icon name="pin" size={14} />
+                <span>{gps}</span>
+              </p>
+            )}
+
+            <details
+              className="ph-options"
+              data-testid="photo-options"
+              onToggle={(e) => {
+                setOptionsOpen(e.currentTarget.open);
+              }}
+            >
+              <summary>Options</summary>
+              <div className="ph-options-body">
+                <div className="b-field">
+                  <span id="ph-quality">Quality</span>
+                  <div className="b-cards ph-presets" role="group" aria-labelledby="ph-quality">
+                    {PRESETS.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className="b-card"
+                        aria-pressed={preset === p.id}
+                        onClick={() => {
+                          choosePreset(p.id);
+                        }}
+                      >
+                        <Icon
+                          name={
+                            p.id === 'fast' ? 'play' : p.id === 'standard' ? 'layers' : 'target'
+                          }
+                          size={16}
+                        />
+                        <b>{p.label}</b>
+                        <small>
+                          {p.hint} {p.detail}
+                        </small>
+                      </button>
                     ))}
-                  </select>
-                </label>
-              ) : (
-                <div className={`ph-drop${over ? ' over' : ''}`} data-testid="photo-drop">
-                  {folders.length > 0 && (
-                    <ul className="ph-folders" aria-label="Chosen folders">
-                      {folders.map((f) => (
-                        <li key={f}>
-                          <span className="mono">{f}</span>
-                          <button
-                            type="button"
-                            className="btn ghost sm"
-                            aria-label={`Remove ${baseName(f)}`}
-                            onClick={() => {
-                              setFolders((x) => x.filter((y) => y !== f));
-                            }}
-                          >
-                            <Icon name="x" size={12} />
-                          </button>
+                  </div>
+                  {/* beside the choice it is about, while that choice is in view */}
+                  {optionsOpen && timeHint}
+                </div>
+
+                <fieldset className="ph-products">
+                  <legend>What to create</legend>
+                  {PRODUCTS.map((p) => (
+                    <label key={p.id} className="ph-check">
+                      <input
+                        type="checkbox"
+                        checked={products.includes(p.id)}
+                        disabled={noModel && (p.id === 'mesh' || p.id === 'tiles')}
+                        onChange={(e) => {
+                          setProducts((x) =>
+                            e.target.checked
+                              ? PRODUCTS.map((y) => y.id).filter((y) => y === p.id || x.includes(y))
+                              : x.filter((y) => y !== p.id),
+                          );
+                        }}
+                      />
+                      <span>
+                        <b>{p.label}</b>
+                        <small>{p.hint}</small>
+                      </span>
+                    </label>
+                  ))}
+                  {noModel && <p className="small faint">Quick makes no 3D model.</p>}
+                </fieldset>
+
+                <div className="b-field">
+                  <span>Coordinate system</span>
+                  {projectEpsg === null ? (
+                    <p className="small">The project&apos;s own coordinate system is used.</p>
+                  ) : (
+                    <>
+                      <input
+                        className="input"
+                        type="search"
+                        value={crsQuery}
+                        placeholder="Search zone, country or EPSG code"
+                        aria-label="Search coordinate systems"
+                        onChange={(e) => {
+                          setCrsQuery(e.target.value);
+                        }}
+                      />
+                      <div className="b-list" role="listbox" aria-label="Coordinate system">
+                        {crsChoices.map((code) => {
+                          const c = crsOption(code);
+                          return (
+                            <button
+                              key={code}
+                              type="button"
+                              role="option"
+                              aria-selected={epsg === code}
+                              onClick={() => {
+                                setEpsg(code);
+                              }}
+                            >
+                              <span>{c?.name ?? `EPSG:${String(code)}`}</span>
+                              <span className="mono">
+                                EPSG:{code}
+                                {code === projectEpsg ? ' · project' : ''}
+                                {code === suggested ? ' · photos' : ''}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                  {notes?.zone && <p className="hint">{notes.zone.text}</p>}
+                </div>
+
+                <div className="b-field">
+                  <span id="ph-gnss">Camera positions (GNSS)</span>
+                  <div className="ph-radios" role="radiogroup" aria-labelledby="ph-gnss">
+                    {GNSS.map((g) => (
+                      <label key={g.id} className="ph-radio">
+                        <input
+                          type="radio"
+                          name="ph-gnss"
+                          checked={gnss === g.id}
+                          onChange={() => {
+                            setGnss(g.id);
+                          }}
+                        />
+                        <span>
+                          <b>{g.label}</b>
+                          <small>{g.hint}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="b-field">
+                  <span>Heights</span>
+                  <p className="small" data-testid="photo-heights">
+                    {datum
+                      ? `Absolute altitude ${datum.absAltOffsetM >= 0 ? '+' : ''}${datum.absAltOffsetM.toFixed(2)} m (the project's vertical datum${datum.note ? `: ${datum.note}` : ''}). Every run states the heights it used.`
+                      : 'The photos’ altitudes as recorded; ground control corrects them. Every run states the heights it used.'}
+                  </p>
+                </div>
+
+                <div className="b-row">
+                  <label className="b-field">
+                    <span>Survey date</span>
+                    <select
+                      className="input"
+                      value={choiceOf(pick)}
+                      onChange={(e) => {
+                        setDateChoice(e.target.value);
+                      }}
+                    >
+                      {dateOptions([autoPick, pick], captures, formatDate).map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="ph-check ph-gcpfirst">
+                    <input
+                      type="checkbox"
+                      checked={gcpFirst}
+                      onChange={(e) => {
+                        setGcpFirst(e.target.checked);
+                      }}
+                    />
+                    <span>
+                      <b>I have ground control points</b>
+                      <small>
+                        Stop after matching the photos, to mark the points before the maps are
+                        built.
+                      </small>
+                    </span>
+                  </label>
+                </div>
+
+                <div className="b-field ph-machine">
+                  <span>This computer and the cameras</span>
+                  {probe && (
+                    <p className="small faint" data-testid="photo-probe">
+                      {machineLine(probe)}
+                    </p>
+                  )}
+                  {probe && (
+                    <p className="small faint" data-testid="photo-gpu">
+                      {gpuLine(probe)}
+                    </p>
+                  )}
+                  {estimate && memoryNote(estimate) && (
+                    <p className="small faint">{memoryNote(estimate)}</p>
+                  )}
+                  {groups && groups.length > 0 && (
+                    <ul className="ph-groups" aria-label="Cameras" data-testid="photo-groups">
+                      {groups.map((g) => (
+                        <li key={g}>
+                          <Icon name="camera" size={14} />
+                          {g}
                         </li>
                       ))}
                     </ul>
                   )}
-                  <div className="ph-drop-act">
-                    {folders.length === 0 && <p>Drop a folder of photos here, or</p>}
-                    <button
-                      type="button"
-                      className={folders.length ? 'btn sm' : 'btn'}
-                      data-testid="photo-add-folder"
-                      onClick={() => void chooseFolder()}
-                    >
-                      <Icon name="plus" size={14} />
-                      {folders.length ? 'Add another folder' : 'Choose a folder'}
-                    </button>
-                  </div>
-                  <p className="hint">JPEG or TIFF photos. Folders inside are read too.</p>
-                </div>
-              )}
-
-              {photos && (
-                <section className="ph-sum" aria-label="Summary" aria-live="polite">
-                  {!summary && !error && <p className="faint small">Reading the photos</p>}
-                  {noPhotos && (
-                    <p className="notice warn small" data-testid="photo-none">
-                      <Icon name="warn" size={14} />
-                      No photos were found there. Choose a folder with JPEG or TIFF photos.
+                  {groups && groups.length > 1 && (
+                    <p className="small faint">
+                      Each camera is calibrated on its own, which needs more overlap per camera.
                     </p>
                   )}
-                  {summary && estimate && !noPhotos && (
-                    <>
-                      <p className="ph-sum-line" data-testid="photo-summary">
-                        {summaryLine(summary)}
-                      </p>
-                      {reducedNote(estimate) && (
-                        <p className="small faint" data-testid="photo-reduced">
-                          {reducedNote(estimate)}
-                        </p>
-                      )}
-                      <p className="ph-sum-time" data-testid="photo-estimate">
-                        {fresh
-                          ? `${formatMinutes(estimate.minutes)} on this computer`
-                          : 'Working out the time'}
-                      </p>
-                      {fresh && (
-                        <p className="small faint" data-testid="photo-needs">
-                          Uses about {formatBytes(estimate.diskBytes)} of disk space and{' '}
-                          {formatBytes(estimate.memoryBytes)} of memory while it runs.
-                        </p>
-                      )}
-                      {fresh && (
-                        <p className="small" data-testid="photo-date">
-                          {dateSentence(pick, formatDate)}
-                          {pick.kind === 'none' && dateChoice === null
-                            ? ' These photos carry no date. Choose one in Options.'
-                            : ''}
-                        </p>
-                      )}
-                      {fresh && days && (
-                        <p className="small faint" data-testid="photo-days">
-                          {days}
-                        </p>
-                      )}
-                    </>
-                  )}
-                </section>
-              )}
-
-              {disk && (
-                <div className="ph-q" role="group" aria-label="Disk space" data-testid="ask-disk">
-                  <p>
-                    <Icon name="warn" size={14} />
-                    <span>
-                      Not enough free disk space: this needs {disk.needs} on the data drive, and it
-                      has {disk.has}. Free some space
-                      {alt ? `, or use ${presetLabel(alt)} quality, which needs less.` : '.'}
-                    </span>
-                  </p>
-                  {alt && (
-                    <button
-                      type="button"
-                      className="btn sm"
-                      onClick={() => {
-                        choosePreset(alt);
-                      }}
-                    >
-                      Use {presetLabel(alt)}
-                    </button>
-                  )}
                 </div>
-              )}
-
-              {!optionsOpen && timeHint}
-
-              {zone && (
-                <div
-                  className="ph-q"
-                  role="group"
-                  aria-label="Coordinate system"
-                  data-testid="ask-zone"
-                >
-                  <p>
-                    <Icon name="globe" size={14} />
-                    <span>
-                      These photos were taken in {zone.photos.name}, but this project uses{' '}
-                      {zone.project.name}. Which should the maps use?
-                    </span>
-                  </p>
-                  <div className="ph-q-choice">
-                    <button
-                      type="button"
-                      className="btn sm"
-                      aria-pressed={epsg === zone.project.epsg}
-                      onClick={() => {
-                        setEpsg(zone.project.epsg);
-                      }}
-                    >
-                      The project&apos;s ({zone.project.name})
-                    </button>
-                    <button
-                      type="button"
-                      className="btn sm"
-                      aria-pressed={epsg === zone.photos.epsg}
-                      onClick={() => {
-                        setEpsg(zone.photos.epsg);
-                      }}
-                    >
-                      The photos&apos; ({zone.photos.name})
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {gps && (
-                <p className="ph-note small" data-testid="photo-gps">
-                  <Icon name="pin" size={14} />
-                  <span>{gps}</span>
-                </p>
-              )}
-
-              <details
-                className="ph-options"
-                data-testid="photo-options"
-                onToggle={(e) => {
-                  setOptionsOpen(e.currentTarget.open);
-                }}
-              >
-                <summary>Options</summary>
-                <div className="ph-options-body">
-                  <div className="b-field">
-                    <span id="ph-quality">Quality</span>
-                    <div className="b-cards ph-presets" role="group" aria-labelledby="ph-quality">
-                      {PRESETS.map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          className="b-card"
-                          aria-pressed={preset === p.id}
-                          onClick={() => {
-                            choosePreset(p.id);
-                          }}
-                        >
-                          <Icon
-                            name={
-                              p.id === 'fast' ? 'play' : p.id === 'standard' ? 'layers' : 'target'
-                            }
-                            size={16}
-                          />
-                          <b>{p.label}</b>
-                          <small>
-                            {p.hint} {p.detail}
-                          </small>
-                        </button>
-                      ))}
-                    </div>
-                    {/* beside the choice it is about, while that choice is in view */}
-                    {optionsOpen && timeHint}
-                  </div>
-
-                  <fieldset className="ph-products">
-                    <legend>What to create</legend>
-                    {PRODUCTS.map((p) => (
-                      <label key={p.id} className="ph-check">
-                        <input
-                          type="checkbox"
-                          checked={products.includes(p.id)}
-                          disabled={noModel && (p.id === 'mesh' || p.id === 'tiles')}
-                          onChange={(e) => {
-                            setProducts((x) =>
-                              e.target.checked
-                                ? PRODUCTS.map((y) => y.id).filter(
-                                    (y) => y === p.id || x.includes(y),
-                                  )
-                                : x.filter((y) => y !== p.id),
-                            );
-                          }}
-                        />
-                        <span>
-                          <b>{p.label}</b>
-                          <small>{p.hint}</small>
-                        </span>
-                      </label>
-                    ))}
-                    {noModel && <p className="small faint">Quick makes no 3D model.</p>}
-                  </fieldset>
-
-                  <div className="b-field">
-                    <span>Coordinate system</span>
-                    {projectEpsg === null ? (
-                      <p className="small">The project&apos;s own coordinate system is used.</p>
-                    ) : (
-                      <>
-                        <input
-                          className="input"
-                          type="search"
-                          value={crsQuery}
-                          placeholder="Search zone, country or EPSG code"
-                          aria-label="Search coordinate systems"
-                          onChange={(e) => {
-                            setCrsQuery(e.target.value);
-                          }}
-                        />
-                        <div className="b-list" role="listbox" aria-label="Coordinate system">
-                          {crsChoices.map((code) => {
-                            const c = crsOption(code);
-                            return (
-                              <button
-                                key={code}
-                                type="button"
-                                role="option"
-                                aria-selected={epsg === code}
-                                onClick={() => {
-                                  setEpsg(code);
-                                }}
-                              >
-                                <span>{c?.name ?? `EPSG:${String(code)}`}</span>
-                                <span className="mono">
-                                  EPSG:{code}
-                                  {code === projectEpsg ? ' · project' : ''}
-                                  {code === suggested ? ' · photos' : ''}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </>
-                    )}
-                    {notes?.zone && <p className="hint">{notes.zone.text}</p>}
-                  </div>
-
-                  <div className="b-field">
-                    <span id="ph-gnss">Camera positions (GNSS)</span>
-                    <div className="ph-radios" role="radiogroup" aria-labelledby="ph-gnss">
-                      {GNSS.map((g) => (
-                        <label key={g.id} className="ph-radio">
-                          <input
-                            type="radio"
-                            name="ph-gnss"
-                            checked={gnss === g.id}
-                            onChange={() => {
-                              setGnss(g.id);
-                            }}
-                          />
-                          <span>
-                            <b>{g.label}</b>
-                            <small>{g.hint}</small>
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="b-field">
-                    <span>Heights</span>
-                    <p className="small" data-testid="photo-heights">
-                      {datum
-                        ? `Absolute altitude ${datum.absAltOffsetM >= 0 ? '+' : ''}${datum.absAltOffsetM.toFixed(2)} m (the project's vertical datum${datum.note ? `: ${datum.note}` : ''}). Every run states the heights it used.`
-                        : 'The photos’ altitudes as recorded; ground control corrects them. Every run states the heights it used.'}
-                    </p>
-                  </div>
-
-                  <div className="b-row">
-                    <label className="b-field">
-                      <span>Survey date</span>
-                      <select
-                        className="input"
-                        value={choiceOf(pick)}
-                        onChange={(e) => {
-                          setDateChoice(e.target.value);
-                        }}
-                      >
-                        {dateOptions([autoPick, pick], captures, formatDate).map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="ph-check ph-gcpfirst">
-                      <input
-                        type="checkbox"
-                        checked={gcpFirst}
-                        onChange={(e) => {
-                          setGcpFirst(e.target.checked);
-                        }}
-                      />
-                      <span>
-                        <b>I have ground control points</b>
-                        <small>
-                          Stop after matching the photos, to mark the points before the maps are
-                          built.
-                        </small>
-                      </span>
-                    </label>
-                  </div>
-
-                  <div className="b-field ph-machine">
-                    <span>This computer and the cameras</span>
-                    {probe && (
-                      <p className="small faint" data-testid="photo-probe">
-                        {machineLine(probe)}
-                      </p>
-                    )}
-                    {probe && (
-                      <p className="small faint" data-testid="photo-gpu">
-                        {gpuLine(probe)}
-                      </p>
-                    )}
-                    {estimate && memoryNote(estimate) && (
-                      <p className="small faint">{memoryNote(estimate)}</p>
-                    )}
-                    {groups && groups.length > 0 && (
-                      <ul className="ph-groups" aria-label="Cameras" data-testid="photo-groups">
-                        {groups.map((g) => (
-                          <li key={g}>
-                            <Icon name="camera" size={14} />
-                            {g}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {groups && groups.length > 1 && (
-                      <p className="small faint">
-                        Each camera is calibrated on its own, which needs more overlap per camera.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </details>
-            </div>
-
-            <footer className="b-foot">
-              {error ? (
-                <span className="err" role="alert">
-                  {error}
-                </span>
-              ) : (
-                <span className="grow">
-                  <span className="hint faint small" data-testid="photo-missing">
-                    {missing}
-                  </span>
-                  {missing === null && (
-                    <span className="hint faint small" data-testid="photo-destination">
-                      The maps are added to {project.manifest.name}.
-                    </span>
-                  )}
-                </span>
-              )}
-              <button type="button" className="btn ghost" onClick={close}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn primary"
-                data-testid="photo-start"
-                disabled={busy || cannotStart || estimating}
-                onClick={() => void go()}
-              >
-                <Icon name="play" size={14} />
-                {busy ? 'Starting' : 'Create maps'}
-              </button>
-            </footer>
-          </>
+              </div>
+            </details>
+          </div>
         )}
-      </div>
+      </Dialog>
     </div>
   );
 }

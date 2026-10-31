@@ -588,7 +588,7 @@ plain.describe('when this computer cannot create maps', () => {
       // in place of the form: nothing to fill in, no second copy of the message, no dead Start
       await expect(wizard.getByTestId('photo-start')).toHaveCount(0);
       await expect(wizard.getByTestId('photo-options')).toHaveCount(0);
-      await expect(wizard.locator('.notice, .b-foot')).toHaveCount(0);
+      await expect(wizard.locator('.notice, .q-dialog-foot')).toHaveCount(0);
       await expect(blocked.locator('p')).toHaveCount(1);
       await expect(wizard).not.toContainText(/pipeline pack/i);
       await expectAccessible(win, 'create maps from photos, blocked', {

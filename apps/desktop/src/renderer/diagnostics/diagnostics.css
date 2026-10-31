@@ -46,7 +46,7 @@
   font-size: var(--t-12);
   color: var(--fg-2);
 }
-.dlg .diag-field textarea.input {
+.diag-problem .diag-field textarea.input {
   height: auto;
   min-height: 84px;
 }
@@ -63,7 +63,12 @@
   }
 }
 
-/* The form inside the dialog adds no box: header, body and footer stay the dialog's rows. */
+/* The form inside the dialog body adds no box: its fields stay the body's rows. */
 .diag-form {
   display: contents;
+}
+/* "Send to the portal" sits at the start of the footer, the form's buttons at the end */
+.diag-problem .q-dialog-foot .grow {
+  flex: 1;
+  min-width: 0;
 }

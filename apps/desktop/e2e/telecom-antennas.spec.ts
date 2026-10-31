@@ -378,7 +378,7 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   });
   const preview = win.getByRole('dialog', { name: 'Send photo crops for labelling' });
   await expect(preview).toBeVisible();
-  const layer = await win.locator('.antenna-send-layer .ag-modal-back').evaluate((back) => {
+  const layer = await win.getByTestId('antenna-send-preview-scrim').evaluate((back) => {
     const r = back.getBoundingClientRect();
     return {
       z: getComputedStyle(back).zIndex,

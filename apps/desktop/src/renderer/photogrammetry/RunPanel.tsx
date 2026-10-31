@@ -5,9 +5,9 @@
  */
 import type { AccuracyReport, JobRecord, PhotoRun } from '@aio/schema';
 import { useAnnotateReadOnly } from '@aio/annotate';
-import { formatDate, Icon, useFocusTrap } from '@aio/ui';
+import { Dialog, formatDate, Icon } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { isActive } from '../jobs';
 import { bridge, shell, useJobs, useShell } from '../shell';
 import {
@@ -67,11 +67,9 @@ export function RunPanel({ run, tab }: { run: string; tab: RunTab }) {
   const version = usePhotoUi((s) => s.version);
   const note = usePhotoUi((s) => s.notes[run]);
   const allJobs = useJobs((s) => s.jobs);
-  const dlg = useRef<HTMLDivElement>(null);
   const close = () => {
     photoUi.getState().close();
   };
-  useFocusTrap(dlg, true, { onEscape: close });
   const [data, setData] = useState<{ run: PhotoRun; accuracy: AccuracyReport | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const root = project?.root ?? '';
@@ -104,70 +102,61 @@ export function RunPanel({ run, tab }: { run: string; tab: RunTab }) {
   if (!project) return null;
   const preset = data?.run.preset;
   return (
-    <div
-      ref={dlg}
-      className="b-scrim"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Photo run ${run}`}
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
+    <Dialog
+      open
+      onClose={close}
+      title={`Photo run ${run}`}
+      className="ph-run"
+      testId="photo-run"
+      description={
+        <>
+          <span className="ph-line" data-testid="photo-run-project">
+            {project.manifest.name}
+            {' · '}
+            {data
+              ? `${RUN_STATUS[data.run.status]} · ${preset ? presetLabel(preset) : ''} · ${String(data.run.photos.count)} photos`
+              : 'Starting'}
+          </span>
+          {note && (
+            <span className="ph-line" role="status" data-testid="photo-run-note">
+              {note}
+            </span>
+          )}
+        </>
+      }
     >
-      <div className="ph-panel" data-testid="photo-run">
-        <header className="ph-head" role="none">
-          <div>
-            <h2>Photo run {run}</h2>
-            <p className="small faint" data-testid="photo-run-project">
-              {project.manifest.name}
-              {' · '}
-              {data
-                ? `${RUN_STATUS[data.run.status]} · ${preset ? presetLabel(preset) : ''} · ${String(data.run.photos.count)} photos`
-                : 'Starting'}
-            </p>
-            {note && (
-              <p className="small" role="status" data-testid="photo-run-note">
-                {note}
-              </p>
-            )}
-          </div>
-          <button type="button" className="btn ghost sm" onClick={close} aria-label="Close">
-            <Icon name="x" size={14} />
+      <div className="ph-tabs" role="tablist" aria-label="Run">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            id={`ph-tab-${t.id}`}
+            aria-selected={tab === t.id}
+            aria-controls="ph-tabpanel"
+            onClick={() => {
+              photoUi.getState().setTab(t.id);
+            }}
+          >
+            {t.label}
           </button>
-        </header>
-        <div className="ph-tabs" role="tablist" aria-label="Run">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              id={`ph-tab-${t.id}`}
-              aria-selected={tab === t.id}
-              aria-controls="ph-tabpanel"
-              onClick={() => {
-                photoUi.getState().setTab(t.id);
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div className="ph-body" role="tabpanel" id="ph-tabpanel" aria-labelledby={`ph-tab-${tab}`}>
-          {error && (
-            <p className="notice danger small" role="alert">
-              <Icon name="warn" size={14} />
-              {error}
-            </p>
-          )}
-          {tab === 'progress' && <Progress run={run} data={data?.run ?? null} jobs={runJobs} />}
-          {tab === 'gcp' && <GcpPanel run={run} data={data?.run ?? null} />}
-          {tab === 'report' && (
-            <AccuracyReportView run={data?.run ?? null} report={data?.accuracy ?? null} />
-          )}
-          {tab === 'poses' && <RefinedPoses run={run} data={data?.run ?? null} />}
-        </div>
+        ))}
       </div>
-    </div>
+      <div className="ph-body" role="tabpanel" id="ph-tabpanel" aria-labelledby={`ph-tab-${tab}`}>
+        {error && (
+          <p className="notice danger small" role="alert">
+            <Icon name="warn" size={14} />
+            {error}
+          </p>
+        )}
+        {tab === 'progress' && <Progress run={run} data={data?.run ?? null} jobs={runJobs} />}
+        {tab === 'gcp' && <GcpPanel run={run} data={data?.run ?? null} />}
+        {tab === 'report' && (
+          <AccuracyReportView run={data?.run ?? null} report={data?.accuracy ?? null} />
+        )}
+        {tab === 'poses' && <RefinedPoses run={run} data={data?.run ?? null} />}
+      </div>
+    </Dialog>
   );
 }
 

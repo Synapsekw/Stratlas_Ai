@@ -114,7 +114,7 @@ describe('LineUpNotice', () => {
     await act(async () => {
       await store.getState().open('d1', 'd2');
     });
-    const radio = host.querySelector<HTMLElement>('[data-testid="lineup-keep-d1"]');
+    const radio = document.body.querySelector<HTMLElement>('[data-testid="lineup-keep-d1"]');
     expect(radio).not.toBeNull();
     press({ key: 'z', ctrlKey: true }, radio ?? document.body);
     await flush();

@@ -1,7 +1,7 @@
-/* Line up dates: the step uses the app's dialog frame (.dlg, package.css) and its toasts. It
+/* Line up dates: the step uses the shared Dialog (@aio/ui) and its toasts. It
    fits the smallest window, 1100 x 700: the preview gives up height first. */
 
-.lu-dialog .dlg-b {
+.lu-dialog .q-dialog-body {
   gap: var(--sp-5);
 }
 .lu-flush {

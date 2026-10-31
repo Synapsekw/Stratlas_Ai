@@ -412,9 +412,13 @@ fieldset:disabled .sv-pick {
   box-shadow: 0 24px 64px oklch(0.08 0.01 250 / 0.6);
   overflow: auto;
 }
-.sv-tpl {
+/* the template editor: a wide, tall @aio/ui Dialog (size lg, widened) */
+.q-dialog.sv-tpl[data-size] {
   width: min(900px, 100%);
-  height: min(680px, 100%);
+  height: 680px;
+}
+.sv-tpl .q-dialog-body {
+  flex: 1;
 }
 .sv-tpl-body {
   flex: 1;

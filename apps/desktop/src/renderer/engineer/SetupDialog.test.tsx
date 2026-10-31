@@ -80,7 +80,8 @@ function show(over: Partial<SetupDialogProps> = {}) {
   act(() => root?.render(<SetupDialog {...props} />));
   return props;
 }
-const q = (id: string) => host.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+// the dialog portals to the body
+const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
 const check = (id: string) => {
   act(() => q(id)?.click());
 };
@@ -102,7 +103,7 @@ describe('SetupDialog', () => {
   });
   it('lists the clouds, models and photo sets as sources, and adds photos from files', async () => {
     const p = show();
-    const names = [...host.querySelectorAll('[data-testid^="eng-source-"]')].map((el) =>
+    const names = [...document.querySelectorAll('[data-testid^="eng-source-"]')].map((el) =>
       el.getAttribute('data-testid'),
     );
     expect(names).toEqual(['eng-source-scan', 'eng-source-mesh', 'eng-source-shots']);
@@ -110,7 +111,7 @@ describe('SetupDialog', () => {
     await flush();
     expect(p.onPickPhotos).toHaveBeenCalledTimes(1);
     expect(q('eng-photo-files')?.textContent).toContain('2 photos from files');
-    expect(host.textContent).not.toMatch(DASHES);
+    expect(q('eng-setup')?.textContent).not.toMatch(DASHES);
   });
 
   it('sets a region by its centre and radius, and clears it', async () => {

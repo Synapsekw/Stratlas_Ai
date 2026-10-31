@@ -1,42 +1,29 @@
 /* Builder: new project wizard, raw import, alignment tools (Mission tokens only). */
 
-/* ---------- modal sheet ---------- */
-.b-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  background: oklch(0.1 0.01 250 / 0.55);
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  animation: cmdk-fade 120ms var(--ease);
-}
-.b-sheet {
+/* ---------- the new project wizard: an @aio/ui Dialog, the steps beside the step body ---------- */
+.q-dialog.b-wizard[data-size] {
   width: min(880px, 100%);
-  height: min(640px, 100%);
-  display: grid;
-  grid-template-columns: 200px 1fr;
-  grid-template-rows: 1fr auto;
-  background: var(--bg-1);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-6);
-  box-shadow: 0 24px 64px oklch(0.08 0.01 250 / 0.6);
+  height: 640px;
+}
+.b-wizard .q-dialog-body {
+  flex: 1;
+  flex-direction: row;
+  gap: 0;
+  padding: 0;
   overflow: hidden;
-  animation: cmdk-in 180ms var(--ease-x);
+}
+.b-wizard .b-body {
+  flex: 1;
 }
 .b-steps {
-  grid-row: 1 / 3;
+  flex: none;
+  width: 200px;
   background: var(--bg-chrome);
   border-right: 1px solid var(--line-soft);
   padding: 18px 12px;
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-.b-steps h2 {
-  font-size: var(--t-14);
-  font-weight: 600;
-  margin: 0 8px 14px;
 }
 .b-step {
   display: flex;
@@ -93,19 +80,13 @@
   color: var(--fg-2);
   font-size: var(--t-12);
 }
-.b-foot {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  border-top: 1px solid var(--line-soft);
-}
-.b-foot .err {
+/* the wizards' footers (Dialog footer): an error or hint on the left, the buttons on the right */
+:is(.b-wizard, .ph-simple) .q-dialog-foot .err {
   color: var(--s5);
   font-size: var(--t-12);
   margin-right: auto;
 }
-.b-foot .grow {
+:is(.b-wizard, .ph-simple) .q-dialog-foot .grow {
   margin-right: auto;
 }
 .b-field {

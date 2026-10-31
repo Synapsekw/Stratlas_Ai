@@ -148,8 +148,8 @@ function clickScene(el: HTMLElement) {
   });
 }
 
-const setupShown = () =>
-  must(q('eng-setup')).closest<HTMLElement>('.dlg-scrim')?.style.display !== 'none';
+// while a pick waits the setup is closed (its choices kept by the component)
+const setupShown = () => q('eng-setup') !== null;
 
 describe('EngineerLayer', () => {
   it('opens review on the generated model with model/cloud/overlay controls and a fitted camera', () => {
@@ -398,9 +398,9 @@ describe('EngineerLayer', () => {
         engineerUi.getState().show(['scan']);
       });
       act(() => q('eng-region-pick')?.click());
-      // the key comes from the pick button, still focused inside the hidden setup
+      // the setup is closed while the pick waits, so the key comes from the page
       act(() => {
-        must(q('eng-region-pick')).dispatchEvent(
+        (document.activeElement ?? document.body).dispatchEvent(
           new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
         );
       });

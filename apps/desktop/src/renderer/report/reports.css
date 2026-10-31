@@ -533,6 +533,10 @@
   color: var(--fg-1);
   user-select: text;
 }
+.nar-preview .q-dialog-foot .nar-always {
+  flex: 1;
+  min-width: 0;
+}
 .nar-always {
   display: flex;
   align-items: center;

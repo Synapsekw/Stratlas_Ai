@@ -15,8 +15,8 @@ import {
 } from '@aio/schema';
 import { formatQuantity, unitName, type AnyUnit } from '@aio/geo';
 import { effectiveUnits } from '@aio/survey';
-import { Icon, useFocusTrap } from '@aio/ui';
-import { useRef, useState } from 'react';
+import { Dialog, Icon } from '@aio/ui';
+import { useState } from 'react';
 import { openDialog, saveSiteSettings, updateMeasurement, useMeasure } from './measureStore';
 
 type Key = keyof SurveyUnits;
@@ -52,11 +52,9 @@ export function UnitsDialog() {
   );
   const [site, setSite] = useState<SurveyUnits>(() => ({ ...settings.units }));
   const [error, setError] = useState<string | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
   const close = () => {
     openDialog(null);
   };
-  useFocusTrap(ref, true, { onEscape: close });
 
   const shown: SurveyUnits = forMeasurement ? effectiveUnits(settings.units, clean(own)) : site;
   const save = async () => {
@@ -77,75 +75,18 @@ export function UnitsDialog() {
   };
 
   return (
-    <div
-      ref={ref}
-      className="sv-scrim"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="sv-units-title"
-      data-testid="survey-units-dialog"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
-    >
-      <div className="sv-dialog sv-units">
-        <header className="sv-head" role="none">
-          <h2 id="sv-units-title">{forMeasurement ? `Units for ${m.label}` : 'Site units'}</h2>
-          <button type="button" className="btn ghost sm" aria-label="Close" onClick={close}>
-            <Icon name="x" size={14} />
-          </button>
-        </header>
-        <p className="small faint">
-          {forMeasurement
-            ? 'This measurement shows its values in these units; the others keep the site units. Values are stored in metres.'
-            : 'How every measurement shows its values unless it has its own units. Values are stored in metres.'}
-        </p>
-        <div className="sv-unit-grid">
-          {QUANTITIES.map((q) => {
-            const value = forMeasurement ? (own[q.key] ?? '') : site[q.key];
-            return (
-              <label key={q.key} className="sv-field">
-                <span>{q.label}</span>
-                <select
-                  className="sv-input"
-                  value={value}
-                  data-testid={`survey-unit-${q.key}`}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (forMeasurement) {
-                      const next = Object.fromEntries(
-                        Object.entries(own).filter(([k]) => k !== q.key),
-                      );
-                      if (v) next[q.key] = v;
-                      setOwn(next);
-                    } else setSite({ ...site, [q.key]: v });
-                  }}
-                >
-                  {forMeasurement && (
-                    <option value="">Site ({unitName(settings.units[q.key])})</option>
-                  )}
-                  {q.options.map((o) => (
-                    <option key={o} value={o}>
-                      {unitName(o as AnyUnit)}
-                    </option>
-                  ))}
-                </select>
-                <small className="faint mono">
-                  {SI_LABEL[q.key]} reads{' '}
-                  {formatQuantity(q.sample, q.key, shown, settings.precision)}
-                </small>
-              </label>
-            );
-          })}
-        </div>
-        {error && (
-          <p className="notice danger small" role="alert">
-            <Icon name="warn" size={14} />
-            {error}
-          </p>
-        )}
-        <footer className="sv-foot" role="none">
-          <span className="sv-grow" />
+    <Dialog
+      open
+      onClose={close}
+      title={forMeasurement ? `Units for ${m.label}` : 'Site units'}
+      testId="survey-units-dialog"
+      description={
+        forMeasurement
+          ? 'This measurement shows its values in these units; the others keep the site units. Values are stored in metres.'
+          : 'How every measurement shows its values unless it has its own units. Values are stored in metres.'
+      }
+      footer={
+        <>
           <button type="button" className="btn sm ghost" onClick={close}>
             Cancel
           </button>
@@ -159,9 +100,53 @@ export function UnitsDialog() {
           >
             Apply
           </button>
-        </footer>
+        </>
+      }
+    >
+      <div className="sv-unit-grid">
+        {QUANTITIES.map((q) => {
+          const value = forMeasurement ? (own[q.key] ?? '') : site[q.key];
+          return (
+            <label key={q.key} className="sv-field">
+              <span>{q.label}</span>
+              <select
+                className="sv-input"
+                value={value}
+                data-testid={`survey-unit-${q.key}`}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (forMeasurement) {
+                    const next = Object.fromEntries(
+                      Object.entries(own).filter(([k]) => k !== q.key),
+                    );
+                    if (v) next[q.key] = v;
+                    setOwn(next);
+                  } else setSite({ ...site, [q.key]: v });
+                }}
+              >
+                {forMeasurement && (
+                  <option value="">Site ({unitName(settings.units[q.key])})</option>
+                )}
+                {q.options.map((o) => (
+                  <option key={o} value={o}>
+                    {unitName(o as AnyUnit)}
+                  </option>
+                ))}
+              </select>
+              <small className="faint mono">
+                {SI_LABEL[q.key]} reads {formatQuantity(q.sample, q.key, shown, settings.precision)}
+              </small>
+            </label>
+          );
+        })}
       </div>
-    </div>
+      {error && (
+        <p className="notice danger small" role="alert">
+          <Icon name="warn" size={14} />
+          {error}
+        </p>
+      )}
+    </Dialog>
   );
 }
 

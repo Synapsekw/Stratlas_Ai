@@ -44,6 +44,8 @@ export interface DialogProps {
   /** Extra class on the dialog box (feature layout inside the body). */
   className?: string;
   testId?: string;
+  /** Extra `data-*` attributes on the dialog box (a feature's state for its CSS and tests). */
+  data?: Record<`data-${string}`, string | undefined>;
   children?: ReactNode;
 }
 
@@ -132,6 +134,7 @@ export function Dialog({
   footer,
   className,
   testId,
+  data,
   children,
 }: DialogProps): ReactElement | null {
   const t = useT();
@@ -204,6 +207,7 @@ export function Dialog({
           className={className ? `q-dialog ${className}` : 'q-dialog'}
           data-size={size}
           data-testid={testId}
+          {...data}
           tabIndex={-1}
         >
           <div className="q-dialog-head">

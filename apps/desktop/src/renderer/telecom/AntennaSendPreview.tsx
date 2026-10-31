@@ -1,6 +1,6 @@
-import { PROVIDER_LABELS, SendDialog } from '@aio/ai';
+import { PROVIDER_LABELS } from '@aio/ai';
 import type { IpcResponse } from '@aio/schema';
-import { Button, t } from '@aio/ui';
+import { Button, Dialog, t } from '@aio/ui';
 import { assetUrl } from '@aio/workspace';
 import { useState, type ReactElement } from 'react';
 
@@ -34,15 +34,15 @@ export function AntennaSendPreview(props: AntennaSendPreviewProps): ReactElement
   const count = preview.crops.length;
   const provider = providerName(preview.provider);
   return (
-    <SendDialog
-      standalone
-      className="surface-dlg"
-      titleId="antenna-send-title"
-      title={t('telecom.antennas.ai.title')}
-      onCancel={() => {
+    <Dialog
+      open
+      onClose={() => {
         props.onCancel();
       }}
-      actions={
+      dismissable={false}
+      testId="antenna-send-preview"
+      title={t('telecom.antennas.ai.title')}
+      footer={
         <>
           <Button
             onClick={() => {
@@ -92,6 +92,6 @@ export function AntennaSendPreview(props: AntennaSendPreviewProps): ReactElement
           {t('telecom.antennas.ai.photos')}
         </label>
       )}
-    </SendDialog>
+    </Dialog>
   );
 }

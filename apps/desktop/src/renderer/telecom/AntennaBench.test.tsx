@@ -491,7 +491,7 @@ describe('AI labelling after a run', () => {
     expect(d).not.toBeNull();
     expect(host.contains(d)).toBe(false);
     expect(d!.closest('[inert]')).toBeNull();
-    expect(d!.closest('.antenna-send-layer')?.parentElement).toBe(document.body);
+    expect(d!.closest('.q-scrim')?.parentElement?.parentElement).toBe(document.body);
     expect(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).toHaveLength(1);
     const send = d!.querySelector<HTMLElement>('[data-testid="antenna-send"]')!;
     expect(send.getAttribute('aria-disabled')).toBeNull();

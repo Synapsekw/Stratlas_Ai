@@ -8,7 +8,6 @@
  * the Project list, not on the stage. The stage mounts it, once.
  */
 import { getActiveStage, onActiveScene } from '@aio/engine';
-import { PortalRoot } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import {
   useEffect,
@@ -227,16 +226,14 @@ export function AntennaRunner(): ReactElement | null {
       <AntennaDeleteDialog />
       <AntennaMenu at={menu} onClose={closeAntennaMenu} />
       {shown && (
-        <PortalRoot opener={null} className="antenna-send-layer">
-          <AntennaSendPreview
-            preview={shown.value}
-            projectId={shown.projectId}
-            onSend={(photos) => {
-              void sendAiLabels(photos);
-            }}
-            onCancel={cancelAiLabels}
-          />
-        </PortalRoot>
+        <AntennaSendPreview
+          preview={shown.value}
+          projectId={shown.projectId}
+          onSend={(photos) => {
+            void sendAiLabels(photos);
+          }}
+          onCancel={cancelAiLabels}
+        />
       )}
     </>
   );

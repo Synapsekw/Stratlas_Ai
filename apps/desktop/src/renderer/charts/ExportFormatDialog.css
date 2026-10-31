@@ -1,6 +1,5 @@
-/* The one export dialog: the scrim and panel come from the survey dialogs (.sv-scrim, .sv-dialog). */
-.xf-dialog {
-  width: min(380px, 100%);
+/* The one export dialog: the scrim and box come from the @aio/ui Dialog (size sm). */
+.xf-dialog .q-dialog-body {
   gap: var(--sp-4);
 }
 .xf-group {
