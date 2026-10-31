@@ -16,8 +16,16 @@ class Ctx:
         self.project = project
         self.logs: list[tuple[str, str]] = []
 
+        self.checks = 0
+
     def log(self, msg, level="info"):
         self.logs.append((level, msg))
+
+    def check(self):
+        self.checks += 1
+
+    def progress(self, fraction, message=None):
+        pass
 
 
 def draft(ident, photo, bbox, score=0.9, cls="corrosion"):
@@ -51,7 +59,9 @@ def test_drafts_of_one_spot_from_two_photos_become_one_on_the_mesh(tmp_path):
     assert a["vote"]["views"] == 2
     # the west photo looks at the stack but the spot is on its far side: it does not count
     assert a["vote"]["seenBy"] == 2
-    assert a["vote"]["sightings"] == [{"photo": "e2", "bbox": dets[1]["bbox"], "confidence": 0.85, "id": "b"}]
+    assert a["vote"]["sightings"] == [
+        {"photo": "e2", "bbox": dets[1]["bbox"], "space": "preview", "confidence": 0.85, "id": "b"}
+    ]
     p = np.array(a["vote"]["point"])
     assert np.hypot(p[0] - AXIS[0], p[2] - AXIS[1]) == pytest.approx(RADIUS, abs=0.1)
     assert p[1] == pytest.approx(10.0, abs=0.3)
@@ -82,8 +92,35 @@ def test_a_cloud_surface_places_like_the_mesh():
     assert hit[0] == pytest.approx(5.0, abs=0.01)
     miss = surf.hit(np.array([[0.0, 0.0, 0.0]]), np.array([[-1.0, 0.0, 0.0]]))[0]
     assert np.isnan(miss[0])
-    assert surf.visible(np.array([0.0, 0, 0]), np.array([5.0, 0, 0]))
-    assert not surf.visible(np.array([0.0, 0, 0]), np.array([9.0, 0, 0]))
+    seen = surf.visible_many(np.array([0.0, 0, 0]), np.array([[5.0, 0, 0], [9.0, 0, 0], [-4.0, 0, 0]]))
+    assert seen.tolist() == [True, False, True]
+
+
+def test_a_long_ray_through_a_wide_cloud_does_not_step_over_the_surface():
+    # a wall at x = 5.2 and a far point cluster stretch the cloud 2 km: the ray takes long steps
+    ys, zs = np.meshgrid(np.linspace(-3, 3, 121), np.linspace(-3, 3, 121))
+    wall = np.column_stack([np.full(ys.size, 5.2), ys.ravel(), zs.ravel()])
+    far = np.array([[2000.0, 0.0, 0.0], [2000.0, 0.05, 0.0]])
+    surf = S.CloudSurface(np.vstack([wall, far]), spacing=0.05)
+    hit = surf.hit(np.array([[0.0, 0.0, 0.0]]), np.array([[1.0, 0.0, 0.0]]))[0]
+    assert hit[0] == pytest.approx(5.2, abs=1.0)
+    # a point behind the wall is hidden, whatever the step
+    assert surf.visible_many(np.array([0.0, 0, 0]), np.array([[1500.0, 0, 0]])).tolist() == [False]
+
+
+def test_a_cancel_inside_the_vote_cancels_the_job(tmp_path):
+    from aio_pipelines.runtime import Cancelled
+
+    native_project(tmp_path)
+    ctx = Ctx(tmp_path)
+
+    def stop():
+        raise Cancelled()
+
+    ctx.check = stop
+    dets = [draft("a", "e1", box_at("e1", EAST_SPOT)), draft("b", "e2", box_at("e2", EAST_SPOT))]
+    with pytest.raises(Cancelled):
+        S.vote_pass(ctx, "photos", dets)
 
 
 def test_one_posed_photo_runs_no_vote(tmp_path):

@@ -317,6 +317,7 @@ class DetectVlm:
             assessed: list[str] = []
             dets: list[dict[str, Any]] = []
             capped = 0  # photo results cut to MAX_CANDIDATES
+            looked: dict[str, set[str]] = {}  # class -> photos its detector ran on
             for pi, photo in enumerate(photos):
                 # assessed only when every detector of the run has a result for the photo: one
                 # that failed must not read as "checked, nothing found"
@@ -327,6 +328,7 @@ class DetectVlm:
                     if not staged.exists():
                         ran_all = False
                         continue
+                    looked.setdefault(det["classId"], set()).add(photo["id"])  # seenBy counts only these
                     result = json.loads(staged.read_text("utf-8"))
                     capped += bool(result.get("capped"))
                     for k, c in enumerate(result["candidates"]):
@@ -368,7 +370,7 @@ class DetectVlm:
                     assessed.append(photo["id"])
             # one draft per object seen in several posed photos (multiview/, vision audit 3.6)
             sizes = {e["detector"]["id"]: e["detector"] for e in detectors}
-            dets, voted = vote_pass(ctx, params["layer"], dets, radius_for(sizes))
+            dets, voted = vote_pass(ctx, params["layer"], dets, radius_for(sizes), assessed=looked)
             doc = {
                 "schema": DETECTIONS_SCHEMA,
                 "source": "model",

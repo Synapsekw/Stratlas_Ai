@@ -598,6 +598,32 @@ def test_drafts_of_one_object_in_posed_photos_are_voted_into_one(tmp_path):
     assert result["outputs"]["commit"]["voted"] == {"objects": 1, "merged": 2, "singleView": 0}
 
 
+def test_seen_by_counts_only_the_photos_the_detector_ran_on(tmp_path):
+    from test_inspection import look_q
+
+    sizes = tuple((400, 300) for _ in range(6))
+    root = make_project(tmp_path / "p", sizes=sizes)
+    m = json.loads((root / "manifest.json").read_text("utf-8"))
+    for k, item in enumerate(m["layers"][0]["items"]):
+        a = 2 * math.pi * k / 6
+        pos = [12 * math.cos(a), 10.0, 12 * math.sin(a)]
+        item.update(pos=pos, q=look_q(pos, [0.0, 0.0, 0.0]), lens={"model": "pinhole", "hfovDeg": 60.0})
+    (root / "manifest.json").write_text(json.dumps(m), "utf-8")
+    centred = '[{"bbox_2d": [572, 404, 772, 604], "label": "x", "note": "middle"}]'
+
+    def handle(body: dict):
+        if body.get("logprobs"):
+            return logprob_response([("Yes", math.log(0.9)), ("No", math.log(0.1))])
+        return text_response(centred)
+
+    # every photo sees the spot, but the detector ran on two of the six
+    with FakeVlm(handle) as vlm:
+        run_job(pipeline(), root, params(state_file(root, vlm.url), photos=("p1", "p2")))
+    dets = pass_of(root)["detections"]
+    assert len(dets) == 1
+    assert dets[0]["vote"]["views"] == 2 and dets[0]["vote"]["seenBy"] == 2
+
+
 def test_unposed_photos_keep_every_draft_and_no_vote(tmp_path):
     root = make_project(tmp_path / "p")
     with FakeVlm(scoring([0.9])) as vlm:

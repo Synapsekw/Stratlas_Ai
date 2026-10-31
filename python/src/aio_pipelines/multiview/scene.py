@@ -15,7 +15,7 @@ warning, because the drafts are worth more than the vote.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +35,7 @@ class MeshSurface:
 
     def __init__(self, mesh):
         self.mesh = mesh
-        self.tol = max(0.05, float(np.linalg.norm(mesh.extents)) * 1e-3)
+        self.tol = max(0.1, float(np.linalg.norm(mesh.extents)) * 1e-3)
 
     def hit(self, org: np.ndarray, D: np.ndarray) -> np.ndarray:
         from ..aik.project import cast
@@ -43,19 +43,24 @@ class MeshSurface:
         hits, _ = cast(self.mesh, np.asarray(org, float), np.asarray(D, float))
         return hits
 
-    def visible(self, cam_pos: np.ndarray, point: np.ndarray) -> bool:
-        d = np.asarray(point, float) - np.asarray(cam_pos, float)
-        dist = float(np.linalg.norm(d))
-        if dist <= 0:
-            return True
-        h = self.hit(np.asarray(cam_pos, float)[None, :], (d / dist)[None, :])[0]
-        if np.isnan(h[0]):
-            return True
-        return float(np.linalg.norm(h - cam_pos)) >= dist - max(self.tol, 0.1)
+    def visible_many(self, cam_pos: np.ndarray, points: np.ndarray) -> np.ndarray:
+        """One occlusion ray per point: visible when the first hit is at the point or beyond."""
+        pts = np.asarray(points, float).reshape(-1, 3)
+        org = np.repeat(np.asarray(cam_pos, float)[None, :], len(pts), 0)
+        d = pts - org
+        dist = np.linalg.norm(d, axis=1)
+        safe = np.where(dist > 0, dist, 1.0)
+        h = self.hit(org, d / safe[:, None])
+        hd = np.linalg.norm(h - org, axis=1)
+        return (dist <= 0) | np.isnan(h[:, 0]) | (hd >= dist - self.tol)
 
 
 class CloudSurface:
-    """Points in the project local frame: a ray hits the first point it passes within ``tol`` of."""
+    """Points in the project local frame: a ray hits the first point it passes within ``tol`` of.
+
+    Rays are marched in steps of at most ``tol``, so a ray cannot step over the surface. A ray too
+    long for ``MAX_MARCH_STEPS`` steps of the point spacing takes longer steps and a ``tol`` widened
+    to match; a miss is then still a miss, only the hit is coarser."""
 
     kind = "cloud"
 
@@ -66,56 +71,71 @@ class CloudSurface:
         self.tree = cKDTree(self.points)
         if spacing is None:
             n = len(self.points)
-            pick = (
-                self.points[np.random.default_rng(0).choice(n, min(n, 2000), replace=False)]
-                if n > 1
-                else self.points
-            )
-            d, _ = self.tree.query(pick, k=2) if n > 1 else (np.array([[0.0, 0.1]]), None)
-            spacing = float(np.median(d[:, 1])) if len(d) else 0.1
+            if n > 1:
+                pick = self.points[np.random.default_rng(0).choice(n, min(n, 2000), replace=False)]
+                d, _ = self.tree.query(pick, k=2)
+                spacing = float(np.median(d[:, 1]))
+            else:
+                spacing = 0.1
         self.spacing = max(float(spacing), 0.005)
         self.tol = 1.5 * self.spacing
         self.lo = self.points.min(axis=0) - self.tol
         self.hi = self.points.max(axis=0) + self.tol
 
-    def _span(self, o: np.ndarray, d: np.ndarray) -> tuple[float, float] | None:
-        """Where the ray is inside the cloud's bounds (slab test)."""
+    def _spans(self, org: np.ndarray, D: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Where each ray is inside the cloud's bounds (slab test); t1 < t0 for a ray that misses."""
         with np.errstate(divide="ignore", invalid="ignore"):
-            t1 = (self.lo - o) / d
-            t2 = (self.hi - o) / d
-        tmin = np.nanmax(np.minimum(t1, t2))
-        tmax = np.nanmin(np.maximum(t1, t2))
-        if not np.isfinite(tmin) or not np.isfinite(tmax) or tmax < max(tmin, 0):
-            return None
-        return max(float(tmin), 0.0), float(tmax)
+            a = (self.lo[None, :] - org) / D
+            b = (self.hi[None, :] - org) / D
+        lo = np.where(np.isnan(a), -np.inf, np.minimum(a, b))
+        hi = np.where(np.isnan(a), np.inf, np.maximum(a, b))
+        # a ray parallel to a slab and outside it never enters
+        out = (D == 0) & ((org < self.lo[None, :]) | (org > self.hi[None, :]))
+        t0 = np.maximum(lo.max(axis=1), 0.0)
+        t1 = hi.min(axis=1)
+        t1 = np.where(out.any(axis=1), -1.0, t1)
+        return t0, t1
+
+    def march(self, org: np.ndarray, D: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """First hit of each ray (NaN rows for a miss) and the tolerance each ray was marched with."""
+        org, D = np.asarray(org, float).reshape(-1, 3), np.asarray(D, float).reshape(-1, 3)
+        n = len(org)
+        out = np.full((n, 3), np.nan)
+        t0, t1 = self._spans(org, D)
+        length = np.where(t1 >= t0, t1 - t0, 0.0)
+        step = np.maximum(self.spacing, length / MAX_MARCH_STEPS)
+        tol = np.maximum(self.tol, step)
+        active = np.flatnonzero(t1 >= t0)
+        block = 64
+        k = 0
+        while len(active) and k <= MAX_MARCH_STEPS:
+            ts = t0[active, None] + step[active, None] * (k + np.arange(block))[None, :]
+            pts = org[active, None, :] + D[active, None, :] * ts[:, :, None]
+            dist, idx = self.tree.query(pts.reshape(-1, 3), distance_upper_bound=float(tol[active].max()))
+            dist, idx = dist.reshape(len(active), block), idx.reshape(len(active), block)
+            inside = ts <= t1[active, None] + step[active, None]
+            got = (dist <= tol[active, None]) & inside
+            any_hit = got.any(axis=1)
+            first = np.argmax(got, axis=1)
+            rows = active[any_hit]
+            out[rows] = self.points[idx[any_hit, first[any_hit]]]
+            done = any_hit | ~inside[:, -1]
+            active = active[~done]
+            k += block
+        return out, tol
 
     def hit(self, org: np.ndarray, D: np.ndarray) -> np.ndarray:
-        org, D = np.asarray(org, float), np.asarray(D, float)
-        out = np.full(org.shape, np.nan)
-        for i in range(len(org)):
-            span = self._span(org[i], D[i])
-            if span is None:
-                continue
-            t0, t1 = span
-            step = max(self.spacing, (t1 - t0) / MAX_MARCH_STEPS)
-            ts = np.arange(t0, t1 + step, step)
-            # in chunks, so a hit near the camera stops the march early
-            for k in range(0, len(ts), 256):
-                pts = org[i] + D[i] * ts[k : k + 256, None]
-                dist, idx = self.tree.query(pts, distance_upper_bound=self.tol)
-                found = np.flatnonzero(np.isfinite(dist))
-                if len(found):
-                    out[i] = self.points[idx[found[0]]]
-                    break
-        return out
+        return self.march(org, D)[0]
 
-    def visible(self, cam_pos: np.ndarray, point: np.ndarray) -> bool:
-        d = np.asarray(point, float) - np.asarray(cam_pos, float)
-        dist = float(np.linalg.norm(d))
-        if dist <= 0:
-            return True
-        h = self.hit(np.asarray(cam_pos, float)[None, :], (d / dist)[None, :])[0]
-        return bool(np.isnan(h[0]) or float(np.linalg.norm(h - cam_pos)) >= dist - 2 * self.tol - 0.1)
+    def visible_many(self, cam_pos: np.ndarray, points: np.ndarray) -> np.ndarray:
+        pts = np.asarray(points, float).reshape(-1, 3)
+        org = np.repeat(np.asarray(cam_pos, float)[None, :], len(pts), 0)
+        d = pts - org
+        dist = np.linalg.norm(d, axis=1)
+        safe = np.where(dist > 0, dist, 1.0)
+        h, tol = self.march(org, d / safe[:, None])
+        hd = np.linalg.norm(h - org, axis=1)
+        return (dist <= 0) | np.isnan(h[:, 0]) | (hd >= dist - 2 * tol - 0.1)
 
 
 def cameras(
@@ -217,10 +237,18 @@ def vote_pass(
     layer_id: str | None,
     dets: list[dict[str, Any]],
     radius_of: Callable[[dict[str, Any]], float] | None = None,
+    *,
+    assessed: Mapping[str, Iterable[str]] | Iterable[str] | None = None,
+    rank_of: Callable[[dict[str, Any]], float | None] | None = None,
+    fixed: Callable[[dict[str, Any]], str | None] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     """The pass's drafts after the multi-view vote, and its counts (None when no vote ran).
 
-    The vote runs when drafts sit on two or more posed photos. It never raises."""
+    ``assessed``: the photos the run looked at (per class or for all); only they count in
+    ``seenBy``. The vote runs when drafts sit on two or more posed photos. It never fails the job:
+    an error leaves the drafts as they were with a warning; a cancel still cancels."""
+    from ..runtime import Cancelled
+
     try:
         from ..inspection.frame import read_manifest
 
@@ -231,13 +259,25 @@ def vote_pass(
             return dets, None
         ctx.log("Voting across photos: placing the drafts in 3D")
         surface = mesh_surface(ctx.project, manifest) or cloud_surface(ctx, manifest)
-        out, stats = vote(dets, cams, surface, radius_of=radius_of)
+        out, stats = vote(
+            dets,
+            cams,
+            surface,
+            radius_of=radius_of,
+            assessed=assessed,
+            rank_of=rank_of,
+            fixed=fixed,
+            check=ctx.check,
+            progress=lambda f, m=None: ctx.progress(0.1 + 0.8 * f, m),
+        )
         ctx.log(
             f"Multi-view vote on the {stats['placedOn']}: {stats['placed']} drafts placed, "
             f"{stats['clusters']} objects, {stats['merged']} duplicates folded in, "
             f"{stats['singleView']} seen in one photo only (kept, flagged), {stats['unplaced']} not placed."
         )
         return out, stats
+    except Cancelled:
+        raise
     except Exception as e:  # the drafts are worth more than the vote
         ctx.log(f"The multi-view vote was skipped: {e}", "warn")
         return dets, None

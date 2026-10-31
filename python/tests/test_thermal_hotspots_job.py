@@ -138,6 +138,57 @@ def test_a_hot_spot_seen_in_posed_photos_is_voted(tmp_path):
     assert result["outputs"]["commit"]["candidates"] == 1
 
 
+def test_a_rerun_on_another_photo_joins_the_kept_draft_of_the_same_object(tmp_path):
+    c = temps(((W // 2 - 1, H // 2 - 1),))
+    root = make_project(tmp_path / "p", {"a": c, "b": c.copy(), "e": c.copy()}, posed=True)
+    run_job(pipeline(), root, {**PARAMS, "photos": ["a"]}, job_id="j1")
+    assert len(pass_of(root)["detections"]) == 1
+    result, _ = run_job(pipeline(), root, {**PARAMS, "photos": ["b"]}, job_id="j2")
+    dets = pass_of(root)["detections"]
+    assert len(dets) == 1 and dets[0]["photo"] == "a"
+    assert dets[0]["vote"]["views"] == 2 and dets[0]["vote"]["sightings"][0]["photo"] == "b"
+    assert result["outputs"]["commit"]["candidates"] == 0
+
+
+def test_a_rerun_never_revives_a_reviewed_object(tmp_path):
+    c = temps(((W // 2 - 1, H // 2 - 1),))
+    root = make_project(tmp_path / "p", {"a": c, "b": c.copy(), "e": c.copy()}, posed=True)
+    run_job(pipeline(), root, {**PARAMS, "photos": ["a"]}, job_id="j1")
+    doc = pass_of(root)
+    doc["detections"][0]["status"] = "accepted"
+    (root / "detections" / "thermal-th.json").write_text(json.dumps(doc))
+    run_job(pipeline(), root, {**PARAMS, "photos": ["b", "e"]}, job_id="j2")
+    dets = pass_of(root)["detections"]
+    assert dets == doc["detections"]  # b and e saw the same object: nothing new to review
+
+
+def test_the_sightings_of_a_reviewed_detection_count_as_reviewed(tmp_path):
+    # unposed photos: no vote, so only the boxes tell; the reviewed one carries b's box as a sighting
+    root = make_project(tmp_path / "p", {"a": temps(), "b": temps()})
+    run_job(pipeline(), root, {**PARAMS, "photos": ["a"]}, job_id="j1")
+    doc = pass_of(root)
+    d = doc["detections"][0]
+    d["status"] = "rejected"
+    d["vote"] = {"views": 2, "sightings": [{"photo": "b", "bbox": d["bbox"], "space": "source",
+                                             "width": W, "height": H}]}  # fmt: skip
+    (root / "detections" / "thermal-th.json").write_text(json.dumps(doc))
+    run_job(pipeline(), root, {**PARAMS, "photos": ["b"]}, job_id="j2")
+    assert pass_of(root)["detections"] == doc["detections"]
+
+
+def test_a_merged_hot_spot_reports_its_hottest_view(tmp_path):
+    hot, cooler = temps(((W // 2 - 1, H // 2 - 1),)), temps(((W // 2 - 1, H // 2 - 1),))
+    cooler[H // 2 - 1 : H // 2 + 2, W // 2 - 1 : W // 2 + 2] = 60.0
+    root = make_project(tmp_path / "p", {"a": cooler, "b": hot, "e": cooler.copy()}, posed=True)
+    run_job(pipeline(), root, dict(PARAMS))
+    dets = pass_of(root)["detections"]
+    assert len(dets) == 1
+    assert dets[0]["photo"] == "b"
+    assert dets[0]["fields"][0]["value"] == pytest.approx(85.0)
+    s = dets[0]["vote"]["sightings"][0]
+    assert s["fields"][0]["value"] == pytest.approx(60.0) and (s["width"], s["height"]) == (W, H)
+
+
 @pytest.mark.parametrize(
     "bad",
     [

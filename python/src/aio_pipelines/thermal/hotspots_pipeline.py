@@ -64,6 +64,32 @@ def _reviewed(d: dict[str, Any]) -> bool:
     return d.get("status") != "draft" or bool(d.get("issueId"))
 
 
+def _boxes(d: dict[str, Any], sizes: dict[str, list[int]]) -> list[tuple[str, list[float]]]:
+    """A detection's box and its sightings' boxes, each with its photo, as 0 to 1 of the photo."""
+    out = []
+    for s in [d, *((d.get("vote") or {}).get("sightings") or [])]:
+        photo, box = s.get("photo"), s.get("bbox")
+        if not photo or not isinstance(box, list) or len(box) != 4:
+            continue
+        if s.get("space") == "normalized":
+            out.append((photo, [float(v) for v in box]))
+            continue
+        w, h = (s.get("width"), s.get("height")) if s.get("space") == "source" else (None, None)
+        if not w or not h:
+            w, h = (sizes.get(photo) or [0, 0])[:2]
+        if w and h:
+            out.append((photo, [box[0] / w, box[1] / h, box[2] / w, box[3] / h]))
+    return out
+
+
+def _delta(d: dict[str, Any]) -> float | None:
+    """The ΔT of a hot-spot draft, so a merged draft reports its hottest view."""
+    for f in d.get("fields") or []:
+        if f.get("key") == "delta_c" and isinstance(f.get("value"), int | float):
+            return float(f["value"])
+    return None
+
+
 def _class_known(manifest: dict[str, Any]) -> bool:
     for cat in manifest.get("classCatalogues") or []:
         for c in (cat or {}).get("classes") or []:
@@ -195,22 +221,26 @@ class ThermalHotspots:
 
         rel = pass_path(layer_id)
         old: list[dict[str, Any]] = []
+        looked_before: set[str] = set()
         try:
             doc = json.loads(ctx.out(rel).read_text("utf-8"))
             if isinstance(doc, dict) and doc.get("schema") == DETECTIONS_SCHEMA:
                 old = [d for d in doc.get("detections") or [] if isinstance(d, dict)]
+                if isinstance(doc.get("assessed"), list):
+                    looked_before = {str(p) for p in doc["assessed"]}
         except (OSError, ValueError):
             old = []
         ran = set(sizes)
         kept = [d for d in old if _reviewed(d) or d.get("photo") not in ran]
-        reviewed = [d for d in kept if _reviewed(d)]
+        reviewed_boxes = [b for d in kept if _reviewed(d) for b in _boxes(d, sizes)]
         known = _class_known(read_manifest(ctx.project))
         fresh: list[dict[str, Any]] = []
         for k, f in enumerate(found):
             x, y, w, h = f["box"]
             bbox = [x, y, x + w, y + h]
-            if any(d.get("photo") == f["photo"] and _iou(d.get("bbox") or [0, 0, 0, 0], bbox) >= REVIEWED_IOU
-                   for d in reviewed):  # fmt: skip
+            w0, h0 = sizes[f["photo"]]
+            norm = [x / w0, y / h0, (x + w) / w0, (y + h) / h0]
+            if any(p == f["photo"] and _iou(b, norm) >= REVIEWED_IOU for p, b in reviewed_boxes):
                 continue
             d: dict[str, Any] = {
                 "id": f"thermal-{ctx.job.job_id}-{k}"[:128],
@@ -241,8 +271,19 @@ class ThermalHotspots:
                 createdAt=created,
             )
             fresh.append(d)
-        fresh, _ = vote_pass(ctx, layer_id, fresh)
-        dets = kept + fresh
+        # the vote sees the kept detections too: a new draft of an object already reviewed is
+        # dropped, and one of an object a kept draft shows joins that draft
+        role = {id(d): "reviewed" if _reviewed(d) else "kept" for d in kept}
+        fresh_ids = {d["id"] for d in fresh}
+        dets, _ = vote_pass(
+            ctx,
+            layer_id,
+            kept + fresh,
+            assessed={CLASS_ID: ran | looked_before},
+            rank_of=_delta,
+            fixed=lambda d: role.get(id(d)),
+        )
+        fresh = [d for d in dets if d.get("id") in fresh_ids]
         doc = {
             "schema": DETECTIONS_SCHEMA,
             "source": "model",
