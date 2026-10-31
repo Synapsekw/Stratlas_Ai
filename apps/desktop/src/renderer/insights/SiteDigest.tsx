@@ -112,8 +112,16 @@ export function SiteDigest(): ReactElement | null {
   const hidden = insights.length - rows.length;
   const pressing = insights.filter((i) => i.severity !== 'info').length;
   return (
-    <section className="sd" data-testid="site-digest" aria-labelledby={titleId}>
-      <h3 className="sd-caption" id={titleId} title={t('insights.hint')}>
+    <section
+      className="sd"
+      data-testid="site-digest"
+      aria-labelledby={titleId}
+      aria-describedby={`${titleId}-hint`}
+    >
+      <p className="sr-only" id={`${titleId}-hint`}>
+        {t('insights.hint')}
+      </p>
+      <h3 className="sd-caption" id={titleId}>
         <span className="caps">{t('insights.title')}</span>
         {insights.length > 0 && (
           <span className="sd-count" data-pressing={pressing > 0}>
