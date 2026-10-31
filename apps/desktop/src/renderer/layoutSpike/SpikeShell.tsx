@@ -6,7 +6,7 @@
  * import; nothing of today's shell changes while the flag is off. Deleted in W12.
  */
 import { inventoryPiles } from '@aio/survey';
-import { t, useT } from '@aio/ui';
+import { matchShortcut, t, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import {
   useEffect,
@@ -21,6 +21,7 @@ import { useIsRoad } from '../road/useRoadMap';
 import { NoProject } from '../screens/NoProject';
 import { shell, useShell } from '../shell';
 import { Datasets } from '../shell/Sidebar';
+import { SidebarProcessing } from '../shell/SidebarProcessing';
 import { useMeasure } from '../survey/measureStore';
 import { Stage } from '../workspace/Stage';
 import {
@@ -163,12 +164,16 @@ function SpikeScene() {
   const layersDefault = band === 'wide' ? preset.layersOpenWide : false;
   const layersOpen = layersHand ?? layersDefault;
   const overlay = band === 'narrow';
+  // the right panel folds as today's does: the same state, Ctrl+Alt+B and the title bar's toggle
+  const rightOff = useShell((s) => s.rightCollapsed);
 
-  // Ctrl+L toggles Layers; Escape closes it while it lies over the stage
+  // Ctrl+B (today's sidebar key, App.tsx leaves it to the spike here) and Ctrl+L toggle Layers;
+  // Escape closes it while it lies over the stage
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (inEditable(e.target)) return;
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.code === 'KeyL') {
+      const ctrlL = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.code === 'KeyL';
+      if (ctrlL || matchShortcut('global', e) === 'global.sidebar') {
         e.preventDefault();
         spike.getState().setLayers(!layersOpen);
       } else if (e.key === 'Escape' && overlay && layersOpen) {
@@ -184,7 +189,7 @@ function SpikeScene() {
   if (!projectId || !data) return <NoProject view="Scene" />;
   const style = {
     '--spk-layers': layersOpen && !overlay ? `${String(sizes.layersPx)}px` : '0px',
-    '--spk-right': `${String(rightPx)}px`,
+    '--spk-right': rightOff ? '0px' : `${String(rightPx)}px`,
     '--spk-strip': `${String(folded ? STRIP_FOLDED_PX : sizes.stripPx)}px`,
     '--spk-title': `${String(TITLE_PX)}px`,
   } as CSSProperties;
@@ -195,9 +200,10 @@ function SpikeScene() {
       style={style}
       data-band={band}
       data-layers={layersOpen ? (overlay ? 'overlay' : 'open') : 'closed'}
+      data-right={rightOff ? 'closed' : 'open'}
       data-testid="spike-scene"
     >
-      <SpikeTitleBar own={own} layersOpen={layersOpen} share={share} />
+      <SpikeTitleBar own={own} layersOpen={layersOpen} rightOpen={!rightOff} share={share} />
       {layersOpen && (
         <aside
           className="spk-layers"
@@ -205,6 +211,7 @@ function SpikeScene() {
           data-testid="spike-layers"
           data-overlay={overlay ? '' : undefined}
         >
+          <SidebarProcessing />
           <Datasets collapsed={false} />
         </aside>
       )}
@@ -222,7 +229,8 @@ function SpikeScene() {
         <SpikeStageUi data={data} stageRef={shareRef} />
       </div>
       <SpikeBottomStrip data={data} mode={strip} />
-      <SpikeRightPanel preset={preset} data={data} band={band} width={rightPx} />
+      {/* folded, the panel stays mounted (out of sight) so it still follows a pick */}
+      <SpikeRightPanel preset={preset} data={data} band={band} width={rightPx} folded={rightOff} />
     </section>
   );
 }

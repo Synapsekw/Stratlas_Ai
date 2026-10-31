@@ -12,7 +12,16 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { DEMO_FOLDER, expect, test } from './fixtures';
+import {
+  DEMO_FOLDER,
+  expect,
+  hasPipelinePython,
+  PIPELINE_ENV,
+  test,
+  VENV_PYTHON,
+} from './fixtures';
+import { volumesView } from './island';
+import { openDemo } from './surveyJobs';
 
 const VIEW_READY = { timeout: 60_000 };
 const FLAG = 'quadrion.flags.layoutV2';
@@ -94,6 +103,185 @@ test('flag on renders four tabs and the rail at 1100 x 720', async ({ win }) => 
   await win.keyboard.press('Control+Alt+L');
   await expect(win.locator('aside.sidebar')).toBeVisible(VIEW_READY);
   await expect(win.getByTestId('spike-rail')).toHaveCount(0);
+});
+
+// ------------------------------------------------------- the founder's test round 1 (31 Oct)
+
+/** Screenshots for the founder: only with QUADRION_ROUND1_SHOTS naming a folder. */
+const ROUND1 = process.env.QUADRION_ROUND1_SHOTS;
+async function round1Shot(win: Page, name: string): Promise<void> {
+  if (!ROUND1) return;
+  await mkdir(ROUND1, { recursive: true });
+  await win.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+  });
+  await win.screenshot({ path: join(ROUND1, `${name}.png`) });
+}
+
+test('both side panels fold and come back, as in today’s app, and Layers shows Processing', async ({
+  win,
+}) => {
+  test.setTimeout(120_000);
+  await openTiny(win);
+  await win.keyboard.press('Control+Alt+L');
+  const scene = win.getByTestId('spike-scene');
+  await expect(scene).toBeVisible(VIEW_READY);
+  await expect(win.locator('.app')).toHaveAttribute('data-sb', 'expanded');
+  const layers = win.getByTestId('spike-layers');
+  const right = win.getByTestId('spike-right');
+  const stageWidth = async () =>
+    Math.round((await win.locator('.spk-stage-cell').boundingBox())?.width ?? 0);
+
+  // the left: Ctrl+B, today's sidebar key, folds and opens Layers, as the title bar's toggle does
+  const shut = (await scene.getAttribute('data-layers')) === 'closed';
+  await win.keyboard.press('Control+B');
+  await expect(scene).toHaveAttribute('data-layers', shut ? /open|overlay/ : 'closed');
+  if (!shut) {
+    await win.keyboard.press('Control+B');
+    await expect(scene).toHaveAttribute('data-layers', /open|overlay/);
+  }
+  await expect(layers).toBeVisible();
+  // Processing on the left, as in today's sidebar: Create maps from photos, a calm row
+  const proc = layers.getByTestId('sidebar-processing');
+  await expect(proc).toBeVisible();
+  const create = proc.getByTestId('sidebar-create-maps');
+  await expect(create).toBeVisible();
+  await expect(create.locator('.lbl')).toHaveText('Create maps from photos');
+  await expect(create).not.toHaveClass(/(^|\s)primary(\s|$)/);
+  // the tree at the column's width, not squeezed to today's rail
+  expect((await layers.locator('.sb-tree').boundingBox())?.width ?? 0).toBeGreaterThan(200);
+  await round1Shot(win, 'spike-layers-processing');
+  await win.keyboard.press('Control+B');
+  await expect(scene).toHaveAttribute('data-layers', 'closed');
+  await expect(layers).toHaveCount(0);
+  await win.getByTestId('spike-layers-toggle').click();
+  await expect(layers).toBeVisible();
+  await win.getByTestId('spike-layers-toggle').click();
+  await expect(layers).toHaveCount(0);
+
+  // the right: Ctrl+Alt+B and the title bar's toggle fold it, the stage takes its room
+  await expect(right).toBeVisible();
+  const withPanel = await stageWidth();
+  await win.keyboard.press('Control+Alt+B');
+  await expect(scene).toHaveAttribute('data-right', 'closed');
+  await expect(right).toBeHidden();
+  await expect.poll(stageWidth).toBeGreaterThan(withPanel + 200);
+  const toggle = win.getByTestId('spike-right-toggle');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await round1Shot(win, 'spike-both-folded');
+  await toggle.click();
+  await expect(scene).toHaveAttribute('data-right', 'open');
+  await expect(right).toBeVisible();
+  await expect.poll(stageWidth).toBe(withPanel);
+  await toggle.click();
+  await expect(right).toBeHidden();
+  await win.keyboard.press('Control+Alt+B');
+  await expect(right).toBeVisible();
+  await round1Shot(win, 'spike-both-open');
+
+  await win.keyboard.press('Control+Alt+L');
+  await expect(win.locator('aside.sidebar')).toBeVisible(VIEW_READY);
+});
+
+test.describe('a clicked pile in Selection', () => {
+  test.use({ appEnv: PIPELINE_ENV });
+  test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
+
+  test('reads whole from its left edge at 1100, 1280 and 1440 px, and so do the Volumes figures', async ({
+    quarryProject,
+    app,
+    win,
+  }) => {
+    test.setTimeout(10 * 60_000);
+    await openDemo(win, quarryProject.name, quarryProject.id);
+    const view = await volumesView(win);
+    await expect(view.getByTestId('volumes-pile')).toHaveCount(4, { timeout: 120_000 });
+    // every survey prepared, so the figures are the real ones (pile-panel.spec.ts)
+    const strip = win.getByRole('region', { name: 'Survey dates chart' });
+    await expect(strip.locator('[data-survey][data-state="ready"]')).toHaveCount(3, {
+      timeout: 360_000,
+    });
+    await win.keyboard.press('Control+Alt+L');
+    await expect(win.getByTestId('spike-scene')).toBeVisible(VIEW_READY);
+    const panel = win.getByTestId('spike-right');
+
+    /** Every box `sel` finds lies inside the panel's box, `pad` px clear of its left edge. */
+    const inside = async (sel: string, pad: number) => {
+      const box = await panel.boundingBox();
+      if (!box) throw new Error('no right panel');
+      const boxes = await win.evaluate(
+        (q) =>
+          [...document.querySelectorAll(q)]
+            .filter((el) => el.getClientRects().length > 0)
+            .map((el) => {
+              const r = el.getBoundingClientRect();
+              return { left: r.left, right: r.right, text: el.textContent.slice(0, 40) };
+            }),
+        sel,
+      );
+      expect(boxes.length, sel).toBeGreaterThan(0);
+      for (const b of boxes) {
+        expect(b.left, `${sel} "${b.text}" left`).toBeGreaterThanOrEqual(box.x + pad);
+        expect(b.right, `${sel} "${b.text}" right`).toBeLessThanOrEqual(box.x + box.width + 0.5);
+      }
+    };
+    /** The figures `sel` finds are whole: none cut short, by an ellipsis or by its box. */
+    const whole = async (sel: string) => {
+      const cut = await win.evaluate(
+        (q) =>
+          [...document.querySelectorAll<HTMLElement>(q)]
+            .filter((el) => el.getClientRects().length > 0 && el.scrollWidth > el.clientWidth + 1)
+            .map((el) => el.textContent),
+        sel,
+      );
+      expect(cut, `${sel} cut short`).toEqual([]);
+    };
+
+    for (const [w, h] of [
+      [1100, 720],
+      [1280, 800],
+      [1440, 900],
+    ] as const) {
+      await resize(app, win, w, h);
+      // the pile picked from the Layers column opens in Selection
+      if ((await win.getByTestId('spike-layers').count()) === 0)
+        await win.getByTestId('spike-layers-toggle').click();
+      const layers = win.getByTestId('spike-layers');
+      const row = layers.getByTestId('measure-row').filter({ hasText: 'Stockpile SP1' }).first();
+      await expect(row).toBeVisible();
+      await row.locator('.tn').click();
+      if ((await layers.getAttribute('data-overlay')) !== null) {
+        await win.getByTestId('spike-layers-toggle').click();
+        await expect(layers).toHaveCount(0);
+      }
+      await expect(win.getByTestId('spike-tab-selection')).toHaveAttribute('aria-selected', 'true');
+      const pile = panel.getByTestId('pile-panel');
+      await expect(pile).toBeVisible();
+      await expect(pile.getByTestId('pile-name')).toHaveText('Stockpile SP1');
+      // no text meets the panel's left edge (its drag handle lies over the first 4 px)
+      await inside(
+        '[data-testid="spike-right"] [data-testid="pile-panel"] :is(h2, h3, p, button, b)',
+        8,
+      );
+      await whole('[data-testid="pile-kpi"] b');
+      await round1Shot(win, `spike-selection-pile-${String(w)}`);
+
+      // Project > Volumes: the header's figures whole
+      await win.getByTestId('spike-tab-project').click();
+      const sec = win.getByTestId('spike-section-project.volumes');
+      if ((await sec.getAttribute('data-open')) !== 'true')
+        await sec.locator('.wb-section-head').click();
+      // the opened pile shows here too: back to the inventory and its header
+      const back = sec.getByTestId('pile-panel').getByRole('button', { name: /Inventory/ });
+      if (await back.count()) await back.click();
+      await expect(sec.getByTestId('volumes-pile').first()).toBeVisible({ timeout: 60_000 });
+      await inside('[data-testid="spike-section-project.volumes"] .vh-head *', 4);
+      await whole('[data-testid="volumes-kpi"] b');
+      await round1Shot(win, `spike-volumes-${String(w)}`);
+      await win.getByTestId('spike-tab-selection').click();
+    }
+    await win.keyboard.press('Control+Alt+L');
+  });
 });
 
 // ---------------------------------------------------------------- the founder's review set

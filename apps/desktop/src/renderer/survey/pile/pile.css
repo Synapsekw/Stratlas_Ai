@@ -6,6 +6,8 @@
   grid-auto-rows: max-content;
   gap: var(--sp-5);
   min-width: 0;
+  /* the three figures fold to two rows in a narrow panel (below) */
+  container: pile / inline-size;
 }
 
 /* ---------- head: back and position, name, material, density ---------- */
@@ -117,6 +119,16 @@
   border-radius: var(--r-6);
   background: var(--line-soft);
   overflow: hidden;
+}
+/* in a panel too narrow for three figures in a row (the 300 px docked panel): the volume on its
+   own row, tonnes and the change under it, so no figure ends in an ellipsis */
+@container pile (max-width: 340px) {
+  .pp-kpi {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .pp-kpi > :first-child {
+    grid-column: 1 / -1;
+  }
 }
 .pp-tile {
   display: grid;

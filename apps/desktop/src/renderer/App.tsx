@@ -89,7 +89,7 @@ import { connectPileFigures } from './workspace/pileFigures';
 import { connectKitPilePick, connectKitPilesShown } from './survey/pile/kitPileLink';
 import { connectVolumeChange } from './workspace/VolumeTools';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
-import { useLayoutSpike } from './layoutSpike/flag';
+import { layoutSpikeOn, useLayoutSpike } from './layoutSpike/flag';
 import { SpikeShell } from './layoutSpike/SpikeShell';
 import { BuilderLayer } from './builder/BuilderLayer';
 import { DrawingsLayer } from './drawings/DrawingsLayer';
@@ -139,6 +139,8 @@ function onKeyDown(e: KeyboardEvent) {
     if (isDockScreen(s.screen) && workspace.getState().project) s.toggleAgentDock();
     else s.toggleRight();
   } else if (id === 'global.sidebar') {
+    // the layout spike's Scene has no sidebar: Ctrl+B folds its Layers column (SpikeShell.tsx)
+    if (s.screen === 'scene' && layoutSpikeOn()) return;
     e.preventDefault();
     void s.toggleSidebar();
   } else if (id === 'global.agent') {
@@ -765,7 +767,8 @@ export function App() {
     <div
       ref={sidebarSplitRef}
       className="app"
-      data-sb={sidebar.folded ? 'collapsed' : 'expanded'}
+      // the spike has no folding sidebar: its Layers column shows the tree at full width
+      data-sb={sidebar.folded && !layoutSpike ? 'collapsed' : 'expanded'}
       data-fold={sidebar.phase ?? undefined}
       onTransitionEnd={sidebar.onTransitionEnd}
       data-screen={screen}

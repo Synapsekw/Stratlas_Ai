@@ -5,10 +5,11 @@
  * own: they let the founder try the seven presets and read the stage's share of the window.
  */
 import { PURPOSE_TYPE, type ProjectPurpose } from '@aio/schema';
-import { IconButton, Tip, t, useT } from '@aio/ui';
+import { Button, Icon, IconButton, Tip, t, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { ProcessingChip } from '../processing/ProcessingChip';
 import { shell } from '../shell';
+import { PANEL_ID, panelHandleLabel } from '../shell/PanelHandle';
 import { AiStatusChip } from '../shell/AiStatusChip';
 import { DatePicker } from '../workspace/DatePicker';
 import { toggleLayoutSpike } from './flag';
@@ -18,11 +19,14 @@ import { spike, useSpike } from './spikeStore';
 export function SpikeTitleBar({
   own,
   layersOpen,
+  rightOpen,
   share,
 }: {
   /** The project's own preset (its purpose, else its type's fallback). */
   own: ProjectPurpose;
   layersOpen: boolean;
+  /** The right panel shows (the shell's `rightCollapsed`, folded as today's is). */
+  rightOpen: boolean;
   /** The stage's share of the window width, in per cent (null until measured). */
   share: number | null;
 }) {
@@ -38,7 +42,8 @@ export function SpikeTitleBar({
       <IconButton
         icon="sidebar"
         label={t('layoutSpike.toggleLayers')}
-        tip={`${t('layoutSpike.toggleLayers')} (Ctrl+L)`}
+        tip={t('layoutSpike.toggleLayers')}
+        shortcut="global.sidebar"
         pressed={layersOpen}
         data-testid="spike-layers-toggle"
         onClick={() => {
@@ -121,6 +126,19 @@ export function SpikeTitleBar({
         <AiStatusChip store={shell} className="spk-ai" testId="spike-ai-chip" placement="bottom" />
       </span>
       <ProcessingChip />
+      {/* the right panel's fold, as on today's stage (Ctrl+Alt+B) */}
+      <Button
+        variant="icon"
+        pressed={rightOpen}
+        aria-label={t(panelHandleLabel('right', !rightOpen))}
+        aria-controls={PANEL_ID.right}
+        tip={t(panelHandleLabel('right', !rightOpen))}
+        shortcut="global.rightPanel"
+        data-testid="spike-right-toggle"
+        onClick={shell.getState().toggleRight}
+      >
+        <Icon name="sidebar" size={16} className="flip" />
+      </Button>
       <Tip content={t('layoutSpike.badgeTip')}>
         <button
           type="button"

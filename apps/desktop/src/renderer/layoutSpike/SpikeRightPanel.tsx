@@ -18,6 +18,7 @@ import { AgentPane } from '../agent/AgentPane';
 import { useCardFocusSeq } from '../issueCard/state';
 import { useIsRoad } from '../road/useRoadMap';
 import { shell, useShell } from '../shell';
+import { PANEL_ID } from '../shell/PanelHandle';
 import { isPile } from '../survey/pile/openPile';
 import { PilePanel } from '../survey/pile/PilePanel';
 import { measureStore, useMeasure } from '../survey/measureStore';
@@ -179,7 +180,14 @@ function SelectionBody({ road }: { road: boolean }) {
     return m && isPile(m) ? m.id : null;
   });
   const selected = useWorkspace((s) => s.selection !== null);
-  if (pile) return <PilePanel id={pile} />;
+  // the panel's side padding, as the Volumes tab gives the pile panel (volumes.css .vb-view):
+  // bare in the scroll box its text met the panel's edge and the resize handle over it
+  if (pile)
+    return (
+      <div className="spk-pile">
+        <PilePanel id={pile} />
+      </div>
+    );
   if (!road && !selected && focus === null)
     return <p className="spk-empty muted">{t('layoutSpike.selection.empty')}</p>;
   return <FrontBody front="selection" road={road} />;
@@ -268,11 +276,14 @@ export function SpikeRightPanel({
   data,
   band,
   width,
+  folded = false,
 }: {
   preset: Preset;
   data: ProjectData;
   band: Band;
   width: number;
+  /** Folded away (the shell's `rightCollapsed`): hidden, still following picks. */
+  folded?: boolean;
 }) {
   useT();
   useFollow();
@@ -291,8 +302,10 @@ export function SpikeRightPanel({
   return (
     <aside
       className="right spk-right"
+      id={PANEL_ID.right}
       aria-label={t('layoutSpike.panel')}
       data-testid="spike-right"
+      hidden={folded}
     >
       <ResizeEdge band={band} width={width} />
       <div className="wb-bar spk-tabs" data-testid="spike-tabs">

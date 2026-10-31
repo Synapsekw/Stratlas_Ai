@@ -506,6 +506,11 @@
 /* ---------- the right panel ---------- */
 .spk-right {
   position: relative;
+  min-inline-size: 0;
+}
+/* folded away (the shell's rightCollapsed): its column is 0 px and the panel out of sight */
+.spk-right[hidden] {
+  display: none;
 }
 .spk-tabs {
   flex: none;
@@ -542,6 +547,11 @@
 }
 .spk-section-inner {
   padding-inline: var(--sp-2);
+}
+/* a clicked pile in Selection: the panel's one side padding, as the Volumes tab gives it */
+.spk-pile {
+  min-inline-size: 0;
+  padding: var(--sp-5) var(--sp-5) var(--sp-7);
 }
 .spk-empty,
 .spk-waiting,
