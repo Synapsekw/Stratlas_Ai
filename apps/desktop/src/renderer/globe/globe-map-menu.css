@@ -11,6 +11,9 @@
 }
 .globe-map .mm-pop {
   background: var(--bg-1);
+  /* under the title bar and the page header, it scrolls rather than leave the window */
+  max-block-size: calc(100vh - 144px);
+  overflow-y: auto;
 }
 .globe-map .mm-notice {
   margin: 0;

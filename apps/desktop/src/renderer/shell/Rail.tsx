@@ -1,4 +1,5 @@
 import { Icon, t, useT, type IconName, type MessageKey } from '@aio/ui';
+import { brand } from '@aio/brand';
 import { useWorkspace } from '@aio/workspace';
 import { help, useHelp } from '../help/store';
 import { processing, useProcessing } from '../processing/store';
@@ -99,8 +100,8 @@ export function Rail() {
   const layersFolded = useShell((s) => s.screen === 'scene' && isSidebarFolded(s));
   return (
     <nav className="rail" aria-label={t('nav.primary')} data-testid="rail">
-      <span className="rail-logo" aria-hidden="true">
-        <BrandSymbol small />
+      <span className="rail-logo" data-testid="brand-mark">
+        <BrandSymbol small label={brand.productName} />
       </span>
       <div className="sb-nav" role="group" aria-label={t('nav.sections')}>
         {RAIL_SCREENS.map((d) => (

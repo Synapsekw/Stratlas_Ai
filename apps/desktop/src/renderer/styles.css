@@ -773,6 +773,10 @@ button.chip-status:hover {
 .app[data-sb='collapsed'] .sidebar {
   transform: translateX(calc(var(--sb-fold-x) * 100%));
 }
+/* once the slide has ended the folded column is out of the drawing altogether */
+.app[data-sb='collapsed']:not([data-fold]) .sidebar {
+  visibility: hidden;
+}
 /* the drag handle of the column's width: 8 px inside its inner edge, so it never takes a click
    meant for the main view; the tab lies over it at mid-height. The column's border is its line. */
 .sidebar > .sb-resize {

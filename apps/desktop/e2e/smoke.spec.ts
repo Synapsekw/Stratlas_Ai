@@ -27,7 +27,10 @@ test('the app starts, exposes the bridge and makes no network requests', async (
 
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
-  await expect(win.getByTestId('brand-wordmark')).toHaveAttribute('aria-label', 'Quadrion AI');
+  await expect(win.getByTestId('brand-mark').getByRole('img')).toHaveAttribute(
+    'aria-label',
+    'Quadrion AI',
+  );
 
   const info = await win.evaluate(() => window.aio.invoke('app:getInfo', {}));
   expect(info.name).toBe('Quadrion AI');

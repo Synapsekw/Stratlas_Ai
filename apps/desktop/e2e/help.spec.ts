@@ -40,7 +40,7 @@ test('F1 opens the guide; search, contents and settings help land on the right s
   await expect(dialog).toBeHidden();
 
   // the "?" on a Settings page opens its section
-  await win.getByRole('button', { name: 'Settings Settings' }).click();
+  await win.getByTestId('rail-settings').click();
   await win
     .getByRole('navigation', { name: 'Settings sections' })
     .getByRole('button', { name: 'Graphics quality' })
