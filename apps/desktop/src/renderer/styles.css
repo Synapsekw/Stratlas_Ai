@@ -2201,9 +2201,15 @@ button.chip-status:hover {
     display: none;
   }
 }
+/* wrapped over two or more lines in a narrow pane, the chip grows with its text (W1d) */
 .compare-notice {
   max-width: 520px;
   white-space: normal;
+}
+.ss-chip.compare-notice {
+  height: auto;
+  min-height: 26px;
+  padding-block: var(--sp-2);
 }
 /* in a split each corner overlay keeps to the pane under it, whatever the divider's share
    (--pane-start-w and --pane-end-w, useSplitDivider), and the top ones stand below its header */
@@ -2425,6 +2431,11 @@ svg.flip {
   inset-block-end: 40px;
   align-items: flex-end;
   max-inline-size: calc((100% - var(--slot-end)) / 2 - 80px - var(--sp-2));
+}
+/* on a map the bottom corners stand above its no pack note too (@aio/maps map.css), which in a
+   narrow compared pane rises above the scale bar and the credits (W1d) */
+.stage-slot:is([data-slot='bl'], [data-slot='br']) {
+  inset-block-end: max(40px, calc(anchor(--aio-map-note top, 0px) + var(--sp-2)));
 }
 /* right to left the compass and the readout stay at the physical right (the panes keep
    left-to-right geometry): the start corner keeps their room, the end one does not */

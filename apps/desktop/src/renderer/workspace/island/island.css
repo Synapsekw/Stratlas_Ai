@@ -749,8 +749,24 @@
 .island-wrap :is(.isl-layer, .isl-cal) {
   max-inline-size: calc(100cqi + 2 * var(--isl-spill));
 }
+/* At rest the room is shared with what hangs beside the capsule (a comparison's controls, the
+   bubble): a spacer at each end of the wrap, the end one at least as wide as that, so the notch
+   centres while both fit and steps left of centre when they do not (Compare dates at 1100 px, W1d).
+   The line then has the room less the aside on one side only, so it is never cut. Open, the
+   notch centres as before (its tools may spill past the room at both ends). */
+.island-wrap[data-state='rest']::before,
+.island-wrap[data-state='rest']::after {
+  content: '';
+  flex: 1 1 0;
+}
+.island-wrap[data-state='rest']::before {
+  min-inline-size: var(--isl-shoulder);
+}
+.island-wrap[data-state='rest']::after {
+  min-inline-size: calc(var(--isl-aside-w, 0px) + var(--isl-shoulder) + var(--sp-2));
+}
 .island-wrap[data-state='rest'] .isl-layer {
-  max-inline-size: calc(100cqi - 2 * (var(--isl-aside-w, 0px) + var(--isl-shoulder) + var(--sp-2)));
+  max-inline-size: calc(100cqi - var(--isl-aside-w, 0px) - 2 * var(--isl-shoulder) - var(--sp-2));
 }
 .isl-line > .isl-live-open,
 .isl-line > .isl-live,
