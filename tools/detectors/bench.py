@@ -3,7 +3,7 @@
     uv run --project python python tools/detectors/bench.py --project <dir> [--project <dir>...] \
         --detector <detector.json> --server <url> --split tune|bench [--truth-class <id>...] \
         [--threshold 0.8] [--iou 0.3] [--limit 50] [--compare <ref.json>] [--tolerance 0.05] \
-        [--write-reference <ref.json>] --out <dir>
+        [--write-reference <ref.json>] [--example is=<crop> --example is-not=<crop>...] --out <dir>
 
 Projects are only read, never written to. Photos come from the manifest's photo layers. Truth is
 every image sighting of an issue whose shape has bounds (box, rotated box, polygon), plus every
@@ -11,6 +11,10 @@ accepted detection of ``detections/*.json``, filtered by ``--truth-class``. A dr
 threshold is a true positive when it takes a truth item by IoU (at least ``--iou``, one to one, in
 score order; see ``metrics.py``). The old centre-contains rule is reported beside it. Output in
 ``--out``: ``report.json``, ``drafts.json``, ``pr.csv``, ``pr.json`` and ``sheet-<n>.jpg``.
+
+``--example is=<crop>`` / ``--example is-not=<crop>`` (at most 2 of each, as in the app) put few-shot
+example crops into every yes/no check, the way a ``detect.vlm`` run does with the crops the app
+picks from the review ledger. Bench with and without them to see what the examples change.
 """
 
 from __future__ import annotations
@@ -38,8 +42,10 @@ from aio_pipelines.detect.engine import (
     box_frame,
     run_detector,
 )
+from aio_pipelines.detect.fewshot import load_examples, summary, validate_examples
 from aio_pipelines.detect.pipeline import _fit_tiles, _gsd
 from aio_pipelines.inspection.frame import asset_path, photo_layers, read_manifest
+from aio_pipelines.runtime import JobError
 
 Box = tuple[float, float, float, float]
 
@@ -253,6 +259,14 @@ def run(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
 
+    try:
+        shots, problems = load_examples(validate_examples(examples_of(args.example)))
+    except (JobError, ValueError) as e:  # a bad --example
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    if problems:
+        print(f"error: {'; '.join(problems)}", file=sys.stderr)
+        return 2
     client = VlmClient(args.server, api_key=args.api_key)
     model = args.model or server_model(args.server, args.api_key)
     frame = box_frame(model) if model else "pixels"
@@ -265,7 +279,7 @@ def run(args: argparse.Namespace) -> int:
                 # the tile count the app's job would use for this photo (detect.vlm ``_fit_tiles``)
                 gsd = _gsd(photos[pid], im.width, im.height) if detector.get("objectSizeM") else None
                 fitted = _fit_tiles(detector, im.width, im.height, gsd)
-                result = run_detector(client, im, fitted, frame=frame, start_tile=k)
+                result = run_detector(client, im, fitted, frame=frame, start_tile=k, examples=shots)
         except VlmUnavailable as e:
             print(f"The model server cannot be reached: {e}", file=sys.stderr)
             return 2
@@ -300,6 +314,7 @@ def run(args: argparse.Namespace) -> int:
         "threshold": args.threshold,
         "iouMin": args.iou,
         "truthClasses": sorted(classes),
+        "examples": summary(shots),
         "photos": len(ids),
         "truth": sum(len(v) for v in truth.values()),
         "found": scores["tp"],
@@ -365,6 +380,17 @@ REFERENCE_SCHEMA = "aio.detector-bench-ref/1"
 REFERENCE_METRICS = ("photos", "truth", "tp", "fp", "fn", "precision", "recall", "f1", "draftsPerPhoto")
 
 
+def examples_of(values: list[str]) -> list[dict[str, str]]:
+    """``--example`` values (``is=<file>`` or ``is-not=<file>``) as detector-item examples."""
+    out: list[dict[str, str]] = []
+    for v in values:
+        verdict, sep, file = v.partition("=")
+        if not sep or not file:
+            raise ValueError(f"--example {v}: write is=<crop> or is-not=<crop>")
+        out.append({"file": str(Path(file).resolve()), "verdict": verdict})
+    return out
+
+
 def reference_of(report: dict[str, Any], today: datetime.date | None = None) -> dict[str, Any]:
     """The stored reference for a run: what was measured, on what, and the headline numbers."""
     return {
@@ -419,6 +445,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument(
         "--force-reference", action="store_true", help="write the reference even when the comparison failed"
+    )
+    ap.add_argument(
+        "--example",
+        action="append",
+        default=[],
+        help="a few-shot crop for the yes/no check: is=<file> or is-not=<file> (at most 2 of each)",
     )
     ap.add_argument("--out", required=True)
     return run(ap.parse_args(argv))

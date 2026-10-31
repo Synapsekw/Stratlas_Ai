@@ -319,9 +319,9 @@ def test_model_reaches_run_detector(project, monkeypatch):
     seen = []
     real = bench.run_detector
 
-    def spy(client, image, det, frame="pixels", start_tile=0):
+    def spy(client, image, det, frame="pixels", start_tile=0, examples=()):
         seen.append(frame)
-        return real(client, image, det, frame=frame, start_tile=start_tile)
+        return real(client, image, det, frame=frame, start_tile=start_tile, examples=examples)
 
     monkeypatch.setattr(bench, "run_detector", spy)
     with FakeVlm(_handler) as srv:
@@ -415,3 +415,37 @@ def test_missing_classes_are_labelled_unclassified(tmp_path):
     assert [t["class"] for t in truth] == ["unclassified"] * 3
     assert bench.class_label(None) == bench.class_label("") == "unclassified"
     assert bench.class_label("rust") == "rust"
+
+
+def _images(body: dict) -> int:
+    return sum(1 for p in body["messages"][0]["content"] if p["type"] == "image_url")
+
+
+def test_examples_go_into_every_check_and_the_report(project, tmp_path):
+    yes, no = tmp_path / "yes.jpg", tmp_path / "no.jpg"
+    Image.new("RGB", (64, 64), (255, 0, 0)).save(yes)
+    Image.new("RGB", (64, 64), (40, 40, 40)).save(no)
+
+    def handle(body: dict) -> dict:
+        if body.get("logprobs"):
+            return logprob_response([("Yes", -0.05), ("No", -3.0)])
+        return _handler(body)
+
+    with FakeVlm(handle) as srv:
+        report = _run(project, srv.url, "--example", f"is={yes}", "--example", f"is-not={no}")
+        checks = [b for b in srv.requests if b.get("logprobs")]
+    assert report["examples"] == "1 is, 1 is not"
+    assert checks and all(_images(b) == 3 for b in checks)
+
+
+def test_without_examples_the_report_says_none(project):
+    with FakeVlm(_handler) as srv:
+        report = _run(project, srv.url)
+    assert report["examples"] == "0 is, 0 is not"
+
+
+def test_a_bad_or_missing_example_stops_the_bench(project, tmp_path):
+    base = ["--project", str(project["root"]), "--detector", str(project["detector"]), "--server",
+            "http://127.0.0.1:1", "--split", "bench", "--out", str(project["out"])]  # fmt: skip
+    assert bench.main([*base, "--example", "maybe=x.jpg"]) == 2
+    assert bench.main([*base, "--example", f"is={tmp_path / 'gone.jpg'}"]) == 2

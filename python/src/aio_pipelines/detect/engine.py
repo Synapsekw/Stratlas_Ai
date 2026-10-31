@@ -8,7 +8,8 @@ frame of the sent image); ``box_frame`` picks the frame from the model id. For o
 2. resizes each tile to the send size so the model's pixel frame equals ours and asks for boxes,
 3. maps the boxes back to source pixels and drops copies from the overlap (``dedupe``),
 4. keeps at most ``MAX_CANDIDATES`` (each tile's reply is cut to it too, and the prompt says so),
-5. crops each box and asks a yes/no question, scoring it as P(yes) / (P(yes) + P(no)),
+5. crops each box and asks a yes/no question, scoring it as P(yes) / (P(yes) + P(no)), with the
+   detector's few-shot example crops before it when the run has any (``fewshot``),
 6. runs non-maximum suppression on the scored boxes (``suppress``): the higher score wins, and on
    a tie the smaller box, so a precise small box is not lost inside a loose large one.
 
@@ -32,6 +33,7 @@ from typing import TYPE_CHECKING, Literal
 from PIL import Image
 
 from ..aik.cameras import FULL_FRAME_WIDTH_MM
+from .fewshot import Example, check_parts
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -128,21 +130,20 @@ class VlmClient:
         logprobs: bool = False,
         max_tokens: int = 1024,
         timeout: float | None = None,
+        parts: list[dict] | None = None,
     ) -> tuple[str, list[dict] | None]:
         """Send one image then one text part. Returns the reply text and, with ``logprobs``, the
         top logprobs of the first token as a list of ``{token, logprob}``. ``timeout`` (seconds) overrides
-        the client's default for this call."""
-        image_url = "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()
+        the client's default for this call. ``parts``, when given, is the whole message content
+        instead (the few-shot check, ``fewshot.check_parts``); ``jpeg`` and ``text`` are then unused."""
+        if parts is None:
+            image_url = "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()
+            parts = [
+                {"type": "image_url", "image_url": {"url": image_url}},
+                {"type": "text", "text": text},
+            ]
         body: dict = {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": image_url}},
-                        {"type": "text", "text": text},
-                    ],
-                }
-            ],
+            "messages": [{"role": "user", "content": parts}],
             "temperature": 0,
             "max_tokens": max_tokens,
         }
@@ -432,7 +433,14 @@ def _detect_tile(
     return None
 
 
-def _check(client: VlmClient, src: Image.Image, box: Box, prompt: str) -> float | None:
+def _check(
+    client: VlmClient,
+    src: Image.Image,
+    box: Box,
+    prompt: str,
+    examples: Sequence[Example] = (),
+    question: str = "",
+) -> float | None:
     x1, y1, x2, y2 = box
     px, py = (x2 - x1) * CROP_PAD, (y2 - y1) * CROP_PAD
     crop = src.crop(
@@ -444,19 +452,29 @@ def _check(client: VlmClient, src: Image.Image, box: Box, prompt: str) -> float 
         )
     )
     crop.thumbnail((CROP_MAX, CROP_MAX))
+    jpeg = _jpeg(crop)
+    parts = check_parts(list(examples), jpeg, question) if examples else None
     try:
-        _text, top = client.chat(_jpeg(crop), prompt, logprobs=True, max_tokens=1, timeout=CHECK_TIMEOUT_S)
+        _text, top = client.chat(
+            jpeg, prompt, logprobs=True, max_tokens=1, timeout=CHECK_TIMEOUT_S, parts=parts
+        )
     except VlmError:
         return None
     return score_from_top(top) if top else None
 
 
 def run_detector(
-    client: VlmClient, image: Image.Image, det: dict, frame: BoxFrame = "pixels", start_tile: int = 0
+    client: VlmClient,
+    image: Image.Image,
+    det: dict,
+    frame: BoxFrame = "pixels",
+    start_tile: int = 0,
+    examples: Sequence[Example] = (),
 ) -> PhotoResult:
     """Run one detector over one photo. Raises VlmUnavailable if the server cannot be reached.
     ``frame`` is the model's box frame (see ``box_frame``): ``rel1000`` boxes are scaled to the send size.
-    ``start_tile`` is the tile the candidate cap's round robin starts at (the caller turns it per photo)."""
+    ``start_tile`` is the tile the candidate cap's round robin starts at (the caller turns it per photo).
+    ``examples`` (``fewshot.load_examples``) go into every yes/no check; none keeps the check as it was."""
     tiles_cfg = {**TILES_DEFAULT, **(det.get("tiles") or {})}
     send_w, send_h = int(tiles_cfg["sendW"]), int(tiles_cfg["sendH"])
     prompt = detect_prompt(det)
@@ -525,7 +543,7 @@ def run_detector(
         warnings.append(CAPPED_WARNING)
     check = check_prompt(det)
     for c in cands:
-        c.score = _check(client, image, c.box, check)
+        c.score = _check(client, image, c.box, check, examples, det["question"])
     return PhotoResult(
         candidates=suppress(cands), warnings=warnings, failed=failed_tiles == len(tiles), capped=capped
     )

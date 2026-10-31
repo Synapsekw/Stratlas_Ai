@@ -16,6 +16,10 @@ Steps (each resumable):
    vote (``multiview/``) folds the drafts of one object seen in several posed photos into one
    draft with a ``vote``; single-view outliers are kept and flagged.
 
+A detector item may carry ``examples`` (absolute crop files with ``is`` / ``is-not``, chosen by the
+app from the detector and the review ledger): they are read once per run and shown to the model in
+every yes/no check (``fewshot``).
+
 Every candidate is kept; one scored under its detector's threshold carries ``belowThreshold``, one
 the model could not score carries ``unscored`` and no ``confidence``. A detector whose class is not
 in the project's catalogues keeps its class id in ``class`` and adds ``label`` (its name) and
@@ -32,6 +36,7 @@ from typing import Any
 from ..multiview.scene import radius_for, vote_pass
 from ..params import known_keys
 from ..runtime import JobError, Step, StepContext, atomic_write_json, commit_files, now_iso
+from .fewshot import Example, load_examples, summary, validate_examples
 
 DETECTIONS_SCHEMA = "aio.detections/1"
 DETECTOR_SCHEMA = "aio.vlm-detector/1"
@@ -141,19 +146,20 @@ class DetectVlm:
             raise JobError(f"detectors must be a list of 1 to {MAX_DETECTORS} detectors.")
         detectors: list[dict[str, Any]] = []
         for item in items:
-            if not isinstance(item, dict) or set(item) != _ITEM_KEYS:
-                raise JobError("Each detector entry must be {where, detector, threshold}.")
+            if not isinstance(item, dict) or not _ITEM_KEYS <= set(item) <= _ITEM_KEYS | {"examples"}:
+                raise JobError("Each detector entry must be {where, detector, threshold, examples?}.")
             if item["where"] not in WHERE:
                 raise JobError(f"where must be one of {', '.join(WHERE)}.")
             if not _is_number(item["threshold"]) or not 0 <= item["threshold"] <= 1:
                 raise JobError("threshold must be between 0 and 1.")
-            detectors.append(
-                {
-                    "where": item["where"],
-                    "detector": _validate_detector(item["detector"]),
-                    "threshold": float(item["threshold"]),
-                }
-            )
+            entry = {
+                "where": item["where"],
+                "detector": _validate_detector(item["detector"]),
+                "threshold": float(item["threshold"]),
+            }
+            if "examples" in item:
+                entry["examples"] = validate_examples(item["examples"])
+            detectors.append(entry)
         ids = [d["detector"]["id"] for d in detectors]
         if len(set(ids)) != len(ids):
             raise JobError("Each detector can be used once in a run.")
@@ -239,6 +245,7 @@ class DetectVlm:
             frame = box_frame(params["model"])
             total = len(photos) * len(detectors)
             done = ok = failed = streak = capped = 0
+            shots = _load_shots(ctx, detectors)
             for pi, photo in enumerate(photos):
                 for entry in detectors:
                     det = entry["detector"]
@@ -260,6 +267,7 @@ class DetectVlm:
                                 _fit_tiles(det, im.width, im.height, photo.get("gsdM")),
                                 frame=frame,
                                 start_tile=pi,
+                                examples=shots[det["id"]],
                             )
                     except VlmUnavailable as e:
                         raise JobError(STOPPED) from e
@@ -422,6 +430,20 @@ class DetectVlm:
             Step("detect", "Running detectors", detect_step, 0.9),
             Step("commit", "Saving the detections", commit_step, 0.05),
         ]
+
+
+def _load_shots(ctx: StepContext, detectors: list[dict[str, Any]]) -> dict[str, list[Example]]:
+    """Each detector's few-shot example crops (``fewshot``), read once per run and logged."""
+    out: dict[str, list[Example]] = {}
+    for entry in detectors:
+        det = entry["detector"]
+        shots, warnings = load_examples(entry.get("examples") or [])
+        for w in warnings:
+            ctx.log(f"{det['name']}: {w}", "warn")
+        if shots:
+            ctx.log(f"{det['name']}: the yes/no check shows the model {summary(shots)} example crops.")
+        out[det["id"]] = shots
+    return out
 
 
 def _pass_name(run_id: str) -> str:
