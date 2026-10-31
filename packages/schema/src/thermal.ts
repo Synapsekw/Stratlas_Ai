@@ -15,6 +15,9 @@ export const THERMAL_CANDIDATES_SCHEMA = 'aio.thermalCandidates/1';
 /** The oldest pipeline pack with `thermal.decode`. */
 export const THERMAL_MIN_PACK = '0.22.0';
 
+/** The oldest pipeline pack with `thermal.hotspots`. */
+export const THERMAL_HOTSPOTS_MIN_PACK = '0.29.0';
+
 /** Which decoder read the photo. */
 export const ThermalFamily = z.enum(['flir', 'dji-tsdk']);
 export type ThermalFamily = z.infer<typeof ThermalFamily>;

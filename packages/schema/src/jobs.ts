@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { TelecomAntennasParams, TelecomFlagParams } from './antennas';
-import { ThermalDecodeParams } from './thermal';
+import { ThermalDecodeParams, ThermalHotspotsParams } from './thermal';
 import { DetectVlmParams } from './analytics';
 import { ChangeScope, FrameRef, LonLatRing } from './change';
 import { Id, IsoDate, ProjectPath, Vec3 } from './common';
@@ -109,6 +109,8 @@ export const PipelineName = z.enum([
   'rf.coverage',
   // Thermal analysis (pipeline pack THERMAL_MIN_PACK)
   'thermal.decode',
+  // Thermal hot spots (pipeline pack THERMAL_HOTSPOTS_MIN_PACK)
+  'thermal.hotspots',
   // Local vision-model detectors (Analytics pack)
   'detect.vlm',
 ]);
@@ -398,6 +400,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     title: 'Decode thermal photos',
     description:
       'Turns radiometric thermal photos into temperature rasters in degrees Celsius, using the scene settings, and records which photos could not be read.',
+  },
+  {
+    name: 'thermal.hotspots',
+    title: 'Find thermal hot spots',
+    description:
+      'Finds spots hotter than their surroundings in the decoded temperature rasters and writes them as draft detections for review in Inspect.',
   },
   {
     name: 'detect.vlm',
@@ -1363,6 +1371,7 @@ const PARAMS = {
   'telecom.flag': TelecomFlagParams,
   'rf.coverage': RfCoverageParams,
   'thermal.decode': ThermalDecodeParams,
+  'thermal.hotspots': ThermalHotspotsParams,
   'detect.vlm': DetectVlmParams,
 } as const satisfies Record<PipelineName, z.ZodType>;
 

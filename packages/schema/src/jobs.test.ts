@@ -127,6 +127,7 @@ describe('pipeline params', () => {
       'telecom.flag',
       'rf.coverage',
       'thermal.decode',
+      'thermal.hotspots',
       'detect.vlm',
     ]);
     for (const p of PIPELINES) expect(p.title.length).toBeGreaterThan(3);

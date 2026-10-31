@@ -37,6 +37,8 @@ describe('pipelines by area (the Advanced list)', () => {
     // started by a bench, never offered as a form
     expect(listed).not.toContain('thermal.decode');
     expect(PIPELINE_GROUP['thermal.decode']).toBeDefined();
+    expect(listed).not.toContain('thermal.hotspots');
+    expect(PIPELINE_GROUP['thermal.hotspots']).toBeDefined();
     expect(groups.map((g) => g.label)).toEqual([
       'Photos to maps',
       'Inspection',

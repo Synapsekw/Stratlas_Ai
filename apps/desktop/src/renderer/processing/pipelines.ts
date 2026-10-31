@@ -77,6 +77,7 @@ export const PIPELINE_GROUP: Record<PipelineName, PipelineGroupId> = {
   'telecom.flag': 'survey',
   'rf.coverage': 'rf',
   'thermal.decode': 'survey',
+  'thermal.hotspots': 'survey',
   'detect.vlm': 'inspection',
   'drawing.import': 'import',
   'design.import': 'import',
@@ -113,6 +114,7 @@ export function ungroupedPipelines(list: readonly PipelineInfo[] = PIPELINES): s
  */
 export const BENCH_ONLY: ReadonlySet<string> = new Set<PipelineName>([
   'thermal.decode',
+  'thermal.hotspots',
   'flyability.import',
 ]);
 
@@ -237,6 +239,7 @@ export const JOB_KIND: Record<PipelineName, JobKind> = {
   'telecom.flag': 'survey',
   'rf.coverage': 'survey',
   'thermal.decode': 'survey',
+  'thermal.hotspots': 'survey',
   'detect.vlm': 'ai',
   'drawing.import': 'files',
   'design.import': 'files',

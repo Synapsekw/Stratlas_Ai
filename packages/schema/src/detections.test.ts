@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DETECTIONS_SCHEMA, DetectionOrigin, DetectionsFile, pipelineParams } from './index';
+import {
+  DETECTIONS_SCHEMA,
+  DetectionOrigin,
+  DetectionVote,
+  DetectionsFile,
+  pipelineParams,
+} from './index';
 
 const file = {
   schema: DETECTIONS_SCHEMA,
@@ -182,5 +188,47 @@ describe('proposedBox', () => {
   it('refuses anything else', () => {
     expect(parse([10, 20, 60]).success).toBe(false);
     expect(parse([10, 20, 60, Infinity]).success).toBe(false);
+  });
+});
+
+describe('multi-view vote', () => {
+  const vote = {
+    views: 3,
+    seenBy: 5,
+    score: 0.81,
+    point: [12.5, -3, 4.25],
+    placedOn: 'mesh',
+    sightings: [
+      { photo: 'p002', bbox: [1, 1, 5, 5], confidence: 0.7, id: 'd2' },
+      { photo: 'p003', bbox: [2, 2, 6, 6] },
+    ],
+  };
+  const fileWith = (v: unknown) => ({
+    schema: DETECTIONS_SCHEMA,
+    source: 'model',
+    detections: [{ photo: 'p001', class: 'corrosion', bbox: [1, 1, 5, 5], vote: v }],
+  });
+  it('round-trips a vote on a detection', () => {
+    const parsed = DetectionsFile.parse(fileWith(vote));
+    expect(parsed.detections[0]?.vote).toEqual(vote);
+    expect(DetectionsFile.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed);
+  });
+  it('keeps a flagged single view', () => {
+    const v = { views: 1, seenBy: 4, singleView: true };
+    expect(DetectionVote.parse(v)).toEqual(v);
+  });
+  it('refuses an unknown key, in the vote and in a sighting', () => {
+    expect(DetectionVote.safeParse({ views: 2, colour: 'red' }).success).toBe(false);
+    expect(
+      DetectionVote.safeParse({
+        views: 2,
+        sightings: [{ photo: 'p2', bbox: [1, 1, 5, 5], colour: 'red' }],
+      }).success,
+    ).toBe(false);
+  });
+  it('refuses zero views and a bad placement', () => {
+    expect(DetectionsFile.safeParse(fileWith({ views: 0 })).success).toBe(false);
+    expect(DetectionVote.safeParse({ views: 2, placedOn: 'sky' }).success).toBe(false);
+    expect(DetectionVote.safeParse({ views: 2, score: 1.5 }).success).toBe(false);
   });
 });

@@ -3,11 +3,13 @@ import {
   DEFAULT_GRADING,
   HotSpot,
   THERMAL_CANDIDATES_SCHEMA,
+  THERMAL_HOTSPOTS_MIN_PACK,
   THERMAL_MIN_PACK,
   THERMAL_RASTER_SCHEMA,
   THERMAL_SCHEMA,
   ThermalCandidatesFile,
   ThermalDecodeParams,
+  ThermalHotspotsParams,
   ThermalFile,
   ThermalGrading,
   ThermalRasterIndex,
@@ -209,5 +211,14 @@ describe('candidates and params', () => {
     // an empty list is refused, as the job refuses it: leave `photos` out for the whole layer
     expect(ThermalDecodeParams.safeParse({ layerId: 'l1', photos: [] }).success).toBe(false);
     expect(THERMAL_MIN_PACK).toBe('0.22.0');
+  });
+  it('hot spot params and pack', () => {
+    expect(
+      ThermalHotspotsParams.safeParse({ layerId: 'l1', rule: 'delta', thresholdC: 4 }).success,
+    ).toBe(true);
+    expect(
+      ThermalHotspotsParams.safeParse({ layerId: 'l1', rule: 'hot', thresholdC: 4 }).success,
+    ).toBe(false);
+    expect(THERMAL_HOTSPOTS_MIN_PACK).toBe('0.29.0');
   });
 });

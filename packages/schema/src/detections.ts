@@ -74,6 +74,41 @@ export const DetectionOrigin = z
   })
   .strict();
 
+/**
+ * Multi-view vote (`detect.vlm` and `thermal.hotspots`, pipeline pack 0.29.0): this draft stands for
+ * the drafts of every photo that saw the same object in 3D. Their boxes live on in `sightings`.
+ */
+export const DetectionVote = z
+  .object({
+    /** Photos whose drafts agree, this one included. */
+    views: z.number().int().min(1),
+    /** Posed photos of the pass that look at the point (inside the frame, in front). */
+    seenBy: z.number().int().min(1).optional(),
+    /** `views` 1 while `seenBy` is 2 or more: kept, flagged. */
+    singleView: z.boolean().optional(),
+    /** This draft's own detector score before the vote. */
+    score: z.number().min(0).max(1).optional(),
+    /** Where the object sits, project local frame, metres. */
+    point: z.tuple([z.number(), z.number(), z.number()]).optional(),
+    /** What the point was placed on: a mesh, the point cloud, or crossing rays. */
+    placedOn: z.enum(['mesh', 'cloud', 'rays']).optional(),
+    /** The other members of the cluster: photo, box (same space as `bbox`), score and id. */
+    sightings: z
+      .array(
+        z
+          .object({
+            photo: Id,
+            bbox: DetectionBox,
+            confidence: z.number().min(0).max(1).optional(),
+            id: z.string().min(1).max(128).optional(),
+          })
+          .strict(),
+      )
+      .max(200)
+      .optional(),
+  })
+  .strict();
+
 export const Detection = z
   .object({
     /** Stable id chosen by the producer; issues follow their detections by it across runs. */
@@ -130,6 +165,8 @@ export const Detection = z
       })
       .optional(),
     origin: DetectionOrigin.optional(),
+    /** The multi-view vote that merged this draft with those of other photos. */
+    vote: DetectionVote.optional(),
     /** Values a custom analytics request read off the photo (a gauge reading, a state). */
     fields: z.array(FieldValue).max(14).optional(),
     /**
@@ -229,3 +266,4 @@ export type DetectionFrame = z.infer<typeof DetectionFrame>;
 export type DetectionGeom = z.infer<typeof DetectionGeom>;
 export type DetectionOrigin = z.infer<typeof DetectionOrigin>;
 export type DetectionRun = z.infer<typeof DetectionRun>;
+export type DetectionVote = z.infer<typeof DetectionVote>;

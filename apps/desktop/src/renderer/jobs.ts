@@ -1096,6 +1096,8 @@ export const FORMS: Record<PipelineName, Field[]> = {
   'rf.coverage': [],
   // started by the thermal bench, never from a form
   'thermal.decode': [],
+  // started by the thermal bench (Find hot spots), never from a form
+  'thermal.hotspots': [],
   // empty on purpose: detectors start from the photo review, never from a form
   'detect.vlm': [],
 };

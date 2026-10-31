@@ -194,7 +194,11 @@ import { registerTelecomIpc } from './telecom';
 import { telecomLabelHost } from './telecomAi';
 import { antennaPackRefusal, readAntennaDeletions, readAntennaInventory } from './telecomPack';
 import { registerThermalIpc } from './thermal';
-import { THERMAL_PACK_FEATURE, thermalPackRefusal } from './thermalPack';
+import {
+  THERMAL_HOTSPOTS_PACK_FEATURE,
+  THERMAL_PACK_FEATURE,
+  thermalPackRefusal,
+} from './thermalPack';
 import { RF_PACK_FEATURE, rfPackRefusal } from './rfPack';
 import { registerSurveyAiIpc } from './surveyAi';
 import { createSegmenter } from './inference/segment';
@@ -1758,6 +1762,7 @@ function registerIpc(): void {
       pipeline === 'rf.coverage' ||
       pipeline === 'thermal.decode' ||
       pipeline === 'flyability.import' ||
+      pipeline === 'thermal.hotspots' ||
       pipeline === 'detect.vlm'
     ) {
       const found = await findPack({
@@ -2457,6 +2462,7 @@ function registerIpc(): void {
             CLEAN_PACK_FEATURE,
             FLYABILITY_PACK_FEATURE,
             THERMAL_PACK_FEATURE,
+            THERMAL_HOTSPOTS_PACK_FEATURE,
             DETECT_PACK_FEATURE,
           ],
     places: () =>
