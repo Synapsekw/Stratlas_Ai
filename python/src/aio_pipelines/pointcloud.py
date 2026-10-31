@@ -233,9 +233,14 @@ def prepare_las(
     epsg: int | None,
     points: int,
     band: tuple[float, float],
+    matrix: list[float] | None = None,
 ) -> None:
     """``src`` as an uncompressed LAS ``dst`` the COPC writer reads, reprojected to ``epsg`` when
-    given. PDAL streams it (every stage here streams for LAS and LAZ), so memory stays flat."""
+    given. PDAL streams it (every stage here streams for LAS and LAZ), so memory stays flat.
+
+    ``matrix`` (16 numbers, a row-major 4 x 4: ``p' = M[:3,:3] p + M[:3,3]``) moves the points
+    first, as a ``filters.transformation`` stage (a Flyability flight's own alignment); with no
+    ``epsg`` there is no reprojection and no CRS is written."""
     writer: dict[str, Any] = {
         "type": "writers.las",
         "filename": str(dst),
@@ -243,6 +248,11 @@ def prepare_las(
         "extra_dims": "all",
     }
     stages: list[Any] = [str(src)]
+    if matrix is not None:
+        stages.append({"type": "filters.transformation", "matrix": " ".join(repr(float(v)) for v in matrix)})
+        # moved points need offsets of their own and keep their millimetres
+        writer.update({f"scale_{a}": 0.001 for a in "xyz"})
+        writer.update({f"offset_{a}": "auto" for a in "xyz"})
     if epsg:
         stages.append({"type": "filters.reprojection", "out_srs": f"EPSG:{epsg}"})
         # a new CRS needs new offsets (from the first point, as PDAL streams) and a millimetre scale
@@ -254,7 +264,11 @@ def prepare_las(
     atomic_write_json(pipe, {"pipeline": stages})
     record = las_record_length(src)
     measure = written_share(dst, points, record) if record and points else None
-    what = "Reprojecting the cloud" if epsg else "Reading the cloud into LAS"
+    what = (
+        "Reprojecting the cloud"
+        if epsg
+        else ("Aligning the cloud" if matrix is not None else "Reading the cloud into LAS")
+    )
     try:
         _run(ctx, [pdal, "pipeline", str(pipe)], what, band, measure)
     finally:

@@ -14,6 +14,7 @@ from .design.importer import DesignImport
 from .detect.pipeline import DetectVlm
 from .drawing.pipeline import DrawingImport
 from .engineer.pipeline import ModelEvidence
+from .flyability.pipeline import FlyabilityImport
 from .geodesy.calibration import GeoCalibration
 from .haul.analyse import HaulAnalyse
 from .hydro.flood import HydroFlood
@@ -79,6 +80,8 @@ def all_pipelines() -> dict[str, Pipeline]:
         OpfImport(),
         OpfExport(),
         BentleyImport(),
+        # Flyability Inspector export (pipeline pack 0.31.0)
+        FlyabilityImport(),
         TilesMesh(),
         TilesCloud(),
         ImageryPack(),
