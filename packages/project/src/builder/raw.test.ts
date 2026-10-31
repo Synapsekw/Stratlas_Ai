@@ -1776,6 +1776,19 @@ describe('GLB georeference on import (engineering model 5.6)', () => {
     });
   });
 
+  it('a photo dropped on a WKT project asks for an EPSG code', async () => {
+    const root = await project();
+    const m = await readManifestFile(root);
+    await writeManifestFile(root, { ...m, crs: { wkt: 'PROJCS["Custom grid",GEOGCS["WGS 84"]]' } });
+    const a = join(dir, 'p.jpg');
+    await writeFile(a, withExif({ lat: 29.0276, lon: 48.1352 }));
+    const r = await importRawFiles(root, [a], deps());
+    expect(r.items[0]).toMatchObject({
+      status: 'error',
+      message: 'Raw import needs a project CRS given as an EPSG code.',
+    });
+  });
+
   it('heights of a local project plan nothing and do not throw', async () => {
     const root = await project();
     const m = await readManifestFile(root);

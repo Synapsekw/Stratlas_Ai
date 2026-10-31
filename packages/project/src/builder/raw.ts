@@ -374,7 +374,7 @@ export async function importRawFiles(
   // the manifest as it was read, left untouched: what `m` holds beyond it is what this import added
   const atStart = await readManifestFile(root);
   const m = structuredClone(atStart);
-  // a local-frame project (a Flyability Inspector space) has no EPSG code: only an export comes in
+  // no EPSG code (a local Flyability Inspector frame, or a WKT crs): only an export comes in
   const local = !('epsg' in m.crs);
   const epsg = 'epsg' in m.crs ? m.crs.epsg : 0;
   const utcOffsetMin = deps.utcOffsetMin ?? (local ? 0 : defaultUtcOffsetMin(m.origin, epsg));
@@ -606,7 +606,11 @@ export async function importRawFiles(
           file: name,
           kind: 'unknown',
           status: 'error',
-          message: LOCAL_ONLY_EXPORTS,
+          // a local frame takes only exports; a WKT crs needs an EPSG code like before
+          message:
+            'local' in m.crs
+              ? LOCAL_ONLY_EXPORTS
+              : 'Raw import needs a project CRS given as an EPSG code.',
         });
         continue;
       }
