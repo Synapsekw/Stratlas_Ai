@@ -47,8 +47,8 @@ Intelligence review, vision items 3.3 and 3.4: reviews were logged but only fed 
 4. Run the detector again on other photos. In the job log, the detect step says "the yes/no check shows the model 2 is, 2 is not example crops". Drafts that look like the rejected ones may now score lower (not measured on the real model yet).
 5. Open Settings > Models and detection. In the Detector library, the corrosion row shows "16 more scored reviews before a threshold is suggested" and **Learn from my reviews**, ticked.
 6. Review until at least 20 scored drafts are accepted or rejected. The row shows "Suggested threshold X, in use 0.80" (perhaps with "from all reviews") and **Apply suggested threshold**.
-7. Click it. A note says "Threshold X applied. The next run uses it."; the status reads "Applied threshold X in use", and **Use the detector's own threshold** appears. The next run marks drafts under X as below the threshold.
-8. Click **Use the detector's own threshold**. The note says the detector's own threshold is back, and the button goes.
+7. Click it. A toast says "Threshold X applied. The next run uses it."; the status reads "Applied threshold X in use", and **Use the detector's own threshold** appears. The next run marks drafts under X as below the threshold.
+8. Click **Use the detector's own threshold**. A toast says the detector's own threshold is back, and the button goes.
 9. Untick **Learn from my reviews**. The status reads "Learning from reviews is off", the apply button goes, and the next run's job log has no example-crop line. Tick it again to turn learning back on.
 
 ## Open threads
