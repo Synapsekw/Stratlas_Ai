@@ -46,7 +46,11 @@ FRAME_MARGIN = 0.02  # share of the frame a point may sit outside and still coun
 GRID = 5  # rays per side of the central half of a box
 MAX_SIGHTINGS = 200
 RAY_CHUNK = 50_000  # rays per surface call
-RAY_SAMPLES = 32  # samples per ray in the crossing prefilter
+RAY_SAMPLES = 32  # samples per ray in the crossing prefilter, at least
+MAX_RAY_SAMPLES = 256  # and at most
+MAX_REACH = 5.0  # metres: the prefilter's search reach is never wider
+PAIR_NEIGHBOURS = 48  # neighbours each sample takes in the prefilter
+PAIR_CHUNK = 100_000  # samples per prefilter query
 SIGHTING_KEYS = ("space", "width", "height", "note", "fields")
 
 
@@ -253,7 +257,8 @@ class _Cluster:
 def _ray_pairs(obs: list[_Obs], check: Callable[[], None]) -> tuple[np.ndarray, np.ndarray]:
     """Candidate pairs (index arrays into ``obs``) of rays of one class from different photos that may
     cross within their radius: each ray is sampled over the depths where crossings happen, and only
-    rays with samples within one sample step plus the radius of each other are paired."""
+    rays with samples within one sample step plus the radius of each other (never wider than
+    ``MAX_REACH``; each sample takes at most ``PAIR_NEIGHBOURS`` neighbours, in chunks) are paired."""
     from scipy.spatial import cKDTree
 
     n = len(obs)
@@ -292,23 +297,33 @@ def _ray_pairs(obs: list[_Obs], check: Callable[[], None]) -> tuple[np.ndarray, 
         if depths:
             med = float(np.median(depths))
             lo, hi = med / 4, med * 4
-    step = (hi - lo) / RAY_SAMPLES
-    reach = step + r
-    ts = lo + step * (np.arange(RAY_SAMPLES) + 0.5)
+    # samples close enough that a crossing within r lies between neighbours, up to a sample cap;
+    # the search reach is bounded, and each sample takes at most PAIR_NEIGHBOURS neighbours, so
+    # the candidate list cannot grow without limit
+    samples = int(min(MAX_RAY_SAMPLES, max(RAY_SAMPLES, math.ceil((hi - lo) / max(MAX_REACH - r, r)))))
+    step = (hi - lo) / samples
+    reach = min(step + r, MAX_REACH)
+    ts = lo + step * (np.arange(samples) + 0.5)
     pairs = []
     for c in np.unique(cls):
         idx = np.flatnonzero(cls == c)
         if len(idx) < 2:
             continue
         pts = (org[idx, None, :] + dirs[idx, None, :] * ts[None, :, None]).reshape(-1, 3)
-        owner = np.repeat(idx, RAY_SAMPLES)
-        p = cKDTree(pts).query_pairs(reach, output_type="ndarray")
-        check()
-        a, b = owner[p[:, 0]], owner[p[:, 1]]
-        keep = photo[a] != photo[b]
-        a, b = a[keep], b[keep]
-        lo_, hi_ = np.minimum(a, b), np.maximum(a, b)
-        pairs.append(np.unique(lo_ * n + hi_))
+        owner = np.repeat(idx, samples)
+        tree = cKDTree(pts)
+        k = min(PAIR_NEIGHBOURS, len(pts))
+        for s0 in range(0, len(pts), PAIR_CHUNK):
+            check()
+            dist, nb = tree.query(pts[s0 : s0 + PAIR_CHUNK], k=k, distance_upper_bound=reach)
+            dist, nb = np.atleast_2d(dist), np.atleast_2d(nb)
+            got = np.isfinite(dist)
+            a = np.repeat(owner[s0 : s0 + PAIR_CHUNK], k).reshape(-1, k)[got]
+            b = owner[nb[got]]
+            keep = photo[a] != photo[b]
+            a, b = a[keep], b[keep]
+            lo_, hi_ = np.minimum(a, b), np.maximum(a, b)
+            pairs.append(np.unique(lo_ * n + hi_))
     if not pairs:
         return np.zeros(0, int), np.zeros(0, int)
     u = np.unique(np.concatenate(pairs))
@@ -373,6 +388,49 @@ def _sighting(o: _Obs) -> dict[str, Any]:
     if o.det.get("id"):
         s["id"] = o.det["id"]
     return s
+
+
+def _vote_again(cl: _Cluster, joiners: list[_Obs], seen: int, placed_on: str) -> dict[str, Any]:
+    """A kept draft that new drafts of other photos joined: one sighting per photo (a new one from a
+    photo already listed replaces it), ``views`` the photos counted once, ``seenBy`` and
+    ``singleView`` again, and, for a draft, its confidence voted again from every score it holds."""
+    det = cl.lead.det
+    v = dict(det.get("vote") or {})
+    by_photo: dict[str, dict[str, Any]] = {}
+    for s in v.get("sightings") or []:
+        if isinstance(s, dict) and s.get("photo") and s["photo"] != cl.lead.photo:
+            by_photo[str(s["photo"])] = s
+    for o in joiners:
+        by_photo[o.photo] = _sighting(o)
+    sightings = list(by_photo.values())
+    omitted = int(v.get("sightingsOmitted") or 0)
+    if len(sightings) > MAX_SIGHTINGS:
+        omitted += len(sightings) - MAX_SIGHTINGS
+        sightings = sightings[:MAX_SIGHTINGS]
+    views = 1 + len(by_photo) + int(v.get("sightingsOmitted") or 0)
+    seen_by = max(seen, views)
+    v.update(views=views, seenBy=seen_by, sightings=sightings)
+    if omitted:
+        v["sightingsOmitted"] = omitted
+    v.pop("singleView", None)
+    if views == 1 and seen_by >= 2:
+        v["singleView"] = True
+    v.setdefault("placedOn", placed_on)
+    if "point" not in v and not cl.lead.guessed:
+        v["point"] = [round(float(x), 3) for x in cl.centre]
+    out = {**det, "vote": v}
+    if det.get("status", "draft") == "draft" and not det.get("issueId"):
+        own = v.get("score", det.get("confidence"))
+        scores = [float(own)] if isinstance(own, int | float) else []
+        scores += [float(s["confidence"]) for s in sightings if isinstance(s.get("confidence"), int | float)]
+        conf = _confidence(scores, views, seen_by)
+        if conf is not None:
+            out["confidence"] = conf
+            out.pop("belowThreshold", None)
+            threshold = (det.get("origin") or {}).get("threshold")
+            if threshold is not None and conf < float(threshold):
+                out["belowThreshold"] = True
+    return out
 
 
 def _assessed_of(assessed, cameras: dict[str, Camera]) -> Callable[[str], list[str]]:
@@ -543,23 +601,17 @@ def vote(
 
     replaced: dict[int, dict[str, Any] | None] = {}
     single = dropped = added = 0
+    joiners: dict[int, list[_Obs]] = {}
     for cl, o in absorbed:
         replaced[o.index] = None
         if cl.lead.fixed == "reviewed":
             dropped += 1
             continue
-        lead = replaced.get(cl.lead.index) or {**cl.lead.det}
-        v = dict(lead.get("vote") or {"views": 1})
-        sightings = list(v.get("sightings") or [])
-        if len(sightings) < MAX_SIGHTINGS:
-            sightings.append(_sighting(o))
-        else:
-            v["sightingsOmitted"] = int(v.get("sightingsOmitted", 0)) + 1
-        v["sightings"] = sightings
-        v["views"] = int(v.get("views", 1)) + 1
-        lead["vote"] = v
-        replaced[cl.lead.index] = lead
+        joiners.setdefault(id(cl), []).append(o)
         added += 1
+    grown = [c for c in clusters if id(c) in joiners]
+    for cl, seen in zip(grown, _seen_by(grown, cameras, surface, looked, check), strict=True):
+        replaced[cl.lead.index] = _vote_again(cl, joiners[id(cl)], seen, placed_on)
     for cl, seen in zip(live, seen_counts, strict=True):
         members = cl.members
         rep = cl.lead

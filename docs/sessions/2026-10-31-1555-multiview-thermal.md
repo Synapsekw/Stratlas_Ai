@@ -37,7 +37,7 @@ related:
     - one projection per camera for `seenBy`;
     - batched surface rays;
     - a vectorised cloud march whose step never exceeds its tolerance.
-  - On 2000 photos with 57,728 drafts, the vote takes about 5 s on a flat surface and 11 s with rays only (test bound 120 s).
+  - On 2000 photos with 57,728 drafts, the vote takes about 6 s on a flat surface and 15 s with rays only (test bound 120 s).
 
 ## Why
 
@@ -55,8 +55,8 @@ Vision audit items 3.6 and 3.14 (intelligence review, 30 Oct). The same defect i
 
 - The vote has only been run on synthetic fixtures (exact poses, flat objects). It needs a bench on a reference project with posed photos. GPS and gimbal error may need a larger radius than 0.5 m.
 - Visibility uses the mesh (occlusion is tested) or the cloud. With rays only, seenBy counts every looked-at photo whose frame holds the point.
-- A kept draft that gains a sighting on a re-run keeps its confidence; a re-vote of its old sightings is left out.
-- The crossing prefilter samples each ray between a quarter and four times the median crossing depth of neighbouring photos; crossings far outside that band are not found.
+- A kept draft that a re-run adds to is voted again: one sighting per photo (a new box from a photo already listed replaces the old one), views, seenBy and singleView from scratch, and its confidence from every score it holds. A reviewed detection never changes.
+- The crossing prefilter samples each ray between a quarter and four times the median crossing depth of neighbouring photos; crossings far outside that band are not found. One depth window serves the whole pass, so a pass that mixes nadir mapping photos with a close orbit (very different depths) can miss crossings of the group that is far from the median; a window per photo group is a follow-up. The prefilter reach is capped at 5 m and each sample takes at most 48 neighbours, so a dense pass can drop a few candidate pairs.
 - There is no thermal orthomosaic yet, so the finder works per photo. The vote merges the same hot spot across overlapping posed thermal photos.
 - The hot-spot thresholds are tuned on synthetic rasters only. The thermal plan's real-data check (task 3.9: sun glints, sky) is still to do. Severity stays `uncertain`: the "Thermal ΔT" grading and the hot-spot list of M3 tasks 3.6 and 3.7 are not built.
 - The bench reads the found count from the job's commit step file (`jobs/<id>/steps/02-commit.json`). If that file cannot be read, it says "Done".

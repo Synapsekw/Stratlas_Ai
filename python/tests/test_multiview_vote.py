@@ -336,6 +336,35 @@ def test_a_new_draft_on_a_reviewed_object_is_dropped_and_on_a_kept_draft_joins_i
     assert stats["droppedOnReviewed"] == 1 and stats["addedToKept"] == 1
 
 
+def test_a_kept_single_view_draft_joined_by_a_new_photo_is_voted_again():
+    cams = ring_cameras(3)
+    kept = {**draft("p0", box_around(cams["p0"], OBJECTS[0]), 0.9, ident="k"), "confidence": 0.72,
+            "belowThreshold": True,
+            "vote": {"views": 1, "seenBy": 3, "singleView": True, "score": 0.9, "placedOn": "mesh"}}  # fmt: skip
+    fresh = draft("p1", box_around(cams["p1"], OBJECTS[0]), 0.8, ident="n")
+    out, _ = V.vote([kept, fresh], cams, Ground(), fixed=lambda d: "kept" if d["id"] == "k" else None)
+    assert len(out) == 1
+    v = out[0]["vote"]
+    assert v["views"] == 2 and "singleView" not in v
+    assert v["seenBy"] == 3 and v["score"] == 0.9
+    assert [s["id"] for s in v["sightings"]] == ["n"]
+    # a draft: its confidence is voted again, (1 - 0.1 x 0.2) x (0.7 + 0.3 x 2/3)
+    assert out[0]["confidence"] == pytest.approx(0.98 * 0.9, abs=1e-4)
+    assert "belowThreshold" not in out[0]
+
+
+def test_a_new_sighting_from_a_photo_already_listed_replaces_it():
+    cams = ring_cameras(3)
+    old = {"photo": "p1", "bbox": [1, 1, 5, 5], "confidence": 0.6, "id": "old"}
+    kept = {**draft("p0", box_around(cams["p0"], OBJECTS[0]), 0.9, ident="k"),
+            "vote": {"views": 2, "seenBy": 3, "score": 0.9, "placedOn": "mesh", "sightings": [old]}}  # fmt: skip
+    fresh = draft("p1", box_around(cams["p1"], OBJECTS[0]), 0.8, ident="n")
+    out, _ = V.vote([kept, fresh], cams, Ground(), fixed=lambda d: "kept" if d["id"] == "k" else None)
+    v = out[0]["vote"]
+    assert v["views"] == 2
+    assert [s["id"] for s in v["sightings"]] == ["n"]
+
+
 def test_a_cancel_stops_the_vote():
     cams = ring_cameras()
     dets = [draft(pid, box_around(cam, OBJECTS[0]), 0.9, ident=pid) for pid, cam in cams.items()]
