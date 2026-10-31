@@ -171,7 +171,6 @@ describe('SpacesMount', () => {
     mount(null);
     for (const split of [
       { left: '3d', right: 'photo' },
-      { left: 'pano', right: '3d' },
       // a comparison of two dates
       { left: '3d', right: '3d', leftCapture: 'c1', rightCapture: 'c2' },
     ] as const) {
@@ -181,6 +180,17 @@ describe('SpacesMount', () => {
       });
       expect(shellStore.getState().stageMode).toBe('split');
     }
+    stagePrefs.getState().update('p1', { split: undefined });
+  });
+
+  it('a saved split whose pane is gone resolves to the map and is bounced', () => {
+    // no photos layer: {3d, photo} draws 3D beside the map
+    open(withSpaces([flight('lf', 's-a')]));
+    setActiveSpace('p1', 's-a');
+    stagePrefs.getState().update('p1', { split: { left: '3d', right: 'photo' } });
+    shellStore.setState({ stageMode: 'split' });
+    mount(null);
+    expect(shellStore.getState().stageMode).toBe('3d');
     stagePrefs.getState().update('p1', { split: undefined });
   });
 

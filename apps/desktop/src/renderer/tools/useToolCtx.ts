@@ -11,6 +11,7 @@ import { createStore } from 'zustand/vanilla';
 import { useShell } from '../shell';
 import { useMeasure } from '../survey/measureStore';
 import { useActiveSpace } from '../spaces/activeSpace';
+import { useSplitShowsMap } from '../spaces/splitMap';
 import type { CompareDates } from '../workspace/CompareControls';
 import { streetMapTool } from '../workspace/siteBasemap';
 import { useEngineStage } from '../workspace/StageTools';
@@ -108,6 +109,7 @@ export function useToolCtx(
   const stage = opts.stage === undefined ? active : opts.stage;
   const selection = useWorkspace((s) => s.selection !== null);
   const { mapAvailable } = useActiveSpace();
+  const splitHasMap = useSplitShowsMap();
   // the clip the video dock shows: the active one, else the project's first video (W9)
   const clip = useDockClip() !== null;
   const kit = useVolumetric((s) => s.status === 'ready');
@@ -127,6 +129,7 @@ export function useToolCtx(
       tools: tools ?? mode,
       stage3d: stage !== null && mode !== 'map',
       mapAvailable,
+      splitHasMap,
       pkg,
       readOnly,
       selection,
@@ -145,6 +148,7 @@ export function useToolCtx(
       tools,
       stage,
       mapAvailable,
+      splitHasMap,
       pkg,
       readOnly,
       selection,

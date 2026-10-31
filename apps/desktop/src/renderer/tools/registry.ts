@@ -137,6 +137,8 @@ export interface ToolCtx {
   stage3d: boolean;
   /** The active space has a map: false only for a space with its own (`{ local }`) frame. */
   mapAvailable: boolean;
+  /** The split the Split view would open has a map pane (the saved sides, resolved). */
+  splitHasMap: boolean;
   /** A project package: nothing is written. */
   pkg: boolean;
   /** Read only (a package or a read-only project): the tools that save are off. */
@@ -175,6 +177,7 @@ export const EMPTY_CTX: ToolCtx = {
   tools: '3d',
   stage3d: false,
   mapAvailable: true,
+  splitHasMap: true,
   pkg: false,
   readOnly: false,
   selection: false,
@@ -939,9 +942,13 @@ export const MODE_DEFS: Readonly<Record<IslandMode, IslandModeDef>> = {
   },
 };
 
-/** The stage view switch: Map and Split need a map, so a space without one greys them out. */
+/**
+ * The stage view switch: a space without a map greys out Map, and Split when the split it opens
+ * shows the map (a saved photo or date comparison beside 3D does not).
+ */
 export function stageModeAvailable(mode: StageMode, ctx: ToolCtx): Availability {
-  return mode === '3d' ? OK : needs(ctx.mapAvailable, 'fly.map.local');
+  if (mode === '3d' || ctx.mapAvailable) return OK;
+  return mode === 'split' && !ctx.splitHasMap ? OK : { reason: 'fly.map.local' };
 }
 
 /** The island's modes for this project and view, in their order. */

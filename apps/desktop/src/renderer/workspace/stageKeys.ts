@@ -10,6 +10,7 @@ import { useEffect } from 'react';
 import { isTyping } from '../keys';
 import { shell } from '../shell';
 import { mapAvailableNow } from '../spaces/activeSpace';
+import { splitShowsMapNow } from '../spaces/splitMap';
 import { togglePaths } from './flightPaths';
 import { flightPathModel, updateFlightPaths } from './pathModel';
 import { toggleTelemetry } from './telemetryPref';
@@ -32,7 +33,7 @@ export function useStageKeys(engine: EngineStage | null): void {
       if (k === 'scene.mode3d') sh.setStageMode('3d');
       else if (k === 'scene.modeMap' || k === 'scene.modeSplit') {
         // greyed out in a space without a map (the island says why)
-        if (!mapAvailableNow()) return;
+        if (!mapAvailableNow() && (k === 'scene.modeMap' || splitShowsMapNow())) return;
         sh.setStageMode(k === 'scene.modeMap' ? 'map' : 'split');
       } else if (k === 'scene.home') ws.flyTo({ kind: 'home' });
       else if (k === 'scene.site') ws.flyTo({ kind: 'site' });

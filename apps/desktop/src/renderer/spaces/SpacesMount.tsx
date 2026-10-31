@@ -12,9 +12,8 @@ import {
 } from '../flyability/flightlineModel';
 import { attachFlightlines, type FlightlineView } from '../flyability/flightlineScene';
 import { shell, useShell } from '../shell';
-import { DEFAULT_SPLIT, sidesOf } from '../workspace/splitModel';
-import { useStagePrefs } from '../workspace/stagePrefs';
 import { useActiveSpace } from './activeSpace';
+import { useSplitShowsMap } from './splitMap';
 import { offSpaceLayers, scopeChange, type SpaceMemory } from './spaceModel';
 
 /*
@@ -92,8 +91,7 @@ export function SpacesMount({ stage }: { stage: EngineStage | null }): null {
   // the map view, or in a split with a map pane, when a space without a map comes on goes to 3D.
   // A split without the map (a photo or a comparison beside 3D) stays. A georeferenced space has
   // a map, so this never runs for it.
-  const splitPref = useStagePrefs((s) => (projectId ? s.byProject[projectId]?.split : undefined));
-  const splitHasMap = sidesOf(splitPref ?? DEFAULT_SPLIT, 'map').length > 0;
+  const splitHasMap = useSplitShowsMap();
   useEffect(() => {
     if (mapAvailable) return;
     if (stageMode === 'map' || (stageMode === 'split' && splitHasMap))

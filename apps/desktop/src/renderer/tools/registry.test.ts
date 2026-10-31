@@ -169,6 +169,10 @@ describe("the island's modes", () => {
     expect(stageModeAvailable('3d', local)).toBe(true);
     expect(stageModeAvailable('map', local)).toEqual({ reason: 'fly.map.local' });
     expect(stageModeAvailable('split', local)).toEqual({ reason: 'fly.map.local' });
+    // a saved split without the map (a photo beside 3D) stays open; Map stays greyed
+    const noMapSplit = toolCtxOf(input({ mapAvailable: false, splitHasMap: false }));
+    expect(stageModeAvailable('split', noMapSplit)).toBe(true);
+    expect(stageModeAvailable('map', noMapSplit)).toEqual({ reason: 'fly.map.local' });
     // a georeferenced project keeps them
     const geo = toolCtxOf(input());
     expect(stageModeAvailable('map', geo)).toBe(true);
