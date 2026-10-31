@@ -3,17 +3,15 @@
  * 1100 x 720, on the tank farm demo (two survey dates, a clip): every overlay takes a corner of its
  * own and none covers another, the T notice keeps clear of the callouts, the telemetry HUD and the
  * PAUSED chip are off the model, the stage shows one Map menu chip, and the coordinates readout
- * sits on a scrim. Docked, the video shares the stage across a divider (`scene.video`), beside or
- * under the views, and the views keep 360 px with Volumes in front; the volumes hint takes a
- * corner of its own. With the drawer open, the end corners keep clear of it, the video docked
- * beside the views too. Right to left, the dock stands at the left.
+ * sits on a scrim. Docked, the video is a tile in the bottom strip (W9, D4) and the views take the
+ * whole stage; the volumes hint takes a corner of its own. With the drawer open, the end corners
+ * keep clear of it. Right to left, the tile stands at the strip's start, on the right.
  *
  * Screenshots go to the test's output folder (test-results/), or to QUADRION_E2E_SHOTS.
  */
 import type { Locator, Page, TestInfo } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { captionArea } from './caption';
 import { DEMO_FOLDER, expect, test } from './fixtures';
 import { closeIslandTools, island, islandGroup, islandSettled, stageMode } from './island';
 import { headerProblems } from './split';
@@ -41,8 +39,8 @@ async function shot(win: Page, info: TestInfo, name: string): Promise<void> {
 }
 
 /**
- * The tank farm with both survey dates on screen and its clip floating over the stage, the footage
- * timeline at the foot: with piles and two dates the bottom bar opens on the dates strip, which is
+ * The tank farm with both survey dates on screen and its clip popped out over the stage, the
+ * footage timeline at the foot: with piles and two dates the bottom bar opens on the dates strip, which is
  * taller; these overlays are measured over the stage the footage leaves (the strip's own layout
  * is dates-strip.spec.ts's).
  */
@@ -53,27 +51,34 @@ async function openTankFarm(win: Page): Promise<void> {
   await win.evaluate(() => {
     (window as unknown as Hooks).__stratlas.workspace.setState({ hidden: {} });
   });
-  await expect(win.getByTestId('video-window')).toBeVisible(VIEW_READY);
+  await expect(win.getByTestId('video-tile')).toBeVisible(VIEW_READY);
+  await popOut(win);
+}
+
+/**
+ * Pop the docked tile out, or the floating window in, and wait for it. On CI's software renderer
+ * a click can land while the strip or the window still moves and do nothing, so it is tried again.
+ */
+async function popOut(win: Page): Promise<void> {
+  const window = win.getByTestId('video-window');
+  await expect(async () => {
+    if (!(await window.isVisible()))
+      await win.getByTestId('video-popout').click({ timeout: 2_000 });
+    await expect(window).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 15_000 });
+}
+async function popIn(win: Page): Promise<void> {
+  const tile = win.getByTestId('video-tile');
+  await expect(async () => {
+    if (!(await tile.isVisible())) await win.getByTestId('video-popin').click({ timeout: 2_000 });
+    await expect(tile).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 15_000 });
 }
 
 /** Fold the right sidebar away with the stage's own toggle. */
 async function foldRight(win: Page): Promise<void> {
   await win.locator('.stage-rp button').click();
   await expect(win.locator('.ws')).toHaveClass(/right-off/);
-}
-
-/**
- * Dock the floating video and wait for the dock's divider. On CI's software renderer a click can
- * land while the floating window still moves (a sidebar folding, the island settling) and dock
- * nothing, so the click is tried again until the divider shows.
- */
-async function dockVideo(win: Page): Promise<void> {
-  const button = win.getByRole('button', { name: 'Dock the video window' });
-  const divider = win.getByRole('separator', { name: 'Resize the video dock' });
-  await expect(async () => {
-    if (!(await divider.isVisible())) await button.click({ timeout: 2_000 });
-    await expect(divider).toBeVisible({ timeout: 2_000 });
-  }).toPass({ timeout: 15_000 });
 }
 
 /** A live tool (M, Distance) slides the Measure bench in as the drawer; wait until it is in. */
@@ -203,44 +208,28 @@ test('every overlay takes a corner of its own: the T notice, the dates, the clip
   await shot(win, info, 'overlays-busy-1100.png');
 });
 
-test('docked, the video shares the stage across a divider, under or beside the views', async ({
+test('docked, the video is a tile in the bottom strip and the views take the whole stage', async ({
   win,
 }, info) => {
   await openTankFarm(win);
-  // Volumes in front in the right panel: the stage is too narrow for the views and a dock side
-  // by side, so the video docks under them
   await islandGroup(win, 'volumes');
   await win.keyboard.press('Escape');
-  await dockVideo(win);
+  await popIn(win);
 
-  const divider = win.getByRole('separator', { name: 'Resize the video dock' });
-  const views = win.locator('.stage-views');
-  const dock = win.locator('.stage-dock');
+  // no dock and no divider on the stage: the views fill it, the tile stands under it
+  await expect(win.locator('.stage-dock')).toHaveCount(0);
+  await expect(win.getByRole('separator', { name: 'Resize the video dock' })).toHaveCount(0);
   const stage = win.locator('.ws > .stage');
-  await expect(divider).toBeVisible();
-  await expect(divider).toHaveAttribute('aria-orientation', 'horizontal');
-  await expect(win.getByRole('button', { name: 'Dock the video at the side' })).toHaveAttribute(
-    'aria-disabled',
-    'true',
-  );
-  // the views keep the stage's width, at least 360 px with Volumes in front
-  await expect
-    .poll(async () => (await views.boundingBox())?.width ?? 0)
-    .toBeGreaterThanOrEqual(360);
-  const fill = async () => {
-    // the frame fills the dock under its title bar: no black void below a 16:9 box
-    const frame = await win.locator('.vwin.docked .vframe').boundingBox();
-    const pane = await dock.boundingBox();
-    return frame && pane ? Math.round(pane.y + pane.height - (frame.y + frame.height)) : null;
+  const fills = async () => {
+    const v = await win.locator('.stage-views').boundingBox();
+    const s = await stage.boundingBox();
+    return v && s ? Math.round(Math.abs(v.width - s.width) + Math.abs(v.height - s.height)) : -1;
   };
-  await expect.poll(fill).toBeLessThanOrEqual(1);
-  await expect
-    .poll(async () => {
-      const v = await views.boundingBox();
-      const k = await dock.boundingBox();
-      return v && k ? Math.round(k.y - (v.y + v.height)) : null;
-    })
-    .toBe(0);
+  await expect.poll(fills).toBeLessThanOrEqual(1);
+  const s = await stage.boundingBox();
+  const tile = await win.getByTestId('video-tile').boundingBox();
+  expect(s && tile).toBeTruthy();
+  if (s && tile) expect(tile.y).toBeGreaterThanOrEqual(s.y + s.height - 1);
   // the volumes hint takes a corner of its own, clear of the readout (I-R51); the readout is on
   // its scrim
   const hint = win.getByTestId('vol-hint');
@@ -253,60 +242,12 @@ test('docked, the video shares the stage across a divider, under or beside the v
       return overlaps([...now.slots, ...now.others]);
     })
     .toEqual([]);
-  // the annotator's strip under the clip chip takes its own height (no 3 px sliver)
-  // (it shows with the pointer over the video)
-  const strip = win.locator('.vwin.docked .ann-video .bar');
-  await win.locator('.vwin.docked .vframe').hover();
-  await expect.poll(async () => (await strip.boundingBox())?.height ?? 0).toBeGreaterThan(20);
-  await expect(strip).toHaveCSS('opacity', '1');
   await shot(win, info, 'dock-volumes-1100.png');
-  // the pointer gone, the strip hides again (I-R55)
-  await win.mouse.move(5, 5);
-  await expect(strip).toHaveCSS('opacity', '0');
 
-  // drag the divider up: the dock grows, the views give way
-  const before = (await dock.boundingBox())?.height ?? 0;
-  const d = await divider.boundingBox();
-  if (!d) throw new Error('no divider');
-  await win.mouse.move(d.x + d.width / 2, d.y + d.height / 2);
-  await win.mouse.down();
-  await win.mouse.move(d.x + d.width / 2, d.y + d.height / 2 - 60, { steps: 6 });
-  await win.mouse.up();
-  await expect
-    .poll(async () => (await dock.boundingBox())?.height ?? 0)
-    .toBeGreaterThan(before + 30);
-
-  // the right panel folded, the stage has room: the video docks beside the views
+  // the right panel folded: a live tool opens the drawer over the end edge, the corners keep
+  // clear of it, and the Map menu chip and the readout keep their width
   await foldRight(win);
-  await expect(divider).toHaveAttribute('aria-orientation', 'vertical');
-  await expect
-    .poll(async () => (await views.boundingBox())?.width ?? 0)
-    .toBeGreaterThanOrEqual(360);
-  await expect.poll(fill).toBeLessThanOrEqual(1);
-  const pane = await dock.boundingBox();
-  // the right panel's toggle stands left of the dock, and the island centres on the views
-  const toggle = await win.locator('.stage-rp').boundingBox();
-  const bar = await win.locator('.island').boundingBox();
-  expect(pane && toggle && bar).toBeTruthy();
-  if (pane && toggle && bar) {
-    expect(toggle.x + toggle.width).toBeLessThanOrEqual(pane.x);
-    expect(bar.x + bar.width).toBeLessThanOrEqual(pane.x);
-  }
-  // nothing of the stage's end controls reaches past the views into the dock
-  const s = await stage.boundingBox();
-  if (s && pane) expect(Math.round(s.x + s.width - (pane.x + pane.width))).toBe(0);
-  // the docked header is as tall as the window buttons' band, its buttons left of them
-  const area = await captionArea(win);
-  const head = await win.locator('.vwin.docked .vh').boundingBox();
-  expect(head?.height ?? 0).toBeGreaterThanOrEqual(area.height - 1);
-  const acts = await win.locator('.vwin.docked .vh .acts').boundingBox();
-  const width = await win.evaluate(() => innerWidth);
-  if (acts) expect(acts.x + acts.width).toBeLessThanOrEqual(width - area.kept.right + 1);
   await expectScrim(win);
-  await shot(win, info, 'dock-side-1100.png');
-
-  // a live tool opens the drawer over the end edge: the corners keep clear of it, and the Map
-  // menu chip and the readout keep their width (the drawer covers the dock first)
   const chip = win.getByTestId('scene-map-button');
   const chipWidth = (await chip.boundingBox())?.width ?? 0;
   expect(chipWidth).toBeGreaterThan(60);
@@ -326,18 +267,13 @@ test('docked, the video shares the stage across a divider, under or beside the v
   await expect
     .poll(async () => Math.abs(((await readout.boundingBox())?.width ?? 0) - readoutWidth))
     .toBeLessThanOrEqual(2);
-  await shot(win, info, 'dock-side-drawer-1100.png');
+  await shot(win, info, 'dock-drawer-1100.png');
   await win.keyboard.press('Escape');
   await expect(drawer).toHaveCount(0);
 
-  // under the views by choice too
-  await win.getByRole('button', { name: 'Dock the video at the bottom' }).click();
-  await expect(divider).toHaveAttribute('aria-orientation', 'horizontal');
-
-  // floating again: no divider, the views take the whole stage
-  await win.getByRole('button', { name: 'Float the video window' }).click();
-  await expect(divider).toHaveCount(0);
-  await expect(win.getByTestId('video-window')).toBeVisible();
+  // popped out again: the window floats over the stage, the tile gives way
+  await popOut(win);
+  await expect(win.getByTestId('video-tile')).toHaveCount(0);
 });
 
 test.describe('a wider stage', () => {
@@ -429,7 +365,7 @@ test('a click through the volumes hint picks the pile under it', async ({ win },
   // Volumes in front and the video docked, as above: the hint has its corner
   await islandGroup(win, 'volumes');
   await win.keyboard.press('Escape');
-  await dockVideo(win);
+  await popIn(win);
   const hint = win.getByTestId('vol-hint');
   await expect(hint).toBeVisible(VIEW_READY);
   const box = await hint.boundingBox();
@@ -558,7 +494,7 @@ test('with the drawer open, the corners at its side keep clear of it', async ({ 
   await win.keyboard.press('Escape');
 });
 
-test('in Split, the pane headers keep clear of the corners and the video, and each divider moves alone', async ({
+test('in Split, the pane headers keep clear of the corners and the video, and the divider moves', async ({
   win,
 }, info) => {
   await openTankFarm(win);
@@ -576,47 +512,26 @@ test('in Split, the pane headers keep clear of the corners and the video, and ea
     })
     .toEqual([]);
 
-  // docked beside the views: two dividers, the split's inside the views
-  await dockVideo(win);
-  const dockDivider = win.getByRole('separator', { name: 'Resize the video dock' });
+  // docked in the bottom strip: the split's divider is the stage's only one
+  await popIn(win);
   const splitDivider = win.getByRole('separator', { name: 'Resize the two sides' });
-  await expect(dockDivider).toHaveAttribute('aria-orientation', 'vertical');
+  await expect(win.getByRole('separator', { name: 'Resize the video dock' })).toHaveCount(0);
   await expect(splitDivider).toBeVisible();
   // the volumes hint takes the 3D pane's foot; the 3D view on the left keeps its readout beside
   // the divider, hidden while the pane is too narrow for both (a wide one: the 1400 px test)
   await expect(win.getByTestId('vol-hint')).toBeVisible();
   await expect(win.locator('.stage-panes > .pane-3d[data-side="left"]')).toHaveCount(1);
-  await expect(win.locator('.pane-3d:not(.is-hidden) .cursor-ro')).toHaveCount(0);
-  const panes = win.locator('.stage-panes');
   const left = win.locator('.stage-panes > [data-side="left"]').first();
-  const dock = win.locator('.stage-dock');
-  /** The left side's share of the views, in hundredths. */
-  const share = async () => {
-    const a = await left.boundingBox();
-    const b = await panes.boundingBox();
-    return a && b ? Math.round((a.width / b.width) * 100) : -1;
-  };
-  const dockWidth = async () => Math.round((await dock.boundingBox())?.width ?? 0);
   await expect.poll(() => headerProblems(win)).toEqual([]);
-  await shot(win, info, 'split-dock-side-1100.png');
+  await shot(win, info, 'split-docked-1100.png');
 
-  // the dock's divider: the dock grows, the two sides keep their shares
-  const shareBefore = await share();
-  const dockBefore = await dockWidth();
-  await dockDivider.focus();
-  await win.keyboard.press('ArrowLeft');
-  await win.keyboard.press('ArrowLeft');
-  await expect.poll(dockWidth).toBeGreaterThan(dockBefore + 20);
-  await expect.poll(share).toBe(shareBefore);
-  // the split's divider: the left side grows, the dock keeps its width
-  const dockNow = await dockWidth();
+  // the split's divider: the left side gives way
   const leftBefore = Math.round((await left.boundingBox())?.width ?? 0);
   await splitDivider.focus();
   await win.keyboard.press('ArrowLeft');
   await expect
     .poll(async () => Math.round((await left.boundingBox())?.width ?? 0))
     .toBeLessThan(leftBefore - 10);
-  expect(await dockWidth()).toBe(dockNow);
   await expect.poll(() => headerProblems(win)).toEqual([]);
   // the left side at its least (200 px): each corner overlay keeps to the pane under it
   for (let i = 0; i < 20; i++) await win.keyboard.press('ArrowLeft');
@@ -646,14 +561,13 @@ test('in Split, the pane headers keep clear of the corners and the video, and ea
   await expect(win.getByTestId('vol-hint')).toBeVisible();
   await shot(win, info, 'split-narrow-side-1100.png');
 
-  // floating again: the split keeps its divider
-  await win.getByRole('button', { name: 'Float the video window' }).click();
-  await expect(dockDivider).toHaveCount(0);
+  // popped out again: the split keeps its divider
+  await popOut(win);
   await expect(splitDivider).toBeVisible();
 });
 
 test.describe('right to left', () => {
-  test('the video docks at the left, beside the views, with the stage controls right of it', async ({
+  test('the docked tile stands at the strip start, on the right, under the views', async ({
     win,
   }, info) => {
     await win.locator('.nav-item', { hasText: 'Settings' }).click();
@@ -662,18 +576,15 @@ test.describe('right to left', () => {
     await expect(win.locator('html')).toHaveAttribute('dir', 'rtl');
     await openTankFarm(win);
     await foldRight(win);
-    await dockVideo(win);
-    const divider = win.getByRole('separator', { name: 'Resize the video dock' });
-    await expect(divider).toHaveAttribute('aria-orientation', 'vertical');
-    const views = await win.locator('.stage-views').boundingBox();
-    const pane = await win.locator('.stage-dock').boundingBox();
-    const toggle = await win.locator('.stage-rp').boundingBox();
-    expect(views && pane && toggle).toBeTruthy();
-    if (views && pane && toggle) {
-      expect(views.width).toBeGreaterThanOrEqual(360);
-      // the dock at the end edge, the left right to left; the toggle stands right of it
-      expect(pane.x + pane.width).toBeLessThanOrEqual(views.x + 1);
-      expect(toggle.x).toBeGreaterThanOrEqual(pane.x + pane.width);
+    await popIn(win);
+    const strip = await win.getByTestId('bottom-strip').boundingBox();
+    const tile = await win.getByTestId('video-tile').boundingBox();
+    const bar = await win.locator('.ws-strip > .tl-wrap').boundingBox();
+    expect(strip && tile && bar).toBeTruthy();
+    if (strip && tile && bar) {
+      // the strip's start is its right edge right to left; the bar stands left of the tile
+      expect(strip.x + strip.width - (tile.x + tile.width)).toBeLessThanOrEqual(8);
+      expect(bar.x + bar.width).toBeLessThanOrEqual(tile.x + 1);
     }
     await expect
       .poll(async () => {

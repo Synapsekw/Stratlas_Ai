@@ -143,12 +143,14 @@ export const enStage = {
   'stage.video.moveHint':
     'Drag to move, double-click to reset. Arrow keys move, plus and minus resize.',
   'stage.video.resize': 'Resize the video window',
-  'stage.video.float': 'Float over the stage',
-  'stage.video.floatLabel': 'Float the video window',
-  'stage.video.dock': 'Dock beside the stage',
-  'stage.video.dockLabel': 'Dock the video window',
-  'stage.video.hide': 'Hide video window',
-  'stage.video.hideLabel': 'Hide the video window',
+  // the video docked as a tile in the bottom strip, popped out over the stage, or closed (D4)
+  'stage.video.tile': 'Video {name}',
+  'stage.video.play': 'Play',
+  'stage.video.pause': 'Pause',
+  'stage.video.popOut': 'Pop out the video',
+  'stage.video.popIn': 'Pop in to the bottom strip',
+  'stage.video.close': 'Close the video',
+  'stage.video.show': 'Show the video',
   'view.scope.clear': 'Clear the filter {label}',
   // M8 C4: same view on another date (Frames pane) and change in matched frames
   'frames.pane': 'Frames',
@@ -316,11 +318,6 @@ export const enStage = {
   'stage.env.noProject': 'Open a project to set the environment.',
   'stage.cutaway.noProject': 'Open a project to cut the model open.',
 
-  // Task 21: the docked video's divider and its side or bottom dock (D30)
-  'stage.video.resizeDock': 'Resize the video dock',
-  'stage.video.dockBottom': 'Dock the video at the bottom',
-  'stage.video.dockSide': 'Dock the video at the side',
-  'stage.video.dockSideNarrow': 'The stage is too narrow to dock the video at its side',
   'hover.onLine': 'Pointer on the line',
   'hover.following': 'Following the chart',
   'hover.legend': '{date} surface · where {earlier} was · A to here',

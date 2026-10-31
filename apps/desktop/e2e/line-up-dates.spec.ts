@@ -941,8 +941,8 @@ test.describe('at the window size CI uses', () => {
     if (!stage) throw new Error('no stage');
     await dragDivider(win, stage.x + stage.width + 40);
     await expect(divider).toHaveAttribute('aria-valuenow', '98');
-    // the drone video of the later date floats over the stage's lower left at this size: hide it
-    // through the state its own Hide button sets
+    // the drone video of the later date docks in the bottom strip: close it through the state
+    // the W key sets, so the strip leaves the panes their height
     await win.evaluate(() => {
       (
         window as unknown as {
@@ -952,6 +952,7 @@ test.describe('at the window size CI uses', () => {
         .getState()
         .setVideoHidden(true);
     });
+    await expect(win.getByTestId('video-tile')).toHaveCount(0);
     await expect(win.getByTestId('video-window')).toHaveCount(0);
     // zoom in at the building (the two panes follow each other) to 24 px a metre or more
     const picture = win.locator('.pane-raster[data-side="left"] .raster-plane img').first();

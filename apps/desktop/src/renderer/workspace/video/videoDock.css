@@ -1,0 +1,64 @@
+/* The bottom strip (D1): the docked video tile at its start, then the dates strip, the footage
+   timeline or the chainage ruler (.tl-wrap). The tile is 16:9, as tall as the band's strip less
+   8 px: 120, 140 and 160 px strips under 1280, to 1440 and above. */
+.ws-strip {
+  --vtile-h: 112px;
+  grid-area: tl;
+  display: flex;
+  align-items: stretch;
+  min-inline-size: 0;
+  background: var(--bg-1);
+}
+@media (min-width: 1280px) {
+  .ws-strip {
+    --vtile-h: 132px;
+  }
+}
+@media (min-width: 1440px) {
+  .ws-strip {
+    --vtile-h: 152px;
+  }
+}
+.ws-strip > .tl-wrap {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+.ws-strip[data-video] {
+  border-block-start: 1px solid var(--line-soft);
+}
+.vtile {
+  position: relative;
+  flex: none;
+  align-self: flex-start;
+  margin: var(--sp-1);
+  block-size: var(--vtile-h);
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  overflow: hidden;
+  background: var(--bg-0);
+}
+.vtile-frame {
+  position: absolute;
+  inset: 0;
+}
+.vtile-bar {
+  position: absolute;
+  inset-inline-end: var(--sp-1);
+  inset-block-end: var(--sp-1);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--r-4);
+  background: var(--ov-dim);
+  color: var(--fg-0);
+}
+/* closed: one slim button at the strip's start brings the tile back */
+.vtile-show {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  padding: var(--sp-1);
+  border-inline-end: 1px solid var(--line-soft);
+}

@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
-import { splitPrefs } from '@aio/ui';
 import type { Layer } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { act, createRef, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { threeDates } from './__fixtures__/threeDates';
-import { stagePrefs } from './stagePrefs';
-import { DOCK_SIDE_MIN, VIDEO_DOCK_ID, VideoDock } from './FloatingVideo';
+import { FloatingVideo } from './FloatingVideo';
+import { VideoStripStart } from './video/VideoTile';
+import { videoDock } from './video/videoDockStore';
 
-// the frame and the annotator draw nothing here: the dock's layout is under test
+// the frame and the annotator draw nothing here: the tile and the window's controls are under test
 vi.mock('@aio/video', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   VideoWindow: ({ children }: { children?: ReactNode }) => <div data-video-window>{children}</div>,
@@ -42,34 +42,21 @@ let host: HTMLDivElement;
 let root: Root | undefined;
 const stageRef = createRef<HTMLDivElement>();
 
-function render(docked: boolean) {
+function render(ui: ReactNode) {
   act(() => {
     root ??= createRoot(host);
-    root.render(
-      <VideoDock video={docked ? { layerId: 'c1', stageRef } : null}>
-        <div className="views-under-test">views</div>
-      </VideoDock>,
-    );
+    root.render(ui);
   });
 }
-const separator = () => host.querySelector<HTMLElement>('[role="separator"]');
 const button = (name: string) =>
   [...host.querySelectorAll<HTMLButtonElement>('button')].find(
     (b) => b.getAttribute('aria-label') === name,
   );
-
-/** The stage's size as the layout reads it (jsdom lays nothing out). */
-function stageSize(width: number, height = 600) {
-  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(
-    new DOMRect(0, 0, width, height),
-  );
-}
+const mode = () => videoDock.getState().byProject.p;
 
 beforeEach(() => {
-  stageSize(1000);
   localStorage.clear();
-  splitPrefs.setState({ byId: {} });
-  stagePrefs.setState({ byProject: {} });
+  videoDock.setState({ byProject: {}, rect: null });
   host = document.createElement('div');
   document.body.append(host);
   workspace.getState().openProject({ id: 'p', root: '/p', manifest });
@@ -82,72 +69,46 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('VideoDock', () => {
-  it('docked, the video sits beside the views with a divider between them', () => {
-    render(true);
-    const handle = separator();
-    expect(handle).not.toBeNull();
-    expect(handle?.getAttribute('aria-label')).toBe('Resize the video dock');
-    expect(handle?.getAttribute('aria-orientation')).toBe('vertical');
-    const body = host.querySelector<HTMLElement>('.stage-body');
-    expect(body?.classList.contains('split')).toBe(true);
-    expect(body?.dataset.dock).toBe('side');
-    // the divider resizes the dock: the pane after it holds the docked window
-    const pane = host.querySelector<HTMLElement>(
-      `#${CSS.escape(handle?.getAttribute('aria-controls') ?? '')}`,
-    );
-    expect(pane?.querySelector('[data-testid="video-window"]')).not.toBeNull();
+describe('the docked tile in the bottom strip', () => {
+  it('shows the project video with Play, Pop out and Close', () => {
+    render(<VideoStripStart />);
+    const tile = host.querySelector('[data-testid="video-tile"]');
+    expect(tile?.getAttribute('aria-label')).toBe('Video Clip c1');
+    expect(tile?.querySelector('[data-video-window]')).not.toBeNull();
+    expect(button('Play')).toBeDefined();
+    act(() => button('Pop out the video')?.click());
+    expect(mode()).toBe('floating');
+    expect(host.querySelector('[data-testid="video-tile"]')).toBeNull();
   });
 
-  it('floating, there is no divider and the views take the whole stage', () => {
-    render(false);
-    expect(separator()).toBeNull();
-    const body = host.querySelector<HTMLElement>('.stage-body');
-    expect(body?.classList.contains('split')).toBe(false);
-    expect(host.querySelector('.views-under-test')).not.toBeNull();
+  it('closed, a Show button brings the tile back', () => {
+    render(<VideoStripStart />);
+    act(() => button('Close the video')?.click());
+    expect(mode()).toBe('closed');
+    expect(host.querySelector('[data-testid="video-tile"]')).toBeNull();
+    act(() => button('Show the video')?.click());
+    expect(mode()).toBe('docked');
+    expect(host.querySelector('[data-testid="video-tile"]')).not.toBeNull();
   });
 
-  it('keeps the views mounted as the video docks and floats again', () => {
-    render(false);
-    const views = host.querySelector('.views-under-test');
-    render(true);
-    expect(host.querySelector('.views-under-test')).toBe(views);
-    render(false);
-    expect(host.querySelector('.views-under-test')).toBe(views);
+  it('has nothing to show without video', () => {
+    workspace
+      .getState()
+      .openProject({ id: 'p', root: '/p', manifest: { ...manifest, layers: [] } });
+    render(<VideoStripStart />);
+    expect(host.innerHTML).toBe('');
   });
+});
 
-  it('docks at the bottom too, remembered for the project, with the divider across', () => {
-    render(true);
-    const toBottom = button('Dock the video at the bottom');
-    expect(toBottom).toBeDefined();
-    act(() => toBottom?.click());
-    expect(host.querySelector<HTMLElement>('.stage-body')?.dataset.dock).toBe('bottom');
-    expect(separator()?.getAttribute('aria-orientation')).toBe('horizontal');
-    expect(stagePrefs.getState().byProject.p?.videoDock).toBe('bottom');
-    act(() => button('Dock the video at the side')?.click());
-    expect(host.querySelector<HTMLElement>('.stage-body')?.dataset.dock).toBe('side');
-  });
-
-  it('docks under the views on a stage too narrow to keep them beside it', () => {
-    stageSize(DOCK_SIDE_MIN - 1);
-    render(true);
-    expect(host.querySelector<HTMLElement>('.stage-body')?.dataset.dock).toBe('bottom');
-    expect(separator()?.getAttribute('aria-orientation')).toBe('horizontal');
-    // the way back to the side says why it is not there
-    const toSide = button('Dock the video at the side');
-    expect(toSide?.getAttribute('aria-disabled')).toBe('true');
-    act(() => toSide?.click());
-    expect(stagePrefs.getState().byProject.p?.videoDock).toBeUndefined();
-  });
-
-  it('saves its size under the scene.video split', () => {
-    render(true);
-    const handle = separator();
-    // the arrow away from the dock widens it
-    act(() => {
-      handle?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
-    });
-    expect(VIDEO_DOCK_ID).toBe('scene.video');
-    expect(splitPrefs.getState().byId['scene.video']?.size).toBeGreaterThan(0.36);
+describe('the popped-out window', () => {
+  it('pops in to the strip and closes', () => {
+    videoDock.getState().popOut('p');
+    render(<FloatingVideo layerId="c1" stageRef={stageRef} />);
+    expect(host.querySelector('[data-testid="video-window"]')).not.toBeNull();
+    expect(host.querySelectorAll('.vwin-rs')).toHaveLength(8);
+    act(() => button('Pop in to the bottom strip')?.click());
+    expect(mode()).toBe('docked');
+    act(() => button('Close the video')?.click());
+    expect(mode()).toBe('closed');
   });
 });

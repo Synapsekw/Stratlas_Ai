@@ -421,7 +421,9 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     // the demo with the most groups: point clouds, volumes and a video clip (paused)
     await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
     const bar = island(win);
-    await expect(win.getByTestId('video-window')).toBeVisible(VIEW_READY);
+    // the clip docks in the bottom strip, never over the stage (W9)
+    await expect(win.getByTestId('video-tile')).toBeVisible(VIEW_READY);
+    await expect(win.getByTestId('video-window')).toHaveCount(0);
     // two survey dates with piles and a clip: the bottom bar opens on the dates strip and offers
     // Dates | Footage. This test measures the island over the stage the footage timeline leaves
     // (the strip is taller, and with it the open island reaches past the middle even with the

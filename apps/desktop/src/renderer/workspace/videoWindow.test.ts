@@ -99,12 +99,11 @@ describe('floating video window geometry', () => {
     expect(top(r)).toBeLessThanOrEqual(small.height - VIDEO_TOP);
   });
 
-  it('starts at the bottom left with a share of the stage', () => {
-    expect(defaultVideoRect({ width: 600, height: 500 })).toEqual({
-      left: VIDEO_MARGIN,
-      bottom: VIDEO_MARGIN,
-      width: 280,
-    });
+  it('starts at the top left, under the island, with a share of the stage', () => {
+    const small = { width: 600, height: 500 };
+    const r = defaultVideoRect(small);
+    expect(r).toMatchObject({ left: VIDEO_MARGIN, width: VIDEO_MIN_W });
+    expect(small.height - top(r)).toBe(VIDEO_TOP);
     expect(defaultVideoRect({ width: 2000, height: 900 }).width).toBe(400);
   });
 

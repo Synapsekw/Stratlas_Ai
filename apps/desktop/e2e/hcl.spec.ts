@@ -455,35 +455,39 @@ test('@realdata the video window moves, resizes with its aspect ratio and rememb
   win,
 }) => {
   await openHcl(app, win);
+  // The clip opens docked in the bottom strip; Pop out floats it over the stage (W9).
+  await expect(win.getByTestId('video-tile')).toBeVisible();
+  await win.getByTestId('video-popout').click();
   const video = win.getByTestId('video-window');
   await expect(video).toBeVisible();
   const stage = await win.locator('.stage').boundingBox();
   if (!stage) throw new Error('no stage');
   const start = await boxOf(win, 'video-window');
-  // It starts at the bottom left of the stage.
+  // It starts at the top left of the stage, under the island.
   expect(start.x - stage.x).toBeCloseTo(12, 0);
+  expect(start.y - stage.y).toBeCloseTo(112, 0);
 
   // Drag the title bar: the window follows the pointer.
   const head = await boxOf(win, 'video-header');
   const from = { x: head.x + 60, y: head.y + head.height / 2 };
   await win.mouse.move(from.x, from.y);
   await win.mouse.down();
-  await win.mouse.move(from.x + 300, from.y - 200, { steps: 10 });
+  await win.mouse.move(from.x + 300, from.y + 200, { steps: 10 });
   await win.mouse.up();
   const moved = await boxOf(win, 'video-window');
   expect(moved.x - start.x).toBeCloseTo(300, -1);
-  expect(moved.y - start.y).toBeCloseTo(-200, -1);
+  expect(moved.y - start.y).toBeCloseTo(200, -1);
   expect(moved.width).toBeCloseTo(start.width, 0);
 
   // Dragging far away keeps it inside the stage.
-  await win.mouse.move(from.x + 300, from.y - 200);
+  await win.mouse.move(from.x + 300, from.y + 200);
   await win.mouse.down();
   await win.mouse.move(from.x + 4000, from.y - 4000, { steps: 6 });
   await win.mouse.up();
   const corner = await boxOf(win, 'video-window');
   expect(corner.x + corner.width).toBeLessThanOrEqual(stage.x + stage.width - 11);
-  // the title bar stays below the island's row, where it can be grabbed again
-  expect(corner.y).toBeGreaterThanOrEqual(stage.y + 55);
+  // the window stays below the island's rows, which it never covers
+  expect(corner.y).toBeGreaterThanOrEqual(stage.y + 111);
   // ... and back to the left, half way down
   const head2 = await boxOf(win, 'video-header');
   const dx = stage.x + 60 - corner.x;
@@ -519,7 +523,7 @@ test('@realdata the video window moves, resizes with its aspect ratio and rememb
   await win.mouse.move(w.x + 2 + 2000, w.y + w.height / 2, { steps: 6 });
   await win.mouse.up();
   const smallest = await boxOf(win, 'video-window');
-  expect(smallest.width).toBeCloseTo(240, -1);
+  expect(smallest.width).toBeCloseTo(320, -1);
   expect(smallest.x + smallest.width).toBeCloseTo(bigger.x + bigger.width, -1);
 
   // Keyboard: the focused title bar moves with the arrow keys and resizes with plus.
@@ -644,10 +648,11 @@ test('@realdata split screen: each side shows the pane chosen for it', async ({ 
     { value: 'report', off: false },
   ]);
 
-  // Video on the right: the floating window gives way to the pane, the map goes.
+  // Video on the right: the docked tile gives way to the pane, the map goes.
   await right.selectOption('video');
   await expect(win.getByTestId('pane-video')).toBeVisible();
   await expect(win.getByTestId('video-window')).toHaveCount(0);
+  await expect(win.getByTestId('video-tile')).toHaveCount(0);
   await expect(win.locator('.pane-map')).toHaveCount(0);
   await expect(win.getByTestId('pane-video').locator('[data-video-window] video')).toHaveCount(1);
   const panes = async () => {
@@ -695,10 +700,10 @@ test('@realdata split screen: each side shows the pane chosen for it', async ({ 
   await expect(win.getByTestId('pane-chooser-right').locator('select')).toHaveValue('video');
   await expect(win.getByTestId('pane-video')).toBeVisible();
 
-  // 3D mode alone has no choosers and the floating video comes back.
+  // 3D mode alone has no choosers and the docked tile comes back.
   await win.keyboard.press('1');
   await expect(win.getByTestId('pane-chooser-left')).toHaveCount(0);
-  await expect(win.getByTestId('video-window')).toBeVisible();
+  await expect(win.getByTestId('video-tile')).toBeVisible();
 });
 
 interface Vec3 {

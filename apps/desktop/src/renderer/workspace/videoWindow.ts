@@ -12,7 +12,12 @@ export interface VideoRect {
 export interface StageSize {
   width: number;
   height: number;
+  /** Room kept free at the stage top when the island reaches lower than VIDEO_TOP (absent: VIDEO_TOP). */
+  top?: number;
 }
+
+/** The room kept free at the stage top: the island's reach, at least VIDEO_TOP. */
+const topOf = (stage: StageSize) => Math.max(VIDEO_TOP, stage.top ?? 0);
 
 /** Edge or corner a resize starts from (compass directions, physical, not mirrored in RTL). */
 export type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
@@ -21,13 +26,19 @@ export const RESIZE_HANDLES: readonly ResizeHandle[] = ['n', 's', 'e', 'w', 'ne'
 
 /** Gap kept between the window and the stage edges. */
 export const VIDEO_MARGIN = 12;
-/** Gap kept below the stage top: the toolbar row stays clear, so the title bar can be grabbed. */
-export const VIDEO_TOP = 56;
+/**
+ * Gap kept below the stage top: the island (its two rows when opened, at most 100 px, D3) and the
+ * top-right slot's first row stay clear, so the window never covers the island.
+ */
+export const VIDEO_TOP = 112;
 /** Title bar and borders above and around the frame. */
 export const VIDEO_CHROME = 32;
 export const VIDEO_ASPECT = 16 / 9;
-export const VIDEO_MIN_W = 240;
+/** The smallest frame is 320 x 180 (D4). */
+export const VIDEO_MIN_W = 320;
 export const VIDEO_MAX_W = 1280;
+/** At most this share of the stage, in each direction (D4). */
+export const VIDEO_MAX_SHARE = 0.8;
 
 export function videoHeight(width: number): number {
   return Math.round(VIDEO_CHROME + width / VIDEO_ASPECT);
@@ -36,14 +47,20 @@ export function videoHeight(width: number): number {
 /** The widest window that fits the stage with its margins (never below the minimum). */
 export function maxVideoWidth(stage: StageSize): number {
   const byW = stage.width - 2 * VIDEO_MARGIN;
-  const byH = (stage.height - VIDEO_MARGIN - VIDEO_TOP - VIDEO_CHROME) * VIDEO_ASPECT;
-  return Math.max(VIDEO_MIN_W, Math.floor(Math.min(VIDEO_MAX_W, byW, byH)));
+  const byH = (stage.height - VIDEO_MARGIN - topOf(stage) - VIDEO_CHROME) * VIDEO_ASPECT;
+  const shareW = stage.width * VIDEO_MAX_SHARE;
+  const shareH = (stage.height * VIDEO_MAX_SHARE - VIDEO_CHROME) * VIDEO_ASPECT;
+  return Math.max(VIDEO_MIN_W, Math.floor(Math.min(VIDEO_MAX_W, byW, byH, shareW, shareH)));
 }
 
-/** Until the person moves it, the window takes a share of the stage that leaves the stage usable. */
+/**
+ * Until the person moves it, the popped-out window sits at the stage's top left, under the island
+ * and clear of the top-right slot (D4), at a share of the stage that leaves the stage usable.
+ */
 export function defaultVideoRect(stage: StageSize | null): VideoRect {
-  const width = stage ? Math.round(Math.min(400, Math.max(280, stage.width * 0.42))) : 400;
-  return { left: VIDEO_MARGIN, bottom: VIDEO_MARGIN, width };
+  const width = stage ? Math.round(Math.min(400, Math.max(VIDEO_MIN_W, stage.width * 0.42))) : 400;
+  const bottom = stage ? stage.height - topOf(stage) - videoHeight(width) : VIDEO_MARGIN;
+  return { left: VIDEO_MARGIN, bottom: Math.max(VIDEO_MARGIN, bottom), width };
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
@@ -55,7 +72,7 @@ export function clampVideoRect(r: VideoRect, stage: StageSize): VideoRect {
   return {
     width,
     left: Math.round(clamp(r.left, VIDEO_MARGIN, stage.width - width - VIDEO_MARGIN)),
-    bottom: Math.round(clamp(r.bottom, VIDEO_MARGIN, stage.height - h - VIDEO_TOP)),
+    bottom: Math.round(clamp(r.bottom, VIDEO_MARGIN, stage.height - h - topOf(stage))),
   };
 }
 

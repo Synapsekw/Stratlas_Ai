@@ -26,7 +26,8 @@ import { useRoadMap } from '../road/useRoadMap';
 import { photoSplitIsOpen } from '../builder/photoOpen';
 import { shell, useShell } from '../shell';
 import { PANEL_ID } from '../shell/PanelHandle';
-import { FloatingVideo, VideoDock } from './FloatingVideo';
+import { FloatingVideo } from './FloatingVideo';
+import { useVideoDock, videoDock as videoDockStore } from './video/videoDockStore';
 import { useAnnotateStageBridge } from './workbench/benches/annotateStage';
 import {
   compareRuntime,
@@ -633,11 +634,11 @@ function mapLayerId(layers: readonly { id: string; kind: string }[]): string {
 
 export function Stage() {
   const mode = useShell((s) => s.stageMode);
-  const docked = useShell((s) => s.videoDocked);
+  // the video docks in the bottom strip; popped out it floats over the stage (D4)
+  const videoDock = useVideoDock();
   const videoHidden = useShell((s) => s.videoHidden);
   const labelMode = useShell((s) => s.labelMode);
   const annotating = useShell((s) => s.annotating);
-  const activeClip = useWorkspace((s) => s.activeClip);
   const projectId = useWorkspace((s) => s.project?.id ?? null);
   const mapLayer = useWorkspace((s) => mapLayerId(s.project?.manifest.layers ?? []));
   const stageRef = useRef<HTMLDivElement>(null);
@@ -664,7 +665,18 @@ export function Stage() {
     const side = at(kind);
     return side ? <PaneHeader side={side} split={split} /> : null;
   };
-  const showVideo = activeClip !== null && !videoHidden && !videoPane;
+  const floatClip =
+    videoDock.mode === 'floating' && !videoHidden && !videoPane ? videoDock.clip : null;
+  // a pane shows the clip: the bottom strip's tile gives way too
+  useEffect(() => {
+    videoDockStore.getState().setInPane(videoPane);
+  }, [videoPane]);
+  useEffect(
+    () => () => {
+      videoDockStore.getState().setInPane(false);
+    },
+    [],
+  );
   // the corners the floating video takes as it rests, which the corner overlays keep out of (D30)
   const [videoCorners, setVideoCorners] = useState<readonly Corner[]>([]);
   const onVideoCorners = useCallback((c: readonly Corner[]) => {
@@ -794,7 +806,7 @@ export function Stage() {
     showMap,
     splitting,
     roadMeasure: roadMap !== null && showMap && roadMeasuring,
-    video: showVideo && !docked ? videoCorners : NO_CORNERS,
+    video: floatClip ? videoCorners : NO_CORNERS,
     cursor: readoutCorner(show3d, splitting ? side3d : undefined, rtl),
     readoutClear: splitting && side3d === 'left' && pane3dWide,
     basemapAt,
@@ -923,92 +935,93 @@ export function Stage() {
       data-pop-bounds
       data-isl-clear={islandReach.clear.length ? islandReach.clear.join(' ') : undefined}
     >
-      <VideoDock
-        video={docked && showVideo && activeClip ? { layerId: activeClip, stageRef } : null}
-      >
-        {/* 3D and map panes keep their geometry in a right-to-left UI. */}
-        <div
-          ref={panesRef}
-          className={`stage-panes${closeup ? ' with-dock' : ''}${divided ? ' split' : ''}`}
-          data-mode={mode}
-          dir="ltr"
-        >
-          <ScenePane
-            hidden={!show3d}
-            engine={engine}
-            side={at('3d')}
-            capture={sceneCapture}
-            corner={chooser('3d')}
-            cursorHidden={cursorHidden}
-            cursorWide={cursorWide}
-          />
-          {second3d && secondCapture3d && index && (
-            <CompareScene
-              key={projectId}
-              side={second3d}
-              capture={secondCapture3d}
-              index={index}
-              main={engine}
-              linked={linked}
-              corner={<PaneHeader side={second3d} split={split} />}
-              stageRef={stageRef}
-              keepOut={keepOut}
+      {/* the views take the whole stage: the video docks in the bottom strip (D4) */}
+      <div className="stage-body">
+        <div className="stage-views">
+          {/* 3D and map panes keep their geometry in a right-to-left UI. */}
+          <div
+            ref={panesRef}
+            className={`stage-panes${closeup ? ' with-dock' : ''}${divided ? ' split' : ''}`}
+            data-mode={mode}
+            dir="ltr"
+          >
+            <ScenePane
+              hidden={!show3d}
+              engine={engine}
+              side={at('3d')}
+              capture={sceneCapture}
+              corner={chooser('3d')}
+              cursorHidden={cursorHidden}
+              cursorWide={cursorWide}
             />
-          )}
-          {secondMap && secondCaptureMap && index && (
-            <CompareMap
-              key={projectId}
-              side={secondMap}
-              capture={secondCaptureMap}
-              index={index}
-              issues={mapIssues}
-              onController={onSecondMap}
-              corner={<PaneHeader side={secondMap} split={split} />}
-            />
-          )}
-          {mountMap && (
-            <FocusZone
-              kind="map"
-              // hidden, it is not `.pane-map`: what looks for the map on screen does not find it
-              className={
-                showMap ? `pane pane-map${placingOnMap ? ' walk-placing' : ''}` : 'pane is-hidden'
-              }
-              data-side={at('map')}
-              // off screen, its canvas and controls leave the tab order too
-              inert={!showMap}
-            >
-              {showMap && <PlaceWalkHere at={MAP_SURFACE} />}
-              <div className="fill">
-                <MapView
-                  className="scene-fill"
-                  hidden={!showMap}
-                  draw={seam}
-                  issues={mapIssues}
-                  store={primaryMap}
-                  onController={onMainMap}
-                  pointer={walkPointer}
-                  {...(mapOverlays ? { overlays: mapOverlays } : {})}
-                  {...(roadMap
-                    ? {
-                        issueFilter: roadMap.issueFilter,
-                        issueColorBy: roadMap.issueColorBy,
-                      }
-                    : {})}
-                />
-              </div>
-              {showMap && roadMap && <RoadLegend />}
-              {showMap && <ChangeLegends />}
-              {showMap && roadMap && <PciUnitCard />}
-              {chooser('map')}
-            </FocusZone>
-          )}
-          {splitting && <SplitPane side="left" split={split} />}
-          {splitting && <SplitPane side="right" split={split} />}
-          {splitHandle}
-          {closeup && <CloseupDock />}
+            {second3d && secondCapture3d && index && (
+              <CompareScene
+                key={projectId}
+                side={second3d}
+                capture={secondCapture3d}
+                index={index}
+                main={engine}
+                linked={linked}
+                corner={<PaneHeader side={second3d} split={split} />}
+                stageRef={stageRef}
+                keepOut={keepOut}
+              />
+            )}
+            {secondMap && secondCaptureMap && index && (
+              <CompareMap
+                key={projectId}
+                side={secondMap}
+                capture={secondCaptureMap}
+                index={index}
+                issues={mapIssues}
+                onController={onSecondMap}
+                corner={<PaneHeader side={secondMap} split={split} />}
+              />
+            )}
+            {mountMap && (
+              <FocusZone
+                kind="map"
+                // hidden, it is not `.pane-map`: what looks for the map on screen does not find it
+                className={
+                  showMap ? `pane pane-map${placingOnMap ? ' walk-placing' : ''}` : 'pane is-hidden'
+                }
+                data-side={at('map')}
+                // off screen, its canvas and controls leave the tab order too
+                inert={!showMap}
+              >
+                {showMap && <PlaceWalkHere at={MAP_SURFACE} />}
+                <div className="fill">
+                  <MapView
+                    className="scene-fill"
+                    hidden={!showMap}
+                    draw={seam}
+                    issues={mapIssues}
+                    store={primaryMap}
+                    onController={onMainMap}
+                    pointer={walkPointer}
+                    {...(mapOverlays ? { overlays: mapOverlays } : {})}
+                    {...(roadMap
+                      ? {
+                          issueFilter: roadMap.issueFilter,
+                          issueColorBy: roadMap.issueColorBy,
+                        }
+                      : {})}
+                  />
+                </div>
+                {showMap && roadMap && <RoadLegend />}
+                {showMap && <ChangeLegends />}
+                {showMap && roadMap && <PciUnitCard />}
+                {chooser('map')}
+              </FocusZone>
+            )}
+            {splitting && <SplitPane side="left" split={split} />}
+            {splitting && <SplitPane side="right" split={split} />}
+            {splitHandle}
+            {closeup && <CloseupDock />}
+          </div>
+          {corners}
         </div>
-        {corners}
-      </VideoDock>
+      </div>
       <Island
         stage={engine}
         mode={mode}
@@ -1031,13 +1044,8 @@ export function Stage() {
       {/* --- end telecom antenna runner --- */}
       <SightingPicker kinds={['map']} />
       <SightingPicker kinds={['mesh', 'pointcloud']} />
-      {!docked && showVideo && (
-        <FloatingVideo
-          layerId={activeClip}
-          docked={false}
-          stageRef={stageRef}
-          onCorners={onVideoCorners}
-        />
+      {floatClip && (
+        <FloatingVideo layerId={floatClip} stageRef={stageRef} onCorners={onVideoCorners} />
       )}
     </div>
   );
