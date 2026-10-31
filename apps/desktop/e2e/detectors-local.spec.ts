@@ -7,7 +7,8 @@
  * A detector is saved to the library (`detectors:save`), then `jobs:start` runs it on two photos
  * of the first date with threshold 0.8. The fake finds two boxes per photo and scores one 0.95
  * and the other 0.6, so the pass file `detections/vlm-<run>.json` holds four drafts, exactly one
- * per photo at or above the threshold and one flagged `belowThreshold`. The review queue
+ * per photo at or above the threshold and one flagged `belowThreshold`. The multi-view vote marks
+ * each large box down to 0.8075, a single view of a spot both photos see (`VOTED_HIGH`). The review queue
  * queue lists them as waiting drafts. The zero-network guard lets through only the fake's origin,
  * and the fake saw only authorised requests. A tampered `.aiodet` is refused with its reason.
  *
@@ -41,6 +42,7 @@ import {
   openChangeDemo,
   openProject,
   PIPELINE_ENV,
+  reportWindow,
   test,
   type DataRoot,
 } from './fixtures';
@@ -58,6 +60,16 @@ const THRESHOLD = 0.8;
 const PHOTOS = ['p01', 'p02'];
 /** The demo photos are 1024 x 768; the job sends 1344 x 1008, so a box shrinks by this. */
 const SCALE = 1024 / 1344;
+/**
+ * The large box's confidence after the multi-view vote (`multiview/vote.py`). The fake answers
+ * the same pixel box for every photo, so on the demo mesh p01's large box and p02's land on two
+ * spots about 50 m apart. The detector ran on both photos and both see each spot, yet each spot
+ * holds a box from one photo only: `views` 1 of `seenBy` 2, flagged `singleView`, and the score
+ * is marked down to 0.95 x (0.7 + 0.3 x 1 / 2) = 0.8075. That is the vote working as designed,
+ * not a fault of the run; it still sits at or above the 0.8 threshold. The small boxes keep 0.6:
+ * one lands where only its own photo looks (`seenBy` 1), the other is not placed.
+ */
+const VOTED_HIGH = Math.round(VLM_HIGH * (0.7 + 0.3 * (1 / 2)) * 1e4) / 1e4;
 
 const detector = (id: string, over: Record<string, unknown> = {}) => ({
   schema: 'aio.vlm-detector/1',
@@ -104,6 +116,7 @@ async function start(env: Record<string, string> = {}): Promise<Run> {
   await network.attach(app);
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
+  await reportWindow(win);
   return {
     app,
     data,
@@ -133,6 +146,7 @@ interface Draft {
   height: number;
   belowThreshold?: boolean;
   unscored?: boolean;
+  vote?: Record<string, unknown>;
   origin: Record<string, unknown>;
 }
 
@@ -217,7 +231,9 @@ test('detect.vlm on the demo: drafts in the review queue, one per photo above 0.
         space: 'source',
         width: 1024,
         height: 768,
-        confidence: VLM_HIGH,
+        // found in this photo only while both photos see the spot: marked down by the vote
+        confidence: VOTED_HIGH,
+        vote: { views: 1, seenBy: 2, singleView: true, score: VLM_HIGH, placedOn: 'mesh' },
       });
       expect(large?.belowThreshold).toBeUndefined();
       expect(small).toMatchObject({ status: 'draft', confidence: VLM_LOW, belowThreshold: true });
@@ -413,9 +429,9 @@ test('runs a detector from Ask AI and reviews its drafts', async () => {
     await expect(win.getByTestId('queue-progress')).toHaveText(/ of 4$/);
     await win.getByTestId('queue-threshold').fill('0.7');
     await expect(win.getByTestId('queue-progress')).toHaveText(/ of 2$/);
-    // the score of the draft in view, as a percentage
+    // the score of the draft in view, as a percentage: the voted one (81%, see VOTED_HIGH)
     await expect(win.locator('.queue-step .mono')).toHaveText(
-      `${String(Math.round(VLM_HIGH * 100))}%`,
+      `${String(Math.round(VOTED_HIGH * 100))}%`,
     );
     // the demo has no "patch" class: Accept opens the change picker, which offers the
     // detector's name as a new class
