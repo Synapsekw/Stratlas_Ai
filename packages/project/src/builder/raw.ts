@@ -12,6 +12,7 @@ import type {
   AltitudePlan,
   FlightHeights,
   ImportHeights,
+  InspectorSelection,
   ImportItem,
   LensModel,
   Mat4,
@@ -55,6 +56,8 @@ import {
   tiffCorners,
   tiffGeoreferenced,
 } from './tiff';
+import { CONFINED_SPACE_TEMPLATE } from './templates';
+import { findInspectorExport } from './flyability/scan';
 import { findTwin, needsTwin, twinFix, type TwinCandidate } from './thermalTwin';
 import { CANCELLED_BEFORE, importWalk, type WalkTools } from './walks';
 import { NO_WALK_FILES, markWalkLayer, missingWalkLayers, walkLayerOf } from './walkLayers';
@@ -168,6 +171,11 @@ export interface ImportDeps {
    */
   pickFolder?: (title: string) => Promise<string | null>;
   /**
+   * The inspections chosen from a Flyability Inspector export folder among the paths. Without it
+   * such a folder is answered "Choose the inspections to import." and nothing is queued.
+   */
+  inspector?: InspectorSelection;
+  /**
    * The survey day Add data chose for a cloud (absolute path to `YYYY-MM-DD`, null = not dated).
    * A chosen day goes to the conversion as `surveyDate`; the job files the layer under it.
    */
@@ -232,6 +240,8 @@ const RASTER_TOO_LARGE =
   'This GeoTIFF is too large to import yet (over 300 MB, over 12,000 x 12,000 pixels, or a BigTIFF). Reduce or split it in other software, then import the parts.';
 const REVIEW_PX = 2560;
 const THUMB_PX = 480;
+
+export const INSPECTOR_CHOOSE = 'Choose the inspections to import.';
 
 export const BENTLEY_NO_FOLDER =
   'No photos folder was chosen, so the Bentley block was not imported. Add the .xml again and choose the folder that holds its photos.';
@@ -523,12 +533,42 @@ export async function importRawFiles(
     }
   };
 
+  /** The Flyability Inspector exports among the paths: folders, never imported file by file. */
+  const inspectorRoots = new Map<string, string>();
+  await Promise.all(
+    paths.map(async (p) => {
+      const found = await findInspectorExport(p);
+      if (found !== null) inspectorRoots.set(p, found);
+    }),
+  );
+
   for (const file of paths) {
     const name = basename(file);
     const ext = extname(file).toLowerCase();
     let later = false;
     try {
       if (consumed.has(file)) continue;
+      const exportRoot = inspectorRoots.get(file);
+      if (exportRoot !== undefined && !deps.signal?.aborted) {
+        if (!deps.inspector) {
+          items.push({
+            file: name,
+            kind: 'flyability',
+            status: 'skipped',
+            message: INSPECTOR_CHOOSE,
+          });
+        } else {
+          const model =
+            m.severityModels.find((x) => x.id === CONFINED_SPACE_TEMPLATE.id) ??
+            CONFINED_SPACE_TEMPLATE.model;
+          await job(exportRoot, 'flyability', 'flyability.import', {
+            inspections: deps.inspector.inspections,
+            severityModel: model,
+            catalogueId: 'confined-space',
+          });
+        }
+        continue;
+      }
       const is360 =
         isWalkFile(name) ||
         (VIDEO.has(ext) &&

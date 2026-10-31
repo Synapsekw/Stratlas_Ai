@@ -107,8 +107,14 @@ export function ungroupedPipelines(list: readonly PipelineInfo[] = PIPELINES): s
   return list.filter((p) => groupOf(p.name) === undefined).map((p) => p.name);
 }
 
-/** Pipelines only a bench starts (with its own parameters): never offered in the Advanced list. */
-export const BENCH_ONLY: ReadonlySet<string> = new Set<PipelineName>(['thermal.decode']);
+/**
+ * Pipelines only something else starts (a bench with its own parameters, Add data with the
+ * inspections the person chose): never offered in the Advanced list.
+ */
+export const BENCH_ONLY: ReadonlySet<string> = new Set<PipelineName>([
+  'thermal.decode',
+  'flyability.import',
+]);
 
 /**
  * The pipelines by area, for the `<optgroup>`s of the Advanced list: every pipeline of `list`

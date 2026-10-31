@@ -17,6 +17,7 @@ import { execFile } from 'node:child_process';
 import { open, readdir, stat } from 'node:fs/promises';
 import { basename, extname, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
+import { compareVersions } from './jobs/pack';
 import { createImportRuns } from './importRuns';
 import { writeBytesAtomic } from './modelBuilder';
 import { readOrientation, writeOrientation } from './orientation';
@@ -188,6 +189,8 @@ export async function expandFor(
   const l = await lib();
   return l.expandImportPaths(paths, opts.known ?? l.isImportableExtension, opts.limit);
 }
+
+const EMPTY_EXPANDED: Expanded = { files: [], leftOut: [], tooMany: null };
 
 const tooManyError = (folder: string): string =>
   `${basename(folder)} holds more than ${FOLDER_LIMIT_TEXT} files. Import a smaller folder.`;
@@ -373,6 +376,48 @@ export async function saveTwinCorrections(root: string, fixes: TwinPlacements): 
   if (!w.ok) throw new Error(w.error);
 }
 
+/** The first pipeline pack that carries `flyability.import` (31 Oct 2026). */
+export const FLYABILITY_MIN_PACK = '0.31.0';
+export const FLYABILITY_FEATURE = 'Importing Flyability Inspector exports';
+export const FLYABILITY_PACK_FEATURE = {
+  label: FLYABILITY_FEATURE,
+  minVersion: FLYABILITY_MIN_PACK,
+};
+
+/** Why `jobs:start` refuses `flyability.import` on the installed pack, or null. */
+export function flyabilityPackRefusal(pipeline: string, packVersion: string | null): string | null {
+  if (pipeline !== 'flyability.import' || packVersion === null || packVersion === 'dev')
+    return null;
+  if (compareVersions(packVersion, FLYABILITY_MIN_PACK) >= 0) return null;
+  return `${FLYABILITY_FEATURE} needs processing tools ${FLYABILITY_MIN_PACK} or later (these are ${packVersion}). Update them in Settings, Processing tools.`;
+}
+
+/** A Flyability Inspector export folder read for the inspection picker (`builder:inspectorScan`). */
+export async function builderInspectorScan(
+  req: IpcRequest<'builder:inspectorScan'>,
+  registry: ProjectRegistry,
+): Promise<IpcResponse<'builder:inspectorScan'>> {
+  try {
+    const { findInspectorExport, scanInspectorExport, readManifestFile } = await lib();
+    const found = await findInspectorExport(req.path);
+    if (found === null)
+      return { ok: false, error: `${basename(req.path)} is not a Flyability Inspector export.` };
+    let manifest: ProjectManifest | null = null;
+    if (req.projectId !== null) {
+      const root = registry.root(req.projectId);
+      if (root === undefined)
+        return {
+          ok: false,
+          error: `Project "${req.projectId}" is not open. Open it, then import.`,
+        };
+      manifest = await readManifestFile(root);
+    }
+    return { ok: true, scan: await scanInspectorExport(found, manifest) };
+  } catch (e) {
+    return { ok: false, error: errorText(e) };
+  }
+}
+
 export async function builderImport(
   req: IpcRequest<'builder:import'>,
   d: BuilderImportDeps,
@@ -380,13 +425,21 @@ export async function builderImport(
   const root = d.registry.root(req.projectId);
   if (root === undefined)
     return { ok: false, error: `Project "${req.projectId}" is not open. Open it, then import.` };
-  const ex = await expandFor(req.paths, {
-    ...(d.known ? { known: d.known } : {}),
-    ...(d.limit !== undefined ? { limit: d.limit } : {}),
-  });
+  // an Inspector export is one import, never read file by file: its folder goes through whole
+  const { findInspectorExport } = await lib();
+  const exports: string[] = [];
+  const others: string[] = [];
+  for (const p of req.paths) ((await findInspectorExport(p)) !== null ? exports : others).push(p);
+  const ex =
+    others.length === 0
+      ? EMPTY_EXPANDED
+      : await expandFor(others, {
+          ...(d.known ? { known: d.known } : {}),
+          ...(d.limit !== undefined ? { limit: d.limit } : {}),
+        });
   if (ex.tooMany !== null) return { ok: false, error: tooManyError(ex.tooMany) };
   // the sphere frames the panorama import takes instead
-  const files = outsidePanoFolder(root, withoutExcluded(ex.files, req.exclude));
+  const files = [...exports, ...outsidePanoFolder(root, withoutExcluded(ex.files, req.exclude))];
   if (files.length === 0 && ex.leftOut.length === 0) {
     // everything was left out (the sphere frames went to the panorama import): nothing to do
     if (ex.files.length > 0)
@@ -412,6 +465,7 @@ export async function builderImport(
       // a lookup that fails leaves it to the PATH, as before
       ...ffmpegImportTools(await (d.ffmpeg?.().catch(() => null) ?? null)),
       ...(req.as360 ? { as360: true } : {}),
+      ...(req.inspector ? { inspector: req.inspector } : {}),
       onFileProgress: progress.part,
       signal: run.signal,
       ...(req.utcOffsetMin !== undefined ? { utcOffsetMin: req.utcOffsetMin } : {}),

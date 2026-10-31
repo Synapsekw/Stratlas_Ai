@@ -346,10 +346,52 @@ export async function listLibrary(o: {
   return entries.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** What a Flyability Inspector export folder is called where the app names folder kinds. */
+export const INSPECTOR_LABEL = 'Flyability Inspector export';
+
+/**
+ * A Flyability Inspector export dropped on the library: a project for it (local frame, the
+ * confined-space template) named after the asset, else the folder. The picker then asks which
+ * inspections to import into it. Null when the folder is not an export.
+ */
+async function projectForInspectorExport(
+  dir: string,
+  dataRoot: string,
+): Promise<{ root: string; manifest: ProjectManifest } | { error: string } | null> {
+  const lib = await import('@aio/project/builder');
+  const found = await lib.findInspectorExport(dir);
+  if (found === null) return null;
+  if (!dataRoot)
+    return { error: `${INSPECTOR_LABEL}: set a data folder in Settings first; projects go there.` };
+  try {
+    const scan = await lib.scanInspectorExport(found, null);
+    const made = await lib.createProject(
+      dataRoot,
+      {
+        name: (scan.asset ?? '').trim() === '' ? basename(dir) : (scan.asset ?? '').trim(),
+        type: 'inspection',
+        purpose: 'confined-space',
+        epsg: 4326,
+        origin: [0, 0, 0],
+        severityTemplate: null,
+      },
+      lib.CONFINED_SPACE_TEMPLATE,
+    );
+    const done = await lib.updateManifestFile(made.root, (fresh) => ({
+      manifest: { ...fresh, crs: { local: 'flyability' } },
+      id: fresh.id,
+    }));
+    return { root: made.root, manifest: done.manifest };
+  } catch (e) {
+    return { error: `${INSPECTOR_LABEL}: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
 export async function addToLibrary(
   path: string,
   store: LibraryStore,
   registry: ProjectRegistry,
+  dataRoot = '',
 ): Promise<IpcResponse<'library:add'>> {
   const dir = resolve(path);
   if (!(await isDir(dir)) && !(isPackageFile(dir) && (await isFile(dir)))) {
@@ -358,10 +400,18 @@ export async function addToLibrary(
       error: `Not found: ${dir}. Pick an existing project folder or ${PACKAGE_EXTENSION} package.`,
     };
   }
-  const r = await buildEntry(dir, registry);
+  let target = dir;
+  if ((await isDir(dir)) && (await detectFolder(dir)) === null) {
+    const made = await projectForInspectorExport(dir, dataRoot);
+    if (made !== null) {
+      if ('error' in made) return { ok: false, error: made.error };
+      target = made.root;
+    }
+  }
+  const r = await buildEntry(target, registry);
   if (!r.ok) return r;
   try {
-    await store.add(dir);
+    await store.add(target);
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

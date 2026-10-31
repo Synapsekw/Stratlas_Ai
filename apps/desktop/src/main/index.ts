@@ -67,6 +67,9 @@ import { listReports } from './exports/reports';
 import { runInUtility } from './exports/utility';
 import {
   builderAltitudePlan,
+  builderInspectorScan,
+  flyabilityPackRefusal,
+  FLYABILITY_PACK_FEATURE,
   builderCloudDates,
   builderAddDrawingPage,
   builderCloseDrawing,
@@ -1232,7 +1235,7 @@ function registerIpc(): void {
     };
   });
   handle('library:add', async ({ path }) => {
-    const r = await addToLibrary(path, library, registry);
+    const r = await addToLibrary(path, library, registry, settings.current().dataRoot);
     // adding a removed card again brings it back
     if (r.ok)
       await libraryView
@@ -1775,6 +1778,7 @@ function registerIpc(): void {
         rfPackRefusal(pipeline, version) ??
         thermalPackRefusal(pipeline, version) ??
         cleanPackRefusal(pipeline, version) ??
+        flyabilityPackRefusal(pipeline, version) ??
         detectPackRefusal(pipeline, version);
       if (tooOld) return { ok: false, error: tooOld };
     }
@@ -1971,6 +1975,7 @@ function registerIpc(): void {
         },
       }),
   );
+  handle('builder:inspectorScan', (req) => builderInspectorScan(req, registry));
   handle('builder:altitudePlan', (req) => builderAltitudePlan(req, registry));
   // the LAS header day of each .zpc cloud, before Add data asks for its survey day
   handle('builder:cloudDates', (req) => builderCloudDates(req, registry));
@@ -2438,6 +2443,7 @@ function registerIpc(): void {
             COMPONENT_EVIDENCE_PACK_FEATURE,
             RF_PACK_FEATURE,
             CLEAN_PACK_FEATURE,
+            FLYABILITY_PACK_FEATURE,
             THERMAL_PACK_FEATURE,
             DETECT_PACK_FEATURE,
           ],

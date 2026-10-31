@@ -110,6 +110,8 @@ const MANIFEST_WRITERS: ReadonlySet<string> = new Set([
   'opf.import',
   // Bentley: a run and a photos layer
   'bentley.import',
+  // Flyability Inspector: spaces, a photos layer, clouds, paths and findings
+  'flyability.import',
   // M10 photo products: ortho, DSM, DTM, cloud and mesh layers of a run. `photo.align` and
   // `photo.georef` write only their run folder, the tiles jobs `tilesets.json` (TILESET_WRITERS)
   // and the pack jobs the data folder, so none of them reloads the manifest.

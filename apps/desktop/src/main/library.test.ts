@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { writeInspectorFixture } from '@aio/project/builder/testing';
 import { addToLibrary, createLibraryStore, listLibrary, listPacks } from './library';
 import { ProjectRegistry } from './project';
 import { sampleManifest, writeProject } from './testing';
@@ -128,6 +129,30 @@ describe('library store and addToLibrary', () => {
     expect(await store.paths()).toEqual([dir]);
     await addToLibrary(dir, store, new ProjectRegistry());
     expect(await createLibraryStore(join(base, 'library.json')).paths()).toEqual([dir]);
+  });
+
+  it('makes a local-frame confined-space project of a Flyability Inspector export', async () => {
+    const store = createLibraryStore(join(base, 'library.json'));
+    const exp = join(base, 'export');
+    await writeInspectorFixture(exp);
+    const r = await addToLibrary(exp, store, new ProjectRegistry(), dataRoot);
+    expect(r.ok && r.entry).toMatchObject({
+      name: 'Synthetic chamber',
+      kind: 'native',
+      purpose: 'confined-space',
+    });
+    const made = r.ok ? r.entry.path : '';
+    expect(made.startsWith(join(dataRoot, 'projects'))).toBe(true);
+    const m = JSON.parse(await readFile(join(made, 'manifest.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    expect(m.crs).toEqual({ local: 'flyability' });
+    expect(m.origin).toEqual([0, 0, 0]);
+    expect(JSON.stringify(m.severityModels)).toContain('confined-space-4');
+    expect(await store.paths()).toEqual([made]);
+    // without a data folder it says so
+    expect(await addToLibrary(exp, store, new ProjectRegistry())).toMatchObject({ ok: false });
   });
 
   it('recognises a kit export by its files', async () => {

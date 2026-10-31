@@ -14,6 +14,7 @@ import {
 } from './create';
 import {
   BENTLEY_NO_FOLDER,
+  INSPECTOR_CHOOSE,
   NO_PIPELINE,
   UNSUPPORTED_XML,
   importDay,
@@ -24,6 +25,7 @@ import {
   type PipelineJobs,
   type VideoTools,
 } from './raw';
+import { writeInspectorFixture } from './flyability/fixture';
 import { makeTiff, withExif } from './testing';
 import { xt2Thermal, xt2Visual } from './xt2Fixture';
 
@@ -1695,5 +1697,43 @@ describe('GLB georeference on import (engineering model 5.6)', () => {
     await expect(updateLayers(root, [id], { placement: 'placed' })).rejects.toThrow(
       /only models take a ground placement/,
     );
+  });
+
+  it('an inspector export folder is not imported file by file', async () => {
+    const root = await project();
+    const exp = join(dir, 'export');
+    const ids = await writeInspectorFixture(exp);
+    const started: { method: string; params: Record<string, unknown> }[] = [];
+    const jobs: PipelineJobs = {
+      available: () => Promise.resolve(true),
+      start: (method, params) => {
+        started.push({ method, params });
+        return Promise.resolve({ jobId: 'job-f' });
+      },
+    };
+    const chosen = { inspections: [{ id: ids.inspectionId }] };
+    const r = await importRawFiles(root, [exp], { ...deps({ jobs }), inspector: chosen });
+    expect(r.items).toEqual([
+      expect.objectContaining({ kind: 'flyability', status: 'queued', jobId: 'job-f' }),
+    ]);
+    expect(started).toHaveLength(1);
+    expect(started[0]).toMatchObject({
+      method: 'flyability.import',
+      params: {
+        src: exp,
+        inspections: chosen.inspections,
+        catalogueId: 'confined-space',
+        severityModel: { id: 'confined-space-4' },
+      },
+    });
+    // no choice: asked, nothing queued; no pack: said so
+    started.length = 0;
+    const ask = await importRawFiles(root, [exp], deps({ jobs }));
+    expect(ask.items).toEqual([
+      expect.objectContaining({ kind: 'flyability', status: 'skipped', message: INSPECTOR_CHOOSE }),
+    ]);
+    expect(started).toHaveLength(0);
+    const none = await importRawFiles(root, [exp], { ...deps(), inspector: chosen });
+    expect(none.items[0]).toMatchObject({ kind: 'flyability', status: 'needs-pipeline' });
   });
 });

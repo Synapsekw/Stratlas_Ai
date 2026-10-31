@@ -4,6 +4,7 @@
  */
 
 export * from './xt2Fixture';
+export * from './flyability/fixture';
 
 export interface FixtureExif {
   make?: string;

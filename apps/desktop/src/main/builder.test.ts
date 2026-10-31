@@ -1,5 +1,5 @@
 import { MAX_FOLDER_FILES } from '@aio/project/builder';
-import { withExif } from '@aio/project/builder/testing';
+import { withExif, writeInspectorFixture } from '@aio/project/builder/testing';
 import type { Georef } from '@aio/schema';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -13,6 +13,8 @@ import {
   FOLDER_LIMIT_TEXT,
   builderCloseDrawing,
   builderImport,
+  builderInspectorScan,
+  flyabilityPackRefusal,
   builderEnsureCapture,
   builderTemplates,
   builderUpdateCapture,
@@ -49,9 +51,10 @@ describe('builder main handlers', () => {
     await writeProject(join(base, 'projects', 'hcl'), sampleManifest());
     const t = await builderTemplates(base, []);
     expect(t.severity.map((s) => s.id)).toContain(sampleManifest().severityModels[0]?.id);
-    expect(t.severity.slice(-2).map((s) => s.id)).toEqual([
+    expect(t.severity.slice(-3).map((s) => s.id)).toEqual([
       'general-inspection',
       'road-astm-d6433',
+      'confined-space-4',
     ]);
     expect(t.brands.map((b) => b.id)).toContain('eand');
   });
@@ -812,5 +815,109 @@ it('answers a kit-pyramid ortho with corners only in tiles.json when asked for f
   expect(await builderLayerExtents({ projectId, full: true }, registry)).toMatchObject({
     ok: true,
     extents: [{ layerId: 'ortho', min: [0, 0, -50], max: [80, 0, 30] }],
+  });
+});
+
+describe('Flyability Inspector exports', () => {
+  const images = { resizeJpeg: () => Promise.resolve() };
+
+  async function setup(available: boolean) {
+    const dir = join(base, 'projects', 'chamber');
+    await writeProject(dir, sampleManifest());
+    const registry = new ProjectRegistry();
+    const projectId = registry.register(dir);
+    const exp = join(base, 'export');
+    const ids = await writeInspectorFixture(exp);
+    const started: { method: string; params: Record<string, unknown> }[] = [];
+    const jobs = {
+      available: () => Promise.resolve(available),
+      start: (method: string, params: Record<string, unknown>) => {
+        started.push({ method, params });
+        return Promise.resolve({ jobId: 'job-fly' });
+      },
+    };
+    return {
+      registry,
+      projectId,
+      exp,
+      ids,
+      started,
+      deps: { registry, images, jobs, emit: () => undefined },
+    };
+  }
+
+  it('an inspector export queues one flyability job with the chosen inspections', async () => {
+    const t = await setup(true);
+    const inspections = [{ id: t.ids.inspectionId, flights: [t.ids.flightIds[0] ?? ''] }];
+    const r = await builderImport(
+      { projectId: t.projectId, paths: [t.exp], inspector: { inspections } },
+      t.deps,
+    );
+    expect(r.ok && r.items).toEqual([
+      expect.objectContaining({ kind: 'flyability', status: 'queued', jobId: 'job-fly' }),
+    ]);
+    expect(t.started).toHaveLength(1);
+    expect(t.started[0]).toMatchObject({
+      method: 'flyability.import',
+      params: {
+        src: t.exp,
+        inspections,
+        catalogueId: 'confined-space',
+        severityModel: { id: 'confined-space-4' },
+      },
+    });
+  });
+
+  it('without a choice it asks for the inspections', async () => {
+    const t = await setup(true);
+    const r = await builderImport({ projectId: t.projectId, paths: [t.exp] }, t.deps);
+    expect(r.ok && r.items).toEqual([
+      {
+        file: 'export',
+        kind: 'flyability',
+        status: 'skipped',
+        message: 'Choose the inspections to import.',
+      },
+    ]);
+    expect(t.started).toHaveLength(0);
+  });
+
+  it('without the pipeline pack it says so', async () => {
+    const t = await setup(false);
+    const r = await builderImport(
+      {
+        projectId: t.projectId,
+        paths: [t.exp],
+        inspector: { inspections: [{ id: t.ids.inspectionId }] },
+      },
+      t.deps,
+    );
+    expect(r.ok && r.items[0]).toMatchObject({ kind: 'flyability', status: 'needs-pipeline' });
+    expect(t.started).toHaveLength(0);
+  });
+
+  it('scan answers for an open project', async () => {
+    const t = await setup(true);
+    const r = await builderInspectorScan({ projectId: t.projectId, path: t.exp }, t.registry);
+    expect(r.ok && r.scan.inspections.map((i) => i.id)).toEqual([t.ids.inspectionId]);
+    expect(await builderInspectorScan({ projectId: null, path: t.exp }, t.registry)).toMatchObject({
+      ok: true,
+    });
+    expect(
+      await builderInspectorScan({ projectId: 'nope', path: t.exp }, t.registry),
+    ).toMatchObject({ ok: false });
+    expect(
+      await builderInspectorScan({ projectId: null, path: join(base, 'projects') }, t.registry),
+    ).toMatchObject({ ok: false });
+  });
+});
+
+describe('flyabilityPackRefusal', () => {
+  it('refuses flyability.import on processing tools older than 0.31.0 only', () => {
+    expect(flyabilityPackRefusal('flyability.import', '0.30.0')).toContain('0.31.0');
+    expect(flyabilityPackRefusal('flyability.import', '0.31.0')).toBeNull();
+    expect(flyabilityPackRefusal('flyability.import', 'dev')).toBeNull();
+    expect(flyabilityPackRefusal('flyability.import', null)).toBeNull();
+    expect(flyabilityPackRefusal('pano.stitch', '0.1.0')).toBeNull();
   });
 });
