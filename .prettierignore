@@ -18,3 +18,4 @@ packages/schema/src/__fixtures__/journal/*
 packages/schema/src/__fixtures__/engineering/*
 packages/geo/src/__fixtures__/site
 .superpowers
+packages/project/src/builder/flyability/__fixtures__/python-output

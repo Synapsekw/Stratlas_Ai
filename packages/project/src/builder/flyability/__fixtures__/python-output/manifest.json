@@ -1,0 +1,347 @@
+{
+  "captures": [],
+  "classCatalogues": [
+    {
+      "assetType": "confined-space",
+      "classes": [
+        {
+          "color": "#95a0ab",
+          "id": "finding",
+          "label": "Finding",
+          "severityModel": "confined-space-4"
+        },
+        {
+          "color": "#f5a524",
+          "id": "corrosion",
+          "label": "corrosion",
+          "severityModel": "confined-space-4"
+        }
+      ],
+      "id": "confined-space",
+      "name": "Confined-space findings"
+    }
+  ],
+  "crs": {
+    "epsg": 32640
+  },
+  "id": "proj",
+  "layers": [
+    {
+      "format": "copc",
+      "id": "fly-bbdc79ef-389eef2f-cloud",
+      "kind": "pointcloud",
+      "name": "Flight #1 cloud",
+      "pointCount": 60000,
+      "space": "fly-bbdc79ef",
+      "src": {
+        "path": "clouds/flyability/fly-bbdc79ef/flight-1.copc.laz"
+      },
+      "visible": true
+    },
+    {
+      "format": "copc",
+      "id": "fly-bbdc79ef-e969650a-cloud",
+      "kind": "pointcloud",
+      "name": "Flight #2 cloud",
+      "pointCount": 60000,
+      "space": "fly-bbdc79ef",
+      "src": {
+        "path": "clouds/flyability/fly-bbdc79ef/flight-2.copc.laz"
+      },
+      "visible": true
+    },
+    {
+      "format": "copc",
+      "id": "fly-bbdc79ef-merged",
+      "kind": "pointcloud",
+      "name": "Merged cloud",
+      "pointCount": 100000,
+      "space": "fly-bbdc79ef",
+      "src": {
+        "path": "clouds/flyability/fly-bbdc79ef/merged.copc.laz"
+      },
+      "visible": true
+    },
+    {
+      "bootStartS": 20.0,
+      "color": "#3e8fd0",
+      "flight": "389eef2f-79d0-4d1d-bf42-840f356fdc04",
+      "id": "fly-bbdc79ef-389eef2f-path",
+      "kind": "flightline",
+      "name": "Flight #1 path",
+      "space": "fly-bbdc79ef",
+      "src": {
+        "path": "imports/flyability/fly-bbdc79ef/poses/389eef2f.flight.json"
+      },
+      "visible": true
+    },
+    {
+      "bootStartS": 20.0,
+      "color": "#f5a524",
+      "flight": "e969650a-1b9f-42f3-a895-9ad6a19e2f62",
+      "id": "fly-bbdc79ef-e969650a-path",
+      "kind": "flightline",
+      "name": "Flight #2 path",
+      "space": "fly-bbdc79ef",
+      "src": {
+        "path": "imports/flyability/fly-bbdc79ef/poses/e969650a.flight.json"
+      },
+      "visible": true
+    },
+    {
+      "id": "fly-bbdc79ef-photos",
+      "items": [
+        {
+          "id": "c5db956e-2ec2-4fa5-b99d-b6559031fb3e",
+          "lens": {
+            "aspect": 1.778,
+            "hfovDeg": 114,
+            "model": "ftheta"
+          },
+          "pos": [
+            3.299,
+            1.48,
+            -2.008
+          ],
+          "q": [
+            0.031,
+            0.706,
+            0.031,
+            -0.706
+          ],
+          "src": {
+            "path": "imports/flyability/fly-bbdc79ef/photos/c5db956e-2ec2-4fa5-b99d-b6559031fb3e.jpg"
+          },
+          "takenAt": "2024-11-26T05:48:30Z"
+        },
+        {
+          "id": "c5db956e-2ec2-4fa5-b99d-b6559031fb3e-annotated",
+          "lens": {
+            "aspect": 1.778,
+            "hfovDeg": 114,
+            "model": "ftheta"
+          },
+          "pos": [
+            3.299,
+            1.48,
+            -2.008
+          ],
+          "q": [
+            0.031,
+            0.706,
+            0.031,
+            -0.706
+          ],
+          "src": {
+            "path": "imports/flyability/fly-bbdc79ef/photos/c5db956e-2ec2-4fa5-b99d-b6559031fb3e-annotated.jpg"
+          },
+          "takenAt": "2024-11-26T05:48:30Z"
+        },
+        {
+          "id": "abdc9cc7-df83-4fa0-a0c4-d484f5ce5038",
+          "lens": {
+            "aspect": 1.778,
+            "hfovDeg": 114,
+            "model": "ftheta"
+          },
+          "pos": [
+            4.992,
+            1.98,
+            -2.299
+          ],
+          "q": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "src": {
+            "path": "imports/flyability/fly-bbdc79ef/photos/abdc9cc7-df83-4fa0-a0c4-d484f5ce5038.jpg"
+          },
+          "takenAt": "2024-11-26T05:46:50Z"
+        },
+        {
+          "id": "abdc9cc7-df83-4fa0-a0c4-d484f5ce5038-annotated",
+          "lens": {
+            "aspect": 1.778,
+            "hfovDeg": 114,
+            "model": "ftheta"
+          },
+          "pos": [
+            4.992,
+            1.98,
+            -2.299
+          ],
+          "q": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "src": {
+            "path": "imports/flyability/fly-bbdc79ef/photos/abdc9cc7-df83-4fa0-a0c4-d484f5ce5038-annotated.jpg"
+          },
+          "takenAt": "2024-11-26T05:46:50Z"
+        },
+        {
+          "id": "3d581895-9d1f-4841-8daf-9df15c1216c8",
+          "lens": {
+            "aspect": 1.778,
+            "hfovDeg": 114,
+            "model": "ftheta"
+          },
+          "pos": [
+            5.701,
+            1.98,
+            -2.992
+          ],
+          "q": [
+            -0.062,
+            0.704,
+            0.062,
+            0.704
+          ],
+          "src": {
+            "path": "imports/flyability/fly-bbdc79ef/photos/3d581895-9d1f-4841-8daf-9df15c1216c8.jpg"
+          },
+          "takenAt": "2024-11-26T05:47:00Z"
+        },
+        {
+          "id": "3d581895-9d1f-4841-8daf-9df15c1216c8-annotated",
+          "lens": {
+            "aspect": 1.778,
+            "hfovDeg": 114,
+            "model": "ftheta"
+          },
+          "pos": [
+            5.701,
+            1.98,
+            -2.992
+          ],
+          "q": [
+            -0.062,
+            0.704,
+            0.062,
+            0.704
+          ],
+          "src": {
+            "path": "imports/flyability/fly-bbdc79ef/photos/3d581895-9d1f-4841-8daf-9df15c1216c8-annotated.jpg"
+          },
+          "takenAt": "2024-11-26T05:47:00Z"
+        },
+        {
+          "id": "28c9ad96-6c67-4ad3-8abd-5d711b2641b3",
+          "lens": {
+            "aspect": 1.778,
+            "hfovDeg": 114,
+            "model": "ftheta"
+          },
+          "pos": [
+            4.299,
+            1.98,
+            -3.008
+          ],
+          "q": [
+            0.0,
+            0.707,
+            0.0,
+            -0.707
+          ],
+          "src": {
+            "path": "imports/flyability/fly-bbdc79ef/photos/28c9ad96-6c67-4ad3-8abd-5d711b2641b3.jpg"
+          },
+          "takenAt": "2024-11-26T05:47:10Z"
+        },
+        {
+          "id": "28c9ad96-6c67-4ad3-8abd-5d711b2641b3-annotated",
+          "lens": {
+            "aspect": 1.778,
+            "hfovDeg": 114,
+            "model": "ftheta"
+          },
+          "pos": [
+            4.299,
+            1.98,
+            -3.008
+          ],
+          "q": [
+            0.0,
+            0.707,
+            0.0,
+            -0.707
+          ],
+          "src": {
+            "path": "imports/flyability/fly-bbdc79ef/photos/28c9ad96-6c67-4ad3-8abd-5d711b2641b3-annotated.jpg"
+          },
+          "takenAt": "2024-11-26T05:47:10Z"
+        }
+      ],
+      "kind": "photos",
+      "name": "Finding photos",
+      "space": "fly-bbdc79ef",
+      "visible": true
+    }
+  ],
+  "name": "Confined-space test project",
+  "origin": [
+    500000.0,
+    2700000.0,
+    0.0
+  ],
+  "schema": "aio.project/1",
+  "severityModels": [
+    {
+      "id": "confined-space-4",
+      "levels": [
+        {
+          "color": "#78b3d6",
+          "criteria": "Cosmetic or early stage. Monitor.",
+          "label": "Low",
+          "value": 1
+        },
+        {
+          "color": "#ebc751",
+          "criteria": "Visible deterioration.",
+          "label": "Medium",
+          "value": 2
+        },
+        {
+          "color": "#f0904f",
+          "criteria": "Significant damage.",
+          "label": "High",
+          "value": 3
+        },
+        {
+          "color": "#f05653",
+          "criteria": "Loss of function.",
+          "label": "Critical",
+          "value": 4
+        }
+      ],
+      "name": "Confined-space inspection (Low to Critical)",
+      "uncertain": {
+        "color": "#9aa3ad",
+        "label": "Not rated"
+      }
+    }
+  ],
+  "spaces": [
+    {
+      "crs": {
+        "local": "flyability"
+      },
+      "id": "fly-bbdc79ef",
+      "name": "Synthetic room",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "source": {
+        "assetName": "Synthetic chamber",
+        "inspectionId": "bbdc79ef-c388-417b-bdef-d3cf4e4665d2",
+        "kind": "flyability"
+      }
+    }
+  ]
+}

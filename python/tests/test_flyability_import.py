@@ -486,3 +486,46 @@ def test_an_unknown_inspection_is_refused(tmp_path, exports):
     with pytest.raises(JobError, match="no inspection"):
         run_job(FlyabilityImport(), root, params)
     assert "spaces" not in _manifest(root)
+
+
+# The Python-written project files, kept in the TS package so a vitest parses them with the schema
+# (packages/project/src/builder/flyability/pythonOutput.test.ts). Synthetic data only. Regenerate
+# after a change to what the job writes with:  AIO_REGEN_FIXTURES=1 pytest -k committed_fixture
+FIXTURE = (
+    Path(__file__).resolve().parents[2] / "packages/project/src/builder/flyability/__fixtures__/python-output"
+)
+
+
+def _stable(v, key: str = ""):
+    """Time stamps of the run fixed and floats rounded, so the files do not change from run to run."""
+    if isinstance(v, dict):
+        return {k: _stable(x, k) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_stable(x) for x in v]
+    if key in {"createdAt", "updatedAt"} and isinstance(v, str):
+        return "2026-01-01T00:00:00Z"
+    if isinstance(v, float):
+        return round(v, 3) + 0.0  # no -0.0, which JSON.stringify writes as 0
+    return v
+
+
+def test_output_matches_committed_fixture(tmp_path, exports):
+    syn = exports()
+    root = _project(tmp_path)
+    _run(root, _params(syn))
+    manifest = _manifest(root)
+    flightline = next(layer for layer in manifest["layers"] if layer["kind"] == "flightline")
+    files = {
+        "manifest.json": manifest,
+        "issues.json": json.loads((root / "issues.json").read_text("utf-8")),
+        "flight.json": json.loads((root / flightline["src"]["path"]).read_text("utf-8")),
+    }
+    files["flight.json"]["samples"] = files["flight.json"]["samples"][:3]
+    text = {name: json.dumps(_stable(doc), indent=2, sort_keys=True) + "\n" for name, doc in files.items()}
+    if os.environ.get("AIO_REGEN_FIXTURES") == "1":
+        FIXTURE.mkdir(parents=True, exist_ok=True)
+        for name, body in text.items():
+            (FIXTURE / name).write_text(body, "utf-8", newline="\n")
+    for name, body in text.items():
+        on_disk = (FIXTURE / name).read_text("utf-8") if (FIXTURE / name).is_file() else ""
+        assert on_disk == body, f"{name} is out of date: rerun with AIO_REGEN_FIXTURES=1"
