@@ -63,6 +63,7 @@ def test_transform_row_major(tmp_path: Path) -> None:
     a, b = flights
     assert a.transform is None and a.relocalised is True
     assert b.relocalised is False
+    assert a.phase_start_us == 20_000_000 and b.phase_start_us == 20_000_000
     assert b.transform is not None and b.transform.shape == (4, 4)
     assert np.allclose(b.transform[:3, 3], (0.4, -0.3, 0.05))
     assert np.allclose(b.transform, np.array(YAW_20_SHIFT).reshape(4, 4))

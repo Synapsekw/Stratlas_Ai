@@ -58,6 +58,7 @@ class Flight:
     trajectory: Path | None
     datetime_utc: int | None
     relocalised: bool
+    phase_start_us: int | None = None  # time_sync.phase_start_time, microseconds since boot
 
 
 @dataclass(frozen=True)
@@ -241,6 +242,8 @@ def read_export(root: Path) -> Export:
         fid, iid = str(f.get("id") or ""), str(f.get("inspection_id") or "")
         cloud, traj = flight_maps.get(fid, (None, None))
         stamp = _number(f.get("datetime_utc"))
+        sync = f.get("time_sync")
+        phase = _number(sync.get("phase_start_time")) if isinstance(sync, dict) else None
         flights_by_insp.setdefault(iid, []).append(
             Flight(
                 id=fid,
@@ -250,6 +253,7 @@ def read_export(root: Path) -> Export:
                 trajectory=traj,
                 datetime_utc=None if stamp is None else int(stamp),
                 relocalised=bool(f.get("relocalized")),
+                phase_start_us=None if phase is None else int(phase),
             )
         )
         flight_insp[fid] = iid

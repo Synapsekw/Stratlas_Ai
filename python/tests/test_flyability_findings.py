@@ -50,7 +50,7 @@ def _context(syn: SynthExport, pois, classes=None) -> FindingContext:
     return FindingContext(
         hit_m=hit_m,
         scene_point=scene,
-        cloud_layer="cloud-1",
+        hit_layer={sid: f"cloud-{syn.flight_ids.index(fid)}" for sid, fid in syn.snapshot_flight.items()},
         photos_layer="photos-1",
         severity_model_id="sev-1",
         now=NOW,
@@ -60,9 +60,13 @@ def _context(syn: SynthExport, pois, classes=None) -> FindingContext:
     )
 
 
+def _catalogue() -> dict:
+    return {"id": "c", "name": "Confined space", "assetType": "confined-space", "classes": []}
+
+
 def _issues(tmp_path: Path, generation: str = "2025"):
     syn, pois = _setup(tmp_path, generation)
-    cat, classes = category_classes(pois, {})
+    cat, classes = category_classes(pois, _catalogue())
     ctx = _context(syn, pois, classes)
     return syn, pois, cat, [build_issue(p, ctx) for p in pois]
 
@@ -99,7 +103,10 @@ def test_null_criticality_is_uncertain(tmp_path: Path) -> None:
 
 def test_category_from_tags(tmp_path: Path) -> None:
     _, _, cat, issues = _issues(tmp_path)
-    assert cat["corrosion"] == {"id": "corrosion", "label": "corrosion"}
+    assert cat["classes"] == [
+        {"id": "corrosion", "label": "corrosion", "color": "#e5484d", "severityModel": "confined-space-4"}
+    ]
+    assert re.fullmatch(r"#[0-9a-fA-F]{6}", cat["classes"][0]["color"])
     assert issues[0]["classId"] == "corrosion"
     assert issues[2]["classId"] == "finding"
 
@@ -110,9 +117,15 @@ def test_category_falls_back_to_snapshot_tags(tmp_path: Path) -> None:
         pois[1],
         snapshots=[dataclasses.replace(pois[1].snapshots[0], tags=["Crack / Joint"])],
     )
-    cat, by_poi = category_classes([p], {"x": {"id": "x", "label": "x"}})
+    base = _catalogue()
+    base["classes"].append({"id": "crack-joint", "label": "Old", "color": "#000000", "severityModel": "m"})
+    cat, by_poi = category_classes([p], base)
     assert by_poi[p.id] == "crack-joint"
-    assert cat["crack-joint"]["label"] == "Crack / Joint" and "x" in cat
+    assert [c["label"] for c in cat["classes"]] == ["Old"]  # an existing id is skipped
+    q = dataclasses.replace(p, tags=["Crack / Joint", "腐蚀"])
+    cat, by_poi = category_classes([q], _catalogue())
+    ids = [c["id"] for c in cat["classes"]]
+    assert ids[0] == "crack-joint" and re.fullmatch(r"tag-[0-9a-f]{8}", ids[1])
 
 
 def test_annotation_points_in_pixels(tmp_path: Path) -> None:
@@ -124,6 +137,22 @@ def test_annotation_points_in_pixels(tmp_path: Path) -> None:
     assert [s["geom"] for s in pts] == [{"type": "point", "x": 2000.0, "y": 750.0}]
     box = [s for s in issue["sightings"] if s.get("photo", "").endswith("-annotated")]
     assert box[0]["geom"] == {"type": "box", "x": 0, "y": 0, "w": 4000, "h": 3000}
+
+
+def test_pin_uses_its_flights_layer(tmp_path: Path) -> None:
+    syn, _, _, issues = _issues(tmp_path)
+    layers = [i["sightings"][0]["layer"] for i in issues]
+    assert layers == ["cloud-1", "cloud-0", "cloud-0"]  # P1 is flight B, the others flight A
+
+
+def test_image_size_from_jpeg_header_and_no_sighting(tmp_path: Path) -> None:
+    syn, pois = _setup(tmp_path)
+    ctx = _context(syn, pois)
+    snap = dataclasses.replace(pois[1].snapshots[0], image_size=None, points=[(0.5, 0.5, "")])
+    issue = build_issue(dataclasses.replace(pois[1], snapshots=[snap]), ctx)
+    assert {"type": "point", "x": 4.0, "y": 3.0} in [s["geom"] for s in issue["sightings"]]  # 8 x 6
+    bare = dataclasses.replace(snap, pose_valid=False, photo=None, annotated=None)
+    assert build_issue(dataclasses.replace(pois[1], snapshots=[bare]), ctx) is None
 
 
 def test_sighting_order_and_whole_image_box(tmp_path: Path) -> None:
@@ -230,10 +259,31 @@ def test_merge_keeps_edits_and_missing(tmp_path: Path) -> None:
     assert counts == {"added": 1, "refreshed": 1, "kept_edited": 1, "kept_missing": 2}
 
 
+def _human(i: str, **kw) -> dict:
+    base = {
+        "id": i, "code": "F01", "classId": "finding", "severityModelId": "m", "severity": 1,
+        "status": "draft", "title": "t", "note": "", "author": "a", "source": "human",
+        "createdAt": "2026-10-31T12:00:00Z", "updatedAt": "2026-10-31T12:00:00Z",
+        "sightings": [{"on": "image", "layer": "l", "photo": "p", "geom": {"type": "point", "x": 1, "y": 1}}],
+    }  # fmt: skip
+    return {**base, **kw}
+
+
 def test_merge_repeated_saved_id_and_junk() -> None:
-    a = {"id": "a", "source": "human", "createdAt": "x", "updatedAt": "x", "v": 1}
-    b = {"id": "b", "source": "human", "createdAt": "x", "updatedAt": "x"}
-    a2 = {**a, "v": 2}
+    a, b = _human("a", title="one"), _human("b")
+    a2 = {**a, "title": "two"}
     merged, counts = merge_issues([a, b, a2, "junk", {"nope": 1}], [])  # type: ignore[list-item]
     assert merged == [a2, b]  # first position, last content
     assert counts["kept_missing"] == 2
+
+
+def test_merge_drops_malformed_saved_entries() -> None:
+    bad = [
+        _human("c1", code="x1"),
+        _human("c2", title=""),
+        _human("c3", sightings=[]),
+        _human("c4", source="robot"),
+        _human("c5", createdAt="yesterday"),
+    ]
+    merged, counts = merge_issues([*bad, _human("ok")], [])
+    assert [m["id"] for m in merged] == ["ok"] and counts["kept_missing"] == 1
