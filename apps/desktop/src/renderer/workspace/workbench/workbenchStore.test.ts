@@ -253,6 +253,26 @@ describe('workbench store', () => {
     workspace.setState({ project: null });
   });
 
+  it('the next project opens on Selection after the last one followed onto Volumes', () => {
+    const store = createWorkbenchStore(memory());
+    const stop = startWorkbenchReset(store);
+    store.getState().follow('volumes');
+    expect(store.getState().panel).toBe('project');
+    workspace.setState({ project: { id: 'road', root: '/r', manifest: {} } as never });
+    expect(store.getState().panel).toBe('selection');
+    // a tab the person chose stays with them
+    store.getState().show('project');
+    workspace.setState({ project: { id: 'tanks', root: '/t', manifest: {} } as never });
+    expect(store.getState().panel).toBe('project');
+    // as does one they came back to after a follow
+    store.getState().follow('volumes');
+    store.getState().show('project');
+    workspace.setState({ project: { id: 'road', root: '/r', manifest: {} } as never });
+    expect(store.getState().panel).toBe('project');
+    stop();
+    workspace.setState({ project: null });
+  });
+
   it('a tool brings its tab forward with its section open; a waiting one moves nothing', () => {
     const store = createWorkbenchStore(memory());
     store.getState().toolStarted('annotate');

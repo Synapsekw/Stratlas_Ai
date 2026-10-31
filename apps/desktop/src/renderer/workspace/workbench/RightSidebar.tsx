@@ -166,7 +166,7 @@ function useFollow(panel: PanelTab) {
     if (seenVolumes.current === projectId) return;
     seenVolumes.current = projectId;
     // from Selection, or within Project: a person who stayed on Tools or Layers is left there
-    if (panel === 'selection' || panel === 'project') workbench.getState().show('volumes');
+    if (panel === 'selection' || panel === 'project') workbench.getState().follow('volumes');
   }, [volumes, projectId, panel]);
 }
 

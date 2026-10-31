@@ -66,6 +66,13 @@ export interface WorkbenchState {
    * panel tabs, with a section to open in it.
    */
   show(target: TabId | PanelTab, section?: SectionId): void;
+  /**
+   * The panel tab a follow (the Volumes follow of a project with piles) put on screen, until the
+   * person or a tool moves it; null when the person's own choice is on screen.
+   */
+  followed: PanelTab | null;
+  /** `show` for a follow: the tab it lands on is the project's, not the person's choice. */
+  follow(target: TabId): void;
   /** Open or close one section; opening brings its body forward. */
   toggleSection(id: SectionId): void;
   /** Say a section has news without bringing it forward (the "Show it" note); null clears it. */
@@ -168,6 +175,7 @@ export function createWorkbenchStore(
       panel: place.tab,
       sections: place.open,
       toolSeq: 0,
+      followed: null,
       open: (id, opts) => {
         bring(id, opts?.pinned ?? false);
       },
@@ -192,7 +200,12 @@ export function createWorkbenchStore(
           };
         });
       },
+      follow: (target) => {
+        get().show(target);
+        set({ followed: get().panel });
+      },
       show: (target, section) => {
+        if (get().followed !== null) set({ followed: null });
         if (!isPanelTab(target) || target === 'selection') {
           bring(target, false);
           return;
@@ -277,8 +290,14 @@ export function createWorkbenchStore(
       },
       reset: () => {
         // another project: the tools' bodies go, the person's tab and sections stay (what follows a
-        // project, the Volumes follow, reads the tab, not the front)
-        set(base());
+        // project, the Volumes follow, reads the tab, not the front); a tab the last project's
+        // follow chose is that project's, so the next one starts on Selection
+        const s = get();
+        set({
+          ...base(),
+          followed: null,
+          ...(s.followed !== null && s.panel === s.followed ? { panel: 'selection' as const } : {}),
+        });
       },
     };
   });
