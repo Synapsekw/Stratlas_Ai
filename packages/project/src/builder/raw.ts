@@ -58,6 +58,7 @@ import {
 } from './tiff';
 import { CONFINED_SPACE_TEMPLATE } from './templates';
 import { findInspectorExport } from './flyability/scan';
+import { FLYABILITY_IMPORT_UI } from './flyability/flags';
 import { findTwin, needsTwin, twinFix, type TwinCandidate } from './thermalTwin';
 import { CANCELLED_BEFORE, importWalk, type WalkTools } from './walks';
 import { NO_WALK_FILES, markWalkLayer, missingWalkLayers, walkLayerOf } from './walkLayers';
@@ -175,6 +176,8 @@ export interface ImportDeps {
    * such a folder is answered "Choose the inspections to import." and nothing is queued.
    */
   inspector?: InspectorSelection;
+  /** Test seam: treat export folders specially without a selection (default `FLYABILITY_IMPORT_UI`). */
+  flyabilityUi?: boolean;
   /** Why the installed processing tools cannot run `flyability.import` (too old), or null. */
   inspectorRefusal?: () => Promise<string | null>;
   /**
@@ -539,8 +542,9 @@ export async function importRawFiles(
 
   /** The Flyability Inspector exports among the paths: folders, never imported file by file. */
   const inspectorRoots = new Map<string, string>();
+  const inspectorOn = (deps.flyabilityUi ?? FLYABILITY_IMPORT_UI) || deps.inspector !== undefined;
   await Promise.all(
-    paths.map(async (p) => {
+    (inspectorOn ? paths : []).map(async (p) => {
       // only a folder can be an export
       if (
         !(await stat(p).then(

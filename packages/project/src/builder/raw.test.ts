@@ -1729,10 +1729,14 @@ describe('GLB georeference on import (engineering model 5.6)', () => {
     });
     // no choice: asked, nothing queued; no pack: said so
     started.length = 0;
-    const ask = await importRawFiles(root, [exp], deps({ jobs }));
+    const ask = await importRawFiles(root, [exp], { ...deps({ jobs }), flyabilityUi: true });
     expect(ask.items).toEqual([
       expect.objectContaining({ kind: 'flyability', status: 'skipped', message: INSPECTOR_CHOOSE }),
     ]);
+    expect(started).toHaveLength(0);
+    // the picker is not shipped (default): an export folder is no special case without a selection
+    const off = await importRawFiles(root, [exp], deps({ jobs }));
+    expect(off.items.filter((x) => x.kind === 'flyability')).toEqual([]);
     expect(started).toHaveLength(0);
     const none = await importRawFiles(root, [exp], { ...deps(), inspector: chosen });
     expect(none.items[0]).toMatchObject({ kind: 'flyability', status: 'needs-pipeline' });

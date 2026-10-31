@@ -135,8 +135,13 @@ describe('library store and addToLibrary', () => {
     const store = createLibraryStore(join(base, 'library.json'));
     const exp = join(base, 'export');
     await writeInspectorFixture(exp);
-    const r = await addToLibrary(exp, store, new ProjectRegistry(), dataRoot, () =>
-      Promise.resolve('0.31.0'),
+    const r = await addToLibrary(
+      exp,
+      store,
+      new ProjectRegistry(),
+      dataRoot,
+      () => Promise.resolve('0.31.0'),
+      true,
     );
     expect(r.ok && r.entry).toMatchObject({
       name: 'Synthetic chamber',
@@ -156,14 +161,34 @@ describe('library store and addToLibrary', () => {
     // processing tools missing or too old: said so, and no project is made
     const before = await readdir(join(dataRoot, 'projects'));
     for (const v of [null, '0.30.4']) {
-      const old = await addToLibrary(exp, store, new ProjectRegistry(), dataRoot, () =>
-        Promise.resolve(v),
+      const old = await addToLibrary(
+        exp,
+        store,
+        new ProjectRegistry(),
+        dataRoot,
+        () => Promise.resolve(v),
+        true,
       );
       expect(old).toMatchObject({ ok: false });
     }
     expect(await readdir(join(dataRoot, 'projects'))).toEqual(before);
     // without a data folder it says so
-    expect(await addToLibrary(exp, store, new ProjectRegistry())).toMatchObject({ ok: false });
+    expect(
+      await addToLibrary(exp, store, new ProjectRegistry(), '', undefined, true),
+    ).toMatchObject({ ok: false });
+  });
+
+  it('adds no project for an Inspector export while its picker is not shipped', async () => {
+    const store = createLibraryStore(join(base, 'library.json'));
+    const exp = join(base, 'export');
+    await writeInspectorFixture(exp);
+    const before = await readdir(join(dataRoot, 'projects')).catch(() => [] as string[]);
+    const r = await addToLibrary(exp, store, new ProjectRegistry(), dataRoot, () =>
+      Promise.resolve('0.31.0'),
+    );
+    expect(r.ok).toBe(false);
+    expect(await readdir(join(dataRoot, 'projects')).catch(() => [] as string[])).toEqual(before);
+    expect(await store.paths()).toEqual([]);
   });
 
   it('recognises a kit export by its files', async () => {

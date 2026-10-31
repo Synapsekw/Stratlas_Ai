@@ -842,7 +842,7 @@ describe('Flyability Inspector exports', () => {
       exp,
       ids,
       started,
-      deps: { registry, images, jobs, emit: () => undefined },
+      deps: { registry, images, jobs, emit: () => undefined, flyabilityUi: true },
     };
   }
 
@@ -925,6 +925,28 @@ describe('Flyability Inspector exports', () => {
       ['drop', 'skipped'],
       ['notes.txt', 'skipped'],
     ]);
+  });
+
+  it('without the picker an export folder imports as any folder, with no Flyability item', async () => {
+    const t = await setup(true);
+    const r = await builderImport(
+      { projectId: t.projectId, paths: [t.exp] },
+      { ...t.deps, flyabilityUi: false },
+    );
+    expect(r.ok && r.items.filter((x) => x.kind === 'flyability')).toEqual([]);
+    expect(JSON.stringify(r)).not.toContain('Choose the inspections');
+    expect(t.started.filter((x) => x.method === 'flyability.import')).toEqual([]);
+    t.started.length = 0;
+    // a request that carries a selection still queues the job
+    const sel = await builderImport(
+      {
+        projectId: t.projectId,
+        paths: [t.exp],
+        inspector: { inspections: [{ id: t.ids.inspectionId }] },
+      },
+      { ...t.deps, flyabilityUi: false },
+    );
+    expect(sel.ok && sel.items[0]).toMatchObject({ kind: 'flyability', status: 'queued' });
   });
 
   it('scan answers for an open project', async () => {

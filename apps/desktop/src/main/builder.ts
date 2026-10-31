@@ -328,6 +328,8 @@ export interface BuilderImportDeps {
   pickFolder?: (title: string) => Promise<string | null>;
   /** The installed processing tools' version; null when none are found (Flyability import). */
   packVersion?: () => Promise<string | null>;
+  /** Test seam: export folders are special without a selection (default `FLYABILITY_IMPORT_UI`). */
+  flyabilityUi?: boolean;
 }
 
 /**
@@ -451,10 +453,12 @@ export async function builderImport(
   if (root === undefined)
     return { ok: false, error: `Project "${req.projectId}" is not open. Open it, then import.` };
   // an Inspector export is one import, never read file by file: its folder goes through whole
-  const { findInspectorExport } = await lib();
+  const { findInspectorExport, FLYABILITY_IMPORT_UI } = await lib();
   const exports: string[] = [];
   const others: string[] = [];
-  for (const p of req.paths) ((await findInspectorExport(p)) !== null ? exports : others).push(p);
+  const inspectorOn = (d.flyabilityUi ?? FLYABILITY_IMPORT_UI) || req.inspector !== undefined;
+  for (const p of req.paths)
+    (inspectorOn && (await findInspectorExport(p)) !== null ? exports : others).push(p);
   const ex =
     others.length === 0
       ? EMPTY_EXPANDED
@@ -491,6 +495,7 @@ export async function builderImport(
       ...ffmpegImportTools(await (d.ffmpeg?.().catch(() => null) ?? null)),
       ...(req.as360 ? { as360: true } : {}),
       ...(req.inspector ? { inspector: req.inspector } : {}),
+      ...(d.flyabilityUi !== undefined ? { flyabilityUi: d.flyabilityUi } : {}),
       ...(d.packVersion
         ? {
             inspectorRefusal: async () =>

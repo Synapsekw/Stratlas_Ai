@@ -404,6 +404,7 @@ export async function addToLibrary(
   registry: ProjectRegistry,
   dataRoot = '',
   packVersion: () => Promise<string | null> = () => Promise.resolve('dev'),
+  flyabilityUi?: boolean,
 ): Promise<IpcResponse<'library:add'>> {
   const dir = resolve(path);
   if (!(await isDir(dir)) && !(isPackageFile(dir) && (await isFile(dir)))) {
@@ -413,7 +414,11 @@ export async function addToLibrary(
     };
   }
   let target = dir;
-  if ((await isDir(dir)) && (await detectFolder(dir)) === null) {
+  if (
+    (flyabilityUi ?? (await import('@aio/project/builder')).FLYABILITY_IMPORT_UI) &&
+    (await isDir(dir)) &&
+    (await detectFolder(dir)) === null
+  ) {
     const made = await projectForInspectorExport(dir, dataRoot, packVersion);
     if (made !== null) {
       if ('error' in made) return { ok: false, error: made.error };
