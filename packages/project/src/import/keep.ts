@@ -13,7 +13,9 @@ const untouchedImport = (i: Issue) => i.source === 'import' && i.updatedAt === i
  *   (after the imported ones, in their saved order);
  * - untouched imported issues the source no longer has are dropped, unless `opts.keepMissing`
  *   is set: then they stay too, so a re-import of a partial export loses nothing.
- * Rules with `keepMissing` (the Python merge in the pipeline mirrors these exactly):
+ * Rules with `keepMissing`: the Python flyability.import job (`merge_issues` in
+ * python/src/aio_pipelines/flyability/findings.py) merges this way; no TS caller passes it, it is
+ * kept here so the parity tests in keep.test.ts pin the rules both sides follow:
  *   1. result = the imported issues in import order, each replaced by the saved issue with the
  *      same id when that one is not untouched (source 'import' and updatedAt === createdAt);
  *   2. then every saved issue whose id is not in the import, in saved order, whatever its

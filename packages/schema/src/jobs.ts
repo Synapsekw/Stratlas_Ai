@@ -851,7 +851,7 @@ export const BentleyImportParams = z
   })
   .strict();
 
-/** `flyability.import` (python `aio_pipelines/flyability/importer.py`, 31 Oct 2026). */
+/** `flyability.import` (python `aio_pipelines/flyability/pipeline.py`, 31 Oct 2026). */
 export const FlyabilityImportParams = z
   .object({
     /** The Inspector export folder (absolute). Read only. */
