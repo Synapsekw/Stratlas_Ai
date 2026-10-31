@@ -17,7 +17,8 @@ One draft stands for each cluster: its best-scored member. It gains ``vote``:
   ``placedOn`` (``mesh``, ``cloud`` or ``rays``);
 - ``sightings``: the other members' photo, box, score and id (they leave the pass).
 
-Its ``confidence`` becomes the mean member score times ``0.5 + 0.5 * views / seenBy``, and
+Its ``confidence`` becomes the chance that at least one agreeing view is right (``1 - prod(1 - s)``
+over the member scores) times ``0.7 + 0.3 * views / seenBy``, and
 ``belowThreshold`` is set again against the detector's threshold (``origin.threshold``). A draft
 that cannot be placed (no pose, a contact-sheet or video-frame box, no hit) passes through untouched.
 """
@@ -204,11 +205,12 @@ class _Obs:
 
 
 def _place_by_rays(obs: list[_Obs], radius_of: Callable[[dict[str, Any]], float]) -> None:
-    """Each ray at the median of its closest approaches to agreeing rays of other photos; a ray
-    nobody agrees with sits at the median depth of the placed ones (so ``seenBy`` can still be told)."""
+    """Each ray where most of the rays of other photos that pass close to it cross it (unrelated rays
+    cross it too, at other depths, so the densest crossing wins, not the median); a ray nobody
+    agrees with sits at the median depth of the placed ones (so ``seenBy`` can still be told)."""
     depths: list[float] = []
     for a in obs:
-        mids = []
+        mids, radii = [], []
         for b in obs:
             if b is a or b.photo == a.photo or b.cls != a.cls:
                 continue
@@ -216,10 +218,15 @@ def _place_by_rays(obs: list[_Obs], radius_of: Callable[[dict[str, Any]], float]
             if ca is None:
                 continue
             gap, mid, s, t = ca
-            if s > 0 and t > 0 and gap <= max(radius_of(a.det), radius_of(b.det)):
+            r = max(radius_of(a.det), radius_of(b.det))
+            if s > 0 and t > 0 and gap <= r:
                 mids.append(mid)
+                radii.append(r)
         if mids:
-            a.point = np.median(np.array(mids), axis=0)
+            m = np.array(mids)
+            near = np.linalg.norm(m[:, None, :] - m[None, :, :], axis=2) <= max(radii)
+            best = int(np.argmax(near.sum(axis=1)))
+            a.point = m[near[best]].mean(axis=0)
             depths.append(float(np.linalg.norm(a.point - a.origin)))
     if depths:
         depth = float(np.median(depths))
@@ -229,11 +236,14 @@ def _place_by_rays(obs: list[_Obs], radius_of: Callable[[dict[str, Any]], float]
 
 
 def _confidence(scores: list[float], views: int, seen_by: int | None) -> float | None:
+    """The chance at least one agreeing view is right (noisy-or), times the share of the photos that
+    see the point and agree (0.7 + 0.3 x views / seenBy). Picked on ``tools/detectors/vote_bench.py``
+    over the mean and the best member score."""
     if not scores:
         return None
-    mean = sum(scores) / len(scores)
+    agree = 1.0 - math.prod(1.0 - s for s in scores)
     support = 1.0 if not seen_by else min(1.0, views / seen_by)
-    return round(mean * (0.5 + 0.5 * support), 4)
+    return round(agree * (0.7 + 0.3 * support), 4)
 
 
 def vote(

@@ -103,7 +103,7 @@ def test_three_objects_in_five_views_give_three_drafts():
         assert "singleView" not in d["vote"]
         assert len(d["vote"]["sightings"]) == 4
         assert d["vote"]["placedOn"] == "mesh"
-        assert d["confidence"] == pytest.approx(0.9, abs=1e-6)
+        assert d["confidence"] == pytest.approx(1 - 0.1**5, abs=1e-4)  # five agreeing views
         assert "belowThreshold" not in d
     assert stats["clusters"] == 3
     assert stats["merged"] == 12
@@ -120,8 +120,8 @@ def test_lone_box_seen_by_five_is_kept_and_flagged():
     assert flagged["vote"]["seenBy"] == 5
     assert flagged["vote"]["singleView"] is True
     assert flagged["vote"]["score"] == 0.95
-    # 0.95 x (0.5 + 0.5 x 1/5) = 0.57: under the detector's 0.8
-    assert flagged["confidence"] == pytest.approx(0.57, abs=1e-4)
+    # 0.95 x (0.7 + 0.3 x 1/5) = 0.722: under the detector's 0.8
+    assert flagged["confidence"] == pytest.approx(0.722, abs=1e-4)
     assert flagged["belowThreshold"] is True
     assert stats["singleView"] == 1
 
@@ -168,7 +168,7 @@ def test_best_scored_member_stands_for_the_cluster():
     assert len(out) == 1
     assert out[0]["id"] == "p1"
     assert out[0]["vote"]["score"] == 0.95
-    assert out[0]["confidence"] == pytest.approx((0.7 + 0.95 + 0.8) / 3, abs=1e-4)
+    assert out[0]["confidence"] == pytest.approx(1 - 0.3 * 0.05 * 0.2, abs=1e-4)
     assert {s["photo"] for s in out[0]["vote"]["sightings"]} == {"p0", "p2"}
 
 
