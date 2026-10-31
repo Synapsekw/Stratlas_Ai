@@ -326,7 +326,7 @@ T20 and T21 share no file: T20 edits `projectActions.ts`, T21 edits `index.ts` a
 
 - Unit tests: named in each task (vitest).
 - E2E added: `apps/desktop/e2e/flyability-import.spec.ts` (two synthetic cases, one `@realdata` that skips). No existing spec changes.
-- Contract changes: none. `MenuTarget` `issues`, `IssueListActions.issueMenu`, `IssueRegister` `issueFilter`, `@aio/project/flags` and the `stratlas.activeSpace` preference are internal to the app; no IPC, manifest or file schema changes, so no row in `docs/architecture/contract-changes.md`.
+- Contract changes: one file schema. `flyability-source.json` (`aio.flyability-source/1`), the source note a library drop writes at a new project's root, is additive, local-only and never packed; it has a row in `docs/architecture/contract-changes.md`. `MenuTarget` `issues`, `IssueListActions.issueMenu`, `IssueRegister` `issueFilter`, `@aio/project/flags` and the `stratlas.activeSpace` preference are internal to the app (no IPC or manifest change).
 - Pipeline pack: unchanged.
 
 ## How to test (for the founder, after Batch E)
