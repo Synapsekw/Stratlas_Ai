@@ -92,11 +92,11 @@ const folderIn = (win: Page, date: string, name: string): Locator =>
     .locator(`[data-testid="measure-folder"][data-folder="${name}"]`);
 
 /**
- * Drag a row onto a target the way a person can. With both in view together (the list scrolled
- * by hand: `dragTo` scrolling after the press would slide the row from under the pointer) it is a
- * plain drag. In CI's short window the sidebar list is about 200 px high and a date's folder can
- * be further than that from a row under another date: then the drag is held at the list's edge,
- * which Chromium scrolls under a held drag, until the target is in view (`timeline.spec.ts`).
+ * Drag a row onto a target the way a person can, always with stepped pointer moves: a one-jump
+ * `dragTo` drop onto a date name never registers. In CI's short window the sidebar list is about
+ * 200 px high and a date's folder can be further than that from a row under another date, so the
+ * drag is held at the list's edge, which Chromium scrolls under a held drag, until the target is
+ * in view (`timeline.spec.ts`).
  */
 async function dragOnto(win: Page, row: Locator, target: Locator): Promise<void> {
   const targetEl = await target.elementHandle();
@@ -113,23 +113,6 @@ async function dragOnto(win: Page, row: Locator, target: Locator): Promise<void>
     }
     return b.top < a.top;
   }, targetEl);
-  const inView = async (l: Locator) =>
-    l
-      .evaluate(
-        (el) =>
-          new Promise<number>((done) => {
-            const io = new IntersectionObserver(([e]) => {
-              io.disconnect();
-              done(e?.intersectionRatio ?? 0);
-            });
-            io.observe(el);
-          }),
-      )
-      .then((r) => r > 0.999);
-  if ((await inView(target)) && (await inView(row))) {
-    await row.dragTo(target);
-    return;
-  }
   await row.evaluate((el) => {
     el.scrollIntoView({ block: 'center' });
   });
