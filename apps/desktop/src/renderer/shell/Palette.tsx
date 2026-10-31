@@ -119,6 +119,8 @@ const modeKey = (mode: StageMode): string => shortcutHint(MODE_KEY[mode]);
 // Settings pages move to their own module this becomes that module's list.
 const SETTINGS_PAGE_LABEL: Record<SettingsPage, MessageKey> = {
   ai: 'settings.page.ai',
+  'local-model': 'settings.page.localModel',
+  models: 'settings.page.models',
   usage: 'settings.page.usage',
   privacy: 'settings.page.privacy',
   identity: 'identity.page',
@@ -126,6 +128,7 @@ const SETTINGS_PAGE_LABEL: Record<SettingsPage, MessageKey> = {
   tools: 'settings.page.tools',
   maps: 'settings.page.maps',
   'map-sources': 'settings.page.mapSources',
+  datums: 'settings.page.datums',
   severity: 'settings.page.severity',
   classes: 'settings.page.classes',
   branding: 'settings.page.branding',
@@ -133,6 +136,8 @@ const SETTINGS_PAGE_LABEL: Record<SettingsPage, MessageKey> = {
   appearance: 'settings.page.appearance',
   keyboard: 'settings.page.keyboard',
   about: 'settings.page.about',
+  // listed only while a project is open
+  project: 'settings.page.project',
 };
 
 // ---------------------------------------------------------------- tools, island groups, tabs
@@ -178,13 +183,15 @@ function useIndexedCommands(): PaletteCommand[] {
   const piles = useHasVolumeMeasurements();
   const road = useRoad((x) => x.status === 'ready');
   return useMemo(() => {
-    const settingsPages = (Object.keys(SETTINGS_PAGE_LABEL) as SettingsPage[]).map((id) => ({
-      id,
-      label: t(SETTINGS_PAGE_LABEL[id]),
-      open: () => {
-        shell.getState().openSettingsPage(id);
-      },
-    }));
+    const settingsPages = (Object.keys(SETTINGS_PAGE_LABEL) as SettingsPage[])
+      .filter((id) => project !== null || id !== 'project')
+      .map((id) => ({
+        id,
+        label: t(SETTINGS_PAGE_LABEL[id]),
+        open: () => {
+          shell.getState().openSettingsPage(id);
+        },
+      }));
     if (!project) return paletteIndex({ tools: [], groups: [], tabs: [], settingsPages });
     const onStage = (fn: () => void) => () => {
       shell.getState().go('scene');
