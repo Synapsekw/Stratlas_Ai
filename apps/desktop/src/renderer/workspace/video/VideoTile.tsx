@@ -101,9 +101,10 @@ export function VideoStripStart({ hidden = false }: { hidden?: boolean }): React
               <IconButton icon="x" size="sm" label={t('stage.video.close')} onClick={dock.close} />
             </div>
           </figure>
-          <div className="vtile-show vtile-compact">
+          <div className="vtile-compact">
             <IconButton
               icon="maximize"
+              size="sm"
               label={t('stage.video.popOut')}
               data-testid="video-popout-compact"
               onClick={dock.popOut}

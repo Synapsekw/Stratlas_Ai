@@ -53,7 +53,13 @@ async function popOut(win: Page): Promise<void> {
   const window = win.getByTestId('video-window');
   await expect(async () => {
     if (!(await window.isVisible()))
-      await win.getByTestId('video-popout').click({ timeout: 2_000 });
+      // the tile's Pop out, or the strip's one button where the strip is too narrow for the tile
+      await win
+        .locator(
+          '[data-testid="video-popout"]:visible, [data-testid="video-popout-compact"]:visible',
+        )
+        .first()
+        .click({ timeout: 2_000 });
     await expect(window).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: 15_000 });
 }

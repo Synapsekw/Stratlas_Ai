@@ -67,6 +67,12 @@
 .vdock > .vtile-compact {
   display: none;
 }
+/* the narrow strip's one Pop out button: as slim as it can be, the bar keeps its room */
+.vtile-compact {
+  flex: none;
+  align-items: flex-start;
+  padding-block: var(--sp-1);
+}
 /* closed: one slim button at the strip's start brings the tile back */
 .vtile-show {
   flex: none;
