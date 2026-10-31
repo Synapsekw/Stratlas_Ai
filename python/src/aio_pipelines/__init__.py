@@ -32,7 +32,8 @@ PROTOCOL = "aio.pipelines/1"
 # contains another, and sizes tiles from a detector's objectSizeM and the photo's GSD)) and pack 0.31.0
 # (adds flyability.import, which only an app with the Flyability Inspector import starts) and pack 0.32.0
 # (the multi-view vote folds drafts of one object into one, and adds thermal.hotspots; 0.29.0 and
-# 0.30.0 were reserved and stay unused).
+# 0.30.0 were reserved and stay unused) and pack 0.33.0 (a detect.vlm detector item may carry
+# few-shot example crops for the yes/no check).
 # Each keeps the floor.
 # The app refuses a pack outside the range; the syntax is read by `appRangeAllows` in packages/schema/src/versions.ts
 # (space-separated >=, >, <=, <, =).
