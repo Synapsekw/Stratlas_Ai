@@ -1321,8 +1321,12 @@ select.input option {
   min-width: 0;
 }
 /* the survey date prompt: the text takes the full width and File them / Not now go on a row
-   below it (beside the text they squeezed it to one word a line) */
+   below it (beside the text they squeezed it to one word a line). It scrolls away with the list
+   rather than staying pinned: four lines tall, pinned it hid half of the about 200 px list of a
+   short window, and a row scrolled into view sat under it, where a right-click reached the prompt
+   instead of the row */
 .dtree-note.date-prompt {
+  position: static;
   flex-wrap: wrap;
   row-gap: 4px;
 }
