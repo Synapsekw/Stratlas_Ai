@@ -3,7 +3,7 @@
 // video, and never copies the operator e-mail or a flight's launch location into the result.
 import { spacesOf, type InspectorScan, type ProjectManifest } from '@aio/schema';
 import { readFile, readdir, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 const REQUIRED = ['flights', 'maps', 'pois', 'snapshots'];
 
@@ -124,38 +124,64 @@ export async function scanInspectorExport(
     records(root, 'assets', 'asset.json'),
   ]);
 
-  const mapOf = (type: string, parent: string): Rec | undefined =>
-    maps.find((m) => m.data.parent_type === type && m.data.parent_id === parent);
+  const idOf = (r: Rec): string => {
+    const id = str(r.data.id);
+    return id !== null && id !== '' ? id : basename(r.dir);
+  };
   const spaces = manifest ? spacesOf(manifest) : [];
-  const assetNames = new Map(assets.map((a) => [str(a.data.id), str(a.data.name)]));
-  const poiIds = new Set(pois.map((p) => str(p.data.id)).filter((v): v is string => !!v));
+  const assetNames = new Map(assets.map((a) => [idOf(a), str(a.data.name)]));
+  const poiIds = new Set(pois.map(idOf));
+  const inspIds = inspections.map(idOf);
+  const flightInsp = new Map(flights.map((f) => [idOf(f), str(f.data.inspection_id) ?? '']));
+
+  // Same grouping as the import: a snapshot belongs to its flight's inspection, else to the sole
+  // inspection, else it is skipped; its key is its POI when that is known, else its own.
+  const findings = new Map<string, Set<string>>(inspIds.map((i) => [i, new Set<string>()]));
+  for (const s of snapshots) {
+    let iid = flightInsp.get(str(s.data.flight_id) ?? '');
+    if (iid === undefined || !findings.has(iid)) {
+      if (inspIds.length !== 1) continue;
+      iid = inspIds[0];
+    }
+    const poi = str(s.data.poi_id) ?? '';
+    findings.get(iid ?? '')?.add(poiIds.has(poi) ? poi : 'orphan:' + idOf(s));
+  }
+
+  const mapsOf = (type: string, parent: string): Rec[] =>
+    maps.filter((m) => m.data.parent_type === type && str(m.data.parent_id) === parent);
+  const stamp = (f: Rec): number =>
+    typeof f.data.datetime_utc === 'number' ? f.data.datetime_utc : 0;
 
   const out: InspectorScan['inspections'] = [];
   for (const insp of inspections) {
-    const inspId = str(insp.data.id);
-    if (!inspId) continue;
-    const own = flights.filter((f) => f.data.inspection_id === inspId);
-    const flightIds = new Set(own.map((f) => str(f.data.id)));
-    const merged = mapOf('Inspection', inspId);
-    // A finding is a POI with at least one snapshot taken on one of this inspection's flights.
-    const found = new Set<string>();
-    for (const s of snapshots) {
-      const fid = str(s.data.flight_id);
-      const pid = str(s.data.poi_id);
-      if (fid && pid && flightIds.has(fid) && poiIds.has(pid)) found.add(pid);
+    const inspId = idOf(insp);
+    const own = flights
+      .filter((f) => flightInsp.get(idOf(f)) === inspId)
+      .sort(
+        (x, y) =>
+          stamp(x) - stamp(y) ||
+          (str(x.data.name) ?? '').localeCompare(str(y.data.name) ?? '') ||
+          idOf(x).localeCompare(idOf(y)),
+      );
+    let mergedCloud = false;
+    for (const m of mapsOf('Inspection', inspId)) {
+      if (await hasListed(m, 'point_clouds')) {
+        mergedCloud = true;
+        break;
+      }
     }
     out.push({
       id: inspId,
       name: str(insp.data.name) ?? inspId,
-      mergedCloud: merged ? await hasListed(merged, 'point_clouds') : false,
-      findings: found.size,
+      mergedCloud,
+      findings: findings.get(inspId)?.size ?? 0,
       importedAs:
         spaces.find((s) => s.source?.kind === 'flyability' && s.source.inspectionId === inspId)
           ?.id ?? null,
       flights: await Promise.all(
         own.map(async (f) => {
-          const fid = str(f.data.id) ?? '';
-          const map = mapOf('Flight', fid);
+          const fid = idOf(f);
+          const map = mapsOf('Flight', fid)[0];
           return {
             id: fid,
             name: str(f.data.name) ?? fid,
@@ -168,11 +194,13 @@ export async function scanInspectorExport(
     });
   }
 
-  const assetId = str(inspections[0]?.data.asset_id);
-  return {
-    root,
-    generation: await generationOf(flights),
-    asset: assetId ? (assetNames.get(assetId) ?? null) : null,
-    inspections: out,
-  };
+  let asset: string | null = null;
+  for (const insp of inspections) {
+    const name = assetNames.get(str(insp.data.asset_id) ?? '');
+    if (name) {
+      asset = name;
+      break;
+    }
+  }
+  return { root, generation: await generationOf(flights), asset, inspections: out };
 }

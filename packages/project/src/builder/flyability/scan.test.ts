@@ -1,5 +1,5 @@
 import type { ProjectManifest } from '@aio/schema';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -85,5 +85,49 @@ describe('scanInspectorExport', () => {
     expect(text).not.toContain(FIXTURE_EMAIL);
     expect(text).not.toContain('Old name');
     expect(text).not.toContain('Old flight');
+  });
+
+  async function snapshot(root: string, id: string, extra: Record<string, unknown>): Promise<void> {
+    await mkdir(join(root, 'snapshots', id), { recursive: true });
+    await writeFile(join(root, 'snapshots', id, 'snapshot.json'), JSON.stringify({ id, ...extra }));
+  }
+
+  it('counts orphan and unknown-flight snapshots like the import', async () => {
+    const ids = await writeInspectorFixture(dir);
+    await snapshot(dir, 'orphan-1', { flight_id: ids.flightIds[0], poi_id: '' });
+    await snapshot(dir, 'lost-1', { flight_id: 'nope', poi_id: ids.poiIds[0] });
+    await snapshot(dir, 'lost-2', { flight_id: 'nope', poi_id: 'unknown-poi' });
+    const scan = await scanInspectorExport(dir, null);
+    // 3 POIs, orphan-1 and lost-2 (own keys); lost-1 joins POI 1 in the sole inspection.
+    expect(scan.inspections[0]?.findings).toBe(5);
+  });
+
+  it('groups flights and findings per inspection and skips strays', async () => {
+    const ids = await writeInspectorFixture(dir);
+    const insp2 = 'insp-two';
+    await mkdir(join(dir, 'inspections', insp2), { recursive: true });
+    await writeFile(
+      join(dir, 'inspections', insp2, 'inspection.json'),
+      JSON.stringify({ id: insp2, name: 'Second', asset_id: ids.assetId }),
+    );
+    for (const [fid, at] of [
+      ['fl-late', 200],
+      ['fl-early', 100],
+    ] as const) {
+      await mkdir(join(dir, 'flights', fid), { recursive: true });
+      await writeFile(
+        join(dir, 'flights', fid, 'flight.json'),
+        JSON.stringify({ id: fid, name: fid, inspection_id: insp2, datetime_utc: at }),
+      );
+    }
+    await snapshot(dir, 's-2a', { flight_id: 'fl-late', poi_id: ids.poiIds[1] });
+    await snapshot(dir, 's-stray', { flight_id: 'nope', poi_id: ids.poiIds[1] });
+    const scan = await scanInspectorExport(dir, null);
+    const [first, second] = scan.inspections;
+    expect(first?.flights).toHaveLength(2);
+    expect(first?.findings).toBe(3);
+    expect(second?.flights.map((f) => f.id)).toEqual(['fl-early', 'fl-late']);
+    expect(second?.findings).toBe(1);
+    expect(second?.mergedCloud).toBe(false);
   });
 });
