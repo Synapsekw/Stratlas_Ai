@@ -1,6 +1,6 @@
 import type { EngineStage } from '@aio/engine';
 import { formatRow } from '@aio/survey';
-import { Icon, isShortcut, t, type MessageKey } from '@aio/ui';
+import { Icon, isShortcut, t, toast, type MessageKey } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import {
   useCallback,
@@ -469,23 +469,18 @@ function Legend({ view, hint = true }: { view?: { refused: boolean }; hint?: boo
   );
 }
 
-function Toast() {
+/**
+ * What went wrong in the volumetric layer (a failed compute or draw) goes to the app's toast host
+ * as an error, read out at once; the store's message is taken off once it is handed over.
+ */
+function MessageToToast() {
   const message = useVolumetric((s) => s.message);
   useEffect(() => {
     if (!message) return;
-    const t = setTimeout(() => {
-      volumetric.getState().setMessage(null);
-    }, 2600);
-    return () => {
-      clearTimeout(t);
-    };
+    toast(message, { id: 'volumetric-message', tone: 'error', testId: 'vol-message' });
+    volumetric.getState().setMessage(null);
   }, [message]);
-  if (!message) return null;
-  return (
-    <div className="vol-toast" role="status">
-      {message}
-    </div>
-  );
+  return null;
 }
 
 /**
@@ -638,7 +633,7 @@ export function VolumetricStage({
     <div className="vol-stage">
       <SwipeDivider />
       <Legend hint={hint} />
-      <Toast />
+      <MessageToToast />
     </div>
   );
 }

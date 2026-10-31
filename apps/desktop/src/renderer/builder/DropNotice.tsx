@@ -1,7 +1,32 @@
 import { Icon, useT } from '@aio/ui';
 import { useEffect } from 'react';
+import { useToastNotice } from '../exports/useToastNotice';
 import { otherUndo } from './AlignToNotice';
 import { dropToGround, useDrop } from './dropSession';
+
+function Body() {
+  const t = useT();
+  const notice = useDrop((s) => s.notice);
+  if (!notice) return null;
+  return (
+    <>
+      <div data-testid="drop-text">{notice.text}</div>
+      {notice.action && (
+        <div className="q-toast-acts">
+          <button
+            type="button"
+            className="btn ghost sm"
+            data-testid={`drop-${notice.action.kind}`}
+            onClick={() => void dropToGround.getState().apply()}
+          >
+            <Icon name="undo" size={12} />
+            {notice.action.kind === 'undo' ? t('align.direction.undo') : t('align.direction.redo')}
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
 
 /** "Lowered Cloud 31.2 m (on the DSM)." with Undo; Ctrl+Z and Ctrl+Y while it shows. */
 export function DropNotice() {
@@ -26,38 +51,21 @@ export function DropNotice() {
       window.removeEventListener('keydown', onKey, true);
     };
   }, [notice]);
-  if (!notice) return null;
-  return (
-    <div className="toast" data-testid="drop-notice">
-      <div className="toast-h">
-        <Icon name="chevdown" size={14} />
-        <b>{t('drop.notice')}</b>
-        <span className="toast-grow" />
-        {notice.action && (
-          <button
-            type="button"
-            className="btn ghost sm"
-            data-testid={`drop-${notice.action.kind}`}
-            onClick={() => void dropToGround.getState().apply()}
-          >
-            <Icon name="undo" size={12} />
-            {notice.action.kind === 'undo' ? t('align.direction.undo') : t('align.direction.redo')}
-          </button>
-        )}
-        <button
-          type="button"
-          className="btn ghost icon sm"
-          aria-label={t('syncNotice.dismiss')}
-          onClick={() => {
+  useToastNotice(
+    'drop-notice',
+    notice
+      ? {
+          message: t('drop.notice'),
+          icon: 'chevdown',
+          testId: 'drop-notice',
+          body: Body,
+          closeLabel: t('syncNotice.dismiss'),
+          onDismiss: () => {
             dropToGround.getState().dismiss();
-          }}
-        >
-          <Icon name="x" size={12} />
-        </button>
-      </div>
-      <div className="toast-p" data-testid="drop-text">
-        {notice.text}
-      </div>
-    </div>
+          },
+        }
+      : null,
+    notice,
   );
+  return null;
 }

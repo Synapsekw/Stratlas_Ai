@@ -1,8 +1,9 @@
-import { Icon, useT } from '@aio/ui';
+import { Icon, Progress, useT, type IconName } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useStore } from 'zustand';
-import type { StoreApi } from 'zustand/vanilla';
+import { createStore, type StoreApi } from 'zustand/vanilla';
+import { useToastNotice } from '../exports/useToastNotice';
 import { layerChoices, type LayerChoice } from './layers';
 import type { PlaceSummary, PlacementState } from './store';
 
@@ -25,28 +26,28 @@ export function resultText(t: T, r: PlaceSummary): string {
     .join(' ');
 }
 
-/**
- * Findings on a model, bottom right (spec section 6): "Connect N findings to a model?" with the
- * layer picker, Place and Not now; then "Placed 12 of 14 on Mesh 3 Mar. 2 missed the model."
- * with Undo; then the match suggestions one at a time with Same, Different and Skip all.
- */
-export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> }) {
+/** The last match taken as Same: "AI-31 and AI-12 are tracked as one finding." */
+type Matched = { code: string; other: string } | null;
+interface MatchedState {
+  matched: Matched;
+}
+
+function PlaceBody({
+  store,
+  matchedStore,
+}: {
+  store: StoreApi<PlacementState>;
+  matchedStore: StoreApi<MatchedState>;
+}) {
   const t = useT();
   const s = useStore(store, (x) => x);
   const project = useWorkspace((w) => w.project);
   const dates = useWorkspace((w) => w.dates);
   const issues = useWorkspace((w) => w.issues);
-  /** The last match taken as Same: "AI-31 and AI-12 are tracked as one finding." */
-  const [matched, setMatched] = useState<{ code: string; other: string } | null>(null);
-  const projectId = project?.id ?? null;
-  useEffect(() => {
-    setMatched(null);
-  }, [projectId]);
-  // a new result starts afresh
-  const result = s.result;
-  useEffect(() => {
-    if (result) setMatched(null);
-  }, [result]);
+  const matched = useStore(matchedStore, (x) => x.matched);
+  const setMatched = (m: Matched) => {
+    matchedStore.setState({ matched: m });
+  };
 
   /**
    * Focus inside the notice when a button closed its own section (Place, the last match, Undo,
@@ -60,7 +61,8 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
   };
   useEffect(() => {
     if (!wantFocus.current) return;
-    const root = rootRef.current;
+    // the whole toast: its Undo and Dismiss are in the body, focus may sit on the card
+    const root = rootRef.current?.closest<HTMLElement>('.q-toast') ?? rootRef.current;
     const active = document.activeElement;
     if (!root || (active && active !== document.body && active !== root)) {
       // the notice went, or focus is on a control still there, or it moved away
@@ -73,12 +75,12 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
     if (to instanceof HTMLElement) {
       to.focus();
       wantFocus.current = false;
-    } else if (active !== root) root.focus(); // placing: the result's Undo comes next
+    } else if (active !== rootRef.current) rootRef.current?.focus(); // placing: Undo comes next
   });
 
   const match = s.matches[0];
   const r = s.result;
-  if (!s.offer && !r && !match && !s.error && !s.busy && !s.undoStale && !matched) return null;
+  if (!shows(s, matched)) return null;
 
   const offered = s.offer ? issues.filter((i) => s.offer?.ids.includes(i.id)) : [];
   const choices = project ? layerChoices(project.manifest, dates, offered) : [];
@@ -102,12 +104,10 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
   };
 
   return (
-    <div className="toast" data-testid="place-notice" ref={rootRef} tabIndex={-1}>
+    <div className="q-toast-body" ref={rootRef} tabIndex={-1}>
       {s.offer && (
-        <div className="toast-h" data-testid="place-offer">
-          <Icon name="target" size={14} />
-          <b>{t('place.offer', { count: s.offer.ids.length })}</b>
-          <span className="toast-grow" />
+        <div className="q-toast-row" data-testid="place-offer">
+          <b className="q-toast-grow">{t('place.offer', { count: s.offer.ids.length })}</b>
           <button
             type="button"
             className="btn ghost icon sm"
@@ -124,7 +124,7 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
       )}
       {s.offer &&
         (s.noLayers ? (
-          <div className="toast-p">{t('place.noLayers')}</div>
+          <div>{t('place.noLayers')}</div>
         ) : (
           <>
             <div aria-live="off" style={{ display: 'grid' }}>
@@ -148,7 +148,7 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
                 )}
               </select>
             </div>
-            <div className="toast-p pm-acts">
+            <div className="q-toast-acts">
               <button
                 type="button"
                 className="btn sm"
@@ -177,21 +177,15 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
         ))}
       {s.busy && !s.offer && (
         <>
-          <div className="toast-p" data-testid="place-busy">
-            {t('place.placing', { layer: busyLayer })}
-          </div>
-          <div className="toast-bar busy" aria-hidden="true">
-            <i />
-          </div>
+          <div data-testid="place-busy">{t('place.placing', { layer: busyLayer })}</div>
+          <Progress pct={null} />
         </>
       )}
       {r && (
-        <div className="toast-h" data-testid="place-result">
-          <Icon name={r.placed > 0 ? 'check' : 'warn'} size={14} />
-          <span className="toast-p" data-testid="place-result-text">
+        <div className="q-toast-row" data-testid="place-result">
+          <span className="q-toast-grow" data-testid="place-result-text">
             {resultText(t, r)}
           </span>
-          <span className="toast-grow" />
           {r.placed > 0 && (
             <button
               type="button"
@@ -219,9 +213,8 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
         </div>
       )}
       {(s.undoStale || showError || matched) && (
-        <div className="toast-h">
-          {!r && !s.offer && <Icon name={s.undoStale || showError ? 'warn' : 'check'} size={14} />}
-          <div className="toast-p toast-grow">
+        <div className="q-toast-row">
+          <div className="q-toast-grow">
             {s.undoStale && <div data-testid="place-undo-stale">{t('place.undoStale')}</div>}
             {showError && <div data-testid="place-error">{s.error}</div>}
             {matched && <div data-testid="place-matched">{t('place.matched', matched)}</div>}
@@ -241,10 +234,10 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
       )}
       {match && (
         <div data-testid="place-match">
-          <div className="toast-p">
+          <div>
             {t('place.match', { code: match.code, other: match.otherCode, date: match.date })}
           </div>
-          <div className="toast-p pm-acts">
+          <div className="q-toast-acts">
             <button
               type="button"
               className="btn sm"
@@ -286,4 +279,76 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
       )}
     </div>
   );
+}
+
+/** Whether the notice has anything to say. */
+function shows(s: PlacementState, matched: Matched): boolean {
+  return (
+    s.offer !== null ||
+    s.result !== null ||
+    s.matches.length > 0 ||
+    s.error !== null ||
+    s.busy ||
+    s.undoStale ||
+    matched !== null
+  );
+}
+
+/** The leading icon: a target for the offer, a tick or a warning for what came of it. */
+function iconOf(s: PlacementState, matched: Matched): IconName {
+  if (s.offer) return 'target';
+  if (s.result) return s.result.placed > 0 ? 'check' : 'warn';
+  if (s.undoStale || s.error !== null) return 'warn';
+  return matched ? 'check' : 'target';
+}
+
+/**
+ * Findings on a model, a toast on the host (spec section 6): "Connect N findings to a model?" with
+ * the layer picker, Place and Not now; then "Placed 12 of 14 on Mesh 3 Mar. 2 missed the model."
+ * with Undo; then the match suggestions one at a time with Same, Different and Skip all. Its own
+ * buttons close it (Not now, Dismiss), so the toast has no second close button; Escape is Not now
+ * on the offer and Dismiss after it.
+ */
+export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> }) {
+  const s = useStore(store, (x) => x);
+  const matchedStore = useMemo(() => createStore<MatchedState>(() => ({ matched: null })), []);
+  const matched = useStore(matchedStore, (x) => x.matched);
+  const projectId = useWorkspace((w) => w.project?.id ?? null);
+  useEffect(() => {
+    matchedStore.setState({ matched: null });
+  }, [projectId, matchedStore]);
+  // a new result starts afresh
+  const result = s.result;
+  useEffect(() => {
+    if (result) matchedStore.setState({ matched: null });
+  }, [result, matchedStore]);
+  const Body = useMemo(
+    () =>
+      function PlaceOnModelBody() {
+        return <PlaceBody store={store} matchedStore={matchedStore} />;
+      },
+    [store, matchedStore],
+  );
+  useToastNotice(
+    'place-notice',
+    shows(s, matched)
+      ? {
+          message: '',
+          icon: iconOf(s, matched),
+          testId: 'place-notice',
+          body: Body,
+          closable: false,
+          onDismiss: () => {
+            const now = store.getState();
+            if (now.offer) now.notNow();
+            else {
+              matchedStore.setState({ matched: null });
+              now.dismiss();
+            }
+          },
+        }
+      : null,
+    s.offer ?? s.result,
+  );
+  return null;
 }

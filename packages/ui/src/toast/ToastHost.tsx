@@ -97,6 +97,7 @@ function ToastCard({ toast: x }: { toast: Toast }): ReactElement {
   const [focusedAt, setFocusedAt] = useState<number | null>(null);
   const focus = focusedAt === x.version;
   const hidden = useDocumentHidden();
+  const Body = x.body;
   const dismiss = () => {
     dismissToast(x.id);
     x.onDismiss?.();
@@ -108,6 +109,7 @@ function ToastCard({ toast: x }: { toast: Toast }): ReactElement {
     <div
       className="q-toast"
       data-tone={x.tone}
+      data-body={Body ? '' : undefined}
       data-testid={x.testId ?? 'toast'}
       onPointerEnter={() => {
         setHover(true);
@@ -130,13 +132,20 @@ function ToastCard({ toast: x }: { toast: Toast }): ReactElement {
     >
       <Icon name={x.icon ?? TONE_ICON[x.tone]} size={14} className="q-toast-icon" />
       <div className="q-toast-text">
-        <span className="q-toast-msg" dir="auto">
-          {x.message}
-        </span>
+        {x.message !== '' && (
+          <span className="q-toast-msg" dir="auto">
+            {x.message}
+          </span>
+        )}
         {x.detail !== undefined && (
           <span className="q-toast-detail" dir="auto">
             {x.detail}
           </span>
+        )}
+        {Body && (
+          <div className="q-toast-body">
+            <Body />
+          </div>
         )}
       </div>
       {x.action && (
@@ -152,7 +161,14 @@ function ToastCard({ toast: x }: { toast: Toast }): ReactElement {
           {x.action.label}
         </Button>
       )}
-      <IconButton icon="x" label={t('dialog.close')} onClick={dismiss} />
+      {x.closable !== false && (
+        <IconButton
+          icon="x"
+          label={x.closeLabel ?? t('dialog.close')}
+          data-testid={x.closeTestId}
+          onClick={dismiss}
+        />
+      )}
     </div>
   );
 }

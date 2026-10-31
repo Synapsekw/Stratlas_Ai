@@ -73,11 +73,3 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* the start notice, in the toast stack */
-.toast.tools-notice {
-  border-left-color: var(--s3);
-}
-.toast.tools-notice .toast-p .btn {
-  margin-top: 2px;
-}

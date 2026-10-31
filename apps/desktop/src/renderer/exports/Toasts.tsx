@@ -1,5 +1,5 @@
-import type { CSSProperties } from 'react';
-import { Icon, useT } from '@aio/ui';
+import { Progress, ToastHost, useT } from '@aio/ui';
+import { useMemo } from 'react';
 import { useStore } from 'zustand';
 import { AlignNotice } from '../builder/AlignNotice';
 import { AlignToNotice } from '../builder/AlignToNotice';
@@ -19,40 +19,120 @@ import { PlaceOnModelNotice } from '../placement/PlaceOnModelNotice';
 import { ProcessingToolsNotice } from '../ProcessingToolsNotice';
 import { SyncNotices } from '../team/SyncNotices';
 import { cancelExport, toasts } from './exports';
+import type { Toast as ExportToastState } from './exportModel';
+import { useToastNotice } from './useToastNotice';
+
+function PhotoPicksBody() {
+  const t = useT();
+  return (
+    <div className="q-toast-acts">
+      <button
+        type="button"
+        className="btn ghost sm"
+        onClick={() => {
+          photoPicks.getState().clear();
+        }}
+      >
+        {t('align.photoMenu.clearPicks')}
+      </button>
+    </div>
+  );
+}
 
 /** "3 photos picked" with Clear, while several photo pins are picked. */
 export function PhotoPicksNotice() {
   const t = useT();
   const count = usePhotoPicks((s) => s.picks.length);
-  if (count < 1) return null;
+  useToastNotice(
+    'photo-picks',
+    count > 0
+      ? {
+          message: t('align.photoMenu.picked', { count }),
+          icon: 'photo',
+          testId: 'photo-picks',
+          body: PhotoPicksBody,
+          closable: false,
+        }
+      : null,
+  );
+  return null;
+}
+
+/** A running export's phase, count and bar with Cancel; a finished one's message. */
+function ExportBody({ id }: { id: string }) {
+  const x = useStore(toasts, (s) => s.toasts.find((y) => y.id === id));
+  if (!x) return null;
+  if (x.state !== 'running') return <div data-testid="export-toast-message">{x.message}</div>;
+  const pct = x.total > 0 ? Math.round((x.done / x.total) * 100) : null;
   return (
-    <div className="toast" data-testid="photo-picks">
-      <div className="toast-h">
-        <Icon name="photo" size={14} />
-        <b>{t('align.photoMenu.picked', { count })}</b>
-        <span className="toast-grow" />
+    <>
+      {/* the running progress text is not read out, only the start (title) and the end */}
+      <div aria-hidden="true">
+        {x.phase}
+        {x.total > 1 && (
+          <span className="mono">
+            {' '}
+            {x.done} / {x.total}
+          </span>
+        )}
+      </div>
+      <Progress pct={pct} />
+      <div className="q-toast-acts">
         <button
           type="button"
           className="btn ghost sm"
           onClick={() => {
-            photoPicks.getState().clear();
+            cancelExport(id);
           }}
         >
-          {t('align.photoMenu.clearPicks')}
+          Cancel
         </button>
       </div>
-    </div>
+    </>
   );
 }
 
+/** One export as a toast: running with Cancel, then done or failed until dismissed. */
+function ExportToast({ x }: { x: ExportToastState }) {
+  const running = x.state === 'running';
+  // one body per export, kept so a replace does not remount it
+  const body = useMemo(
+    () =>
+      function ExportToastBody() {
+        return <ExportBody id={x.id} />;
+      },
+    [x.id],
+  );
+  useToastNotice(
+    `export-${x.id}`,
+    {
+      message: x.title,
+      tone: x.state === 'error' ? 'error' : x.state === 'done' ? 'ok' : 'info',
+      icon: x.state === 'error' ? 'warn' : x.state === 'done' ? 'check' : 'download',
+      testId: 'export-toast',
+      body,
+      // running, Cancel is the way out; the close button would hide a job that goes on
+      closable: !running,
+      closeLabel: 'Dismiss',
+      onDismiss: () => {
+        if (toasts.getState().toasts.find((y) => y.id === x.id)?.state !== 'running')
+          toasts.getState().dismiss(x.id);
+      },
+    },
+    x.state,
+  );
+  return null;
+}
+
 /**
- * Export progress toasts and the graphics memory notice, bottom right. The live region stays mounted so screen readers hear an
- * export start (its title) and end (its message); the running progress text is not read out.
+ * The window's toast host, bottom right, and every notice that shows on it: export progress, the
+ * graphics memory notice, undo notices and offers. One shows at a time, the newest first; the rest
+ * wait their turn. The host's live regions stay mounted so screen readers hear a toast arrive.
  */
 export function Toasts() {
   const list = useStore(toasts, (s) => s.toasts);
   return (
-    <div className="toasts" role="status" aria-live="polite">
+    <>
       <GraphicsNotice />
       <DiskChangedNotice />
       <ProcessingToolsNotice />
@@ -69,63 +149,10 @@ export function Toasts() {
       <PlaceOnModelNotice store={placement} />
       <ProjectMapNotice />
       <FarContentNotice />
-      {list.map((t) => {
-        const pct = t.total > 0 ? Math.round((t.done / t.total) * 100) : null;
-        return (
-          <div key={t.id} className={`toast ${t.state}`} data-testid="export-toast">
-            <div className="toast-h">
-              <Icon
-                name={t.state === 'error' ? 'warn' : t.state === 'done' ? 'check' : 'download'}
-                size={14}
-              />
-              <b>{t.title}</b>
-              <span className="toast-grow" />
-              {t.state === 'running' ? (
-                <button
-                  type="button"
-                  className="btn ghost sm"
-                  onClick={() => {
-                    cancelExport(t.id);
-                  }}
-                >
-                  Cancel
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="btn ghost icon sm"
-                  aria-label="Dismiss"
-                  onClick={() => {
-                    toasts.getState().dismiss(t.id);
-                  }}
-                >
-                  <Icon name="x" size={12} />
-                </button>
-              )}
-            </div>
-            {t.state === 'running' ? (
-              <>
-                <div className="toast-p" aria-hidden="true">
-                  {t.phase}
-                  {t.total > 1 && (
-                    <span className="mono">
-                      {' '}
-                      {t.done} / {t.total}
-                    </span>
-                  )}
-                </div>
-                <div className={`toast-bar${pct === null ? ' busy' : ''}`} aria-hidden="true">
-                  <i style={{ '--p': (pct ?? 100) / 100 } as CSSProperties} />
-                </div>
-              </>
-            ) : (
-              <div className="toast-p" data-testid="export-toast-message">
-                {t.message}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
+      {list.map((x) => (
+        <ExportToast key={x.id} x={x} />
+      ))}
+      <ToastHost placement="window" />
+    </>
   );
 }

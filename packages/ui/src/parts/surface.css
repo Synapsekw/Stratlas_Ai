@@ -237,85 +237,12 @@
   overflow: auto;
 }
 
-/* ---------- toasts (moved from reports.css) ---------- */
-.toasts {
-  position: fixed;
-  inset-inline-end: 16px;
-  bottom: 16px;
-  z-index: var(--z-toast);
-  display: grid;
-  gap: 8px;
-  width: 360px;
-}
-.toast {
-  padding: 10px 12px;
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-6);
-  box-shadow: var(--el-2);
-  display: grid;
-  gap: 6px;
-  font-size: var(--t-12);
-  color: var(--fg-1);
-}
-/* the leading status icon; the error one is the cue the left stripe used to give */
-.toast-h > .i:first-child {
-  flex: none;
-  color: var(--acc);
-}
-.toast.error .toast-h > .i:first-child {
-  color: var(--s5);
-}
-.toast-h {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--fg-0);
-}
-.toast-grow {
-  flex: 1;
-}
-.toast-p {
-  overflow-wrap: anywhere;
-}
-.toast-bar {
-  height: 3px;
-  background: var(--bg-3);
-  border-radius: 2px;
-  overflow: hidden;
-}
-.toast-bar i {
-  display: block;
-  height: 100%;
-  width: 100%;
-  background: var(--acc);
-  transform: scaleX(var(--p, 1));
-  transform-origin: left center;
-  transition: transform 0.2s ease-out;
-}
-[dir='rtl'] .toast-bar i {
-  transform-origin: right center;
-}
-.toast-bar.busy i {
-  width: 30%;
-  transform: none;
-  animation: toast-busy 1.1s ease-in-out infinite;
-}
+/* the moving bar of busy progress (lineup.css); the toasts themselves are toast.css */
 @keyframes toast-busy {
   from {
     transform: translateX(-100%);
   }
   to {
     transform: translateX(340%);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .toast-bar i {
-    transition: none;
-  }
-  .toast-bar.busy i {
-    animation: none;
-    width: 100%;
-    opacity: 0.5;
   }
 }

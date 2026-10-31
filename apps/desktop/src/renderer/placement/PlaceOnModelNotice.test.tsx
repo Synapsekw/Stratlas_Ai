@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import type { EditorState, PlaceResult } from '@aio/annotate';
 import { err, ok, type Issue, type ProjectManifest, type Result } from '@aio/schema';
+import { clearToasts, ToastHost } from '@aio/ui';
 import { captureIndex, workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -107,7 +108,12 @@ function mount(
   document.body.append(el);
   const root = createRoot(el);
   act(() => {
-    root.render(<PlaceOnModelNotice store={store} />);
+    root.render(
+      <>
+        <PlaceOnModelNotice store={store} />
+        <ToastHost placement="window" />
+      </>,
+    );
   });
   const q = (id: string) => el.querySelector(`[data-testid="${id}"]`);
   const click = (id: string) => {
@@ -125,6 +131,7 @@ function mount(
     unmount: () => {
       act(() => {
         root.unmount();
+        clearToasts();
       });
       el.remove();
     },
@@ -284,7 +291,9 @@ describe('PlaceOnModelNotice', () => {
     });
     expect(ui.q('place-offer-close')?.getAttribute('aria-label')).toBe('Not now');
     expect(ui.q('place-layer')?.closest('[aria-live="off"]')).not.toBeNull();
-    expect(ui.el.querySelector('[role="alert"]')).toBeNull();
+    // read out politely, not as an alert
+    expect(ui.q('place-notice')?.closest('[role="status"]')).not.toBeNull();
+    expect(ui.q('place-notice')?.querySelector('[role="alert"]')).toBeNull();
     ui.click('place-offer-close');
     expect(ui.store.getState().offer).toBeNull();
     ui.unmount();

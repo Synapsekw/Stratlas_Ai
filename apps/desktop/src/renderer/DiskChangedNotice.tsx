@@ -1,38 +1,15 @@
 import { Icon, t } from '@aio/ui';
 import { useEffect } from 'react';
 import { diskChanged, reloadFromDisk, useDiskChanged, watchDiskChanged } from './diskChanged';
+import { useToastNotice } from './exports/useToastNotice';
 
-/**
- * A save refused because someone else changed the file on the shared folder (compare-before-write):
- * main's sentence, and Reload, which reads the project's records again. Lives in the toast stack,
- * bottom right, until reloaded or dismissed.
- */
-export function DiskChangedNotice() {
-  useEffect(() => watchDiskChanged(), []);
-  const message = useDiskChanged((s) => s.message);
+function DiskChangedBody() {
   const reloading = useDiskChanged((s) => s.reloading);
   const error = useDiskChanged((s) => s.error);
-  if (!message) return null;
   return (
-    <div className="toast error" role="alert" data-testid="disk-changed">
-      <div className="toast-h">
-        <Icon name="warn" size={14} />
-        <b>{t('diskChanged.title')}</b>
-        <span className="toast-grow" />
-        <button
-          type="button"
-          className="btn ghost icon sm"
-          aria-label={t('diskChanged.dismiss')}
-          onClick={() => {
-            diskChanged.getState().dismiss();
-          }}
-        >
-          <Icon name="x" size={12} />
-        </button>
-      </div>
-      <div className="toast-p">{message}</div>
-      {error && <div className="toast-p">{t('diskChanged.failed', { error })}</div>}
-      <div className="toast-p">
+    <>
+      {error && <div>{t('diskChanged.failed', { error })}</div>}
+      <div className="q-toast-acts">
         <button
           type="button"
           className="btn sm"
@@ -45,6 +22,34 @@ export function DiskChangedNotice() {
           {reloading ? t('diskChanged.reloading') : t('diskChanged.reload')}
         </button>
       </div>
-    </div>
+    </>
   );
+}
+
+/**
+ * A save refused because someone else changed the file on the shared folder (compare-before-write):
+ * main's sentence, and Reload, which reads the project's records again. An error toast (read out
+ * at once) until reloaded or dismissed.
+ */
+export function DiskChangedNotice() {
+  useEffect(() => watchDiskChanged(), []);
+  const message = useDiskChanged((s) => s.message);
+  useToastNotice(
+    'disk-changed',
+    message
+      ? {
+          message: t('diskChanged.title'),
+          detail: message,
+          tone: 'error',
+          testId: 'disk-changed',
+          body: DiskChangedBody,
+          closeLabel: t('diskChanged.dismiss'),
+          onDismiss: () => {
+            diskChanged.getState().dismiss();
+          },
+        }
+      : null,
+    message,
+  );
+  return null;
 }

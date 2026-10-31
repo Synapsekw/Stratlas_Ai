@@ -4,7 +4,15 @@ import { join } from 'node:path';
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearToasts, dismissToast, toast, toastQueue, ToastHost, TOAST_QUEUE_MAX } from '.';
+import {
+  clearToasts,
+  dismissToast,
+  Progress,
+  toast,
+  toastQueue,
+  ToastHost,
+  TOAST_QUEUE_MAX,
+} from '.';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
@@ -267,5 +275,44 @@ describe('toast', () => {
     const reduced = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
     expect(reduced).toMatch(/\.q-toast\s*{[^}]*transform:\s*none/);
     expect(css).toMatch(/:root\[data-motion='reduce'\] \.q-toast\s*{[^}]*transform:\s*none/);
+  });
+  it('a body draws under the message; the close button takes a name and test id, or goes', () => {
+    mount(<ToastHost placement="window" />);
+    const Body = () => <button type="button">Reload</button>;
+    say('Changed on disk', { body: Body, closeLabel: 'Dismiss', closeTestId: 'x', testId: 'd' });
+    const card = host.querySelector('[data-testid="d"]');
+    expect(card?.hasAttribute('data-body')).toBe(true);
+    expect(card?.querySelector('.q-toast-body button')?.textContent).toBe('Reload');
+    expect(card?.querySelector('[data-testid="x"]')?.getAttribute('aria-label')).toBe('Dismiss');
+    say('Line up dates', { body: Body, closable: false, testId: 'o' });
+    expect(host.querySelector('[data-testid="o"] [aria-label="Close"]')).toBeNull();
+  });
+
+  it('an empty message leaves only the body', () => {
+    mount(<ToastHost placement="window" />);
+    say('', { body: () => <span>all of it</span> });
+    expect(host.querySelector('.q-toast-msg')).toBeNull();
+    expect(host.querySelector('.q-toast-body')?.textContent).toBe('all of it');
+  });
+});
+
+describe('Progress', () => {
+  it('a labelled bar is a progressbar with its value; unknown has no value; unlabelled is hidden', () => {
+    mount(
+      <>
+        <Progress pct={40} label="Installing" testId="a" />
+        <Progress pct={null} label="Installing" testId="b" />
+        <Progress pct={10} testId="c" />
+      </>,
+    );
+    const a = host.querySelector('[data-testid="a"]');
+    expect(a?.getAttribute('role')).toBe('progressbar');
+    expect(a?.getAttribute('aria-valuenow')).toBe('40');
+    const b = host.querySelector('[data-testid="b"]');
+    expect(b?.hasAttribute('aria-valuenow')).toBe(false);
+    expect(b?.hasAttribute('data-busy')).toBe(true);
+    const c = host.querySelector('[data-testid="c"]');
+    expect(c?.getAttribute('aria-hidden')).toBe('true');
+    expect(c?.hasAttribute('role')).toBe(false);
   });
 });

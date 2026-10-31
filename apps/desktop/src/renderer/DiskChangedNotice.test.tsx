@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { Icon } from '@aio/ui';
+import { clearToasts, Icon, ToastHost } from '@aio/ui';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -14,17 +14,29 @@ afterEach(() => {
   act(() => root?.unmount());
   host.remove();
   diskChanged.getState().dismiss();
+  act(() => {
+    clearToasts();
+  });
 });
 
 describe('error toast', () => {
-  it('leads with the error icon, since the stripe is gone', () => {
+  it('shows on the toast host as an alert, led by the error icon', () => {
     host = document.createElement('div');
     document.body.append(host);
     diskChanged.getState().report('x was changed by someone else since you opened it.');
     root = createRoot(host);
-    act(() => root?.render(<DiskChangedNotice />));
-    const toast = host.querySelector('.toast.error');
-    const lead = toast?.querySelector('.toast-h > svg.i');
+    act(() =>
+      root?.render(
+        <>
+          <DiskChangedNotice />
+          <ToastHost placement="window" />
+        </>,
+      ),
+    );
+    const toast = host.querySelector('[role="alert"] [data-testid="disk-changed"]');
+    expect(toast?.getAttribute('data-tone')).toBe('error');
+    expect(toast?.textContent).toContain('x was changed by someone else since you opened it.');
+    const lead = toast?.querySelector('svg.q-toast-icon');
     expect(lead).not.toBeNull();
     expect(lead?.innerHTML).toBe(
       new DOMParser()

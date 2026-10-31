@@ -9,8 +9,8 @@
  */
 import { brand } from '@aio/brand';
 import type { InstalledPack, PipelinePackStatus } from '@aio/schema';
-import { formatBytes, Icon, t, type IconName, type MessageKey } from '@aio/ui';
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { formatBytes, Icon, Progress, t, type IconName, type MessageKey } from '@aio/ui';
+import { useEffect, useRef, useState } from 'react';
 import { AdvancedPipelines } from '../../processing/AdvancedPipelines';
 import { processingTools, resumeAfterTools, useProcessingTools } from '../../processingTools';
 import { useShell } from '../../shell';
@@ -153,16 +153,7 @@ function Install() {
               {t('tools.cancel')}
             </button>
           </div>
-          <div
-            className={`toast-bar${running.pct === null ? ' busy' : ''}`}
-            role="progressbar"
-            aria-label={t('tools.progress.label')}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            {...(running.pct === null ? {} : { 'aria-valuenow': running.pct })}
-          >
-            <i style={{ '--p': (running.pct ?? 100) / 100 } as CSSProperties} />
-          </div>
+          <Progress pct={running.pct} label={t('tools.progress.label')} />
         </div>
       )}
       {replace && (

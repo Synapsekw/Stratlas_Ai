@@ -1,7 +1,32 @@
 import { Icon, useT } from '@aio/ui';
 import { useEffect } from 'react';
+import { useToastNotice } from '../exports/useToastNotice';
 import { positionEdit, usePositionEdit } from './alignSession';
 import { otherUndo } from './AlignToNotice';
+
+function Body() {
+  const t = useT();
+  const notice = usePositionEdit((s) => s.notice);
+  if (!notice) return null;
+  return (
+    <>
+      <div data-testid="position-text">{notice.text}</div>
+      {notice.action && (
+        <div className="q-toast-acts">
+          <button
+            type="button"
+            className="btn ghost sm"
+            data-testid={`position-${notice.action.kind}`}
+            onClick={() => void positionEdit.getState().apply()}
+          >
+            <Icon name="undo" size={12} />
+            {notice.action.kind === 'undo' ? t('align.direction.undo') : t('align.direction.redo')}
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
 
 /** "Moved 12 photos." with Undo; Ctrl+Z and Ctrl+Y while it shows (as Align to). */
 export function EditPositionNotice() {
@@ -26,38 +51,21 @@ export function EditPositionNotice() {
       window.removeEventListener('keydown', onKey, true);
     };
   }, [notice]);
-  if (!notice) return null;
-  return (
-    <div className="toast" data-testid="position-notice">
-      <div className="toast-h">
-        <Icon name="crosshair" size={14} />
-        <b>{t('position.edit')}</b>
-        <span className="toast-grow" />
-        {notice.action && (
-          <button
-            type="button"
-            className="btn ghost sm"
-            data-testid={`position-${notice.action.kind}`}
-            onClick={() => void positionEdit.getState().apply()}
-          >
-            <Icon name="undo" size={12} />
-            {notice.action.kind === 'undo' ? t('align.direction.undo') : t('align.direction.redo')}
-          </button>
-        )}
-        <button
-          type="button"
-          className="btn ghost icon sm"
-          aria-label={t('syncNotice.dismiss')}
-          onClick={() => {
+  useToastNotice(
+    'position-notice',
+    notice
+      ? {
+          message: t('position.edit'),
+          icon: 'crosshair',
+          testId: 'position-notice',
+          body: Body,
+          closeLabel: t('syncNotice.dismiss'),
+          onDismiss: () => {
             positionEdit.getState().dismiss();
-          }}
-        >
-          <Icon name="x" size={12} />
-        </button>
-      </div>
-      <div className="toast-p" data-testid="position-text">
-        {notice.text}
-      </div>
-    </div>
+          },
+        }
+      : null,
+    notice,
   );
+  return null;
 }

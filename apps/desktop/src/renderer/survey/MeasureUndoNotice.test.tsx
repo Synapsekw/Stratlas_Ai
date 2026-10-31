@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type { SurveyMeasurement } from '@aio/schema';
+import { clearToasts, ToastHost } from '@aio/ui';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -47,13 +48,21 @@ beforeEach(() => {
   host = document.body.appendChild(document.createElement('div'));
   root = createRoot(host);
   act(() => {
-    root?.render(<MeasureUndoNotice />);
+    root?.render(
+      <>
+        <MeasureUndoNotice />
+        <ToastHost placement="window" />
+      </>,
+    );
   });
 });
 afterEach(() => {
   act(() => root?.unmount());
   root = undefined;
   host.remove();
+  act(() => {
+    clearToasts();
+  });
 });
 
 describe('MeasureUndoNotice', () => {

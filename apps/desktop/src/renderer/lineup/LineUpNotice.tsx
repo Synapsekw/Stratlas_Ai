@@ -1,9 +1,35 @@
-import { Button, Icon, IconButton, useT } from '@aio/ui';
-import { useEffect } from 'react';
+import { Button, useT } from '@aio/ui';
+import { useEffect, useMemo } from 'react';
 import { useStore } from 'zustand';
 import type { StoreApi } from 'zustand/vanilla';
 import { otherUndo } from '../builder/AlignToNotice';
+import { useToastNotice } from '../exports/useToastNotice';
 import { lineUpApp, type LineUpStore } from './lineUpStore';
+
+function NoticeBody({ store }: { store: StoreApi<LineUpStore> }) {
+  const t = useT();
+  const notice = useStore(store, (s) => s.notice);
+  if (!notice) return null;
+  return (
+    <>
+      <div data-testid="lineup-text" dir="auto">
+        {notice.text}
+      </div>
+      {notice.action && (
+        <div className="q-toast-acts">
+          <Button
+            variant="quiet"
+            icon="undo"
+            data-testid={`lineup-${notice.action.kind}`}
+            onClick={() => void store.getState().apply()}
+          >
+            {notice.action.kind === 'undo' ? t('align.direction.undo') : t('align.direction.redo')}
+          </Button>
+        </div>
+      )}
+    </>
+  );
+}
 
 function Notice({ store }: { store: StoreApi<LineUpStore> }) {
   const t = useT();
@@ -28,36 +54,30 @@ function Notice({ store }: { store: StoreApi<LineUpStore> }) {
       window.removeEventListener('keydown', onKey, true);
     };
   }, [notice, store]);
-  if (!notice) return null;
-  return (
-    <div className="toast" data-testid="lineup-notice">
-      <div className="toast-h">
-        <Icon name="crosshair" size={14} />
-        <b>{t('lineUp.title')}</b>
-        <span className="toast-grow" />
-        {notice.action && (
-          <Button
-            variant="quiet"
-            icon="undo"
-            data-testid={`lineup-${notice.action.kind}`}
-            onClick={() => void store.getState().apply()}
-          >
-            {notice.action.kind === 'undo' ? t('align.direction.undo') : t('align.direction.redo')}
-          </Button>
-        )}
-        <IconButton
-          icon="x"
-          label={t('syncNotice.dismiss')}
-          onClick={() => {
-            store.getState().dismiss();
-          }}
-        />
-      </div>
-      <div className="toast-p" data-testid="lineup-text" dir="auto">
-        {notice.text}
-      </div>
-    </div>
+  const Body = useMemo(
+    () =>
+      function LineUpNoticeBody() {
+        return <NoticeBody store={store} />;
+      },
+    [store],
   );
+  useToastNotice(
+    'lineup-notice',
+    notice
+      ? {
+          message: t('lineUp.title'),
+          icon: 'crosshair',
+          testId: 'lineup-notice',
+          body: Body,
+          closeLabel: t('syncNotice.dismiss'),
+          onDismiss: () => {
+            store.getState().dismiss();
+          },
+        }
+      : null,
+    notice,
+  );
+  return null;
 }
 
 /**

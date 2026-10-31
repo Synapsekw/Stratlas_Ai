@@ -1,5 +1,6 @@
 import { formatBytes, Icon, t } from '@aio/ui';
 import { useEffect } from 'react';
+import { useToastNotice } from '../exports/useToastNotice';
 import {
   acceptOffer,
   dismissOffer,
@@ -10,35 +11,15 @@ import {
 import { totalBytes } from './plan';
 import { mapCoverage } from './store';
 
-/**
- * The open project has no detailed street map: the areas that would be downloaded, their size
- * and where from, with Download and Choose areas. After Download (or straight away with the
- * automatic preference on) it says what is now in Downloads. Lives in the toast stack, bottom
- * right; it never blocks, and closing it is an answer too.
- */
-export function ProjectMapNotice() {
-  useEffect(startProjectMapOffers, []);
+function ProjectMapBody() {
   const offer = useProjectMapOffer();
   if (!offer) return null;
   const size = formatBytes(totalBytes(offer.regions));
   const failed = offer.result?.failed ?? [];
   const startedCount = offer.result?.started.length ?? 0;
   return (
-    <div className="toast" data-testid="project-map-notice" data-state={offer.state}>
-      <div className="toast-h">
-        <Icon name={offer.state === 'ask' ? 'map' : 'download'} size={14} />
-        <b>{t(offer.state === 'ask' ? 'maps.offer.title' : 'maps.offer.startedTitle')}</b>
-        <span className="toast-grow" />
-        <button
-          type="button"
-          className="btn ghost icon sm"
-          aria-label={t('maps.offer.dismiss')}
-          onClick={dismissOffer}
-        >
-          <Icon name="x" size={12} />
-        </button>
-      </div>
-      <div className="toast-p" dir="auto">
+    <>
+      <div dir="auto">
         {offer.state === 'ask'
           ? t('maps.offer.text', { project: offer.name, size })
           : offer.state === 'starting'
@@ -58,11 +39,11 @@ export function ProjectMapNotice() {
         ))}
       </ul>
       {failed.map((f) => (
-        <div key={f.id} className="toast-p pm-failed" role="alert">
+        <div key={f.id} className="pm-failed" role="alert">
           {t('maps.offer.failed', { label: f.label, error: f.error })}
         </div>
       ))}
-      <div className="toast-p pm-acts">
+      <div className="q-toast-acts">
         {offer.state === 'ask' ? (
           <>
             <button type="button" className="btn sm primary" onClick={() => void acceptOffer()}>
@@ -87,6 +68,33 @@ export function ProjectMapNotice() {
           </button>
         )}
       </div>
-    </div>
+    </>
   );
+}
+
+/**
+ * The open project has no detailed street map: the areas that would be downloaded, their size
+ * and where from, with Download and Choose areas. After Download (or straight away with the
+ * automatic preference on) it says what is now in Downloads. A toast on the host; it never
+ * blocks, and closing it is an answer too.
+ */
+export function ProjectMapNotice() {
+  useEffect(startProjectMapOffers, []);
+  const offer = useProjectMapOffer();
+  const ask = offer?.state === 'ask';
+  useToastNotice(
+    'project-map-notice',
+    offer
+      ? {
+          message: t(ask ? 'maps.offer.title' : 'maps.offer.startedTitle'),
+          icon: ask ? 'map' : 'download',
+          testId: 'project-map-notice',
+          body: ProjectMapBody,
+          closeLabel: t('maps.offer.dismiss'),
+          onDismiss: dismissOffer,
+        }
+      : null,
+    offer?.name,
+  );
+  return null;
 }

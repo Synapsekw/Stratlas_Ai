@@ -4302,7 +4302,7 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
   margin: 6px 0 0;
 }
 
-/* ---------- settings: maps for your projects, and its notice in the toast stack ---------- */
+/* ---------- settings: maps for your projects, and its notice on the toast host ---------- */
 .pm-plan td:first-child,
 .pm-plan th:first-child {
   width: 28px;
@@ -4369,11 +4369,6 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-}
-.toast .pm-acts {
-  display: flex;
-  gap: 6px;
-  margin-top: 2px;
 }
 .pm-failed {
   color: var(--danger-ink);

@@ -1,8 +1,9 @@
 import { brand } from '@aio/brand';
-import { Icon, t } from '@aio/ui';
+import { t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect } from 'react';
 import { useStore } from 'zustand';
+import { useToastNotice } from './exports/useToastNotice';
 import { photoUi } from './photogrammetry/store';
 import { isPlayer } from './player';
 import {
@@ -14,6 +15,23 @@ import {
 import { useProcessing } from './processing/store';
 import { useShell } from './shell';
 
+function ToolsNoticeBody() {
+  return (
+    <div className="q-toast-acts">
+      <button
+        type="button"
+        className="btn sm"
+        data-testid="tools-notice-open"
+        onClick={() => {
+          openProcessingTools();
+        }}
+      >
+        {t('tools.notice.update')}
+      </button>
+    </div>
+  );
+}
+
 /**
  * The one quiet notice about the processing tools: once a project is open, when the pipeline pack
  * is missing, too old for what this version does, or not made for it. **Update processing tools**
@@ -21,7 +39,7 @@ import { useShell } from './shell';
  * comes back only when another pack, or none, is the problem. Never in a read-only package (it
  * runs no jobs), never in an automated run, and never beside a panel that says the same: Settings,
  * the Create maps from photos dialog, the Processing drawer's "Processing cannot run yet". Lives
- * in the toast stack, bottom right.
+ * as a toast on the host.
  */
 export function ProcessingToolsNotice() {
   const open = useWorkspace((s) => s.project !== null);
@@ -38,50 +56,43 @@ export function ProcessingToolsNotice() {
     if (open) void processingTools.getState().load();
   }, [open]);
   const key = packNoticeKey(status);
-  if (!open || player || installing || !status || key === null || key === dismissed) return null;
   // not where the same thing is already said: Settings, the Create maps dialog, and the
   // Processing drawer, which shows when no tools can be used at all
-  const drawerSaysIt = drawerOpen && status.state !== 'too-old';
-  if (screen === 'settings' || photoOpen || drawerSaysIt) return null;
-  const product = brand.productName;
-  const missing = status.state === 'missing';
-  return (
-    <div className="toast tools-notice" data-testid="tools-notice" data-state={status.state}>
-      <div className="toast-h">
-        <Icon name="warn" size={14} />
-        <b>{t(missing ? 'tools.notice.missing.title' : 'tools.notice.tooOld.title')}</b>
-        <span className="toast-grow" />
-        <button
-          type="button"
-          className="btn ghost icon sm"
-          aria-label={t('tools.notice.dismiss')}
-          data-testid="tools-notice-dismiss"
-          onClick={() => {
+  const drawerSaysIt = drawerOpen && status?.state !== 'too-old';
+  const show =
+    open &&
+    !player &&
+    !installing &&
+    status !== null &&
+    key !== null &&
+    key !== dismissed &&
+    screen !== 'settings' &&
+    !photoOpen &&
+    !drawerSaysIt;
+  const missing = status?.state === 'missing';
+  useToastNotice(
+    'tools-notice',
+    show
+      ? {
+          message: t(missing ? 'tools.notice.missing.title' : 'tools.notice.tooOld.title'),
+          detail: missing
+            ? t('tools.notice.missing')
+            : status.state === 'too-old'
+              ? t('tools.notice.tooOld', {
+                  version: status.version ?? '',
+                  product: brand.productName,
+                })
+              : t('tools.notice.incompatible', { product: brand.productName }),
+          tone: 'warn',
+          testId: 'tools-notice',
+          body: ToolsNoticeBody,
+          closeLabel: t('tools.notice.dismiss'),
+          closeTestId: 'tools-notice-dismiss',
+          onDismiss: () => {
             processingTools.getState().dismissNotice();
-          }}
-        >
-          <Icon name="x" size={12} />
-        </button>
-      </div>
-      <div className="toast-p">
-        {missing
-          ? t('tools.notice.missing')
-          : status.state === 'too-old'
-            ? t('tools.notice.tooOld', { version: status.version ?? '', product })
-            : t('tools.notice.incompatible', { product })}
-      </div>
-      <div className="toast-p">
-        <button
-          type="button"
-          className="btn sm"
-          data-testid="tools-notice-open"
-          onClick={() => {
-            openProcessingTools();
-          }}
-        >
-          {t('tools.notice.update')}
-        </button>
-      </div>
-    </div>
+          },
+        }
+      : null,
   );
+  return null;
 }

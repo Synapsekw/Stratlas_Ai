@@ -7,8 +7,8 @@
  * downloaded. Modelled on the processing tools section beside it (ProcessingTools.tsx).
  */
 import type { HardwareCheck } from '@aio/schema';
-import { Icon, t, Tip } from '@aio/ui';
-import { useEffect, useState, type CSSProperties } from 'react';
+import { Icon, Progress, t, Tip } from '@aio/ui';
+import { useEffect, useState } from 'react';
 import { analyticsPack, useAnalyticsPack } from '../../analyticsPack';
 import { useShell } from '../../shell';
 import { rendererPlatform } from '../../shell/caption';
@@ -214,16 +214,7 @@ function Install() {
               {t('detect.preset.settings.cancel')}
             </button>
           </div>
-          <div
-            className={`toast-bar${running.pct === null ? ' busy' : ''}`}
-            role="progressbar"
-            aria-label={t('detect.preset.settings.progress')}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            {...(running.pct === null ? {} : { 'aria-valuenow': running.pct })}
-          >
-            <i style={{ '--p': (running.pct ?? 100) / 100 } as CSSProperties} />
-          </div>
+          <Progress pct={running.pct} label={t('detect.preset.settings.progress')} />
         </div>
       )}
       {replace && (

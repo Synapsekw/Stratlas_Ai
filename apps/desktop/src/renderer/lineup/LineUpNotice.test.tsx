@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import type { CaptureLineUp } from '@aio/schema';
+import { clearToasts, ToastHost } from '@aio/ui';
 import { createWorkspace } from '@aio/workspace';
-import { act } from 'react';
+import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { shell } from '../shell';
@@ -19,6 +20,13 @@ let root: Root | undefined;
 let host: HTMLElement;
 const byId = (id: string) => host.querySelector<HTMLElement>(`[data-testid="${id}"]`);
 
+/** The notices show on the toast host. */
+const withHost = (node: ReactNode) => (
+  <>
+    {node}
+    <ToastHost placement="window" />
+  </>
+);
 const press = (init: KeyboardEventInit, target: EventTarget = document.body) => {
   act(() => {
     target.dispatchEvent(
@@ -51,7 +59,7 @@ async function linedUp() {
     now: () => '2026-10-17T10:00:00.000Z',
   });
   root = createRoot(host);
-  act(() => root?.render(<LineUpNotice store={store} />));
+  act(() => root?.render(withHost(<LineUpNotice store={store} />)));
   await act(async () => {
     await store.getState().open('d1', 'd2');
     store.getState().choose('d1');
@@ -69,6 +77,9 @@ describe('LineUpNotice', () => {
     act(() => root?.unmount());
     root = undefined;
     host.remove();
+    act(() => {
+      clearToasts();
+    });
   });
 
   it('undoes on Ctrl+Z', async () => {
@@ -105,10 +116,12 @@ describe('LineUpNotice', () => {
     const { store, saves } = await linedUp();
     act(() =>
       root?.render(
-        <>
-          <LineUpNotice store={store} />
-          <LineUpDialog store={store} />
-        </>,
+        withHost(
+          <>
+            <LineUpNotice store={store} />
+            <LineUpDialog store={store} />
+          </>,
+        ),
       ),
     );
     await act(async () => {
@@ -139,7 +152,7 @@ describe('LineUpNotice', () => {
 
   it('offers a line-up with Line up dates and Not now', async () => {
     const { store } = await linedUp();
-    act(() => root?.render(<LineUpOffer store={store} />));
+    act(() => root?.render(withHost(<LineUpOffer store={store} />)));
     act(() => {
       store.getState().offerFrom(measureOf(), 'o1|o2');
     });

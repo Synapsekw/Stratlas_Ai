@@ -11,8 +11,8 @@
  * checking a new survey date once its surface is ready (`Settings.autoCheckNewDates`, absent means
  * on; `survey/newDatesWatch.ts`).
  */
-import { Icon, t, type IconName } from '@aio/ui';
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { Icon, Progress, t, type IconName } from '@aio/ui';
+import { useEffect, useRef, useState } from 'react';
 import { odm, useOdm } from '../../odm';
 import { resumeAfterTools, useProcessingTools } from '../../processingTools';
 import { shell, useShell } from '../../shell';
@@ -378,16 +378,7 @@ export function ProcessingEngine() {
       {view.progress && (
         <div className="pe-progress" data-testid="engine-progress">
           <span>{view.progress.label}</span>
-          <div
-            className={`toast-bar${view.progress.pct === null ? ' busy' : ''}`}
-            role="progressbar"
-            aria-label={phase ?? ''}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            {...(view.progress.pct === null ? {} : { 'aria-valuenow': view.progress.pct })}
-          >
-            <i style={{ '--p': (view.progress.pct ?? 100) / 100 } as CSSProperties} />
-          </div>
+          <Progress pct={view.progress.pct} label={phase ?? ''} />
         </div>
       )}
 

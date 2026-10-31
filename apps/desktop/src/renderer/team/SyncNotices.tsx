@@ -1,7 +1,8 @@
 import type { IpcEvent } from '@aio/schema';
-import { Icon, t, useT } from '@aio/ui';
+import { t, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useState } from 'react';
+import { useToastNotice } from '../exports/useToastNotice';
 
 type Notice = IpcEvent<'sync:notice'>['notices'][number];
 
@@ -25,9 +26,32 @@ export function noticeText(n: Notice, codeOf: (id: string) => string | undefined
     : t('syncNotice.clockAhead', { who, ahead });
 }
 
+/** One notice as a toast; Dismiss takes it off the list. */
+function SyncNotice({
+  id,
+  notice,
+  text,
+  onDismiss,
+}: {
+  id: string;
+  notice: Notice;
+  text: string;
+  onDismiss: () => void;
+}) {
+  useToastNotice(id, {
+    message: t(notice.kind === 'recode' ? 'syncNotice.recodeTitle' : 'syncNotice.clockTitle'),
+    detail: text,
+    icon: notice.kind === 'recode' ? 'refresh' : 'warn',
+    testId: 'sync-notice',
+    closeLabel: t('syncNotice.dismiss'),
+    onDismiss,
+  });
+  return null;
+}
+
 /**
  * Notices after a sync or an import (`sync:notice`, M9 T4): a device whose clock is ahead, and
- * issue codes renumbered because two copies made the same code apart. Shown in the toast stack
+ * issue codes renumbered because two copies made the same code apart. Each is a toast on the host
  * for the open project until dismissed.
  */
 export function SyncNotices() {
@@ -49,26 +73,15 @@ export function SyncNotices() {
   return (
     <>
       {shown.map(({ key, notice }) => (
-        <div key={key} className="toast" data-testid="sync-notice">
-          <div className="toast-h">
-            <Icon name={notice.kind === 'recode' ? 'refresh' : 'warn'} size={14} />
-            <b>
-              {t(notice.kind === 'recode' ? 'syncNotice.recodeTitle' : 'syncNotice.clockTitle')}
-            </b>
-            <span className="toast-grow" />
-            <button
-              type="button"
-              className="btn ghost icon sm"
-              aria-label={t('syncNotice.dismiss')}
-              onClick={() => {
-                setList((old) => old.filter((x) => x.key !== key));
-              }}
-            >
-              <Icon name="x" size={12} />
-            </button>
-          </div>
-          <div className="toast-p">{noticeText(notice, codeOf)}</div>
-        </div>
+        <SyncNotice
+          key={`${projectId ?? ''}:${key}`}
+          id={`sync-notice-${projectId ?? ''}-${key}`}
+          notice={notice}
+          text={noticeText(notice, codeOf)}
+          onDismiss={() => {
+            setList((old) => old.filter((x) => x.key !== key));
+          }}
+        />
       ))}
     </>
   );

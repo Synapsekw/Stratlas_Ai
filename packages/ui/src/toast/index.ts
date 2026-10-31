@@ -12,3 +12,4 @@ export {
   type ToastTone,
 } from './store';
 export { ToastHost, type ToastHostProps } from './ToastHost';
+export { Progress, type ProgressProps } from './Progress';

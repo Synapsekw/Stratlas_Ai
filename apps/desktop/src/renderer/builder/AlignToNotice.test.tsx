@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { emptyOrientation, type ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
+import { clearToasts, ToastHost } from '@aio/ui';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -69,12 +70,22 @@ describe('AlignToNotice', () => {
     act(() => root?.unmount());
     root = undefined;
     host.remove();
+    act(() => {
+      clearToasts();
+    });
   });
 
   it('shows the text and Undo; Ctrl+Z undoes and is stopped, Ctrl+Y redoes', async () => {
     const { alignTo } = await import('./alignSession');
     root = createRoot(host);
-    act(() => root?.render(<AlignToNotice />));
+    act(() =>
+      root?.render(
+        <>
+          <AlignToNotice />
+          <ToastHost placement="window" />
+        </>,
+      ),
+    );
     const spy = vi.fn();
     window.addEventListener('keydown', spy);
     await act(async () => {
@@ -120,7 +131,14 @@ describe('AlignToNotice', () => {
   it('leaves Ctrl+Z to other screens and to a panel with its own undo', async () => {
     const { alignTo } = await import('./alignSession');
     root = createRoot(host);
-    act(() => root?.render(<AlignToNotice />));
+    act(() =>
+      root?.render(
+        <>
+          <AlignToNotice />
+          <ToastHost placement="window" />
+        </>,
+      ),
+    );
     await act(async () => {
       await alignTo.getState().alignTo({ layerIds: ['ph'] }, 'm');
     });
@@ -157,7 +175,14 @@ describe('AlignToNotice', () => {
   it('a project switch takes the notice away', async () => {
     const { alignTo } = await import('./alignSession');
     root = createRoot(host);
-    act(() => root?.render(<AlignToNotice />));
+    act(() =>
+      root?.render(
+        <>
+          <AlignToNotice />
+          <ToastHost placement="window" />
+        </>,
+      ),
+    );
     await act(async () => {
       await alignTo.getState().alignTo({ layerIds: ['ph'] }, 'm');
     });

@@ -1,5 +1,6 @@
 import { Icon, useT } from '@aio/ui';
 import { useEffect } from 'react';
+import { useToastNotice } from '../exports/useToastNotice';
 import { lineUpApp } from '../lineup/lineUpStore';
 import { cleanup } from '../pointcloud/cleanupStore';
 import { shell } from '../shell';
@@ -27,6 +28,30 @@ export function otherUndo(e: KeyboardEvent): boolean {
   );
 }
 
+function AlignToBody() {
+  const t = useT();
+  const notice = useAlignTo((s) => s.notice);
+  if (!notice) return null;
+  return (
+    <>
+      <div data-testid="align-to-text">{notice.text}</div>
+      {notice.action && (
+        <div className="q-toast-acts">
+          <button
+            type="button"
+            className="btn ghost sm"
+            data-testid={`align-to-${notice.action.kind}`}
+            onClick={() => void alignTo.getState().apply()}
+          >
+            <Icon name="undo" size={12} />
+            {notice.action.kind === 'undo' ? t('align.direction.undo') : t('align.direction.redo')}
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
 /** "Aligned 214 photos to Site model (moved 91.2 km)" with Undo; Ctrl+Z and Ctrl+Y while it shows. */
 export function AlignToNotice() {
   const t = useT();
@@ -50,38 +75,21 @@ export function AlignToNotice() {
       window.removeEventListener('keydown', onKey, true);
     };
   }, [notice]);
-  if (!notice) return null;
-  return (
-    <div className="toast" data-testid="align-to-notice">
-      <div className="toast-h">
-        <Icon name="target" size={14} />
-        <b>{t('align.to.notice')}</b>
-        <span className="toast-grow" />
-        {notice.action && (
-          <button
-            type="button"
-            className="btn ghost sm"
-            data-testid={`align-to-${notice.action.kind}`}
-            onClick={() => void alignTo.getState().apply()}
-          >
-            <Icon name="undo" size={12} />
-            {notice.action.kind === 'undo' ? t('align.direction.undo') : t('align.direction.redo')}
-          </button>
-        )}
-        <button
-          type="button"
-          className="btn ghost icon sm"
-          aria-label={t('syncNotice.dismiss')}
-          onClick={() => {
+  useToastNotice(
+    'align-to-notice',
+    notice
+      ? {
+          message: t('align.to.notice'),
+          icon: 'target',
+          testId: 'align-to-notice',
+          body: AlignToBody,
+          closeLabel: t('syncNotice.dismiss'),
+          onDismiss: () => {
             alignTo.getState().dismiss();
-          }}
-        >
-          <Icon name="x" size={12} />
-        </button>
-      </div>
-      <div className="toast-p" data-testid="align-to-text">
-        {notice.text}
-      </div>
-    </div>
+          },
+        }
+      : null,
+    notice,
   );
+  return null;
 }

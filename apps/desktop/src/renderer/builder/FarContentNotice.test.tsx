@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { PackageInfo, ProjectManifest } from '@aio/schema';
-import { t } from '@aio/ui';
+import { clearToasts, t, ToastHost } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -60,7 +60,14 @@ let off: () => void;
 const byId = (id: string) => document.body.querySelector<HTMLElement>(`[data-testid="${id}"]`);
 const mount = () => {
   root = createRoot(host);
-  act(() => root?.render(<FarContentNotice />));
+  act(() =>
+    root?.render(
+      <>
+        <FarContentNotice />
+        <ToastHost placement="window" />
+      </>,
+    ),
+  );
 };
 
 describe('FarContentNotice Align to', () => {
@@ -74,6 +81,9 @@ describe('FarContentNotice Align to', () => {
     act(() => root?.unmount());
     root = undefined;
     host.remove();
+    act(() => {
+      clearToasts();
+    });
     off();
     farNotice.setState({ notice: null });
     shell.setState({ pkg: null });

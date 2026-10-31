@@ -3,6 +3,7 @@
  * time: the newest wins, older ones wait and show when it goes. A toast with the id of one that
  * is still queued or showing replaces it in place (a notice that updates its text).
  */
+import type { ComponentType } from 'react';
 import type { IconName } from '../icons/Icon';
 
 export type ToastTone = 'info' | 'ok' | 'warn' | 'error';
@@ -33,6 +34,17 @@ export interface ToastOptions {
   /** Called when the person dismisses it (the close button or Escape), not when it times out. */
   onDismiss?: () => void;
   testId?: string;
+  /**
+   * More than a line and one button (a notice's progress bar, a picker, several answers): a
+   * component drawn under the message. It reads its own state, so the toast need not be replaced
+   * when that changes.
+   */
+  body?: ComponentType;
+  /** The close button's name (default "Close") and test id. */
+  closeLabel?: string;
+  closeTestId?: string;
+  /** False: no close button, for a toast whose body answers it (Escape still dismisses). */
+  closable?: boolean;
 }
 
 export interface Toast {
@@ -48,6 +60,10 @@ export interface Toast {
   placement?: ToastPlacement;
   onDismiss?: () => void;
   testId?: string;
+  body?: ComponentType;
+  closeLabel?: string;
+  closeTestId?: string;
+  closable?: boolean;
 }
 
 /** Time on screen by tone: errors and warnings stay longer, they may need acting on. */
@@ -87,6 +103,10 @@ export function toast(message: string, opts: ToastOptions = {}): string {
     ...(opts.placement && { placement: opts.placement }),
     ...(opts.onDismiss && { onDismiss: opts.onDismiss }),
     ...(opts.testId !== undefined && { testId: opts.testId }),
+    ...(opts.body && { body: opts.body }),
+    ...(opts.closeLabel !== undefined && { closeLabel: opts.closeLabel }),
+    ...(opts.closeTestId !== undefined && { closeTestId: opts.closeTestId }),
+    ...(opts.closable === false && { closable: false }),
   };
   if (prev) queue = queue.map((x, i) => (i === at ? next : x));
   else queue = [...queue, next].slice(-TOAST_QUEUE_MAX);

@@ -5,7 +5,7 @@ import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { t } from '@aio/ui';
+import { clearToasts, t, ToastHost } from '@aio/ui';
 import { toasts } from '../exports/exports';
 import { PhotoPicksNotice } from '../exports/Toasts';
 import { alignTo } from './alignSession';
@@ -162,7 +162,14 @@ describe('picked photos', () => {
   });
 
   it('the notice shows the count and Clear empties the picks', () => {
-    act(() => root?.render(<PhotoPicksNotice />));
+    act(() =>
+      root?.render(
+        <>
+          <PhotoPicksNotice />
+          <ToastHost placement="window" />
+        </>,
+      ),
+    );
     expect(byId('photo-picks')).toBeNull();
     act(() => {
       photoPicks.getState().add([a, b]);
@@ -171,6 +178,9 @@ describe('picked photos', () => {
     click(byId('photo-picks')?.querySelector('button') ?? null);
     expect(photoPicks.getState().picks).toEqual([]);
     expect(byId('photo-picks')).toBeNull();
+    act(() => {
+      clearToasts();
+    });
   });
 
   it('picks go when a photo or its set is deleted, the project changes, Escape is pressed or the scene unmounts', () => {

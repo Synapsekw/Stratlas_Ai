@@ -49,7 +49,6 @@ const css = `
 .vol-pair { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--sp-2) var(--sp-4); }
 .vol-pair-lbl { font-size: var(--t-11); color: var(--fg-3); }
 .vol-pair-src { grid-column: 1 / -1; margin: 0; font-size: var(--t-11); color: var(--fg-3); }
-.vol-toast { position: absolute; left: 50%; top: 60px; transform: translateX(-50%); padding: 7px 12px; border-radius: var(--r-4); background: var(--bg-3); border: 1px solid var(--line-strong); color: var(--fg-0); font-size: var(--t-12); box-shadow: 0 8px 24px oklch(0 0 0 / .4); pointer-events: none; }
 `;
 
 /** Renders the stylesheet once per document (React 19 hoists and dedupes by href). */

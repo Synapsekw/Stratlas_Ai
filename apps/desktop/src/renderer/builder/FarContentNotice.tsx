@@ -1,18 +1,15 @@
 import { useAnnotateReadOnly } from '@aio/annotate';
-import { ContextMenu, Icon, actionsFor, makeActionCtx, t } from '@aio/ui';
+import { ContextMenu, actionsFor, makeActionCtx, t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
 import { useShell } from '../shell';
+import { useToastNotice } from '../exports/useToastNotice';
 import { toastHost } from '../shell/actions/toastHost';
 import { farNotice, useFarNotice } from './farSession';
 
 const ALIGN_TO = 'photos.alignTo';
 
-/**
- * A layer far from the project origin, with "Re-centre project here" and "Keep"; photos far from
- * the survey data get "Ignore their GPS" instead.
- */
-export function FarContentNotice() {
+function FarBody() {
   const n = useFarNotice((s) => s.notice);
   const pkg = useShell((s) => s.pkg);
   const lookOnly = useAnnotateReadOnly();
@@ -33,33 +30,10 @@ export function FarContentNotice() {
         ).filter((i) => i.id === ALIGN_TO)
       : [];
   return (
-    <div className="toast" data-testid="far-content-notice">
-      <div className="toast-h">
-        <Icon name="target" size={14} />
-        <b>
-          {n.done
-            ? 'Project origin'
-            : n.photoLayers.length > 0 && n.far.length === 0
-              ? 'Photos away from the survey'
-              : 'Far from the project origin'}
-        </b>
-        <span className="toast-grow" />
-        <button
-          type="button"
-          className="btn ghost icon sm"
-          aria-label="Dismiss"
-          onClick={() => {
-            farNotice.getState().dismiss();
-          }}
-        >
-          <Icon name="x" size={12} />
-        </button>
-      </div>
-      <div className="toast-p" data-testid="far-content-text">
-        {n.text}
-      </div>
+    <>
+      <div data-testid="far-content-text">{n.text}</div>
       {!n.done && (
-        <div className="toast-p pm-acts">
+        <div className="q-toast-acts">
           {n.canRecentre && (
             <button
               type="button"
@@ -124,6 +98,35 @@ export function FarContentNotice() {
           }}
         />
       )}
-    </div>
+    </>
   );
+}
+
+/**
+ * A layer far from the project origin, with "Re-centre project here" and "Keep"; photos far from
+ * the survey data get "Ignore their GPS" instead.
+ */
+export function FarContentNotice() {
+  const n = useFarNotice((s) => s.notice);
+  useToastNotice(
+    'far-content-notice',
+    n
+      ? {
+          message: n.done
+            ? 'Project origin'
+            : n.photoLayers.length > 0 && n.far.length === 0
+              ? 'Photos away from the survey'
+              : 'Far from the project origin',
+          icon: 'target',
+          testId: 'far-content-notice',
+          body: FarBody,
+          closeLabel: 'Dismiss',
+          onDismiss: () => {
+            farNotice.getState().dismiss();
+          },
+        }
+      : null,
+    n?.text,
+  );
+  return null;
 }

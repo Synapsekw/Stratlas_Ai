@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import type { LayerPatch, ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
+import { clearToasts, ToastHost } from '@aio/ui';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -87,12 +88,22 @@ describe('DropNotice', () => {
     act(() => root?.unmount());
     root = undefined;
     host.remove();
+    act(() => {
+      clearToasts();
+    });
   });
 
   it('shows the text and undoes on Ctrl+Z', async () => {
     const { dropToGround } = await import('./dropSession');
     root = createRoot(host);
-    act(() => root?.render(<DropNotice />));
+    act(() =>
+      root?.render(
+        <>
+          <DropNotice />
+          <ToastHost placement="window" />
+        </>,
+      ),
+    );
     await act(async () => {
       await dropToGround.getState().drop(['c']);
     });
@@ -120,7 +131,14 @@ describe('DropNotice', () => {
   it('leaves Ctrl+Z to a field', async () => {
     const { dropToGround } = await import('./dropSession');
     root = createRoot(host);
-    act(() => root?.render(<DropNotice />));
+    act(() =>
+      root?.render(
+        <>
+          <DropNotice />
+          <ToastHost placement="window" />
+        </>,
+      ),
+    );
     await act(async () => {
       await dropToGround.getState().drop(['c']);
     });
@@ -134,7 +152,14 @@ describe('DropNotice', () => {
   it('leaves Ctrl+Z to an open Place model', async () => {
     const { dropToGround } = await import('./dropSession');
     root = createRoot(host);
-    act(() => root?.render(<DropNotice />));
+    act(() =>
+      root?.render(
+        <>
+          <DropNotice />
+          <ToastHost placement="window" />
+        </>,
+      ),
+    );
     await act(async () => {
       await dropToGround.getState().drop(['c']);
     });
@@ -164,6 +189,7 @@ describe('DropNotice', () => {
         <>
           <AlignToNotice />
           <DropNotice />
+          <ToastHost placement="window" />
         </>,
       );
     });
@@ -190,6 +216,7 @@ describe('DropNotice', () => {
         <>
           <AlignToNotice />
           <DropNotice />
+          <ToastHost placement="window" />
         </>,
       );
     });
