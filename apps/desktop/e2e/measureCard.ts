@@ -14,8 +14,8 @@ export const measureCard = (win: Page): Locator => win.getByTestId('survey-panel
 
 /**
  * Select a measurement in the tree and wait for its card, its name in the Rename field. A pile
- * opens in the Volumes tab (its pile panel, `focusPile`); its full volume card is the Measure
- * tab's, which is brought forward for it.
+ * opens in Selection (its pile panel, `focusPile`); its full volume card is Tools > Measure's,
+ * which is brought forward for it.
  */
 export async function focusMeasure(win: Page, label: string): Promise<Locator> {
   await selectMeasure(win, label);
@@ -31,7 +31,7 @@ export async function focusMeasure(win: Page, label: string): Promise<Locator> {
   return card;
 }
 
-/** Select a pile in the tree and wait for its pile panel in the Volumes tab. */
+/** Select a pile in the tree and wait for its pile panel in Selection. */
 export async function focusPile(win: Page, label: string): Promise<Locator> {
   await selectMeasure(win, label);
   const panel = win.getByTestId('pile-panel');

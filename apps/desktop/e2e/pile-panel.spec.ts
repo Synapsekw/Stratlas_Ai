@@ -576,7 +576,7 @@ test('a pile picked in Project, In this project, Measurements opens in Selection
   const panel = win.locator('#wb-panel-selection').getByTestId('selection-pile');
   await expect(panel).toBeVisible();
   // the panel's scroller: the Selection tab's scroll box
-  const scroller = win.locator('.right .wb-panel-scroll').filter({ has: panel });
+  const scroller = win.locator('.right #wb-panel-selection > .wb-panel-scroll');
   await expect(scroller).toHaveCount(1);
   await scroller.evaluate((el) => {
     el.scrollTop = 0;

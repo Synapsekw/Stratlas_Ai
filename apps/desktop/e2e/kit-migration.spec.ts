@@ -30,6 +30,7 @@ import {
 } from './fixtures';
 import { measureRow, measureSaved, pickGroupTab, stockpileTree, volumesView } from './island';
 import { focusMeasure } from './measureCard';
+import { panelTab } from './panel';
 
 /**
  * The kit's figures (net on its default base, `tin`), per pile and date: exact at the site's
@@ -613,8 +614,10 @@ test('the Volumes view lists the kit piles; picking one opens its pile panel wit
     0,
   );
   await north.click({ timeout: 15_000 });
-  // the pile panel: its carried figure in the Volume tile, its status said beside it
-  const panel = view.getByTestId('pile-panel');
+  // the pile panel opens in Selection (D2): its carried figure in the Volume tile, its status
+  // said beside it
+  await expect(panelTab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
+  const panel = win.locator('#wb-panel-selection').getByTestId('pile-panel');
   await expect(panel).toBeVisible();
   await expect(panel.getByTestId('pile-name')).toHaveText('Pile North');
   await expect(panel.getByTestId('pile-status')).toContainText('From an earlier version');
@@ -632,10 +635,12 @@ test('the Volumes view lists the kit piles; picking one opens its pile panel wit
   );
   expect(figure(await rows.nth(1).locator('td').first().innerText())).toBeCloseTo(NORTH_E1, 1);
   await expect(rows.nth(1).locator('td').last()).toHaveText('first');
-  // back to the inventory
+  // back: the pile is let go, and Project > Volumes still lists both
   await panel.getByTestId('pile-back').click();
-  await expect(view.getByTestId('pile-panel')).toHaveCount(0);
-  await expect(view.getByTestId('volumes-pile')).toHaveCount(2);
+  await expect(panel).toHaveCount(0);
+  const again = await volumesView(win);
+  await expect(again.getByTestId('pile-panel')).toHaveCount(0);
+  await expect(again.getByTestId('volumes-pile')).toHaveCount(2);
 });
 
 test('a kit project without a DSM or cloud layer gets a surface per date from its kit DSMs: the pile Profile charts both dates', async ({
@@ -663,7 +668,7 @@ test('a kit project without a DSM or cloud layer gets a surface per date from it
     .getByTestId('volumes-pile')
     .filter({ hasText: 'Pile North' })
     .click({ timeout: 15_000 });
-  const panel = view.getByTestId('pile-panel');
+  const panel = win.locator('#wb-panel-selection').getByTestId('pile-panel');
   await expect(panel).toBeVisible();
   await panel.getByTestId('pile-tab-profile').click();
   const profile = panel.getByTestId('pile-profile');

@@ -21,7 +21,12 @@ const SIZE: [number, number] = [1440, 900];
 /** tokens.css and styles.css: the sidebar, its icon rail and the right panel. */
 const SIDEBAR = 252;
 const RAIL = 52;
-const RIGHT = 360;
+/**
+ * The right panel's default width in the window's band (panelWidth.ts, UI revision D1): 300 px
+ * below 1280, 320 to 1440, 360 above. Set from the window once it opens (`start`).
+ */
+let RIGHT = 360;
+const rightFor = (view: number): number => (view >= 1440 ? 360 : view >= 1280 ? 320 : 300);
 /** The right panel folded: its border and the tab (`--ph-w`). */
 const STRIP = 13;
 /** main/index.ts: the smallest window. */
@@ -62,6 +67,7 @@ async function start(dataRoot: DataRoot): Promise<Run> {
   }, SIZE);
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
+  RIGHT = rightFor(await win.evaluate(() => window.innerWidth));
   return { app, win, network };
 }
 
@@ -399,10 +405,11 @@ async function fold(win: Page, left: boolean, right: boolean): Promise<void> {
   // drawn at that size
   await expect(win.locator('.app[data-fold], .ws[data-fold]')).toHaveCount(0, SETTLED);
   const sidebar = left ? RAIL : SIDEBAR;
-  const panel = right ? STRIP : RIGHT;
+  const view = await win.evaluate(() => window.innerWidth);
+  const panel = right ? STRIP : rightFor(view);
   await expectWidth(win, '.sidebar', sidebar);
   await expectWidth(win, '.right', panel);
-  await expectWidth(win, '.stage', (await win.evaluate(() => window.innerWidth)) - sidebar - panel);
+  await expectWidth(win, '.stage', view - sidebar - panel);
   await expect.poll(() => sceneFits(win), SETTLED).toBe(true);
 }
 
@@ -572,7 +579,7 @@ test('a fold slides the whole panel out before the grid snaps once', async ({ da
   try {
     await openScene(win);
     await expectWidth(win, '.right', RIGHT);
-    // right: the panel and its tab travel until only the strip is left (360 - 13)
+    // right: the panel and its tab travel until only the strip is left (RIGHT - 13)
     const right = await slideEnds(win, 'right', ['.right', '.ph[data-side="right"]']);
     expect(right['.right'] ?? 0).toBeCloseTo(RIGHT - STRIP, 0);
     expect(right['.ph[data-side="right"]'] ?? 0).toBeCloseTo(RIGHT - STRIP, 0);

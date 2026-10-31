@@ -95,17 +95,22 @@ const measure = (win: Page, id: Bench): Promise<Box | null> =>
     };
   }, id);
 
-/** Wheel over the tab until the open bench's end shows (or the tab is at its end). */
+/**
+ * Wheel over the tab until the open bench's end shows (or the tab is at its end). The tab's other
+ * sections follow the bench, so a notch never moves more than half the box: a bigger one could
+ * carry the bench's end past the box's top in one go.
+ */
 async function wheelToEnd(win: Page, id: Bench): Promise<void> {
   const root = win.locator('.right .wb-body .wb-panel-scroll');
   const box = await root.boundingBox();
   if (!box) throw new Error('no bench');
   await win.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  const notch = Math.max(20, Math.min(240, Math.floor(box.height / 2)));
   // (until the bench's end shows: sections under it may scroll on further)
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 120; i++) {
     const at = await measure(win, id);
     if (at?.lastShown || at?.atEnd) break;
-    await win.mouse.wheel(0, 240);
+    await win.mouse.wheel(0, notch);
     await win.waitForTimeout(60);
   }
 }

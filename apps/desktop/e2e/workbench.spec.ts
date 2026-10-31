@@ -150,7 +150,7 @@ test.describe('no pins (D2)', () => {
 
     // and when it stops, the tabs are the same four, in the same order
     await pressM(win);
-    const tabs = win.locator('.ws > .right').getByRole('tablist').first().getByRole('tab');
+    const tabs = win.locator('.ws > .right [id^="wb-tab-"]');
     await expect(tabs).toHaveText([/^Selection/, /^Tools/, /^Layers & display/, /^Project/]);
   });
 });

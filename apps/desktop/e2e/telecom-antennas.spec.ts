@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { PIPELINE_ENV, expect, hasPipelinePython, processingChip, test } from './fixtures';
 import { measureControl } from './island';
+import { openSection } from './panel';
 import { writeTelecomTower } from './telecomFixtures';
 
 interface Inspect {
@@ -186,7 +187,13 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
     win.getByTestId('wb-section-project-antennas').locator('.wb-section-count'),
   ).toHaveText('8');
   await expect(rows.first()).toHaveAttribute('data-north', 'project');
+  // the finished run brought the list (Project, In this project) forward; Detect antennas is
+  // ready again in Tools
+  await openTelecom(win);
   await expect(detect).toBeEnabled();
+  // at the CI size the tools scroll up and down inside the aside, never sideways
+  await expect.poll(() => horizontalOverflow(win)).toBeLessThanOrEqual(0);
+  await openSection(win, 'project', 'project.inThisProject');
   await viewCrown(win);
   // the run lists the units and opens no details: nothing is selected until the person picks
   const card = win.getByTestId('antenna-details');
@@ -219,8 +226,7 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   // the run leaves the filter on To review, so the details walk the 8 drafts, in the list's order
   await expect(card.getByTestId('antenna-details-position')).toHaveText('1 / 8');
   await evidence(win, 'e-card-selected');
-  // at the CI size the tools scroll up and down inside the aside, never sideways
-  await expect.poll(() => horizontalOverflow(win)).toBeLessThanOrEqual(0);
+  // and so does the list, at the CI size
   expect(
     await panel.evaluate((el) => el.scrollWidth - el.clientWidth),
     'the group',
@@ -407,6 +413,8 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   ).toBeVisible();
   if (await win.getByTestId('project-card').first().isVisible()) await openTiny(win);
   else await openTelecom(win);
+  // the inventory is Project's
+  await openSection(win, 'project', 'project.inThisProject');
   // a fresh open selects nothing, and neither does a filter click
   await expect(win.getByTestId('antenna-details')).toHaveCount(0);
   await win.getByTestId('antenna-panel').getByTestId('antenna-filter-all').click();

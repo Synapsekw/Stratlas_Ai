@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import type { PanelTab } from '../src/renderer/workspace/workbench/tabsModel';
 import { PIPELINE_ENV, expect, hasPipelinePython, processingChip, test } from './fixtures';
 import { island, measureControl, openIslandTools } from './island';
-import { benchBody, expectBench, panelSection, panelTab } from './panel';
+import { benchBody, expectBench, openSection, panelSection, panelTab } from './panel';
 import { readRfSectors, writeRfProject } from './rfFixtures';
 import { projectAntennas, writeTelecomTower } from './telecomFixtures';
 
@@ -348,8 +348,12 @@ test.describe('project list: the Antennas group', () => {
       if (await processingChip(win).isVisible()) await evidence(win, 'h-job-running');
       const group = win.getByTestId('wb-section-project-antennas');
       const rows = group.getByTestId('antenna-row');
+      // the finished run brings Project, In this project forward; Detect antennas waits in Tools
       await expect.poll(() => rows.count(), { timeout: 180_000 }).toBe(8);
+      await expect(panelTab(win, 'project')).toHaveAttribute('aria-selected', 'true');
+      await measureControl(win, 'telecom-tool-clearance');
       await expect(detect).toBeEnabled();
+      await openSection(win, 'project', 'project.inThisProject');
 
       // the second unit of the list: its name, id, centre and crop as they were detected
       const victim = rows.nth(1);
@@ -385,11 +389,12 @@ test.describe('project list: the Antennas group', () => {
       await expect.poll(() => record().then((f) => f.deletions.map((d) => d.unitId))).toEqual([id]);
 
       // a new detection run: the deleted unit is not found again
+      await measureControl(win, 'telecom-tool-clearance');
       await detect.click();
       await expect
         .poll(() => savedFile(dir).then((f) => f.run.id), { timeout: 180_000 })
         .not.toBe(runBefore);
-      await expect(detect).toBeEnabled({ timeout: 60_000 });
+      await expect(rows).toHaveCount(7, { timeout: 60_000 });
       const after = await savedFile(dir);
       expect(after.units.length).toBe(7);
       const near = after.units.filter(
@@ -397,8 +402,9 @@ test.describe('project list: the Antennas group', () => {
       );
       expect(near, 'no unit within 0.3 m of the deleted one').toEqual([]);
       expect((await record()).deletions.map((d) => d.unitId)).toEqual([id]);
-      await expect(rows).toHaveCount(7);
       await evidence(win, 'j-after-rerun');
+      await measureControl(win, 'telecom-tool-clearance');
+      await expect(detect).toBeEnabled({ timeout: 60_000 });
     });
   });
 });

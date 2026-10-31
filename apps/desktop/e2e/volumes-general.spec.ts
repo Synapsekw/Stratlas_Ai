@@ -254,6 +254,9 @@ test.describe('volumes and comparisons', () => {
     panel = await focus(win, 'Stockpile B');
     await settled(panel, 1);
     for (const label of ['Stockpile A', 'Stockpile B']) await markMeasure(win, label);
+    // the bulk totals sit with the save controls in Tools > Measure (a marked pile shows in
+    // Selection)
+    await measureSaved(win);
     const bulk = win.getByTestId('survey-bulk');
     await expect(bulk).toBeVisible();
     await (await measureSaved(win)).getByTestId('survey-list-save').click();

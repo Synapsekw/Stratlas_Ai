@@ -27,7 +27,7 @@ test('four tabs, no overflow, width unchanged across tabs at 1100 x 720', async 
   test.setTimeout(120_000);
   await openTiny(win);
   const side = win.locator('.ws > .right');
-  const tabs = side.getByRole('tablist').first().getByRole('tab');
+  const tabs = side.locator('[id^="wb-tab-"]');
   await expect(tabs).toHaveText([/^Selection/, /^Tools/, /^Layers & display/, /^Project/]);
   await expect(side.getByRole('button', { name: 'More tabs', exact: true })).toHaveCount(0);
   // every tab sits on the row, inside the panel, its name not cut off

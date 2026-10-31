@@ -181,7 +181,7 @@ test.describe('project list: groups and category order', () => {
     await expect(panelTab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
     const card = win.locator('#wb-panel-selection').getByTestId('selection-measurement');
     await expect(card.getByTestId('survey-panel')).toHaveCount(1);
-    await expect(card.getByTestId('survey-panel')).toContainText('Line B');
+    await expect(card.getByTestId('survey-panel')).toHaveAccessibleName('Line B');
     await evidence(win, 'c-measurement-selection');
 
     // Project > In this project has it as the selected row, its panel under it
@@ -199,7 +199,7 @@ test.describe('project list: groups and category order', () => {
     // another pick brings Selection back with that one's card
     await selectMeasure(win, 'Spot C');
     await expect(panelTab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
-    await expect(card.getByTestId('survey-panel')).toContainText('Spot C');
+    await expect(card.getByTestId('survey-panel')).toHaveAccessibleName('Spot C');
   });
 
   test('an issue row opens its card in Selection', async ({ win, dataRoot }) => {
