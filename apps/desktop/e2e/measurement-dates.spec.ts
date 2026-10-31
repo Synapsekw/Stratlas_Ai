@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
 import { measureControl, measureSaved, measureTree, stageMode } from './island';
 import { openDemo, prepareSurveys, setAutoPrepare } from './surveyJobs';
+import { dragOnto } from './treeDrag';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
@@ -90,52 +91,6 @@ const folderIn = (win: Page, date: string, name: string): Locator =>
   win
     .getByTestId(`date-folder-${date}`)
     .locator(`[data-testid="measure-folder"][data-folder="${name}"]`);
-
-/**
- * Drag a row onto a target the way a person can, always with stepped pointer moves: a one-jump
- * `dragTo` drop onto a date name never registers. In CI's short window the sidebar list is about
- * 200 px high and a date's folder can be further than that from a row under another date, so the
- * drag is held at the list's edge, which Chromium scrolls under a held drag, until the target is
- * in view (`timeline.spec.ts`).
- */
-async function dragOnto(win: Page, row: Locator, target: Locator): Promise<void> {
-  const targetEl = await target.elementHandle();
-  const above = await row.evaluate((rowEl, other) => {
-    let list: HTMLElement | null = rowEl.parentElement;
-    while (list && !/(auto|scroll)/.test(getComputedStyle(list).overflowY))
-      list = list.parentElement;
-    const a = rowEl.getBoundingClientRect();
-    const b = other.getBoundingClientRect();
-    if (list) {
-      const mid = (Math.min(a.top, b.top) + Math.max(a.bottom, b.bottom)) / 2;
-      const box = list.getBoundingClientRect();
-      list.scrollTop += mid - (box.top + box.height / 2);
-    }
-    return b.top < a.top;
-  }, targetEl);
-  await row.evaluate((el) => {
-    el.scrollIntoView({ block: 'center' });
-  });
-  const list = await win.locator('.sb-scroll').boundingBox();
-  const box = await row.boundingBox();
-  if (!list || !box) throw new Error('the row or the sidebar list is not on screen');
-  const x = box.x + box.width / 2;
-  const y = box.y + box.height / 2;
-  await win.mouse.move(x, y);
-  await win.mouse.down();
-  await win.mouse.move(x + 16, y + 4, { steps: 4 });
-  const edge = { x: list.x + list.width / 2, y: above ? list.y + 6 : list.y + list.height - 6 };
-  await win.mouse.move(edge.x, edge.y, { steps: 5 });
-  let nudge = 0;
-  await expect(async () => {
-    nudge = 1 - nudge;
-    await win.mouse.move(edge.x + nudge, edge.y);
-    await expect(target).toBeInViewport({ ratio: 1, timeout: 100 });
-  }).toPass({ timeout: 15_000 });
-  await target.hover();
-  await target.hover();
-  await win.mouse.up();
-}
 
 /** Fold a date folder with its arrow (the focus stays), so the folders around it are near. */
 async function fold(win: Page, date: string): Promise<void> {

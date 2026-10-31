@@ -14,6 +14,7 @@ import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, openProject, test as base, tinyManifest, type DataRoot } from './fixtures';
 import { openIslandCalendar } from './island';
+import { dragOnto } from './treeDrag';
 
 /**
  * The tiny fixture project with its one capture removed, written before the app starts (list
@@ -82,56 +83,16 @@ async function reopen(win: Page, id: string) {
 }
 
 /**
- * Scroll the list so the row and the folder it is dragged onto sit in view together, centred as a
- * pair. `scrollIntoViewIfNeeded` is no help here: an element that is only partly in view is moved
- * to the nearest edge by a whole number of pixels, which leaves a fraction of a pixel of it clipped
- * (a folder name 0.47 px under the foot of the list, ratio 0.973), and it does so whenever the
- * window height puts the folder across that edge (720 to 732 px high today, 752 to 764 px before
- * the Jobs item left the sidebar's navigation).
- */
-async function showTogether(row: Locator, target: Locator) {
-  const targetEl = await target.elementHandle();
-  await row.evaluate((rowEl, other) => {
-    let list: HTMLElement | null = rowEl.parentElement;
-    while (list && !/(auto|scroll)/.test(getComputedStyle(list).overflowY))
-      list = list.parentElement;
-    if (!list) return;
-    const a = rowEl.getBoundingClientRect();
-    const b = other.getBoundingClientRect();
-    const mid = (Math.min(a.top, b.top) + Math.max(a.bottom, b.bottom)) / 2;
-    const box = list.getBoundingClientRect();
-    list.scrollTop += mid - (box.top + box.height / 2);
-  }, targetEl);
-}
-
-/**
- * Drag a dataset row onto a date folder the way a person can: with both ends in view before the
- * press. `dragTo` alone brings the target into view after pressing, and in a short window (CI's is
- * 1100 wide and about 720 high, where the list is taller than the sidebar) that scroll slides the
- * pressed row from under the pointer, so Chromium starts no drag at all. A folder that cannot be
- * in view together with the row is reached by holding the drag at the edge of the list instead
- * (see the smallest window tests below).
- */
-async function dragOnto(row: Locator, target: Locator) {
-  await showTogether(row, target);
-  await expect(target, 'the drop target is in view together with the row').toBeInViewport({
-    ratio: 1,
-  });
-  await expect(row).toBeInViewport({ ratio: 1 });
-  await row.dragTo(target);
-}
-
-/**
  * `dragOnto` for a drop while every dataset is dated. Then the "Drop for no date" place is pinned
  * to the foot of the list for the length of the drag, and a folder that sits at the bottom edge of
  * the list (where `scrollIntoViewIfNeeded` leaves it) is under that place: the drop would land on
  * "no date". Centre the folder in the list first, so it is clear of the place.
  */
-async function dragOntoClear(row: Locator, target: Locator) {
+async function dragOntoClear(win: Page, row: Locator, target: Locator) {
   await target.evaluate((el) => {
     el.scrollIntoView({ block: 'center' });
   });
-  await dragOnto(row, target);
+  await dragOnto(win, row, target);
 }
 
 /** Press a row and move far enough for its drag to start, without leaving the row. */
@@ -228,12 +189,12 @@ test.describe('survey date folders', () => {
     await expect(nov.getByTestId('tree-row-quad-nov')).toBeVisible();
 
     // onto the folder it is already in: nothing is written
-    await dragOnto(nov.getByTestId('tree-row-quad-nov'), win.getByTestId('date-name-nov'));
+    await dragOnto(win, nov.getByTestId('tree-row-quad-nov'), win.getByTestId('date-name-nov'));
     await expect(nov.getByTestId('tree-row-quad-nov')).toBeVisible();
     expect(await savedManifest(dataRoot, id)).toEqual(before);
 
     // the November model onto the October folder
-    await dragOnto(nov.getByTestId('tree-row-quad-nov'), win.getByTestId('date-name-oct'));
+    await dragOnto(win, nov.getByTestId('tree-row-quad-nov'), win.getByTestId('date-name-oct'));
     await expect(nov.getByTestId('tree-row-quad-nov')).toHaveCount(0);
     await expand(win, 'oct');
     await expect(oct.getByTestId('tree-row-quad-nov')).toBeVisible();
@@ -241,6 +202,7 @@ test.describe('survey date folders', () => {
 
     // the undated outline onto the October folder as well
     await dragOnto(
+      win,
       win.getByTestId('date-folder-every').getByTestId('tree-row-design'),
       win.getByTestId('date-name-oct'),
     );
@@ -279,7 +241,7 @@ test.describe('survey date folders', () => {
     const design = async () =>
       (await savedManifest(dataRoot, id)).layers.find((l) => l.id === 'design');
     // file the undated outline under November
-    await dragOnto(every.getByTestId('tree-row-design'), win.getByTestId('date-name-nov'));
+    await dragOnto(win, every.getByTestId('tree-row-design'), win.getByTestId('date-name-nov'));
     await expect(nov.getByTestId('tree-row-design')).toBeVisible();
     expect(await design()).toMatchObject({ capture: 'nov' });
 
@@ -341,6 +303,7 @@ test.describe('survey date folders', () => {
 
     // two outlines under November: its own and the undated one
     await dragOnto(
+      win,
       win.getByTestId('date-folder-every').getByTestId('tree-row-design'),
       win.getByTestId('date-name-nov'),
     );
@@ -352,7 +315,7 @@ test.describe('survey date folders', () => {
     expect(before).toMatchObject({ 'site-nov': 'nov', design: 'nov' });
 
     // the Maps and rasters heading of November onto October: both outlines go, the model stays
-    await dragOntoClear(nov.getByTestId('tree-group-maps'), win.getByTestId('date-name-oct'));
+    await dragOntoClear(win, nov.getByTestId('tree-group-maps'), win.getByTestId('date-name-oct'));
     await expect(nov.getByTestId('tree-row-site-nov')).toHaveCount(0);
     await expect(nov.getByTestId('tree-row-design')).toHaveCount(0);
     await expect(nov.getByTestId('tree-row-quad-nov')).toBeVisible();
@@ -397,7 +360,11 @@ test.describe('survey date folders', () => {
     expect(await dataHashes(dataRoot, id)).toEqual(files);
 
     // a single dataset drags on its own, and says where it went, with Undo
-    await dragOntoClear(nov.getByTestId('tree-row-quad-nov'), win.getByTestId('date-name-oct'));
+    await dragOntoClear(
+      win,
+      nov.getByTestId('tree-row-quad-nov'),
+      win.getByTestId('date-name-oct'),
+    );
     await expect(oct.getByTestId('tree-row-quad-nov')).toBeVisible();
     expect((await captureOf())['quad-nov']).toBe('oct');
     await expect(win.getByTestId('date-note')).toContainText('Moved');
@@ -413,6 +380,7 @@ test.describe('survey date folders', () => {
     await openThreeDates(win, id);
     const nov = win.getByTestId('date-folder-nov');
     await dragOnto(
+      win,
       win.getByTestId('date-folder-every').getByTestId('tree-row-design'),
       win.getByTestId('date-name-nov'),
     );

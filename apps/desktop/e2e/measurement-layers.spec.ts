@@ -9,11 +9,12 @@
  * network.
  */
 import { MeasurementsFile } from '@aio/schema';
-import type { Locator, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, openProject, test } from './fixtures';
 import { measureControl, measureFilter, measureRow, measureSaved, measureTree } from './island';
+import { dragOnto } from './treeDrag';
 
 /** The tiny project's origin (fixtures.ts `tinyManifest`): its 1 x 1 m quad lies E+, N+ of it. */
 const E = 500000;
@@ -210,28 +211,6 @@ test('Rename and Move to folder from the tree menu are edits that wait for Save'
   });
 });
 
-/**
- * Bring a row and its drop target into view together (the list scrolled by hand: a scroll by
- * `dragTo` after the press would slide the row from under the pointer), then drag.
- */
-async function dragOnto(row: Locator, target: Locator): Promise<void> {
-  const targetEl = await target.elementHandle();
-  await row.evaluate((rowEl, other) => {
-    let list: HTMLElement | null = rowEl.parentElement;
-    while (list && !/(auto|scroll)/.test(getComputedStyle(list).overflowY))
-      list = list.parentElement;
-    if (!list) return;
-    const a = rowEl.getBoundingClientRect();
-    const b = other.getBoundingClientRect();
-    const mid = (Math.min(a.top, b.top) + Math.max(a.bottom, b.bottom)) / 2;
-    const box = list.getBoundingClientRect();
-    list.scrollTop += mid - (box.top + box.height / 2);
-  }, targetEl);
-  await expect(target).toBeInViewport({ ratio: 1 });
-  await expect(row).toBeInViewport({ ratio: 1 });
-  await row.dragTo(target);
-}
-
 test('a row drags into a folder and out again, and waits for Save', async ({ win }) => {
   const before = await readFile(measurementsPath);
   await openTiny(win);
@@ -240,7 +219,7 @@ test('a row drags into a folder and out again, and waits for Save', async ({ win
   await expect(pads).toContainText('1');
 
   // into Pads: listed there, and Save is offered
-  await dragOnto(measureRow(win, 'Line B'), pads);
+  await dragOnto(win, measureRow(win, 'Line B'), pads);
   await expect(pads).toContainText('2');
   await expect(
     pads.locator('..').getByTestId('measure-row').filter({ hasText: 'Line B' }),
@@ -251,7 +230,7 @@ test('a row drags into a folder and out again, and waits for Save', async ({ win
   expect(await readFile(measurementsPath)).toEqual(before);
 
   // onto the Measurements header: loose again
-  await dragOnto(measureRow(win, 'Line B'), group.getByTestId('tree-group-measurements'));
+  await dragOnto(win, measureRow(win, 'Line B'), group.getByTestId('tree-group-measurements'));
   await expect(pads).toContainText('1');
   // (a folder's rows sit in its tree item, next to its own row)
   const inPads = pads.locator('..').getByTestId('measure-row');
