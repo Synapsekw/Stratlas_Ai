@@ -1,3 +1,4 @@
+import { hasPos } from '@aio/engine';
 import { correctedPhoto, photoCorrection } from '@aio/geo';
 import { shiftLocal } from '@aio/schema';
 import { dateShiftOf, type Workspace } from '@aio/workspace';
@@ -93,6 +94,21 @@ export function photoPinData(s: Workspace, proj: FrameProjection): FeatureCollec
 /** Where the photos are, for framing the project. */
 export function photoPoints(s: Workspace, proj: FrameProjection): [number, number][] {
   return placed(s, proj).map((p) => p.at);
+}
+
+/**
+ * Where the placed and pinned photos and 360s of the visible layers are (where their map markers
+ * stand), for framing the project: a 360 pinned off the model must be inside the home view.
+ */
+export function mediaPoints(s: Workspace, proj: FrameProjection): [number, number][] {
+  const out = photoPoints(s, proj);
+  const m = s.project?.manifest;
+  for (const l of m?.layers ?? []) {
+    if (l.kind !== 'panoramas' || s.hidden[l.id]) continue;
+    const shift = m ? dateShiftOf(m, l.id) : null;
+    for (const item of l.items.filter(hasPos)) out.push(proj.toLonLat(shiftLocal(item.pos, shift)));
+  }
+  return out;
 }
 
 export interface PhotoMapPin {

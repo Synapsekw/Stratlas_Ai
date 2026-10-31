@@ -65,7 +65,7 @@ import {
 } from './vector';
 import { MAP_INK } from './ink';
 import { MapMediaMarkers } from './mediaMarkers';
-import { addPhotoPins, PHOTO_SOURCE, photoPinData, photoPoints } from './photoPins';
+import { addPhotoPins, mediaPoints, PHOTO_SOURCE, photoPinData } from './photoPins';
 import { installBasemap } from './runtime';
 import { buildStyle } from './style';
 
@@ -1058,6 +1058,8 @@ export function createMapController(
   function renderPhotos(s: Workspace): void {
     if (proj && map.getSource(PHOTO_SOURCE)) setData(PHOTO_SOURCE, photoPinData(s, proj));
     media?.update(s);
+    // a photo or 360 placed, pinned or shown again widens what the home view frames
+    if (proj && baseBoxPts) projectBox = bboxOf([...baseBoxPts, ...mediaPoints(s, proj)]);
   }
 
   // ----- issues -----
@@ -1366,6 +1368,7 @@ export function createMapController(
     clearProject();
     // the last project's frame goes with it: a resize while this one loads frames nothing
     projectBox = null;
+    baseBoxPts = null;
     framedHome = false;
     // the camera request standing when the map was created; a later one (made while the style and
     // the project load) is shown instead of the project's extent
@@ -1403,9 +1406,8 @@ export function createMapController(
     const issuePts = now.issues
       .map((i) => issueAnchor(i, proj, shiftOf))
       .filter((x): x is LonLat => !!x);
-    const photoPts = photoPoints(now, proj);
-    const box = bboxOf([...rasterPts, ...flightPts, ...issuePts, ...photoPts]);
-    projectBox = box;
+    baseBoxPts = [...rasterPts, ...flightPts, ...issuePts];
+    projectBox = bboxOf([...baseBoxPts, ...mediaPoints(now, proj)]);
     // a camera request made while the map was starting (the agent's fly_to) wins over the start view
     if (now.lastCamera && now.lastCamera !== startCamera) {
       followCamera(now);
@@ -1420,8 +1422,10 @@ export function createMapController(
     framedHome = fit !== null;
   }
 
-  /** What the project covers (rasters, flights, issues, photos), for the home view. */
+  /** What the project covers (rasters, flights, issues, photos, 360s), for the home view. */
   let projectBox: ReturnType<typeof bboxOf> = null;
+  /** The rasters, flights and issues of the box; the photos and 360s are added as they change. */
+  let baseBoxPts: (readonly [number, number])[] | null = null;
   /** The camera is the project's home framing the map set itself: a resize frames it again. */
   let framedHome = false;
 

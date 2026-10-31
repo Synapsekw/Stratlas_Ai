@@ -2,7 +2,7 @@ import { createWorkspace } from '@aio/workspace';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { describe, expect, it } from 'vitest';
 import { frameProjection } from './geo';
-import { addPhotoPins, photoPoints, photosFromClusterLeaves } from './photoPins';
+import { addPhotoPins, mediaPoints, photoPoints, photosFromClusterLeaves } from './photoPins';
 
 describe('addPhotoPins', () => {
   it('keeps the photo points as an invisible, queryable layer under the markers', () => {
@@ -68,6 +68,43 @@ describe('photo pins', () => {
     const moved = at(workspace(true));
     expect(moved[0] - base[0]).toBeCloseTo(2, 3);
     expect(moved[2]).toBeCloseTo(base[2], 3);
+  });
+});
+
+describe('media points', () => {
+  it('frames placed and pinned 360s with the photos, not hidden or unplaced ones', () => {
+    if (!proj) throw new Error('projection');
+    const base = workspace(false);
+    const panos = (id: string, items: unknown[]) => ({
+      kind: 'panoramas',
+      id,
+      name: id,
+      visible: true,
+      items,
+    });
+    const manifest = base.project?.manifest;
+    if (!manifest) throw new Error('manifest');
+    const s = {
+      ...base,
+      hidden: { off: true },
+      project: {
+        ...base.project,
+        manifest: {
+          ...manifest,
+          layers: [
+            ...manifest.layers,
+            panos('pn', [
+              { id: 'p1', name: 'p1', src: { path: 'p1.jpg' }, pos: [28, 0, 0] },
+              { id: 'p2', name: 'p2', src: { path: 'p2.jpg' } },
+            ]),
+            panos('off', [{ id: 'p3', name: 'p3', src: { path: 'p3.jpg' }, pos: [90, 0, 0] }]),
+          ],
+        },
+      },
+    } as unknown as typeof base;
+    const pts = mediaPoints(s, proj).map((p) => proj.toLocal(p[0], p[1]));
+    expect(pts).toHaveLength(2);
+    expect(pts[1]?.[0]).toBeCloseTo(28, 3);
   });
 });
 
