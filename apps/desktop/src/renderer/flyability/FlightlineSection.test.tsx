@@ -136,16 +136,49 @@ describe('FlightlineSection', () => {
     expect(last().map((l) => l.colour)).toEqual(own);
   });
 
-  it('the line width reaches the drawn lines', async () => {
-    expect(last().every((l) => l.widthPx === DEFAULT_DISPLAY.widthPx)).toBe(true);
-    const range = q('flightline-width') as HTMLInputElement;
-    act(() => {
-      const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
-      (desc?.set as ((this: HTMLInputElement, v: string) => void) | undefined)?.call(range, '6');
-      range.dispatchEvent(new Event('input', { bubbles: true }));
-    });
+  it('the line width reaches the drawn lines, one store write for a burst', async () => {
+    vi.useFakeTimers();
+    try {
+      expect(last().every((l) => l.widthPx === DEFAULT_DISPLAY.widthPx)).toBe(true);
+      const patch = vi.spyOn(flightlineDisplay().getState(), 'patch');
+      const range = q('flightline-width') as HTMLInputElement;
+      for (const v of ['4', '5', '6']) {
+        act(() => {
+          const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+          (desc?.set as ((this: HTMLInputElement, v: string) => void) | undefined)?.call(range, v);
+          range.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+      }
+      // the slider is live, the store is not written yet
+      expect(range.value).toBe('6');
+      expect(patch).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+      expect(patch).toHaveBeenCalledTimes(1);
+      expect(patch).toHaveBeenCalledWith('p1', { widthPx: 6 });
+      patch.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
     await flush();
     expect(last().map((l) => l.widthPx)).toEqual([6, 6]);
+  });
+
+  it('with selected-only on and no flight selected, a hint says what to do', () => {
+    expect(q('flightline-hint')).toBeNull();
+    act(() => document.querySelector<HTMLElement>('[role="switch"]')?.click());
+    expect(q('flightline-hint')?.textContent).toBe(
+      'Select a flight in the project list to show only that one.',
+    );
+    act(() => {
+      workspace.getState().select({ kind: 'issue', id: 'x' });
+    });
+    expect(q('flightline-hint')).not.toBeNull();
+    act(() => {
+      workspace.getState().select({ kind: 'layer', id: 'f1', layer: 'f1' });
+    });
+    expect(q('flightline-hint')).toBeNull();
   });
 
   it('selected flight only draws just the selected flight, never touching the manifest', async () => {

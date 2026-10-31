@@ -46,5 +46,6 @@ export const enFlyability = {
   'fly.display.colour': 'Colour',
   'fly.display.byFlight': 'By flight',
   'fly.display.oneColour': 'One colour',
+  'fly.display.selectHint': 'Select a flight in the project list to show only that one.',
   'fly.display.activeOnly': 'Show the selected flight only',
 } as const satisfies Record<string, string>;

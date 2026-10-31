@@ -1,5 +1,6 @@
 import { Switch, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
+import { useEffect, useRef, useState } from 'react';
 import {
   flightlineDisplay,
   MAX_WIDTH_PX,
@@ -14,10 +15,39 @@ import './flyability.css';
  * flight or a single colour, the selected flight only). View state kept on this computer; the
  * 3D view redraws from it (`SpacesMount`).
  */
+/** The width slider writes the store this long after the last move (and on release). */
+export const WIDTH_DEBOUNCE_MS = 100;
+
 export function FlightlineSection() {
   const t = useT();
   const projectId = useWorkspace((s) => s.project?.id ?? null);
   const display = useFlightlineDisplay(projectId);
+  // a flight line layer is the selection: "selected flight only" has something to show
+  const flightSelected = useWorkspace((s) => {
+    const sel = s.selection;
+    if (sel?.kind !== 'layer') return false;
+    return (s.project?.manifest.layers ?? []).some(
+      (l) => l.kind === 'flightline' && l.id === sel.id,
+    );
+  });
+  // the slider shows its value at once; the store (and the redraw) follow after a pause
+  const [drag, setDrag] = useState<number | null>(null);
+  const width = drag ?? display.widthPx;
+  const timer = useRef<number | undefined>(undefined);
+  const pending = useRef<number | null>(null);
+  const flush = () => {
+    window.clearTimeout(timer.current);
+    timer.current = undefined;
+    const w = pending.current;
+    pending.current = null;
+    if (w !== null && projectId !== null)
+      flightlineDisplay().getState().patch(projectId, { widthPx: w });
+  };
+  const release = () => {
+    flush();
+    setDrag(null);
+  };
+  useEffect(() => flush, []); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (change: Partial<FlightlineDisplay>) => {
     if (projectId !== null) flightlineDisplay().getState().patch(projectId, change);
   };
@@ -30,12 +60,18 @@ export function FlightlineSection() {
           min={MIN_WIDTH_PX}
           max={MAX_WIDTH_PX}
           step={1}
-          value={display.widthPx}
+          value={width}
           aria-label={t('fly.display.width')}
           data-testid="flightline-width"
           onChange={(e) => {
-            set({ widthPx: Number(e.target.value) });
+            const w = Number(e.target.value);
+            setDrag(w);
+            pending.current = w;
+            window.clearTimeout(timer.current);
+            timer.current = window.setTimeout(release, WIDTH_DEBOUNCE_MS);
           }}
+          onPointerUp={release}
+          onKeyUp={release}
         />
       </label>
       <div className="fly-display-row">
@@ -73,6 +109,11 @@ export function FlightlineSection() {
           }}
         />
       </div>
+      {display.activeOnly && !flightSelected && (
+        <p className="fly-display-hint faint" data-testid="flightline-hint">
+          {t('fly.display.selectHint')}
+        </p>
+      )}
     </div>
   );
 }
