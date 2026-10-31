@@ -524,7 +524,7 @@ describe('shell store', () => {
       'library:add': () => ({ ok: true, entry: exportEntry }),
       'library:list': () => [exportEntry],
       'builder:inspectorScan': () => scanned,
-      'project:open': () => ({ ok: true, id: 'hcl', root: entry.path, manifest, issues: [] }),
+      'project:open': () => ({ ok: true, id: 'p-export', root: entry.path, manifest, issues: [] }),
     });
     const s = createShellStore(bridge, createWorkspace());
     await s.getState().addProjectFolder();
