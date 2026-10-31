@@ -112,15 +112,26 @@ export type CaptureResult = { ok: true; frame: ReportViewsFrame } | { ok: false;
 /** A picture run in progress: the progress card covers the stage while `running`. */
 export interface PictureRunState {
   running: boolean;
+  /** Stop was asked (Escape or Stop on the progress card): the run ends after the current shot. */
+  stopping: boolean;
   done: number;
   total: number;
 }
 
 export const pictureRun = createStore<PictureRunState>()(() => ({
   running: false,
+  stopping: false,
   done: 0,
   total: 0,
 }));
+
+/** The error a stopped run returns; nothing is saved and the person's view comes back. */
+export const PICTURES_STOPPED = 'Taking them was stopped.';
+
+/** Ask the running picture run to stop after its current shot; nothing when none is running. */
+export function stopPictures(): void {
+  if (pictureRun.getState().running) pictureRun.setState({ stopping: true });
+}
 
 export const MAX_SIDE = 2000;
 /** The 3D picture's width over height. */
@@ -239,7 +250,7 @@ export async function captureViews(
   const heatMs = opts.heatTimeoutMs ?? 30_000;
 
   const total = shots.length;
-  pictureRun.setState({ running: true, done: 0, total });
+  pictureRun.setState({ running: true, stopping: false, done: 0, total });
   opts.onProgress?.(0, total);
   const token = stage.save();
   const views: ReportView[] = [];
@@ -254,6 +265,10 @@ export async function captureViews(
     let surface: PictureSurface | null = null;
     let have = true;
     for (const [i, s] of shots.entries()) {
+      if (pictureRun.getState().stopping) {
+        failed = PICTURES_STOPPED;
+        break;
+      }
       const want = SURFACE_OF[s.kind];
       if (s.capture !== date) {
         await stage.showDate(s.capture);
@@ -295,7 +310,7 @@ export async function captureViews(
     } catch (e) {
       failed ??= message(e);
     }
-    pictureRun.setState({ running: false });
+    pictureRun.setState({ running: false, stopping: false });
   }
   if (failed !== null) return { ok: false, error: failed };
 

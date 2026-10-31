@@ -128,13 +128,10 @@
   break-after: auto;
 }
 
-/* the progress card while the pictures are taken: over the whole window, the stage included */
-.vre-progress-scrim {
-  z-index: var(--z-top);
-}
+/* the progress card while the pictures are taken (a Dialog over the whole window, the stage
+   included); the body's gap spaces the bar from the count */
 .vre-progress .bar {
   display: block;
-  margin-top: 8px;
 }
 .vre-progress .bar i {
   background: var(--acc);

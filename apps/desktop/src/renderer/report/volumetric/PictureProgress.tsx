@@ -1,39 +1,40 @@
 // The progress card over the stage while the report's pictures are taken (spec section 7). Taking
 // them opens the Scene, which unmounts the Reports screen, so the card has its own root on the
-// document for the length of the run.
-import { Icon, t } from '@aio/ui';
+// document for the length of the run. It is a modal Dialog: focus stays on it, and Escape or Stop
+// asks the run to stop after the current shot (nothing is saved and the view comes back).
+import { Button, Dialog, Icon, t } from '@aio/ui';
 import { createRoot } from 'react-dom/client';
 import { useStore } from 'zustand';
-import { pictureRun } from './captureViews';
+import { pictureRun, stopPictures } from './captureViews';
 
 function PictureProgressCard() {
-  const { done, total } = useStore(pictureRun);
+  const { done, total, stopping } = useStore(pictureRun);
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   return (
-    <div className="dlg-scrim vre-progress-scrim">
-      <div
-        className="dlg vre-progress"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="vre-progress-h"
-        aria-describedby="vre-progress-b"
-        data-testid="volumetric-picture-progress"
-      >
-        <div className="dlg-h">
-          <Icon name="camera" size={16} />
-          <h2 id="vre-progress-h">{t('vreport.pictures.progressTitle')}</h2>
-        </div>
-        <div className="dlg-b" id="vre-progress-b">
-          <p className="muted small">{t('vreport.pictures.progressText')}</p>
-          <p className="small" role="status">
-            {t('vreport.pictures.taking', { done, total })}
-          </p>
-          <span className="bar" aria-hidden="true">
-            <i style={{ width: `${String(pct)}%` }} />
-          </span>
-        </div>
-      </div>
-    </div>
+    <Dialog
+      open
+      onClose={stopPictures}
+      role="alertdialog"
+      size="sm"
+      dismissable={false}
+      hideClose
+      className="vre-progress"
+      testId="volumetric-picture-progress"
+      title={
+        <>
+          <Icon name="camera" size={16} /> {t('vreport.pictures.progressTitle')}
+        </>
+      }
+      description={t('vreport.pictures.progressText')}
+      footer={<Button onClick={stopPictures}>{t('vreport.pictures.stop')}</Button>}
+    >
+      <p className="small" role="status">
+        {stopping ? t('vreport.pictures.stopping') : t('vreport.pictures.taking', { done, total })}
+      </p>
+      <span className="bar" aria-hidden="true">
+        <i style={{ width: `${String(pct)}%` }} />
+      </span>
+    </Dialog>
   );
 }
 
