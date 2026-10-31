@@ -10,7 +10,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, test } from './fixtures';
+import { DEMO_FOLDER, expect, test } from './fixtures';
 import { openSection, panelSection, panelTab } from './panel';
 
 const VIEW_READY = { timeout: 60_000 };
@@ -120,6 +120,8 @@ async function resize(app: ElectronApplication, win: Page, w: number, h: number)
 
 test.describe('review set', () => {
   test.skip(!SHOTS, 'QUADRION_PANEL_SHOTS names the folder for the screenshots');
+  // the bundled demos in the library
+  test.use({ appEnv: { QUADRION_DEMO: DEMO_FOLDER } });
   test('the tank farm at three sizes, with the stage share', async ({ app, win }) => {
     test.setTimeout(300_000);
     const dir = SHOTS ?? '';
