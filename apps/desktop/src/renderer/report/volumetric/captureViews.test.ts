@@ -7,6 +7,7 @@ import {
   PICTURES_STOPPED,
   pictureRun,
   planShots,
+  resetPictureStop,
   stopPictures,
   type CaptureRequest,
   type CaptureStage,
@@ -371,9 +372,18 @@ describe('captureViews', () => {
     expect(calls.at(-1)?.op).toBe('restore');
     expect(state).toEqual({ date: 'c-feb', surface: 'photo', labels: true });
     expect(pictureRun.getState()).toMatchObject({ running: false, stopping: false });
-    // no run going: asking to stop does nothing
+  });
+
+  it('a stop asked before the run starts takes no picture', async () => {
+    const { stage, calls } = fakeStage();
+    const save = vi.fn(() => Promise.resolve({ ok: true }));
     stopPictures();
-    expect(pictureRun.getState().stopping).toBe(false);
+    const r = await captureViews(REQ, stage, { save });
+    expect(r).toEqual({ ok: false, error: PICTURES_STOPPED });
+    expect(calls.filter((c) => c.op === 'shoot')).toHaveLength(0);
+    expect(save).not.toHaveBeenCalled();
+    expect(pictureRun.getState()).toMatchObject({ running: false, stopping: false });
+    resetPictureStop();
   });
 
   it('a stop asked during the last shot still saves nothing', async () => {

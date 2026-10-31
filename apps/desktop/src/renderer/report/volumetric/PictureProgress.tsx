@@ -5,7 +5,7 @@
 import { Button, Dialog, Icon, t } from '@aio/ui';
 import { createRoot } from 'react-dom/client';
 import { useStore } from 'zustand';
-import { pictureRun, stopPictures } from './captureViews';
+import { pictureRun, resetPictureStop, stopPictures } from './captureViews';
 
 function PictureProgressCard() {
   const { done, total, stopping } = useStore(pictureRun);
@@ -40,6 +40,7 @@ function PictureProgressCard() {
 
 /** Show the progress card until the returned function is called. */
 export function showPictureProgress(): () => void {
+  resetPictureStop();
   const host = document.createElement('div');
   document.body.append(host);
   const root = createRoot(host);

@@ -98,6 +98,9 @@ test('Report a problem and the new project wizard are modal Dialogs that Escape 
   await expect(wizard).toBeVisible();
   await expect(wizard).toHaveAttribute('aria-modal', 'true');
   await expect.poll(() => focusInside(win, 'new-project-wizard')).toBe(true);
+  // the evidence after the opening fade
+  await expect(wizard).toHaveCSS('opacity', '1');
+  await win.waitForTimeout(300);
   await win.screenshot({ path: test.info().outputPath('new-project.png') });
   await win.keyboard.press('Escape');
   await expect(wizard).toHaveCount(0);

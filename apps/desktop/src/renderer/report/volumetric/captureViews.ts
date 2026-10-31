@@ -128,9 +128,17 @@ export const pictureRun = createStore<PictureRunState>()(() => ({
 /** The error a stopped run returns; nothing is saved and the person's view comes back. */
 export const PICTURES_STOPPED = 'Taking them was stopped.';
 
-/** Ask the running picture run to stop after its current shot; nothing when none is running. */
+/**
+ * Ask the picture run to stop after its current shot. Asked while the card is up but before the
+ * run has started (the Scene still opening), the run stops before its first shot.
+ */
 export function stopPictures(): void {
-  if (pictureRun.getState().running) pictureRun.setState({ stopping: true });
+  pictureRun.setState({ stopping: true });
+}
+
+/** A new picture run may start: forget an earlier stop (the progress card calls it on opening). */
+export function resetPictureStop(): void {
+  pictureRun.setState({ stopping: false });
 }
 
 export const MAX_SIDE = 2000;
@@ -250,7 +258,7 @@ export async function captureViews(
   const heatMs = opts.heatTimeoutMs ?? 30_000;
 
   const total = shots.length;
-  pictureRun.setState({ running: true, stopping: false, done: 0, total });
+  pictureRun.setState({ running: true, done: 0, total });
   opts.onProgress?.(0, total);
   const token = stage.save();
   const views: ReportView[] = [];
