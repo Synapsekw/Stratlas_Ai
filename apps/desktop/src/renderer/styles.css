@@ -504,10 +504,12 @@ button.chip-status:hover {
   background: var(--bg-chrome);
   border-inline-end: 1px solid var(--line-soft);
 }
-.rail > .ph[data-side='left'] {
-  /* at the Layers column's inner edge, or the rail's own while the column is folded */
+.main > .ph[data-side='left'] {
+  /* just before the main area's start: the Layers column's inner edge, or the rail's own while
+     the column is folded; over both, never over the main view */
   inset-inline-end: auto;
-  inset-inline-start: calc(var(--rail-w) + var(--lc-col) - var(--ph-w) - 1px);
+  inset-inline-start: calc(-1 * var(--ph-w) - 1px);
+  z-index: calc(var(--z-panel) + 2);
 }
 .rail-logo {
   flex: none;
@@ -1023,8 +1025,8 @@ button.chip-status:hover {
   outline-offset: -2px;
 }
 /* the edge the tab moves lights up while the pointer is on it */
-.app:has(.rail > .ph[aria-expanded='true']:hover) .sidebar,
-.rail:has(> .ph[aria-expanded='false']:hover) {
+.app:has(.main > .ph[aria-expanded='true']:hover) .sidebar,
+.app:has(.main > .ph[aria-expanded='false']:hover) .rail {
   border-inline-end-color: var(--acc);
 }
 .ws:has(> .ph:hover) > .right {

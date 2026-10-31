@@ -67,7 +67,7 @@ import { PackageExportDialog } from './shell/PackageExport';
 import { Palette } from './shell/Palette';
 import { UnlockDialog } from './shell/UnlockDialog';
 import { LayersColumn } from './shell/LayersColumn';
-import { Rail } from './shell/Rail';
+import { LayersHandle, Rail } from './shell/Rail';
 import { TitleBar } from './shell/TitleBar';
 import { websiteUpdates } from './updates/session';
 import { useFold } from './shell/useFold';
@@ -770,6 +770,7 @@ export function App() {
           <TitleBar />
           <LayersColumn resize={sidebarResize} />
           <main className="main">
+            <LayersHandle />
             <Screen />
             <AgentDock />
           </main>

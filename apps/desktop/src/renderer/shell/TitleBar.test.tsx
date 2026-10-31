@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { shell } from '../shell';
 import { help } from '../help/store';
 import { processing } from '../processing/store';
-import { Rail } from './Rail';
+import { LayersHandle, Rail } from './Rail';
 import { customerOf, TitleBar } from './TitleBar';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -154,12 +154,16 @@ describe('Rail', () => {
     expect(help.getState().open).toBe(true);
   });
 
-  it('holds the Layers tab on the Scene, open or folded', () => {
-    render(<Rail />);
+  it('the Layers tab shows on the Scene only, open or folded', () => {
+    render(<LayersHandle />);
     expect(q('panel-handle-left')?.getAttribute('aria-expanded')).toBe('true');
     act(() => {
       shell.setState({ settings: { ...shell.getState().settings, sidebarCollapsed: true } });
     });
     expect(q('panel-handle-left')?.getAttribute('aria-expanded')).toBe('false');
+    act(() => {
+      shell.setState({ screen: 'issues' });
+    });
+    expect(q('panel-handle-left')).toBeNull();
   });
 });

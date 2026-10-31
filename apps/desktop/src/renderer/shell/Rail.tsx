@@ -9,8 +9,15 @@ import { WebsiteUpdateNotice } from '../updates/WebsiteUpdates';
 import { BrandSymbol } from './BrandMark';
 import { PanelHandle } from './PanelHandle';
 
-/** The tab on the Layers column's edge (styles.css places it by `--lc-col`). */
-export function LayersHandle({ collapsed }: { collapsed: boolean }) {
+/**
+ * The Layers column's tab, on the Scene: at the main area's start, so it rides the column's inner
+ * edge while the column shows and the rail's once it is folded. One element either way, so it
+ * keeps the focus as the column folds (App.tsx mounts it in the main area).
+ */
+export function LayersHandle() {
+  const scene = useShell((s) => s.screen === 'scene');
+  const collapsed = useShell(isSidebarFolded);
+  if (!scene) return null;
   return (
     <PanelHandle
       side="left"
@@ -97,8 +104,6 @@ export function Rail() {
   const issues = useWorkspace((s) => (s.project ? s.issues.length : undefined));
   const drawer = useProcessing((s) => s.open);
   const guide = useHelp((s) => s.open);
-  const scene = useShell((s) => s.screen === 'scene');
-  const layersFolded = useShell(isSidebarFolded);
   return (
     <nav className="rail" aria-label={t('nav.primary')} data-testid="rail">
       <span className="rail-logo" data-testid="brand-mark">
@@ -155,9 +160,6 @@ export function Rail() {
           }}
         />
       </div>
-      {/* the Layers column's tab: on its inner edge while it shows, on the rail's when folded
-          (one element either way, so it keeps the focus as the column folds) */}
-      {scene && <LayersHandle collapsed={layersFolded} />}
     </nav>
   );
 }
