@@ -10,8 +10,9 @@
  */
 import type { Page } from '@playwright/test';
 import { expect, realDataTest } from './fixtures';
-import { closeIslandTools, islandGroup, timelineToggle } from './island';
+import { closeIslandTools, islandGroup, openIslandTools, timelineToggle } from './island';
 import { hasRealProject, missingRealProject } from './realData';
+import { openSection } from './panel';
 
 const has = hasRealProject;
 
@@ -441,22 +442,23 @@ test.describe('@realdata DAMAC', () => {
     await expect(win.getByRole('checkbox', { name: 'Severity heat map' })).toBeChecked();
   });
 
-  test('no video and one date: no timeline, and the View tile waits for a second date', async ({
+  test('no video and one date: no timeline, and the Timeline tool waits for a second date', async ({
     win,
   }) => {
     await openDamac(win);
     const timeline = win.locator('.tl-wrap [aria-label="Timeline"]');
     // T opens the island's tools now (D9); the thin bar went with the date strips
     await expect(timeline).toHaveCount(0);
-    const toggle = await timelineToggle(win);
-    await expect(toggle).toHaveAccessibleName('Show the timeline');
-    await expect(toggle).toHaveAttribute('aria-disabled', 'true');
-    await expect(toggle).toHaveAccessibleDescription(
-      'Add a second survey date to see the dates timeline',
-    );
-    await toggle.click({ force: true });
-    await expect(timeline).toHaveCount(0);
+    // nothing to compare: no Compare mode on the island (W8), the tool waits in Tools > View
+    const bar = await openIslandTools(win);
+    await expect(bar.getByRole('tab', { name: 'Compare', exact: true })).toHaveCount(0);
     await closeIslandTools(win);
+    const view = await openSection(win, 'tools', 'tools.view');
+    const toggle = view.getByTestId('tool-view.timeline');
+    await expect(toggle).toContainText('Show the timeline');
+    await expect(toggle).toBeDisabled();
+    await expect(toggle).toContainText('Add a second survey date to see the dates timeline');
+    await expect(timeline).toHaveCount(0);
   });
 });
 

@@ -314,7 +314,10 @@ test.describe('project list: the Antennas group', () => {
       const caption = panelSection(win, 'tools.measure').locator(':scope > .wb-section-head');
       await expect(caption).toBeVisible();
       await expect(benchBody(win, 'measure').getByTestId('survey-tools')).toBeVisible();
-      // the tools lead the view: their section sits at the top of the tab's scroll box
+      // the tools lead the view: their section sits at the top of the tab's scroll box, under
+      // the View group's folded head only (the registry's order, W8)
+      const viewHead = panelSection(win, 'tools.view').locator(':scope > .wb-section-head');
+      const headHeight = Math.round((await viewHead.boundingBox())?.height ?? 0);
       await expect
         .poll(() =>
           caption.evaluate((el) => {
@@ -324,7 +327,7 @@ test.describe('project list: the Antennas group', () => {
               : 9999;
           }),
         )
-        .toBeLessThanOrEqual(8);
+        .toBeLessThanOrEqual(headHeight + 8);
       await evidence(win, 'g-tools-at-top');
     });
   });

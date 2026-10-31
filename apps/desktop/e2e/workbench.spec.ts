@@ -140,16 +140,20 @@ test.describe('no pins (D2)', () => {
     await expectBench(win, 'environment');
     await expect.poll(() => openTabs(win)).toContain('environment');
 
-    // a tool starts: Tools in front with Measure open, the Display section still open behind
+    // a tool starts: Tools in front with Measure open, the Display section still open behind;
+    // while the tool is armed its card stands in for Tools' list (W8), which comes back after
     await pressM(win);
     await expectBench(win, 'measure');
-    await expect(panelSection(win, 'tools.environment')).toHaveCount(1);
+    await expect(win.getByTestId('tools-armed')).toBeVisible();
+    await expect(panelSection(win, 'tools.environment')).toHaveCount(0);
     await shot(win, 'workbench-tool-keeps-sections.png');
     await tab(win, 'layers').click();
     await expect(panelSection(win, 'layers.display')).toHaveAttribute('data-open', 'true');
 
-    // and when it stops, the tabs are the same four, in the same order
+    // and when it stops, the tabs are the same four, in the same order, Tools' list back
     await pressM(win);
+    await tab(win, 'tools').click();
+    await expect(panelSection(win, 'tools.environment')).toHaveCount(1);
     const tabs = win.locator('.ws > .right [id^="wb-tab-"]');
     await expect(tabs).toHaveText([/^Selection/, /^Tools/, /^Layers & display/, /^Project/]);
   });
