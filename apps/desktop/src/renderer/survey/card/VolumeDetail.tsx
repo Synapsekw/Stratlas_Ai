@@ -897,8 +897,14 @@ function OverTime({
         locale={locale}
         gapReason={gapReason}
       />
-      {/* a table wider than the card scrolls in its own box, never widening the chart above */}
-      <div className="vd-time-scroll">
+      {/* a table wider than the card scrolls in its own box, never widening the chart above; the
+          box takes the keyboard's focus so the arrow keys scroll it too (the 300 px panel) */}
+      <div
+        className="vd-time-scroll"
+        role="region"
+        aria-label={t('vol.card.overTimeTable')}
+        tabIndex={0}
+      >
         <table className="vd-time-table" data-testid="vol-time-table">
           <caption className="sr-only">{t('vol.card.overTimeTable')}</caption>
           <thead>

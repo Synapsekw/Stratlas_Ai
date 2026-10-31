@@ -461,6 +461,18 @@ describe('RightSidebar', () => {
     expect(sectionEl('project.volumes')?.getAttribute('data-open')).toBe('true');
   });
 
+  it('keeps a fresh project on Selection while its piles are read, and when it has none', () => {
+    render();
+    act(() => {
+      volumetric.setState({ status: 'loading' });
+    });
+    expect(workbench.getState().panel).toBe('selection');
+    act(() => {
+      volumetric.setState({ status: 'none' });
+    });
+    expect(workbench.getState().panel).toBe('selection');
+  });
+
   it('opens the next volumetric project on Volumes too, straight from another', () => {
     act(() => {
       volumetric.setState({ status: 'ready' });

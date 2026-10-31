@@ -399,6 +399,10 @@ describe('VolumeDetail', () => {
     const table = host.querySelector('[data-testid="vol-time-table"]');
     const box = table?.parentElement;
     expect(box?.classList.contains('vd-time-scroll')).toBe(true);
+    // a scroll box the keyboard reaches, named for screen readers
+    expect(box?.getAttribute('tabindex')).toBe('0');
+    expect(box?.getAttribute('role')).toBe('region');
+    expect(box?.getAttribute('aria-label')).toBeTruthy();
     // the box is the section's own child, beside the chart: the chart takes the section's width
     expect(box?.parentElement?.classList.contains('vd-time')).toBe(true);
     const css = readFileSync(join(__dirname, '..', 'compare.css'), 'utf8');

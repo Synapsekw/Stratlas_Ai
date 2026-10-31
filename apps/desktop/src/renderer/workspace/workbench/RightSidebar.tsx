@@ -149,7 +149,9 @@ function useFollow(front: TabId) {
     seenChanges.current = changesSeq;
     workbench.getState().show('changes');
   }, [changesSeq]);
-  const volumes = useVolumetric((s) => s.status !== 'none' && s.status !== 'idle');
+  // a volumetric project once its piles are read: not while any project's read is still going
+  // (every project passes through `loading`, and Selection is the fresh project's tab)
+  const volumes = useVolumetric((s) => s.status === 'ready');
   // once per project: another volumetric project opened straight after this one opens on its own
   const projectId = useWorkspace((s) => s.project?.id ?? null);
   const seenVolumes = useRef<string | null>(null);
