@@ -4,7 +4,6 @@ import { shell, useShell } from '../shell';
 import { isSidebarFolded } from '../store';
 import { useMeasure } from '../survey/measureStore';
 import { PANEL_ID } from './PanelHandle';
-import { LayersHandle } from './Rail';
 import { Datasets } from './Sidebar';
 import { SidebarProcessing } from './SidebarProcessing';
 
@@ -59,8 +58,6 @@ export function LayersColumn({ resize }: LayersColumnProps = {}) {
           <span className="kbd split-readout" aria-hidden="true" />
         </div>
       )}
-      {/* folded, the tab waits on the rail's edge instead (Rail.tsx) */}
-      {!collapsed && <LayersHandle collapsed={false} />}
     </aside>
   );
 }

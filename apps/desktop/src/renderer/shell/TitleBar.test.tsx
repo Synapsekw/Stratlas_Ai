@@ -154,9 +154,9 @@ describe('Rail', () => {
     expect(help.getState().open).toBe(true);
   });
 
-  it('holds the Layers tab while the column is folded on the Scene', () => {
+  it('holds the Layers tab on the Scene, open or folded', () => {
     render(<Rail />);
-    expect(q('panel-handle-left')).toBeNull();
+    expect(q('panel-handle-left')?.getAttribute('aria-expanded')).toBe('true');
     act(() => {
       shell.setState({ settings: { ...shell.getState().settings, sidebarCollapsed: true } });
     });

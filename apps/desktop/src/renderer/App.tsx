@@ -19,14 +19,7 @@ import {
 import { getPlayer } from '@aio/video';
 import { volumetric, VolumetricStyles } from '@aio/volumetric';
 import { workspace } from '@aio/workspace';
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useLayoutEffect,
-  type CSSProperties,
-  type TransitionEvent,
-} from 'react';
+import { lazy, Suspense, useEffect, type CSSProperties, type TransitionEvent } from 'react';
 import { getMedia } from './media';
 import { nextClipInFlight, startPlaybackLoop } from './playback';
 import { IssuesScreen } from './screens/Issues';
@@ -328,16 +321,6 @@ function useSidebarSplit() {
   }, []);
   const { settle, phase } = fold;
   const { containerRef } = split;
-  // The tab slides as far as the edge moves: the open width, measured in px when the slide
-  // starts. Opening, the grid has already snapped open here.
-  useLayoutEffect(() => {
-    const column = containerRef.current?.querySelector(':scope > .layers-col');
-    if (!containerRef.current || !column || !phase) return;
-    containerRef.current.style.setProperty(
-      '--sb-fold-dx',
-      `${String(column.getBoundingClientRect().width)}px`,
-    );
-  }, [phase, containerRef]);
   const onTransitionEnd = (e: TransitionEvent<HTMLDivElement>) => {
     const el = e.target as Element;
     if (e.propertyName === 'transform' && el.classList.contains('layers-col')) settle();

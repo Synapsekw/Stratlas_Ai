@@ -2,8 +2,9 @@
  * The workbench drawer (stage-island D20) and the dark backing behind the window's buttons (D28)
  * in the real app: with the right sidebar hidden, a live tool slides the front bench in over the
  * stage without an agent, Esc slides it out, a click on the island opens it with focus trapped and
- * Esc gives focus back to the island. Folded, the buttons sit on a dark strip; right to left, with
- * the left sidebar a rail, the same strip covers what the buttons reach past it (I-R23).
+ * Esc gives focus back to the island. The window's buttons sit over the title bar (UI revision
+ * W11): folded or not, and right to left, nothing of the stage lies under them and no backing is
+ * needed (D28 and I-R23 before the title bar).
  *
  * Screenshots go to the test's output folder (test-results/), or to QUADRION_E2E_SHOTS.
  */
@@ -118,39 +119,39 @@ test.describe('the drawer', () => {
   });
 });
 
-test.describe('the backing behind the window buttons', () => {
-  test('the right panel folded: a dark strip under the buttons, none while it shows', async ({
+test.describe('the window buttons over the title bar', () => {
+  test('the right panel folded: the buttons sit on the title bar, the stage below it', async ({
     twoDateProject,
     win,
   }, info) => {
     await openCard(win, 'E2E two dates', twoDateProject.id);
-    const backing = win.getByTestId('caption-backing');
-    await expect(backing).toBeHidden();
     await foldRight(win);
     const area = await captionArea(win);
-    if (area.kept.right === 0) {
-      // no window buttons drawn over the page on this platform: nothing to back
-      await expect(backing).toBeHidden();
-      return;
-    }
-    await expect(backing).toBeVisible();
-    const box = await backing.boundingBox();
-    const size = await win.evaluate(() => ({ width: innerWidth, height: innerHeight }));
-    expect(box).not.toBeNull();
-    if (box) {
-      expect(box.y).toBe(0);
-      expect(Math.abs(box.x + box.width - size.width)).toBeLessThanOrEqual(1);
-      expect(box.width).toBeGreaterThanOrEqual(area.kept.right - 1);
-      expect(box.height).toBeGreaterThanOrEqual(area.height - 1);
-    }
-    await shot(win, info, 'caption-backing-folded.png');
+    const boxes = await win.evaluate(() => {
+      const box = (sel: string) => document.querySelector(sel)?.getBoundingClientRect();
+      const bar = box('.titlebar');
+      const stage = box('.stage');
+      return {
+        width: innerWidth,
+        bar: bar ? { top: bar.top, right: bar.right, bottom: bar.bottom } : null,
+        stageTop: stage?.top ?? -1,
+      };
+    });
+    expect(boxes.bar).not.toBeNull();
+    expect(boxes.bar?.top).toBe(0);
+    expect(Math.abs((boxes.bar?.right ?? 0) - boxes.width)).toBeLessThanOrEqual(1);
+    expect(boxes.bar?.bottom ?? 0).toBeGreaterThanOrEqual(area.height - 1);
+    expect(boxes.stageTop).toBeGreaterThanOrEqual((boxes.bar?.bottom ?? 0) - 0.5);
+    // nothing to back: the old strip stays away
+    await expect(win.getByTestId('caption-backing')).toBeHidden();
+    await shot(win, info, 'caption-titlebar-folded.png');
   });
 });
 
 test.describe('right to left', () => {
   test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x720' } });
 
-  test('with the left sidebar a rail, the backing covers what the buttons reach past it', async ({
+  test('with Layers folded, the title bar keeps clear of what the buttons reach past the rail', async ({
     twoDateProject,
     win,
   }, info) => {
@@ -162,26 +163,25 @@ test.describe('right to left', () => {
     await openCard(win, 'E2E two dates', twoDateProject.id);
     const area = await captionArea(win);
     test.skip(area.kept.right === 0, 'no window buttons are drawn over the page here');
-
-    const state = () =>
-      win.evaluate(() => {
-        const width = (sel: string) => document.querySelector(sel)?.getBoundingClientRect().width;
-        return {
-          side: width('#app-sidebar') ?? 0,
-          back: width('[data-testid="caption-backing"]') ?? 0,
-        };
-      });
-    // expanded: the buttons lie wholly over the sidebar's logo row, nothing of the main area
-    await expect.poll(async () => (await state()).back).toBe(0);
-    await win.getByTestId('panel-handle-left').click();
+    if ((await win.locator('.app').getAttribute('data-sb')) !== 'collapsed')
+      await win.getByTestId('panel-handle-left').click();
     await expect(win.locator('.app')).toHaveAttribute('data-sb', 'collapsed');
+    // the buttons are at the window's physical right, the bar's start right to left: every
+    // control of the bar ends before them
+    const room = (await win.evaluate(() => innerWidth)) - area.kept.right;
     await expect
-      .poll(async () => {
-        const s = await state();
-        return Math.abs(s.back - (area.kept.right - s.side));
-      })
-      .toBeLessThanOrEqual(2);
-    expect((await state()).back, 'about 86 px past the rail').toBeGreaterThan(40);
-    await shot(win, info, 'caption-backing-rtl-rail.png');
+      .poll(() =>
+        win.evaluate(() =>
+          Math.max(
+            ...[...document.querySelectorAll('.titlebar > *, .titlebar .sb-status-row > *')]
+              .map((el) => el.getBoundingClientRect())
+              .filter((r) => r.width > 0)
+              .map((r) => r.right),
+          ),
+        ),
+      )
+      .toBeLessThanOrEqual(room + 0.5);
+    await expect(win.getByTestId('caption-backing')).toBeHidden();
+    await shot(win, info, 'caption-titlebar-rtl.png');
   });
 });

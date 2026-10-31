@@ -146,14 +146,13 @@ describe('Layers column', () => {
     expect(q('layers-column')?.firstElementChild).toBe(section);
   });
 
-  it('folded, it takes no focus and hands its tab to the rail', () => {
+  it('folded, it takes no focus; its tab lives on the rail', () => {
     render(null);
-    expect(q('panel-handle-left')).not.toBeNull();
+    expect(q('panel-handle-left')).toBeNull();
     act(() => {
       shell.setState({ settings: { ...shell.getState().settings, sidebarCollapsed: true } });
     });
     expect(q('layers-column')?.hasAttribute('inert')).toBe(true);
-    expect(q('panel-handle-left')).toBeNull();
   });
 });
 

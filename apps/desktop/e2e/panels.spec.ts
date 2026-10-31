@@ -18,7 +18,10 @@ import { openAgentOff } from './agentPane';
 import { expect, launchApp, NetworkGuard, test, type DataRoot } from './fixtures';
 
 const SIZE: [number, number] = [1440, 900];
-/** tokens.css and styles.css: the sidebar, its icon rail and the right panel. */
+/**
+ * tokens.css and styles.css: the Layers column (the left sidebar, which folds away whole) and the
+ * rail beside it on every screen (UI revision W11).
+ */
 const SIDEBAR = 252;
 const RAIL = 52;
 /**
@@ -184,7 +187,7 @@ test('each side panel folds away and comes back, and the views take the room', a
     await expectWidth(win, '.sidebar', SIDEBAR);
     await expectWidth(win, '.right', RIGHT);
     const view = await win.evaluate(() => window.innerWidth);
-    const stage0 = view - SIDEBAR - RIGHT;
+    const stage0 = view - RAIL - SIDEBAR - RIGHT;
     await expectWidth(win, '.stage', stage0);
     await expect.poll(() => sceneFits(win), SETTLED).toBe(true);
     // each handle lies inside its panel, against the edge it moves, both at one height; it is
@@ -194,8 +197,8 @@ test('each side panel folds away and comes back, and the views take the room', a
     if (!lb || !rb) throw new Error('no panel handle');
     expect(Math.min(lb.width, rb.width)).toBeGreaterThanOrEqual(12);
     expect(Math.min(lb.height, rb.height)).toBeGreaterThanOrEqual(48);
-    expect(lb.x + lb.width).toBeLessThanOrEqual(SIDEBAR);
-    expect(lb.x + lb.width).toBeGreaterThanOrEqual(SIDEBAR - 2);
+    expect(lb.x + lb.width).toBeLessThanOrEqual(RAIL + SIDEBAR);
+    expect(lb.x + lb.width).toBeGreaterThanOrEqual(RAIL + SIDEBAR - 2);
     expect(rb.x).toBeGreaterThanOrEqual(view - RIGHT);
     expect(rb.x).toBeLessThanOrEqual(view - RIGHT + 2);
     expect(Math.abs(lb.y - rb.y)).toBeLessThanOrEqual(1);
@@ -214,13 +217,15 @@ test('each side panel folds away and comes back, and the views take the room', a
     expect(await scrolledAfterReveal(win)).toEqual([0, 0, 0, 0]);
     await shot(win, info, '1c-hover-right.png', false);
 
-    // left: folds to the icon rail, the main view grows by the difference
+    // left: the Layers column folds away whole, its tab waits on the rail's edge, the main view
+    // grows by the column's width
     await left.click();
     await expect(win.locator('.app')).toHaveAttribute('data-sb', 'collapsed');
     await expect(left).toHaveAttribute('aria-expanded', 'false');
     await expect(left).toHaveAccessibleName('Expand left sidebar');
-    await expectWidth(win, '.sidebar', RAIL);
-    await expectWidth(win, '.stage', stage0 + SIDEBAR - RAIL);
+    await expect(win.locator('.sidebar')).toBeHidden(SETTLED);
+    await expectWidth(win, '.rail', RAIL);
+    await expectWidth(win, '.stage', stage0 + SIDEBAR);
     await expect.poll(() => sceneFits(win), SETTLED).toBe(true);
     await expect(left).toBeInViewport();
     await shot(win, info, '2-left-collapsed.png');
@@ -404,12 +409,13 @@ async function fold(win: Page, left: boolean, right: boolean): Promise<void> {
   // as wide as their state says, the main view has what is left of the window, and the 3D view is
   // drawn at that size
   await expect(win.locator('.app[data-fold], .ws[data-fold]')).toHaveCount(0, SETTLED);
-  const sidebar = left ? RAIL : SIDEBAR;
+  const sidebar = left ? 0 : SIDEBAR;
   const view = await win.evaluate(() => window.innerWidth);
   const panel = right ? STRIP : rightFor(view);
-  await expectWidth(win, '.sidebar', sidebar);
+  if (left) await expect(win.locator('.sidebar')).toBeHidden(SETTLED);
+  else await expectWidth(win, '.sidebar', sidebar);
   await expectWidth(win, '.right', panel);
-  await expectWidth(win, '.stage', view - sidebar - panel);
+  await expectWidth(win, '.stage', view - RAIL - sidebar - panel);
   await expect.poll(() => sceneFits(win), SETTLED).toBe(true);
 }
 
@@ -531,13 +537,13 @@ test('the folded panels are still folded after a restart', async ({ dataRoot }) 
     await expect(win.locator('.ws.right-off')).toHaveCount(1);
     await expect(win.getByTestId('panel-handle-left')).toHaveAttribute('aria-expanded', 'false');
     await expect(win.getByTestId('panel-handle-right')).toHaveAttribute('aria-expanded', 'false');
-    await expectWidth(win, '.sidebar', RAIL);
+    await expect(win.locator('.sidebar')).toBeHidden(SETTLED);
     const view = await win.evaluate(() => window.innerWidth);
     await expectWidth(win, '.stage', view - RAIL - STRIP);
     // and they come back
     await win.getByTestId('panel-handle-right').click();
     await win.getByTestId('panel-handle-left').click();
-    await expectWidth(win, '.stage', view - SIDEBAR - RIGHT);
+    await expectWidth(win, '.stage', view - RAIL - SIDEBAR - RIGHT);
   } finally {
     await stop(second);
   }
@@ -586,11 +592,11 @@ test('a fold slides the whole panel out before the grid snaps once', async ({ da
     await expectWidth(win, '.right', STRIP);
     // the strip is today's: the panel's border and a 12 px tab, nothing clipped
     expect(await width(win, '[data-testid="panel-handle-right"]')).toBe(12);
-    // left: the surface leaves whole, the tab rides the edge to the rail (252 - 52)
-    const left = await slideEnds(win, 'left', ['.sb-surface', '.ph[data-side="left"]']);
-    expect(left['.sb-surface'] ?? 0).toBeCloseTo(-SIDEBAR, 0);
-    expect(left['.ph[data-side="left"]'] ?? 0).toBeCloseTo(-(SIDEBAR - RAIL), 0);
-    await expectWidth(win, '.sidebar', RAIL);
+    // left: the Layers column leaves whole, under the rail, whose edge takes its tab
+    const left = await slideEnds(win, 'left', ['.sidebar']);
+    expect(left['.sidebar'] ?? 0).toBeCloseTo(-SIDEBAR, 0);
+    await expect(win.locator('.sidebar')).toBeHidden(SETTLED);
+    await expectWidth(win, '.rail', RAIL);
   } finally {
     await stop(run);
   }
