@@ -614,10 +614,17 @@ button.chip-status:hover {
   align-items: center;
   gap: var(--sp-2);
   min-inline-size: 0;
-  padding-inline: calc(var(--sp-2) + max(0px, var(--caption-inline-start) - var(--rail-w)))
-    calc(var(--sp-2) + var(--caption-inline-end));
+  padding-inline: var(--sp-2) calc(var(--sp-2) + var(--caption-inline-end));
   background: var(--bg-chrome);
   border-block-end: 1px solid var(--line-soft);
+}
+/* right to left on Windows the buttons take the rail's top and reach past it onto the bar's
+   start: room for them there */
+.titlebar::before {
+  content: '';
+  flex: none;
+  margin-inline-end: calc(-1 * var(--sp-2));
+  padding-inline: max(0px, calc(var(--caption-inline-start) - var(--rail-w))) 0;
 }
 .tb-crumbs {
   display: flex;

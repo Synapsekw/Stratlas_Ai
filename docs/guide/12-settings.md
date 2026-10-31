@@ -113,16 +113,16 @@ The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) 
 
 ### Anywhere
 
-| Keys       | Does                                     |
-| ---------- | ---------------------------------------- |
-| Ctrl K     | Open or close the command search         |
-| Ctrl B     | Collapse or expand the left sidebar      |
-| Ctrl Alt B | Collapse or expand the right sidebar     |
-| Space      | Play or pause the video and the timeline |
-| Alt ←      | Go to the previous survey date           |
-| Alt →      | Go to the next survey date               |
-| Ctrl J     | Ask AI                                   |
-| F1         | Open or close the user guide             |
+| Keys           | Does                                     |
+| -------------- | ---------------------------------------- |
+| Ctrl K         | Open or close the command search         |
+| Ctrl B, Ctrl L | Show or hide Layers                      |
+| Ctrl Alt B     | Collapse or expand the right sidebar     |
+| Space          | Play or pause the video and the timeline |
+| Alt ←          | Go to the previous survey date           |
+| Alt →          | Go to the next survey date               |
+| Ctrl J         | Ask AI                                   |
+| F1             | Open or close the user guide             |
 
 ### Scene: 3D, map and split
 
