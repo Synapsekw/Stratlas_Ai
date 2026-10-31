@@ -71,6 +71,7 @@ class Export:
     asset_name: str | None
     generation: str  # '2024-bag', '2025-mcap' or 'unknown'
     inspections: list[Inspection] = field(default_factory=list)
+    skipped_snapshots: int = 0  # snapshots whose flight is unknown with several inspections
 
 
 def _load(path: Path) -> dict[str, Any] | None:
@@ -107,7 +108,7 @@ def _file(folder: Path, entries: Any) -> Path | None:
 def _vec(pose: Any, key: str, names: str) -> np.ndarray:
     src = pose.get(key) if isinstance(pose, dict) else None
     src = src if isinstance(src, dict) else {}
-    return np.array([float(src.get(n, 0.0) or 0.0) for n in names], dtype=float)
+    return np.array([_number(src.get(n)) or 0.0 for n in names], dtype=float)
 
 
 def _quat(pose: Any) -> np.ndarray:
@@ -129,7 +130,13 @@ def _transform(v: Any) -> np.ndarray | None:
     nums = v.get("v") if isinstance(v, dict) else None
     if not isinstance(nums, list) or len(nums) != 16:
         return None
-    return np.array(nums, dtype=float).reshape(4, 4)
+    try:
+        m = np.array(nums, dtype=float).reshape(4, 4)
+    except (TypeError, ValueError):
+        return None
+    if not np.all(np.isfinite(m)) or np.allclose(m, np.eye(4)):
+        return None
+    return m
 
 
 def _generation(root: Path) -> str:
@@ -185,6 +192,13 @@ def _snapshot(folder: Path, data: dict[str, Any]) -> Snapshot:
 
 
 def read_export(root: Path) -> Export:
+    """Read an export folder.
+
+    Rules for gaps: a snapshot with an empty or unknown `poi_id` gets one synthetic POI of its own
+    (id = snapshot id, name `Snapshot <first 8 of id>`); a snapshot whose flight is unknown is put
+    in the sole inspection, or skipped (counted in `skipped_snapshots`) when there are several;
+    POIs without snapshots are left out (nothing to place or show).
+    """
     root = Path(root)
     assets = _records(root, "assets", "asset.json")
     names = [a.get("name") for _, a in assets if isinstance(a.get("name"), str)]
@@ -229,14 +243,18 @@ def read_export(root: Path) -> Export:
 
     poi_records = {str(d.get("id") or p.name): d for p, d in _records(root, "pois", "poi.json")}
     pois_by_insp: dict[str, dict[str, list[Snapshot]]] = {i: {} for i in insp_ids}
+    skipped = 0
     for sdir, s in _records(root, "snapshots", "snapshot.json"):
         snap = _snapshot(sdir, s)
         iid = flight_insp.get(snap.flight_id)
         if iid not in pois_by_insp:
             if len(insp_ids) != 1:
+                skipped += 1
                 continue
             iid = insp_ids[0]
-        pois_by_insp[iid].setdefault(str(s.get("poi_id") or ""), []).append(snap)
+        poi_id = str(s.get("poi_id") or "")
+        key = poi_id if poi_id in poi_records else f"orphan:{snap.id}"
+        pois_by_insp[iid].setdefault(key, []).append(snap)
 
     out: list[Inspection] = []
     for iid, (_, idata) in zip(insp_ids, inspections, strict=True):
@@ -245,8 +263,7 @@ def read_export(root: Path) -> Export:
             snaps.sort(key=lambda s: (s.time_us, s.id))
             rec = poi_records.get(poi_id)
             if rec is None:
-                sid = poi_id or snaps[0].id
-                pois.append(Poi(sid, f"Snapshot {snaps[0].id[:8]}", "", [], snaps))
+                pois.append(Poi(snaps[0].id, f"Snapshot {snaps[0].id[:8]}", "", [], snaps))
             else:
                 pois.append(
                     Poi(
@@ -267,7 +284,7 @@ def read_export(root: Path) -> Export:
                 pois=pois,
             )
         )
-    return Export(asset_name, _generation(root), out)
+    return Export(asset_name, _generation(root), out, skipped)
 
 
 def read_trajectory(path: Path) -> np.ndarray:
