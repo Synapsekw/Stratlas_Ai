@@ -93,8 +93,7 @@ test.describe('the drawer', () => {
     await openCard(win, 'E2E two dates', twoDateProject.id);
     await foldRight(win);
     await expect(island(win)).not.toHaveAttribute('data-state', /tools|date/);
-    // a click on the notch at rest (sooner than its hover intent opens the tools; a press holds
-    // them shut until the pointer leaves)
+    // a click on the notch at rest
     await win.locator('.island').click({ position: { x: 4, y: 4 } });
     await expect(drawer(win)).toHaveAttribute('data-open', '');
     // one gesture, one surface: the island's tools stay shut behind the drawer (I-R64), and a

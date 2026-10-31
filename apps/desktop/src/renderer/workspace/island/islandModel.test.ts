@@ -106,17 +106,13 @@ describe('islandReducer', () => {
       open: 'tools',
     });
   });
-  it('opens on hover intent and closes when the pointer leaves', () => {
-    const open = islandReducer(rest, { type: 'hover' });
-    expect(open.open).toBe('tools');
-    expect(islandReducer(open, { type: 'leave' })).toMatchObject({ open: 'rest', preview: null });
+  it('has no pointer events: it opens and closes on a click, a key or a press outside only', () => {
     // the calendar stays until a date is picked or it is escaped
     const date = islandReducer(rest, { type: 'openDate' });
-    expect(islandReducer(date, { type: 'hover' }).open).toBe('date');
-    expect(islandReducer(date, { type: 'leave' }).open).toBe('date');
+    expect(islandReducer(date, { type: 'toggleTools' }).open).toBe('tools');
+    expect(islandReducer(date, { type: 'escape' }).open).toBe('rest');
   });
-  it('pinned, stays open through leave, Esc and T; Esc leaves the calendar for the tools', () => {
-    expect(islandReducer(pinned, { type: 'leave' }).open).toBe('tools');
+  it('pinned, stays open through Esc and T; Esc leaves the calendar for the tools', () => {
     expect(islandReducer(pinned, { type: 'escape' }).open).toBe('tools');
     expect(islandReducer(pinned, { type: 'toggleTools' }).open).toBe('tools');
     const date = islandReducer(pinned, { type: 'openDate' });
@@ -130,7 +126,7 @@ describe('islandReducer', () => {
     });
     const off = islandReducer(pinned, { type: 'pin', on: false });
     expect(off).toMatchObject({ open: 'tools', pinned: false });
-    expect(islandReducer(off, { type: 'leave' }).open).toBe('rest');
+    expect(islandReducer(off, { type: 'escape' }).open).toBe('rest');
     expect(islandReducer(pinned, { type: 'close' })).toMatchObject({ open: 'rest', pinned: false });
   });
   it('swaps back and clears the swap when the live pair changes', () => {

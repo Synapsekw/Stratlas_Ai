@@ -52,10 +52,6 @@ import {
 import { livePairKey, useIslandLive } from './useIslandLive';
 import './island.css';
 
-/** The pointer resting this long on the notch opens it (leaving sooner does not). */
-const HOVER_MS = 150;
-/** Unpinned, the notch closes this long after the pointer leaves it (unless it comes back). */
-const LEAVE_MS = 300;
 /** The one-time T notice stays this long at most. */
 const NOTICE_MS = 8000;
 /** Live readings are said at most once a second, and only when what is said changes. */
@@ -92,19 +88,6 @@ function useSayLive(text: string): void {
       clearTimeout(timer);
     };
   }, [text]);
-}
-
-/** Keyboard focus in `box` (or in a popover one of its controls opened): it keeps the notch open. */
-function keyboardIn(box: HTMLElement | null): boolean {
-  const at = document.activeElement;
-  if (!(at instanceof HTMLElement)) return false;
-  if (!box?.contains(at) && !at.closest('.surface-pop')) return false;
-  try {
-    // a click leaves focus on the button it pressed: that is the pointer's, not the keyboard's
-    return at.matches(':focus-visible');
-  } catch {
-    return true;
-  }
 }
 
 export interface IslandProps {
@@ -329,90 +312,29 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     };
   }, []);
 
-  // hover intent: the pointer resting on the notch opens it; leaving it closes it after a grace,
-  // so a pointer on its way to a row or a popover does not flicker it (unpinned, and not while
-  // keyboard focus is in it)
+  // the notch opens on a click (or Enter, Space, T) only, never on a pointer resting on it
+  // (founder, 30 Oct 2026); the pointer on it is still known, for Esc with focus elsewhere
   const hovered = useRef(false);
-  // the pointer's rest on the notch is spent (a timer runs, or a press or a close used it): no
-  // new opening until it leaves and comes back
-  const held = useRef(false);
-  const leaveSoon = useRef<() => void>(() => undefined);
-  // closed under the pointer (Esc, Close, a pick, T): a nudge does not open it again
-  useLayoutEffect(() => {
-    if (s.open === 'rest' && hovered.current) held.current = true;
-  }, [s.open]);
   useEffect(() => {
     const el = capsule.current;
     if (!el) return;
-    let openTimer: ReturnType<typeof setTimeout> | undefined;
-    let leaveTimer: ReturnType<typeof setTimeout> | undefined;
-    const stay = () =>
-      hovered.current ||
-      state.current.pinned ||
-      keyboardIn(layer.current) ||
-      document.querySelector('.surface-pop:hover') !== null;
-    leaveSoon.current = () => {
-      clearTimeout(leaveTimer);
-      leaveTimer = setTimeout(() => {
-        if (!stay()) dispatch({ type: 'leave' });
-      }, LEAVE_MS);
-    };
-    // where the pointer last was: the notch growing or appearing under a pointer that stays put
-    // (the browser says it entered) is not the person moving onto it
-    let at: { x: number; y: number } | null = null;
-    const armed = held;
-    const onWindowMove = (e: PointerEvent) => {
-      at = { x: e.clientX, y: e.clientY };
-    };
     const onEnter = () => {
       hovered.current = true;
-      clearTimeout(leaveTimer);
-    };
-    // (the notch's listener runs before the window's: `at` is still where the pointer was)
-    const onMove = (e: PointerEvent) => {
-      const still = at !== null && at.x === e.clientX && at.y === e.clientY;
-      // a drag across it (orbiting the view) is not a rest on it either
-      if (armed.current || state.current.open !== 'rest' || e.buttons || still) return;
-      armed.current = true;
-      openTimer = setTimeout(() => {
-        armed.current = false;
-        // with the sidebar folded the drawer has the stage's attention: the tools stay shut, as
-        // for a click (I-R64, D20)
-        if (hovered.current && drawerStore.getState().opened === null) dispatch({ type: 'hover' });
-      }, HOVER_MS);
     };
     const onLeave = () => {
       hovered.current = false;
-      armed.current = false;
-      clearTimeout(openTimer);
-      if (state.current.open === 'tools') leaveSoon.current();
-    };
-    // a press on the line at rest (a view, a date step) uses it as it is: no opening after it
-    // until the pointer has left and come back
-    const onPress = () => {
-      clearTimeout(openTimer);
-      armed.current = true;
     };
     el.addEventListener('pointerenter', onEnter);
     el.addEventListener('pointerleave', onLeave);
-    el.addEventListener('pointermove', onMove);
-    el.addEventListener('pointerdown', onPress);
-    window.addEventListener('pointermove', onWindowMove);
     return () => {
       el.removeEventListener('pointerenter', onEnter);
       el.removeEventListener('pointerleave', onLeave);
-      el.removeEventListener('pointermove', onMove);
-      el.removeEventListener('pointerdown', onPress);
-      window.removeEventListener('pointermove', onWindowMove);
-      clearTimeout(openTimer);
-      clearTimeout(leaveTimer);
     };
   }, []);
 
-  // Keep open; unpinned, the notch closes once the pointer is gone (not while keyboard focus is in it)
+  // Keep open: a press outside, Esc and a pick leave it open
   const setPinned = (on: boolean) => {
     dispatch({ type: 'pin', on });
-    if (!on && !hovered.current) leaveSoon.current();
   };
   // Close says it outright: the notch rests, no longer kept open
   const closeOut = () => {

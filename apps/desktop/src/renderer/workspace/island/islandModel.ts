@@ -80,8 +80,6 @@ export function islandInitial(pinned: boolean): IslandState {
 }
 
 export type IslandEvent =
-  | { type: 'hover' }
-  | { type: 'leave' }
   | { type: 'toggleTools' }
   | { type: 'openDate' }
   | { type: 'hoverGroup'; group: GroupId }
@@ -94,12 +92,6 @@ export type IslandEvent =
 
 export function islandReducer(s: IslandState, e: IslandEvent): IslandState {
   switch (e.type) {
-    // the pointer resting on the notch opens its tools
-    case 'hover':
-      return s.open === 'rest' ? { ...s, open: 'tools' } : s;
-    // the pointer gone closes the tools, not the calendar; pinned, nothing
-    case 'leave':
-      return s.open === 'tools' && !s.pinned ? { ...s, open: 'rest', preview: null } : s;
     case 'toggleTools':
       if (s.pinned) return { ...s, open: 'tools' };
       return { ...s, open: s.open === 'tools' ? 'rest' : 'tools', preview: null };
@@ -110,7 +102,7 @@ export function islandReducer(s: IslandState, e: IslandEvent): IslandState {
     // picked, the group's workbench opens and the notch rests unless pinned (Island.tsx)
     case 'pickGroup':
       return { ...s, group: e.group, preview: null };
-    // pinned it opens; unpinned it stays until the pointer leaves (Island.tsx)
+    // pinned it opens; let go, it stays open until a press outside, Esc, Close or a pick
     case 'pin':
       return e.on ? { ...s, pinned: true, open: 'tools' } : { ...s, pinned: false };
     case 'swap':

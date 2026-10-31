@@ -130,6 +130,10 @@ const key = (k: string, target: Element | null = document.activeElement) => {
 const openTools = () => {
   act(() => button('Tools')?.click());
 };
+/** A click on the notch itself, off its buttons: it opens the tools, focus left where it was. */
+const clickNotch = () => {
+  act(() => notch()?.click());
+};
 const pressOutside = () => {
   act(() => {
     document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
@@ -181,53 +185,41 @@ describe('Island', () => {
     expect(island()?.dataset.state).toBe('rest');
   });
 
-  it('opens when the pointer rests on the notch, not when it passes over or drags across', async () => {
+  it('opens on a click only, never on the pointer resting on it (founder, 30 Oct)', async () => {
     await render();
-    // the notch appearing under a pointer that stays put is not a move onto it
-    act(() => {
-      const at = { bubbles: true, clientX: 500, clientY: 5 };
-      document.body.dispatchEvent(new MouseEvent('pointermove', at));
-      notch()?.dispatchEvent(new MouseEvent('pointerenter'));
-      notch()?.dispatchEvent(new MouseEvent('pointermove', at));
-    });
-    wait(200);
-    expect(island()?.dataset.state).toBe('rest');
-    pointer('leave');
     pointer('enter');
-    wait(100);
-    pointer('leave');
-    wait(200);
+    wait(2000);
     expect(island()?.dataset.state).toBe('rest');
-    pointer('enter', 1);
-    wait(300);
+    // a press on the line uses it as it is (a view, a date step): it does not open
+    act(() => button('Next survey')?.click());
+    wait(2000);
     expect(island()?.dataset.state).toBe('rest');
-    pointer('leave');
-    // a press on the line uses it as it is (a view, a date step): no opening after it
-    pointer('enter');
-    act(() => {
-      button('Next survey')?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
-    });
-    wait(200);
-    expect(island()?.dataset.state).toBe('rest');
-    pointer('leave');
-    pointer('enter');
-    wait(160);
+    clickNotch();
     expect(island()?.dataset.state).toBe('tools');
     // opened by the pointer, focus stays where it was
     expect(document.activeElement?.getAttribute('role')).not.toBe('tab');
   });
 
-  it('closes a while after the pointer leaves, unless it comes back', async () => {
+  it('opens on Enter and on Space with focus on it', async () => {
+    await render();
+    act(() => island()?.focus());
+    key('Enter', island());
+    expect(island()?.dataset.state).toBe('tools');
+    key('Escape');
+    expect(island()?.dataset.state).toBe('rest');
+    act(() => island()?.focus());
+    key(' ', island());
+    expect(island()?.dataset.state).toBe('tools');
+  });
+
+  it('stays open when the pointer leaves: a click opened it, a click outside or Esc closes it', async () => {
     await render();
     pointer('enter');
-    wait(160);
+    clickNotch();
     pointer('leave');
-    wait(150);
-    pointer('enter');
-    wait(400);
+    wait(2000);
     expect(island()?.dataset.state).toBe('tools');
-    pointer('leave');
-    wait(310);
+    pressOutside();
     expect(island()?.dataset.state).toBe('rest');
   });
 
@@ -250,7 +242,7 @@ describe('Island', () => {
   it('closes on Esc with the pointer on it, focus elsewhere', async () => {
     await render();
     pointer('enter');
-    wait(160);
+    clickNotch();
     key('Escape', document.body);
     expect(island()?.dataset.state).toBe('rest');
   });
@@ -944,7 +936,7 @@ describe('Island: kept open (pinned)', () => {
     expect(island()?.dataset.state).toBe('tools');
   });
 
-  it('unpinned again, closes as before: the pointer leaving, a pick', async () => {
+  it('unpinned again, closes as before: a press outside', async () => {
     await render();
     openTools();
     act(() => pin()?.click());
@@ -952,12 +944,10 @@ describe('Island: kept open (pinned)', () => {
     act(() => pin()?.click());
     expect(pin()?.getAttribute('aria-pressed')).toBe('false');
     expect(island()?.dataset.state).toBe('tools');
-    // (the pointer's: no keyboard focus left in it)
-    act(() => {
-      (document.activeElement as HTMLElement | null)?.blur();
-    });
     pointer('leave');
-    wait(310);
+    wait(2000);
+    expect(island()?.dataset.state).toBe('tools');
+    pressOutside();
     expect(island()?.dataset.state).toBe('rest');
     // forgotten too
     act(() => root?.unmount());
@@ -991,24 +981,24 @@ describe('Island: the line keeps its place', () => {
   });
 });
 
-describe('Island: hover intent, the edges', () => {
-  it('does not open while the drawer is open (I-R64, D20)', async () => {
+describe('Island: the pointer on it, the edges', () => {
+  it('does not open on the pointer resting on it while the drawer is open (I-R64, D20)', async () => {
     await render();
     act(() => {
       drawerStore.getState().open('click');
     });
     pointer('enter');
-    wait(200);
+    wait(2000);
     expect(island()?.dataset.state).toBe('rest');
     act(() => {
       drawerStore.getState().close();
     });
   });
 
-  it('closed with Esc under the pointer, a nudge does not open it again until it leaves', async () => {
+  it('closed with Esc under the pointer, a nudge does not open it again', async () => {
     await render();
     pointer('enter');
-    wait(160);
+    clickNotch();
     expect(island()?.dataset.state).toBe('tools');
     key('Escape', document.body);
     expect(island()?.dataset.state).toBe('rest');
@@ -1017,19 +1007,17 @@ describe('Island: hover intent, the edges', () => {
         new MouseEvent('pointermove', { bubbles: true, clientX: 999, clientY: 6 }),
       );
     });
-    wait(200);
-    expect(island()?.dataset.state).toBe('rest');
     pointer('leave');
     pointer('enter');
-    wait(160);
-    expect(island()?.dataset.state).toBe('tools');
+    wait(2000);
+    expect(island()?.dataset.state).toBe('rest');
   });
 
   it("leaves the window's Esc to a live tool and to an open popover", async () => {
     live = [{ kind: 'tool', label: 'Distance', reading: null }];
     await render();
     pointer('enter');
-    wait(160);
+    clickNotch();
     key('Escape', document.body);
     expect(island()?.dataset.state).toBe('tools');
     live = [];
@@ -1044,16 +1032,14 @@ describe('Island: hover intent, the edges', () => {
     expect(island()?.dataset.state).toBe('rest');
   });
 
-  it('closes when the pointer leaves with focus left by a click (not focus-visible)', async () => {
+  it('stays open when the pointer leaves with focus left by a click', async () => {
     await render();
     pointer('enter');
-    wait(160);
-    // a pointer's click leaves focus on its button; jsdom matches no :focus-visible, as Chromium
-    // after a click
+    clickNotch();
     act(() => tab('Measure')?.focus());
     pointer('leave');
-    wait(310);
-    expect(island()?.dataset.state).toBe('rest');
+    wait(2000);
+    expect(island()?.dataset.state).toBe('tools');
   });
 });
 

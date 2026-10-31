@@ -82,7 +82,7 @@ test.describe('the island on a project with two dates', () => {
     await expect(islandDate(win).locator('.isl-day')).toHaveText('13 Apr');
   });
 
-  test('the pointer resting on the notch opens it; kept open, a press outside and a pick leave it open', async ({
+  test('a click opens the notch, the pointer resting on it does not; kept open, a press outside and a pick leave it open', async ({
     twoDateProject,
     win,
   }) => {
@@ -95,9 +95,24 @@ test.describe('the island on a project with two dates', () => {
     const canvas = await win.locator('[data-scene-view] canvas').first().boundingBox();
     if (!canvas) throw new Error('no 3D view');
     const away = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height * 0.75 };
+    // the pointer resting on the notch leaves it shut (founder, 30 Oct: click only)
     await win.locator('.island').hover({ position: { x: 4, y: 4 } });
+    await win.waitForTimeout(600);
+    await expect(bar).toHaveAttribute('data-state', 'rest');
+    // a click opens it, and it stays open once the pointer leaves
+    await win.locator('.island').click({ position: { x: 4, y: 4 } });
     await expect(bar).toHaveAttribute('data-state', 'tools');
     await win.mouse.move(away.x, away.y);
+    await win.waitForTimeout(600);
+    await expect(bar).toHaveAttribute('data-state', 'tools');
+    // a press outside closes it
+    await win.mouse.click(away.x, away.y);
+    await expect(bar).toHaveAttribute('data-state', 'rest');
+    // Enter on the focused notch opens it as well
+    await bar.focus();
+    await win.keyboard.press('Enter');
+    await expect(bar).toHaveAttribute('data-state', 'tools');
+    await win.keyboard.press('Escape');
     await expect(bar).toHaveAttribute('data-state', 'rest');
 
     await openIslandTools(win);
@@ -111,10 +126,10 @@ test.describe('the island on a project with two dates', () => {
     await expect(win.locator('#wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
     await expect(bar).toHaveAttribute('data-state', 'tools');
     await expect(bar.getByRole('tabpanel')).toHaveAccessibleName('Measure');
-    // let go, it closes once the pointer leaves
+    // let go, a press outside closes it again
     await pin.click();
     await expect(pin).toHaveAttribute('aria-pressed', 'false');
-    await win.mouse.move(away.x, away.y);
+    await win.mouse.click(away.x, away.y);
     await expect(bar).toHaveAttribute('data-state', 'rest');
   });
 
@@ -658,8 +673,8 @@ for (const size of ['1400x900', '1100x720'] as const) {
       const rest = await boxes();
       expect(rest.map((b) => b.name)).toEqual(expect.arrayContaining(['3D', 'Map', 'Split']));
       await shot(win, info, `notch-rest-${size}.png`);
-      // the pointer rests on the notch's own edge, off its buttons
-      await win.locator('.island').hover({ position: { x: 4, y: 4 } });
+      // a click on the notch's own edge, off its buttons
+      await win.locator('.island').click({ position: { x: 4, y: 4 } });
       await expect(bar).toHaveAttribute('data-state', 'tools');
       await islandSettled(win);
       await shot(win, info, `notch-open-${size}.png`);
