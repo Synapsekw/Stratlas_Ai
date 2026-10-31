@@ -547,9 +547,10 @@ describe('applyAutoplan', () => {
 describe('openAntennaReviewOrFallback', () => {
   const bench = () => {
     const open = vi.fn();
+    const show = vi.fn();
     const pin = vi.fn();
     const tabs = [{ id: 'rf' }];
-    return { open, pin, store: { getState: () => ({ open, pin, tabs }) } as never };
+    return { open, show, pin, store: { getState: () => ({ open, show, pin, tabs }) } as never };
   };
   const drafts = () => [...site3(), draft('d1', 60), draft('d2', 90)];
 
@@ -561,8 +562,9 @@ describe('openAntennaReviewOrFallback', () => {
     // the drafts, the first one revealed; the bench is left as it is
     expect(antennaStore.getState()).toMatchObject({ filter: 'draft', selected: 'ant-d1' });
     expect(antennaStore.getState().reveal).toBe(before + 1);
-    // the Measure bench comes forward, where the inventory and the card are; Coverage keeps its pin
-    expect(b.open).toHaveBeenCalledWith('measure');
+    // Project > In this project comes forward, where the inventory and the card are; Coverage
+    // keeps its pin
+    expect(b.show).toHaveBeenCalledWith('project', 'project.inThisProject');
     expect(b.pin).not.toHaveBeenCalled();
   });
 
@@ -571,7 +573,7 @@ describe('openAntennaReviewOrFallback', () => {
     antennaStore.setState({ projectId: 'p2', selected: null, filter: 'all' });
     const b = bench();
     openAntennaReviewOrFallback(b.store);
-    expect(b.open).toHaveBeenCalledWith('measure');
+    expect(b.show).toHaveBeenCalledWith('project', 'project.inThisProject');
     expect(antennaStore.getState().selected).toBeNull();
     // this project's inventory read: the review opens
     antennaStore.setState({ status: 'loading' });
@@ -579,12 +581,12 @@ describe('openAntennaReviewOrFallback', () => {
     expect(antennaStore.getState()).toMatchObject({ filter: 'draft', selected: 'ant-d1' });
   });
 
-  it('opens the Measure bench while the inventory loads, then the review once, when it is read', async () => {
+  it('opens Project, In this project while the inventory loads, then the review once, when it is read', async () => {
     await seedAntennas(drafts());
     antennaStore.setState({ status: 'loading', selected: null, filter: 'all' });
     const b = bench();
     openAntennaReviewOrFallback(b.store);
-    expect(b.open).toHaveBeenCalledWith('measure');
+    expect(b.show).toHaveBeenCalledWith('project', 'project.inThisProject');
     expect(antennaStore.getState().selected).toBeNull();
     antennaStore.setState({ status: 'ready' });
     expect(antennaStore.getState()).toMatchObject({ filter: 'draft', selected: 'ant-d1' });
@@ -616,7 +618,7 @@ describe('openAntennaReviewOrFallback', () => {
     antennaStore.setState({ status: 'ready' });
     expect(antennaStore.getState().selected).toBe('ant-d1');
     expect(antennaStore.getState().reveal).toBe(before + 1);
-    expect(b.open).toHaveBeenCalledTimes(4);
+    expect(b.show).toHaveBeenCalledTimes(4);
   });
 });
 

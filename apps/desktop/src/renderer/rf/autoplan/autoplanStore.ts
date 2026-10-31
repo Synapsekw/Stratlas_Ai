@@ -500,17 +500,18 @@ export async function applyAutoplan(run: boolean): Promise<StartResult | ApplyRe
 let pendingReview: (() => void) | null = null;
 
 /**
- * "Review antennas first": the Measure bench forward (a pinned Coverage tab stays open beside it;
- * its pin is never changed here), then the inventory's review (`openAntennaReview`: the drafts, the first one revealed).
+ * "Review antennas first": Project > In this project forward (Coverage stays in Tools; its pin is
+ * never changed here), then the inventory's review (`openAntennaReview`: the drafts, the first one
+ * revealed).
  * Before this project's inventory is read, the review opens once the read is in; a failed read, a
  * read of another project or a newer ask drops it.
  */
 export function openAntennaReviewOrFallback(bench: StoreApi<WorkbenchState> = workbench): void {
   pendingReview?.();
   pendingReview = null;
-  // Coverage keeps the pin it has: opened from the chip or Ctrl+K it is pinned and stays open
-  // beside Measure; a person who unpinned it is not overruled
-  bench.getState().open('measure');
+  // the inventory's home, Project > In this project (UI revision D2), comes forward at once, even
+  // before the inventory is read; Coverage keeps its place in Tools
+  bench.getState().show('project', 'project.inThisProject');
   const projectId = rfStore.getState().projectId;
   const a = antennaStore.getState();
   if (a.status === 'ready' && a.projectId === projectId) {

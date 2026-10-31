@@ -279,12 +279,13 @@ describe('RfBench', () => {
     expect(byTest('rf-step-antennas')?.textContent).toContain('3 accepted · 1 draft');
   });
 
-  it('Review in inventory opens the Measure bench, then the review once the inventory is read', async () => {
+  it('Review in inventory opens Project, In this project, then the review once the inventory is read', async () => {
     h.antennas = antennasFile([unit('ant-a1', 10), unit('ant-a4', 300, { status: 'draft' })]);
     await render();
     click(byTest('rf-step-review'));
-    expect(workbench.getState().front).toBe('measure');
-    // the Measure bench reads the inventory: its first draft is revealed
+    expect(workbench.getState().panel).toBe('project');
+    expect(workbench.getState().sections['project.inThisProject']).toBe(true);
+    // In this project reads the inventory: its first draft is revealed
     act(() => {
       antennaStore.setState({ projectId: 'p3', status: 'ready', file: h.antennas });
     });
@@ -298,13 +299,14 @@ describe('RfBench', () => {
     });
   });
 
-  it('Review in inventory with no draft still opens the Measure bench, the tab pinned', async () => {
+  it('Review in inventory with no draft still opens Project, In this project, the tab pinned', async () => {
     antennaStore.setState({ selected: null });
     openCoverage();
     await render();
     click(byTest('rf-step-review'));
     expect(antennaStore.getState().selected).toBeNull();
-    expect(workbench.getState().front).toBe('measure');
+    expect(workbench.getState().panel).toBe('project');
+    expect(workbench.getState().sections['project.inThisProject']).toBe(true);
     expect(workbench.getState().tabs.find((x) => x.id === 'rf')?.pinned).toBe(true);
   });
 
@@ -314,7 +316,8 @@ describe('RfBench', () => {
     workbench.getState().pin('rf', false);
     await render();
     click(byTest('rf-step-review'));
-    expect(workbench.getState().front).toBe('measure');
+    expect(workbench.getState().panel).toBe('project');
+    expect(workbench.getState().sections['project.inThisProject']).toBe(true);
     expect(workbench.getState().tabs.find((x) => x.id === 'rf')?.pinned ?? false).toBe(false);
   });
 

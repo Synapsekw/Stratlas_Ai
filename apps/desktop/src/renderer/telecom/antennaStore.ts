@@ -248,6 +248,11 @@ export async function loadAntennas(projectId: string, root: string): Promise<voi
   if (offerAfterLoad?.projectId === projectId) {
     const { before } = offerAfterLoad;
     offerAfterLoad = null;
+    // the run's units are in Project > In this project (UI revision D2), not beside Detect
+    // antennas: that list comes forward, unless a tool is in front, as a pick in 3D does
+    const { tabs, front } = workbench.getState();
+    if (!toolInFront({ tabs, front, issueEditing: isIssueEditing() }))
+      workbench.getState().show('project', 'project.inThisProject');
     offerAiLabels(projectId, before);
   }
   if (flagAfterLoad?.projectId === projectId) {
