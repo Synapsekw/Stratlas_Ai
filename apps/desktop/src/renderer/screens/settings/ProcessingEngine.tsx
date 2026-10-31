@@ -43,10 +43,11 @@ function AutoPrepareSurfaces() {
       aria-labelledby="auto-prepare-l"
     >
       <div className="pe-gpu-t">
-        <span id="auto-prepare-l">{t('settings.autoPrepare.label')}</span>
-        <span className="faint" id="auto-prepare-h">
+        {/* title and description on their own lines, with a space between for screen readers */}
+        <div id="auto-prepare-l">{t('settings.autoPrepare.label')}</div>{' '}
+        <div className="faint" id="auto-prepare-h">
           {t('settings.autoPrepare.hint')}
-        </span>
+        </div>
       </div>
       <button
         type="button"
@@ -73,10 +74,11 @@ function AutoCheckNewDates() {
       aria-labelledby="auto-check-l"
     >
       <div className="pe-gpu-t">
-        <span id="auto-check-l">{t('settings.autoCheck.label')}</span>
-        <span className="faint" id="auto-check-h">
+        {/* title and description on their own lines, with a space between for screen readers */}
+        <div id="auto-check-l">{t('settings.autoCheck.label')}</div>{' '}
+        <div className="faint" id="auto-check-h">
           {t('settings.autoCheck.hint')}
-        </span>
+        </div>
       </div>
       <button
         type="button"
@@ -348,10 +350,10 @@ export function ProcessingEngine() {
       {status && (
         <div className="pe-gpu" data-testid="engine-hardware-row">
           <div className="pe-gpu-t">
-            <span id="engine-gpu-l" data-testid="engine-hardware">
+            <div id="engine-gpu-l" data-testid="engine-hardware">
               {view.hardware}
-            </span>
-            <span className="faint">{t('engine.gpu.help')}</span>
+            </div>{' '}
+            <div className="faint">{t('engine.gpu.help')}</div>
           </div>
           <button
             type="button"

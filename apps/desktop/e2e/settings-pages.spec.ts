@@ -70,6 +70,16 @@ test('every Settings page opens with its heading and fits the window', async ({ 
   // Processing tools: the automatic surface switch sits inside the engine card
   await nav(win).locator('button', { hasText: 'Processing tools' }).click();
   await expect(win.getByTestId('engine').getByTestId('auto-prepare-row')).toBeVisible();
+  // each switch row: the description on its own line below the title
+  for (const row of ['auto-prepare-row', 'auto-check-row']) {
+    const lines = win.getByTestId(row).locator('.pe-gpu-t > *');
+    await expect(lines).toHaveCount(2);
+    const [title, text] = await Promise.all([
+      lines.nth(0).boundingBox(),
+      lines.nth(1).boundingBox(),
+    ]);
+    expect(text?.y ?? 0, row).toBeGreaterThanOrEqual((title?.y ?? 0) + (title?.height ?? 0) - 1);
+  }
 
   // Keyboard: the search box fills its row
   await nav(win).locator('button', { hasText: 'Keyboard' }).click();

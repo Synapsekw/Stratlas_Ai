@@ -311,6 +311,21 @@ describe('the Processing engine card', () => {
     expect(h.updateSettings).toHaveBeenCalledWith({ autoPrepareSurfaces: false });
   });
 
+  it('every switch row keeps its title and description apart, inside the engine card', async () => {
+    await mount(INSTALLED);
+    const card = q('engine');
+    for (const row of ['auto-prepare-row', 'auto-check-row', 'engine-hardware-row']) {
+      const el = q(row);
+      expect(el, row).not.toBeNull();
+      expect(card?.contains(el ?? null), row).toBe(true);
+      // two lines, each its own element, and a space between them in the text
+      const lines = el?.querySelector('.pe-gpu-t')?.children;
+      expect(lines?.length, row).toBe(2);
+      const [title, text] = [lines?.[0]?.textContent ?? '', lines?.[1]?.textContent ?? ''];
+      expect(el?.textContent, row).toContain(`${title} ${text}`);
+    }
+  });
+
   it('the auto-prepare switch shows off when the setting is off, and turns it on', async () => {
     h.autoPrepare = false;
     await mount(INSTALLED);
