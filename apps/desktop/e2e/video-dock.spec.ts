@@ -41,9 +41,11 @@ async function boxOf(win: Page, testId: string): Promise<Box> {
 const overlap = (a: Box, b: Box) =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
+const docked = (win: Page) => win.locator('[data-testid="video-dock"][data-mode="docked"]');
+
 async function openTankFarm(win: Page): Promise<void> {
   await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
-  await expect(win.getByTestId('video-tile')).toBeVisible(VIEW_READY);
+  await expect(docked(win)).toBeVisible(VIEW_READY);
 }
 
 /** Pop the tile out; on the software renderer a click can land while the strip still settles. */
@@ -64,8 +66,8 @@ async function drag(win: Page, from: { x: number; y: number }, dx: number, dy: n
   await win.mouse.up();
 }
 
-test.describe('the CI window', () => {
-  test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x720', QUADRION_DEMO: DEMO_FOLDER } });
+test.describe('a wide window', () => {
+  test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1440x900', QUADRION_DEMO: DEMO_FOLDER } });
 
   test('the tank farm opens with the tile docked in the bottom strip and nothing over the stage', async ({
     win,
@@ -98,7 +100,33 @@ test.describe('the CI window', () => {
       [s.x + s.width / 2, s.y + s.height / 2],
     );
     expect(hit).toBe(true);
-    await shot(win, info, 'video-dock-tile-1100.png');
+    await shot(win, info, 'video-dock-tile-1440.png');
+  });
+});
+
+test.describe('the CI window', () => {
+  test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x720', QUADRION_DEMO: DEMO_FOLDER } });
+
+  test('a strip too narrow for the tile keeps one Pop out button and the stage its height', async ({
+    win,
+  }, info) => {
+    await openTankFarm(win);
+    // both sidebars open at 1100 px: the strip has no room for the tile beside the bar
+    await expect(win.getByTestId('video-tile')).toBeHidden();
+    const button = win.getByTestId('video-popout-compact');
+    await expect(button).toBeVisible();
+    const b = await button.boundingBox();
+    expect(b?.width ?? 99).toBeLessThanOrEqual(34);
+    // the strip is no taller than its bar: the stage keeps its height
+    const strip = await boxOf(win, 'bottom-strip');
+    const bar = await win.locator('.ws-strip-in > .tl-wrap').boundingBox();
+    if (!bar) throw new Error('no bar');
+    expect(strip.height).toBeLessThanOrEqual(bar.height + 2);
+    await shot(win, info, 'video-dock-compact-1100.png');
+    // it pops the video out, and the title bar takes focus
+    await button.click();
+    await expect(win.getByTestId('video-window')).toBeVisible();
+    await expect(win.getByTestId('video-header')).toBeFocused();
   });
 
   test('pop out, drag, resize, pop in, and the window keeps its place', async ({ win }, info) => {
@@ -107,7 +135,8 @@ test.describe('the CI window', () => {
     await win.locator('.stage-rp button').click();
     await expect(win.locator('.ws')).toHaveClass(/right-off/);
     await popOut(win);
-    await expect(win.getByTestId('video-tile')).toHaveCount(0);
+    await expect(win.getByTestId('video-header')).toBeFocused();
+    await expect(win.getByTestId('video-dock')).toHaveCount(0);
     const s = await win.locator('.ws > .stage').boundingBox();
     if (!s) throw new Error('no stage');
     const start = await boxOf(win, 'video-window');
@@ -141,10 +170,15 @@ test.describe('the CI window', () => {
     if (!frame) throw new Error('no frame');
     expect(frame.width / frame.height).toBeCloseTo(16 / 9, 1);
 
-    // pop in: the tile is back, the stage clear
+    // pop in: docked again, the stage clear, focus on what pops it out again
     await win.getByTestId('video-popin').click();
     await expect(win.getByTestId('video-window')).toHaveCount(0);
-    await expect(win.getByTestId('video-tile')).toBeVisible();
+    await expect(docked(win)).toBeVisible();
+    await expect(
+      win.locator(
+        '[data-testid="video-popout"]:visible, [data-testid="video-popout-compact"]:visible',
+      ),
+    ).toBeFocused();
 
     // out again: where it was left
     await popOut(win);
@@ -156,8 +190,9 @@ test.describe('the CI window', () => {
     await win.getByTestId('video-window').getByRole('button', { name: 'Close the video' }).click();
     await expect(win.getByTestId('video-window')).toHaveCount(0);
     await expect(win.getByTestId('video-tile')).toHaveCount(0);
+    await expect(win.getByTestId('video-show')).toBeFocused();
     await win.getByTestId('video-show').click();
-    await expect(win.getByTestId('video-tile')).toBeVisible();
+    await expect(docked(win)).toBeVisible();
   });
 });
 

@@ -21,7 +21,11 @@ export function shellFlags(chosen: VideoDockMode | undefined): {
   return { videoHidden: chosen === 'closed', videoDocked: chosen !== 'floating' };
 }
 
-/** A hidden flag flipped by the W key, the island or the Video section: close or reopen. */
+/**
+ * A hidden flag flipped by the W key, the island or the Video section: close, or show it again as
+ * it was (popped out stays popped out). The bridge lives in the Scene screen only: the layout
+ * spike hides the video through the same flag without the Scene mounted, so it stores nothing.
+ */
 export function followHidden(
   store: StoreApi<VideoDockState>,
   projectId: string,
@@ -29,7 +33,7 @@ export function followHidden(
 ): void {
   const d = store.getState();
   if (hidden) d.close(projectId);
-  else if (d.byProject[projectId] === 'closed') d.reopen(projectId);
+  else d.restore(projectId);
 }
 
 export function useVideoDockBridge(store: StoreApi<VideoDockState> = videoDock): void {

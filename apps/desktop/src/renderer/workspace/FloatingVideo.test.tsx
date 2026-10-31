@@ -7,7 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { threeDates } from './__fixtures__/threeDates';
 import { FloatingVideo } from './FloatingVideo';
 import { VideoStripStart } from './video/VideoTile';
-import { videoDock } from './video/videoDockStore';
+import { videoDock, dockClipOf } from './video/videoDockStore';
+import { useVideoDockBridge } from './video/videoDockBridge';
+import { useStageKeys } from './stageKeys';
+import { shell, useShell } from '../shell';
 
 // the frame and the annotator draw nothing here: the tile and the window's controls are under test
 vi.mock('@aio/video', async (importOriginal) => ({
@@ -56,7 +59,8 @@ const mode = () => videoDock.getState().byProject.p;
 
 beforeEach(() => {
   localStorage.clear();
-  videoDock.setState({ byProject: {}, rect: null });
+  videoDock.setState({ byProject: {}, rect: null, beforeClose: {}, focus: null });
+  shell.setState({ videoHidden: false, videoDocked: true });
   host = document.createElement('div');
   document.body.append(host);
   workspace.getState().openProject({ id: 'p', root: '/p', manifest });
@@ -110,5 +114,39 @@ describe('the popped-out window', () => {
     expect(mode()).toBe('docked');
     act(() => button('Close the video')?.click());
     expect(mode()).toBe('closed');
+  });
+});
+
+describe('a project with no active clip', () => {
+  function Scene() {
+    useVideoDockBridge();
+    useStageKeys(null);
+    const hidden = useShell((s) => s.videoHidden);
+    // as the Scene's strip does: closed shows the Show button, hidden otherwise
+    return <VideoStripStart hidden={hidden && videoDock.getState().byProject.p !== 'closed'} />;
+  }
+  const pressW = () => {
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', code: 'KeyW', bubbles: true }));
+    });
+  };
+
+  it('shows the tile, W hides and shows it, and the island tile reads the same clip', () => {
+    act(() => {
+      workspace.getState().setActiveClip(null);
+    });
+    expect(workspace.getState().activeClip).toBeNull();
+    // the island's Video tile and the W key read this: a clip to show, though none is active
+    expect(dockClipOf(workspace.getState())).toBe('c1');
+    render(<Scene />);
+    expect(host.querySelector('[data-testid="video-tile"]')).not.toBeNull();
+    pressW();
+    expect(shell.getState().videoHidden).toBe(true);
+    expect(mode()).toBe('closed');
+    expect(host.querySelector('[data-testid="video-tile"]')).toBeNull();
+    expect(host.querySelector('[data-testid="video-show"]')).not.toBeNull();
+    pressW();
+    expect(shell.getState().videoHidden).toBe(false);
+    expect(host.querySelector('[data-testid="video-tile"]')).not.toBeNull();
   });
 });

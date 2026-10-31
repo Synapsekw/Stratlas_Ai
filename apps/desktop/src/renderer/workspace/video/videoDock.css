@@ -58,6 +58,15 @@
   background: var(--ov-dim);
   color: var(--fg-0);
 }
+/* the strip's start: the tile, or one slim button */
+.vdock {
+  flex: none;
+  display: flex;
+  min-block-size: 0;
+}
+.vdock > .vtile-compact {
+  display: none;
+}
 /* closed: one slim button at the strip's start brings the tile back */
 .vtile-show {
   flex: none;
@@ -67,16 +76,12 @@
   border-inline-end: 1px solid var(--line-soft);
 }
 /* A strip too narrow for the tile and the bar side by side (both sidebars open at 1100 px): the
-   tile stands above the bar, smaller, so the bar keeps its whole width for its controls. */
+   tile gives way to one Pop out button, so the bar keeps its width and the stage its height. */
 @container ws-strip (max-width: 599px) {
-  .ws-strip-in {
-    flex-direction: column;
-  }
   .vtile {
-    --vtile-h: 96px;
+    display: none;
   }
-  .vtile-show {
-    border-inline-end: 0;
-    border-block-end: 1px solid var(--line-soft);
+  .vdock > .vtile-compact {
+    display: flex;
   }
 }

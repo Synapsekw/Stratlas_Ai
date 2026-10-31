@@ -108,7 +108,8 @@ test('@realdata calibrate the Al-Zour clips against the plant model', async () =
       if (c.show !== undefined) {
         await panel.getByLabel('Horizontal field of view in degrees').fill(String(c.show));
       }
-      const hide = win.getByRole('button', { name: 'Hide the video window' });
+      // the video out of the way: closed from its tile or its window, wherever it shows
+      const hide = win.locator('button[aria-label="Close the video"]:visible');
       if (await hide.count()) await hide.first().click();
       await win.mouse.move(5, 890);
       await win.waitForTimeout(6000);

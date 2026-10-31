@@ -6,7 +6,7 @@ import type { Page } from '@playwright/test';
 /** What a pane header must keep clear of: the island and what hangs beside it, the corners, the
  * floating video, the compare tools, the right panel's toggle and the split's divider. */
 const HEADER_CLEAR_OF =
-  '.island, .isl-aside > *, .compare-view, .stage-slot > *, .vwin:not(.docked), .stage-rp, .split-handle';
+  '.island, .isl-aside > *, .compare-view, .stage-slot > *, .vwin, .stage-rp, .split-handle';
 
 /**
  * Where each pane's header strip is wrong (D31): missing, outside its pane, or under one of

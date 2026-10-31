@@ -52,6 +52,7 @@ import {
 import type { TabId } from '../workbench/tabsModel';
 import { GROUP_TAB } from './islandBench';
 import type { GroupId } from './islandModel';
+import { useDockClip } from '../video/videoDockStore';
 
 /** The stage views, keys 1, 2 and 3. */
 export const MODES: { mode: StageMode; label: MessageKey; icon: IconName; keys: string }[] = [
@@ -637,7 +638,9 @@ function VideoRow({ ctx }: { ctx: GroupCtx }) {
   const paths = useFlightPathModel();
   const telemetry = useTelemetryOn();
   const [, bump] = useReducer((n: number) => n + 1, 0);
-  const showVideo = activeClip !== null && !videoHidden;
+  // the clip the dock shows: the active one, else the project's first video
+  const dockClip = useDockClip();
+  const showVideo = dockClip !== null && !videoHidden;
   const camera = stage && activeClip ? videoRig(stage).cameraMode : 'free';
   return (
     <>
@@ -647,7 +650,7 @@ function VideoRow({ ctx }: { ctx: GroupCtx }) {
         name={showVideo ? t('island.tile.hideVideo') : t('island.tile.showVideo')}
         shortcut="scene.video"
         pressed={showVideo}
-        disabled={activeClip === null}
+        disabled={dockClip === null}
         onClick={() => {
           shell.getState().setVideoHidden(!videoHidden);
         }}

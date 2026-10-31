@@ -726,10 +726,7 @@
 }
 /* the right panel folded, the toggle stands left of the window's own buttons (styles.css) */
 .ws.right-off .island-wrap {
-  --isl-toggle-room: calc(
-    max(0px, var(--caption-inline-end, 0px) - var(--vdock-w, 0px)) + var(--sp-5) + 34px +
-      var(--sp-3)
-  );
+  --isl-toggle-room: calc(var(--caption-inline-end, 0px) + var(--sp-5) + 34px + var(--sp-3));
 }
 .island-wrap[data-state='tools']:not([data-pinned]) {
   --isl-spill: calc(var(--isl-toggle-room) - var(--sp-6));
@@ -741,7 +738,7 @@
 .ws.right-off .island-wrap[data-state='tools']:not([data-pinned]) {
   --isl-cap: max(
     var(--caption-inline-start, 0px) - var(--sb-col, 0px),
-    var(--caption-inline-end, 0px) - var(--vdock-w, 0px) - var(--rp-col, 0px)
+    var(--caption-inline-end, 0px) - var(--rp-col, 0px)
   );
   --isl-spill: max(0px, var(--isl-toggle-room) - max(var(--sp-6), var(--isl-cap) + var(--sp-3)));
 }

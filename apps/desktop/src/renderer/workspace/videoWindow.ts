@@ -50,7 +50,10 @@ export function maxVideoWidth(stage: StageSize): number {
   const byH = (stage.height - VIDEO_MARGIN - topOf(stage) - VIDEO_CHROME) * VIDEO_ASPECT;
   const shareW = stage.width * VIDEO_MAX_SHARE;
   const shareH = (stage.height * VIDEO_MAX_SHARE - VIDEO_CHROME) * VIDEO_ASPECT;
-  return Math.max(VIDEO_MIN_W, Math.floor(Math.min(VIDEO_MAX_W, byW, byH, shareW, shareH)));
+  const share = Math.floor(Math.min(VIDEO_MAX_W, byW, byH, shareW, shareH));
+  // never below the minimum, unless the room itself is smaller: then the room is the cap
+  const room = Math.max(0, Math.floor(Math.min(byW, byH)));
+  return Math.max(Math.min(VIDEO_MIN_W, room), share);
 }
 
 /**
@@ -67,12 +70,14 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), M
 
 /** The window kept inside the stage: width within the limits, position within the margins. */
 export function clampVideoRect(r: VideoRect, stage: StageSize): VideoRect {
-  const width = Math.round(clamp(r.width, VIDEO_MIN_W, maxVideoWidth(stage)));
+  const max = maxVideoWidth(stage);
+  const width = Math.round(clamp(r.width, Math.min(VIDEO_MIN_W, max), max));
   const h = videoHeight(width);
   return {
     width,
     left: Math.round(clamp(r.left, VIDEO_MARGIN, stage.width - width - VIDEO_MARGIN)),
-    bottom: Math.round(clamp(r.bottom, VIDEO_MARGIN, stage.height - h - topOf(stage))),
+    // the top edge first: the title bar never sits under the island, even with no room left
+    bottom: Math.round(Math.min(Math.max(r.bottom, VIDEO_MARGIN), stage.height - h - topOf(stage))),
   };
 }
 
@@ -106,7 +111,8 @@ export function resizeVideoRect(
       : east || west
         ? byX
         : byY;
-  const width = Math.round(clamp(r.width + want, VIDEO_MIN_W, maxVideoWidth(stage)));
+  const max = maxVideoWidth(stage);
+  const width = Math.round(clamp(r.width + want, Math.min(VIDEO_MIN_W, max), max));
   const dw = width - r.width;
   const dh = videoHeight(width) - videoHeight(r.width);
   return clampVideoRect(

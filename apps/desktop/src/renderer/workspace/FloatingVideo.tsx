@@ -68,6 +68,14 @@ export function FloatingVideo({ layerId, stageRef, onCorners }: Props) {
   /** The rect while a drag or resize runs; saved when it ends. */
   const [live, setLive] = useState<VideoRect | null>(null);
   const gesture = useRef<Gesture | null>(null);
+  const header = useRef<HTMLDivElement>(null);
+  // popped out by a click: focus goes to the title bar, where the arrow keys move the window
+  const ready = layer?.kind === 'video';
+  useEffect(() => {
+    if (!ready || videoDock.getState().focus !== 'header') return;
+    videoDock.getState().takeFocus();
+    header.current?.focus();
+  }, [ready]);
 
   // Follow the stage size (sidebar, right panel, window resize) to keep the window inside it.
   // A passive effect: the stage's ref is attached after this child's layout effects run.
@@ -207,6 +215,7 @@ export function FloatingVideo({ layerId, stageRef, onCorners }: Props) {
     >
       <div className="vwin-in" dir="ltr">
         <div
+          ref={header}
           className="vh"
           onPointerDown={(e) => {
             begin(e, null);

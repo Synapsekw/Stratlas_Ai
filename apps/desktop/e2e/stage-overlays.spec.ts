@@ -51,8 +51,11 @@ async function openTankFarm(win: Page): Promise<void> {
   await win.evaluate(() => {
     (window as unknown as Hooks).__stratlas.workspace.setState({ hidden: {} });
   });
-  await expect(win.getByTestId('video-tile')).toBeVisible(VIEW_READY);
+  await expect(docked(win)).toBeVisible(VIEW_READY);
 }
+
+/** The video docked at the strip's start: the tile, or its one button in a narrow strip. */
+const docked = (win: Page) => win.locator('[data-testid="video-dock"][data-mode="docked"]');
 
 /**
  * Pop the docked tile out, or the floating window in, and wait for it. On CI's software renderer
@@ -61,13 +64,19 @@ async function openTankFarm(win: Page): Promise<void> {
 async function popOut(win: Page): Promise<void> {
   const window = win.getByTestId('video-window');
   await expect(async () => {
+    // the tile's Pop out, or the strip's one button where the strip is too narrow for the tile
     if (!(await window.isVisible()))
-      await win.getByTestId('video-popout').click({ timeout: 2_000 });
+      await win
+        .locator(
+          '[data-testid="video-popout"]:visible, [data-testid="video-popout-compact"]:visible',
+        )
+        .first()
+        .click({ timeout: 2_000 });
     await expect(window).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: 15_000 });
 }
 async function popIn(win: Page): Promise<void> {
-  const tile = win.getByTestId('video-tile');
+  const tile = docked(win);
   await expect(async () => {
     if (!(await tile.isVisible())) await win.getByTestId('video-popin').click({ timeout: 2_000 });
     await expect(tile).toBeVisible({ timeout: 2_000 });
@@ -126,7 +135,7 @@ const layout = (win: Page) =>
         ),
       ),
       others: [
-        box('video', document.querySelector('.vwin:not(.docked)')),
+        box('video', document.querySelector('.vwin')),
         box('t-notice', document.querySelector('[data-testid="t-notice"]')),
         box('cursor', document.querySelector('.pane-3d:not(.is-hidden) .cursor-ro')),
       ],
@@ -236,7 +245,7 @@ test('docked, the video is a tile in the bottom strip and the views take the who
   };
   await expect.poll(fills).toBeLessThanOrEqual(1);
   const s = await stage.boundingBox();
-  const tile = await win.getByTestId('video-tile').boundingBox();
+  const tile = await docked(win).boundingBox();
   expect(s && tile).toBeTruthy();
   if (s && tile) expect(tile.y).toBeGreaterThanOrEqual(s.y + s.height - 1);
   // the volumes hint takes a corner of its own, clear of the readout (I-R51); the readout is on
@@ -276,7 +285,7 @@ test('docked, the video is a tile in the bottom strip and the views take the who
 
   // popped out again: the window floats over the stage, the tile gives way
   await popOut(win);
-  await expect(win.getByTestId('video-tile')).toHaveCount(0);
+  await expect(win.getByTestId('video-dock')).toHaveCount(0);
 });
 
 test.describe('a wider stage', () => {
@@ -587,7 +596,7 @@ test.describe('right to left', () => {
     await foldRight(win);
     await popIn(win);
     const strip = await win.getByTestId('bottom-strip').boundingBox();
-    const tile = await win.getByTestId('video-tile').boundingBox();
+    const tile = await docked(win).boundingBox();
     const bar = await win.locator('.ws-strip-in > .tl-wrap').boundingBox();
     expect(strip && tile && bar).toBeTruthy();
     if (strip && tile && bar) {

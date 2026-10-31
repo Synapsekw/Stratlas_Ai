@@ -15,6 +15,7 @@ import { toggleTelemetry } from './telemetryPref';
 import { nextLabelMode } from './tools/display';
 import { toggleMeasure, toggleSection } from './tools/measure';
 import { insideView } from './useCutaway';
+import { dockClipOf } from './video/videoDockStore';
 
 /** Answer the stage keys while mounted (the video annotator's own keys win inside its window). */
 export function useStageKeys(engine: EngineStage | null): void {
@@ -38,7 +39,7 @@ export function useStageKeys(engine: EngineStage | null): void {
       else if (k === 'scene.section' && three) toggleSection(three);
       else if (k === 'scene.labels' && three) sh.setLabelMode(nextLabelMode(sh.labelMode));
       else if (k === 'scene.annotate') sh.setAnnotating(!sh.annotating);
-      else if (k === 'scene.video' && ws.activeClip) sh.setVideoHidden(!sh.videoHidden);
+      else if (k === 'scene.video' && dockClipOf(ws) !== null) sh.setVideoHidden(!sh.videoHidden);
       else if (k === 'scene.flightPaths' && three && flightPathModel())
         updateFlightPaths(togglePaths);
       else if (k === 'scene.telemetry' && three && flightPathModel()) toggleTelemetry();

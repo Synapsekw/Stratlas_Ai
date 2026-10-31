@@ -18,6 +18,7 @@ import { compareNotice } from './compare';
 import { basemapCorners, readoutCorner, useStageCorners, type StageCornersInput } from './Stage';
 import { stagePrefs } from './stagePrefs';
 import { timeline } from './timeline';
+import { videoDock } from './video/videoDockStore';
 import { workbench } from './workbench/workbenchStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -401,17 +402,18 @@ describe('the stage corners', () => {
       withAntennas();
       act(() => {
         workspace.getState().setActiveClip('c1');
+        videoDock.getState().popOut('p3');
       });
       live({ video: ['bl'] });
       expect(slotOf('rf-chip')).toBeUndefined();
       expect(cursorHidden()).toBe(false);
       act(() => {
-        shell.setState({ videoDocked: true } as never);
+        videoDock.getState().popIn('p3');
       });
       live();
       expect(slotOf('rf-chip')).toBe('bl');
       act(() => {
-        shell.setState({ videoDocked: false } as never);
+        videoDock.setState({ byProject: {} });
       });
     });
 

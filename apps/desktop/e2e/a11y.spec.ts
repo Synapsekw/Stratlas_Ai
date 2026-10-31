@@ -674,9 +674,16 @@ test.describe('@realdata HCl (real data, local only)', () => {
       await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible({
         timeout: 60_000,
       });
-      await expect(win.getByTestId('video-tile')).toBeVisible({ timeout: 60_000 });
+      await expect(win.locator('[data-testid="video-dock"][data-mode="docked"]')).toBeVisible({
+        timeout: 60_000,
+      });
       await expectAccessible(win, 'HCl, scene with the docked video');
-      await win.getByTestId('video-popout').click();
+      await win
+        .locator(
+          '[data-testid="video-popout"]:visible, [data-testid="video-popout-compact"]:visible',
+        )
+        .first()
+        .click();
       await expect(win.locator('.vwin').first()).toBeVisible();
       await expectAccessible(win, 'HCl, scene with the video window');
       const see = { tile: 'See inside the asset: cut or transparent', tab: 'cutaway' as const };

@@ -748,7 +748,7 @@ export function Stage() {
     if (!root) return [];
     return [
       ...root.querySelectorAll(
-        '.island, .isl-notice, .stage-rp, .stage-slot > *, .vwin:not(.docked), .cursor-ro, .stage-pop, .surface-pop, .elev-legend, .pane-head > *, .vol-legend, .sec-window',
+        '.island, .isl-notice, .stage-rp, .stage-slot > *, .vwin, .cursor-ro, .stage-pop, .surface-pop, .elev-legend, .pane-head > *, .vol-legend, .sec-window',
       ),
     ].map((e) => e.getBoundingClientRect());
   }, []);

@@ -21,6 +21,7 @@ import { CoverageLegend, type CoverageLegendProps } from './CoverageLegend';
 import { useRfLayer } from './coverageDisplay';
 import { shownGrids, useCoverage } from './coverageStore';
 import { useRf } from './rfStore';
+import { useVideoDock } from '../workspace/video/videoDockStore';
 
 /** A run's time of day, as the legend's title tag shows it. */
 function timeOfDay(iso: string | undefined): string {
@@ -94,9 +95,9 @@ function useStagePanes() {
  */
 function useCornersCrowded(panes: ReturnType<typeof useStagePanes>): boolean {
   const { splitting, show3d, showMap, videoPane } = panes;
-  const docked = useShell((s) => s.videoDocked);
   const videoHidden = useShell((s) => s.videoHidden);
-  const activeClip = useWorkspace((s) => s.activeClip);
+  // the video floats over the stage only when popped out (W9); docked, it is in the bottom strip
+  const videoDock = useVideoDock();
   const index = useTimeline((s) => s.index);
   const hidden = useWorkspace((s) => s.hidden);
   const layers = useWorkspace((s) => s.project?.manifest.layers);
@@ -114,7 +115,7 @@ function useCornersCrowded(panes: ReturnType<typeof useStagePanes>): boolean {
       datesOnScreen(index, hidden, layers, DATE_KINDS).length >= 2,
     [splitting, index, hidden, layers],
   );
-  const video = activeClip !== null && !videoHidden && !docked && !videoPane;
+  const video = videoDock.mode === 'floating' && !videoHidden && !videoPane;
   const cutaway = show3d && ((cutawayEngaged && cutawayMode !== 'off') || inside);
   const status = notice !== null || cutaway || (showMap && measuring);
   return (

@@ -36,8 +36,18 @@ export interface VideoDockState {
   close: (projectId: string) => void;
   /** Back as the docked tile. */
   reopen: (projectId: string) => void;
+  /** Back as it was before it closed (the W key's show): floating stays floating. */
+  restore: (projectId: string) => void;
   setRect: (rect: VideoRect | null) => void;
+  /** The mode each project had before it closed (this session only). */
+  beforeClose: Readonly<Record<string, VideoDockMode>>;
+  /** Where focus goes once a Pop out, Pop in or Close has rendered (taken once). */
+  focus: VideoDockFocus | null;
+  takeFocus: () => VideoDockFocus | null;
 }
+
+/** The control that takes focus after a move: the window's title bar, Pop out, or Show. */
+export type VideoDockFocus = 'header' | 'popout' | 'show';
 
 function load(storage: KeyValue | null): Pick<VideoDockState, 'byProject' | 'rect'> {
   try {
@@ -65,20 +75,37 @@ export function createVideoDockStore(
     };
     return {
       ...load(storage),
+      beforeClose: {},
+      focus: null,
       popOut: (id) => {
+        set({ focus: 'header' });
         put(id, 'floating');
       },
       popIn: (id) => {
+        set({ focus: 'popout' });
         put(id, 'docked');
       },
       close: (id) => {
+        const was = get().byProject[id] ?? 'docked';
+        if (was !== 'closed')
+          set({ beforeClose: { ...get().beforeClose, [id]: was }, focus: 'show' });
         put(id, 'closed');
       },
       reopen: (id) => {
+        set({ focus: 'popout' });
         put(id, 'docked');
+      },
+      restore: (id) => {
+        if (get().byProject[id] !== 'closed') return;
+        put(id, get().beforeClose[id] ?? 'docked');
       },
       setRect: (rect) => {
         set({ rect });
+      },
+      takeFocus: () => {
+        const f = get().focus;
+        if (f) set({ focus: null });
+        return f;
       },
     };
   });
@@ -99,15 +126,26 @@ export function dockMode(chosen: VideoDockMode | undefined, hasVideo: boolean): 
   return hasVideo ? (chosen ?? 'docked') : 'closed';
 }
 
-/** The clip the tile and the window show: the active one, else the project's first video. */
+/** The workspace as the dock reads it: the open project's layers and the active clip. */
+export interface DockClipSource {
+  project: { manifest: { layers: readonly { id: string; kind: string }[] } } | null;
+  activeClip: string | null;
+}
+
+/**
+ * The clip the tile and the window show: the active one, else the project's first video. The one
+ * source for "is there a video to show" (the W key, the island's Video tile, the coverage legend).
+ */
+export function dockClipOf(s: DockClipSource): string | null {
+  const layers = s.project?.manifest.layers ?? [];
+  const v =
+    layers.find((l) => l.id === s.activeClip && l.kind === 'video') ??
+    layers.find((l) => l.kind === 'video');
+  return v?.id ?? null;
+}
+
 export function useDockClip(): string | null {
-  return useWorkspace((s) => {
-    const layers = s.project?.manifest.layers ?? [];
-    const v =
-      layers.find((l) => l.id === s.activeClip && l.kind === 'video') ??
-      layers.find((l) => l.kind === 'video');
-    return v?.id ?? null;
-  });
+  return useWorkspace(dockClipOf);
 }
 
 export interface VideoDockView {
