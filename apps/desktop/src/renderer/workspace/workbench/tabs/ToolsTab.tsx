@@ -15,7 +15,7 @@ import '../../../tools/tools.css';
 import { GroupControls } from '../../island/groups';
 import { usePanelData } from '../panelData';
 import { sectionDef, sectionsOf, type SectionDef } from '../tabsModel';
-import { useWorkbench } from '../workbenchStore';
+import { useWorkbench, workbench } from '../workbenchStore';
 import { PanelSection } from './PanelSections';
 
 /**
@@ -26,6 +26,12 @@ function ArmedTool() {
   const t = useT();
   const measure = sectionDef('tools.measure');
   const ref = useRef<HTMLDivElement>(null);
+  // the card always shows: Measure's section opens when the tool arms with it folded (M on the
+  // stage, a tile on the island)
+  useEffect(() => {
+    if (workbench.getState().sections['tools.measure'] !== true)
+      workbench.getState().toggleSection('tools.measure');
+  }, []);
   // started from a row the card took away: the focus goes to the way back, not lost
   useEffect(() => {
     const at = document.activeElement;
@@ -33,17 +39,9 @@ function ArmedTool() {
       ref.current?.querySelector<HTMLElement>('[data-testid="tools-back"]')?.focus();
   }, []);
   return (
-    <div
-      ref={ref}
-      className="tools-armed"
-      data-testid="tools-armed"
-      onKeyDown={(e) => {
-        // Esc in the card puts the tool down, as on the stage: the list comes back
-        if (e.key !== 'Escape' || e.defaultPrevented) return;
-        e.preventDefault();
-        stopTool();
-      }}
-    >
+    // Esc is the drawing's own (measureScene.ts listens on the window while a tool draws, the
+    // panel included): no handler here
+    <div ref={ref} className="tools-armed" data-testid="tools-armed">
       <Button
         variant="quiet"
         size="sm"

@@ -44,9 +44,12 @@ function ToolRow({ def, ctx }: { def: ToolDef; ctx: ToolCtx }) {
           data-testid={`tool-${def.id}`}
           aria-pressed={def.useOn ? on : undefined}
           aria-keyshortcuts={def.shortcutId ? ariaKeys(def.shortcutId) : undefined}
-          // greyed out with its reason under the name (an on tool can always be put away)
-          disabled={can !== true && !on}
-          onClick={press}
+          // greyed out with its reason under the name, still reached by Tab (an on tool can always
+          // be put away)
+          aria-disabled={can !== true && !on ? true : undefined}
+          onClick={() => {
+            if (can === true || on) press();
+          }}
         >
           <span className="meb-name">{name}</span>
           {hint && <span className="meb-hint">{hint}</span>}

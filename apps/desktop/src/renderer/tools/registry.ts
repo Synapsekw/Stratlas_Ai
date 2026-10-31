@@ -375,7 +375,9 @@ const VIEW_TOOLS: readonly ToolDef[] = [
     testId: 'compare-dates',
     available: (c) =>
       all(
-        needs(c.data.dated, 'toolReg.reason.needsDates'),
+        // the stage's own comparison decides (the island publishes it)
+        needs(c.compare !== null, 'toolReg.reason.needsStage'),
+        needs(c.compare?.available === true, 'toolReg.reason.needsDates'),
         needs(c.compare?.twin !== true, 'toolReg.reason.comparing'),
       ),
     start: (c) => {
@@ -391,7 +393,12 @@ const VIEW_TOOLS: readonly ToolDef[] = [
     nameOnKey: 'timeline.hide',
     icon: 'track',
     testId: 'timeline-toggle',
-    available: (c) => needs(c.data.video || c.data.dated, 'timeline.needsDates'),
+    // a road has the chainage ruler, not the timeline
+    available: (c) =>
+      all(
+        needs(!c.data.road, 'toolReg.reason.road'),
+        needs(c.data.video || c.data.dated, 'timeline.needsDates'),
+      ),
     start: () => {
       toggleTimeline(workspace.getState().project);
     },
@@ -902,7 +909,8 @@ export const MODE_DEFS: Readonly<Record<IslandMode, IslandModeDef>> = {
     section: 'project.changes',
     group: null,
     tools: ['view.compare', 'view.timeline', 'volumes.swipe'],
-    shows: (c) => c.data.dated || (c.data.video && !c.data.road),
+    // a road compares by chainage, not by date (as before the registry)
+    shows: (c) => !c.data.road && (c.data.dated || c.data.video),
     available: () => OK,
   },
   video: {

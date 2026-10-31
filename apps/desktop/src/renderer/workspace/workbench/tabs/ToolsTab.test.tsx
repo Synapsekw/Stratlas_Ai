@@ -74,7 +74,11 @@ describe('the Tools tab (W8)', () => {
     expect(view?.querySelector('[data-testid="tool-view.wholeSite"]')).not.toBeNull();
     // no 3D view here: Sky and time says so under its name
     const sky = view?.querySelector<HTMLButtonElement>('[data-testid="tool-view.skyTime"]');
-    expect(sky?.disabled).toBe(true);
+    // greyed but reachable by Tab, with its reason; a press does nothing
+    expect(sky?.disabled).toBe(false);
+    expect(sky?.getAttribute('aria-disabled')).toBe('true');
+    act(() => sky?.click());
+    expect(workbench.getState().front).not.toBe('environment');
     expect(sky?.textContent).toContain('Open the 3D view first');
   });
 
@@ -89,5 +93,22 @@ describe('the Tools tab (W8)', () => {
     expect(measureStore.getState().tool).toBeNull();
     expect(q('tools-armed')).toBeNull();
     expect(sections()).toContain('tools.view');
+  });
+
+  it('a tool armed with Measure folded (M on the stage, a tile on the island) shows its card', () => {
+    render();
+    act(() => {
+      if (workbench.getState().sections['tools.measure'] === true)
+        workbench.getState().toggleSection('tools.measure');
+    });
+    expect(workbench.getState().sections['tools.measure']).not.toBe(true);
+    act(() => {
+      startTool('distance');
+    });
+    expect(q('tools-armed')).not.toBeNull();
+    expect(workbench.getState().sections['tools.measure']).toBe(true);
+    const measure = host.querySelector('[data-section="tools.measure"]');
+    expect(measure?.getAttribute('data-open')).toBe('true');
+    expect(q('body-measure')).not.toBeNull();
   });
 });

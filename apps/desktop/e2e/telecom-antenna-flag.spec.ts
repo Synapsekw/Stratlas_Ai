@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { PIPELINE_ENV, expect, hasPipelinePython, test } from './fixtures';
 import { measureControl } from './island';
+import { openSection } from './panel';
 import { writeAntennaInventory, writeTelecomTower, type TowerTruthUnit } from './telecomFixtures';
 
 type Vec3 = [number, number, number];
@@ -48,6 +49,18 @@ async function openTiny(win: Page) {
 async function openTelecom(win: Page) {
   await measureControl(win, 'telecom-tool-clearance');
   await expect(win.getByTestId('telecom-tools')).toBeVisible();
+}
+
+/**
+ * The antenna inventory and its Flag button are Project > In this project's Antennas group since
+ * the right panel's four tabs (W7); Detect antennas stays in Tools > Measure's Telecom family. One
+ * tab is in front at a time, so the spec moves between them.
+ */
+async function showAntennas(win: Page) {
+  await openSection(win, 'project', 'project.inThisProject');
+  const head = win.getByTestId('wb-section-project-antennas').locator('.wb-section-head').first();
+  if ((await head.getAttribute('aria-expanded')) !== 'true') await head.click();
+  await expect(win.getByTestId('antenna-panel')).toBeVisible();
 }
 
 const savedFile = async (dir: string) =>
@@ -161,6 +174,7 @@ test('flags an antenna on the cloud, types its values and keeps them through a r
   const detect = win.getByTestId('detect-antennas');
   // enabled once the cloud has loaded
   await expect(detect).toBeEnabled({ timeout: 60_000 });
+  await showAntennas(win);
   const panel = win.getByTestId('antenna-panel');
   await expect(win.getByTestId('antenna-flag')).toBeVisible();
   await expect(panel.getByTestId('antenna-row')).toHaveCount(0);
@@ -242,10 +256,12 @@ test('flags an antenna on the cloud, types its values and keeps them through a r
   await expectAccessible(win, 'Antenna inventory', { include: '[data-testid="antenna-panel"]' });
 
   // a detection re-run finds the 8 others and the radio again: the flagged unit stays, no twin
+  await openTelecom(win);
   await detect.click();
   await expect
     .poll(() => savedFile(dir).then((f) => f.run.id), { timeout: 180_000 })
     .not.toBe('run-e2e-empty');
+  await showAntennas(win);
   await panel.getByTestId('antenna-filter-all').click();
   await expect(rows).toHaveCount(9, { timeout: 60_000 });
   await expect(win.getByTestId('antenna-origin')).toHaveCount(1);
@@ -267,6 +283,7 @@ test('flags an antenna on the cloud, types its values and keeps them through a r
   ).toBeVisible();
   if (await win.getByTestId('project-card').first().isVisible()) await openTiny(win);
   else await openTelecom(win);
+  await showAntennas(win);
   const panel2 = win.getByTestId('antenna-panel');
   await panel2.getByTestId('antenna-filter-all').click();
   const rows2 = panel2.getByTestId('antenna-row');

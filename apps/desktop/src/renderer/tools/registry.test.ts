@@ -151,8 +151,11 @@ describe("the island's modes", () => {
         tools: 'map',
       }),
     );
-    expect(islandModes(all).map((m) => m.id)).toEqual([...ISLAND_MODES]);
+    // a road compares by chainage: no Compare mode, as before the registry
+    expect(islandModes(all).map((m) => m.id)).toEqual(ISLAND_MODES.filter((m) => m !== 'compare'));
     expect(islandModes({ ...all, mode: '3d', tools: '3d' }).map((m) => m.id)).not.toContain('road');
+    const noRoad = { ...all, data: { ...all.data, road: false } };
+    expect(islandModes(noRoad).map((m) => m.id)).toEqual(ISLAND_MODES.filter((m) => m !== 'road'));
   });
 
   it('every mode can say why it cannot be picked', () => {
@@ -177,5 +180,21 @@ describe("the island's modes", () => {
       'view.timeline',
       'volumes.swipe',
     ]);
+  });
+
+  it('Compare dates follows the stage: greyed with why until it can compare', () => {
+    const compare = TOOLS.find((d) => d.id === 'view.compare');
+    if (!compare) throw new Error('no compare');
+    const dated = toolCtxOf(input({ dated: true }));
+    expect(availability(compare, dated)).toEqual({ reason: 'toolReg.reason.needsStage' });
+    const off = { available: false, twin: false, label: '', open: () => undefined };
+    expect(availability(compare, { ...dated, compare: off })).toEqual({
+      reason: 'toolReg.reason.needsDates',
+    });
+    expect(availability(compare, { ...dated, compare: { ...off, available: true } })).toBe(true);
+    // a road has no timeline tool
+    const timeline = TOOLS.find((d) => d.id === 'view.timeline');
+    if (!timeline) throw new Error('no timeline');
+    expect(availability(timeline, toolCtxOf(input({ dated: true, road: true })))).not.toBe(true);
   });
 });

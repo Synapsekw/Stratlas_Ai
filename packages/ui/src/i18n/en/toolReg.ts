@@ -19,6 +19,8 @@ export const enToolReg = {
   'toolReg.reason.needsRoad': 'Needs a road survey',
   'toolReg.reason.package': 'Not in a project package',
   'toolReg.reason.streetMap': 'No street map for this site',
+  'toolReg.reason.needsStage': 'Open the scene to compare dates',
+  'toolReg.reason.road': 'A road shows its chainage instead',
   'toolReg.reason.comparing': 'Leave the comparison beside the island',
   // a Volumes tool: the full table, in Project > Volumes
   'toolReg.volumesTable': 'Table',
