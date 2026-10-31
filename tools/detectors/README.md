@@ -119,6 +119,34 @@ A detector ships as "verified" when, measured on `bench` only with IoU matching,
 and it makes at most 1 false draft per photo on average. Never read the bar off `tune`: the text was
 fitted to it.
 
+## Multi-view vote bench
+
+```
+uv run --project python python tools/detectors/vote_bench.py [--seeds 10] [--threshold 0.8] \
+  [--recall 0.75] [--false-per-photo 1.0] [--out <dir>]
+```
+
+Measures the multi-view vote (`python/src/aio_pipelines/multiview/`) with the same metrics, with no
+model and no project. Each seed builds a 40 x 30 m flat site with 15 flat 0.6 m objects and a 4 x 3 grid
+of posed oblique photos 30 m up; a simulated detector finds each object a photo sees with chance
+`--recall` (box jittered, score 0.55 to 0.98) and adds false boxes (Poisson, `--false-per-photo`,
+score 0.5 to 0.95). "before" is the pass as written up to pipeline pack 0.28.0; "afterMesh" and
+"afterRays" are the same pass after the vote on the site as a mesh and with no surface. After the vote
+each draft is spread back over its photos (it and its `sightings`) with the voted confidence, so the
+per-photo IoU matching is the same. The table adds what a reviewer sees at the threshold: drafts to
+review, how many are real or false, and the objects they cover.
+
+Reference run (31 Oct 2026, 10 seeds, defaults):
+
+|           | drafts to review | real | false | objects covered | E2 precision | E2 recall | E2 F1 | best F1 (mean) |
+| --------- | ---------------- | ---- | ----- | --------------- | ------------ | --------- | ----- | -------------- |
+| before    | 510              | 479  | 31    | 139 of 150      | 0.939        | 0.306     | 0.462 | 0.831          |
+| afterMesh | 145              | 144  | 1     | 144 of 150      | 0.999        | 0.742     | 0.851 | 0.857          |
+| afterRays | 142              | 142  | 0     | 142 of 150      | 1.000        | 0.737     | 0.848 | 0.853          |
+
+The fixture's poses are exact and its objects flat: real poses (GPS and gimbal) place drafts less well,
+so the vote still needs a run on a reference project with posed photos.
+
 ## Tests
 
 ```
@@ -126,8 +154,8 @@ uv run --project python pytest tools/detectors
 ```
 
 `test_metrics.py` (matching and metrics on synthetic boxes), `test_bench.py` (a synthetic project and
-the fake llama-server from `python/tests/fake_vlm.py`) and `test_prerelease.py` (the bench stubbed). No
-real model runs and nothing is downloaded.
+the fake llama-server from `python/tests/fake_vlm.py`), `test_prerelease.py` (the bench stubbed) and
+`test_vote_bench.py` (two vote fixtures). No real model runs and nothing is downloaded.
 
 ## Reference projects
 
