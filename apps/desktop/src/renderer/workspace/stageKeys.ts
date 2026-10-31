@@ -9,6 +9,7 @@ import { workspace } from '@aio/workspace';
 import { useEffect } from 'react';
 import { isTyping } from '../keys';
 import { shell } from '../shell';
+import { mapAvailableNow } from '../spaces/activeSpace';
 import { togglePaths } from './flightPaths';
 import { flightPathModel, updateFlightPaths } from './pathModel';
 import { toggleTelemetry } from './telemetryPref';
@@ -29,9 +30,11 @@ export function useStageKeys(engine: EngineStage | null): void {
       const k = matchShortcut('scene', e);
       const three = sh.stageMode !== 'map' ? engine : null;
       if (k === 'scene.mode3d') sh.setStageMode('3d');
-      else if (k === 'scene.modeMap') sh.setStageMode('map');
-      else if (k === 'scene.modeSplit') sh.setStageMode('split');
-      else if (k === 'scene.home') ws.flyTo({ kind: 'home' });
+      else if (k === 'scene.modeMap' || k === 'scene.modeSplit') {
+        // greyed out in a space without a map (the island says why)
+        if (!mapAvailableNow()) return;
+        sh.setStageMode(k === 'scene.modeMap' ? 'map' : 'split');
+      } else if (k === 'scene.home') ws.flyTo({ kind: 'home' });
       else if (k === 'scene.site') ws.flyTo({ kind: 'site' });
       else if (k === 'scene.flySelection' && ws.selection)
         ws.flyTo({ kind: 'selection', selection: ws.selection });

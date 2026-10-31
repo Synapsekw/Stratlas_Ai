@@ -10,7 +10,7 @@ import { Button, focusables, Icon, Tip, useT, type ShortcutId } from '@aio/ui';
 import { useId, useRef, type Dispatch, type KeyboardEvent, type ReactNode } from 'react';
 import { shell } from '../../shell';
 import type { StageMode } from '../../store';
-import type { IslandModeDef } from '../../tools/registry';
+import { stageModeAvailable, type IslandModeDef, type ToolCtx } from '../../tools/registry';
 import { ModeRow, MODES, type GroupCtx } from './groups';
 import type { GroupId, IslandEvent } from './islandModel';
 
@@ -21,26 +21,43 @@ const MODE_KEY: Record<StageMode, ShortcutId> = {
 };
 
 /** The 3D / Map / Split switch: always on the notch's line. */
-export function IslandModes({ mode }: { mode: StageMode }) {
+export function IslandModes({ mode, ctx }: { mode: StageMode; ctx: ToolCtx }) {
   const t = useT();
+  const id = useId();
   return (
     <div className="seg isl-modes" role="group" aria-label={t('island.stageView')}>
-      {MODES.map((m) => (
-        <Tip key={m.mode} content={t(m.label)} shortcut={MODE_KEY[m.mode]} repeatsName>
-          <button
-            type="button"
-            aria-pressed={mode === m.mode}
-            aria-keyshortcuts={m.keys}
-            aria-label={t(m.label)}
-            onClick={() => {
-              shell.getState().setStageMode(m.mode);
-            }}
+      {MODES.map((m) => {
+        const can = stageModeAvailable(m.mode, ctx);
+        const reason = can === true ? undefined : t(can.reason);
+        return (
+          <Tip
+            key={m.mode}
+            content={reason ?? t(m.label)}
+            {...(reason ? {} : { shortcut: MODE_KEY[m.mode], repeatsName: true })}
           >
-            <Icon name={m.icon} size={14} />
-            <span className="isl-ml">{t(m.label)}</span>
-          </button>
-        </Tip>
-      ))}
+            <button
+              type="button"
+              aria-pressed={mode === m.mode}
+              aria-keyshortcuts={m.keys}
+              aria-label={t(m.label)}
+              aria-disabled={reason ? true : undefined}
+              aria-describedby={reason ? `${id}-${m.mode}` : undefined}
+              onClick={() => {
+                if (!reason) shell.getState().setStageMode(m.mode);
+              }}
+            >
+              <Icon name={m.icon} size={14} />
+              <span className="isl-ml">{t(m.label)}</span>
+              {/* a view that cannot be picked here says why (read with its name) */}
+              {reason && (
+                <span className="sr-only" id={`${id}-${m.mode}`}>
+                  {reason}
+                </span>
+              )}
+            </button>
+          </Tip>
+        );
+      })}
     </div>
   );
 }

@@ -145,7 +145,8 @@ describe('SpacesMount', () => {
     shellStore.setState({ stageMode: 'map' });
     mount(null);
     expect(shellStore.getState().stageMode).toBe('3d');
-    expect(toastQueue().some((x) => x.id === 'fly-map-local')).toBe(true);
+    // the greyed Map button explains it: no toast
+    expect(toastQueue().some((x) => x.id === 'fly-map-local')).toBe(false);
   });
 
   it('a project in a crs the map cannot project stays on the map view', () => {
@@ -163,13 +164,12 @@ describe('SpacesMount', () => {
     }
   });
 
-  it('a project without listed spaces never has its stage mode changed', () => {
+  it('a local project without listed spaces has no map either', () => {
     open(ProjectManifest.parse({ ...base, crs: { local: 'site' }, layers: [photos('l1')] }));
     setActiveSpace('p1', 'main');
     shellStore.setState({ stageMode: 'map' });
     mount(null);
-    expect(shellStore.getState().stageMode).toBe('map');
-    expect(toastQueue().some((x) => x.id === 'fly-map-local')).toBe(false);
+    expect(shellStore.getState().stageMode).toBe('3d');
   });
 
   it('an empty flight-line list is not redrawn', () => {

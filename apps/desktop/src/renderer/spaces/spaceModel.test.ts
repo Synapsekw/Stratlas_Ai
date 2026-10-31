@@ -86,6 +86,17 @@ describe('space model', () => {
     expect(mapAvailable(wkt, 'main')).toBe(true);
   });
 
+  it('a project whose own crs is local has no map, with spaces listed or not', () => {
+    const implicit = ProjectManifest.parse({
+      ...base,
+      crs: { local: 'flyability' },
+      layers: [photos('l1')],
+    });
+    expect(mapAvailable(implicit, 'main')).toBe(false);
+    const state = ProjectManifest.parse({ ...base, crs: { epsg: 2229 }, layers: [photos('l1')] });
+    expect(mapAvailable(state, 'main')).toBe(true);
+  });
+
   it('lists the layers outside a space', () => {
     expect(offSpaceLayers(two, 's-a')).toEqual(['lm']);
     expect(offSpaceLayers(two, 'main')).toEqual(['la', 'lb']);

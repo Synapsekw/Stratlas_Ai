@@ -135,6 +135,8 @@ export interface ToolCtx {
   tools: StageMode;
   /** A 3D view is on the stage. */
   stage3d: boolean;
+  /** The active space has a map: false only for a space with its own (`{ local }`) frame. */
+  mapAvailable: boolean;
   /** A project package: nothing is written. */
   pkg: boolean;
   /** Read only (a package or a read-only project): the tools that save are off. */
@@ -171,6 +173,7 @@ export const EMPTY_CTX: ToolCtx = {
   mode: '3d',
   tools: '3d',
   stage3d: false,
+  mapAvailable: true,
   pkg: false,
   readOnly: false,
   selection: false,
@@ -931,9 +934,14 @@ export const MODE_DEFS: Readonly<Record<IslandMode, IslandModeDef>> = {
     section: 'project.road',
     group: 'road',
     shows: (c) => c.data.road && c.tools !== '3d',
-    available: () => OK,
+    available: (c) => needs(c.mapAvailable, 'fly.map.local'),
   },
 };
+
+/** The stage view switch: Map and Split need a map, so a space without one greys them out. */
+export function stageModeAvailable(mode: StageMode, ctx: ToolCtx): Availability {
+  return mode === '3d' ? OK : needs(ctx.mapAvailable, 'fly.map.local');
+}
 
 /** The island's modes for this project and view, in their order. */
 export function islandModes(ctx: ToolCtx): IslandModeDef[] {

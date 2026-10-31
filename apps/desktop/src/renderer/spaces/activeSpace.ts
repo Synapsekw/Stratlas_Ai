@@ -1,5 +1,5 @@
 import { spacesOf, type Space } from '@aio/schema';
-import { useWorkspace } from '@aio/workspace';
+import { useWorkspace, workspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
@@ -70,6 +70,14 @@ export function activeSpace(): StoreApi<ActiveSpaceState> {
 
 export function setActiveSpace(projectId: string, spaceId: string): void {
   activeSpace().getState().set(projectId, spaceId);
+}
+
+/** Whether the open project's active space has a map, read now (for a key handler). */
+export function mapAvailableNow(): boolean {
+  const project = workspace.getState().project;
+  if (!project) return true;
+  const pref = activeSpace().getState().byProject[project.id];
+  return mapAvailable(project.manifest, activeSpaceOf(project.manifest, pref));
 }
 
 /** The open project's active space, whether the map can show it, and all its spaces. */

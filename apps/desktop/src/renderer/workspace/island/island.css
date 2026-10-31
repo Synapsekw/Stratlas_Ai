@@ -189,6 +189,13 @@
 .isl-line .seg.isl-modes button {
   block-size: 24px;
 }
+/* a view the space cannot show (no map) is greyed, its reason in the tip */
+.isl-line .seg.isl-modes button[aria-disabled='true'],
+.isl-line .seg.isl-modes button[aria-disabled='true']:hover {
+  background: none;
+  color: var(--fg-3);
+  cursor: default;
+}
 .isl-name {
   color: var(--fg-0);
 }

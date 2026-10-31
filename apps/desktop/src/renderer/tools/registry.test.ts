@@ -10,6 +10,7 @@ import {
   measureToolId,
   MODE_DEFS,
   modeTools,
+  stageModeAvailable,
   TOOL_GROUPS,
   TOOLS,
   toolsFor,
@@ -160,6 +161,19 @@ describe("the island's modes", () => {
 
   it('every mode can say why it cannot be picked', () => {
     for (const m of ISLAND_MODES) expect(MODE_DEFS[m].available(EMPTY_CTX)).toBe(true);
+  });
+
+  it('Map, Split and a mode that needs the map are greyed with a reason without a map', () => {
+    const local = toolCtxOf(input({ mapAvailable: false }));
+    expect(stageModeAvailable('3d', local)).toBe(true);
+    expect(stageModeAvailable('map', local)).toEqual({ reason: 'fly.map.local' });
+    expect(stageModeAvailable('split', local)).toEqual({ reason: 'fly.map.local' });
+    expect(MODE_DEFS.road.available(local)).toEqual({ reason: 'fly.map.local' });
+    // a georeferenced project keeps them
+    const geo = toolCtxOf(input());
+    expect(stageModeAvailable('map', geo)).toBe(true);
+    expect(stageModeAvailable('split', geo)).toBe(true);
+    expect(MODE_DEFS.road.available(geo)).toBe(true);
   });
 
   it('a mode shows its top tools: favourites, then recent, those that start here first', () => {

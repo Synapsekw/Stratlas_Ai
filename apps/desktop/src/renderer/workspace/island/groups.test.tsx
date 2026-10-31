@@ -11,6 +11,7 @@ import { timelinePref } from '../timelinePref';
 import { annotateStage } from '../workbench/benches/annotateStage';
 import { EMPTY_CTX, type IslandMode, type ToolCtx, type ToolGroup } from '../../tools/registry';
 import { GroupControls, ModeRow, type GroupCtx } from './groups';
+import { IslandModes } from './IslandTools';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
@@ -275,5 +276,36 @@ describe('the Compare mode row: the Timeline tile', () => {
     render('compare');
     expect(tile()?.getAttribute('aria-disabled')).toBeNull();
     expect(tile()?.getAttribute('aria-describedby')).toBeNull();
+  });
+});
+
+describe('the stage view switch', () => {
+  const renderModes = (over: Partial<ToolCtx> = {}) => {
+    root ??= createRoot(host);
+    act(() => root?.render(<IslandModes mode="3d" ctx={toolCtx(over)} />));
+  };
+
+  it('Map and Split are greyed with a reason in a local space', () => {
+    shell.setState({ stageMode: '3d' });
+    renderModes({ mapAvailable: false });
+    const map = button('Map');
+    const split = button('Split');
+    expect(map?.getAttribute('aria-disabled')).toBe('true');
+    expect(split?.getAttribute('aria-disabled')).toBe('true');
+    expect(button('3D')?.getAttribute('aria-disabled')).toBeNull();
+    act(() => map?.click());
+    act(() => split?.click());
+    expect(shell.getState().stageMode).toBe('3d');
+    const reason = document.getElementById(map?.getAttribute('aria-describedby') ?? '');
+    expect(reason?.textContent).toBe('No map: this space has its own frame');
+  });
+
+  it('keeps Map and Split in a georeferenced project', () => {
+    shell.setState({ stageMode: '3d' });
+    renderModes({ mapAvailable: true });
+    expect(button('Map')?.getAttribute('aria-disabled')).toBeNull();
+    act(() => button('Split')?.click());
+    expect(shell.getState().stageMode).toBe('split');
+    shell.setState({ stageMode: '3d' });
   });
 });

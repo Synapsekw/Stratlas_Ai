@@ -401,7 +401,7 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   const tooling = s.open === 'tools';
   const line = (
     <div className="isl-line" data-isl-row={tooling ? '' : undefined}>
-      <IslandModes mode={mode} />
+      <IslandModes mode={mode} ctx={toolCtx} />
       {dates && rest !== 'dots' && (
         <>
           <span className="isl-sep" aria-hidden="true" />

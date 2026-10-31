@@ -1,6 +1,5 @@
 import type { EngineStage } from '@aio/engine';
 import { layersOfSpace, spacesOf } from '@aio/schema';
-import { t, toast } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import { useFlightlineDisplay } from '../flyability/flightlineDisplay';
@@ -87,14 +86,13 @@ export function SpacesMount({ stage }: { stage: EngineStage | null }): null {
     if (hide.length > 0) workspace.getState().applyVisibility([], hide);
   }, [manifest, hidden, spaceId]);
 
-  // (2) minimum map guard: a listed space with a `{ local }` frame has no map. A project without
-  // listed spaces keeps whatever stage mode it is in.
-  const listed = (manifest?.spaces?.length ?? 0) > 0;
+  // (2) backstop for the greyed Map and Split (the island and the keys explain them): a stage
+  // already in the map view when a space without a map comes on goes to 3D. A georeferenced space
+  // has a map, so this never runs for it.
   useEffect(() => {
-    if (!listed || mapAvailable || stageMode !== 'map') return;
+    if (mapAvailable || stageMode !== 'map') return;
     shell.getState().setStageMode('3d');
-    toast(t('fly.map.local'), { tone: 'info', id: 'fly-map-local' });
-  }, [listed, mapAvailable, stageMode]);
+  }, [mapAvailable, stageMode]);
 
   // (3) flight lines of the active space; a project switch forgets what was loaded
   useEffect(() => {
