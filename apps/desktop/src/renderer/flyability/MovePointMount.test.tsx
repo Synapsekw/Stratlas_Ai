@@ -12,9 +12,7 @@ vi.mock('../builder/pick', () => ({
     pick.armed.push(armed);
   },
 }));
-const screens = vi.hoisted(() => ({
-  set: vi.fn<(screen: string) => void>(),
-}));
+const screens: { set: (screen: string) => void } = vi.hoisted(() => ({ set: vi.fn() }));
 vi.mock('../shell', async () => {
   const { createStore: create, useStore: use } = await import('zustand');
   const store = create<{ screen: string }>()(() => ({ screen: 'scene' }));
