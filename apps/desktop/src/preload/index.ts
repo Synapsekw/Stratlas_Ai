@@ -150,6 +150,7 @@ const CHANNELS = {
   'builder:import': true,
   'builder:altitudePlan': true,
   'builder:cloudDates': true,
+  'builder:inspectorScan': true,
   'builder:updateLayers': true,
   'builder:layerExtents': true,
   'layer:info': true,

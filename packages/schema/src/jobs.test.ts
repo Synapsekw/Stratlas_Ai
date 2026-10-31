@@ -26,6 +26,23 @@ const record: JobRecordT = {
 };
 
 describe('pipeline params', () => {
+  it('flyability.import params parse and refuse unknown keys', () => {
+    const valid = {
+      src: 'E:/exports/inspection',
+      inspections: [{ id: 'i1', flights: ['f1'] }, { id: 'i2' }],
+      severityModel: {
+        id: 'sev',
+        name: 'Sev',
+        levels: [{ value: 1, label: 'Low', color: '#00ff00', criteria: 'c' }],
+      },
+      catalogueId: 'cat',
+    };
+    const params = pipelineParams('flyability.import');
+    expect(params.safeParse(valid).success).toBe(true);
+    expect(params.safeParse({ ...valid, extra: 1 }).success).toBe(false);
+    expect(params.safeParse({ ...valid, inspections: [] }).success).toBe(false);
+  });
+
   it('accepts the cameras params the app sends and refuses unknown keys', () => {
     const p = pipelineParams('aik.cameras');
     expect(
@@ -84,6 +101,7 @@ describe('pipeline params', () => {
       'opf.import',
       'opf.export',
       'bentley.import',
+      'flyability.import',
       'tiles.mesh',
       'tiles.cloud',
       'packs.imagery',

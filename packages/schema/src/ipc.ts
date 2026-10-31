@@ -20,6 +20,8 @@ import {
   DrawingStem,
   ImportHeights,
   ImportItem,
+  InspectorScan,
+  InspectorSelection,
   LayerPatch,
   NewProjectRequest,
   ProjectPurpose,
@@ -2014,6 +2016,16 @@ export const ipc = {
     request: z.object({ jobId: JobId, what: z.enum(['output', 'log', 'project']) }).strict(),
     response: z.object({ ok: z.boolean(), error: z.string().optional() }),
   },
+  /** Read a Flyability Inspector export folder: its inspections, flights and findings. Reads only. */
+  'builder:inspectorScan': {
+    request: z
+      .object({ projectId: z.string().min(1).nullable(), path: z.string().min(1) })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), scan: InspectorScan }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
   /**
    * Import raw files into an open project (photos, video with DJI SRT, GLB/OBJ, GeoTIFF; point
    * clouds and large rasters go to the pipeline pack). Progress arrives as `builder:progress`.
@@ -2049,6 +2061,8 @@ export const ipc = {
          * person imports as panoramas instead).
          */
         exclude: z.array(z.string().min(1).max(2048)).max(20_000).optional(),
+        /** Flyability Inspector export: which inspections (and flights) to import. */
+        inspector: InspectorSelection.optional(),
       })
       .strict(),
     response: z.discriminatedUnion('ok', [

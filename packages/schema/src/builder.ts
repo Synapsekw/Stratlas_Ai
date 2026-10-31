@@ -162,6 +162,41 @@ export const DrawingStem = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,80}$/);
 /** Where an image raster lies in the local frame: its top-left, top-right and bottom-left corners. */
 export const RasterCorners = z.object({ tl: Vec3, tr: Vec3, bl: Vec3 });
 
+/** What `builder:inspectorScan` finds in a Flyability Inspector export folder. */
+export const InspectorScan = z.object({
+  root: z.string(),
+  generation: z.enum(['2024-bag', '2025-mcap', 'unknown']),
+  asset: z.string().nullable(),
+  inspections: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      mergedCloud: z.boolean(),
+      findings: z.number().int(),
+      /** Id of the space an earlier import made for this inspection. */
+      importedAs: z.string().nullable(),
+      flights: z.array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          cloud: z.boolean(),
+          path: z.boolean(),
+          aligned: z.enum(['relocalised', 'transform', 'reference']),
+        }),
+      ),
+    }),
+  ),
+});
+export type InspectorScan = z.infer<typeof InspectorScan>;
+
+/** The inspections (and optionally flights) to import from a Flyability Inspector export. */
+export const InspectorSelection = z.object({
+  inspections: z
+    .array(z.object({ id: z.string(), flights: z.array(z.string()).optional() }))
+    .min(1),
+});
+export type InspectorSelection = z.infer<typeof InspectorSelection>;
+
 export const ImportItem = z.object({
   /** File name as given. */
   file: z.string(),
@@ -181,6 +216,8 @@ export const ImportItem = z.object({
     'design',
     // Bentley iTwin Capture Modeler (15 Oct 2026): a BlocksExchange AT export, by `bentley.import`
     'bentley',
+    // Flyability Inspector export folder, imported by `flyability.import`
+    'flyability',
   ]),
   /**
    * `needs-pipeline`: the conversion runs in the pipeline pack (LAS/LAZ/E57 to COPC, large

@@ -6,6 +6,8 @@ import { ChangeScope, FrameRef, LonLatRing } from './change';
 import { Id, IsoDate, ProjectPath, Vec3 } from './common';
 import { RasterPackId, TerrainDatum } from './globe';
 import { Crs } from './manifest';
+import { InspectorSelection } from './builder';
+import { SeverityModel } from './severity';
 import { PhotoPreset, PhotoProduct, PhotoRunId, PhotoSource } from './photogrammetry';
 import { ModelEvidenceParams } from './modelEvidence';
 import { PanoFolderId, PanoQuality, PanoShape } from './panoStitch';
@@ -71,6 +73,8 @@ export const PipelineName = z.enum([
   'opf.export',
   // Bentley iTwin Capture Modeler AT export (15 Oct 2026)
   'bentley.import',
+  // Flyability Inspector export (31 Oct 2026)
+  'flyability.import',
   'tiles.mesh',
   'tiles.cloud',
   'packs.imagery',
@@ -243,6 +247,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     title: 'Bentley import',
     description:
       'A Bentley iTwin Capture Modeler (ContextCapture) AT export with its photos: a run and a photos layer placed by the calibrated poses.',
+  },
+  {
+    name: 'flyability.import',
+    title: 'Flyability Inspector import',
+    description:
+      'Clouds, flight lines and findings from an Inspector export, one space per inspection.',
   },
   {
     name: 'tiles.mesh',
@@ -841,6 +851,19 @@ export const BentleyImportParams = z
   })
   .strict();
 
+/** `flyability.import` (python `aio_pipelines/flyability/importer.py`, 31 Oct 2026). */
+export const FlyabilityImportParams = z
+  .object({
+    /** The Inspector export folder (absolute). Read only. */
+    src: z.string().min(1),
+    inspections: InspectorSelection.shape.inspections,
+    severityModel: SeverityModel,
+    catalogueId: Id,
+    /** Inspection id to an existing space id: that inspection is added to the space. */
+    spaces: z.record(z.string(), Id).optional(),
+  })
+  .strict();
+
 /** `opf.export` (python `aio_pipelines/opf/exporter.py`, G5). */
 export const OpfExportParams = z
   .object({
@@ -1202,6 +1225,7 @@ export type PhotoGeorefParams = z.infer<typeof PhotoGeorefParams>;
 export type PhotoProductsParams = z.infer<typeof PhotoProductsParams>;
 export type OpfImportParams = z.infer<typeof OpfImportParams>;
 export type BentleyImportParams = z.infer<typeof BentleyImportParams>;
+export type FlyabilityImportParams = z.infer<typeof FlyabilityImportParams>;
 export type OpfExportParams = z.infer<typeof OpfExportParams>;
 export type TilesMeshParams = z.infer<typeof TilesMeshParams>;
 export type TilesCloudParams = z.infer<typeof TilesCloudParams>;
@@ -1313,6 +1337,7 @@ const PARAMS = {
   'opf.import': OpfImportParams,
   'opf.export': OpfExportParams,
   'bentley.import': BentleyImportParams,
+  'flyability.import': FlyabilityImportParams,
   'tiles.mesh': TilesMeshParams,
   'tiles.cloud': TilesCloudParams,
   'packs.imagery': ImageryPackParams,

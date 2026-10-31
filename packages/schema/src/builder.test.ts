@@ -388,3 +388,12 @@ describe('drawings (PDF and picture imports, placement)', () => {
     expect(res.safeParse({ ok: false, error: 'no' }).success).toBe(true);
   });
 });
+
+describe('flyability import', () => {
+  it('an import item can be a flyability export', () => {
+    expect(
+      ImportItem.safeParse({ file: 'x', kind: 'flyability', status: 'queued', jobId: 'j1' })
+        .success,
+    ).toBe(true);
+  });
+});

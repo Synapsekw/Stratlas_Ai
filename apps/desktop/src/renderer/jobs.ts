@@ -814,6 +814,16 @@ export const FORMS: Record<PipelineName, Field[]> = {
       help: 'Where the photos are when the OPF names them by absolute paths or they moved. Read only.',
     },
   ],
+  // Started from Add data (the inspections and severity model come from there), not this form
+  'flyability.import': [
+    {
+      key: 'src',
+      label: 'Inspector export folder',
+      kind: 'folder',
+      required: true,
+      help: 'The folder a Flyability Inspector export wrote. Read only.',
+    },
+  ],
   'bentley.import': [
     {
       key: 'xml',
