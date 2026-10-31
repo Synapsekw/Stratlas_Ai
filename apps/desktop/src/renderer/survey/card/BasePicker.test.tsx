@@ -91,7 +91,10 @@ function picker(value: SurfaceRef, onChange = vi.fn(), readOnly = false) {
 const open = () => {
   click(document.querySelector('[data-testid="survey-from"]'));
 };
-const rows = () => [...document.querySelectorAll('[role="menuitemradio"][data-base]')];
+/** The root menu's rows (the bases), not the surveys and designs beside it. */
+const rows = () => [
+  ...document.querySelectorAll('.menu-pop > [role="menu"] > [role^="menuitem"][data-item]'),
+];
 
 describe('BasePicker', () => {
   it('base picker lists seven bases with their one-line hints, Triangulated toe first', () => {
@@ -103,7 +106,7 @@ describe('BasePicker', () => {
     const list = rows();
     expect(list).toHaveLength(7);
     expect(BASES).toHaveLength(7);
-    expect(list.map((r) => r.querySelector('.bp-name')?.textContent)).toEqual([
+    expect(list.map((r) => r.querySelector('.menu-name')?.textContent)).toEqual([
       'Triangulated toe',
       'Lowest point',
       'Best-fit plane',
@@ -112,16 +115,16 @@ describe('BasePicker', () => {
       'Previous survey or design',
       'Custom',
     ]);
-    expect(list[0]?.querySelector('.bp-hint')?.textContent).toBe(
+    expect(list[0]?.querySelector('.menu-note')?.textContent).toBe(
       'the surveying norm for piles on uneven ground',
     );
-    expect(list[1]?.querySelector('.bp-hint')?.textContent).toBe(
+    expect(list[1]?.querySelector('.menu-note')?.textContent).toBe(
       'bins, bunkers, piles against walls',
     );
-    expect(list[5]?.querySelector('.bp-hint')?.textContent).toBe(
+    expect(list[5]?.querySelector('.menu-note')?.textContent).toBe(
       'the measured ground underneath, the most accurate when it exists',
     );
-    for (const r of list) expect(r.querySelector('.bp-hint')?.textContent).not.toBe('');
+    for (const r of list) expect(r.querySelector('.menu-note')?.textContent).not.toBe('');
     expect(list[0]?.getAttribute('aria-checked')).toBe('true');
   });
 
@@ -150,10 +153,9 @@ describe('BasePicker', () => {
     const surface = rows()[5];
     expect(surface?.getAttribute('aria-expanded')).toBe('false');
     click(surface);
+    expect(surface?.getAttribute('aria-expanded')).toBe('true');
     expect(onChange).not.toHaveBeenCalled();
-    const list = [
-      ...document.querySelectorAll('[data-testid="bp-surfaces"] [role="menuitemradio"]'),
-    ];
+    const list = [...document.querySelectorAll('.menu-sub [role="menuitemradio"]')];
     // surveys and designs only: never the current survey, never a base
     expect(list.map((r) => r.textContent)).toEqual([
       'Previous survey (01 Sep)',
@@ -194,11 +196,11 @@ describe('BasePicker', () => {
       'Base: Highest point',
     );
     open();
-    const older = document.querySelector('[role="menuitemradio"][data-base="older"]');
+    const older = document.querySelector('[role="menuitemradio"][data-item="older"]');
     expect(older?.getAttribute('aria-checked')).toBe('true');
     expect(older?.textContent).toBe('Highest point');
     // the seven bases follow, none ticked
-    const list = rows().filter((r) => r.getAttribute('data-base') !== 'older');
+    const list = rows().filter((r) => r.getAttribute('data-item') !== 'older');
     expect(list).toHaveLength(7);
     expect(list.some((r) => r.getAttribute('aria-checked') === 'true')).toBe(false);
     expect(baseName({ kind: 'reference', mode: 'interior-min' }, SURFACES, t)).toBe(

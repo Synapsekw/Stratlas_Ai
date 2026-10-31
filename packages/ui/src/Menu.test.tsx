@@ -3,7 +3,7 @@ import { act, useRef, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Dialog } from './Dialog';
-import { Menu, type MenuEntry } from './Menu';
+import { Menu, MenuAt, type MenuEntry, type MenuRow } from './Menu';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
@@ -18,7 +18,7 @@ afterEach(() => {
   host.remove();
 });
 
-function show(items: readonly MenuEntry[], onClose: () => void = vi.fn()) {
+function show(items: readonly MenuRow[], onClose: () => void = vi.fn()) {
   function H() {
     const opener = useRef<HTMLButtonElement>(null);
     return (
@@ -461,6 +461,97 @@ describe('Menu', () => {
       } finally {
         document.documentElement.style.direction = '';
       }
+    });
+  });
+
+  describe('feature menus', () => {
+    it('a radio item is a menuitemradio', () => {
+      show([{ id: 'a', label: 'A', checked: false, radio: true, onSelect: vi.fn() }]);
+      expect(rows()[0]?.getAttribute('role')).toBe('menuitemradio');
+      expect(rows()[0]?.getAttribute('aria-checked')).toBe('false');
+    });
+    it('groups are named; the arrows run on through them', () => {
+      show([
+        {
+          group: 'Surveys',
+          items: [
+            { id: 'a', label: 'A' },
+            { id: 'b', label: 'B' },
+          ],
+        },
+        { group: 'Designs', items: [{ id: 'c', label: 'C' }] },
+      ]);
+      const menu = document.body.querySelector('[role="menu"]');
+      expect(rows()).toHaveLength(3);
+      expect(
+        [...document.body.querySelectorAll('[role="group"]')].map((g) =>
+          g.getAttribute('aria-label'),
+        ),
+      ).toEqual(['Surveys', 'Designs']);
+      rows()[1]?.focus();
+      key(menu, 'ArrowDown');
+      expect(document.activeElement).toBe(rows()[2]);
+    });
+    it('shows a hint, a note, a lead and a title', () => {
+      function H() {
+        const opener = useRef<HTMLButtonElement>(null);
+        return (
+          <>
+            <button ref={opener} type="button">
+              open
+            </button>
+            <Menu
+              open
+              onClose={vi.fn()}
+              opener={opener}
+              label="Bases"
+              title="Pile 3"
+              items={[
+                { id: 'a', label: 'A', hint: 'PDF', lead: <i className="sw" /> },
+                { id: 'b', label: 'B', note: 'When the toe is clear' },
+              ]}
+            />
+          </>
+        );
+      }
+      root = createRoot(host);
+      act(() => root?.render(<H />));
+      expect(document.body.querySelector('.menu-title')?.textContent).toBe('Pile 3');
+      expect(rows()[0]?.querySelector('.menu-hint')?.textContent).toBe('PDF');
+      expect(rows()[0]?.querySelector('.menu-lead .sw')).not.toBeNull();
+      expect(rows()[1]?.hasAttribute('data-note')).toBe(true);
+      expect(rows()[1]?.querySelector('.menu-note')?.textContent).toBe('When the toe is clear');
+    });
+    it('a keepOpen item runs and the menu stays open', () => {
+      const onClose = vi.fn();
+      const onSelect = vi.fn();
+      show([{ id: 'a', label: 'A', keepOpen: true, onSelect }], onClose);
+      act(() => rows()[0]?.click());
+      expect(onSelect).toHaveBeenCalledOnce();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+    it('MenuAt opens at a point and a press elsewhere closes it', () => {
+      const onClose = vi.fn();
+      root = createRoot(host);
+      act(() =>
+        root?.render(
+          <MenuAt x={40} y={60} label="Drone" onClose={onClose} items={abc} testId="at" />,
+        ),
+      );
+      const spot = document.body.querySelector<HTMLElement>('.menu-at');
+      expect(spot?.style.left).toBe('40px');
+      expect(spot?.style.top).toBe('60px');
+      expect(document.body.querySelector('[data-testid="at"]')?.getAttribute('aria-label')).toBe(
+        'Drone',
+      );
+      act(() => {
+        rows()[0]?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+      });
+      expect(onClose).not.toHaveBeenCalled();
+      act(() => {
+        host.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+      });
+      expect(onClose).toHaveBeenCalled();
     });
   });
 });

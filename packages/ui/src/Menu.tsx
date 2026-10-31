@@ -2,12 +2,15 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
   type ReactElement,
+  type ReactNode,
   type RefObject,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon, type IconName } from './icons/Icon';
 import { Popover } from './Popover';
 import { shortcutHint, type ShortcutId } from './shortcuts';
@@ -18,7 +21,17 @@ export interface MenuItem {
   icon?: IconName;
   shortcut?: ShortcutId;
   checked?: boolean;
+  /** With `checked`: one of a set (menuitemradio) rather than a switch of its own. */
+  radio?: boolean;
   danger?: boolean;
+  /** Muted words after the label (a format's note, or why a greyed item is off). */
+  hint?: string;
+  /** A second, muted line under the label (when to use it). */
+  note?: string;
+  /** Drawn in the leading column when there is no check or icon (a colour swatch). */
+  lead?: ReactNode;
+  /** Runs without closing the menu (a switch, the first press of a two-step confirm). */
+  keepOpen?: boolean;
   disabledReason?: string;
   /** Runs after the menu closed. Not called for an item with `children`. */
   onSelect?: () => void;
@@ -27,16 +40,35 @@ export interface MenuItem {
   testId?: string;
 }
 
+/** Items under a named heading ("Surveys", "Designs"); the arrows run on through the groups. */
+export interface MenuGroup {
+  group: string;
+  items: readonly MenuItem[];
+}
+
 export type MenuEntry = MenuItem | 'separator';
+/** A row of a menu's list: an item, a separator or a named group of items. */
+export type MenuRow = MenuEntry | MenuGroup;
+
+const isGroup = (x: MenuRow): x is MenuGroup => x !== 'separator' && 'group' in x;
+/** Every item of a level in order, the groups' items in their place. */
+const itemsOf = (items: readonly MenuRow[]): MenuItem[] =>
+  items.flatMap((x) => (x === 'separator' ? [] : isGroup(x) ? [...x.items] : [x]));
+/** The item rows of a list element, also inside its groups. */
+const ROWS = ':scope > [role^="menuitem"], :scope > [role="group"] > [role^="menuitem"]';
 
 export interface MenuProps {
   open: boolean;
   onClose: () => void;
   opener: RefObject<HTMLElement | null>;
   label: string;
-  items: readonly MenuEntry[];
+  items: readonly MenuRow[];
   anchor?: 'above' | 'below'; // default 'below'
   testId?: string;
+  /** A muted heading above the items (the thing the menu acts on). */
+  title?: string;
+  /** Drawn under the items, inside the menu (a note field an item asks for). */
+  after?: ReactNode;
 }
 
 /** A typed prefix is forgotten after this pause, so the next letter starts a new search. */
@@ -66,6 +98,8 @@ export function Menu({
   items,
   anchor = 'below',
   testId,
+  title,
+  after,
 }: MenuProps): ReactElement | null {
   // the button that opens it says so, and says whether the menu is open
   useEffect(() => {
@@ -76,13 +110,19 @@ export function Menu({
   }, [open, opener]);
   return (
     <Popover open={open} onClose={onClose} opener={opener} anchor={anchor} className="menu-pop">
+      {title !== undefined && (
+        <div className="menu-title" aria-hidden="true">
+          {title}
+        </div>
+      )}
       <MenuLevel items={items} label={label} onClose={onClose} opener={opener} testId={testId} />
+      {after}
     </Popover>
   );
 }
 
 interface LevelProps {
-  items: readonly MenuEntry[];
+  items: readonly MenuRow[];
   label: string;
   onClose: () => void;
   /** The menu's opener: focus goes back to it before a chosen item runs. */
@@ -116,10 +156,8 @@ function MenuLevel({
   const [sub, setSub] = useState<OpenSub | null>(null);
   const subId = useId();
   const typed = useRef({ text: '', at: 0 });
-  const rows = () => [
-    ...(list.current?.querySelectorAll<HTMLElement>(':scope > [role^="menuitem"]') ?? []),
-  ];
-  const entries = items.filter((x): x is MenuItem => x !== 'separator');
+  const rows = () => [...(list.current?.querySelectorAll<HTMLElement>(ROWS) ?? [])];
+  const entries = itemsOf(items);
   const openable = (it: MenuItem | undefined) =>
     it?.children !== undefined && it.disabledReason === undefined;
 
@@ -207,6 +245,81 @@ function MenuLevel({
   const openItem = sub ? entries.find((x) => x.id === sub.id) : undefined;
   const parentEl = () => rows().find((r) => r.dataset.item === sub?.id) ?? null;
   const indexOf = new Map(entries.map((x, i) => [x.id, i]));
+  const row = (it: MenuItem) => {
+    const index = indexOf.get(it.id) ?? -1;
+    const disabled = it.disabledReason !== undefined;
+    const parent = it.children !== undefined;
+    const expanded = sub?.id === it.id;
+    return (
+      <button
+        key={it.id}
+        type="button"
+        role={
+          it.checked === undefined ? 'menuitem' : it.radio ? 'menuitemradio' : 'menuitemcheckbox'
+        }
+        tabIndex={index === active ? 0 : -1}
+        aria-checked={it.checked}
+        aria-disabled={disabled ? true : undefined}
+        aria-description={it.disabledReason}
+        aria-haspopup={parent ? 'menu' : undefined}
+        aria-expanded={parent ? expanded : undefined}
+        aria-controls={parent && expanded ? subId : undefined}
+        className="row"
+        data-kind="menu"
+        data-item={it.id}
+        data-danger={it.danger ? '' : undefined}
+        data-note={it.note !== undefined ? '' : undefined}
+        data-testid={it.testId}
+        onFocus={() => {
+          setActive(index);
+        }}
+        onPointerEnter={() => {
+          if (parent && !disabled) setSub({ id: it.id, focus: false });
+          else if (sub) setSub(null);
+        }}
+        onClick={() => {
+          if (disabled) return;
+          if (parent) {
+            setSub({ id: it.id, focus: true });
+            return;
+          }
+          if (it.keepOpen) {
+            it.onSelect?.();
+            return;
+          }
+          onClose();
+          // focus back on the opener first, so a dialog the item opens returns focus there
+          opener.current?.focus();
+          it.onSelect?.();
+        }}
+      >
+        <span className="menu-lead">
+          {it.checked === true ? (
+            <Icon name="check" size={14} />
+          ) : it.icon ? (
+            <Icon name={it.icon} size={14} />
+          ) : (
+            (it.lead ?? null)
+          )}
+        </span>
+        {it.note !== undefined ? (
+          <span className="row-label menu-text">
+            <span className="menu-name">{it.label}</span>
+            <span className="menu-note">{it.note}</span>
+          </span>
+        ) : (
+          <span className="row-label">{it.label}</span>
+        )}
+        {it.hint !== undefined && <span className="menu-hint">{it.hint}</span>}
+        {it.shortcut && <span className="menu-kbd">{shortcutHint(it.shortcut)}</span>}
+        {parent && (
+          <span className="menu-kbd menu-chev">
+            <Icon name="chev-r" size={12} />
+          </span>
+        )}
+      </button>
+    );
+  };
   return (
     <>
       <div
@@ -220,62 +333,16 @@ function MenuLevel({
         {items.map((it, i) => {
           if (it === 'separator')
             return <div key={`sep-${String(i)}`} className="menu-sep" role="separator" />;
-          const index = indexOf.get(it.id) ?? -1;
-          const disabled = it.disabledReason !== undefined;
-          const parent = it.children !== undefined;
-          const expanded = sub?.id === it.id;
-          return (
-            <button
-              key={it.id}
-              type="button"
-              role={it.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
-              tabIndex={index === active ? 0 : -1}
-              aria-checked={it.checked}
-              aria-disabled={disabled ? true : undefined}
-              aria-description={it.disabledReason}
-              aria-haspopup={parent ? 'menu' : undefined}
-              aria-expanded={parent ? expanded : undefined}
-              aria-controls={parent && expanded ? subId : undefined}
-              className="row"
-              data-kind="menu"
-              data-item={it.id}
-              data-danger={it.danger ? '' : undefined}
-              data-testid={it.testId}
-              onFocus={() => {
-                setActive(index);
-              }}
-              onPointerEnter={() => {
-                if (parent && !disabled) setSub({ id: it.id, focus: false });
-                else if (sub) setSub(null);
-              }}
-              onClick={() => {
-                if (disabled) return;
-                if (parent) {
-                  setSub({ id: it.id, focus: true });
-                  return;
-                }
-                onClose();
-                // focus back on the opener first, so a dialog the item opens returns focus there
-                opener.current?.focus();
-                it.onSelect?.();
-              }}
-            >
-              <span className="menu-lead">
-                {it.checked === true ? (
-                  <Icon name="check" size={14} />
-                ) : it.icon ? (
-                  <Icon name={it.icon} size={14} />
-                ) : null}
-              </span>
-              <span className="row-label">{it.label}</span>
-              {it.shortcut && <span className="menu-kbd">{shortcutHint(it.shortcut)}</span>}
-              {parent && (
-                <span className="menu-kbd menu-chev">
-                  <Icon name="chev-r" size={12} />
-                </span>
-              )}
-            </button>
-          );
+          if (isGroup(it))
+            return (
+              <div key={`group-${String(i)}`} role="group" aria-label={it.group}>
+                <div className="menu-head" aria-hidden="true">
+                  {it.group}
+                </div>
+                {it.items.map(row)}
+              </div>
+            );
+          return row(it);
         })}
       </div>
       {openItem?.children && sub && (
@@ -335,5 +402,62 @@ function SubMenu({ anchor, ...level }: SubMenuProps): ReactElement {
     <div ref={box} className="surface-pop menu-pop menu-sub" style={style}>
       <MenuLevel {...level} />
     </div>
+  );
+}
+
+export interface MenuAtProps extends Omit<MenuProps, 'open' | 'opener' | 'anchor'> {
+  /** Client pixels of the right-click it opens at. */
+  x: number;
+  y: number;
+}
+
+/**
+ * A `Menu` opened at a point (a right-click on the map, the 3D view or a list row) rather than
+ * under a button: it hangs from an empty spot there, flips and scrolls to stay in the window, and
+ * a press anywhere else closes it, also on a view that keeps its own pointer events. Focus goes
+ * back to what had it before. Mount it to open it; `onClose` unmounts it.
+ */
+export function MenuAt({ x, y, onClose, ...menu }: MenuAtProps): ReactElement {
+  // the spot is drawn first, so the menu can be placed from it: a ref callback, as state
+  const [spotEl, setSpotEl] = useState<HTMLSpanElement | null>(null);
+  const spot = useMemo(() => ({ current: spotEl }), [spotEl]);
+  const close = useRef(onClose);
+  useLayoutEffect(() => {
+    close.current = onClose;
+  });
+  // capture: a map or 3D view that stops the press from bubbling still closes it
+  useEffect(() => {
+    const away = (e: PointerEvent) => {
+      const el = e.target instanceof Element ? e.target : null;
+      if (!el?.closest('.menu-pop')) close.current();
+    };
+    // Escape from outside the menu (focus left on the view) closes it too, and only it
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const el = e.target instanceof Element ? e.target : null;
+      if (el?.closest('.menu-pop')) return;
+      e.stopPropagation();
+      close.current();
+    };
+    window.addEventListener('pointerdown', away, true);
+    window.addEventListener('keydown', esc, true);
+    return () => {
+      window.removeEventListener('pointerdown', away, true);
+      window.removeEventListener('keydown', esc, true);
+    };
+  }, []);
+  return (
+    <>
+      {createPortal(
+        <span
+          ref={setSpotEl}
+          className="menu-at"
+          aria-hidden="true"
+          style={{ position: 'fixed', left: x, top: y, width: 0, height: 0 }}
+        />,
+        document.body,
+      )}
+      <Menu {...menu} open={spotEl !== null} opener={spot} onClose={onClose} anchor="below" />
+    </>
   );
 }

@@ -27,7 +27,17 @@ export {
   type SwitchProps,
 } from './controls';
 export { Tip, TIP_DELAY_MS, TIP_SKIP_MS, type TipProps } from './Tip';
-export { Menu, TYPEAHEAD_RESET_MS, type MenuEntry, type MenuItem, type MenuProps } from './Menu';
+export {
+  Menu,
+  MenuAt,
+  TYPEAHEAD_RESET_MS,
+  type MenuAtProps,
+  type MenuEntry,
+  type MenuGroup,
+  type MenuRow,
+  type MenuItem,
+  type MenuProps,
+} from './Menu';
 export { Dialog, openDialogCount, type DialogProps, type DialogSize } from './Dialog';
 export * from './toast';
 export { Tabs, type TabItem, type TabsProps } from './Tabs';

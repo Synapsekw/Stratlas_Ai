@@ -10,7 +10,7 @@
  * (realData.ts, @realdata).
  */
 import { ProjectManifest, type ProjectManifestInput } from '@aio/schema';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { copyFile, mkdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
@@ -516,6 +516,45 @@ test.describe('a synthetic project', () => {
     await win.keyboard.press('Escape');
     await expect(pkg).toBeHidden();
     await expectFocusMeaningful(win, 'closing the package export dialog');
+  });
+
+  test('menus rove with arrow keys', async ({ win }) => {
+    await openProject(win, 'E2E accessibility');
+    /**
+     * The menu `opener` opens takes focus; Down and Up move it between the items with only the
+     * current one in the tab order, End goes to the last, and Escape gives focus back.
+     */
+    const roves = async (opener: Locator, name: string) => {
+      await opener.click();
+      const menu = win.getByRole('menu', { name, exact: true });
+      await expect(menu).toBeVisible();
+      const items = menu.locator('[role^="menuitem"]');
+      expect(await items.count()).toBeGreaterThan(1);
+      await expect(items.first()).toBeFocused();
+      await win.keyboard.press('ArrowDown');
+      await expect(items.nth(1)).toBeFocused();
+      await expect(menu.locator('[role^="menuitem"][tabindex="0"]')).toHaveCount(1);
+      await win.keyboard.press('ArrowUp');
+      await expect(items.first()).toBeFocused();
+      await win.keyboard.press('End');
+      await expect(items.last()).toBeFocused();
+      await expectAccessible(win, `${name} menu, roving`);
+      await win.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+      await expect(opener).toBeFocused();
+    };
+
+    // Issues: the Export menu
+    await nav(win, 'Issues');
+    await roves(win.getByRole('button', { name: 'Export', exact: true }), 'Export');
+
+    // Inspect: the Ask AI checks, then the review queue's reasons to reject
+    await nav(win, 'Inspect');
+    await openPhotoInInspect(win, 'p1');
+    await roves(win.getByTestId('ask-ai-checks'), 'Look for');
+    await win.getByTestId('inspect-review').click();
+    await expect(win.getByTestId('inspect-queue')).toBeVisible();
+    await roves(win.getByTestId('queue-reject-reason'), 'Why is it rejected?');
   });
 });
 

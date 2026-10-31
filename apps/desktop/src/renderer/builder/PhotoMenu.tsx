@@ -4,21 +4,19 @@ import { setPhotoMapClickHandler } from '@aio/maps';
 import type { Layer, PhotoRef } from '@aio/schema';
 import {
   actionsFor,
-  arrowFocus,
   ContextMenu,
-  Icon,
   makeActionCtx,
-  useFocusTrap,
+  MenuAt as PointMenu,
   useT,
   type IconName,
+  type MenuItem,
   type PhotoPick,
   type ResolvedItem,
 } from '@aio/ui';
 import { DEFAULT_PHOTO_LENS } from '@aio/video';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useAnnotateReadOnly } from '@aio/annotate';
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useState } from 'react';
 import { Quaternion, Vector3, type InstancedMesh } from 'three';
 import { useShell } from '../shell';
 import { editBlocked } from '../shell/actions/reasons';
@@ -47,34 +45,22 @@ const PIN_ACTIONS: readonly string[] = [
 /** Edit position and Reset to original: a single photo's menu and the several-picked menu. */
 const POSITION_ACTIONS: readonly string[] = ['photos.editPosition', 'photos.resetPosition'];
 
-/** A registry item as a row of these menus; with `why`, a greyed one says why after its label. */
-function RegistryItem({
-  it,
-  close,
-  why = false,
-}: {
-  it: ResolvedItem;
-  close: () => void;
-  why?: boolean;
-}) {
-  const off = it.disabled !== false;
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      className="dmenu-item"
-      disabled={off}
-      data-testid={it.testId}
-      onClick={() => {
-        close();
-        it.run();
-      }}
-    >
-      <Icon name={it.icon ?? 'pin'} size={14} />
-      <span>{it.label}</span>
-      {why && it.disabled && <span className="faint">{it.disabled}</span>}
-    </button>
-  );
+/**
+ * A registry item as an item of these menus, in the registry's words and order; with `why`, a
+ * greyed one says why after its label.
+ */
+function registryItem(it: ResolvedItem, why = false): MenuItem {
+  return {
+    id: it.id,
+    label: it.label,
+    icon: it.icon ?? 'pin',
+    testId: it.testId,
+    ...(it.disabled !== false ? { disabledReason: it.disabled } : {}),
+    ...(why && it.disabled !== false ? { hint: it.disabled } : {}),
+    onSelect: () => {
+      it.run();
+    },
+  };
 }
 
 interface MenuPhoto {
@@ -181,7 +167,6 @@ export function PhotoMenu() {
   const lookOnly = useAnnotateReadOnly();
   const [menu, setMenuState] = useState<MenuAt | null>(null);
   const [alignAt, setAlignAt] = useState<{ x: number; y: number; picks: PhotoPick[] } | null>(null);
-  const list = useRef<HTMLDivElement>(null);
   const setMenu = useCallback((m: MenuAt | null) => {
     setMenuState(m);
   }, []);
@@ -309,22 +294,6 @@ export function PhotoMenu() {
     if (scene) showPhotoFrustums(scene, footprint);
   }, [footprint, scene, project]);
 
-  useEffect(() => {
-    if (!menu) return;
-    const close = (e: PointerEvent) => {
-      if (!list.current?.contains(e.target as Node)) setMenu(null);
-    };
-    window.addEventListener('pointerdown', close, true);
-    return () => {
-      window.removeEventListener('pointerdown', close, true);
-    };
-  }, [menu, setMenu]);
-  useFocusTrap(list, menu !== null, {
-    onEscape: () => {
-      setMenu(null);
-    },
-  });
-
   const alignMenu =
     alignAt && project ? (
       <ContextMenu
@@ -349,59 +318,35 @@ export function PhotoMenu() {
       />
     ) : null;
   if (!menu || !project) return alignMenu;
+  const close = () => {
+    setMenu(null);
+  };
+  // one menu per right-click: a new one (a photo picked from the list) starts afresh
+  const menuKey = `${menu.layerId}/${menu.photoIds.join(',')}/${String(menu.x)},${String(menu.y)}`;
   if (menu.photos && menu.photos.length > 0) {
     const photos = menu.photos;
-    const width = 260;
-    return createPortal(
-      <div
-        ref={list}
-        className="dmenu"
-        role="menu"
-        aria-label={t('align.photoMenu.list', { count: photos.length })}
-        style={{
-          left: Math.min(menu.x, window.innerWidth - width - 8),
-          top: Math.min(menu.y, window.innerHeight - 320),
-          width,
-        }}
-        data-testid="photo-map-list"
-        onKeyDown={(e) => {
-          if (list.current && arrowFocus(list.current, e.key)) e.preventDefault();
-        }}
-      >
-        <div className="dmenu-h faint">{t('align.photoMenu.list', { count: photos.length })}</div>
-        <div className="dmenu-scroll">
-          {photos.map((p) => (
-            <button
-              key={`${p.layerId}/${p.photoId}`}
-              type="button"
-              role="menuitem"
-              className="dmenu-item"
-              onClick={() => {
-                setMenu(null);
-                openPhoto(p.layerId, p.photoId, 'map');
-              }}
-            >
-              <Icon name="photo" size={14} />
-              <span className="mono">{p.photoId}</span>
-            </button>
-          ))}
-        </div>
-      </div>,
-      document.body,
+    return (
+      <PointMenu
+        key={menuKey}
+        x={menu.x}
+        y={menu.y}
+        label={t('align.photoMenu.list', { count: photos.length })}
+        title={t('align.photoMenu.list', { count: photos.length })}
+        testId="photo-map-list"
+        onClose={close}
+        items={photos.map((p) => ({
+          id: `${p.layerId}/${p.photoId}`,
+          label: p.photoId,
+          icon: 'photo',
+          onSelect: () => {
+            openPhoto(p.layerId, p.photoId, 'map');
+          },
+        }))}
+      />
     );
   }
   const set = setOf(menu.layerId);
   if (!set) return alignMenu;
-  const close = () => {
-    setMenu(null);
-  };
-  const W = 260;
-  const left = Math.min(menu.x, window.innerWidth - W - 8);
-  const top = Math.min(menu.y, window.innerHeight - 320);
-  const style = { left, top, width: W };
-  const keys = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (list.current && arrowFocus(list.current, e.key)) e.preventDefault();
-  };
 
   const photoIdsOf = (id: string): PhotoPick => ({ layerId: menu.layerId, photoId: id });
   const alignBlocked = editBlocked({ pkg: !!pkg, canEdit: !pkg && !lookOnly });
@@ -423,91 +368,65 @@ export function PhotoMenu() {
         pkg: !!pkg,
         host: toastHost(t('position.edit')),
       }),
-    ).filter((i) => POSITION_ACTIONS.includes(i.id));
-  if (pickedHere)
-    return createPortal(
-      <div
-        ref={list}
-        className="dmenu"
-        role="menu"
-        aria-label={t('align.photoMenu.picked', { count: picks.length })}
-        style={style}
-        data-testid="photo-menu"
-        onKeyDown={keys}
-        onContextMenu={(e) => {
-          e.preventDefault();
-        }}
-      >
-        <div className="dmenu-h faint">{t('align.photoMenu.picked', { count: picks.length })}</div>
-        {!picksPinned && (
-          <button
-            type="button"
-            role="menuitem"
-            className="dmenu-item primary"
-            data-testid="photo-menu-alignTo"
-            disabled={alignBlocked !== false}
-            title={alignBlocked || undefined}
-            onClick={() => {
-              setMenu(null);
-              setAlignAt({ x: menu.x, y: menu.y, picks: [...picks] });
-            }}
-          >
-            <Icon name="target" size={14} />
-            <span>{t('align.photoMenu.alignTo')}</span>
-          </button>
-        )}
-        {positionItems([...picks]).map((pi) => (
-          <RegistryItem key={pi.id} it={pi} close={close} why />
-        ))}
-        <button
-          type="button"
-          role="menuitem"
-          className="dmenu-item"
-          data-testid="photo-menu-clearPicks"
-          onClick={() => {
-            setMenu(null);
-            photoPicks.getState().clear();
-          }}
-        >
-          <Icon name="x" size={14} />
-          <span>{t('align.photoMenu.clearPicks')}</span>
-        </button>
-      </div>,
-      document.body,
+    )
+      .filter((i) => POSITION_ACTIONS.includes(i.id))
+      .map((i) => registryItem(i, true));
+  if (pickedHere) {
+    const items: MenuItem[] = [];
+    if (!picksPinned)
+      items.push({
+        id: 'alignTo',
+        label: t('align.photoMenu.alignTo'),
+        icon: 'target',
+        testId: 'photo-menu-alignTo',
+        ...(alignBlocked !== false ? { disabledReason: alignBlocked } : {}),
+        onSelect: () => {
+          setAlignAt({ x: menu.x, y: menu.y, picks: [...picks] });
+        },
+      });
+    items.push(...positionItems([...picks]), {
+      id: 'clearPicks',
+      label: t('align.photoMenu.clearPicks'),
+      icon: 'x',
+      testId: 'photo-menu-clearPicks',
+      onSelect: () => {
+        photoPicks.getState().clear();
+      },
+    });
+    return (
+      <PointMenu
+        key={menuKey}
+        x={menu.x}
+        y={menu.y}
+        label={t('align.photoMenu.picked', { count: picks.length })}
+        title={t('align.photoMenu.picked', { count: picks.length })}
+        testId="photo-menu"
+        onClose={close}
+        items={items}
+      />
     );
+  }
 
   if (menu.photoIds.length > 1)
-    return createPortal(
-      <div
-        ref={list}
-        className="dmenu"
-        role="menu"
-        aria-label={t('align.photoMenu.list', { count: menu.photoIds.length })}
-        style={style}
-        data-testid="photo-menu-list"
-        onKeyDown={keys}
-      >
-        <div className="dmenu-h faint">
-          {t('align.photoMenu.list', { count: menu.photoIds.length })}
-        </div>
-        <div className="dmenu-scroll">
-          {menu.photoIds.map((id) => (
-            <button
-              key={id}
-              type="button"
-              role="menuitem"
-              className="dmenu-item"
-              onClick={() => {
-                setMenu({ ...menu, photoIds: [id] });
-              }}
-            >
-              <Icon name="photo" size={14} />
-              <span className="mono">{id}</span>
-            </button>
-          ))}
-        </div>
-      </div>,
-      document.body,
+    return (
+      <PointMenu
+        key={menuKey}
+        x={menu.x}
+        y={menu.y}
+        label={t('align.photoMenu.list', { count: menu.photoIds.length })}
+        title={t('align.photoMenu.list', { count: menu.photoIds.length })}
+        testId="photo-menu-list"
+        onClose={close}
+        items={menu.photoIds.map((id) => ({
+          id,
+          label: id,
+          icon: 'photo',
+          // the photo's own menu takes this one's place
+          onSelect: () => {
+            setMenu({ ...menu, photoIds: [id] });
+          },
+        }))}
+      />
     );
 
   const photo = set.items.find((p) => p.id === menu.photoIds[0]);
@@ -527,104 +446,100 @@ export function PhotoMenu() {
           pkg: false,
           host: toastHost(photo.id),
         }),
-      ).filter((i) => PIN_ACTIONS.includes(i.id));
+      )
+        .filter((i) => PIN_ACTIONS.includes(i.id))
+        .map((i) => registryItem(i));
+  const unposed = t('align.photoMenu.unposed');
   const item = (
     id: string,
     icon: IconName,
     label: string,
     run: () => void,
-    o: { primary?: boolean; disabled?: boolean } = {},
-  ) => (
-    <button
-      key={id}
-      type="button"
-      role="menuitem"
-      className={`dmenu-item${o.primary ? ' primary' : ''}`}
-      disabled={o.disabled}
-      data-testid={`photo-menu-${id}`}
-      onClick={() => {
-        close();
-        run();
-      }}
-    >
-      <Icon name={icon} size={14} />
-      <span>{label}</span>
-    </button>
+    disabledReason?: string,
+  ): MenuItem => ({
+    id,
+    icon,
+    label,
+    testId: `photo-menu-${id}`,
+    onSelect: run,
+    ...(disabledReason !== undefined ? { disabledReason } : {}),
+  });
+  const items: MenuItem[] = [];
+  if (correctable)
+    items.push(
+      item(
+        'align',
+        'target',
+        t('align.photoMenu.align'),
+        () => {
+          photoAlign.getState().start(set.id, photo.id);
+        },
+        posed ? undefined : unposed,
+      ),
+      item('alignTo', 'target', t('align.photoMenu.alignTo'), () => {
+        setAlignAt({ x: menu.x, y: menu.y, picks: [photoIdsOf(photo.id)] });
+      }),
+    );
+  items.push(
+    ...pinItems,
+    ...positionItems([photoIdsOf(photo.id)]),
+    item('open', 'photo', t('align.photoMenu.open'), () => {
+      openPhoto(set.id, photo.id, menu.from);
+    }),
   );
-  return createPortal(
-    <div
-      ref={list}
-      className="dmenu"
-      role="menu"
-      aria-label={t('align.photoMenu.label', { photo: photo.id })}
-      style={style}
-      data-testid="photo-menu"
-      onKeyDown={keys}
-      onContextMenu={(e) => {
-        e.preventDefault();
-      }}
-    >
-      <div className="dmenu-h faint">{photo.id}</div>
-      {correctable &&
-        item(
-          'align',
-          'target',
-          t('align.photoMenu.align'),
-          () => {
-            photoAlign.getState().start(set.id, photo.id);
-          },
-          { primary: true, disabled: !posed },
-        )}
-      {correctable &&
-        item('alignTo', 'target', t('align.photoMenu.alignTo'), () => {
-          setAlignAt({ x: menu.x, y: menu.y, picks: [photoIdsOf(photo.id)] });
-        })}
-      {pinItems.map((pi) => (
-        <RegistryItem key={pi.id} it={pi} close={close} />
-      ))}
-      {positionItems([photoIdsOf(photo.id)]).map((pi) => (
-        <RegistryItem key={pi.id} it={pi} close={close} why />
-      ))}
-      {item('open', 'photo', t('align.photoMenu.open'), () => {
-        openPhoto(set.id, photo.id, menu.from);
-      })}
-      {scene &&
-        item(
-          'eye',
-          'camera',
-          t('align.photoMenu.eye'),
-          () => {
-            lookThrough(scene, set.id, photo);
-          },
-          { disabled: !posed },
-        )}
-      {item(
-        'footprint',
-        footprint ? 'eye-off' : 'eye',
-        footprint ? t('align.photoMenu.hideFootprint') : t('align.photoMenu.showFootprint'),
+  if (scene)
+    items.push(
+      item(
+        'eye',
+        'camera',
+        t('align.photoMenu.eye'),
         () => {
-          photoAlign.getState().setFootprint(!footprint);
+          lookThrough(scene, set.id, photo);
         },
-      )}
-      {correctable &&
-        photoCorrection(orientation, set.id, photo.id) &&
-        item('reset', 'undo', t('align.photoMenu.reset'), () => {
-          void photoAlign.getState().resetSaved(set.id, photo.id);
-        })}
-      {item(
-        'copy',
-        'copy',
-        t('align.photoMenu.copy'),
-        () => {
-          const text = positionText(set.id, photo);
-          if (text)
-            void navigator.clipboard.writeText(text).catch((e: unknown) => {
-              console.warn('Copy position failed', e);
-            });
-        },
-        { disabled: !photo.pos },
-      )}
-    </div>,
-    document.body,
+        posed ? undefined : unposed,
+      ),
+    );
+  items.push(
+    item(
+      'footprint',
+      footprint ? 'eye-off' : 'eye',
+      footprint ? t('align.photoMenu.hideFootprint') : t('align.photoMenu.showFootprint'),
+      () => {
+        photoAlign.getState().setFootprint(!footprint);
+      },
+    ),
+  );
+  if (correctable && photoCorrection(orientation, set.id, photo.id))
+    items.push(
+      item('reset', 'undo', t('align.photoMenu.reset'), () => {
+        void photoAlign.getState().resetSaved(set.id, photo.id);
+      }),
+    );
+  items.push(
+    item(
+      'copy',
+      'copy',
+      t('align.photoMenu.copy'),
+      () => {
+        const text = positionText(set.id, photo);
+        if (text)
+          void navigator.clipboard.writeText(text).catch((e: unknown) => {
+            console.warn('Copy position failed', e);
+          });
+      },
+      photo.pos ? undefined : t('align.photoMenu.noPosition'),
+    ),
+  );
+  return (
+    <PointMenu
+      key={menuKey}
+      x={menu.x}
+      y={menu.y}
+      label={t('align.photoMenu.label', { photo: photo.id })}
+      title={photo.id}
+      testId="photo-menu"
+      onClose={close}
+      items={items}
+    />
   );
 }

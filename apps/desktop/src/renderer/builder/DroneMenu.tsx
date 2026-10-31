@@ -1,11 +1,10 @@
 import { clipCamera, clipKeys, clipPoseAt, localToProject, toWgs84 } from '@aio/geo';
 import { frameProjection } from '@aio/maps';
 import { shiftLocal, type Layer } from '@aio/schema';
-import { arrowFocus, Icon, useFocusTrap, useT, type IconName } from '@aio/ui';
+import { MenuAt, useT, type IconName, type MenuItem } from '@aio/ui';
 import { setCameraMode, setFrustumOn, videoRig } from '@aio/video';
 import { dateShiftOf, nowOf, useWorkspace, workspace } from '@aio/workspace';
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useState } from 'react';
 import { getMedia, loadFlight } from '../media';
 import { useShell } from '../shell';
 import { alignCamera, useAlign } from './alignSession';
@@ -100,7 +99,6 @@ export function DroneMenu() {
     setConfirmClear(false);
     setMenuState(m);
   }, []);
-  const list = useRef<HTMLDivElement>(null);
 
   // flights for the path jumps and the position (small files, read once)
   useEffect(() => {
@@ -197,23 +195,6 @@ export function DroneMenu() {
     if (scene) setFrustumOn(scene, footprint);
   }, [footprint, map, scene]);
 
-  // a click elsewhere closes the menu
-  useEffect(() => {
-    if (!menu) return;
-    const close = (e: PointerEvent) => {
-      if (!list.current?.contains(e.target as Node)) setMenu(null);
-    };
-    window.addEventListener('pointerdown', close, true);
-    return () => {
-      window.removeEventListener('pointerdown', close, true);
-    };
-  }, [menu, setMenu]);
-  useFocusTrap(list, menu !== null, {
-    onEscape: () => {
-      setMenu(null);
-    },
-  });
-
   if (!menu || !project) return null;
   const clip = videos().find((c) => c.id === menu.layerId);
   if (!clip) return null;
@@ -230,111 +211,103 @@ export function DroneMenu() {
     icon: IconName,
     label: string,
     run: () => void,
-    o: { primary?: boolean; disabled?: boolean; keepOpen?: boolean } = {},
-  ) => (
-    <button
-      key={id}
-      type="button"
-      role="menuitem"
-      className={`dmenu-item${o.primary ? ' primary' : ''}`}
-      disabled={o.disabled}
-      data-testid={`drone-menu-${id}`}
-      onClick={() => {
-        if (!o.keepOpen) close();
-        run();
-      }}
-    >
-      <Icon name={icon} size={14} />
-      <span>{label}</span>
-    </button>
-  );
-
-  const W = 260;
-  const left = Math.min(menu.x, window.innerWidth - W - 8);
-  const top = Math.min(menu.y, window.innerHeight - 300);
-  return createPortal(
-    <div
-      ref={list}
-      className="dmenu"
-      role="menu"
-      aria-label={t('align.droneMenu.label', { clip: clip.name })}
-      style={{ left, top, width: W }}
-      data-testid="drone-menu"
-      onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
-        if (list.current && arrowFocus(list.current, e.key)) e.preventDefault();
-      }}
-      onContextMenu={(e) => {
-        e.preventDefault();
-      }}
-    >
-      <div className="dmenu-h faint">{clip.name}</div>
-      {!readOnly &&
-        item(
-          'align',
-          'droneeye',
-          t('align.droneMenu.align'),
-          () => {
-            alignCamera.getState().start(clip.id);
-          },
-          { primary: true, disabled: aligning },
-        )}
-      {!readOnly &&
-        (aligning || keys.length > 0) &&
-        item('set-key', 'point', t('align.droneMenu.setKey'), () => {
+    o: { disabledReason?: string; keepOpen?: boolean } = {},
+  ): MenuItem => ({
+    id,
+    icon,
+    label,
+    testId: `drone-menu-${id}`,
+    onSelect: run,
+    ...(o.disabledReason !== undefined ? { disabledReason: o.disabledReason } : {}),
+    ...(o.keepOpen ? { keepOpen: true } : {}),
+  });
+  const items: MenuItem[] = [];
+  if (!readOnly)
+    items.push(
+      item(
+        'align',
+        'droneeye',
+        t('align.droneMenu.align'),
+        () => {
           alignCamera.getState().start(clip.id);
-          alignCamera.getState().setKey();
-        })}
-      {scene &&
-        item(
-          'drone-eye',
-          'camera',
-          droneEye ? t('align.droneMenu.leaveEye') : t('align.droneMenu.eye'),
-          () => {
-            setCameraMode(scene, droneEye ? 'free' : 'drone');
-          },
-        )}
-      {item(
-        'play',
-        playing ? 'pause' : 'play',
-        playing ? t('align.droneMenu.pause') : t('align.droneMenu.play'),
-        () => {
-          const w = workspace.getState();
-          if (w.activeClip !== clip.id) w.setActiveClip(clip.id);
-          if (playing) w.pause();
-          else w.play();
         },
-      )}
-      {item(
-        'footprint',
-        footprint ? 'eye-off' : 'eye',
-        footprint ? t('align.droneMenu.hideFootprint') : t('align.droneMenu.showFootprint'),
+        aligning ? { disabledReason: t('align.droneMenu.aligning') } : {},
+      ),
+    );
+  if (!readOnly && (aligning || keys.length > 0))
+    items.push(
+      item('set-key', 'point', t('align.droneMenu.setKey'), () => {
+        alignCamera.getState().start(clip.id);
+        alignCamera.getState().setKey();
+      }),
+    );
+  if (scene)
+    items.push(
+      item(
+        'drone-eye',
+        'camera',
+        droneEye ? t('align.droneMenu.leaveEye') : t('align.droneMenu.eye'),
         () => {
-          alignCamera.getState().setFootprint(!footprint);
+          setCameraMode(scene, droneEye ? 'free' : 'drone');
         },
-      )}
-      {!readOnly &&
-        keys.length > 0 &&
-        item(
-          'clear',
-          'x',
-          confirmClear
-            ? t('align.droneMenu.clearConfirm', { count: keys.length })
-            : t('align.droneMenu.clear'),
-          () => {
-            if (!confirmClear) {
-              setConfirmClear(true);
-              return;
-            }
-            close();
-            void alignCamera.getState().clear(clip.id);
-          },
-          { keepOpen: true },
-        )}
-      {item('copy', 'copy', t('align.droneMenu.copy'), () => {
-        const text = positionText(clip.id);
-        if (text) void copyText(text);
-      })}
-    </div>,
-    document.body,
+      ),
+    );
+  items.push(
+    item(
+      'play',
+      playing ? 'pause' : 'play',
+      playing ? t('align.droneMenu.pause') : t('align.droneMenu.play'),
+      () => {
+        const w = workspace.getState();
+        if (w.activeClip !== clip.id) w.setActiveClip(clip.id);
+        if (playing) w.pause();
+        else w.play();
+      },
+    ),
+    item(
+      'footprint',
+      footprint ? 'eye-off' : 'eye',
+      footprint ? t('align.droneMenu.hideFootprint') : t('align.droneMenu.showFootprint'),
+      () => {
+        alignCamera.getState().setFootprint(!footprint);
+      },
+    ),
+  );
+  if (!readOnly && keys.length > 0)
+    items.push(
+      // two presses: the first asks, in the item's own words, the second clears
+      item(
+        'clear',
+        'x',
+        confirmClear
+          ? t('align.droneMenu.clearConfirm', { count: keys.length })
+          : t('align.droneMenu.clear'),
+        () => {
+          if (!confirmClear) {
+            setConfirmClear(true);
+            return;
+          }
+          close();
+          void alignCamera.getState().clear(clip.id);
+        },
+        { keepOpen: true },
+      ),
+    );
+  items.push(
+    item('copy', 'copy', t('align.droneMenu.copy'), () => {
+      const text = positionText(clip.id);
+      if (text) void copyText(text);
+    }),
+  );
+  return (
+    <MenuAt
+      x={menu.x}
+      y={menu.y}
+      label={t('align.droneMenu.label', { clip: clip.name })}
+      title={clip.name}
+      testId="drone-menu"
+      items={items}
+      onClose={close}
+    />
   );
 }

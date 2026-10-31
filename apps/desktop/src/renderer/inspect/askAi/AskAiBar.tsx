@@ -10,7 +10,7 @@
  */
 import { useAnnotateReadOnly } from '@aio/annotate';
 import type { Layer, ProjectManifest } from '@aio/schema';
-import { Icon, Tip, useT, type PhotoPick } from '@aio/ui';
+import { Icon, Menu, Tip, useT, type MenuEntry, type PhotoPick } from '@aio/ui';
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { analyticsPack, useAnalyticsPack } from '../../analyticsPack';
 import type { DetectItem } from '../../detections/convert';
@@ -316,10 +316,11 @@ export function AskAiBar({
     else void start(false);
   };
 
-  // menus close on a click elsewhere and on Escape
+  // the frames popover closes on a click elsewhere and on Escape (the checks menu closes itself)
   const bar = useRef<HTMLDivElement>(null);
+  const caret = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    if (!menuOpen && !framesOpen) return;
+    if (!framesOpen) return;
     const down = (e: MouseEvent) => {
       if (e.target instanceof Node && bar.current?.contains(e.target)) return;
       setMenuOpen(false);
@@ -337,7 +338,7 @@ export function AskAiBar({
       document.removeEventListener('mousedown', down);
       document.removeEventListener('keydown', key, true);
     };
-  }, [menuOpen, framesOpen]);
+  }, [framesOpen]);
 
   const pickScope = (s: AskScope) => {
     setChosen(s);
@@ -376,6 +377,27 @@ export function AskAiBar({
       {t('askAi.button')}
     </button>
   );
+  // the checks to look for (one is picked), then the custom request panel
+  const busy = readOnly ? t('inspect.readOnly') : running ? t('askAi.checks.busy') : undefined;
+  const checkItems: MenuEntry[] = options.map((o, n) => ({
+    id: `${o.check.kind}:${o.label}`,
+    label: o.label,
+    checked: o === option,
+    radio: true,
+    testId: `ask-ai-check-${String(n)}`,
+    ...(busy !== undefined ? { disabledReason: busy } : {}),
+    onSelect: () => {
+      setPicked(o.check);
+    },
+  }));
+  if (onCustom)
+    checkItems.push('separator', {
+      id: 'custom',
+      label: t('askAi.customMenu'),
+      icon: 'agent',
+      testId: 'ask-ai-custom',
+      onSelect: onCustom,
+    });
   return (
     <div className="ask-bar" ref={bar}>
       <div className="ask-bar-row">
@@ -386,11 +408,10 @@ export function AskAiBar({
             repeatsName={!option}
           >
             <button
+              ref={caret}
               type="button"
               className="btn sm ask-caret"
               data-testid="ask-ai-checks"
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
               aria-label={t('askAi.checks')}
               // the menu also opens the custom request panel, which a read-only project can still view
               disabled={onCustom === undefined && (readOnly || running)}
@@ -402,47 +423,17 @@ export function AskAiBar({
               <Icon name="chev-d" size={12} />
             </button>
           </Tip>
-          {menuOpen && (
-            <div className="ask-menu" role="menu" aria-label={t('askAi.checks')}>
-              <div className="ask-menu-head caps">{t('askAi.checks')}</div>
-              {options.map((o, n) => (
-                <button
-                  key={`${o.check.kind}:${o.label}`}
-                  type="button"
-                  role="menuitemradio"
-                  className="ask-menu-item"
-                  aria-checked={o === option}
-                  data-testid={`ask-ai-check-${String(n)}`}
-                  disabled={readOnly || running}
-                  onClick={() => {
-                    setPicked(o.check);
-                    setMenuOpen(false);
-                  }}
-                >
-                  <Icon name="check" size={12} className="ask-tick" />
-                  {o.label}
-                </button>
-              ))}
-              {onCustom && (
-                <>
-                  <div className="ask-menu-sep" role="separator" />
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="ask-menu-item"
-                    data-testid="ask-ai-custom"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      onCustom();
-                    }}
-                  >
-                    <Icon name="agent" size={12} className="ask-tick ask-custom-icon" />
-                    {t('askAi.customMenu')}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
+          <Menu
+            open={menuOpen}
+            onClose={() => {
+              setMenuOpen(false);
+            }}
+            opener={caret}
+            anchor="below"
+            label={t('askAi.checks')}
+            title={t('askAi.checks')}
+            items={checkItems}
+          />
         </div>
 
         <div className="ask-scope">

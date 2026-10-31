@@ -1,5 +1,5 @@
-import { arrowFocus, Icon, useFocusTrap } from '@aio/ui';
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { Icon, Menu, type MenuEntry } from '@aio/ui';
+import { useRef, useState } from 'react';
 import { useWorkspace } from '@aio/workspace';
 import { useShell } from '../shell';
 import { allowedActions, exportUnavailable } from './exportModel';
@@ -18,41 +18,39 @@ export function ExportMenu() {
     manifest ? exportUnavailable(id, manifest, issues) : null;
   const [open, setOpen] = useState(false);
   const [legend, setLegend] = useState(true);
-  const root = useRef<HTMLDivElement>(null);
-  const list = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener('pointerdown', close);
-    return () => {
-      window.removeEventListener('pointerdown', close);
-    };
-  }, [open]);
-  // the first item takes focus, Esc closes and focus returns to the Export button
-  useFocusTrap(list, open, {
-    onEscape: () => {
-      setOpen(false);
-    },
-    returnTo: () => button.current,
-  });
-  /** Up, Down, Home and End move between the items, as in any menu. */
-  const arrows = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (list.current && arrowFocus(list.current, e.key)) e.preventDefault();
-  };
-
   if (!actions.length) return null;
+  const items: MenuEntry[] = actions.map((a) => {
+    // greyed with its reason where it would make an empty report (as on Reports)
+    const reason = why(a.id);
+    return {
+      id: a.id,
+      label: a.label,
+      icon: a.icon,
+      hint: reason ?? a.hint,
+      ...(reason ? { disabledReason: reason } : {}),
+      onSelect: () => {
+        runExportAction(a.id, { legend });
+      },
+    };
+  });
+  if (actions.some((a) => a.id === 'snapshot'))
+    items.push('separator', {
+      id: 'legend',
+      label: 'Legend on the 3D snapshot',
+      checked: legend,
+      keepOpen: true,
+      onSelect: () => {
+        setLegend((v) => !v);
+      },
+    });
   return (
-    <div className="xmenu" ref={root}>
+    <div className="xmenu">
       <button
         ref={button}
         type="button"
         className="btn sm"
-        aria-haspopup="menu"
-        aria-expanded={open}
         onClick={() => {
           setOpen(!open);
         }}
@@ -60,46 +58,16 @@ export function ExportMenu() {
         <Icon name="download" size={14} />
         Export
       </button>
-      {open && (
-        <div ref={list} className="xmenu-list" role="menu" aria-label="Export" onKeyDown={arrows}>
-          {actions.map((a) => {
-            // greyed with its reason where it would make an empty report (as on Reports)
-            const reason = why(a.id);
-            return (
-              <button
-                key={a.id}
-                type="button"
-                role="menuitem"
-                className="xmenu-item"
-                aria-disabled={reason ? true : undefined}
-                onClick={() => {
-                  if (reason) return;
-                  setOpen(false);
-                  runExportAction(a.id, { legend });
-                }}
-              >
-                <Icon name={a.icon} size={14} />
-                <span>{a.label}</span>
-                <span className="muted">{reason ?? a.hint}</span>
-              </button>
-            );
-          })}
-          {actions.some((a) => a.id === 'snapshot') && (
-            <button
-              type="button"
-              role="menuitemcheckbox"
-              aria-checked={legend}
-              className="xmenu-opt"
-              onClick={() => {
-                setLegend(!legend);
-              }}
-            >
-              <Icon name={legend ? 'check' : 'box'} size={14} />
-              Legend on the 3D snapshot
-            </button>
-          )}
-        </div>
-      )}
+      <Menu
+        open={open}
+        onClose={() => {
+          setOpen(false);
+        }}
+        opener={button}
+        label="Export"
+        items={items}
+        anchor="below"
+      />
     </div>
   );
 }

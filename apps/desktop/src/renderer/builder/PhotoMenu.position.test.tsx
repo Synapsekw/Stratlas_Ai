@@ -123,8 +123,8 @@ describe('the photo menu and Edit position', () => {
   it('greys Edit position on a pinned photo and says to use Move pin', () => {
     open(PINNED);
     rightClick();
-    const it1 = byId('ctx-item-photos.editPosition') as HTMLButtonElement | null;
-    expect(it1?.disabled).toBe(true);
+    const it1 = byId('ctx-item-photos.editPosition');
+    expect(it1?.getAttribute('aria-disabled')).toBe('true');
     expect(it1?.textContent).toContain('Pinned: use Move pin.');
   });
 
@@ -156,7 +156,8 @@ describe('the photo menu and Edit position', () => {
       ],
     });
     rightClick();
-    expect(byId('photo-menu')?.textContent).toContain('2 photos');
+    expect(byId('photo-menu')).not.toBeNull();
+    expect(document.querySelector('.menu-title')?.textContent).toContain('2 photos');
     act(() => {
       byId('ctx-item-photos.editPosition')?.click();
     });

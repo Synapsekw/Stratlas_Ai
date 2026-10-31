@@ -7,8 +7,8 @@
 import { fromSI, toSI, unitLabel } from '@aio/geo';
 import type { BaseSpec, SurfaceRef, SurveyMeasurement } from '@aio/schema';
 import { customBase, effectiveUnits, sideFor, sideKey, type SideOption } from '@aio/survey';
-import { arrowFocus, Icon, Popover, Row, useT } from '@aio/ui';
-import { useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
+import { Icon, Menu, useT, type MenuEntry } from '@aio/ui';
+import { useRef, useState, type ReactElement } from 'react';
 import { BaseEditor } from '../BaseEditor';
 import { useMeasure } from '../measureStore';
 import '../../charts/charts.css';
@@ -46,7 +46,6 @@ export function BasePicker(p: {
   const t = useT();
   const opener = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  const [surfacesOpen, setSurfacesOpen] = useState(false);
   const points = p.m?.points ?? [];
   const id = baseIdOf(p.value);
   const name = baseName(p.value, p.surfaces, t);
@@ -55,16 +54,11 @@ export function BasePicker(p: {
     p.onChange(next);
   };
   const pick = (next: SurfaceRef) => {
-    setOpen(false);
-    setSurfacesOpen(false);
     change(next);
   };
   const pickBase = (b: BaseId) => {
     // the same base again keeps its parameters (a typed level, the custom points)
-    if (b === id) {
-      setOpen(false);
-      return;
-    }
+    if (b === id) return;
     if (b === 'smart') pick({ kind: 'smart' });
     else if (b === 'lowest') pick({ kind: 'reference', mode: 'perimeter-min' });
     else if (b === 'plane') pick({ kind: 'fit-plane' });
@@ -77,10 +71,48 @@ export function BasePicker(p: {
       pick({ kind: 'reference', mode: 'level', levelM: Math.round(mean * 1000) / 1000 });
     }
   };
-  const onMenuKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (arrowFocus(e.currentTarget, e.key)) e.preventDefault();
-  };
   const selectedKey = id === 'surface' ? sideKey(p.value) : null;
+  // an older file's mode first (ticked), then the seven bases; "Previous survey or design" opens
+  // the surveys and designs beside it
+  const items: MenuEntry[] = [
+    ...(id === null
+      ? [{ id: 'older', label: name, checked: true, radio: true, testId: 'bp-older' }]
+      : []),
+    ...BASES.map((b): MenuEntry => {
+      const on = b.id === id;
+      if (b.id !== 'surface')
+        return {
+          id: b.id,
+          label: t(b.name),
+          note: t(b.hint),
+          checked: on,
+          radio: true,
+          onSelect: () => {
+            pickBase(b.id);
+          },
+        };
+      return {
+        id: b.id,
+        label: t(b.name),
+        note: t(b.hint),
+        // a submenu parent is a plain item: the tick says it holds the base
+        ...(on ? { icon: 'check' as const } : {}),
+        ...(choices.length === 0
+          ? { disabledReason: t('vol.card.noSurfaces'), children: [] }
+          : {
+              children: choices.map((o) => ({
+                id: o.key,
+                label: optionLabel(o),
+                checked: o.key === selectedKey,
+                radio: true,
+                onSelect: () => {
+                  pick(sideFor(o, points, p.value));
+                },
+              })),
+            }),
+      };
+    }),
+  ];
   return (
     <>
       <span className="pc-chip bp-chip" data-on="">
@@ -88,13 +120,10 @@ export function BasePicker(p: {
           ref={opener}
           type="button"
           className="pc-chip-main"
-          aria-haspopup="menu"
-          aria-expanded={open}
           disabled={p.readOnly}
           data-testid={p.testId ?? 'survey-from'}
           data-base={id ?? 'other'}
           onClick={() => {
-            setSurfacesOpen(id === 'surface');
             setOpen((x) => !x);
           }}
         >
@@ -104,93 +133,16 @@ export function BasePicker(p: {
           {!p.readOnly && <Icon name="chevdown" size={12} />}
         </button>
       </span>
-      <Popover
+      <Menu
         open={open}
         onClose={() => {
           setOpen(false);
         }}
         opener={opener}
         anchor="below"
-        className="menu-pop bp-pop"
-      >
-        <div
-          role="menu"
-          aria-label={t('vol.card.chooseBase')}
-          className="menu-list bp-list"
-          onKeyDown={onMenuKey}
-        >
-          {id === null && (
-            <Row
-              as="button"
-              kind="menu"
-              role="menuitemradio"
-              aria-checked={true}
-              selected
-              className="bp-row"
-              data-base="older"
-              onClick={() => {
-                setOpen(false);
-              }}
-              label={<RowText name={name} hint={null} on />}
-            />
-          )}
-          {BASES.map((b) => {
-            const on = b.id === id;
-            const isSurface = b.id === 'surface';
-            return (
-              <div key={b.id} className="bp-entry">
-                <Row
-                  as="button"
-                  kind="menu"
-                  role="menuitemradio"
-                  aria-checked={on}
-                  {...(isSurface ? { 'aria-expanded': surfacesOpen } : {})}
-                  className="bp-row"
-                  data-base={b.id}
-                  selected={on}
-                  onClick={() => {
-                    if (isSurface) setSurfacesOpen((x) => !x);
-                    else pickBase(b.id);
-                  }}
-                  label={
-                    <RowText
-                      name={t(b.name)}
-                      hint={t(b.hint)}
-                      on={on}
-                      {...(isSurface ? { open: surfacesOpen } : {})}
-                    />
-                  }
-                />
-                {isSurface && surfacesOpen && (
-                  <div
-                    role="group"
-                    aria-label={t(b.name)}
-                    className="bp-surfaces"
-                    data-testid="bp-surfaces"
-                  >
-                    {choices.length === 0 && <p className="bp-none">{t('vol.card.noSurfaces')}</p>}
-                    {choices.map((o) => (
-                      <Row
-                        key={o.key}
-                        as="button"
-                        kind="menu"
-                        role="menuitemradio"
-                        aria-checked={o.key === selectedKey}
-                        className="bp-surface"
-                        selected={o.key === selectedKey}
-                        onClick={() => {
-                          pick(sideFor(o, points, p.value));
-                        }}
-                        label={optionLabel(o)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </Popover>
+        label={t('vol.card.chooseBase')}
+        items={items}
+      />
       <BaseFields value={p.value} m={p.m} readOnly={p.readOnly} onChange={change} />
     </>
   );
@@ -227,20 +179,6 @@ export function BaseFields(p: {
       </div>
     );
   return null;
-}
-
-/** A base's row: the tick, its name and when to use it, and the chevron of the surface list. */
-function RowText(p: { name: string; hint: string | null; on: boolean; open?: boolean }) {
-  return (
-    <span className="bp-line">
-      <span className="menu-lead">{p.on && <Icon name="check" size={12} />}</span>
-      <span className="bp-text">
-        <span className="bp-name">{p.name}</span>
-        {p.hint !== null && <span className="bp-hint">{p.hint}</span>}
-      </span>
-      {p.open !== undefined && <Icon name={p.open ? 'chevup' : 'chevdown'} size={12} />}
-    </span>
-  );
 }
 
 /** The typed floor height of a fixed level, in the site's distance unit. */

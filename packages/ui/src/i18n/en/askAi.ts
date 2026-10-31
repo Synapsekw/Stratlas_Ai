@@ -90,6 +90,7 @@ export const enAskAi = {
     'At most {max} frames per run. Pick a longer interval to cover the whole video.',
   'askAi.checks': 'Look for',
   'askAi.checks.current': 'Look for: {name}',
+  'askAi.checks.busy': 'Ask AI is looking now. Pick again when it finishes.',
   'askAi.check.everything': "Everything in this project's classes",
   'askAi.check.detector': '{name} (local detector)',
   'askAi.none': 'No AI can look at this. {reason}',

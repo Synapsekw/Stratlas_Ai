@@ -54,13 +54,14 @@ export async function pickBase(
   await chip.click();
   const menu = item.page().getByRole('menu', { name: 'Choose the base', exact: true });
   await expect(menu).toBeVisible();
-  const row = menu.locator(`[data-base="${base}"]`);
-  // a side already on a survey or design opens with that list unfolded: a press would fold it
-  if (base !== 'surface' || (await row.getAttribute('aria-expanded')) !== 'true') await row.click();
+  const row = menu.locator(`[data-item="${base}"]`);
+  // "Previous survey or design" opens the surveys and designs in a submenu beside it
+  await row.click();
   if (base === 'surface') {
     if (surface === undefined) throw new Error('pickBase: name the survey or design');
-    await menu
-      .getByTestId('bp-surfaces')
+    await item
+      .page()
+      .getByRole('menu', { name: 'Previous survey or design', exact: true })
       .getByRole('menuitemradio')
       .filter({ hasText: surface })
       .first()

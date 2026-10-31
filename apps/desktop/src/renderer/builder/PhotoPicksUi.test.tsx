@@ -107,10 +107,10 @@ describe('picked photos', () => {
     photoPicks.getState().add([a, b]);
     act(() => root?.render(<PhotoMenu />));
     rightClickA();
-    const menu = byId('photo-menu');
-    expect(menu?.textContent).toContain('2 photos picked');
+    expect(byId('photo-menu')).not.toBeNull();
+    expect(document.querySelector('.menu-title')?.textContent).toBe('2 photos picked');
     expect(byId('photo-menu-alignTo')?.textContent).toContain('Align to...');
-    expect(byId('photo-menu-alignTo')?.hasAttribute('disabled')).toBe(false);
+    expect(byId('photo-menu-alignTo')?.hasAttribute('aria-disabled')).toBe(false);
     expect(byId('photo-menu-open')).toBeNull();
     click(byId('photo-menu-clearPicks'));
     expect(photoPicks.getState().picks).toEqual([]);
@@ -132,8 +132,10 @@ describe('picked photos', () => {
     photoPicks.getState().add([a, b]);
     act(() => root?.render(<PhotoMenu />));
     rightClickA();
-    expect(byId('photo-menu-alignTo')?.hasAttribute('disabled')).toBe(true);
-    expect(byId('photo-menu-alignTo')?.title).toBe(t('actions.reason.package'));
+    expect(byId('photo-menu-alignTo')?.getAttribute('aria-disabled')).toBe('true');
+    expect(byId('photo-menu-alignTo')?.getAttribute('aria-description')).toBe(
+      t('actions.reason.package'),
+    );
   });
 
   it('a failed Align to on the picks says so in a toast', async () => {

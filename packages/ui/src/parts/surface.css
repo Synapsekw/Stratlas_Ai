@@ -92,6 +92,39 @@
   margin: 4px 0;
   background: var(--line);
 }
+/* the thing the menu acts on, and a group's heading inside it */
+.menu-title,
+.menu-head {
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--t-11);
+  color: var(--fg-3);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.menu-hint {
+  flex: none;
+  max-width: 50%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+/* an item with a second line: its name and when to use it */
+.menu-list > .row[data-kind][data-note] {
+  height: auto;
+  min-height: 30px;
+  padding-block: var(--sp-2);
+}
+.menu-text {
+  display: grid;
+  white-space: normal;
+}
+.menu-note {
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
 
 /* ---------- context menu (moved from builder.css) ---------- */
 .dmenu {

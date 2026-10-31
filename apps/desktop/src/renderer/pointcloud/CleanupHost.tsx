@@ -6,7 +6,7 @@
  */
 import type { EngineStage } from '@aio/engine';
 import { ASPRS_CLASSES, classColour } from '@aio/pointcloud';
-import { Icon, useT } from '@aio/ui';
+import { Icon, Menu, useT } from '@aio/ui';
 import { useEffect, useRef, useState } from 'react';
 import { applyPending, mountCleanupScene } from './cleanupScene';
 import { setCleanupStage } from './cleanupStage';
@@ -38,23 +38,13 @@ function SelectionBar() {
   const t = useT();
   const pending = useCleanup((s) => s.pending);
   const [classes, setClasses] = useState(false);
-  const anchor = useRef<HTMLDivElement>(null);
+  const opener = useRef<HTMLButtonElement>(null);
   // a new selection starts with the class list closed
   const [seen, setSeen] = useState(pending);
   if (seen !== pending) {
     setSeen(pending);
     setClasses(false);
   }
-  useEffect(() => {
-    if (!classes) return;
-    const away = (e: PointerEvent) => {
-      if (!anchor.current?.contains(e.target as Node)) setClasses(false);
-    };
-    window.addEventListener('pointerdown', away);
-    return () => {
-      window.removeEventListener('pointerdown', away);
-    };
-  }, [classes]);
   if (!pending) return null;
   return (
     <div
@@ -93,48 +83,37 @@ function SelectionBar() {
       >
         {t('cleanup.select.delete')}
       </button>
-      <div className="cleanup-class-anchor" ref={anchor}>
-        <button
-          type="button"
-          className="btn sm"
-          aria-expanded={classes}
-          aria-haspopup="menu"
-          data-testid="cleanup-set-class"
-          onClick={() => {
-            setClasses(!classes);
-          }}
-        >
-          {t('cleanup.select.setClass')}
-          <Icon name="chevup" size={12} />
-        </button>
-        {classes && (
-          <div
-            className="cleanup-class-list overlay-box"
-            role="menu"
-            aria-label={t('cleanup.select.setClass')}
-            data-testid="cleanup-class-list"
-          >
-            {ASPRS_CLASSES.map((c) => (
-              <button
-                key={c.code}
-                type="button"
-                role="menuitem"
-                className="pop-item"
-                data-testid={`cleanup-class-${c.code}`}
-                onClick={() => {
-                  setClasses(false);
-                  void applyPending(cleanup, { kind: 'class', value: c.code });
-                }}
-              >
-                <i className="cleanup-swatch" style={{ background: classColour(c.code) }} />
-                <span>
-                  {c.code} {c.name}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <button
+        ref={opener}
+        type="button"
+        className="btn sm"
+        data-testid="cleanup-set-class"
+        onClick={() => {
+          setClasses(!classes);
+        }}
+      >
+        {t('cleanup.select.setClass')}
+        <Icon name="chevup" size={12} />
+      </button>
+      <Menu
+        open={classes}
+        onClose={() => {
+          setClasses(false);
+        }}
+        opener={opener}
+        anchor="above"
+        label={t('cleanup.select.setClass')}
+        testId="cleanup-class-list"
+        items={ASPRS_CLASSES.map((c) => ({
+          id: String(c.code),
+          label: `${String(c.code)} ${c.name}`,
+          lead: <i className="cleanup-swatch" style={{ background: classColour(c.code) }} />,
+          testId: `cleanup-class-${String(c.code)}`,
+          onSelect: () => {
+            void applyPending(cleanup, { kind: 'class', value: c.code });
+          },
+        }))}
+      />
       <button
         type="button"
         className="btn ghost sm"

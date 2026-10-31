@@ -30,9 +30,6 @@
     "colour": 2,
     "zIndex": 1
   },
-  "apps/desktop/src/renderer/builder/PhotoMenu.tsx": {
-    "title": 1
-  },
   "apps/desktop/src/renderer/builder/VolumetricSurveys.tsx": {
     "title": 2
   },

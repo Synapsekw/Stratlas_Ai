@@ -431,9 +431,12 @@ export const enProcessing = {
   'align.photoMenu.hideFootprint': 'Hide footprint',
   'align.photoMenu.reset': 'Reset alignment',
   'align.photoMenu.copy': 'Copy position (lat, lon, height)',
+  'align.photoMenu.unposed': 'This photo has no camera direction yet',
+  'align.photoMenu.noPosition': 'This photo has no position',
   // right-click on the drone or a flight path
   'align.droneMenu.label': 'Drone of {clip}',
   'align.droneMenu.align': 'Align camera to map',
+  'align.droneMenu.aligning': 'Aligning this clip now',
   'align.droneMenu.setKey': 'Set direction keyframe here',
   'align.droneMenu.eye': 'Look through drone camera',
   'align.droneMenu.leaveEye': 'Leave drone camera',

@@ -8,8 +8,8 @@
  * ("No elevation for this date") its accessible description and its tip.
  */
 import { seriesStyle, type ChartSeries, type SeriesKind } from '@aio/survey';
-import { arrowFocus, Icon, Popover, Tip, useT } from '@aio/ui';
-import { useId, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
+import { Icon, Menu, Tip, useT, type MenuRow } from '@aio/ui';
+import { useId, useRef, useState, type ReactElement } from 'react';
 import type { SurfaceState } from '../survey/surfaceStates';
 import './charts.css';
 
@@ -161,9 +161,24 @@ export function SurfaceChips(p: {
     design: t('chart.group.designs'),
     base: t('chart.base'),
   };
-  const onMenuKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (arrowFocus(e.currentTarget, e.key)) e.preventDefault();
-  };
+  // each group under its heading, in the groups' order
+  const menuItems: MenuRow[] = GROUPS.flatMap((g): MenuRow[] => {
+    const items = p.addable.filter((o) => o.group === g);
+    if (items.length === 0) return [];
+    return [
+      {
+        group: groupLabel[g],
+        items: items.map((o) => ({
+          id: o.key,
+          label: o.label,
+          lead: <Swatch option={o} peers={peers} />,
+          onSelect: () => {
+            p.onAdd(o.key);
+          },
+        })),
+      },
+    ];
+  });
   return (
     <div className="pc-chips" data-testid={testId}>
       {p.shown.map((o) => (
@@ -187,8 +202,6 @@ export function SurfaceChips(p: {
             ref={opener}
             type="button"
             className="pc-chip-add"
-            aria-haspopup="menu"
-            aria-expanded={open}
             data-testid={`${testId}-add`}
             onClick={() => {
               setOpen((v) => !v);
@@ -196,52 +209,16 @@ export function SurfaceChips(p: {
           >
             {addLabel}
           </button>
-          <Popover
+          <Menu
             open={open}
             onClose={() => {
               setOpen(false);
             }}
             opener={opener}
             anchor="below"
-            className="menu-pop"
-          >
-            <div
-              role="menu"
-              aria-label={addLabel}
-              className="menu-list pc-add-menu"
-              onKeyDown={onMenuKey}
-            >
-              {GROUPS.map((g) => {
-                const items = p.addable.filter((o) => o.group === g);
-                if (items.length === 0) return null;
-                return (
-                  <div key={g} role="group" aria-label={groupLabel[g]} className="pc-add-group">
-                    <div className="pc-add-head" aria-hidden="true">
-                      {groupLabel[g]}
-                    </div>
-                    {items.map((o) => (
-                      <button
-                        key={o.key}
-                        type="button"
-                        role="menuitem"
-                        className="row"
-                        data-kind="menu"
-                        onClick={() => {
-                          setOpen(false);
-                          p.onAdd(o.key);
-                        }}
-                      >
-                        <span className="menu-lead">
-                          <Swatch option={o} peers={peers} />
-                        </span>
-                        <span className="row-label">{o.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          </Popover>
+            label={addLabel}
+            items={menuItems}
+          />
         </>
       )}
     </div>

@@ -3,7 +3,7 @@ import { act, useState, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from './i18n';
-import type { MenuProps } from './Menu';
+import type { MenuEntry, MenuProps } from './Menu';
 import { Tabs, type TabItem } from './Tabs';
 
 const menuCalls: MenuProps[] = [];
@@ -256,7 +256,8 @@ describe('Tabs', () => {
         />
       );
     }
-    const lastItems = () => menuCalls[menuCalls.length - 1]?.items ?? [];
+    // the more menu lists tabs only, never a group
+    const lastItems = () => (menuCalls[menuCalls.length - 1]?.items ?? []) as readonly MenuEntry[];
 
     it('moves the highest-order tabs into the more menu', () => {
       size(270);

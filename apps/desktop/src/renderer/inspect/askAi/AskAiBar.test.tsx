@@ -163,7 +163,8 @@ afterEach(() => {
   host.remove();
 });
 
-const q = (id: string) => host.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`);
+// the body: the checks menu is drawn on the popover layer, outside the bar
+const q = (id: string) => document.body.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`);
 /** Off, whether natively or (to keep its tip reachable) through aria-disabled. */
 const isOff = (id: string) =>
   q(id)?.disabled === true || q(id)?.getAttribute('aria-disabled') === 'true';
@@ -248,7 +249,7 @@ describe('AskAiBar', () => {
     const onCustom = vi.fn();
     bar({ current: P1, onCustom });
     await click('ask-ai-checks');
-    const items = [...host.querySelectorAll('.ask-menu-item')];
+    const items = [...document.body.querySelectorAll('[role^="menuitem"]')];
     expect(items.at(-1)?.getAttribute('data-testid')).toBe('ask-ai-custom');
     expect(q('ask-ai-custom')?.textContent).toBe('Custom request...');
     await click('ask-ai-custom');
@@ -261,7 +262,7 @@ describe('AskAiBar', () => {
     bar({ current: P1, onCustom: vi.fn() });
     expect(q('ask-ai-checks')?.disabled).toBe(false);
     await click('ask-ai-checks');
-    expect(q('ask-ai-check-0')?.disabled).toBe(true);
+    expect(q('ask-ai-check-0')?.getAttribute('aria-disabled')).toBe('true');
     expect(q('ask-ai-custom')).not.toBeNull();
   });
 
