@@ -1,0 +1,16 @@
+{
+  "name": "@aio/insights",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The site digest (intelligence review I2): rules-based insights over a project's survey QA, measurements and change sets, volume rate and forecast, and QA fitness flags. Pure; never writes.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/schema": "workspace:*"
+  }
+}

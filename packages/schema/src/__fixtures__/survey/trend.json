@@ -1,0 +1,334 @@
+{
+  "schema": "aio.fixture/trend-1",
+  "note": "Volume rate and forecast (intelligence review I2): packages/insights/src/trend.ts and python/src/aio_pipelines/survey/trend.py both reproduce `expected` (trend.parity.test.ts, test_survey_trend.py).",
+  "cases": [
+    {
+      "id": "none",
+      "note": "no dates",
+      "points": [],
+      "expected": {
+        "status": "not-enough-dates",
+        "dates": 0,
+        "window": 0,
+        "lastCapture": null,
+        "lastDate": null,
+        "lastM3": null,
+        "lastChangeM3": null,
+        "rateM3PerDay": null,
+        "r2": null,
+        "daysToEmpty": null,
+        "emptyOn": null,
+        "in30DaysM3": null,
+        "lastRateZ": null
+      }
+    },
+    {
+      "id": "one",
+      "note": "one date: not enough",
+      "points": [
+        {
+          "capture": "d1",
+          "date": "2026-03-04",
+          "valueM3": 812.5
+        }
+      ],
+      "expected": {
+        "status": "not-enough-dates",
+        "dates": 1,
+        "window": 0,
+        "lastCapture": "d1",
+        "lastDate": "2026-03-04",
+        "lastM3": 812.5,
+        "lastChangeM3": null,
+        "rateM3PerDay": null,
+        "r2": null,
+        "daysToEmpty": null,
+        "emptyOn": null,
+        "in30DaysM3": null,
+        "lastRateZ": null
+      }
+    },
+    {
+      "id": "two",
+      "note": "two dates: the plain rate, no forecast",
+      "points": [
+        {
+          "capture": "d1",
+          "date": "2026-03-04",
+          "valueM3": 812.5
+        },
+        {
+          "capture": "d2",
+          "date": "2026-03-19",
+          "valueM3": 744.25
+        }
+      ],
+      "expected": {
+        "status": "not-enough-dates",
+        "dates": 2,
+        "window": 0,
+        "lastCapture": "d2",
+        "lastDate": "2026-03-19",
+        "lastM3": 744.25,
+        "lastChangeM3": -68.25,
+        "rateM3PerDay": -4.55,
+        "r2": null,
+        "daysToEmpty": null,
+        "emptyOn": null,
+        "in30DaysM3": null,
+        "lastRateZ": null
+      }
+    },
+    {
+      "id": "falling",
+      "note": "a pile drawn down unevenly: fit, days to empty",
+      "points": [
+        {
+          "capture": "d1",
+          "date": "2026-01-05",
+          "valueM3": 1520.4
+        },
+        {
+          "capture": "d2",
+          "date": "2026-01-26",
+          "valueM3": 1398.1
+        },
+        {
+          "capture": "d3",
+          "date": "2026-02-16",
+          "valueM3": 1240.75
+        },
+        {
+          "capture": "d4",
+          "date": "2026-03-02",
+          "valueM3": 1190.2
+        }
+      ],
+      "expected": {
+        "status": "ok",
+        "dates": 4,
+        "window": 4,
+        "lastCapture": "d4",
+        "lastDate": "2026-03-02",
+        "lastM3": 1190.2,
+        "lastChangeM3": -50.549999999999955,
+        "rateM3PerDay": -6.121525753158407,
+        "r2": 0.9896908737615532,
+        "daysToEmpty": 194.42865193957817,
+        "emptyOn": "2026-09-13",
+        "in30DaysM3": 1006.5542274052478,
+        "lastRateZ": null
+      }
+    },
+    {
+      "id": "growing",
+      "note": "a pile that grows: no days to empty",
+      "points": [
+        {
+          "capture": "d1",
+          "date": "2026-05-01",
+          "valueM3": 210
+        },
+        {
+          "capture": "d2",
+          "date": "2026-05-15",
+          "valueM3": 260.5
+        },
+        {
+          "capture": "d3",
+          "date": "2026-06-03",
+          "valueM3": 349.9
+        }
+      ],
+      "expected": {
+        "status": "ok",
+        "dates": 3,
+        "window": 3,
+        "lastCapture": "d3",
+        "lastDate": "2026-06-03",
+        "lastM3": 349.9,
+        "lastChangeM3": 89.39999999999998,
+        "rateM3PerDay": 4.266281895504251,
+        "r2": 0.9948361080033391,
+        "daysToEmpty": null,
+        "emptyOn": null,
+        "in30DaysM3": 477.8884568651275,
+        "lastRateZ": null
+      }
+    },
+    {
+      "id": "window",
+      "note": "seven dates: only the last five are fitted; a jump at the end scores high",
+      "points": [
+        {
+          "capture": "d1",
+          "date": "2026-01-01",
+          "valueM3": 900
+        },
+        {
+          "capture": "d2",
+          "date": "2026-01-15",
+          "valueM3": 905
+        },
+        {
+          "capture": "d3",
+          "date": "2026-01-29",
+          "valueM3": 912
+        },
+        {
+          "capture": "d4",
+          "date": "2026-02-12",
+          "valueM3": 916.5
+        },
+        {
+          "capture": "d5",
+          "date": "2026-02-26",
+          "valueM3": 921
+        },
+        {
+          "capture": "d6",
+          "date": "2026-03-12",
+          "valueM3": 926.2
+        },
+        {
+          "capture": "d7",
+          "date": "2026-03-26",
+          "valueM3": 640
+        }
+      ],
+      "expected": {
+        "status": "ok",
+        "dates": 7,
+        "window": 5,
+        "lastCapture": "d7",
+        "lastDate": "2026-03-26",
+        "lastM3": 640,
+        "lastChangeM3": -286.20000000000005,
+        "rateM3PerDay": -3.8164285714285713,
+        "r2": 0.45785837240606286,
+        "daysToEmpty": 167.69605090772976,
+        "emptyOn": "2026-09-10",
+        "in30DaysM3": 525.5071428571429,
+        "lastRateZ": -392.82341831916926
+      }
+    },
+    {
+      "id": "flat-spread",
+      "note": "earlier rates all equal: MAD 0, no score",
+      "points": [
+        {
+          "capture": "d1",
+          "date": "2026-01-01",
+          "valueM3": 10
+        },
+        {
+          "capture": "d2",
+          "date": "2026-01-02",
+          "valueM3": 11
+        },
+        {
+          "capture": "d3",
+          "date": "2026-01-03",
+          "valueM3": 12
+        },
+        {
+          "capture": "d4",
+          "date": "2026-01-04",
+          "valueM3": 13
+        },
+        {
+          "capture": "d5",
+          "date": "2026-01-05",
+          "valueM3": 30
+        }
+      ],
+      "expected": {
+        "status": "ok",
+        "dates": 5,
+        "window": 5,
+        "lastCapture": "d5",
+        "lastDate": "2026-01-05",
+        "lastM3": 30,
+        "lastChangeM3": 17,
+        "rateM3PerDay": 4.2,
+        "r2": 0.6327116212338595,
+        "daysToEmpty": null,
+        "emptyOn": null,
+        "in30DaysM3": 156,
+        "lastRateZ": null
+      }
+    },
+    {
+      "id": "same-day",
+      "note": "three figures on one day: no rate",
+      "points": [
+        {
+          "capture": "b",
+          "date": "2026-04-01",
+          "valueM3": 5
+        },
+        {
+          "capture": "a",
+          "date": "2026-04-01",
+          "valueM3": 7
+        },
+        {
+          "capture": "c",
+          "date": "2026-04-01T10:30:00Z",
+          "valueM3": 6
+        }
+      ],
+      "expected": {
+        "status": "not-enough-dates",
+        "dates": 3,
+        "window": 0,
+        "lastCapture": "c",
+        "lastDate": "2026-04-01",
+        "lastM3": 6,
+        "lastChangeM3": 1,
+        "rateM3PerDay": null,
+        "r2": null,
+        "daysToEmpty": null,
+        "emptyOn": null,
+        "in30DaysM3": null,
+        "lastRateZ": null
+      }
+    },
+    {
+      "id": "unsorted",
+      "note": "points in any order are sorted by date",
+      "points": [
+        {
+          "capture": "x3",
+          "date": "2026-07-20",
+          "valueM3": 50
+        },
+        {
+          "capture": "x1",
+          "date": "2026-06-01",
+          "valueM3": 120
+        },
+        {
+          "capture": "x2",
+          "date": "2026-06-28",
+          "valueM3": 90
+        }
+      ],
+      "expected": {
+        "status": "ok",
+        "dates": 3,
+        "window": 3,
+        "lastCapture": "x3",
+        "lastDate": "2026-07-20",
+        "lastM3": 50,
+        "lastChangeM3": -40,
+        "rateM3PerDay": -1.4167127836192581,
+        "r2": 0.9802120881257572,
+        "daysToEmpty": 35.29296875000001,
+        "emptyOn": "2026-08-25",
+        "in30DaysM3": 7.498616491422254,
+        "lastRateZ": null
+      }
+    }
+  ]
+}
