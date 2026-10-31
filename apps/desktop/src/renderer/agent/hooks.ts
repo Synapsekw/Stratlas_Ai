@@ -37,6 +37,8 @@ import { compareStore, isStale, seriesStale } from '../survey/compareStore';
 import { measureStore } from '../survey/measureStore';
 import { stagePrefs } from '../workspace/stagePrefs';
 import { isDockScreen } from './dockScreens';
+import { registerActionTools } from './actionBridge';
+import { agentFacts, registerDataTools } from './dataTools';
 
 const APP_SCREENS: readonly AppScreen[] = ['scene', 'issues', 'inspect', 'reports'];
 
@@ -204,7 +206,11 @@ function readReview(project: OpenProject | null): void {
  * project read. Returns the function that takes the hooks back and stops that.
  */
 export function registerAgentHooks(): () => void {
+  // A2: the survey, detection, job, thermal and walk read tools and the menu actions
+  registerDataTools();
+  registerActionTools();
   const unregister = registerAppHooks({
+    agentFacts,
     screen,
     openScreen,
     showPhotos,

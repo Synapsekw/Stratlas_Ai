@@ -61,6 +61,17 @@ export {
 export { AgentSession, type AgentFix, type SessionState, type Step, type Turn } from './session';
 export { assembleContext, bindingLabel } from './context';
 export {
+  actionRisk,
+  actionToolInputs,
+  AGENT_ACTIONS,
+  AGENT_TARGET_KINDS,
+  type ActionTarget,
+  type ActionToolInput,
+  type AgentActionEntry,
+} from './action-tool-specs';
+export { surveyToolInputs, type SurveyToolInput, type SurveyToolName } from './survey-tool-specs';
+export { captureRef, capturesOf } from './survey-tools';
+export {
   allToolSpecs,
   approvalFor,
   getToolSpec,

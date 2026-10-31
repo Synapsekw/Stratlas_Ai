@@ -13,12 +13,14 @@ import {
   type WindowKind,
 } from '@aio/schema';
 import { z } from 'zod';
+import { ACTION_TOOL_SPECS } from './action-tool-specs';
 import { CHANGE_TOOL_SPECS } from './change-tool-specs';
 import { COLLAB_TOOL_SPECS } from './collab-tool-specs';
 import { CORRECTION_TOOL_SPECS } from './correction-tool-specs';
 import { MODELLING_TOOL_SPECS } from './modelling-tools';
 import { PHOTO_TOOL_SPECS } from './photo-tool-specs';
 import { SHOW_TOOL_SPECS } from './show-tool-specs';
+import { SURVEY_HOST_SPECS, SURVEY_PACKAGE_SPECS, SURVEY_TOOL_NEEDS } from './survey-tool-specs';
 
 export interface ToolSpec {
   meta: ToolMeta;
@@ -26,6 +28,8 @@ export interface ToolSpec {
   input: z.ZodType;
   /** The action changes view state that the renderer can put back (time, camera, selection). */
   undoable?: boolean;
+  /** The risk of one call, when it depends on the input (`run_action`); default `meta.risk`. */
+  riskFor?: (input: unknown) => ToolRisk;
 }
 
 const SPATIAL: WindowKind[] = ['scene3d', 'map', 'pointcloud'];
@@ -613,6 +617,7 @@ const BUILT_IN: ToolSpec[] = [
   ...COLLAB_TOOL_SPECS,
   ...SHOW_TOOL_SPECS,
   ...PHOTO_TOOL_SPECS,
+  ...SURVEY_PACKAGE_SPECS,
 ];
 
 const extra = new Map<string, ToolSpec>();
@@ -687,6 +692,10 @@ export const COMPACT_TOOLS: Readonly<Record<string, string>> = {
   show_on_globe: 'Open the Globe at a site. Ends your reply: the panel closes.',
   process_photos: 'Make maps from a photos layer. Asks for approval first.',
   accuracy_summary: 'How accurate a photo run is: checkpoint RMSE and ground control.',
+  // A2: survey dates, volumes and the menu actions (a wrong action id answers the offered ones)
+  list_surveys: 'List the survey dates.',
+  get_volume: 'Stockpile volumes per survey date.',
+  run_action: 'Run a right-click menu action on a target.',
 };
 
 /** What the project has and the route in use, to offer only the tools that can work. */
@@ -722,6 +731,9 @@ export function fitsProject(name: string, fit: ToolFit): boolean {
   if (PHOTO_TOOLS.has(name)) return f.photos;
   if (name === 'fit_primitives' && !f.pointClouds) return false;
   if (MODEL_TOOLS.has(name)) return fit.task === 'build' || f.models !== false;
+  const need = SURVEY_TOOL_NEEDS[name];
+  if (need === 'captures') return f.captures >= 1;
+  if (need) return f[need] !== false;
   return true;
 }
 
@@ -744,13 +756,16 @@ export function toolsForWindow(
   });
 }
 
-export function riskOf(name: string): ToolRisk {
-  return getToolSpec(name)?.meta.risk ?? 'write';
+/** The risk of a call: the spec's, or the one its input decides (`run_action`). Unknown: write. */
+export function riskOf(name: string, input?: unknown): ToolRisk {
+  const spec = getToolSpec(name);
+  if (!spec) return 'write';
+  return input !== undefined && spec.riskFor ? spec.riskFor(input) : spec.meta.risk;
 }
 
 /** True when the person must approve the call before it runs. Unknown tools always ask. */
-export function approvalFor(name: string): boolean {
-  return needsApproval(riskOf(name));
+export function approvalFor(name: string, input?: unknown): boolean {
+  return needsApproval(riskOf(name, input));
 }
 
 export function undoable(name: string): boolean {
@@ -760,3 +775,7 @@ export function undoable(name: string): boolean {
 // M8 model builder tools (stream C5); executors in the desktop renderer (modeller/agentTools.ts)
 MODELLING_TOOL_SPECS.forEach(registerToolSpec);
 CORRECTION_TOOL_SPECS.forEach(registerToolSpec);
+// A2: survey dates, detections, jobs, thermal, walks and the menu actions; executors in the
+// desktop renderer (agent/dataTools.ts, agent/actionBridge.ts)
+SURVEY_HOST_SPECS.forEach(registerToolSpec);
+ACTION_TOOL_SPECS.forEach(registerToolSpec);

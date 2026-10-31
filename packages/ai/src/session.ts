@@ -633,7 +633,8 @@ export class AgentSession {
 
   /** What the open project has, so the model is offered only the tools that can work there. */
   private async facts(): Promise<AgentFacts | null> {
-    const project = this.deps.toolContext().workspace.getState().project;
+    const ctx = this.deps.toolContext();
+    const project = ctx.workspace.getState().project;
     if (!project) return null;
     const layers = project.manifest.layers;
     let models: boolean | undefined;
@@ -648,7 +649,22 @@ export class AgentSession {
       clips: layers.some((l) => l.kind === 'video'),
       pointClouds: layers.some((l) => l.kind === 'pointcloud'),
       ...(models !== undefined ? { models } : {}),
+      ...this.moreFacts(ctx),
     };
+  }
+
+  /** What the app knows beyond the manifest (A2); keys it cannot tell are left out. */
+  private moreFacts(ctx: RendererToolContext): Partial<AgentFacts> {
+    try {
+      const more = ctx.app?.agentFacts?.() ?? {};
+      const out: Partial<AgentFacts> = {};
+      for (const [k, v] of Object.entries(more)) {
+        if (typeof v === 'boolean') (out as Record<string, boolean>)[k] = v;
+      }
+      return out;
+    } catch {
+      return {};
+    }
   }
 
   private onEvent(e: IpcEvent<'ai:event'>): void {

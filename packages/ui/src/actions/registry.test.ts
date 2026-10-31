@@ -6,6 +6,7 @@ import {
   everyLayer,
   makeActionCtx,
   registerActions,
+  registeredActions,
   targetCount,
   type Action,
 } from '.';
@@ -169,5 +170,25 @@ describe('actionsFor', () => {
   it('counts a measurements target by its ids', () => {
     expect(targetCount({ kind: 'measurements', ids: ['a', 'b'], clicked: 'a' })).toBe(2);
     expect(targetCount({ kind: 'antennas', ids: ['a', 'b'], clicked: 'a' })).toBe(2);
+  });
+});
+
+describe('registeredActions', () => {
+  it('lists what is registered, in order, and forgets what is taken away', () => {
+    const a = defineAction<'project'>({
+      id: 'test.a',
+      label: 'actions.menu.label',
+      section: 'view',
+      targets: ['project'],
+      run: () => undefined,
+    });
+    const b = { ...a, id: 'test.b' };
+    const offA = registerActions([a]);
+    reg(b);
+    const ids = () => registeredActions().map((x) => x.id);
+    expect(ids()).toEqual(expect.arrayContaining(['test.a', 'test.b']));
+    expect(ids().indexOf('test.a')).toBeLessThan(ids().indexOf('test.b'));
+    offA();
+    expect(ids()).not.toContain('test.a');
   });
 });

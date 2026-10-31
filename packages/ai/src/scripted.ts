@@ -20,6 +20,26 @@ import type { ModelProvider } from './providers';
 
 /** Keyword (lower case, in the user's message) to the tool call the script makes. */
 export const SCRIPT: readonly { when: string; tool: string; input: Record<string, unknown> }[] = [
+  // A2 read tools and menu actions, for the eval suite (agent-eval.suites.ts). Long phrases,
+  // first, so they never catch another spec's request and win over the short keywords below.
+  { when: 'list the survey dates', tool: 'list_surveys', input: {} },
+  { when: 'earliest survey into view', tool: 'set_survey_date', input: { date: 'earliest' } },
+  { when: 'detections were accepted', tool: 'list_detections', input: { status: 'accepted' } },
+  { when: 'list the measurements', tool: 'list_measurements', input: {} },
+  { when: 'stockpile volumes per survey', tool: 'get_volume', input: {} },
+  { when: 'where do the findings gather', tool: 'rank_locations', input: {} },
+  { when: 'which processing jobs', tool: 'list_jobs', input: {} },
+  { when: 'thermal hot spots', tool: 'thermal_summary', input: {} },
+  {
+    when: 'hide all layers',
+    tool: 'run_action',
+    input: { action: 'project.hideAll', target: { kind: 'project' } },
+  },
+  {
+    when: 'show them again',
+    tool: 'run_action',
+    input: { action: 'project.showAll', target: { kind: 'project' } },
+  },
   // engineering model corrections (e2e): "there are four flues, not three"
   { when: 'four flues', tool: 'set_count', input: { role: 'flue', count: 4 } },
   // fixed test heights, here in the scripted test model only (e2e on a synthetic chimney): a real

@@ -5,6 +5,7 @@
 import type { SceneHandle } from '@aio/engine';
 import type {
   AccuracyReport,
+  AgentFacts,
   ComparisonResult,
   GcpFile,
   GlobeSite,
@@ -220,6 +221,13 @@ export interface AppHooks {
   surveyMeasurements?: (
     projectId: string,
   ) => { measurements: SurveyMeasurement[]; settings: SurveySettings } | null;
+  /**
+   * What the open project has beyond its manifest (measurements, volumes, detections, thermal,
+   * walks), so the agent is offered only the read tools that can answer. A key left out: unknown.
+   */
+  agentFacts?: () => Partial<
+    Pick<AgentFacts, 'measurements' | 'volumes' | 'detections' | 'thermal' | 'walks'>
+  >;
 }
 
 export const appHooks: AppHooks = {};

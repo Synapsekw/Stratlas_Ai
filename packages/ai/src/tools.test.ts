@@ -138,8 +138,9 @@ describe('compact tool profile (small local models)', () => {
       expect(compact.length, w).toBeGreaterThan(3);
       // 13 everyday tools, the four change tools (C1, every window), the four modelling
       // tools (C5: 3D view, map and point cloud), the three correction tools, the three show
-      // tools, the two Globe tools and the two photo tools
-      expect(compact.length, w).toBeLessThanOrEqual(31);
+      // tools, the two Globe tools, the two photo tools and three A2 tools (dates, volumes,
+      // menu actions); a project without a model drops the seven modelling ones
+      expect(compact.length, w).toBeLessThanOrEqual(34);
       expect(compact.length, w).toBeLessThan(toolsForWindow(w, 'full').length);
       for (const s of compact) {
         expect(s.meta.description.length, s.meta.name).toBeLessThanOrEqual(100);

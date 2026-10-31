@@ -448,6 +448,20 @@ describe('agent session conversation', () => {
     expect(req.facts).not.toHaveProperty('models');
   });
 
+  it('adds what the app knows beyond the manifest, and leaves out what it cannot tell', async () => {
+    const t = setup(
+      {},
+      {
+        agentFacts: () => ({ walks: false, volumes: true, thermal: 'maybe' as unknown as boolean }),
+      },
+    );
+    await t.session.send('What is here?');
+    const req = t.sent('ai:send')[0]?.req as IpcRequest<'ai:send'>;
+    expect(req.facts).toMatchObject({ walks: false, volumes: true });
+    expect(req.facts).not.toHaveProperty('thermal');
+    expect(req.facts).not.toHaveProperty('detections');
+  });
+
   it('waits for approval of a write tool, then runs it', async () => {
     const t = setup();
     await t.session.send('draft it');

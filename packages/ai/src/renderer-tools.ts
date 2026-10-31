@@ -22,6 +22,7 @@ import './class-tools';
 import './collab-tools';
 import './photo-tools';
 import './placement-tools';
+import './survey-tools';
 import { clipStartUtcMs, selectionLabel } from './context';
 import { parseFlight, passNear } from './geometry';
 import { targetPoint } from './places';

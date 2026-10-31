@@ -27,6 +27,11 @@ export function registerActions(actions: readonly Action[]): () => void {
   };
 }
 
+/** Every registered action, in registration order (the agent bridge and its parity test read it). */
+export function registeredActions(): readonly Action[] {
+  return [...registered];
+}
+
 /** Type an action against the target kinds it names; the registry holds it as a plain `Action`. */
 export function defineAction<K extends MenuTarget['kind']>(
   a: Action<Extract<MenuTarget, { kind: K }>> & { targets: readonly K[] },

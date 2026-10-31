@@ -509,7 +509,7 @@ export function createAgentRuntime(
             callId: toolCallId,
             name,
             input,
-            risk: riskOf(name),
+            risk: riskOf(name, input),
           });
           // The person may take their time to approve: that is not the model being slow.
           watchdog?.pause();

@@ -42,7 +42,7 @@ import {
   type RendererToolContext,
 } from './tool-kit';
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
+export const round2 = (n: number) => Math.round(n * 100) / 100;
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
 function countBy<T>(items: readonly T[], key: (t: T) => string): Record<string, number> {
@@ -51,10 +51,10 @@ function countBy<T>(items: readonly T[], key: (t: T) => string): Record<string, 
   return out;
 }
 
-const bySeverity = (issues: readonly Issue[]) => countBy(issues, (i) => String(i.severity));
+export const bySeverity = (issues: readonly Issue[]) => countBy(issues, (i) => String(i.severity));
 
 /** Codes of the most severe issues first. */
-function worstCodes(issues: readonly Issue[], n = 3): string[] {
+export function worstCodes(issues: readonly Issue[], n = 3): string[] {
   return [...issues]
     .sort((a, b) => severityRank(b.severity) - severityRank(a.severity))
     .slice(0, n)
@@ -87,13 +87,17 @@ function classLabels(ctx: RendererToolContext): Map<string, string> {
 
 // compare_captures ---------------------------------------------------------------------------
 
-interface CaptureRef {
+export interface CaptureRef {
   id: string;
   label: string;
   date: string;
 }
 
-function pickCapture(all: readonly CaptureRef[], ref: string | undefined, fallback: CaptureRef) {
+export function pickCapture(
+  all: readonly CaptureRef[],
+  ref: string | undefined,
+  fallback: CaptureRef,
+) {
   if (ref === undefined) return fallback;
   const q = ref.toLowerCase();
   const found =
@@ -121,7 +125,7 @@ async function projectJson(ctx: RendererToolContext, path: string): Promise<unkn
  * the measurements file was never converted. `base` picks the kit base the carried figures are
  * on. Null without any.
  */
-async function loadPiles(
+export async function loadPiles(
   ctx: RendererToolContext,
   base: VolumeBaseId | undefined,
 ): Promise<{ piles: SurveyMeasurement[]; settings: SurveySettings } | null> {
@@ -417,7 +421,7 @@ const LOCATION = /Location:[^\n]*,\s*([^,\n]+?)\.?\s*(?:\n|$)/;
 const AREA = /\bArea:\s*([^.\n]+)/;
 const KM = /\bkm\s*(\d+(?:\.\d+)?)/i;
 
-function zoneOf(issue: Issue, kmBin: number, layerNames: ReadonlyMap<string, string>) {
+export function zoneOf(issue: Issue, kmBin: number, layerNames: ReadonlyMap<string, string>) {
   const loc = LOCATION.exec(issue.note)?.[1] ?? AREA.exec(issue.note)?.[1];
   if (loc) return { zone: loc.trim(), by: 'location' as const };
   const km = KM.exec(issue.title)?.[1];

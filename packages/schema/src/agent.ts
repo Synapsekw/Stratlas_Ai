@@ -52,6 +52,16 @@ export const AgentFacts = z
     pointClouds: z.boolean(),
     /** A procedural or engineering model exists (or the Model builder is open). */
     models: z.boolean().optional(),
+    /** Any measurement (A2). Absent: unknown. */
+    measurements: z.boolean().optional(),
+    /** A volume measurement. Absent: unknown. */
+    volumes: z.boolean().optional(),
+    /** Review detections (photo or frame). Absent: unknown. */
+    detections: z.boolean().optional(),
+    /** Thermal photos. Absent: unknown. */
+    thermal: z.boolean().optional(),
+    /** Walk layers. Absent: unknown. */
+    walks: z.boolean().optional(),
   })
   .strict();
 export type AgentFacts = z.infer<typeof AgentFacts>;
