@@ -14,8 +14,9 @@ import { farNotice } from '../../builder/farSession';
 import { pickTileset } from '../../builder/ImportTileset';
 import { allowedActions, exportUnavailable, type ExportActionId } from '../../exports/exportModel';
 import { runExportAction } from '../../exports/exports';
+import { isInspectorUiOn, openInspectorPicker } from '../../flyability/pickerStore';
 import { pickAndScanPanos } from '../../panos/panos';
-import { shell } from '../../shell';
+import { bridge, shell } from '../../shell';
 import { isSidebarFolded } from '../../store';
 import { addDateMenu } from '../AddSurveyDate';
 import { layerProps } from '../LayerProperties';
@@ -48,6 +49,19 @@ const projectItems: Action[] = [
   edit('project.addData', 'actions.project.addData', 'plus', 'edit', () =>
     builder.getState().pickAndImport(),
   ),
+  defineAction({
+    id: 'project.addInspector',
+    label: 'fly.addData',
+    icon: 'plus',
+    section: 'edit',
+    targets: ['project'],
+    appliesTo: () => isInspectorUiOn(),
+    disabled: (_t, ctx) => editBlocked(ctx),
+    run: async () => {
+      const pick = await bridge.call('dialog:openFolder', { title: t('fly.addData') });
+      if (pick.ok && pick.value.path) await openInspectorPicker(pick.value.path);
+    },
+  }),
   edit('project.addPanos', 'actions.project.addPanos', 'pano', 'edit', () => pickAndScanPanos()),
   edit('project.addDrawing', 'actions.project.addDrawing', 'drawing', 'edit', () =>
     builder.getState().pickAndAddDrawing(),

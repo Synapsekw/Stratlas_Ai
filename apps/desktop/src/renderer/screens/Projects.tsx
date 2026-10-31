@@ -1,4 +1,5 @@
 import { isAnnotateReadOnly, useAnnotateReadOnly } from '@aio/annotate';
+import { isInspectorUiOn } from '../flyability/flag';
 import { brand } from '@aio/brand';
 import type { LibraryEntry } from '@aio/schema';
 import {
@@ -301,7 +302,12 @@ function EmptyLibrary({ dataRoot, error }: { dataRoot: string; error: string | n
           </dd>
         </dl>
         <div className="le-acts">
-          <Button size="md" icon="import" onClick={() => void shell.getState().addProjectFolder()}>
+          <Button
+            size="md"
+            icon="import"
+            title={isInspectorUiOn() ? t('fly.library.tip') : undefined}
+            onClick={() => void shell.getState().addProjectFolder()}
+          >
             Add project folder
           </Button>
           <Button
@@ -539,6 +545,7 @@ export function ProjectsScreen() {
             <Button
               size="md"
               icon="import"
+              title={isInspectorUiOn() ? t('fly.library.tip') : undefined}
               onClick={() => void shell.getState().addProjectFolder()}
             >
               Add project folder

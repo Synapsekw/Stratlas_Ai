@@ -3,9 +3,15 @@ import type { ProjectManifest } from '@aio/schema';
 import { actionsFor, makeActionCtx, t, type ActionCtx, type MenuTarget } from '@aio/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { builder } from '../../builder/state';
+import { isInspectorUiOn } from '../../flyability/pickerStore';
 import { shell } from '../../shell';
 import { addDateMenu } from '../AddSurveyDate';
 import { registerProjectActions } from './projectActions';
+
+vi.mock('../../flyability/pickerStore', () => ({
+  isInspectorUiOn: vi.fn(() => false),
+  openInspectorPicker: vi.fn(() => Promise.resolve()),
+}));
 
 const manifest = {
   captures: [],
@@ -44,6 +50,14 @@ describe('project actions', () => {
       'project.close',
       'project.emptyTrash',
     ]);
+  });
+
+  it('the Inspector item shows only with the flag on', () => {
+    expect(idsOf()).not.toContain('project.addInspector');
+    vi.mocked(isInspectorUiOn).mockReturnValue(true);
+    const ids = idsOf();
+    vi.mocked(isInspectorUiOn).mockReturnValue(false);
+    expect(ids.indexOf('project.addInspector')).toBe(ids.indexOf('project.addData') + 1);
   });
 
   it('Exports greys the project report of a project with no data, with the reason', () => {

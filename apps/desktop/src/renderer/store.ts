@@ -1,4 +1,5 @@
 import { defaultRoutes } from '@aio/ai';
+import { isInspectorUiOn } from './flyability/flag';
 import { setAnnotateReadOnly } from '@aio/annotate';
 import { volumetric } from '@aio/volumetric';
 import type { LabelMode, SavedView } from '@aio/engine';
@@ -513,6 +514,20 @@ export function createShellStore(
         return;
       }
       await get().loadLibrary();
+      // an Inspector export: the project made for it opens, and the picker asks what to bring in
+      if (isInspectorUiOn() && added.value.entry.purpose === 'confined-space') {
+        const scan = await bridge.call('builder:inspectorScan', {
+          projectId: null,
+          path: pick.value.path,
+        });
+        if (scan.ok && scan.value.ok && scan.value.scan.inspections.length > 0) {
+          await get().openProject(added.value.entry.path);
+          // the picker imports into the open project: not asked when it did not open
+          if (get().openError !== null || get().unlock !== null) return;
+          const { openInspectorPicker } = await import('./flyability/pickerStore');
+          await openInspectorPicker(pick.value.path);
+        }
+      }
     },
 
     revealProject: async (entry) => {

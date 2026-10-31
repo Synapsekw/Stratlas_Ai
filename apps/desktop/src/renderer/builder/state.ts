@@ -3,16 +3,18 @@ import type {
   AltitudeChoice,
   ImportHeights,
   ImportItem,
+  InspectorSelection,
   IpcEvent,
   LayerPatch,
   PanoScan,
 } from '@aio/schema';
-import { t } from '@aio/ui';
+import { t, toast } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { finishStagedDrawings } from '../drawings/importFlow';
 import { drawings } from '../drawings/store';
+import { openInspectorPicker } from '../flyability/pickerStore';
 import { openPanoScan, panoImport } from '../panos/panos';
 import { fisheyeSkipNote } from '../panos/skipText';
 import { bridge, shell } from '../shell';
@@ -135,6 +137,8 @@ export interface ImportOptions {
    * Present, even empty, it also says the cloud dates card was answered.
    */
   cloudDates?: Readonly<Record<string, string | null>>;
+  /** The inspections of a Flyability Inspector export chosen in its picker (the export folder). */
+  inspector?: InspectorSelection;
 }
 
 /** A cloud whose survey day is asked, with the day its file header carries (the export day). */
@@ -503,6 +507,26 @@ async function runImport(
   return false;
 }
 
+/**
+ * An Inspector export dropped without a choice comes back as a skipped `flyability` item: the
+ * picker opens on its folder. One still waiting for the pipeline tools says it is running.
+ */
+function flyabilityFollowUp(
+  items: readonly ImportItem[],
+  paths: readonly string[],
+  opts: ImportOptions | undefined,
+): void {
+  const flies = items.filter((i) => i.kind === 'flyability');
+  if (flies.length === 0) return;
+  const queued = flies.filter((i) => i.status === 'queued').length;
+  if (queued > 0) toast(t('fly.queued', { count: queued }), { testId: 'flyability-queued' });
+  if (opts?.inspector) return;
+  const ask = flies.find((i) => i.status === 'skipped');
+  if (!ask) return;
+  const path = paths.find((p) => p.split(/[\\/]/).pop() === ask.file) ?? paths[0];
+  if (path !== undefined) void openInspectorPicker(path);
+}
+
 /** Main imports the files (`importing` is set), then the drawing pages are drawn here. */
 async function importNow(
   project: OpenProject,
@@ -533,6 +557,7 @@ async function importNow(
       ...(opts?.cloudDates && Object.keys(opts.cloudDates).length
         ? { cloudDates: { ...opts.cloudDates } }
         : {}),
+      ...(opts?.inspector ? { inspector: opts.inspector } : {}),
     })
     .finally(() => {
       off?.();
@@ -564,6 +589,7 @@ async function importNow(
     builder.setState({ importing: null, importResult: null });
     return;
   }
+  flyabilityFollowUp(r.value.items, paths, opts);
   // the result of this import: its rows are only ever changed in it, never in a later one
   let result: NonNullable<BuilderState['importResult']> = {
     items: r.value.items,

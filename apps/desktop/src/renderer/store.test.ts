@@ -1,6 +1,14 @@
 import type { IpcChannel, LibraryEntry, ProjectManifest, Settings } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it, vi } from 'vitest';
+
+const fly = vi.hoisted(() => ({ on: false, open: vi.fn(() => Promise.resolve()) }));
+vi.mock('@aio/project/flags', () => ({
+  get FLYABILITY_IMPORT_UI() {
+    return fly.on;
+  },
+}));
+vi.mock('./flyability/pickerStore', () => ({ openInspectorPicker: fly.open }));
 import type { Bridge, Res } from './bridge';
 import { createShellStore, DEFAULT_SETTINGS, isSidebarFolded } from './store';
 
@@ -503,6 +511,64 @@ describe('shell store', () => {
       'library:folders',
     ]);
     expect(s.getState().library).toEqual([entry]);
+  });
+
+  const exportEntry = { ...entry, purpose: 'confined-space' as const };
+  const scanned = { ok: true, scan: { inspections: [{ id: 'a' }] } };
+
+  it('an export added to the library opens its project and the picker', async () => {
+    fly.on = true;
+    fly.open.mockClear();
+    const { bridge, calls } = fakeBridge({
+      'dialog:openFolder': () => ({ path: 'D:/exp' }),
+      'library:add': () => ({ ok: true, entry: exportEntry }),
+      'library:list': () => [exportEntry],
+      'builder:inspectorScan': () => scanned,
+      'project:open': () => ({ ok: true, id: 'hcl', root: entry.path, manifest, issues: [] }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    await s.getState().addProjectFolder();
+    fly.on = false;
+    const names = calls.map((c) => c.channel);
+    expect(names).toContain('builder:inspectorScan');
+    expect(names).toContain('project:open');
+    expect(calls.find((c) => c.channel === 'builder:inspectorScan')?.req).toEqual({
+      projectId: null,
+      path: 'D:/exp',
+    });
+    expect(fly.open).toHaveBeenCalledWith('D:/exp');
+    expect(s.getState().screen).toBe('scene');
+  });
+
+  it('a project that fails to open gets no picker', async () => {
+    fly.on = true;
+    fly.open.mockClear();
+    const { bridge } = fakeBridge({
+      'dialog:openFolder': () => ({ path: 'D:/exp' }),
+      'library:add': () => ({ ok: true, entry: exportEntry }),
+      'library:list': () => [exportEntry],
+      'builder:inspectorScan': () => scanned,
+      'project:open': () => ({ ok: false, error: 'stop' }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    await s.getState().addProjectFolder();
+    fly.on = false;
+    expect(fly.open).not.toHaveBeenCalled();
+  });
+
+  it('with the flag off the library add does not scan', async () => {
+    fly.on = false;
+    fly.open.mockClear();
+    const { bridge, calls } = fakeBridge({
+      'dialog:openFolder': () => ({ path: 'D:/exp' }),
+      'library:add': () => ({ ok: true, entry: exportEntry }),
+      'library:list': () => [exportEntry],
+      'builder:inspectorScan': () => scanned,
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    await s.getState().addProjectFolder();
+    expect(calls.map((c) => c.channel)).not.toContain('builder:inspectorScan');
+    expect(fly.open).not.toHaveBeenCalled();
   });
 
   it('does nothing when the folder dialog is cancelled', async () => {

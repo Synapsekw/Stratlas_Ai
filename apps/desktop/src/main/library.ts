@@ -348,6 +348,24 @@ export async function listLibrary(o: {
   return entries.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * Project-local note of the export folders a project was made for (not in the manifest: no
+ * contract field). It lets a re-drop find the project before any inspection was imported, e.g.
+ * after the picker was cancelled.
+ */
+const INSPECTOR_SOURCE_FILE = 'flyability-source.json';
+
+async function readInspectorSources(root: string): Promise<string[]> {
+  try {
+    const raw = (await readJson(join(root, INSPECTOR_SOURCE_FILE))) as { paths?: unknown };
+    return Array.isArray(raw.paths)
+      ? raw.paths.filter((p): p is string => typeof p === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 /** What a Flyability Inspector export folder is called where the app names folder kinds. */
 export const INSPECTOR_LABEL = 'Flyability Inspector export';
 
@@ -381,6 +399,7 @@ async function projectForInspectorExport(
     const scan = await lib.scanInspectorExport(found, null);
     // the same export dropped again goes to the project that already holds its inspections
     const wanted = new Set(scan.inspections.map((i) => i.id));
+    const here = new Set([sameKey(dir), sameKey(found)]);
     for (const e of await listLibrary({ dataRoot, extraPaths: [], registry })) {
       const m = await readManifest(e.path);
       if (
@@ -389,6 +408,9 @@ async function projectForInspectorExport(
           (s) => s.source?.kind === 'flyability' && wanted.has(s.source.inspectionId),
         )
       )
+        return { root: e.path, existing: true };
+      // a project made for this folder whose picker was cancelled has no space yet
+      if ((await readInspectorSources(e.path)).some((p) => here.has(sameKey(p))))
         return { root: e.path, existing: true };
     }
     const asset = (scan.asset ?? '').trim();
@@ -405,6 +427,12 @@ async function projectForInspectorExport(
       lib.CONFINED_SPACE_TEMPLATE,
       { local: 'flyability' },
     );
+    await writeJsonAtomic(join(made.root, INSPECTOR_SOURCE_FILE), {
+      paths: [resolve(dir), resolve(found)],
+    }).catch(async (e: unknown) => {
+      await rm(made.root, { recursive: true, force: true });
+      throw e;
+    });
     return { root: made.root };
   } catch (e) {
     return { error: `${INSPECTOR_LABEL}: ${e instanceof Error ? e.message : String(e)}` };

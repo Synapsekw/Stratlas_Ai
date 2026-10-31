@@ -63,9 +63,13 @@ const finishStaged = vi.fn();
 vi.mock('../drawings/importFlow', () => ({
   finishStagedDrawings: (...a: unknown[]) => finishStaged(...a) as unknown,
 }));
+// the picker is its own store; here only that it is asked to open
+const openInspectorPicker = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+vi.mock('../flyability/pickerStore', () => ({ openInspectorPicker }));
 // the store listens for progress on the preload bridge, which a test does not have
 vi.stubGlobal('window', {});
 
+import { clearToasts, toastQueue } from '@aio/ui';
 import { DROPPED_NOTE } from './importSummary';
 import { builder } from './state';
 
@@ -104,6 +108,8 @@ beforeEach(() => {
   replaceManifest.mockReset();
   finishStaged.mockReset();
   loadOrientation.mockClear();
+  openInspectorPicker.mockClear();
+  clearToasts();
   openProject = P1;
   cloudScan = noClouds;
   cloudCalls.length = 0;
@@ -755,5 +761,44 @@ describe('pickAndImportFolder', () => {
     await b().pickAndImportFolder();
     expect(calls('builder:altitudePlan')).toHaveLength(0);
     expect(calls('builder:import')).toHaveLength(0);
+  });
+});
+
+describe('importFiles, Flyability Inspector exports', () => {
+  const answer = (status: 'skipped' | 'queued') => ({
+    ok: true,
+    value: {
+      ok: true,
+      manifest: { layers: [], captures: [] },
+      items: [{ file: 'export', kind: 'flyability', status }],
+    },
+  });
+  const run = (status: 'skipped' | 'queued') => {
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(channel === 'builder:altitudePlan' ? planned(plan()) : answer(status)),
+    );
+  };
+
+  it('an export without a choice opens the picker on its path', async () => {
+    run('skipped');
+    await b().importFiles(['D:\\drops\\export']);
+    expect(openInspectorPicker).toHaveBeenCalledWith('D:\\drops\\export');
+  });
+
+  it('a choice goes to main with the import and opens no picker', async () => {
+    run('skipped');
+    const inspector = { inspections: [{ id: 'a' }] };
+    await b().importFiles(['/drops/export'], undefined, { inspector });
+    expect(calls('builder:import')[0]?.[1]).toMatchObject({ inspector });
+    expect(openInspectorPicker).not.toHaveBeenCalled();
+  });
+
+  it('a queued flyability item says the import is running', async () => {
+    run('queued');
+    await b().importFiles(['/drops/export'], undefined, {
+      inspector: { inspections: [{ id: 'a' }] },
+    });
+    expect(openInspectorPicker).not.toHaveBeenCalled();
+    expect(toastQueue().map((x) => x.message)).toEqual(['1 export is waiting to be chosen.']);
   });
 });

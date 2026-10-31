@@ -218,6 +218,24 @@ describe('library store and addToLibrary', () => {
     expect(one.ok && two.ok && two.entry.id).toBe(one.ok ? one.entry.id : '');
   });
 
+  it('the same export dropped again before any import adds no second project', async () => {
+    const store = createLibraryStore(join(base, 'library.json'));
+    const exp = join(base, 'export');
+    await writeInspectorFixture(exp);
+    const registry = new ProjectRegistry();
+    const packV = () => Promise.resolve('0.31.0');
+    const one = await addToLibrary(exp, store, registry, dataRoot, packV, true);
+    // the picker was cancelled: the project has no space yet
+    const two = await addToLibrary(exp, store, registry, dataRoot, packV, true);
+    expect(await readdir(join(dataRoot, 'projects'))).toHaveLength(1);
+    expect(one.ok && two.ok && two.entry.id).toBe(one.ok ? one.entry.id : '');
+    // another export still gets its own project
+    const other = join(base, 'export2');
+    await writeInspectorFixture(other);
+    await addToLibrary(other, store, registry, dataRoot, packV, true);
+    expect(await readdir(join(dataRoot, 'projects'))).toHaveLength(2);
+  });
+
   it('an export project that cannot be made leaves no folder', async () => {
     const store = createLibraryStore(join(base, 'library.json'));
     const exp = join(base, 'export');

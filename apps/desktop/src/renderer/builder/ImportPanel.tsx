@@ -4,6 +4,7 @@ import { useWorkspace } from '@aio/workspace';
 import { useEffect, useState } from 'react';
 import { PagesCard } from '../drawings/PagesCard';
 import { useDrawings } from '../drawings/store';
+import { InspectorPickerHost } from '../flyability/InspectorPicker';
 import { PhotoProcessLayer } from '../photogrammetry/PhotoProcessLayer';
 import { useShell } from '../shell';
 import { CloudDatesCard } from './CloudDates';
@@ -95,6 +96,7 @@ export function ImportLayer() {
       <ImportStatus />
       <TilesetImportCard />
       <PhotoProcessLayer />
+      <InspectorPickerHost />
     </>
   );
 }
