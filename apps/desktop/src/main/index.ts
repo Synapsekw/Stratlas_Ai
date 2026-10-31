@@ -1234,8 +1234,18 @@ function registerIpc(): void {
       },
     };
   });
+  // the processing tools' version now (null: none found), for what needs a minimum
+  const packVersionNow = async (): Promise<string | null> =>
+    (await findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp })).pack
+      ?.version ?? null;
   handle('library:add', async ({ path }) => {
-    const r = await addToLibrary(path, library, registry, settings.current().dataRoot);
+    const r = await addToLibrary(
+      path,
+      library,
+      registry,
+      settings.current().dataRoot,
+      packVersionNow,
+    );
     // adding a removed card again brings it back
     if (r.ok)
       await libraryView
@@ -1747,6 +1757,7 @@ function registerIpc(): void {
       pipeline === 'telecom.flag' ||
       pipeline === 'rf.coverage' ||
       pipeline === 'thermal.decode' ||
+      pipeline === 'flyability.import' ||
       pipeline === 'detect.vlm'
     ) {
       const found = await findPack({
@@ -1946,6 +1957,7 @@ function registerIpc(): void {
       builderImport(req, {
         registry,
         images: nativeImageOps,
+        packVersion: packVersionNow,
         // the pipeline pack's ffmpeg, looked up on each import (a pack installed since counts)
         ffmpeg: async () =>
           findFfmpeg(

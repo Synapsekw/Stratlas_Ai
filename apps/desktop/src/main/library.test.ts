@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -135,7 +135,9 @@ describe('library store and addToLibrary', () => {
     const store = createLibraryStore(join(base, 'library.json'));
     const exp = join(base, 'export');
     await writeInspectorFixture(exp);
-    const r = await addToLibrary(exp, store, new ProjectRegistry(), dataRoot);
+    const r = await addToLibrary(exp, store, new ProjectRegistry(), dataRoot, () =>
+      Promise.resolve('0.31.0'),
+    );
     expect(r.ok && r.entry).toMatchObject({
       name: 'Synthetic chamber',
       kind: 'native',
@@ -151,6 +153,15 @@ describe('library store and addToLibrary', () => {
     expect(m.origin).toEqual([0, 0, 0]);
     expect(JSON.stringify(m.severityModels)).toContain('confined-space-4');
     expect(await store.paths()).toEqual([made]);
+    // processing tools missing or too old: said so, and no project is made
+    const before = await readdir(join(dataRoot, 'projects'));
+    for (const v of [null, '0.30.4']) {
+      const old = await addToLibrary(exp, store, new ProjectRegistry(), dataRoot, () =>
+        Promise.resolve(v),
+      );
+      expect(old).toMatchObject({ ok: false });
+    }
+    expect(await readdir(join(dataRoot, 'projects'))).toEqual(before);
     // without a data folder it says so
     expect(await addToLibrary(exp, store, new ProjectRegistry())).toMatchObject({ ok: false });
   });

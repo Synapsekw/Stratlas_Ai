@@ -9,9 +9,11 @@ import {
   type LibraryEntry,
   type ProjectManifest,
 } from '@aio/schema';
-import { readdir, stat } from 'node:fs/promises';
+import { readdir, rm, stat } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 import { z } from 'zod';
+import { FLYABILITY_MIN_PACK, flyabilityPackRefusal } from './builder';
+import { compareVersions } from './jobs/pack';
 import { readJson, writeJsonAtomic } from './fsutil';
 import { newerThanThisBuild } from './newer';
 import { readManifest, type ProjectRegistry } from './project';
@@ -357,18 +359,30 @@ export const INSPECTOR_LABEL = 'Flyability Inspector export';
 async function projectForInspectorExport(
   dir: string,
   dataRoot: string,
-): Promise<{ root: string; manifest: ProjectManifest } | { error: string } | null> {
+  packVersion: () => Promise<string | null>,
+): Promise<{ root: string } | { error: string } | null> {
   const lib = await import('@aio/project/builder');
   const found = await lib.findInspectorExport(dir);
   if (found === null) return null;
   if (!dataRoot)
     return { error: `${INSPECTOR_LABEL}: set a data folder in Settings first; projects go there.` };
+  // the processing tools read the export: without them (or too old) no project is made
+  const version = await packVersion().catch(() => null);
+  if (version === null)
+    return {
+      error: `${INSPECTOR_LABEL}: the processing tools are not installed. Install them in Settings, Processing tools, then add the folder again.`,
+    };
+  if (version !== 'dev' && compareVersions(version, FLYABILITY_MIN_PACK) < 0)
+    return {
+      error: `${INSPECTOR_LABEL}: ${String(flyabilityPackRefusal('flyability.import', version))}`,
+    };
   try {
     const scan = await lib.scanInspectorExport(found, null);
+    const asset = (scan.asset ?? '').trim();
     const made = await lib.createProject(
       dataRoot,
       {
-        name: (scan.asset ?? '').trim() === '' ? basename(dir) : (scan.asset ?? '').trim(),
+        name: asset === '' ? basename(dir) : asset,
         type: 'inspection',
         purpose: 'confined-space',
         epsg: 4326,
@@ -376,12 +390,9 @@ async function projectForInspectorExport(
         severityTemplate: null,
       },
       lib.CONFINED_SPACE_TEMPLATE,
+      { local: 'flyability' },
     );
-    const done = await lib.updateManifestFile(made.root, (fresh) => ({
-      manifest: { ...fresh, crs: { local: 'flyability' } },
-      id: fresh.id,
-    }));
-    return { root: made.root, manifest: done.manifest };
+    return { root: made.root };
   } catch (e) {
     return { error: `${INSPECTOR_LABEL}: ${e instanceof Error ? e.message : String(e)}` };
   }
@@ -392,6 +403,7 @@ export async function addToLibrary(
   store: LibraryStore,
   registry: ProjectRegistry,
   dataRoot = '',
+  packVersion: () => Promise<string | null> = () => Promise.resolve('dev'),
 ): Promise<IpcResponse<'library:add'>> {
   const dir = resolve(path);
   if (!(await isDir(dir)) && !(isPackageFile(dir) && (await isFile(dir)))) {
@@ -402,17 +414,24 @@ export async function addToLibrary(
   }
   let target = dir;
   if ((await isDir(dir)) && (await detectFolder(dir)) === null) {
-    const made = await projectForInspectorExport(dir, dataRoot);
+    const made = await projectForInspectorExport(dir, dataRoot, packVersion);
     if (made !== null) {
       if ('error' in made) return { ok: false, error: made.error };
       target = made.root;
     }
   }
+  const created = target !== dir;
+  // a project made for an export is removed again when it cannot be listed
+  const undo = () => (created ? rm(target, { recursive: true, force: true }) : Promise.resolve());
   const r = await buildEntry(target, registry);
-  if (!r.ok) return r;
+  if (!r.ok) {
+    await undo();
+    return r;
+  }
   try {
     await store.add(target);
   } catch (e) {
+    await undo();
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
   return r;

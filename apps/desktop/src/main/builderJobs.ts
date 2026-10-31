@@ -11,6 +11,8 @@ export const BUILDER_PIPELINES: Readonly<Record<string, PipelineName>> = {
   'design.import': 'design.import',
   // 15 Oct 2026: a Bentley BlocksExchange AT export dropped on the builder, with its photos folder
   'bentley.import': 'bentley.import',
+  // 31 Oct 2026: a Flyability Inspector export, with the inspections chosen in Add data
+  'flyability.import': 'flyability.import',
 };
 
 /** Keys of the builder's job params each pipeline takes (`projectRoot` becomes the job project). */
@@ -22,6 +24,7 @@ const PARAM_KEYS: Readonly<Partial<Record<PipelineName, readonly string[]>>> = {
   'opf.import': ['src'],
   'design.import': ['src'],
   'bentley.import': ['xml', 'photos', 'name'],
+  'flyability.import': ['src', 'inspections', 'severityModel', 'catalogueId', 'spaces'],
 };
 
 export interface JobStarter {

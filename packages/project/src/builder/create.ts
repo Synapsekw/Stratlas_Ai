@@ -78,6 +78,8 @@ export async function createProject(
   dataRoot: string,
   req: NewProjectRequest,
   template: SeverityTemplate | null = null,
+  /** A frame other than the request's EPSG code (a local frame), written as the project's CRS. */
+  crs?: ProjectManifest['crs'],
 ): Promise<{ root: string; manifest: ProjectManifest }> {
   const projects = join(dataRoot, 'projects');
   await mkdir(projects, { recursive: true });
@@ -87,7 +89,7 @@ export async function createProject(
   const root = join(projects, chosen);
   await mkdir(root);
   for (const d of PACKAGE_DIRS) await mkdir(join(root, d), { recursive: true });
-  const manifest = newProjectManifest(chosen, req, template);
+  const manifest = { ...newProjectManifest(chosen, req, template), ...(crs ? { crs } : {}) };
   await writeManifestFile(root, manifest);
   await writeFile(
     join(root, 'issues.json'),

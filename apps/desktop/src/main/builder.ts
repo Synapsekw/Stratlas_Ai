@@ -10,7 +10,7 @@ import type {
 } from '@aio/project/builder';
 import { withPositionOffset } from '@aio/geo';
 import { PROCMODEL_DIR, ProcModelId, emptyOrientation } from '@aio/schema';
-import type { IpcEvent, IpcRequest, IpcResponse, ProjectManifest } from '@aio/schema';
+import type { ImportItem, IpcEvent, IpcRequest, IpcResponse, ProjectManifest } from '@aio/schema';
 import { layerDateShifts } from '@aio/workspace';
 import { readMp4VideoInfo, parseDjiSrt, srtTimingCheck, srtToFlight } from '@aio/video/telemetry';
 import { execFile } from 'node:child_process';
@@ -326,6 +326,8 @@ export interface BuilderImportDeps {
   ffmpeg?: () => Promise<FfmpegBin | null>;
   /** The system folder dialog, for a Bentley block's photos folder (index.ts). */
   pickFolder?: (title: string) => Promise<string | null>;
+  /** The installed processing tools' version; null when none are found (Flyability import). */
+  packVersion?: () => Promise<string | null>;
 }
 
 /**
@@ -390,6 +392,29 @@ export function flyabilityPackRefusal(pipeline: string, packVersion: string | nu
     return null;
   if (compareVersions(packVersion, FLYABILITY_MIN_PACK) >= 0) return null;
   return `${FLYABILITY_FEATURE} needs processing tools ${FLYABILITY_MIN_PACK} or later (these are ${packVersion}). Update them in Settings, Processing tools.`;
+}
+
+/**
+ * A dropped folder that holds its export one level down: its other children are not imported, and
+ * the list says so.
+ */
+async function otherChildren(dropped: readonly string[]): Promise<ImportItem[]> {
+  const { findInspectorExport } = await lib();
+  const out: ImportItem[] = [];
+  for (const p of dropped) {
+    const found = await findInspectorExport(p);
+    if (found === null || found === p) continue;
+    for (const e of await readdir(p).catch(() => [] as string[])) {
+      if (join(p, e) === found) continue;
+      out.push({
+        file: e,
+        kind: 'unknown',
+        status: 'skipped',
+        message: 'Imported the Inspector export; other files in this folder were not imported.',
+      });
+    }
+  }
+  return out;
 }
 
 /** A Flyability Inspector export folder read for the inspection picker (`builder:inspectorScan`). */
@@ -466,6 +491,15 @@ export async function builderImport(
       ...ffmpegImportTools(await (d.ffmpeg?.().catch(() => null) ?? null)),
       ...(req.as360 ? { as360: true } : {}),
       ...(req.inspector ? { inspector: req.inspector } : {}),
+      ...(d.packVersion
+        ? {
+            inspectorRefusal: async () =>
+              flyabilityPackRefusal(
+                'flyability.import',
+                (await d.packVersion?.().catch(() => null)) ?? null,
+              ),
+          }
+        : {}),
       onFileProgress: progress.part,
       signal: run.signal,
       ...(req.utcOffsetMin !== undefined ? { utcOffsetMin: req.utcOffsetMin } : {}),
@@ -487,6 +521,7 @@ export async function builderImport(
       manifest: r.manifest,
       items: [
         ...r.items,
+        ...(await otherChildren(exports)),
         ...ex.leftOut.map((o) => ({
           file: basename(o.folder),
           kind: 'unknown' as const,

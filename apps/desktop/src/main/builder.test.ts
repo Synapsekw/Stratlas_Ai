@@ -896,6 +896,37 @@ describe('Flyability Inspector exports', () => {
     expect(t.started).toHaveLength(0);
   });
 
+  it('an old pack gets the refusal as the item message and nothing starts', async () => {
+    const t = await setup(true);
+    const r = await builderImport(
+      {
+        projectId: t.projectId,
+        paths: [t.exp],
+        inspector: { inspections: [{ id: t.ids.inspectionId }] },
+      },
+      { ...t.deps, packVersion: () => Promise.resolve('0.30.2') },
+    );
+    expect(r.ok && r.items[0]).toMatchObject({
+      kind: 'flyability',
+      status: 'error',
+      message: expect.stringContaining('0.31.0') as string,
+    });
+    expect(t.started).toHaveLength(0);
+  });
+
+  it('notes the other files of a folder that holds an export one level down', async () => {
+    const t = await setup(true);
+    const parent = join(base, 'drop');
+    await mkdir(parent, { recursive: true });
+    await writeInspectorFixture(join(parent, 'export'));
+    await writeFile(join(parent, 'notes.txt'), 'x');
+    const r = await builderImport({ projectId: t.projectId, paths: [parent] }, t.deps);
+    expect(r.ok && r.items.map((i) => [i.file, i.status])).toEqual([
+      ['drop', 'skipped'],
+      ['notes.txt', 'skipped'],
+    ]);
+  });
+
   it('scan answers for an open project', async () => {
     const t = await setup(true);
     const r = await builderInspectorScan({ projectId: t.projectId, path: t.exp }, t.registry);

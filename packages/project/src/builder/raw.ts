@@ -175,6 +175,8 @@ export interface ImportDeps {
    * such a folder is answered "Choose the inspections to import." and nothing is queued.
    */
   inspector?: InspectorSelection;
+  /** Why the installed processing tools cannot run `flyability.import` (too old), or null. */
+  inspectorRefusal?: () => Promise<string | null>;
   /**
    * The survey day Add data chose for a cloud (absolute path to `YYYY-MM-DD`, null = not dated).
    * A chosen day goes to the conversion as `surveyDate`; the job files the layer under it.
@@ -365,8 +367,10 @@ export async function importRawFiles(
   // the manifest as it was read, left untouched: what `m` holds beyond it is what this import added
   const atStart = await readManifestFile(root);
   const m = structuredClone(atStart);
-  const epsg = epsgOf(m);
-  const utcOffsetMin = deps.utcOffsetMin ?? defaultUtcOffsetMin(m.origin, epsg);
+  // a local-frame project (a Flyability Inspector space) has no EPSG code: only an export comes in
+  const local = !('epsg' in m.crs);
+  const epsg = 'epsg' in m.crs ? m.crs.epsg : 0;
+  const utcOffsetMin = deps.utcOffsetMin ?? (local ? 0 : defaultUtcOffsetMin(m.origin, epsg));
   const heights = resolveHeights(m, deps.altitude);
   // absolute altitude is corrected by a datum: the project's, or one set at this import
   const datumDefined = m.verticalDatum !== undefined || heights.summary.from === 'datum';
@@ -422,7 +426,7 @@ export async function importRawFiles(
       const { jobId } = await deps.jobs.start(method, {
         projectRoot: root,
         src: file,
-        epsg,
+        ...(local ? {} : { epsg }),
         origin: m.origin,
         ...params,
       });
@@ -537,6 +541,14 @@ export async function importRawFiles(
   const inspectorRoots = new Map<string, string>();
   await Promise.all(
     paths.map(async (p) => {
+      // only a folder can be an export
+      if (
+        !(await stat(p).then(
+          (x) => x.isDirectory(),
+          () => false,
+        ))
+      )
+        return;
       const found = await findInspectorExport(p);
       if (found !== null) inspectorRoots.set(p, found);
     }),
@@ -549,8 +561,15 @@ export async function importRawFiles(
     try {
       if (consumed.has(file)) continue;
       const exportRoot = inspectorRoots.get(file);
-      if (exportRoot !== undefined && !deps.signal?.aborted) {
-        if (!deps.inspector) {
+      if (exportRoot !== undefined) {
+        if (deps.signal?.aborted) {
+          items.push({
+            file: name,
+            kind: 'flyability',
+            status: 'skipped',
+            message: CANCELLED_BEFORE,
+          });
+        } else if (!deps.inspector) {
           items.push({
             file: name,
             kind: 'flyability',
@@ -558,6 +577,11 @@ export async function importRawFiles(
             message: INSPECTOR_CHOOSE,
           });
         } else {
+          const refusal = pipeline ? await (deps.inspectorRefusal?.() ?? null) : null;
+          if (refusal !== null) {
+            items.push({ file: name, kind: 'flyability', status: 'error', message: refusal });
+            continue;
+          }
           const model =
             m.severityModels.find((x) => x.id === CONFINED_SPACE_TEMPLATE.id) ??
             CONFINED_SPACE_TEMPLATE.model;
@@ -567,6 +591,15 @@ export async function importRawFiles(
             catalogueId: 'confined-space',
           });
         }
+        continue;
+      }
+      if (local) {
+        items.push({
+          file: name,
+          kind: 'unknown',
+          status: 'error',
+          message: 'Raw import needs a project CRS given as an EPSG code.',
+        });
         continue;
       }
       const is360 =

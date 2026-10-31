@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   createProject,
   ensureCapture,
+  readManifestFile,
   updateCapture,
   updateLayers,
   writeManifestFile,
@@ -1735,5 +1736,55 @@ describe('GLB georeference on import (engineering model 5.6)', () => {
     expect(started).toHaveLength(0);
     const none = await importRawFiles(root, [exp], { ...deps(), inspector: chosen });
     expect(none.items[0]).toMatchObject({ kind: 'flyability', status: 'needs-pipeline' });
+  });
+
+  it('imports an inspector export into a local-frame project without sending an EPSG code', async () => {
+    const root = await project();
+    const m = await readManifestFile(root);
+    await writeManifestFile(root, { ...m, crs: { local: 'flyability' }, origin: [0, 0, 0] });
+    const exp = join(dir, 'export');
+    const ids = await writeInspectorFixture(exp);
+    const started: Record<string, unknown>[] = [];
+    const jobs: PipelineJobs = {
+      available: () => Promise.resolve(true),
+      start: (_m, params) => {
+        started.push(params);
+        return Promise.resolve({ jobId: 'job-l' });
+      },
+    };
+    const inspector = { inspections: [{ id: ids.inspectionId }] };
+    const r = await importRawFiles(root, [exp], { ...deps({ jobs }), inspector });
+    expect(r.items).toEqual([expect.objectContaining({ kind: 'flyability', status: 'queued' })]);
+    expect(started).toHaveLength(1);
+    expect('epsg' in (started[0] ?? {})).toBe(false);
+  });
+
+  it('refuses an export with the pack check message and reports a cancelled one', async () => {
+    const root = await project();
+    const exp = join(dir, 'export');
+    const ids = await writeInspectorFixture(exp);
+    const jobs: PipelineJobs = {
+      available: () => Promise.resolve(true),
+      start: () => Promise.reject(new Error('must not start')),
+    };
+    const inspector = { inspections: [{ id: ids.inspectionId }] };
+    const old = await importRawFiles(root, [exp], {
+      ...deps({ jobs }),
+      inspector,
+      inspectorRefusal: () => Promise.resolve('Needs 0.31.0.'),
+    });
+    expect(old.items).toEqual([
+      expect.objectContaining({ kind: 'flyability', status: 'error', message: 'Needs 0.31.0.' }),
+    ]);
+    const ac = new AbortController();
+    ac.abort();
+    const gone = await importRawFiles(root, [exp], {
+      ...deps({ jobs }),
+      inspector,
+      signal: ac.signal,
+    });
+    expect(gone.items).toEqual([
+      expect.objectContaining({ kind: 'flyability', status: 'skipped' }),
+    ]);
   });
 });

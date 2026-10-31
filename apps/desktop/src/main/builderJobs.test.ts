@@ -41,6 +41,34 @@ describe('builder conversions as pipeline jobs', () => {
     ]);
   });
 
+  it('starts flyability.import with the export, the inspections and the severity model only', async () => {
+    const { r, started } = runner();
+    const severityModel = { id: 'confined-space-4' };
+    await builderPipelineJobs(r).start('flyability.import', {
+      projectRoot: 'E:/data/projects/chamber',
+      src: 'D:/exports/chamber',
+      epsg: 32640,
+      origin: [0, 0, 0],
+      inspections: [{ id: 'i1' }],
+      severityModel,
+      catalogueId: 'confined-space',
+      spaces: { i1: 'tank' },
+    });
+    expect(started).toEqual([
+      {
+        pipeline: 'flyability.import',
+        project: 'E:/data/projects/chamber',
+        params: {
+          src: 'D:/exports/chamber',
+          inspections: [{ id: 'i1' }],
+          severityModel,
+          catalogueId: 'confined-space',
+          spaces: { i1: 'tank' },
+        },
+      },
+    ]);
+  });
+
   it('starts bentley.import with the block and its photos folder only', async () => {
     const { r, started } = runner();
     await builderPipelineJobs(r).start('bentley.import', {
