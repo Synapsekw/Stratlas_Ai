@@ -45,6 +45,7 @@ from .survey.qa import SurveyQa
 from .survey.section import SurveySection
 from .telecom.flag_pipeline import TelecomFlag
 from .telecom.pipeline import TelecomAntennas
+from .thermal.hotspots_pipeline import ThermalHotspots
 from .thermal.pipeline import ThermalDecode
 from .tiles.cloud import TilesCloud
 from .tiles.mesh import TilesMesh
@@ -116,6 +117,8 @@ def all_pipelines() -> dict[str, Pipeline]:
         RfCoverage(),
         # Thermal analysis (pipeline pack THERMAL_MIN_PACK)
         ThermalDecode(),
+        # Thermal hot spots (pipeline pack THERMAL_HOTSPOTS_MIN_PACK)
+        ThermalHotspots(),
         # Local vision-model detectors (Analytics pack)
         DetectVlm(),
     ]
