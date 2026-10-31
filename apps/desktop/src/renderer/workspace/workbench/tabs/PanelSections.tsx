@@ -6,13 +6,14 @@
 import { Icon, IconButton, useT } from '@aio/ui';
 import { useVolumetric } from '@aio/volumetric';
 import { useWorkspace } from '@aio/workspace';
-import { useId, useMemo } from 'react';
+import { useEffect, useId, useMemo, useRef } from 'react';
 import { useIsRoad } from '../../../road/useRoadMap';
 import { FrontBody } from '../FrontBody';
 import { usePanelData } from '../panelData';
 import { ProjectList } from '../project/ProjectList';
 import { sectionsOf, type PanelTab, type SectionDef } from '../tabsModel';
 import { useWorkbench, workbench } from '../workbenchStore';
+import { revealSection } from './revealSection';
 
 /** The number beside a section's name, where one helps: open issues, piles. */
 function useSectionCount(def: SectionDef): number | undefined {
@@ -40,8 +41,15 @@ export function PanelSection({ def }: { def: SectionDef }) {
   const expanded = useWorkbench((s) => s.expanded);
   const count = useSectionCount(def);
   const wide = def.wide === true && open;
+  // brought forward (its body in front and the section open): scrolled into the tab's box
+  const ref = useRef<HTMLElement>(null);
+  const forward = useWorkbench((s) => def.body !== null && s.front === def.body) && open;
+  useEffect(() => {
+    if (forward) revealSection(ref.current);
+  }, [forward]);
   return (
     <section
+      ref={ref}
       className="wb-section wb-psec"
       data-open={open}
       data-section={def.id}

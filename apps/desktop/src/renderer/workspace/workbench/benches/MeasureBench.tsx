@@ -1,11 +1,11 @@
 /**
  * The Measure workbench, the body of Tools > Measure (UI revision D2; stage island D12, D13, D16,
  * D18, D19); its "In this project" list is Project's section now (`project/ProjectList.tsx`). The
- * tools as they always were: the save controls, search, Favourites and recent, every measuring tool by family,
- * Site data, Drawing aids and Templates.
+ * picked measurement's card, then the tools as they always were: the save controls, search,
+ * Favourites and recent, every measuring tool by family, Site data, Drawing aids and Templates.
  * While a tool is live it morphs in place: the live card on top (the shared measurement card in
  * its live variant, then the points, Undo, Stop and Save with their keys) and the catalogue
- * shrinks to a strip of tool buttons. A picked measurement shows its detail card inline in the list.
+ * shrinks to a strip of tool buttons. A picked measurement shows its detail card on top.
  * How the sidebar follows the tools is `workbench/measureFollow.ts`.
  */
 import type { EngineStage } from '@aio/engine';
@@ -48,6 +48,7 @@ import { ExportTool } from '../../../survey/ExportDialog';
 import { HaulRoadTool } from '../../../survey/HaulRoad';
 import { HydroTool } from '../../../survey/Hydro';
 import { MagicPolygon } from '../../../survey/MagicPolygon';
+import { MeasurementPanel } from '../../../survey/MeasurementPanel';
 import { openMaterialsPane } from '../../../survey/volumes/materialsDraft';
 import { PendingNote, usePending } from '../../../survey/PendingNote';
 import {
@@ -837,25 +838,24 @@ function Catalogue({
 }
 
 /**
- * The picked telecom measurement's reading, only when its family is not shown (a read-only package
- * offers no telecom tools; a search hides it). Any other measurement's panel is inline in the
- * Measurements group (`project/groups/MeasurementsGroup.tsx`).
+ * The picked measurement's card, where the "In this project" list showed it inline before that
+ * list moved to the Project tab (UI revision D2): the measurement panel (a pile's full volume card
+ * included; its pile panel is Selection's), and a telecom reading's tools when its family is not
+ * shown (a read-only package offers no telecom tools; a search hides it).
  */
 function SelectedCard({ searching }: { searching: boolean }) {
   const t = useT();
   const readOnly = useReadOnly();
   const focusTool = useMeasure((s) => s.file.measurements.find((m) => m.id === s.focus)?.tool);
   if (!focusTool) return null;
-  if (isTelecomTool(focusTool)) {
-    if (!readOnly && !searching) return null;
-    return (
-      <Section bench={BENCH} id="selected" title={t('measureBench.selected')} defaultOpen>
-        <TelecomTools />
-      </Section>
-    );
-  }
-  // any other measurement is shown inline in the Measurements group of the list above
-  return null;
+  return (
+    <Section bench={BENCH} id="selected" title={t('measureBench.selected')} defaultOpen>
+      <div className="pl-measure-panel">
+        <MeasurementPanel />
+      </div>
+      {isTelecomTool(focusTool) && (readOnly || searching) && <TelecomTools />}
+    </Section>
+  );
 }
 
 /**
@@ -889,15 +889,14 @@ export function MeasureBench() {
     <div className="meb wb-scroll">
       {/* a running tool is never pushed down: its card (or the unsaved state) stays first */}
       {live ? <LiveCard /> : <PendingCard />}
+      {/* the picked measurement's card, then the tools; a search filters only the tools */}
+      <SelectedCard searching={searching} />
       {/* a search is about the tools: the save controls step aside until it is cleared */}
       {!searching && <SavedFooter />}
       {live ? (
         <Strip families={families} stage={stage} />
       ) : (
-        <>
-          <Catalogue families={families} stage={stage} query={query} onQuery={setQuery} />
-          <SelectedCard searching={searching} />
-        </>
+        <Catalogue families={families} stage={stage} query={query} onQuery={setQuery} />
       )}
     </div>
   );

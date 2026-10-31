@@ -62,32 +62,48 @@ function useFocusedPile(): string | null {
   });
 }
 
+/** What Selection shows, in the order it is looked for. */
+export type SelectionShows = 'pile' | 'road' | 'issue' | 'measurement' | 'empty' | 'card';
+
+/** What Selection shows now (the body below, and how tall the right panel lets it be). */
+export function useSelectionShows(road: boolean): SelectionShows {
+  const pile = useFocusedPile();
+  const focus = useMeasure((s) => s.focus);
+  const issue = useWorkspace((s) => s.selection?.kind === 'issue');
+  const selected = useWorkspace((s) => s.selection !== null);
+  if (pile) return 'pile';
+  if (road) return 'road';
+  if (issue) return 'issue';
+  // a picked measurement (nothing else selected): its card, as a pile's panel
+  if (!selected && focus !== null) return 'measurement';
+  return selected ? 'card' : 'empty';
+}
+
 /**
  * Selection: a clicked pile's panel, the road, an issue's card, a picked measurement's card, the
  * selected thing, or a hint.
  */
 export function SelectionBody({ road }: { road: boolean }) {
   const t = useT();
+  const shows = useSelectionShows(road);
   const pile = useFocusedPile();
-  const focus = useMeasure((s) => s.focus);
   const issueId = useWorkspace((s) => (s.selection?.kind === 'issue' ? s.selection.id : null));
-  const selected = useWorkspace((s) => s.selection !== null);
-  if (pile)
+  if (shows === 'pile' && pile)
     return (
       <div className="wb-pile" data-testid="selection-pile">
         <PilePanel id={pile} />
       </div>
     );
-  if (road) return <RoadPanel />;
-  if (issueId) return <IssueCard issueId={issueId} place="scene" className="ctx-fill" />;
-  // a picked measurement (nothing else selected): its card, as a pile's panel above
-  if (!selected && focus !== null)
+  if (shows === 'road') return <RoadPanel />;
+  if (shows === 'issue' && issueId)
+    return <IssueCard issueId={issueId} place="scene" className="ctx-fill" />;
+  if (shows === 'measurement')
     return (
       <div className="wb-pile" data-testid="selection-measurement">
         <MeasurementPanel />
       </div>
     );
-  if (!selected)
+  if (shows === 'empty')
     return (
       <p className="wb-empty" data-testid="selection-empty">
         {t('wb.selection.empty')}

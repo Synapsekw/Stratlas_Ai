@@ -495,10 +495,10 @@ describe('the Saved footer', () => {
 });
 
 describe('a picked measurement', () => {
-  it('has no Selected card for a survey measurement', () => {
+  it('shows the picked survey measurement card on top of the tools (its list is Project now)', () => {
     measureStore.setState({ focus: 'm1', selected: ['m1'] });
     render();
-    expect(q('wb-section-selected')).toBeNull();
+    expect(q('wb-section-selected')).not.toBeNull();
   });
 
   it('a read-only package shows a saved telecom measurement and its reading', () => {

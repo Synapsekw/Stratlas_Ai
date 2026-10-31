@@ -29,6 +29,7 @@ import { agentWindow } from '../agentWindow';
 import { useBenchFollow } from './benchFollow';
 import { useAnnotateFollow } from './benches/AnnotateBench';
 import { useDrawer } from './drawerStore';
+import { useSelectionShows } from './FrontBody';
 import { rightSplit, usePanelBand } from './panelWidth';
 import { TabBar } from './TabBar';
 import { LayersDisplayTab } from './tabs/LayersDisplayTab';
@@ -226,6 +227,11 @@ export function RightSidebar() {
   const issues = useWorkspace((s) => s.issues.filter((i) => i.status !== 'closed').length);
   const live = useLiveTabs();
   const id = front.id;
+  // Selection's hint or a selected thing's card stands at its own height, the agent below taking
+  // the rest; a pile, a measurement, an issue, the road and the other tabs get the tall share
+  const shows = useSelectionShows(road);
+  const tall = tab !== 'selection' || (shows !== 'empty' && shows !== 'card');
+  const vol = tab === 'selection' && shows === 'pile';
   // Engineering comparison effects must have one owner through both drawer handoffs:
   // opened covers its first render; present includes the slide-out after sidebar expansion.
   const deferBody =
@@ -261,7 +267,7 @@ export function RightSidebar() {
           <>
             {!road && <RoadSetupCard />}
             <div
-              className="ctx-wrap wb-body tall wb-panel-body"
+              className={`ctx-wrap wb-body${tall ? ' tall' : ''}${vol ? ' vol' : ''} wb-panel-body`}
               role="tabpanel"
               id={`wb-panel-${tab}`}
               aria-labelledby={`wb-tab-${tab}`}

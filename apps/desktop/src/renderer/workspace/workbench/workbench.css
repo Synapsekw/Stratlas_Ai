@@ -73,6 +73,11 @@
 .wb-panel-body {
   flex: 1 1 auto;
 }
+/* Selection's hint or a selected thing's card at its own height while the divider has not been
+   moved: the agent below takes the rest, as before the four tabs */
+.rp-split.auto .ctx-wrap.wb-panel-body:not(.tall) {
+  flex: none;
+}
 .wb-panel-scroll {
   display: flex;
   flex: 1;
