@@ -362,7 +362,9 @@ interface Probe {
       getState(): {
         selection: Picked | null;
         issues: { id: string; code: string }[];
+        hidden: Record<string, boolean | undefined>;
         select(selection: Picked | null): void;
+        setLayersVisible(ids: string[], visible: boolean): void;
       };
     };
     stage(): { scene: { getObjectByName(n: string): unknown } } | null;
@@ -544,6 +546,7 @@ const appState = (win: Page) =>
       evidenceOpen: s.evidence.getState().open !== null,
       issueCount: ws.issues.length,
       measurementCount: s.measurements?.()?.measurements?.length ?? null,
+      hidden: Object.keys(ws.hidden).filter((id) => ws.hidden[id] === true),
     };
   });
 
@@ -553,6 +556,8 @@ interface Home {
   mode: string;
   /** The nodes of the main model (none for a demo without tagged assets). */
   nodes: string[];
+  /** The layers hidden as the project opened; a request that hid others is put back. */
+  hidden: string[];
 }
 
 /**
@@ -586,7 +591,7 @@ async function knownState(win: Page, c: EvalCase, home: Home, selection: Picked 
   }
 
   await win.evaluate(
-    ({ stageMode, media, issues, picked }) => {
+    ({ stageMode, media, issues, picked, hidden }) => {
       const s = (window as unknown as Probe).__stratlas;
       // a pane the x could not reach (the stage was turned to another mode since)
       if (s.evidence.getState().open) s.evidence.setState({ open: null });
@@ -594,9 +599,19 @@ async function knownState(win: Page, c: EvalCase, home: Home, selection: Picked 
       if (sh.stageMode !== stageMode) sh.setStageMode(stageMode);
       s.mediaView.setState(media);
       s.issueView.setState(issues);
-      s.workspace.getState().select(picked);
+      const ws = s.workspace.getState();
+      ws.select(picked);
+      // layers a request before hid (a menu action) are shown again
+      const hid = Object.keys(ws.hidden).filter((id) => ws.hidden[id] && !hidden.includes(id));
+      if (hid.length > 0) ws.setLayersVisible(hid, true);
     },
-    { stageMode: home.mode, media: NO_MEDIA_FILTER, issues: NO_ISSUE_FILTER, picked: selection },
+    {
+      stageMode: home.mode,
+      media: NO_MEDIA_FILTER,
+      issues: NO_ISSUE_FILTER,
+      picked: selection,
+      hidden: home.hidden,
+    },
   );
   expect(await evidenceOpen(), 'the photo beside the 3D view is closed').toBe(false);
   // back from a screen without the 3D view, the model is drawn again before anything is asked
@@ -1224,6 +1239,10 @@ const homeOf = async (page: Page, nodes: string[]): Promise<Home> => ({
     () => (window as unknown as Probe).__stratlas.shell.getState().stageMode,
   ),
   nodes,
+  hidden: await page.evaluate(() => {
+    const h = (window as unknown as Probe).__stratlas.workspace.getState().hidden;
+    return Object.keys(h).filter((id) => h[id] === true);
+  }),
 });
 
 /** The stores this check reads are there, and the agent takes a request. */
@@ -1298,6 +1317,7 @@ function changeFacts(): ChangeFacts {
     changes: {
       issue: { items: { verdict: string; from?: string; to?: string }[] };
       surface: { regions: { what: string; volume: { fillM3: number } }[] };
+      detection?: { counts: Record<string, number> };
     };
   };
   const code = (id: string | undefined) => issues.find((i) => i.id === id)?.code ?? String(id);
@@ -1313,6 +1333,10 @@ function changeFacts(): ChangeFacts {
     resolvedCodes: items.filter((i) => i.verdict === 'resolved').map((i) => code(i.from)),
     stockpileFillM3:
       truth.changes.surface.regions.find((r) => /stockpile/i.test(r.what))?.volume.fillM3 ?? NaN,
+    acceptedDetections: Object.values(truth.changes.detection?.counts ?? {}).reduce(
+      (a, n) => a + n,
+      0,
+    ),
   };
 }
 

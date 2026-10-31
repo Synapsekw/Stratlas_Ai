@@ -45,6 +45,8 @@ export interface EvalState {
   issueCount: number;
   /** Measurements in the open project; null when the app keeps none in memory. */
   measurementCount: number | null;
+  /** Ids of the layers hidden now. */
+  hidden: string[];
   /** The counts as the conversation started, before its first request. */
   start: { issueCount: number; measurementCount: number | null };
   /**
@@ -157,6 +159,16 @@ export const READ_TOOLS: readonly string[] = [
   'list_changes',
   'list_my_work',
   'list_assets',
+  // A2
+  'list_surveys',
+  'list_measurements',
+  'get_volume',
+  'rank_locations',
+  'list_detections',
+  'list_jobs',
+  'thermal_summary',
+  'list_walks',
+  'list_actions',
 ];
 
 export const rank = (s: EvalLevel): number => (s === 'uncertain' ? -1 : s);

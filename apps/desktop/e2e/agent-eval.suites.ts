@@ -67,6 +67,21 @@ export const notFound =
     return null;
   };
 
+/** `tool` ran to the end in the last reply. */
+const ran =
+  (tool: string) =>
+  (s: EvalState): string | null =>
+    s.toolCalls.includes(tool) ? null : `${tool} did not run (${list(s.toolCalls)})`;
+
+/** A step of `tool` ran on menu action `action`. */
+const ranAction = (s: EvalState, action: string): boolean =>
+  s.steps.some(
+    (p) =>
+      p.name === 'run_action' &&
+      p.status === 'done' &&
+      (p.input as { action?: string } | undefined)?.action === action,
+  );
+
 /** The reply names a figure within `tol` (0.05 is five percent) of `value`. */
 const saysFigure =
   (what: string, value: number, tol: number) =>
@@ -184,6 +199,41 @@ export function moreTankFarmCases(demo: DemoFacts): EvalCase[] {
     },
     { ask: 'Take me to tank T-999', expect: notFound('tank T-999') },
     { ask: 'Show me the findings from the 2019 survey', expect: notFound('2019 survey') },
+
+    // A2: the right-click actions through run_action, in one conversation, and the read tools
+    {
+      ask: 'Hide all layers',
+      expect: (s) =>
+        s.hidden.length === 0
+          ? `no layer is hidden (${list(s.steps.map((p) => `${p.name} ${p.status}`))})`
+          : ranAction(s, 'project.hideAll') || s.toolCalls.includes('run_action')
+            ? null
+            : `the layers were hidden without the menu action (${list(s.toolCalls)})`,
+      then: [
+        {
+          ask: 'Show them again',
+          expect: (s) =>
+            s.hidden.length > 0 ? `${String(s.hidden.length)} layers are still hidden` : null,
+        },
+      ],
+    },
+    {
+      ask: 'Where do the findings gather? Rank the places, worst first',
+      expect: (s) =>
+        ran('rank_locations')(s) ??
+        (s.screen !== 'scene' ? `the screen changed to ${s.screen}` : null),
+    },
+    { ask: 'Which processing jobs ran in this project?', expect: ran('list_jobs') },
+    {
+      // the tank farm has no thermal photos: the agent says so and shows nothing
+      ask: 'Show me the thermal hot spots',
+      expect: notFound('thermal hot spots'),
+    },
+    {
+      // nor any walk-through video
+      ask: 'Open the walk-through video of the pump house',
+      expect: notFound('walk-through video'),
+    },
   ];
 }
 
@@ -201,6 +251,8 @@ export interface ChangeFacts {
   laterCodes: string[];
   /** The stockpile that grew between the dates: its fill, m³. */
   stockpileFillM3: number;
+  /** Detections accepted on both dates together (the survey markers). */
+  acceptedDetections: number;
 }
 
 export function checkChangeDemo(f: ChangeFacts): string[] {
@@ -265,6 +317,29 @@ export function changeCases(f: ChangeFacts): EvalCase[] {
       ask: 'How much material was added to the stockpile between the two surveys?',
       expect: saysChange('the stockpile', f.stockpileFillM3, 0.15),
       gap: 'A2',
+    },
+    // A2: survey dates and detections through their read tools
+    {
+      ask: 'List the survey dates of this project',
+      expect: (s) =>
+        ran('list_surveys')(s) ??
+        (namesDates(s.reply, f.dates) ? null : `the reply does not name ${f.dates.join(', ')}`),
+    },
+    {
+      ask: 'Bring the earliest survey into view',
+      expect: (s) => {
+        const step = s.steps.find((p) => p.name === 'set_survey_date');
+        if (step?.status !== 'done')
+          return `set_survey_date did not run (${list(s.steps.map((p) => `${p.name} ${p.status}`))})`;
+        const first = f.dates[0] ?? '';
+        return namesDates(s.reply, [first]) ? null : `the reply does not name ${first}`;
+      },
+    },
+    {
+      ask: 'How many detections were accepted in this project?',
+      expect: (s) =>
+        ran('list_detections')(s) ??
+        saysFigure('the accepted detections', f.acceptedDetections, 0)(s),
     },
     { ask: 'Show me the survey from January 2025', expect: notFound('survey from January 2025') },
     { ask: 'How many issues did the June survey find?', expect: notFound('June survey') },
@@ -350,6 +425,12 @@ export function quarryCases(f: QuarryFacts): EvalCase[] {
         { ask: 'And SP2?', expect: saysFigure('SP2', sp2?.volumeM3 ?? NaN, 0.05), gap: 'A1, A2' },
       ],
     },
+    // A2: the measurement and volume read tools themselves
+    {
+      ask: 'List the measurements of this project',
+      expect: (s) => ran('list_measurements')(s) ?? mentions('SP1')(s),
+    },
+    { ask: 'Give me the stockpile volumes per survey', expect: ran('get_volume') },
     { ask: 'What is the volume of Stockpile SP9?', expect: notFound('Stockpile SP9') },
     {
       ask: 'Delete every stockpile measurement',
