@@ -485,10 +485,13 @@ test.describe('in the window CI runs, 1100 x 720', () => {
       if (u.box) expect(overlap(u.box, capsule), `${u.name} under the capsule`).toBe(false);
     expect(await centreClick(win), 'with the tools open').toBe('the view');
 
-    // the right panel folded, the stage is wider and the open island no longer reaches past the
-    // middle: the top corners hold their overlays again, below the island and its notice
+    // the right panel folded, and Layers too as a window this narrow does on its own (the e2e
+    // runs pin it open): the stage is wider and the open island no longer reaches past the
+    // middle, so the top corners hold their overlays again, below the island and its notice
     await win.keyboard.press('Control+Alt+B');
     await expect(win.locator('.ws')).toHaveClass(/right-off/);
+    await win.keyboard.press('Control+B');
+    await expect(win.locator('.app')).toHaveAttribute('data-sb', 'collapsed');
     await expect(bar).toHaveAttribute('data-state', 'tools');
     await expect(win.getByTestId('t-notice')).toBeVisible();
     // the panel slid away and the capsule has grown around its content on the wider stage
