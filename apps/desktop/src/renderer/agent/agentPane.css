@@ -69,3 +69,24 @@
 .right > .rp-split .agent > .agent-body[hidden] {
   display: none;
 }
+
+/* The agent's header in the right panel at its narrow width (300 px below a 1280 px window, UI
+   revision D1): the bound view's chip keeps its whole window name ("3D view"). The "Agent"
+   heading steps out of sight but stays for screen readers; the gaps tighten. */
+.right .aio-agent {
+  container-type: inline-size;
+}
+@container (max-width: 339px) {
+  .right .aio-agent .ag-h {
+    gap: var(--sp-2);
+    padding-inline: var(--sp-4) var(--sp-2);
+  }
+  .right .aio-agent .ag-h > h3 {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
