@@ -80,6 +80,32 @@ def test_cast_budget_200k_points_100_rays() -> None:
     t0 = time.perf_counter()
     hits = frames.cast(pts, np.zeros((100, 3)), d)
     elapsed = time.perf_counter() - t0
-    print(f"cast 200k points, 100 rays: {elapsed:.2f}s")
     assert hits.shape == (100,)
     assert elapsed < 20
+
+
+def test_grid_subsample_collapses_cells() -> None:
+    pts = np.array([[0.001, 0.001, 0.001], [0.004, 0.006, 0.002], [0.5, 0.5, 0.5], [-0.3, 0, 1]])
+    out = frames._grid_subsample(pts)
+    assert len(out) == 3
+    assert np.allclose(out[0], pts[0])
+
+
+def test_cast_with_subsampling_matches(monkeypatch) -> None:
+    ys, zs = np.meshgrid(np.linspace(-2, 2, 200), np.linspace(-2, 2, 200))
+    wall = np.column_stack([np.full(ys.size, 5.0), ys.ravel(), zs.ravel()])
+    wall = np.vstack([wall, wall + 0.002])
+    o = np.zeros((1, 3))
+    d = np.array([[1.0, 0, 0]])
+    before = frames.cast(wall, o, d)
+    monkeypatch.setattr(frames, "_GRID_ABOVE", 10)
+    after = frames.cast(wall, o, d)
+    assert abs(after[0] - before[0]) <= 0.01
+    assert abs(after[0] - 5.0) <= 0.03
+
+
+def test_grid_subsample_2m_points_is_fast() -> None:
+    pts = np.random.default_rng(2).uniform(0, 50, (2_000_000, 3))
+    t0 = time.perf_counter()
+    frames._grid_subsample(pts)
+    assert time.perf_counter() - t0 < 5

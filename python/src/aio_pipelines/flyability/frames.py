@@ -73,9 +73,13 @@ def camera_from_body(
 
 
 def _grid_subsample(points: np.ndarray, cell: float = 0.01) -> np.ndarray:
+    """Keep one point per grid cell (the first), with cell indices packed into one int64."""
     keys = np.floor(points / cell).astype(np.int64)
-    _, idx = np.unique(keys, axis=0, return_index=True)
-    return points[idx]
+    keys -= keys.min(axis=0)
+    ny, nz = int(keys[:, 1].max()) + 1, int(keys[:, 2].max()) + 1
+    flat = (keys[:, 0] * ny + keys[:, 1]) * nz + keys[:, 2]
+    _, idx = np.unique(flat, return_index=True)
+    return points[np.sort(idx)]
 
 
 def cast(
@@ -87,7 +91,10 @@ def cast(
     """First-hit distance per ray through a point cloud, nan for no hit.
 
     Marches each ray from 0.1 m in 0.02 m steps; a step hits when a point lies within
-    0.03 + 0.005 * t of it. Clouds over 5 M points are first thinned to a 1 cm grid.
+    0.03 + 0.005 * t of it. The ball reaches up to its radius ahead of the surface, so the
+    distance is refined to the mean along-ray position of the points found (clamped to
+    t +/- radius). A zero-length direction gives nan. Clouds over 5 M points are first
+    thinned to a 1 cm grid.
     """
     points = np.asarray(points, dtype=float)
     origins = np.asarray(origins, dtype=float).reshape(-1, 3)
