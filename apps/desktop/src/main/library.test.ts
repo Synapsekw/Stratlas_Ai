@@ -229,6 +229,13 @@ describe('library store and addToLibrary', () => {
     const two = await addToLibrary(exp, store, registry, dataRoot, packV, true);
     expect(await readdir(join(dataRoot, 'projects'))).toHaveLength(1);
     expect(one.ok && two.ok && two.entry.id).toBe(one.ok ? one.entry.id : '');
+    // the note holds hashes, never the folder path
+    const note = await readFile(
+      join(one.ok ? one.entry.path : '', 'flyability-source.json'),
+      'utf8',
+    );
+    expect(JSON.parse(note)).toMatchObject({ schema: 'aio.flyability-source/1' });
+    expect(note).not.toContain('export');
     // another export still gets its own project
     const other = join(base, 'export2');
     await writeInspectorFixture(other);

@@ -716,6 +716,14 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'imports/flyability/<space>/clouds.json',
     since: '0.21',
   },
+  // local note of the export folder a project was made for (hashed; never packed)
+  {
+    family: 'aio.flyability-source',
+    version: 1,
+    home: 'project',
+    where: 'flyability-source.json',
+    since: '0.28',
+  },
 ];
 
 /**

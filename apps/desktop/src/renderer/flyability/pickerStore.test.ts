@@ -57,7 +57,7 @@ describe('inspector picker store', () => {
     await openInspectorPicker('/exp');
     expect(picker.getState().path).toBeNull();
     expect(toastQueue().map((x) => [x.tone, x.message])).toEqual([
-      ['error', 'Could not read this export.'],
+      ['error', 'Could not open this folder as a Flyability Inspector export.'],
     ]);
   });
 
@@ -77,6 +77,16 @@ describe('inspector picker store', () => {
       inspector: { inspections: [{ id: 'a', flights: ['a1'] }] },
     });
     expect(picker.getState().path).toBeNull();
+  });
+
+  it('an import that throws shows an error toast', async () => {
+    h.call.mockResolvedValue({ ok: true, value: { ok: true, scan } });
+    h.importFiles.mockRejectedValueOnce(new Error('disk gone'));
+    await openInspectorPicker('/exp');
+    await confirmInspectorPicker();
+    expect(toastQueue().map((x) => [x.tone, x.message, x.detail])).toEqual([
+      ['error', 'Could not start the import.', 'disk gone'],
+    ]);
   });
 
   it('a scan that comes back after a close opens nothing', async () => {

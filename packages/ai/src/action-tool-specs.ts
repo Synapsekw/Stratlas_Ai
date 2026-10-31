@@ -48,6 +48,7 @@ export const AGENT_ACTIONS: Readonly<Record<string, AgentActionEntry>> = {
   // the project row
   'project.addData': { exclude: PICKS_FILES },
   'project.addPanos': { exclude: PICKS_FILES },
+  'project.addInspector': { exclude: PICKS_FILES },
   'project.addDrawing': { exclude: PICKS_FILES },
   'project.addSurveyDate': { exclude: 'Asks the person for the date in a field.' },
   'project.showAll': VIEW,

@@ -36,6 +36,8 @@ const SKIP = [
   /^manifest\.json$/,
   /^aio-package\.json$/,
   /^IMPORT-REPORT\.md$/i,
+  // Which export folder a Flyability project was made for (hashed, local to this computer).
+  /^flyability-source\.json$/,
   /\.(bak|tmp|part|partial|aio)$/i,
   // Copies kept aside by data fixes: `manifest.before-copc.json`, `video.before-1080/`, and
   // proxies being staged in `video.next-1080/`.

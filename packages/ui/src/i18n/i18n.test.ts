@@ -707,6 +707,8 @@ describe('the flyability strings', () => {
       'fly.picker.scanning',
       'fly.picker.scanFailed',
       'fly.picker.none',
+      'fly.picker.noData',
+      'fly.picker.importFailed',
       'fly.addData',
       'fly.library.tip',
       'fly.space.all',
@@ -725,7 +727,8 @@ describe('the flyability strings', () => {
     for (const k of keys) expect(t(k), k).not.toBe(k);
     expect(t('fly.picker.findings', { count: 1 })).toBe('1 finding');
     expect(t('fly.picker.findings', { count: 3 })).toBe('3 findings');
-    expect(t('fly.queued', { count: 2 })).toMatch(/^2 /);
+    expect(t('fly.queued', { count: 2 })).toMatch(/^Importing 2 Inspector exports/);
+    expect(t('fly.picker.more', { count: 2 })).toContain('other 2 exports');
     expect(t('fly.check.wall', { wall: 'W1', hit: 'A' })).toContain('W1');
     expect(t('fly.map.local')).toBe('No map: this space has its own frame');
     expect(t('fly.move.prompt')).toBe('Click the point cloud where the finding is. Esc cancels.');

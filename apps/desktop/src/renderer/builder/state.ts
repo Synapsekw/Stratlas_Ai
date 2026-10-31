@@ -14,7 +14,6 @@ import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { finishStagedDrawings } from '../drawings/importFlow';
 import { drawings } from '../drawings/store';
-import { openInspectorPicker } from '../flyability/pickerStore';
 import { openPanoScan, panoImport } from '../panos/panos';
 import { fisheyeSkipNote } from '../panos/skipText';
 import { bridge, shell } from '../shell';
@@ -509,22 +508,31 @@ async function runImport(
 
 /**
  * An Inspector export dropped without a choice comes back as a skipped `flyability` item: the
- * picker opens on its folder. One still waiting for the pipeline tools says it is running.
+ * picker opens on its folder. A cancelled import opens nothing, and a queued export needs no
+ * notice of its own (the import card lists it as Queued). With several exports in one drop the
+ * first is asked and a notice says to drop the others again afterwards. The picker store imports
+ * this one, so it is loaded when needed.
  */
 function flyabilityFollowUp(
   items: readonly ImportItem[],
   paths: readonly string[],
   opts: ImportOptions | undefined,
+  cancelled: boolean,
 ): void {
-  const flies = items.filter((i) => i.kind === 'flyability');
-  if (flies.length === 0) return;
-  const queued = flies.filter((i) => i.status === 'queued').length;
-  if (queued > 0) toast(t('fly.queued', { count: queued }), { testId: 'flyability-queued' });
-  if (opts?.inspector) return;
-  const ask = flies.find((i) => i.status === 'skipped');
+  if (opts?.inspector || cancelled) return;
+  const asks = items.filter((i) => i.kind === 'flyability' && i.status === 'skipped');
+  const ask = asks[0];
   if (!ask) return;
-  const path = paths.find((p) => p.split(/[\\/]/).pop() === ask.file) ?? paths[0];
-  if (path !== undefined) void openInspectorPicker(path);
+  const last = (p: string) =>
+    p
+      .replace(/[\\/]+$/, '')
+      .split(/[\\/]/)
+      .pop();
+  const path = paths.find((p) => last(p) === ask.file) ?? paths[0];
+  if (path === undefined) return;
+  if (asks.length > 1)
+    toast(t('fly.picker.more', { count: asks.length - 1 }), { testId: 'flyability-more' });
+  void import('../flyability/pickerStore').then((m) => m.openInspectorPicker(path));
 }
 
 /** Main imports the files (`importing` is set), then the drawing pages are drawn here. */
@@ -589,7 +597,7 @@ async function importNow(
     builder.setState({ importing: null, importResult: null });
     return;
   }
-  flyabilityFollowUp(r.value.items, paths, opts);
+  flyabilityFollowUp(r.value.items, paths, opts, cancelled);
   // the result of this import: its rows are only ever changed in it, never in a later one
   let result: NonNullable<BuilderState['importResult']> = {
     items: r.value.items,

@@ -9,6 +9,7 @@ import {
   type LibraryEntry,
   type ProjectManifest,
 } from '@aio/schema';
+import { createHash } from 'node:crypto';
 import { readdir, rm, stat } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 import { z } from 'zod';
@@ -355,11 +356,14 @@ export async function listLibrary(o: {
  */
 const INSPECTOR_SOURCE_FILE = 'flyability-source.json';
 
+/** Only a hash of the folder path is kept: the note travels nowhere, but holds no local path. */
+const sourceHash = (p: string): string => createHash('sha256').update(sameKey(p)).digest('hex');
+
 async function readInspectorSources(root: string): Promise<string[]> {
   try {
-    const raw = (await readJson(join(root, INSPECTOR_SOURCE_FILE))) as { paths?: unknown };
-    return Array.isArray(raw.paths)
-      ? raw.paths.filter((p): p is string => typeof p === 'string')
+    const raw = (await readJson(join(root, INSPECTOR_SOURCE_FILE))) as { sha256?: unknown };
+    return Array.isArray(raw.sha256)
+      ? raw.sha256.filter((p): p is string => typeof p === 'string')
       : [];
   } catch {
     return [];
@@ -399,7 +403,7 @@ async function projectForInspectorExport(
     const scan = await lib.scanInspectorExport(found, null);
     // the same export dropped again goes to the project that already holds its inspections
     const wanted = new Set(scan.inspections.map((i) => i.id));
-    const here = new Set([sameKey(dir), sameKey(found)]);
+    const here = new Set([sourceHash(dir), sourceHash(found)]);
     for (const e of await listLibrary({ dataRoot, extraPaths: [], registry })) {
       const m = await readManifest(e.path);
       if (
@@ -410,7 +414,7 @@ async function projectForInspectorExport(
       )
         return { root: e.path, existing: true };
       // a project made for this folder whose picker was cancelled has no space yet
-      if ((await readInspectorSources(e.path)).some((p) => here.has(sameKey(p))))
+      if ((await readInspectorSources(e.path)).some((h) => here.has(h)))
         return { root: e.path, existing: true };
     }
     const asset = (scan.asset ?? '').trim();
@@ -428,7 +432,8 @@ async function projectForInspectorExport(
       { local: 'flyability' },
     );
     await writeJsonAtomic(join(made.root, INSPECTOR_SOURCE_FILE), {
-      paths: [resolve(dir), resolve(found)],
+      schema: 'aio.flyability-source/1',
+      sha256: [sourceHash(dir), sourceHash(found)],
     }).catch(async (e: unknown) => {
       await rm(made.root, { recursive: true, force: true });
       throw e;

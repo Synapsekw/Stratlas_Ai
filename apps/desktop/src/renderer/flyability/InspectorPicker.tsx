@@ -65,6 +65,7 @@ export function InspectorPickerHost() {
                     onChange={() => {
                       toggleInspectionTick(i.id);
                     }}
+                    aria-describedby={i.importedAs !== null ? `inspector-merge-${i.id}` : undefined}
                     data-testid={`inspector-tick-${i.id}`}
                   />
                   <span className="fly-insp-name">{i.name}</span>
@@ -73,7 +74,11 @@ export function InspectorPickerHost() {
                   <span>{i.mergedCloud ? t('fly.picker.merged') : t('fly.picker.noMerged')}</span>
                   <span>{t('fly.picker.findings', { count: i.findings })}</span>
                   {i.importedAs !== null && (
-                    <span className="fly-insp-merge" data-testid={`inspector-imported-${i.id}`}>
+                    <span
+                      id={`inspector-merge-${i.id}`}
+                      className="fly-insp-merge"
+                      data-testid={`inspector-imported-${i.id}`}
+                    >
                       {t('fly.picker.imported')}
                     </span>
                   )}
@@ -94,7 +99,9 @@ export function InspectorPickerHost() {
                           />
                           <span>{f.name}</span>
                         </label>
-                        <span className="fly-flight-note">{t(ALIGNED[f.aligned])}</span>
+                        <span className="fly-flight-note" data-testid={`inspector-note-${f.id}`}>
+                          {importable(f) ? t(ALIGNED[f.aligned]) : t('fly.picker.noData')}
+                        </span>
                       </li>
                     ))}
                   </ul>

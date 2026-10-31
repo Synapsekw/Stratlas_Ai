@@ -765,24 +765,58 @@ describe('pickAndImportFolder', () => {
 });
 
 describe('importFiles, Flyability Inspector exports', () => {
-  const answer = (status: 'skipped' | 'queued') => ({
+  const answer = (status: 'skipped' | 'queued', files: string[] = ['export']) => ({
     ok: true,
     value: {
       ok: true,
       manifest: { layers: [], captures: [] },
-      items: [{ file: 'export', kind: 'flyability', status }],
+      items: files.map((file) => ({ file, kind: 'flyability', status })),
     },
   });
-  const run = (status: 'skipped' | 'queued') => {
+  const run = (status: 'skipped' | 'queued', files?: string[]) => {
     call.mockImplementation((channel: string) =>
-      Promise.resolve(channel === 'builder:altitudePlan' ? planned(plan()) : answer(status)),
+      Promise.resolve(channel === 'builder:altitudePlan' ? planned(plan()) : answer(status, files)),
     );
   };
 
   it('an export without a choice opens the picker on its path', async () => {
     run('skipped');
     await b().importFiles(['D:\\drops\\export']);
-    expect(openInspectorPicker).toHaveBeenCalledWith('D:\\drops\\export');
+    await vi.waitFor(() => {
+      expect(openInspectorPicker).toHaveBeenCalledWith('D:\\drops\\export');
+    });
+  });
+
+  it('a folder dropped with a trailing separator still finds its path', async () => {
+    run('skipped');
+    await b().importFiles(['D:\\drops\\export\\']);
+    await vi.waitFor(() => {
+      expect(openInspectorPicker).toHaveBeenCalledWith('D:\\drops\\export\\');
+    });
+  });
+
+  it('a cancelled import opens no picker', async () => {
+    call.mockImplementation((channel: string) => {
+      if (channel === 'builder:altitudePlan') return Promise.resolve(planned(plan()));
+      // Cancel is pressed while main works: the flag is set when main answers
+      builder.setState({ cancelling: true });
+      return Promise.resolve(answer('skipped'));
+    });
+    await b().importFiles(['/drops/export']);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(openInspectorPicker).not.toHaveBeenCalled();
+  });
+
+  it('several exports in one drop: the first is asked and a notice says so', async () => {
+    run('skipped', ['one', 'two', 'three']);
+    await b().importFiles(['/drops/one', '/drops/two', '/drops/three']);
+    await vi.waitFor(() => {
+      expect(openInspectorPicker).toHaveBeenCalledTimes(1);
+    });
+    expect(openInspectorPicker).toHaveBeenCalledWith('/drops/one');
+    expect(toastQueue().map((x) => x.message)).toEqual([
+      'Choose from this export first. Drop the other 2 exports again afterwards.',
+    ]);
   });
 
   it('a choice goes to main with the import and opens no picker', async () => {
@@ -793,12 +827,14 @@ describe('importFiles, Flyability Inspector exports', () => {
     expect(openInspectorPicker).not.toHaveBeenCalled();
   });
 
-  it('a queued flyability item says the import is running', async () => {
+  it('a queued flyability item opens no picker and adds no toast (the card lists it)', async () => {
     run('queued');
     await b().importFiles(['/drops/export'], undefined, {
       inspector: { inspections: [{ id: 'a' }] },
     });
+    await new Promise((r) => setTimeout(r, 20));
     expect(openInspectorPicker).not.toHaveBeenCalled();
-    expect(toastQueue().map((x) => x.message)).toEqual(['1 export is waiting to be chosen.']);
+    expect(toastQueue()).toEqual([]);
+    expect(b().importResult?.items[0]?.status).toBe('queued');
   });
 });

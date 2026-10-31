@@ -42,6 +42,9 @@ const scan: InspectorScan = {
   ],
 };
 
+const second = scan.inspections.find((i) => i.id === 'b');
+if (!second) throw new Error('fixture');
+
 let root: Root;
 let host: HTMLElement;
 const byId = (id: string) => host.ownerDocument.querySelector<HTMLElement>(`[data-testid="${id}"]`);
@@ -85,6 +88,31 @@ describe('inspector picker', () => {
     expect((byId('inspector-tick-b') as HTMLInputElement).checked).toBe(false);
     // the flight with a cloud only still ticks
     expect((byId('inspector-flight-g0') as HTMLInputElement).disabled).toBe(false);
+  });
+
+  it('says why a flight cannot be ticked, and ties the merge note to its tick', () => {
+    picker.setState({
+      path: '/exp',
+      scan: {
+        ...scan,
+        inspections: [
+          {
+            ...second,
+            flights: [{ id: 'g0', name: 'Empty', cloud: false, path: false, aligned: 'transform' }],
+          },
+        ],
+      },
+      choice: initialChoice(scan),
+    });
+    act(() => {
+      root.render(<InspectorPickerHost />);
+    });
+    expect((byId('inspector-flight-g0') as HTMLInputElement).disabled).toBe(true);
+    expect(byId('inspector-note-g0')?.textContent).toBe('No point cloud or path');
+    expect(byId('inspector-tick-b')?.getAttribute('aria-describedby')).toBe('inspector-merge-b');
+    expect(document.getElementById('inspector-merge-b')?.textContent).toBe(
+      'Already imported, will merge',
+    );
   });
 
   it('Import is off with nothing ticked, and sends the choice when on', () => {

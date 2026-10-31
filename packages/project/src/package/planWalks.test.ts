@@ -35,6 +35,13 @@ const files: SourceFile[] = [
   { path: '.trash/20261012T081530Z-vid-3/playback.mp4', size: 6000 },
 ];
 
+describe('planPackage and the Flyability source note', () => {
+  it('never packs flyability-source.json', () => {
+    const p = planPackage(manifest, [...files, { path: 'flyability-source.json', size: 90 }], []);
+    expect(p.members.map((m) => m.path)).not.toContain('flyability-source.json');
+  });
+});
+
 describe('planPackage and walks', () => {
   it('carries the finished walk whole, as files no layer owns', () => {
     const p = planPackage(manifest, files, []);

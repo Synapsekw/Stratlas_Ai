@@ -78,5 +78,13 @@ export async function confirmInspectorPicker(): Promise<void> {
   const inspector = selectionOf(choice, scan);
   if (inspector === null) return;
   closeInspectorPicker();
-  await builder.getState().importFiles([path], undefined, { inspector });
+  try {
+    await builder.getState().importFiles([path], undefined, { inspector });
+  } catch (e) {
+    toast(t('fly.picker.importFailed'), {
+      tone: 'error',
+      detail: e instanceof Error ? e.message : String(e),
+      testId: 'inspector-import-failed',
+    });
+  }
 }

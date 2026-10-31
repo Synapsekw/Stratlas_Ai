@@ -10,6 +10,13 @@ import { DRAG_TYPE } from './libraryFolderModel';
 import { photoUi } from '../photogrammetry/store';
 import { createMapsIn, ProjectsScreen } from './Projects';
 
+const flyFlag = vi.hoisted(() => ({ on: false }));
+vi.mock('@aio/project/flags', () => ({
+  get FLYABILITY_IMPORT_UI() {
+    return flyFlag.on;
+  },
+}));
+
 /** The value, or a failed test when it is missing. */
 function must<T>(v: T | null | undefined): T {
   if (v === null || v === undefined) throw new Error('missing in the test page');
@@ -210,5 +217,29 @@ describe('Create maps from a library card', () => {
       setAnnotateReadOnly(true);
     });
     expect(await run()).toBe(0);
+  });
+});
+
+describe('the Add project folder tip for Flyability exports', () => {
+  const tips = () =>
+    [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .filter((b) => b.textContent.includes('Add project folder'))
+      .map((b) => b.title);
+  const draw = () => {
+    act(() => root?.render(<ProjectsScreen />));
+  };
+
+  it('is on the buttons with the flag on', () => {
+    flyFlag.on = true;
+    draw();
+    flyFlag.on = false;
+    expect(tips().length).toBeGreaterThan(0);
+    for (const tip of tips()) expect(tip).toContain('Flyability Inspector export');
+  });
+
+  it('is absent with the flag off', () => {
+    flyFlag.on = false;
+    draw();
+    for (const tip of tips()) expect(tip).toBe('');
   });
 });
