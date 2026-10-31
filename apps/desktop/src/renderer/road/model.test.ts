@@ -12,7 +12,9 @@ import {
   isRoadProject,
   pciRating,
   pointAtKm,
+  SEVERAL_TYPES,
   sortDefects,
+  typeChoice,
   type DefectRow,
 } from './model';
 
@@ -267,5 +269,14 @@ describe('defect rows', () => {
     expect(bins[0]?.total).toBe(3);
     expect(bins[1]?.total).toBe(0);
     expect(bins[1]?.fromKm).toBeCloseTo(0.1, 9);
+  });
+});
+
+describe('typeChoice', () => {
+  it('the Defect type list shows all, the one type, or several picked elsewhere', () => {
+    expect(typeChoice(null)).toBe('');
+    expect(typeChoice(new Set())).toBe('');
+    expect(typeChoice(new Set(['pothole']))).toBe('pothole');
+    expect(typeChoice(new Set(['pothole', 'rutting']))).toBe(SEVERAL_TYPES);
   });
 });

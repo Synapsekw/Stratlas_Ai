@@ -5,7 +5,14 @@ import { IssueCard } from '../issueCard/IssueCard';
 import { useCardFocusSeq } from '../issueCard/state';
 import { exportAllowed } from '../player';
 import { bridge, useShell } from '../shell';
-import { defectsCsv, pciRating, type DefectRow, type DefectSort } from './model';
+import {
+  defectsCsv,
+  pciRating,
+  SEVERAL_TYPES,
+  typeChoice,
+  type DefectRow,
+  type DefectSort,
+} from './model';
 import { setFilter, setRoad, useRoad } from './store';
 import { focusDefect, useFilteredDefects } from './useRoadMap';
 
@@ -204,7 +211,6 @@ function DefectFilters({ rows }: { rows: readonly DefectRow[] }) {
   const levels = useLevels();
   const classes = useClasses();
   const allSev = levels.map((l) => l.value);
-  const allCls = classes.map((c) => c.id);
   const active =
     filter.severities !== null ||
     filter.classes !== null ||
@@ -222,37 +228,46 @@ function DefectFilters({ rows }: { rows: readonly DefectRow[] }) {
           setFilter({ search: e.target.value });
         }}
       />
-      <div className="rr-chips" role="group" aria-label="Severity">
-        {levels.map((l) => (
-          <button
-            key={l.value}
-            type="button"
-            className="rr-chip"
-            aria-pressed={filter.severities?.has(l.value) ?? true}
-            onClick={() => {
-              setFilter({ severities: toggled(filter.severities, l.value, allSev) });
-            }}
-          >
-            <i className="rr-dot" style={{ background: l.color }} />
-            {l.label}
-          </button>
-        ))}
-      </div>
-      <div className="rr-chips" role="group" aria-label="Defect type">
-        {classes.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            className="rr-chip"
-            aria-pressed={filter.classes?.has(c.id) ?? true}
-            onClick={() => {
-              setFilter({ classes: toggled(filter.classes, c.id, allCls) });
-            }}
-          >
-            <i className="rr-dot" style={{ background: c.color }} />
-            {c.label}
-          </button>
-        ))}
+      <div className="rr-filter-row">
+        <div className="rr-chips" role="group" aria-label="Severity">
+          {levels.map((l) => (
+            <button
+              key={l.value}
+              type="button"
+              className="rr-chip"
+              aria-pressed={filter.severities?.has(l.value) ?? true}
+              onClick={() => {
+                setFilter({ severities: toggled(filter.severities, l.value, allSev) });
+              }}
+            >
+              <i className="rr-dot" style={{ background: l.color }} />
+              {l.label}
+            </button>
+          ))}
+        </div>
+        {/* the types in a list: a road can hold a dozen of them, too many for a wall of chips */}
+        <select
+          className="rr-sort rr-type-pick"
+          aria-label="Defect type"
+          value={typeChoice(filter.classes)}
+          onChange={(e) => {
+            const id = e.target.value;
+            if (id === SEVERAL_TYPES) return;
+            setFilter({ classes: id ? new Set([id]) : null });
+          }}
+        >
+          <option value="">All types</option>
+          {typeChoice(filter.classes) === SEVERAL_TYPES && (
+            <option value={SEVERAL_TYPES} disabled>
+              {nf.format(filter.classes?.size ?? 0)} types
+            </option>
+          )}
+          {classes.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.label}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="rr-count">
         <span data-testid="defect-count">

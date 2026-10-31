@@ -314,3 +314,13 @@ export function chainageBins(
   }
   return bins;
 }
+
+/** The Defect type list's value when more than one type is picked (from elsewhere). */
+export const SEVERAL_TYPES = '*several';
+
+/** What the Defect type list shows for a class filter: all, the one type, or several. */
+export function typeChoice(classes: ReadonlySet<string> | null): string {
+  if (classes === null || classes.size === 0) return '';
+  if (classes.size === 1) return [...classes][0] ?? '';
+  return SEVERAL_TYPES;
+}

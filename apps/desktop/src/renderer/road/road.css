@@ -288,6 +288,16 @@
   flex-wrap: wrap;
   gap: 4px;
 }
+.rr-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.rr-type-pick {
+  margin-inline-start: auto;
+  max-width: 100%;
+}
 .rr-chip {
   display: inline-flex;
   align-items: center;

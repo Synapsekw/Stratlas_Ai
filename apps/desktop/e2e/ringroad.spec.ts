@@ -98,6 +98,15 @@ test('@realdata the Ring Road opens in the native road workspace with its map ov
   await win.getByRole('group', { name: 'Severity' }).getByRole('button', { name: 'Low' }).click();
   await expect(win.getByTestId('defect-count')).toHaveText('29 of 2,115 defects');
   await win.getByRole('button', { name: 'Reset' }).click();
+  // the defect types in one list, not a wall of chips: one type, then Reset shows all again
+  await expect(win.locator('.rr-chips[aria-label="Defect type"]')).toHaveCount(0);
+  const type = win.getByRole('combobox', { name: 'Defect type' });
+  await expect(type).toHaveValue('');
+  await type.selectOption({ index: 1 });
+  await expect(win.getByTestId('defect-count')).not.toHaveText('2,115 of 2,115 defects');
+  await expect(win.getByTestId('defect-count')).toHaveText(/^[\d,]+ of 2,115 defects$/);
+  await win.getByRole('button', { name: 'Reset' }).click();
+  await expect(type).toHaveValue('');
 
   // Dragging on the ruler filters a chainage range.
   const track = win.getByRole('slider', { name: 'Chainage, km' });
