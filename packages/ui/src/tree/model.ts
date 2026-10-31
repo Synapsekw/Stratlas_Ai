@@ -11,6 +11,7 @@ export type TreeGroupKind =
   | 'drawings'
   | 'video'
   | 'walks'
+  | 'flightlines'
   | 'photos'
   | 'panoramas'
   | 'annotations';
@@ -76,6 +77,7 @@ const GROUPS: { kind: TreeGroupKind; label: string; icon: IconName }[] = [
   { kind: 'drawings', label: 'Drawings', icon: 'drawing' },
   { kind: 'video', label: 'Video', icon: 'video' },
   { kind: 'walks', label: '360 walks', icon: 'pano' },
+  { kind: 'flightlines', label: 'Flight lines', icon: 'path' },
   { kind: 'photos', label: 'Photos', icon: 'photo' },
   { kind: 'panoramas', label: 'Panoramas', icon: 'pano' },
   { kind: 'annotations', label: 'Annotations', icon: 'anno' },
@@ -91,8 +93,7 @@ const groupOf: Record<Layer['kind'], TreeGroupKind> = {
   vector: 'maps',
   video: 'video',
   walk: 'walks',
-  // a flight line sits with the models of its space, drawn as a path
-  flightline: 'models',
+  flightline: 'flightlines',
   photos: 'photos',
   panoramas: 'panoramas',
 };
@@ -199,6 +200,10 @@ function metaOf(layer: Layer, durations: Readonly<Record<string, number>>): stri
     case 'vector':
       return 'GeoJSON';
     case 'video': {
+      const d = durations[layer.id];
+      return d !== undefined ? formatDuration(d) : undefined;
+    }
+    case 'flightline': {
       const d = durations[layer.id];
       return d !== undefined ? formatDuration(d) : undefined;
     }

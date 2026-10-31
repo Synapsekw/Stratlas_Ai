@@ -62,6 +62,7 @@ export function knowsWhere(l: Layer): boolean {
     case 'pointcloud':
     case 'raster':
     case 'vector':
+    case 'flightline':
       return true;
     case 'panoramas':
     case 'photos':
@@ -108,6 +109,8 @@ export async function layerBounds(layerId: string, deps: BoundsDeps): Promise<Bo
     case 'vector':
     case 'walk':
       return deps.fileExtent(l.id);
+    case 'flightline':
+      return deps.sceneBox(l.id) ?? deps.fileExtent(l.id);
     default:
       return null;
   }

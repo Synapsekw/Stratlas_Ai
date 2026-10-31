@@ -99,6 +99,29 @@ describe('a retired viewer layer in the dataset tree', () => {
   });
 });
 
+describe('flight lines in the dataset tree', () => {
+  it('flight lines have their own Layers group', () => {
+    const fl = {
+      kind: 'flightline',
+      id: 'fl1',
+      name: 'Flight 1',
+      visible: true,
+      src: { path: 'flyability/f1/flight.json' },
+      flight: 'f1',
+      bootStartS: 10,
+    } as unknown as Layer;
+    const base = mockManifest();
+    const tree = buildDatasetTree({ ...base, layers: [...base.layers, fl] }, [], { fl1: 83_000 });
+    const group = tree.find((g) => g.kind === 'flightlines');
+    expect(group?.label).toBe('Flight lines');
+    expect(group?.items.map((i) => i.layerId)).toEqual(['fl1']);
+    expect(group?.items[0]?.meta).toBe('1:23');
+    expect(tree.find((g) => g.kind === 'models')?.items.some((i) => i.layerId === 'fl1')).toBe(
+      false,
+    );
+  });
+});
+
 describe('flights in the dataset tree', () => {
   const clip = (n: number): Layer => ({
     kind: 'video',

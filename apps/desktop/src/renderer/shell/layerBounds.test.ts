@@ -59,13 +59,27 @@ const manifest = {
       items: [{ id: 'x', src: { path: 'x' }, pos: [5, 0, 5], headingDeg: 0 }],
     },
     { kind: 'basemap', id: 'bm', name: 'B', visible: true, pack: 'p', style: 'dark' },
+    {
+      kind: 'flightline',
+      id: 'fl',
+      name: 'F',
+      visible: true,
+      src: { path: 'f.json' },
+      flight: 'f',
+      bootStartS: 0,
+    },
   ],
 } as unknown as ProjectManifest;
 
 const deps = (over: Partial<BoundsDeps> = {}): BoundsDeps => ({
   manifest,
   orientation: null,
-  sceneBox: (id) => (id === 'm' ? { min: [-1, 0, -1], max: [1, 2, 1] } : null),
+  sceneBox: (id) =>
+    id === 'm'
+      ? { min: [-1, 0, -1], max: [1, 2, 1] }
+      : id === 'fl'
+        ? { min: [0, 1, 0], max: [3, 2, 4] }
+        : null,
   fileExtent: vi.fn((id: string): Promise<Box | null> =>
     Promise.resolve(id === 'dsm' ? { min: [-50, 0, -50], max: [50, 9, 50] } : null),
   ),
@@ -74,6 +88,10 @@ const deps = (over: Partial<BoundsDeps> = {}): BoundsDeps => ({
 });
 
 describe('layerBounds', () => {
+  it('a flight line fits its polyline', async () => {
+    expect(await layerBounds('fl', deps())).toEqual({ min: [0, 1, 0], max: [3, 2, 4] });
+  });
+
   it('reads models from the scene, photos from corrected positions, images from corners', async () => {
     expect(await layerBounds('m', deps())).toEqual({ min: [-1, 0, -1], max: [1, 2, 1] });
     expect(await layerBounds('ph', deps())).toEqual({ min: [10, 1, 10], max: [12, 3, 14] });
@@ -120,7 +138,7 @@ describe('layerBounds', () => {
 
   it('knows which kinds can say where they lie without reading files', () => {
     const ls = manifest.layers;
-    expect(ls.map((l) => knowsWhere(l))).toEqual([true, true, true, true, true, false]);
+    expect(ls.map((l) => knowsWhere(l))).toEqual([true, true, true, true, true, false, true]);
   });
 
   it('takes the ground from a ray only where a DSM covers the point', async () => {
