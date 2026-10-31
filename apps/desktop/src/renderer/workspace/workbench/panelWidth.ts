@@ -4,9 +4,10 @@
  * opening a tab or a section. Only "Expand panel" (a wide tool, Coverage or Thermal) asks for
  * more, and only while it is pressed. W12 folds this into the shell's bands (`layoutBands.ts`).
  */
-import { splitPrefs } from '@aio/ui';
+import { splitPrefs, type SplitPrefsState } from '@aio/ui';
 import { useEffect, useState } from 'react';
 import { useStore } from 'zustand';
+import type { StoreApi } from 'zustand/vanilla';
 
 export type PanelBand = 'wide' | 'mid' | 'narrow';
 
@@ -21,7 +22,8 @@ export interface RightBand {
 export const RIGHT_BANDS: Readonly<Record<PanelBand, RightBand>> = {
   wide: { px: 360, min: 320, max: 520 },
   mid: { px: 320, min: 300, max: 480 },
-  narrow: { px: 300, min: 280, max: 400 },
+  // below 1280 the panel stays docked at 300 px (founder, 30 Oct): no narrower by a drag
+  narrow: { px: 300, min: 300, max: 400 },
 };
 
 /** The band of a window width: 1440 px and up wide, 1280 to 1440 mid, below 1280 narrow. */
@@ -33,6 +35,23 @@ export function panelBandOf(width: number): PanelBand {
 
 /** The split prefs id that remembers the dragged width in this band. */
 export const rightSplitId = (band: PanelBand): string => `scene.right.${band}`;
+
+/** The one width the panel had before the bands (`scene.right`, any window size). */
+export const OLD_RIGHT_SPLIT_ID = 'scene.right';
+
+/**
+ * Carry a width dragged before the bands over once: into the wide band only (a window of 1440 px
+ * and more, where it was most likely dragged), held to that band's range; the narrower bands keep
+ * their fixed defaults. Nothing happens when the wide band has a width of its own already.
+ */
+export function migrateOldRightWidth(prefs: StoreApi<SplitPrefsState> = splitPrefs): void {
+  const { byId } = prefs.getState();
+  const old = byId[OLD_RIGHT_SPLIT_ID]?.size;
+  const wide = rightSplitId('wide');
+  if (old === undefined || !(old > 0) || byId[wide] !== undefined) return;
+  const b = RIGHT_BANDS.wide;
+  prefs.getState().save(wide, { size: Math.round(Math.min(b.max, Math.max(b.min, old))) });
+}
 
 export interface RightSplit {
   id: string;

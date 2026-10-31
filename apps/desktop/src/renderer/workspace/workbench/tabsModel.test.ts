@@ -331,10 +331,12 @@ describe('the four panel tabs (D2)', () => {
     expect(sectionsOf('tools', NO_PANEL_DATA).map((s) => s.id)).not.toContain('tools.coverage');
   });
 
-  it('marks Coverage and Thermal as wide (Expand panel), nothing else', () => {
+  it('marks Coverage, Thermal, Volumes and Changes as wide (Expand panel), nothing else', () => {
     expect(SECTIONS.filter((s) => s.wide).map((s) => s.id)).toEqual([
       'tools.coverage',
       'tools.thermal',
+      'project.volumes',
+      'project.changes',
     ]);
   });
 });

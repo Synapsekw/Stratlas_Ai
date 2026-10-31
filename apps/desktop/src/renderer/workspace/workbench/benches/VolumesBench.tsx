@@ -7,8 +7,9 @@
  *
  * A pile picked anywhere (a row here, 3D, the map, the sidebar) opens in the pile panel in place
  * of all of it, with "‹ Inventory" back. The surface, date, bodies and section line switches the
- * tab used to carry are gone: the stage's Show control and the notch carry them. The tab is at
- * least 470 px wide (D17, the workbench store's `minWidth`).
+ * tab used to carry are gone: the stage's Show control and the notch carry them. It is a section
+ * of the Project tab at the panel's band width; Expand panel widens it while pressed (UI revision
+ * D1, D2).
  */
 import { inventoryPiles } from '@aio/survey';
 import { useT, type MessageKey } from '@aio/ui';

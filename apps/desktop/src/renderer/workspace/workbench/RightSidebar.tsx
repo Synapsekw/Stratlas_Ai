@@ -30,19 +30,22 @@ import { useBenchFollow } from './benchFollow';
 import { useAnnotateFollow } from './benches/AnnotateBench';
 import { useDrawer } from './drawerStore';
 import { useSelectionShows } from './FrontBody';
-import { rightSplit, usePanelBand } from './panelWidth';
+import { migrateOldRightWidth, rightSplit, usePanelBand } from './panelWidth';
 import { TabBar } from './TabBar';
 import { LayersDisplayTab } from './tabs/LayersDisplayTab';
 import { ProjectTab } from './tabs/ProjectTab';
 import { SelectionTab } from './tabs/SelectionTab';
 import { ToolsTab } from './tabs/ToolsTab';
-import { sectionDef, sectionFor, type PanelTab, type TabId } from './tabsModel';
+import { sectionDef, sectionFor, tabOfSection, type PanelTab, type TabId } from './tabsModel';
 import { useWorkbenchView } from './view';
 import { useWorkbench, workbench } from './workbenchStore';
 // Agent pane: the agent below the panel's body, maximised, minimised or off (Task 18)
 import { AgentPane } from '../../agent/AgentPane';
 import { agentPane } from '../../agent/agentPaneStore';
 import './workbench.css';
+
+// a width dragged before the bands is carried into the wide band, once
+migrateOldRightWidth();
 
 // the bodies moved to FrontBody.tsx; re-exported for the layout spike and the drawer
 export { BenchHead, FrontBody } from './FrontBody';
@@ -134,7 +137,7 @@ export function useSidebarSplit(collapsed: boolean, hasProject: boolean) {
  * in Selection, Show changes brings Project > Changes, and a volumetric project opens on Project >
  * Volumes (W13's presets take this over).
  */
-function useFollow(front: TabId) {
+function useFollow(panel: PanelTab) {
   const focusSeq = useCardFocusSeq();
   const seenFocus = useRef(focusSeq);
   useEffect(() => {
@@ -162,8 +165,9 @@ function useFollow(front: TabId) {
     }
     if (seenVolumes.current === projectId) return;
     seenVolumes.current = projectId;
-    if (front === 'selection') workbench.getState().show('volumes');
-  }, [volumes, projectId, front]);
+    // from Selection, or within Project: a person who stayed on Tools or Layers is left there
+    if (panel === 'selection' || panel === 'project') workbench.getState().show('volumes');
+  }, [volumes, projectId, panel]);
 }
 
 /**
@@ -173,7 +177,24 @@ function useFollow(front: TabId) {
 export function ShowIt({ front }: { front: TabId }) {
   const t = useT();
   const attention = useWorkbench((s) => s.attention);
-  if (!attention || attention === front) return null;
+  const noted = useWorkbench((s) => s.noteSection);
+  if (!attention || attention === front) {
+    if (!noted) return null;
+    // a section with news that did not come forward (a finished detection run)
+    return (
+      <div className="wb-show-it" role="status" data-testid="wb-show-it">
+        <span>{t(sectionDef(noted)?.label ?? 'wb.heading')}</span>
+        <Button
+          variant="quiet"
+          onClick={() => {
+            workbench.getState().show(tabOfSection(noted), noted);
+          }}
+        >
+          {t('wb.showIt')}
+        </Button>
+      </div>
+    );
+  }
   return (
     <div className="wb-show-it" role="status" data-testid="wb-show-it">
       {/* the name of the section it waits in (Measure, not the old tab's "Project") */}
@@ -222,7 +243,7 @@ export function RightSidebar() {
   const road = useIsRoad();
   const { front } = useWorkbenchView();
   const tab = useWorkbench((s) => s.panel);
-  useFollow(front.id);
+  useFollow(tab);
   useBenchFollow();
   // Video, Annotate and Jobs benches: Annotate opens its section when the tools start
   useAnnotateFollow();

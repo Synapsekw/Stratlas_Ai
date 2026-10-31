@@ -248,11 +248,7 @@ export async function loadAntennas(projectId: string, root: string): Promise<voi
   if (offerAfterLoad?.projectId === projectId) {
     const { before } = offerAfterLoad;
     offerAfterLoad = null;
-    // the run's units are in Project > In this project (UI revision D2), not beside Detect
-    // antennas: that list comes forward, unless a tool is in front, as a pick in 3D does
-    const { tabs, front } = workbench.getState();
-    if (!toolInFront({ tabs, front, issueEditing: isIssueEditing() }))
-      workbench.getState().show('project', 'project.inThisProject');
+    followDetectionRun();
     offerAiLabels(projectId, before);
   }
   if (flagAfterLoad?.projectId === projectId) {
@@ -263,6 +259,20 @@ export async function loadAntennas(projectId: string, root: string): Promise<voi
 }
 
 // ---------------------------------------------------------------- the job
+
+/**
+ * A detection run's units are read in: they are in Project > In this project (UI revision D2),
+ * not beside Detect antennas. The list comes forward only while Tools > Measure (where the run
+ * was started) is still in front and no issue is being edited; anywhere else the person is left
+ * where they are and "Show it" names the list.
+ */
+export function followDetectionRun(bench: StoreApi<WorkbenchState> = workbench): void {
+  const b = bench.getState();
+  const section = 'project.inThisProject' as const;
+  if (b.panel === 'project' && b.sections[section] === true) return;
+  if (b.panel === 'tools' && b.front === 'measure' && !isIssueEditing()) b.show('project', section);
+  else b.note(section);
+}
 
 let watching = false;
 function watchJobs(): void {

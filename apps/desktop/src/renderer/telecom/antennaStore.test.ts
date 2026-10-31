@@ -13,8 +13,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toasts } from '../exports/exports';
 import { boxCropSelection } from './antennaBoxEdit';
 import { boxWithValues, userValue } from './antennaTyped';
+import { createWorkbenchStore } from '../workspace/workbench/workbenchStore';
 import {
   beginBoxDrag,
+  followDetectionRun,
   boxEditBlocked,
   cancelBoxDrag,
   commitBoxDrag,
@@ -1528,5 +1530,24 @@ describe('antenna bulk helpers', () => {
     const r = await deleteUnits([unit(0).id]);
     expect(r.ok).toBe(false);
     expect(r.ok ? '' : r.error.length).toBeGreaterThan(5);
+  });
+});
+
+describe('a finished detection run (UI revision D2)', () => {
+  it('brings Project, In this project forward while Tools, Measure is still in front', () => {
+    const bench = createWorkbenchStore(null);
+    bench.getState().show('measure');
+    followDetectionRun(bench);
+    expect(bench.getState().panel).toBe('project');
+    expect(bench.getState().sections['project.inThisProject']).toBe(true);
+    expect(bench.getState().noteSection).toBeNull();
+  });
+
+  it('leaves a person who moved on where they are, and names the list in "Show it"', () => {
+    const bench = createWorkbenchStore(null);
+    bench.getState().show('layers');
+    followDetectionRun(bench);
+    expect(bench.getState().panel).toBe('layers');
+    expect(bench.getState().noteSection).toBe('project.inThisProject');
   });
 });

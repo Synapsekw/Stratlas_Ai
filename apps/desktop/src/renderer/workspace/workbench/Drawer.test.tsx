@@ -250,8 +250,9 @@ describe('Drawer', () => {
       render();
       startTool();
       expect(drawer()?.style.getPropertyValue('--drawer-w')).toBe('340px');
-      // "Expand panel" on a wide tool opens it at the band's widest
+      // "Expand panel" on a wide tool (its section open) opens it at the band's widest
       act(() => {
+        workbench.getState().show('tools', 'tools.thermal');
         workbench.getState().expand(true);
       });
       expect(drawer()?.style.getPropertyValue('--drawer-w')).toBe(

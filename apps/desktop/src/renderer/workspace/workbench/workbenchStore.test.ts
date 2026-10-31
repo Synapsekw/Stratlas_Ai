@@ -302,4 +302,40 @@ describe('workbench store', () => {
     store.getState().reset();
     expect(store.getState().expanded).toBe(false);
   });
+
+  it('Expand panel lets go when its wide section closes or another tab comes forward', () => {
+    const store = createWorkbenchStore(memory());
+    store.getState().show('tools', 'tools.thermal');
+    store.getState().expand(true);
+    expect(store.getState().expanded).toBe(true);
+    // the wide section closed: back to the band's width
+    store.getState().toggleSection('tools.thermal');
+    expect(store.getState().expanded).toBe(false);
+    // pressed again, then another tab: back to the band's width too
+    store.getState().toggleSection('tools.thermal');
+    store.getState().expand(true);
+    store.getState().show('layers');
+    expect(store.getState().expanded).toBe(false);
+    // Volumes and Changes are wide sections too
+    store.getState().show('project', 'project.volumes');
+    store.getState().expand(true);
+    expect(store.getState().expanded).toBe(true);
+  });
+
+  it('another project keeps the person on their tab', () => {
+    const store = createWorkbenchStore(memory());
+    store.getState().show('layers');
+    store.getState().reset();
+    expect(store.getState().panel).toBe('layers');
+  });
+
+  it('a noted section shows "Show it" until it is shown', () => {
+    const store = createWorkbenchStore(memory());
+    store.getState().show('layers');
+    store.getState().note('project.inThisProject');
+    expect(store.getState().noteSection).toBe('project.inThisProject');
+    expect(store.getState().panel).toBe('layers');
+    store.getState().show('project', 'project.inThisProject');
+    expect(store.getState().noteSection).toBeNull();
+  });
 });

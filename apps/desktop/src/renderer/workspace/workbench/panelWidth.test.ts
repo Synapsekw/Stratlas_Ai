@@ -1,5 +1,14 @@
+import { createSplitPrefs } from '@aio/ui';
 import { describe, expect, it } from 'vitest';
-import { panelBandOf, restingRightPx, rightSplit, RIGHT_BANDS } from './panelWidth';
+import {
+  migrateOldRightWidth,
+  OLD_RIGHT_SPLIT_ID,
+  panelBandOf,
+  restingRightPx,
+  rightSplit,
+  rightSplitId,
+  RIGHT_BANDS,
+} from './panelWidth';
 
 describe('the right panel width per band (D1)', () => {
   it('bands the window at 1440 and 1280 px', () => {
@@ -27,5 +36,30 @@ describe('the right panel width per band (D1)', () => {
     expect(restingRightPx('wide', 360, true)).toBe(520);
     expect(rightSplit('wide', true)).toMatchObject({ min: 520, max: 520 });
     expect(restingRightPx('wide', 360, false)).toBe(360);
+  });
+
+  it('stays docked at 300 px below 1280 px: a drag never makes it narrower', () => {
+    expect(RIGHT_BANDS.narrow.min).toBe(300);
+    expect(restingRightPx('narrow', 250, false)).toBe(300);
+  });
+
+  it('carries a width dragged before the bands into the wide band, once', () => {
+    const prefs = createSplitPrefs(null);
+    prefs.getState().save(OLD_RIGHT_SPLIT_ID, { size: 430 });
+    migrateOldRightWidth(prefs);
+    expect(prefs.getState().byId[rightSplitId('wide')]?.size).toBe(430);
+    // the narrower bands keep their fixed defaults
+    expect(prefs.getState().byId[rightSplitId('narrow')]).toBeUndefined();
+    // a width the wide band has of its own is never overwritten
+    prefs.getState().save(rightSplitId('wide'), { size: 400 });
+    migrateOldRightWidth(prefs);
+    expect(prefs.getState().byId[rightSplitId('wide')]?.size).toBe(400);
+  });
+
+  it('holds a carried width to the wide band', () => {
+    const prefs = createSplitPrefs(null);
+    prefs.getState().save(OLD_RIGHT_SPLIT_ID, { size: 900 });
+    migrateOldRightWidth(prefs);
+    expect(prefs.getState().byId[rightSplitId('wide')]?.size).toBe(RIGHT_BANDS.wide.max);
   });
 });

@@ -46,6 +46,11 @@ export interface WorkbenchState {
   expanded: boolean;
   /** A tool tab waiting behind an issue edit (dot plus "Show it"). */
   attention: TabId | null;
+  /**
+   * A section with news that did not come forward (a finished detection run while the person
+   * works elsewhere): "Show it" names it until it shows or is asked for.
+   */
+  noteSection: SectionId | null;
   /** Every tool tab waiting behind an issue edit; `attention` is the first. */
   waiting: readonly TabId[];
   /** Tabs a tool created, which close when it stops. */
@@ -63,6 +68,8 @@ export interface WorkbenchState {
   show(target: TabId | PanelTab, section?: SectionId): void;
   /** Open or close one section; opening brings its body forward. */
   toggleSection(id: SectionId): void;
+  /** Say a section has news without bringing it forward (the "Show it" note); null clears it. */
+  note(section: SectionId | null): void;
   /** "Expand panel" for a wide tool, and back. Nothing else changes the width. */
   expand(on: boolean): void;
   /**
@@ -118,11 +125,12 @@ export function createWorkbenchStore(
 
   const base = (): Pick<
     WorkbenchState,
-    'tabs' | 'front' | 'attention' | 'waiting' | 'openedByTool' | 'expanded'
+    'tabs' | 'front' | 'attention' | 'noteSection' | 'waiting' | 'openedByTool' | 'expanded'
   > => ({
     tabs: fixedTabs(),
     front: 'selection',
     attention: null,
+    noteSection: null,
     waiting: [],
     openedByTool: new Set(),
     expanded: false,
@@ -224,6 +232,9 @@ export function createWorkbenchStore(
           }));
         }
       },
+      note: (section) => {
+        if (get().noteSection !== section) set({ noteSection: section });
+      },
       expand: (on) => {
         if (get().expanded !== on) set({ expanded: on });
       },
@@ -265,7 +276,8 @@ export function createWorkbenchStore(
         get().toolStopped(id);
       },
       reset: () => {
-        // another project: the tools' bodies go, the person's tab and sections stay
+        // another project: the tools' bodies go, the person's tab and sections stay (what follows a
+        // project, the Volumes follow, reads the tab, not the front)
         set(base());
       },
     };
@@ -286,6 +298,24 @@ export function createWorkbenchStore(
   };
   save(store.getState());
   store.subscribe(save);
+  // the note goes once its section shows: its tab in front, the section open
+  store.subscribe((s) => {
+    const n = s.noteSection;
+    if (n && s.panel === tabOfSection(n) && s.sections[n] === true)
+      store.setState({ noteSection: null });
+  });
+  // Expand panel holds only while a wide section of the tab in front is open: another tab, or
+  // that section closed, gives the panel its band width back
+  store.subscribe((s, prev) => {
+    if (!s.expanded) return;
+    const wideOpen = Object.entries(s.sections).some(
+      ([id, on]) =>
+        on &&
+        sectionDef(id as SectionId)?.wide === true &&
+        tabOfSection(id as SectionId) === s.panel,
+    );
+    if (s.panel !== prev.panel || !wideOpen) store.setState({ expanded: false });
+  });
   return store;
 }
 
