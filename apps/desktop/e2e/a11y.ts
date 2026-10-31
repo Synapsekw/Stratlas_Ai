@@ -47,16 +47,42 @@ async function settleTransitions(win: Page): Promise<void> {
   });
 }
 
+/**
+ * An open menu on the popover layer: it floats outside the page's landmarks, as a native menu
+ * does (axe already counts a dialog there as a region, not a menu), so it gets its own pass
+ * without the region rule; every other rule still checks it. The mark goes on the menu's own
+ * portal box under <body> (or the menu itself), so that box is not counted as stray content.
+ */
+const FLOATING_MENU = '[data-a11y-floating-menu]';
+
 /** Violations as one line each, with up to three offending nodes. */
 export async function audit(win: Page, o: AuditOptions = {}): Promise<string[]> {
   await settleTransitions(win);
-  let axe = new AxeBuilder({ page: win }).setLegacyMode(true).withTags(AXE_TAGS);
-  if (o.include) axe = axe.include(o.include);
-  for (const a of AXE_ALLOW) if (a.exclude) axe = axe.exclude(a.exclude);
   const off = AXE_ALLOW.flatMap((a) => (a.rule ? [a.rule] : []));
-  if (off.length) axe = axe.disableRules(off);
-  const result = await axe.analyze();
-  return result.violations.map((v) => {
+  const pass = async (include: string | undefined, exclude: string[], rulesOff: string[]) => {
+    let axe = new AxeBuilder({ page: win }).setLegacyMode(true).withTags(AXE_TAGS);
+    if (include) axe = axe.include(include);
+    for (const x of exclude) axe = axe.exclude(x);
+    if (rulesOff.length) axe = axe.disableRules(rulesOff);
+    return (await axe.analyze()).violations;
+  };
+  const allowed = AXE_ALLOW.flatMap((a) => (a.exclude ? [a.exclude] : []));
+  const floating =
+    !o.include &&
+    (await win.evaluate(() => {
+      const pops = [...document.querySelectorAll('.menu-pop')];
+      for (const pop of pops) {
+        const parent = pop.parentElement;
+        const box = parent?.parentElement === document.body ? parent : pop;
+        box.setAttribute('data-a11y-floating-menu', '');
+      }
+      return pops.length > 0;
+    }));
+  const violations = [
+    ...(await pass(o.include, floating ? [...allowed, FLOATING_MENU] : allowed, off)),
+    ...(floating ? await pass(FLOATING_MENU, allowed, [...off, 'region']) : []),
+  ];
+  return violations.map((v) => {
     const nodes = v.nodes
       .slice(0, 3)
       .map((n) => {

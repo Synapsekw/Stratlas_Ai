@@ -115,7 +115,14 @@ export function Menu({
           {title}
         </div>
       )}
-      <MenuLevel items={items} label={label} onClose={onClose} opener={opener} testId={testId} />
+      <MenuLevel
+        items={items}
+        label={label}
+        onClose={onClose}
+        opener={opener}
+        testId={testId}
+        root
+      />
       {after}
     </Popover>
   );
@@ -133,6 +140,8 @@ interface LevelProps {
   onBack?: () => void;
   /** Focus the first item when mounted (a submenu opened from the keyboard or a click). */
   focusFirst?: boolean;
+  /** The root level: take focus once the popover is placed and shown, if nothing inside has it. */
+  root?: boolean;
 }
 
 interface OpenSub {
@@ -150,6 +159,7 @@ function MenuLevel({
   id,
   onBack,
   focusFirst,
+  root,
 }: LevelProps): ReactElement {
   const list = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
@@ -165,6 +175,20 @@ function MenuLevel({
   useEffect(() => {
     if (focusFirst) rows()[0]?.focus();
   }, [focusFirst]);
+  // the popover is hidden until it is placed, so its focus trap's first focus can miss: a frame
+  // later the menu is shown and its current item takes focus
+  useEffect(() => {
+    if (!root) return;
+    const frame = requestAnimationFrame(() => {
+      if (list.current?.contains(document.activeElement)) return;
+      rows()
+        .find((r) => r.tabIndex === 0)
+        ?.focus();
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [root]);
 
   // keys are handled on the element itself, before the popover's own Tab and Escape handling
   const onKey = useRef<(e: KeyboardEvent) => void>(() => undefined);
