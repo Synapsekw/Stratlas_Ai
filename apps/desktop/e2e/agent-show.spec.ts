@@ -954,9 +954,10 @@ test.describe('the agent column in the smallest window', () => {
   });
 
   /**
-   * The page header (no title bar any more), measured as connection.spec.ts measures the headers:
-   * its controls end before the window's caption buttons (--caption-right), the search sits in the
-   * sidebar's top row and help beside Settings, with the Agent chip in the header.
+   * The page header under the title bar, measured as connection.spec.ts measures the headers: its
+   * controls end before the window's caption buttons where they reach it (they sit over the title
+   * bar, so below it the row may run to the window's edge), the search sits in the title bar and
+   * help and Settings at the rail's foot, with the Agent chip in the header.
    */
   const pageHeader = async (win: Page) => {
     const area = await captionArea(win);
@@ -965,18 +966,27 @@ test.describe('the agent column in the smallest window', () => {
         const box = (sel: string) => document.querySelector(sel)?.getBoundingClientRect();
         const head = box('.pg-head');
         const acts = box('.pg-head .pg-acts');
-        const search = box('.sb-search');
-        const top = box('.sb-top');
-        const settings = box('.sb-foot-row > .nav-item');
+        const search = box('.tb-search');
+        const top = box('.titlebar');
+        const foot = box('.rail-foot');
+        const settings = box('.rail-foot [data-testid="rail-settings"]');
         const help = box('[data-testid="help-open"]');
         const chip = box('[data-testid="agent-toggle"]');
+        const below = !!head && !!top && head.top >= top.bottom - 0.5;
         return {
           caption,
-          // where the window's own buttons begin: the room the app keeps, and the buttons drawn
-          room: Math.min(window.innerWidth - caption, free),
+          // where the window's own buttons begin for this row: the room the app keeps, and the
+          // buttons drawn; a row below the title bar is clear of them
+          room: below ? window.innerWidth : Math.min(window.innerWidth - caption, free),
           actsRight: acts?.right ?? 0,
           searchInTop: !!search && !!top && search.width > 0 && search.right <= top.right + 0.5,
-          helpBesideSettings: (settings?.right ?? Infinity) <= (help?.left ?? -1),
+          helpBesideSettings:
+            !!foot &&
+            !!settings &&
+            !!help &&
+            help.top >= foot.top &&
+            settings.bottom <= foot.bottom + 0.5 &&
+            help.width > 0,
           sideways: document.documentElement.scrollWidth > window.innerWidth,
           chip: chip
             ? { left: chip.left, right: chip.right, top: chip.top, bottom: chip.bottom }

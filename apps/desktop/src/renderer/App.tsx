@@ -73,12 +73,14 @@ import { PanoImportDialog } from './panos/PanoImportDialog';
 import { PackageExportDialog } from './shell/PackageExport';
 import { Palette } from './shell/Palette';
 import { UnlockDialog } from './shell/UnlockDialog';
-import { Sidebar } from './shell/Sidebar';
+import { LayersColumn } from './shell/LayersColumn';
+import { Rail } from './shell/Rail';
+import { TitleBar } from './shell/TitleBar';
 import { websiteUpdates } from './updates/session';
 import { useFold } from './shell/useFold';
 import { isSidebarFolded } from './store';
 import { openAgent } from './shell/RightHeader';
-import { captionVars, railWidth, rendererPlatform } from './shell/caption';
+import { captionVars, rendererPlatform } from './shell/caption';
 import { SyncHost } from './team/SyncStatus';
 import { applyAppearance, OS_QUERIES } from './theme';
 import { HelpPanel } from './help/HelpPanel';
@@ -139,9 +141,9 @@ function onKeyDown(e: KeyboardEvent) {
     if (isDockScreen(s.screen) && workspace.getState().project) s.toggleAgentDock();
     else s.toggleRight();
   } else if (id === 'global.sidebar') {
-    // the layout spike has no sidebar: Ctrl+B folds the Scene's Layers column (SpikeShell.tsx)
-    // and never the hidden sidebar's fold
-    if (layoutSpikeOn()) return;
+    // Ctrl+B and Ctrl+L fold the Layers column, on the Scene only (it shows nowhere else); the
+    // layout spike folds its own (SpikeShell.tsx)
+    if (layoutSpikeOn() || s.screen !== 'scene' || isTypingTarget(e.target)) return;
     e.preventDefault();
     void s.toggleSidebar();
   } else if (id === 'global.agent') {
@@ -277,20 +279,19 @@ function Screen() {
 }
 
 /**
- * No title bar: the window's own buttons sit over the app's top rows (main/index.ts), and the rows
- * under them keep clear through these (shell/caption.ts, styles.css).
+ * The title bar (shell/TitleBar.tsx) runs over the Layers column and the main area; the window's
+ * own buttons sit over its end (main/index.ts), and it keeps clear of them through these
+ * (shell/caption.ts, styles.css).
  */
 const PLATFORM = rendererPlatform();
 const CAPTION_VARS = captionVars(PLATFORM) as CSSProperties;
 
-/** The icon rail the sidebar folds to (tokens.css `--sb-w-c`; wider on macOS, styles.css). */
-const SIDEBAR_RAIL = railWidth(PLATFORM);
-
 /**
- * The left sidebar on the `shell.sidebar` split: its width is the `.app` grid's first column,
- * dragged on its inner edge and remembered; folded, it is the rail (52 px, 76 on macOS). The fold
- * is the person's (`sidebarCollapsed`) or the window's (shell/autoFold.ts). The panel slides out
- * with a transform and the grid snaps once at the end; opening, the grid snaps first (useFold.ts).
+ * The Layers column on the `shell.sidebar` split (UI revision W11): its width is the `.app`
+ * grid's second column, beside the rail, dragged on its inner edge and remembered; folded, the
+ * column is gone and the rail stays. The fold is the person's (`sidebarCollapsed`, Ctrl+B,
+ * Ctrl+L, the title bar's toggle) or the window's (shell/autoFold.ts). The column slides out with
+ * a transform and the grid snaps once at the end; opening, the grid snaps first (useFold.ts).
  */
 function useSidebarSplit() {
   const folded = useShell(isSidebarFolded);
@@ -305,16 +306,16 @@ function useSidebarSplit() {
     min: 220,
     max: 320,
     otherMin: 600,
-    collapsedSize: SIDEBAR_RAIL,
+    collapsedSize: 0,
     collapsed: fold.layoutFolded,
-    // dragged to the rail or out of it: the panel is there already, so it does not slide
+    // dragged shut or out of it: the column is there already, so it does not slide
     onCollapsedChange: (next) => {
       snap(next);
       const s = shell.getState();
       if (next !== isSidebarFolded(s)) void s.toggleSidebar();
     },
   });
-  // the window's width folds the sidebar on its own (shell/autoFold.ts)
+  // the window's width folds the column on its own (shell/autoFold.ts)
   useEffect(() => {
     const follow = () => {
       shell.getState().setWindowWidth(window.innerWidth);
@@ -327,21 +328,19 @@ function useSidebarSplit() {
   }, []);
   const { settle, phase } = fold;
   const { containerRef } = split;
-  // The tab slides as far as the edge moves: the open width less the rail, measured in px when
-  // the slide starts (the column's width is a clamp with percentages, which mean the tab's own
-  // box inside a transform). Opening, the grid has already snapped open here.
+  // The tab slides as far as the edge moves: the open width, measured in px when the slide
+  // starts. Opening, the grid has already snapped open here.
   useLayoutEffect(() => {
-    const sidebar = containerRef.current?.querySelector(':scope > .sidebar');
-    if (!containerRef.current || !sidebar || !phase) return;
-    const open = sidebar.getBoundingClientRect().width;
+    const column = containerRef.current?.querySelector(':scope > .layers-col');
+    if (!containerRef.current || !column || !phase) return;
     containerRef.current.style.setProperty(
       '--sb-fold-dx',
-      `${String(Math.max(0, open - SIDEBAR_RAIL))}px`,
+      `${String(column.getBoundingClientRect().width)}px`,
     );
   }, [phase, containerRef]);
   const onTransitionEnd = (e: TransitionEvent<HTMLDivElement>) => {
     const el = e.target as Element;
-    if (e.propertyName === 'transform' && el.classList.contains('sb-surface')) settle();
+    if (e.propertyName === 'transform' && el.classList.contains('layers-col')) settle();
   };
   return {
     folded,
@@ -768,7 +767,7 @@ export function App() {
     <div
       ref={sidebarSplitRef}
       className="app"
-      // the spike has no folding sidebar: its Layers column shows the tree at full width
+      // the Layers column (Scene only): folded or shown; the spike has its own column
       data-sb={sidebar.folded && !layoutSpike ? 'collapsed' : 'expanded'}
       data-fold={sidebar.phase ?? undefined}
       onTransitionEnd={sidebar.onTransitionEnd}
@@ -784,7 +783,9 @@ export function App() {
         <SpikeShell screen={<Screen />} dock={<AgentDock />} />
       ) : (
         <>
-          <Sidebar resize={sidebarResize} />
+          <Rail />
+          <TitleBar />
+          <LayersColumn resize={sidebarResize} />
           <main className="main">
             <Screen />
             <AgentDock />

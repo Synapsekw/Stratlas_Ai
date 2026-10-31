@@ -204,22 +204,23 @@ test('folded to the rail, the sidebar still shows a job that needs attention', a
     await openTiny(win);
     const chip = processingChip(win);
     await expect(chip).toHaveAttribute('data-state', 'attention');
-    if ((await win.locator('.app').getAttribute('data-sb')) !== 'collapsed')
-      await win.keyboard.press('Control+b');
-    await expect(win.locator('.app')).toHaveAttribute('data-sb', 'collapsed');
-    // the warning glyph is drawn inside the rail, and the chip keeps its whole name
+    // the warning glyph is drawn in the title bar, whatever the Layers column does, and the chip
+    // keeps its whole name
     const seen = await chip.evaluate((el) => {
-      const rail = document.querySelector('.sidebar')?.getBoundingClientRect();
+      const bar = document.querySelector('.titlebar')?.getBoundingClientRect();
       const mark = el.querySelector('svg')?.getBoundingClientRect();
       const style = getComputedStyle(el);
       return {
         drawn: !!mark && mark.width > 0 && style.display !== 'none' && style.opacity !== '0',
-        inRail: !!rail && !!mark && mark.left >= rail.left && mark.right <= rail.right,
-        // the words stay in the button for its name, drawn in no room
-        wordsHidden: (el.querySelector('.proc-words')?.getBoundingClientRect().width ?? 99) <= 1,
+        inBar:
+          !!bar &&
+          !!mark &&
+          mark.top >= bar.top &&
+          mark.bottom <= bar.bottom &&
+          mark.right <= bar.right,
       };
     });
-    expect(seen).toEqual({ drawn: true, inRail: true, wordsHidden: true });
+    expect(seen).toEqual({ drawn: true, inBar: true });
     await expect(chip).toHaveAccessibleName(/attention/);
     await chip.click();
     await expect(win.getByTestId('processing-drawer')).toBeVisible();
@@ -407,16 +408,21 @@ test('the sidebar shows a Processing section with Create maps from photos, calm 
   await win.keyboard.press('Escape');
   await expect(wizard).toHaveCount(0);
 
-  // folded to the rail: the glyph stays, named by its tip
-  await win.getByTestId('sidebar-toggle').click();
+  // Layers folded away: the rail's Processing opens the drawer, whose primary is Create maps
+  await win.getByTestId('layers-toggle').click();
   await expect(win.locator('.app')).toHaveAttribute('data-sb', 'collapsed');
-  await expect(row).toBeVisible();
-  await expect(row).toHaveAccessibleName('Create maps from photos');
-  await row.hover();
-  await expect(row.locator('.tip')).toHaveCSS('opacity', '1');
+  await expect(row).toBeHidden();
+  const rail = win.getByTestId('rail-processing');
+  await expect(rail).toHaveAccessibleName('Processing');
+  await rail.hover();
+  await expect(rail.locator('.tip')).toHaveCSS('opacity', '1');
   await shot(win, 'sidebar-processing-rail');
-  await win.getByTestId('sidebar-toggle').click();
+  await rail.click();
+  await expect(win.getByTestId('processing-drawer').getByTestId('create-maps')).toBeVisible();
+  await rail.click();
+  await win.getByTestId('layers-toggle').click();
   await expect(win.locator('.app')).toHaveAttribute('data-sb', 'expanded');
+  await expect(row).toBeVisible();
 });
 
 test("Create maps is the drawer's primary action too", async ({ win }) => {

@@ -1,5 +1,5 @@
 /**
- * The connection in the sidebar's status row: the mode chip says the real mode (Online or Offline
+ * The connection in the title bar's status group: the mode chip says the real mode (Online or Offline
  * only, the offline-only setting main checks) and the AI status chip beside it never contradicts it.
  *
  * - The mode chip opens the Connection menu: the switch, what the mode means, Download maps and
@@ -8,8 +8,8 @@
  *   greys its Download button; main refuses a download. Online: all of it is offered again. No
  *   download is started.
  * - The mode survives a relaunch, and the command search has Go online / Work offline only.
- * - At the smallest window the chips fit the sidebar's foot, the headers keep clear of the
- *   window's own buttons, and the search button and help stay.
+ * - At the smallest window the chips fit the title bar, clear of the window's own buttons, and
+ *   the search button (title bar) and help (rail) stay.
  *
  * Everything runs behind the zero-network guard: no request leaves in either mode.
  * QUADRION_E2E_SHOTS=<folder> saves a screenshot of each chip state and of the open menu.
@@ -24,7 +24,7 @@ test.setTimeout(180_000);
 
 const SHOTS = process.env.QUADRION_E2E_SHOTS;
 
-/** The whole window, or only the sidebar's foot with its status row (`bar`). */
+/** The whole window, or only the title bar with its status group (`bar`). */
 async function shot(win: Page, name: string, bar = false) {
   if (!SHOTS) return;
   const size = await win.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
@@ -32,7 +32,7 @@ async function shot(win: Page, name: string, bar = false) {
     path: join(SHOTS, `${name}.png`),
     // the menu fades in; an off-screen window draws too few frames to finish that on its own
     animations: 'disabled',
-    ...(bar ? { clip: { x: 0, y: Math.max(0, size.height - 140), width: 320, height: 140 } } : {}),
+    ...(bar ? { clip: { x: Math.max(0, size.width - 520), y: 0, width: 520, height: 200 } } : {}),
   });
 }
 
@@ -42,7 +42,7 @@ async function start(data: DataRoot) {
   await network.attach(app);
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
-  await expect(win.locator('.sb-top')).toBeVisible();
+  await expect(win.locator('.titlebar')).toBeVisible();
   return { app, network, win };
 }
 
@@ -86,7 +86,7 @@ test('the status row shows the real mode, its menu switches it, and the mode sur
     await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: false }));
     await win.reload();
     await win.waitForLoadState('domcontentloaded');
-    await expect(win.locator('.sb-top')).toBeVisible();
+    await expect(win.locator('.titlebar')).toBeVisible();
     await expect(mode(win)).toHaveText('Online');
     await expect(mode(win)).toHaveAttribute('aria-haspopup', 'dialog');
     await expect(mode(win)).toHaveAttribute('aria-expanded', 'false');
@@ -230,7 +230,7 @@ test('the status row shows the real mode, its menu switches it, and the mode sur
   }
 });
 
-test('the connection fits the sidebar foot at the smallest window, in its longest wording', async () => {
+test('the connection fits the title bar at the smallest window, in its longest wording', async () => {
   const data = await createDataRoot();
   const { app, win, network } = await start(data);
   try {
@@ -241,9 +241,9 @@ test('the connection fits the sidebar foot at the smallest window, in its longes
     await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
     await expect(win.locator('.proj-switch')).toContainText('E2E tiny project');
     await expect(win.getByTestId('sync-chip')).toBeVisible();
-    // The smallest window is 1100 x 700 (main/index.ts). There is no title bar: on Windows the
-    // caption buttons (titleBarOverlay) sit over the top rows, and the rows keep --caption-right
-    // clear for them (shell/caption.ts); on macOS the traffic lights take the sidebar's start.
+    // The smallest window is 1100 x 700 (main/index.ts). On Windows the caption buttons
+    // (titleBarOverlay) sit over the app's title bar, which keeps --caption-right clear for them
+    // (shell/caption.ts); on macOS the traffic lights take the rail's top.
     const width = 1100;
     const height = 700;
     await win.setViewportSize({ width, height });
@@ -256,16 +256,16 @@ test('the connection fits the sidebar foot at the smallest window, in its longes
       return win.evaluate(
         ({ caption, free }) => {
           const box = (sel: string) => document.querySelector(sel)?.getBoundingClientRect();
-          const sidebar = box('.sidebar');
           const row = [...document.querySelectorAll('.sb-status-row > *')].map((el) =>
             el.getBoundingClientRect(),
           );
-          const header = [...document.querySelectorAll('.right-head > *, .pg-head .pg-acts > *')]
+          const header = [...document.querySelectorAll('.titlebar > *')]
             .map((el) => el.getBoundingClientRect())
             .filter((r) => r.width > 0);
-          const search = box('.sb-search');
-          const top = box('.sb-top');
-          const settings = box('.sb-foot-row > .nav-item');
+          const search = box('.tb-search');
+          const top = box('.titlebar');
+          const rail = box('.rail');
+          const settings = box('[data-testid="rail-settings"]');
           const help = box('[data-testid="help-open"]');
           const pop = box('.conn-pop');
           return {
@@ -273,10 +273,18 @@ test('the connection fits the sidebar foot at the smallest window, in its longes
             // where the window's own buttons begin: the room the app keeps, and the buttons drawn
             room: Math.min(window.innerWidth - caption, free),
             rowRight: Math.max(...row.map((r) => r.right)),
-            sidebarRight: sidebar?.right ?? 0,
+            rowInBar: row.every(
+              (r) => !!top && r.top >= top.top - 0.5 && r.bottom <= top.bottom + 0.5,
+            ),
             headerRight: Math.max(0, ...header.map((r) => r.right)),
             searchInTop: !!search && !!top && search.width > 0 && search.right <= top.right + 0.5,
-            helpBesideSettings: (settings?.right ?? Infinity) <= (help?.left ?? -1),
+            helpBesideSettings:
+              !!rail &&
+              !!settings &&
+              !!help &&
+              help.width > 0 &&
+              help.right <= rail.right + 0.5 &&
+              settings.right <= rail.right + 0.5,
             sideways: document.documentElement.scrollWidth > window.innerWidth,
             pop: pop ? { left: pop.left, right: pop.right, bottom: pop.bottom } : null,
           };
@@ -286,7 +294,8 @@ test('the connection fits the sidebar foot at the smallest window, in its longes
     };
     const closed = await fit();
     if (process.platform === 'win32') expect(closed.caption).toBeGreaterThan(40);
-    expect(closed.rowRight).toBeLessThanOrEqual(closed.sidebarRight + 0.5);
+    expect(closed.rowInBar).toBe(true);
+    expect(closed.rowRight).toBeLessThanOrEqual(closed.room + 0.5);
     expect(closed.headerRight).toBeLessThanOrEqual(closed.room + 0.5);
     expect(closed.searchInTop).toBe(true);
     expect(closed.helpBesideSettings).toBe(true);

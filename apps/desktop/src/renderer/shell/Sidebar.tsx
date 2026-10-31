@@ -1,8 +1,5 @@
 import { isAnnotateReadOnly, useAnnotateReadOnly } from '@aio/annotate';
-import { WebsiteUpdateNotice } from '../updates/WebsiteUpdates';
 import {
-  ariaKeys,
-  Button,
   buildDatasetTree,
   buildDateTree,
   captureLabelFor,
@@ -22,7 +19,6 @@ import {
   menuPoint,
   nextMarks,
   NO_MARKS,
-  t,
   treeLayerIds,
   useT,
   VisibilityEye,
@@ -33,21 +29,17 @@ import {
   type TreeGroupKind,
   NO_HOST,
   type ActionHost,
-  type IconName,
   type MarkMods,
   type Marks,
   type MeasureTreeProps,
-  type MessageKey,
   type TreeGroup,
   type TreeItem,
-  shortcutHint,
 } from '@aio/ui';
 import { dateTags, useWorkspace, workspace } from '@aio/workspace';
-import { useCallback, useEffect, useMemo, useRef, useState, type HTMLAttributes } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { builder } from '../builder/state';
 import { DrawingControls } from '../drawings/DrawingControls';
 import { drawings, unplacedOf, useDrawings } from '../drawings/store';
-import { help } from '../help/store';
 import { lineUpTip } from '../lineup/planLineUp';
 import { useMedia } from '../media';
 import { watchPanoStitches } from '../panos/panoJobs';
@@ -91,9 +83,6 @@ import { walkBadge, walkGroupAction } from '../walks/walkBadge';
 import { openWalk, placeWalk, removeWalkPlacement, useWalks } from '../walks/walks';
 import { WalkRowProcess } from '../walks/WalkProcessLine';
 import { walkFilesMissing, walkRecordKey } from '../walks/walkStore';
-import { PANEL_ID, PanelHandle } from './PanelHandle';
-import { SidebarProcessing } from './SidebarProcessing';
-import { isSidebarFolded, type Screen } from '../store';
 import { useCaptureIndex } from '../workspace/compare';
 import { flightPathShown, toggleFlightPath } from '../workspace/flightPaths';
 import { updateFlightPaths, useFlightPathModel } from '../workspace/pathModel';
@@ -110,30 +99,13 @@ import { measureTarget, menuTitle, rowTarget } from './menuTargets';
 import { renameRequest, useRenameRequest } from './renameRequest';
 import { askRemove, removal, useRemoval } from './removal';
 import { EmptyTrashDialog } from './RemoveHost';
-import { SidebarStatus } from './SidebarStatus';
-import { SidebarTop } from './SidebarTop';
 import './surveyDates.css';
 
 watchPanoStitches();
 registerSidebarActions();
 
-interface NavDef {
-  screen: Screen;
-  label: MessageKey;
-  icon: IconName;
-}
-
 // the compare pair follows the open project: another project resets it (the shell loads once)
 followProject(compareDates, workspace);
-
-const NAV: NavDef[] = [
-  { screen: 'projects', label: 'nav.projects', icon: 'projects' },
-  { screen: 'globe', label: 'globe.nav', icon: 'globe' },
-  { screen: 'scene', label: 'nav.scene', icon: 'scene' },
-  { screen: 'issues', label: 'nav.issues', icon: 'issues' },
-  { screen: 'inspect', label: 'nav.inspect', icon: 'media' },
-  { screen: 'reports', label: 'nav.reports', icon: 'report' },
-];
 
 /**
  * The groups open at first: the tree's own defaults (DatasetTree's DEFAULT_OPEN), and the
@@ -202,32 +174,6 @@ function selectMarked(marked: ReadonlySet<string>, ids: string[]): void {
         ? f
         : (ids[0] ?? null);
   select(ids, focus);
-}
-
-function NavItem({
-  def,
-  current,
-  count,
-}: {
-  def: NavDef;
-  current: boolean;
-  count?: number | undefined;
-}) {
-  return (
-    <button
-      type="button"
-      className="nav-item"
-      aria-current={current ? 'page' : undefined}
-      onClick={() => {
-        shell.getState().go(def.screen);
-      }}
-    >
-      <Icon name={def.icon} />
-      <span className="lbl">{t(def.label)}</span>
-      {count !== undefined && <span className="count">{count}</span>}
-      <span className="tip">{t(def.label)}</span>
-    </button>
-  );
 }
 
 export function Datasets({ collapsed }: { collapsed: boolean }) {
@@ -1324,113 +1270,5 @@ export function Datasets({ collapsed }: { collapsed: boolean }) {
         />
       )}
     </div>
-  );
-}
-
-export interface SidebarProps {
-  /** The `shell.sidebar` split's separator (App.tsx): the drag handle on the inner edge. */
-  resize?: HTMLAttributes<HTMLDivElement>;
-}
-
-export function Sidebar({ resize }: SidebarProps = {}) {
-  useT();
-  const screen = useShell((s) => s.screen);
-  const collapsed = useShell(isSidebarFolded);
-  const libCount = useShell((s) => s.library?.length);
-  const issueCount = useWorkspace((s) => (s.project ? s.issues.length : undefined));
-  // a reveal of a measurement (the telecom panel's Measurements) opens a folded sidebar; finishing
-  // a shape reveals it without opening
-  const revealSeq = useMeasure((s) => s.reveal?.seq);
-  const revealOpens = useMeasure((s) => s.reveal?.openSidebar === true);
-  useEffect(() => {
-    if (revealSeq === undefined || !revealOpens) return;
-    const sh = shell.getState();
-    if (isSidebarFolded(sh)) void sh.toggleSidebar();
-  }, [revealSeq, revealOpens]);
-
-  return (
-    <aside className="sidebar" id={PANEL_ID.left} aria-label={t('nav.primary')}>
-      {/* the panel's surface slides out as it folds, and the rail's fades in (styles.css) */}
-      <div className="sb-surface" aria-hidden="true" />
-      <div className="sb-rail" aria-hidden="true" />
-      <SidebarTop />
-      {/* the nav stays put above the tree, which scrolls on its own */}
-      <nav className="sb-sec sb-nav" aria-label={t('nav.sections')}>
-        {NAV.map((n) => (
-          <NavItem
-            key={n.screen}
-            def={n}
-            current={screen === n.screen}
-            count={
-              n.screen === 'projects' ? libCount : n.screen === 'issues' ? issueCount : undefined
-            }
-          />
-        ))}
-      </nav>
-      {/* Create maps from photos in plain sight, under its own heading (founder, 31 Oct) */}
-      <SidebarProcessing />
-      {/* the dataset tree is the Scene's; on the other screens the space stays empty */}
-      <div className="sb-scroll">{screen === 'scene' && <Datasets collapsed={collapsed} />}</div>
-      <div className="sb-foot">
-        <WebsiteUpdateNotice />
-        <SidebarStatus />
-        <div className="sb-foot-row">
-          <NavItem
-            def={{ screen: 'settings', label: 'nav.settings', icon: 'settings' }}
-            current={screen === 'settings'}
-          />
-          <Button
-            variant="icon"
-            className="help-btn sb-hide"
-            aria-label={t('help.open')}
-            aria-keyshortcuts="F1"
-            tip={t('help.open')}
-            data-testid="help-open"
-            onClick={() => {
-              help.getState().openHelp();
-            }}
-          >
-            ?
-          </Button>
-        </div>
-        <button
-          type="button"
-          className="nav-item"
-          onClick={() => {
-            void shell.getState().toggleSidebar();
-          }}
-          aria-keyshortcuts={ariaKeys('global.sidebar')}
-          aria-expanded={!collapsed}
-          aria-controls={PANEL_ID.left}
-          data-testid="sidebar-toggle"
-        >
-          <Icon name="sidebar" />
-          <span className="lbl">{t('nav.collapse')}</span>
-          <span className="count">{shortcutHint('global.sidebar')}</span>
-          <span className="tip">
-            {t(collapsed ? 'nav.expandSidebar' : 'nav.collapseSidebar')}{' '}
-            <span className="kbd">{shortcutHint('global.sidebar')}</span>
-          </span>
-        </button>
-      </div>
-      {resize && (
-        <div
-          {...resize}
-          className="split-handle sb-resize"
-          aria-label={t('panel.resizeLeft')}
-          aria-controls={PANEL_ID.left}
-        >
-          <span className="kbd split-readout" aria-hidden="true" />
-        </div>
-      )}
-      <PanelHandle
-        side="left"
-        collapsed={collapsed}
-        shortcut="global.sidebar"
-        onToggle={() => {
-          void shell.getState().toggleSidebar();
-        }}
-      />
-    </aside>
   );
 }

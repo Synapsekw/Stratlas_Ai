@@ -219,7 +219,7 @@ test('library, import wizard, command search and every Settings section', async 
   await expect(newProject).toBeFocused();
 
   // command search from the title bar button, and back
-  const search = win.locator('.sb-search');
+  const search = win.locator('.tb-search');
   await search.focus();
   await win.keyboard.press('Enter');
   const palette = win.getByRole('dialog', { name: 'Command search' });
@@ -231,7 +231,7 @@ test('library, import wizard, command search and every Settings section', async 
   await expect(search).toBeFocused();
 
   // Settings, one section after the other
-  await win.locator('.sb-foot .nav-item', { hasText: 'Settings' }).click();
+  await win.locator('.rail-foot .nav-item', { hasText: 'Settings' }).click();
   const sections = win.locator('.set-nav button');
   const count = await sections.count();
   expect(count).toBeGreaterThanOrEqual(10);
@@ -297,7 +297,7 @@ test('user guide and report a problem keep focus inside and hold still', async (
   await expect(win.locator('html')).toHaveAttribute('data-motion', 'reduce');
 
   // F1: the guide takes focus in its search box, keeps Tab inside, Esc hands focus back
-  const search = win.locator('.sb-search');
+  const search = win.locator('.tb-search');
   await search.focus();
   await win.keyboard.press('F1');
   const guide = win.getByRole('dialog', { name: 'User guide' });
@@ -312,7 +312,7 @@ test('user guide and report a problem keep focus inside and hold still', async (
   await expect(search).toBeFocused();
 
   // Settings, About and updates, Report a problem: the same rules for the form
-  await win.locator('.sb-foot .nav-item', { hasText: 'Settings' }).click();
+  await win.locator('.rail-foot .nav-item', { hasText: 'Settings' }).click();
   await win.locator('.set-nav button', { hasText: 'About and updates' }).click();
   const report = win.getByTestId('diagnostics').getByRole('button', { name: 'Report a problem' });
   await report.focus();
@@ -617,21 +617,22 @@ test('a package opens in player mode and is accessible', async ({ app, win, data
     await pw.locator('.sb-nav .nav-item', { hasText: 'Scene' }).first().click();
     await expect(pw.locator('[data-scene-view] canvas').first()).toBeVisible();
     await expectAccessible(pw, 'Package player, scene');
-    // folded to the rail, the sidebar still says this is a read-only package: its lock, named
+    // with Layers folded away, the title bar still says this is a read-only package: its lock,
+    // named
     if ((await pw.locator('.app').getAttribute('data-sb')) !== 'collapsed')
       await pw.keyboard.press('Control+b');
     await expect(pw.locator('.app')).toHaveAttribute('data-sb', 'collapsed');
     const chip = pw.getByTestId('readonly-chip');
     await expect(chip).toHaveText('Read-only package');
     const lock = await chip.evaluate((el) => {
-      const rail = document.querySelector('.sidebar')?.getBoundingClientRect();
+      const bar = document.querySelector('.titlebar')?.getBoundingClientRect();
       const mark = el.querySelector('svg')?.getBoundingClientRect();
       let seen = true;
       for (let n: Element | null = el; n; n = n.parentElement)
         if (getComputedStyle(n).opacity === '0') seen = false;
-      return seen && !!rail && !!mark && mark.width > 0 && mark.right <= rail.right;
+      return seen && !!bar && !!mark && mark.width > 0 && mark.bottom <= bar.bottom;
     });
-    expect(lock, 'the lock is drawn in the rail').toBe(true);
+    expect(lock, 'the lock is drawn in the title bar').toBe(true);
     await expectAccessible(pw, 'Package player, scene with the sidebar folded');
     expect(await network.outbound()).toEqual([]);
   } finally {

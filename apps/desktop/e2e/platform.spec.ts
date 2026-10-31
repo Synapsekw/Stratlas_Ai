@@ -119,11 +119,8 @@ test('street maps stay dark in the light theme: coverage map and Map view', asyn
   expect(lightness(map?.background)).toBeLessThan(0.1);
   expect(lightness(map?.surface)).toBeLessThan(0.1);
   expect(lightness(map?.controls)).toBeLessThan(0.25);
-  // The chrome around it follows the light theme. The sidebar's surface (.sb-surface) paints its
-  // background since the sidebar became a resizable split; .sidebar itself is transparent.
-  const chrome = await win
-    .locator('.sidebar > .sb-surface')
-    .evaluate((el) => getComputedStyle(el).backgroundColor);
+  // The chrome around it follows the light theme: the rail beside every screen.
+  const chrome = await win.locator('.rail').evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(lightness(chrome)).toBeGreaterThan(0.8);
 });
 
@@ -187,7 +184,7 @@ test('switches between dark, light and system themes and to right-to-left', asyn
   await expect(html).toHaveAttribute('dir', 'rtl');
   // Timelines and the stage keep their geometry.
   const sidebarRight = await win
-    .locator('.sidebar')
+    .locator('.rail')
     .evaluate((el) => el.getBoundingClientRect().right);
   const viewport = await win.evaluate(() => window.innerWidth);
   expect(sidebarRight).toBeGreaterThan(viewport / 2);

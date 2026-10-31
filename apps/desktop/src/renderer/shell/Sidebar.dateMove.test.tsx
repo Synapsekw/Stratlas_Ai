@@ -19,7 +19,7 @@ vi.mock('./dateFolders', async (orig) => ({
 
 import { shell } from '../shell';
 import { announceDateMove } from './dateMoveNote';
-import { Sidebar } from './Sidebar';
+import { LayersColumn } from './LayersColumn';
 
 const walk = (id: string, capture?: string): WalkLayer => ({
   kind: 'walk',
@@ -84,7 +84,7 @@ beforeEach(() => {
   workspace.getState().openProject({ id: 'p', root: 'C:/p', manifest: dated });
   act(() => {
     root = createRoot(host);
-    root.render(<Sidebar />);
+    root.render(<LayersColumn />);
   });
 });
 afterEach(() => {

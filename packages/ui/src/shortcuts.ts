@@ -85,7 +85,12 @@ export const CONCURRENT_SCOPES: readonly (readonly [ShortcutScope, ShortcutScope
 export const SHORTCUTS = [
   // anywhere
   { id: 'global.palette', scope: 'global', keys: ['Ctrl+K'], label: 'keys.global.palette' },
-  { id: 'global.sidebar', scope: 'global', keys: ['Ctrl+B'], label: 'keys.global.sidebar' },
+  {
+    id: 'global.sidebar',
+    scope: 'global',
+    keys: ['Ctrl+B', 'Ctrl+L'],
+    label: 'keys.global.sidebar',
+  },
   {
     id: 'global.rightPanel',
     scope: 'global',

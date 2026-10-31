@@ -46,7 +46,7 @@ test('an empty library explains where projects live', async () => {
   }
 });
 
-test('open a project, drive the shell and keep the sidebar state', async () => {
+test('open a project, drive the shell and keep the Layers state', async () => {
   const base = await mkdtemp(join(tmpdir(), 'quadrion-shell-'));
   const dataRoot = join(base, 'data');
   await writeProject(join(dataRoot, 'projects', 'alzour'), sampleManifest(), {
@@ -85,9 +85,10 @@ test('open a project, drive the shell and keep the sidebar state', async () => {
     await expect(win.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
     await expect(win.getByTestId('timecode')).not.toContainText('12:00:00.00');
 
-    // Ctrl+B collapses the sidebar and persists through settings.
+    // Ctrl+B folds the Layers column away and persists through settings; the rail stays.
     await win.keyboard.press('Control+B');
     await expect(win.locator('.app')).toHaveAttribute('data-sb', 'collapsed');
+    await expect(win.getByTestId('rail')).toBeVisible();
     await expect
       .poll(() =>
         win.evaluate(() => window.aio.invoke('settings:get', {}).then((s) => s.sidebarCollapsed)),
@@ -106,7 +107,7 @@ test('open a project, drive the shell and keep the sidebar state', async () => {
     await expect(win.locator('.nav-item[aria-current="page"] .lbl')).toHaveText('Issues');
 
     // Settings: providers, routing and cloud AI on for a new install.
-    await win.locator('.sb-foot .nav-item', { hasText: 'Settings' }).click();
+    await win.locator('.rail-foot .nav-item', { hasText: 'Settings' }).click();
     await expect(win.getByRole('heading', { name: 'AI providers' })).toBeVisible();
     await expect(win.getByLabel('Anthropic API key')).toHaveAttribute('type', 'password');
     await expect(win.getByLabel('Provider for Agent chat')).toBeVisible();

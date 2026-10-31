@@ -15,7 +15,7 @@ vi.mock('@aio/annotate', async (orig) => ({
 
 import { shell } from '../shell';
 import { removal } from './removal';
-import { Sidebar } from './Sidebar';
+import { LayersColumn } from './LayersColumn';
 
 const walk = (id: string): WalkLayer => ({
   kind: 'walk',
@@ -73,7 +73,7 @@ function render(trash: { bytes: number; entries: number } | null, m: ProjectMani
   });
   act(() => {
     root = createRoot(host);
-    root.render(<Sidebar />);
+    root.render(<LayersColumn />);
   });
 }
 const q = (id: string) => document.body.querySelector<HTMLElement>(`[data-testid="${id}"]`);
@@ -121,15 +121,7 @@ afterEach(() => {
   host.remove();
 });
 
-describe('Sidebar layout', () => {
-  it('lists Inspect once and no Media or Detections', () => {
-    render(null);
-    const names = [...document.body.querySelectorAll('.nav-item .lbl')].map((b) => b.textContent);
-    expect(names.filter((n) => n === 'Inspect')).toHaveLength(1);
-    expect(names).not.toContain('Media');
-    expect(names).not.toContain('Detections');
-  });
-
+describe('Layers column', () => {
   it('shows the dataset tree only on the Scene', () => {
     render(null);
     expect(q('tree-row-walk-a')).not.toBeNull();
@@ -137,22 +129,31 @@ describe('Sidebar layout', () => {
       shell.setState({ screen: 'issues' });
     });
     expect(q('tree-row-walk-a')).toBeNull();
-    expect(document.body.querySelector('.sb-tree')).toBeNull();
+    expect(q('layers-column')).toBeNull();
   });
 
-  it('keeps the nav out of the scrolling tree', () => {
+  it('holds no screen nav: the rail does', () => {
     render(null);
-    const nav = document.body.querySelector('.sb-nav');
-    expect(nav).not.toBeNull();
-    expect(nav?.closest('.sb-scroll')).toBeNull();
+    expect(document.body.querySelector('.nav-item[aria-current]')).toBeNull();
+    expect(document.body.querySelector('.sb-nav')).toBeNull();
   });
 
-  it('has help beside Settings', () => {
+  it('keeps the Processing section with Create maps from photos above the tree', () => {
     render(null);
-    const help = q('help-open');
-    const row = help?.closest('.sb-foot-row');
-    expect(row).not.toBeNull();
-    expect(row?.querySelector('.nav-item')?.textContent).toContain('Settings');
+    const section = q('sidebar-processing');
+    expect(section?.textContent).toContain('Create maps from photos');
+    expect(section?.closest('.sb-scroll')).toBeNull();
+    expect(q('layers-column')?.firstElementChild).toBe(section);
+  });
+
+  it('folded, it takes no focus and hands its tab to the rail', () => {
+    render(null);
+    expect(q('panel-handle-left')).not.toBeNull();
+    act(() => {
+      shell.setState({ settings: { ...shell.getState().settings, sidebarCollapsed: true } });
+    });
+    expect(q('layers-column')?.hasAttribute('inert')).toBe(true);
+    expect(q('panel-handle-left')).toBeNull();
   });
 });
 

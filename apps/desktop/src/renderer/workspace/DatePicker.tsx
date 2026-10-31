@@ -28,7 +28,14 @@ export function useCalendarDays(index: CaptureIndex | null): {
  * button (the lane timeline sits at the bottom of the window), rendered on the page
  * body so a scrolling box around the button (the lane timeline's body) does not clip it.
  */
-export function DatePicker({ up = false }: { up?: boolean }) {
+export function DatePicker({
+  up = false,
+  testId = 'lane-date-open',
+}: {
+  up?: boolean;
+  /** Its test id: the title bar's breadcrumb has a second one beside the date strip's. */
+  testId?: string;
+}) {
   const t = useT();
   const index = useTimeline((s) => s.index);
   const focus = useTimeline((s) => s.focus);
@@ -44,7 +51,7 @@ export function DatePicker({ up = false }: { up?: boolean }) {
         ref={opener}
         type="button"
         className="dbar-date"
-        data-testid="lane-date-open"
+        data-testid={testId}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={t('datebar.open', { date: formatDate(current.date) })}

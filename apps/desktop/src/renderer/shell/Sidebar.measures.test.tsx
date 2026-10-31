@@ -57,7 +57,7 @@ import { createMeasureVisibilityMemory } from '../survey/measureVisibility';
 import { removal } from './removal';
 import { renameRequest } from './renameRequest';
 import { MeasureMenu } from '../survey/MeasureMenu';
-import { Sidebar } from './Sidebar';
+import { LayersColumn } from './LayersColumn';
 
 const mesh = {
   kind: 'mesh',
@@ -133,7 +133,7 @@ function render(m: ProjectManifest = plain) {
   });
   act(() => {
     root = createRoot(host);
-    root.render(<Sidebar />);
+    root.render(<LayersColumn />);
   });
 }
 
@@ -505,7 +505,7 @@ describe('Datasets: the measurement filter', () => {
       act(() => {
         root?.render(
           <>
-            <Sidebar />
+            <LayersColumn />
             <MeasureMenu at={at} onClose={() => undefined} />
           </>,
         );

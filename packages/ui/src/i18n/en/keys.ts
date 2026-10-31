@@ -21,7 +21,7 @@ export const enKeys = {
   'keys.scope.agent': 'Ask AI message box',
   'keys.scope.dialog': 'Dialogs and popovers',
   'keys.global.palette': 'Open or close the command search',
-  'keys.global.sidebar': 'Collapse or expand the left sidebar',
+  'keys.global.sidebar': 'Show or hide Layers',
   'keys.global.rightPanel': 'Collapse or expand the right sidebar',
   'keys.global.agent': 'Ask AI',
   'keys.global.help': 'Open or close the user guide',

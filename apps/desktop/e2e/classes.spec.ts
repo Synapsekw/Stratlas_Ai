@@ -295,7 +295,7 @@ test('classes on the fly, Accept all with one undo, rename, delete-and-move, lib
     await win.getByTestId('queue-leave').click();
 
     // 4. Rename in Settings, Classes.
-    await win.locator('.sb-foot .nav-item', { hasText: 'Settings' }).click();
+    await win.locator('.rail-foot .nav-item', { hasText: 'Settings' }).click();
     await win.getByRole('button', { name: 'Classes', exact: true }).click();
     const panel = win.getByTestId('classes-panel');
     await expect(panel).toBeVisible();

@@ -40,7 +40,7 @@ test('the AI status chip says what Ask AI can do, and opens what fixes it', asyn
     await network.attach(app);
     const win = await app.firstWindow();
     await win.waitForLoadState('domcontentloaded');
-    await expect(win.locator('.sb-top')).toBeVisible();
+    await expect(win.locator('.titlebar')).toBeVisible();
 
     // a new install: cloud AI on, no key, so amber and never green
     await expect(chip(win)).toHaveText('AI off: no key');

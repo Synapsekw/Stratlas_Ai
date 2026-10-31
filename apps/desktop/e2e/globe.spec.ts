@@ -538,7 +538,7 @@ function expectByPin(card: Box, [x, y]: readonly [number, number]) {
 async function expectClearOfTitleBar(win: Page) {
   const bar: [string, Box][] = [];
   const items = win.locator(
-    '.pg-head > .pg-title, .pg-head .pg-acts > *, .sb-top > *, .sb-status-row > *',
+    '.pg-head > .pg-title, .pg-head .pg-acts > *, .titlebar > *, .sb-status-row > *',
   );
   for (const item of await items.all()) {
     const box = await item.boundingBox();

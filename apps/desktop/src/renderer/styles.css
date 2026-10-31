@@ -48,26 +48,33 @@
 }
 
 .app {
-  /* The sidebar's column: the shell.sidebar split (App.tsx) writes --split-size, --split-min and
-     --split-max here, so the width can be dragged and is remembered; folded, it is the rail. */
-  --sb-col: clamp(var(--split-min, 0px), var(--split-size, var(--sb-w)), var(--split-max, 100%));
-  /* the sidebar slides out towards the window's start edge */
+  /* The rail (52 px, always there), then the Layers column on the shell.sidebar split (App.tsx
+     writes --split-size, --split-min and --split-max here, so the width can be dragged and is
+     remembered; folded, or off the Scene, it is gone). --sb-col is where the main area starts:
+     the rail and the Layers column together. */
+  --rail-w: var(--sb-w-c);
+  --lc-col: clamp(var(--split-min, 0px), var(--split-size, var(--sb-w)), var(--split-max, 100%));
+  --sb-col: calc(var(--rail-w) + var(--lc-col));
+  /* the Layers column slides out towards the window's start edge */
   --sb-fold-x: -1;
   height: 100vh;
   display: grid;
-  /* No title bar: the sidebar and the main area run to the top of the window. The window's own
-     buttons sit over the top rows, on the same physical side in either direction:
+  /* The title bar's row runs over the Layers column and the main area (UI revision W11). The
+     window's own buttons sit over its end, on the same physical side in either direction:
      --caption-right (Windows) and --caption-left (macOS) are the room they take (App.tsx,
-     shell/caption.ts). Each goes to the component at that edge: the main area's end and the
-     sidebar's start, which swap sides right to left. */
+     shell/caption.ts). Each goes to the component at that edge: the title bar's end and the
+     rail's top, which swap sides right to left. */
   --caption-inline-end: var(--caption-right, 0px);
   --caption-inline-start: var(--caption-left, 0px);
-  grid-template-rows: minmax(0, 1fr);
-  grid-template-columns: var(--sb-col) minmax(0, 1fr);
-  grid-template-areas: 'sb main';
+  grid-template-rows: var(--head-h) minmax(0, 1fr);
+  grid-template-columns: var(--rail-w) var(--lc-col) minmax(0, 1fr);
+  grid-template-areas:
+    'rail head head'
+    'rail sb main';
 }
-.app[data-collapsed] {
-  --sb-col: var(--split-size, var(--sb-w-c));
+.app[data-collapsed],
+.app:not([data-screen='scene']) {
+  --lc-col: 0px;
 }
 [dir='rtl'] .app {
   --sb-fold-x: 1;
@@ -77,6 +84,11 @@
 /* macOS: the rail holds the traffic lights at its top (shell/caption.ts railWidth) */
 .app[data-platform='darwin'] {
   --sb-w-c: 76px;
+}
+/* Below the title bar the window's buttons are out of the way: the main area keeps no room */
+.app > .main {
+  --caption-inline-end: 0px;
+  --caption-inline-start: 0px;
 }
 /* dragging the sidebar's edge */
 .app[data-dragging] {
@@ -188,16 +200,17 @@ code {
 }
 
 /* ---------- window drag regions ----------
-   No title bar (main/index.ts keeps `titleBarStyle: 'hidden'`): the left sidebar's logo row, the
-   right sidebar's header row and a screen's page header drag the window; their controls do not.
-   The stage's top is not a drag region. */
-.sb-top,
+   The app draws its own title bar (main/index.ts keeps `titleBarStyle: 'hidden'`): the title bar,
+   the rail's logo, the right sidebar's header row and a screen's page header drag the window;
+   their controls do not. The stage's top is not a drag region. */
+.titlebar,
+.rail-logo,
 .right-head,
 .pg-head {
   app-region: drag;
   user-select: none;
 }
-.sb-top :is(button, a, input, [tabindex]),
+.titlebar :is(button, a, input, select, [tabindex]),
 .right-head :is(button, a, input, [tabindex]),
 .pg-head :is(button, a, input, select, [tabindex]) {
   app-region: no-drag;
@@ -216,9 +229,6 @@ code {
 .wm-ai,
 .mark-tail {
   fill: var(--acc);
-}
-.app[data-sb='collapsed'] .sb-top .wordmark {
-  display: none;
 }
 .mark {
   width: 21px;
@@ -477,126 +487,44 @@ button.chip-status:hover {
   box-shadow: inset 0 0 0 1.5px var(--fg-3);
 }
 
-/* ---------- sidebar ---------- */
-.sidebar {
-  grid-area: sb;
+/* ---------- rail (shell/Rail.tsx) ----------
+   52 px on every screen (76 on macOS, where the traffic lights take its top): the logo, the
+   screens, then Processing, the user guide and Settings at its foot. Each button is a glyph; its
+   name shows in a tip on hover and focus and stays its accessible name. */
+.rail {
+  grid-area: rail;
+  position: relative;
+  z-index: calc(var(--z-panel) + 1);
   display: flex;
   flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
   min-height: 0;
-  min-width: 0;
-  /* clip, not hidden: the tool tips that wait beside the rows make the sidebar wider inside than
-     it shows, and nothing may scroll it sideways (bringing the tab on its edge into view did) */
-  overflow: clip;
-  position: relative;
-  z-index: var(--z-panel);
-}
-.app[data-sb='collapsed'] .sidebar {
-  overflow: visible;
-}
-/* The panel's surface and the rail's. Folding, the surface slides out with a transform while the
-   rail fades in; the grid column snaps to the rail once, at the end (opening: at the start), so
-   the main view is resized once (App.tsx, shell/useFold.ts). Nothing animates a width. */
-.sb-surface,
-.sb-rail {
-  position: absolute;
-  inset-block: 0;
-  inset-inline-start: 0;
+  padding-block-end: var(--sp-2);
   background: var(--bg-chrome);
   border-inline-end: 1px solid var(--line-soft);
-  pointer-events: none;
 }
-.sb-surface {
-  inline-size: 100%;
-  transition:
-    transform var(--d-2) var(--ease),
-    border-color var(--d-1) var(--ease);
-}
-.app[data-sb='collapsed'] .sb-surface {
-  transform: translateX(calc(var(--sb-fold-x) * 100%));
-}
-.sb-rail {
-  inline-size: var(--sb-w-c);
-  opacity: 0;
-  transition:
-    opacity var(--d-2) var(--ease),
-    border-color var(--d-1) var(--ease);
-}
-.app[data-sb='collapsed'] .sb-rail {
-  opacity: 1;
-}
-/* the tab rides the sliding edge, then the grid snap puts it where it ends (--sb-fold-dx: the
-   distance in px, measured as the slide starts, App.tsx) */
-.app[data-fold='closing'] .ph[data-side='left'] {
-  transform: translateX(calc(var(--sb-fold-x) * var(--sb-fold-dx, 0px)));
-  transition: transform var(--d-2) var(--ease);
-}
-.app[data-fold='opening'] .ph[data-side='left'] {
-  animation: sb-edge-in var(--d-2) var(--ease);
-}
-@keyframes sb-edge-in {
-  from {
-    transform: translateX(calc(var(--sb-fold-x) * var(--sb-fold-dx, 0px)));
-  }
-}
-/* The drag handle of the sidebar's width: 8 px inside its inner edge, so it never takes a click
-   meant for the main view; the tab lies over it at mid-height. The panel's border is its line. */
-.sidebar > .sb-resize {
-  inset-block: 0;
-  inset-inline-end: 0;
-  inline-size: 8px;
-  z-index: auto;
-  cursor: col-resize;
-}
-.sidebar > .sb-resize::before {
-  content: none;
-}
-.sidebar > .sb-resize::after {
-  inset-block: 0;
-  inset-inline-end: 0;
-  inline-size: 2px;
-  transform: scaleX(0.5);
-}
-.app[data-dragging] .sb-resize::after {
-  background: var(--acc);
-  opacity: 1;
-  transform: none;
-  transition: none;
-}
-/* the size beside the pointer, placed on the window: the sidebar clips what leaves it */
-.app[data-dragging] .sb-resize > .split-readout {
-  display: block;
-  position: fixed;
-  inset-block-start: var(--split-pointer, 50%);
-  inset-inline-start: calc(var(--sb-col) + 8px);
-  translate: 0 -50%;
-}
-.sb-scroll,
-.sb-foot {
-  position: relative;
-}
-.sb-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-.app[data-sb='collapsed'] .sb-scroll {
-  overflow: visible;
-}
-.sb-sec {
-  padding: 8px;
-}
-.app[data-sb='collapsed'] .sb-sec,
-.app[data-sb='collapsed'] .sb-foot {
-  width: var(--sb-w-c);
-}
-.sb-sec + .sb-sec {
-  border-top: 1px solid var(--line-soft);
-}
-.sb-nav {
+.rail-logo {
+  flex: none;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  inline-size: 100%;
+  block-size: var(--head-h);
+}
+/* the window's buttons over the rail's top (macOS, or Windows right to left) */
+[dir='ltr'] .app[data-platform='darwin'] .rail-logo,
+[dir='rtl'] .app[data-platform='win32'] .rail-logo {
+  visibility: hidden;
+}
+.rail .sb-nav,
+.rail-foot {
+  display: grid;
   gap: 2px;
+  inline-size: 100%;
+  padding-inline: var(--sp-2);
+}
+.rail-fill {
+  flex: 1;
 }
 .nav-item {
   position: relative;
@@ -618,7 +546,8 @@ button.chip-status:hover {
   background: var(--bg-2);
   color: var(--fg-0);
 }
-.nav-item[aria-current='page'] {
+.nav-item[aria-current='page'],
+.nav-item[aria-pressed='true'] {
   background: var(--bg-3);
   color: var(--fg-0);
 }
@@ -630,113 +559,130 @@ button.chip-status:hover {
   font: 500 11px/1 var(--f-mono);
   color: var(--fg-3);
 }
-.nav-item .lbl,
-.nav-item .count,
-.sb-hide,
-.tgroup-btn .glbl,
-.tgroup-btn .gcount,
-.tgroup-btn .chev {
-  transition: opacity 140ms var(--ease);
+.rail .nav-item {
+  justify-content: center;
+  block-size: 36px;
+  padding: 0;
 }
-.app[data-sb='collapsed'] .nav-item .lbl,
-.app[data-sb='collapsed'] .nav-item .count,
-.app[data-sb='collapsed'] .sb-hide,
-.app[data-sb='collapsed'] .tgroup-btn .glbl,
-.app[data-sb='collapsed'] .tgroup-btn .gcount,
-.app[data-sb='collapsed'] .tgroup-btn .chev {
-  opacity: 0;
-  pointer-events: none;
+/* the name is read out and found, never drawn: the tip shows it */
+.rail .nav-item .lbl {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
-.app[data-sb='collapsed'] .nav-item {
-  padding: 0 9px;
+.rail .nav-item .count {
+  position: absolute;
+  inset-block-start: 1px;
+  inset-inline-end: 1px;
+  margin: 0;
+  min-inline-size: 16px;
+  padding-inline: 3px;
+  border-radius: 8px;
+  background: var(--bg-3);
+  color: var(--fg-1);
+  font-size: var(--t-11);
+  line-height: 16px;
+  text-align: center;
 }
-.app[data-sb='collapsed'] .nav-item:hover .tip,
-.app[data-sb='collapsed'] .nav-item:focus-visible .tip,
-.app[data-sb='collapsed'] .tgroup-btn:hover .tip,
-.app[data-sb='collapsed'] .tgroup-btn:focus-visible .tip,
-.app[data-sb='collapsed'] .proj-switch:hover .tip {
+.rail .nav-item:hover .tip,
+.rail .nav-item:focus-visible .tip {
   opacity: 1;
   transform: translate(0, -50%);
 }
-.app[data-sb='collapsed'] .tgroup-btn {
-  padding: 0 9px;
-}
-.app[data-sb='collapsed'] .tgroup-btn .chev {
-  position: absolute;
-}
 
-/* project switcher */
-.proj-wrap {
+/* ---------- title bar (shell/TitleBar.tsx) ----------
+   40 px over the Layers column and the main area: the Layers toggle on the Scene, the breadcrumb
+   "Customer / Project / Date", search, the status group and the right panel's toggle. Its end
+   keeps clear of the window's buttons (--caption-inline-end); right to left on Windows they take
+   the rail's top and reach past it onto the bar's start. */
+.titlebar {
+  grid-area: head;
   position: relative;
-}
-.proj-switch {
-  position: relative;
+  /* over the main area's panels, so its menus open over them; under the drawers and dialogs */
+  z-index: calc(var(--z-panel) + 2);
   display: flex;
   align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 6px 8px;
-  border-radius: var(--r-4);
-  border: 1px solid var(--line);
-  background: var(--bg-1);
-  text-align: start;
-  min-height: 44px;
-  transition:
-    border-color 120ms,
-    padding var(--panel-ms) var(--ease);
+  gap: var(--sp-2);
+  min-inline-size: 0;
+  padding-inline: calc(var(--sp-2) + max(0px, var(--caption-inline-start) - var(--rail-w)))
+    calc(var(--sp-2) + var(--caption-inline-end));
+  background: var(--bg-chrome);
+  border-block-end: 1px solid var(--line-soft);
 }
-.proj-switch:hover {
-  border-color: var(--line-strong);
+.tb-crumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-inline-size: 0;
+  font-size: var(--t-13);
 }
-.proj-switch .pglyph {
-  width: 26px;
-  height: 26px;
-  border-radius: var(--r-4);
-  background: var(--bg-3);
-  display: grid;
-  place-items: center;
-  color: var(--fg-1);
+.tb-crumb-customer {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-3);
+}
+.tb-crumb-sep {
+  flex: none;
+  color: var(--fg-4);
+}
+.tb-crumbs .dpick {
   flex: none;
 }
-.proj-switch .pt {
-  min-width: 0;
+.tb-fill {
   flex: 1;
+  align-self: stretch;
 }
-.proj-switch .pt b {
-  display: block;
-  font-weight: var(--fw-title);
+.titlebar > .btn,
+.tb-search {
+  flex: none;
+}
+
+/* project crumb and its menu */
+.proj-wrap {
+  position: relative;
+  flex: 0 1 auto;
+  min-inline-size: 0;
+}
+.proj-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  max-inline-size: 100%;
+  block-size: 28px;
+  padding-inline: var(--sp-2);
+  border-radius: var(--r-4);
   color: var(--fg-0);
-  font-size: var(--t-title);
-  white-space: nowrap;
+  text-align: start;
+  transition: background-color 120ms;
+}
+.proj-switch:hover,
+.proj-switch[aria-expanded='true'] {
+  background: var(--bg-2);
+}
+.proj-switch b {
+  min-inline-size: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.proj-switch .pt span {
-  display: block;
-  font-size: var(--t-11);
-  color: var(--fg-3);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-weight: var(--fw-title);
+  font-size: var(--t-13);
 }
-.app[data-sb='collapsed'] .proj-switch {
-  padding: 6px 4px;
-  border-color: transparent;
-  background: none;
-}
-.app[data-sb='collapsed'] .proj-switch .pt,
-.app[data-sb='collapsed'] .proj-switch > svg {
-  opacity: 0;
-  /* they no longer fit in the rail and hang over the main view, unseen: they take no clicks
-     there (the chevron sat 7 to 21 px into the 3D view) */
-  pointer-events: none;
+.proj-switch > svg {
+  flex: none;
 }
 .proj-menu {
   position: absolute;
   inset-inline-start: 0;
-  inset-inline-end: 0;
   top: calc(100% + 4px);
   z-index: 40;
+  inline-size: max(100%, 280px);
+  max-inline-size: 420px;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-4);
   background: var(--bg-1);
@@ -767,7 +713,7 @@ button.chip-status:hover {
   color: var(--acc);
 }
 /* a library entry: its full name first, its customer under it in mono, so a long customer never
-   cuts the name to a letter (the menu is the sidebar's width) */
+   cuts the name to a letter (the menu is at most 420 px wide) */
 .proj-menu button:has(.pm-c) {
   height: auto;
   min-height: 30px;
@@ -802,11 +748,78 @@ button.chip-status:hover {
   font-size: var(--t-12);
   color: var(--fg-3);
 }
+/* ---------- Layers column (shell/LayersColumn.tsx) ----------
+   The dataset tree beside the rail, on the Scene only. Folding, the column slides out under the
+   rail with a transform; the grid column snaps to nothing once, at the end (opening: at the
+   start), so the main view is resized once (App.tsx, shell/useFold.ts). Nothing animates a
+   width. */
+.sidebar {
+  grid-area: sb;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  /* clip, not hidden: the tool tips that wait beside the rows make the column wider inside than
+     it shows, and nothing may scroll it sideways */
+  overflow: clip;
+  position: relative;
+  z-index: var(--z-panel);
+  background: var(--bg-chrome);
+  border-inline-end: 1px solid var(--line-soft);
+  transition:
+    transform var(--d-2) var(--ease),
+    border-color var(--d-1) var(--ease);
+}
+.app[data-sb='collapsed'] .sidebar {
+  transform: translateX(calc(var(--sb-fold-x) * 100%));
+}
+/* the drag handle of the column's width: 8 px inside its inner edge, so it never takes a click
+   meant for the main view; the tab lies over it at mid-height. The column's border is its line. */
+.sidebar > .sb-resize {
+  inset-block: 0;
+  inset-inline-end: 0;
+  inline-size: 8px;
+  z-index: auto;
+  cursor: col-resize;
+}
+.sidebar > .sb-resize::before {
+  content: none;
+}
+.sidebar > .sb-resize::after {
+  inset-block: 0;
+  inset-inline-end: 0;
+  inline-size: 2px;
+  transform: scaleX(0.5);
+}
+.app[data-dragging] .sb-resize::after {
+  background: var(--acc);
+  opacity: 1;
+  transform: none;
+  transition: none;
+}
+/* the size beside the pointer, placed on the window: the column clips what leaves it */
+.app[data-dragging] .sb-resize > .split-readout {
+  display: block;
+  position: fixed;
+  inset-block-start: var(--split-pointer, 50%);
+  inset-inline-start: calc(var(--sb-col) + 8px);
+  translate: 0 -50%;
+}
+.sb-scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.sb-sec {
+  padding: 8px;
+}
+.sb-sec + .sb-sec {
+  border-top: 1px solid var(--line-soft);
+}
 .sb-tree {
   padding-top: 2px;
-}
-.app[data-sb='collapsed'] .titem {
-  display: none;
 }
 /* a measurement row: its colour swatch, and dimmed while its survey date is hidden */
 .tsw {
@@ -825,93 +838,20 @@ button.chip-status:hover {
   opacity: 1;
   color: var(--fg-2);
 }
-.sb-foot {
-  border-top: 1px solid var(--line-soft);
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: 100%;
-}
-
-/* The logo row: the logo, and the search that opens the command palette. The window's buttons at
-   its edge take its start (macOS, or Windows right to left: --caption-inline-start); in the rail
-   they keep its top and the logo goes below. */
-.sb-top {
-  position: relative;
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 40px;
-  padding-block: 0;
-  padding-inline: calc(15px + var(--caption-inline-start)) 8px;
-  border-bottom: 1px solid var(--line-soft);
-}
-.app[data-sb='collapsed'] .sb-top {
-  width: var(--sb-w-c);
-  padding-inline: 0;
-  justify-content: center;
-}
-[dir='ltr'] .app[data-platform='darwin'][data-sb='collapsed'] .sb-top,
-[dir='rtl'] .app[data-platform='win32'][data-sb='collapsed'] .sb-top {
-  height: 72px;
-  align-items: flex-end;
-  padding-block-end: 10px;
-}
-.sb-logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-.sb-top-fill {
-  flex: 1;
-}
-.app[data-sb='collapsed'] .sb-top-fill,
-.app[data-sb='collapsed'] .sb-search {
-  display: none;
-}
-.sb-proj,
-.sb-nav {
-  position: relative;
-  flex: none;
-}
-.sb-nav {
-  border-bottom: 1px solid var(--line-soft);
-}
-/* Settings and help on one row */
-.sb-foot-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.sb-foot-row > .nav-item {
-  flex: 1;
-  min-width: 0;
-}
-.help-btn {
-  flex: none;
-  font-weight: 600;
-}
-.app[data-sb='collapsed'] .sb-foot-row > :not(.nav-item) {
-  display: none;
-}
-/* The status row (shell/SidebarStatus.tsx): "● Online · Cloud AI off · 1 job", and the package
-   under it. */
+/* The status group at the title bar's end (shell/SidebarStatus.tsx): the package, then
+   "● Online · AI ready · 1 job". */
 .sb-status {
-  display: grid;
-  gap: 4px;
-  padding-block-end: 4px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
   min-width: 0;
 }
 .sb-status-row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 2px;
   min-width: 0;
-  font-size: var(--t-13);
+  font-size: var(--t-12);
 }
 .sb-status-row .chip-status {
   font-size: inherit;
@@ -920,6 +860,7 @@ button.chip-status:hover {
   height: 24px;
   padding: 0 4px;
   min-width: 0;
+  white-space: nowrap;
 }
 .sb-status-row .chip-status:hover,
 .sb-status-row .chip-status[aria-expanded='true'] {
@@ -933,7 +874,7 @@ button.chip-status:hover {
 }
 .sb-status-row > .foot-cloud,
 .sb-status-row > .proc-chip {
-  font-size: var(--t-13);
+  font-size: var(--t-12);
 }
 /* "1 job" needs no clock beside it in the row; a warning keeps its mark */
 .sb-status-row > .proc-chip:not([data-state='attention']) > svg {
@@ -945,60 +886,42 @@ button.chip-status:hover {
   margin-inline-end: 2px;
   color: var(--fg-4);
 }
-.conn-foot .dot {
+:is(.conn-foot, .conn-bar) .dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--ok);
 }
-.conn-foot .dot.off {
+:is(.conn-foot, .conn-bar) .dot.off {
   background: var(--fg-3);
 }
 .conn-foot .conn-pop {
-  /* placed on the window, above the chip (ConnectionStatus.tsx): the sidebar clips */
+  /* placed on the window, above the chip (ConnectionStatus.tsx) */
   transform-origin: bottom;
-}
-/* Folded to the rail (below 1280 px the Scene folds there on its own), the row keeps what must
-   stay in sight as glyphs: the connection's dot, a running job's clock or a job warning, and the
-   package's mark under them. Their words leave the drawing but stay their names; the tips say
-   the rest. */
-.app[data-sb='collapsed'] .sb-status-row .conn-label,
-.app[data-sb='collapsed'] .sb-status-row .foot-cloud,
-.app[data-sb='collapsed'] .sb-status-row .proc-chip:is([data-state='idle'], [data-state='hidden']) {
-  display: none;
-}
-.app[data-sb='collapsed'] .sb-status-row {
-  flex-direction: column;
-  justify-content: center;
-}
-.app[data-sb='collapsed'] .sb-status-row > .proc-chip > svg {
-  display: inline-block;
-}
-.app[data-sb='collapsed'] .sb-status-row > .proc-chip::before {
-  content: none;
-}
-.app[data-sb='collapsed'] :is(.proc-words, .sb-pkg-lbl) {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-.app[data-sb='collapsed'] .sb-status-pkg {
-  justify-content: center;
-  padding-inline: 0;
 }
 .sb-status-pkg {
   display: flex;
   min-width: 0;
-  padding-inline: 6px;
+  max-inline-size: 220px;
 }
 .sb-status-pkg .tag {
   max-width: 100%;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+/* In a narrow window the status words give way to their dots and marks; the tips and the names
+   still say them. */
+@media (max-width: 1279px) {
+  .sb-status-row .conn-label,
+  .sb-pkg-lbl {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 /* ---------- main and screens ---------- */
@@ -1091,7 +1014,8 @@ button.chip-status:hover {
   outline-offset: -2px;
 }
 /* the edge the tab moves lights up while the pointer is on it */
-.sidebar:has(> .ph:hover) > :is(.sb-surface, .sb-rail) {
+.sidebar:has(> .ph:hover),
+.rail:has(> .ph:hover) {
   border-inline-end-color: var(--acc);
 }
 .ws:has(> .ph:hover) > .right {

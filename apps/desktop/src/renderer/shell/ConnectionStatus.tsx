@@ -41,16 +41,19 @@ export function ConnectionStatus({
   store: StoreApi<Shell>;
   /**
    * `pair`: the mode chip and the AI status chip. `foot`: the mode alone, a dot and a word, for
-   * the left sidebar's status row (SidebarStatus); its menu opens above it.
+   * a status row at the foot of a panel; its menu opens above it. `bar`: the same dot and word
+   * for the title bar's status group (SidebarStatus); its menu opens below it.
    */
-  variant?: 'pair' | 'foot';
+  variant?: 'pair' | 'foot' | 'bar';
 }) {
   useT();
   const notSaved = useShellStore(store, (s) => s.settingsError);
   const status = useCloudStatus(store);
   const ai = useAiStatus(null, store);
   const aiLook = ai.checking ? AI_CHECKING : AI_LOOK[ai.state];
-  const foot = variant === 'foot';
+  // the dot and the word, without the AI chip beside it (the status group shows that one)
+  const foot = variant !== 'pair';
+  const above = variant === 'foot';
   const online = status.mode === 'online';
   const networkUp = useNetworkUp();
   const [open, setOpen] = useState(false);
@@ -59,8 +62,8 @@ export function ConnectionStatus({
   const opener = useRef<HTMLButtonElement>(null);
   const [placed, setPlaced] = useState<CSSProperties | undefined>(undefined);
   useLayoutEffect(() => {
-    setPlaced(open && foot ? aboveStyle(opener.current) : undefined);
-  }, [open, foot]);
+    setPlaced(open && above ? aboveStyle(opener.current) : undefined);
+  }, [open, above]);
 
   useEffect(() => {
     if (!open) return;
@@ -87,7 +90,7 @@ export function ConnectionStatus({
 
   return (
     <div
-      className={foot ? 'conn conn-foot' : 'conn'}
+      className={foot ? `conn conn-${variant}` : 'conn'}
       ref={root}
       role="group"
       aria-label={t('connection.title')}
