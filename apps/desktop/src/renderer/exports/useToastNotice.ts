@@ -33,6 +33,7 @@ export function useToastNotice(id: string, notice: ToastNotice | null, event?: u
       notice.closeLabel,
       notice.closeTestId,
       notice.closable,
+      notice.actionable,
       notice.action?.label,
       notice.action?.testId,
       notice.onDismiss !== undefined,

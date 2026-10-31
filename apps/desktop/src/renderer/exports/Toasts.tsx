@@ -113,6 +113,9 @@ function ExportToast({ x }: { x: ExportToastState }) {
       body,
       // running, Cancel is the way out; the close button would hide a job that goes on
       closable: !running,
+      // Cancel needs acting on while it runs; a finished one is a plain notice (the queue's
+      // "all checked" too) and never hides an offer
+      actionable: running,
       closeLabel: 'Dismiss',
       onDismiss: () => {
         if (toasts.getState().toasts.find((y) => y.id === x.id)?.state !== 'running')
@@ -126,8 +129,8 @@ function ExportToast({ x }: { x: ExportToastState }) {
 
 /**
  * The window's toast host, bottom right, and every notice that shows on it: export progress, the
- * graphics memory notice, undo notices and offers. One shows at a time, the newest first; the rest
- * wait their turn. The host's live regions stay mounted so screen readers hear a toast arrive.
+ * graphics memory notice, undo notices and offers. One shows at a time: an error, then a notice
+ * with buttons, then the rest, the newest first within each; the rest wait their turn. The host's live regions stay mounted so screen readers hear a toast arrive.
  */
 export function Toasts() {
   const list = useStore(toasts, (s) => s.toasts);

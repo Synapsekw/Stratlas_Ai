@@ -348,6 +348,88 @@ describe('toast', () => {
     say('second', { ttlMs: 0, testId: 'two' });
     expect(document.activeElement).toBe(host.querySelector('[data-testid="two"]'));
   });
+
+  it('an offer raised before an info toast stays in front of it; the info waits its turn', () => {
+    mount(<ToastHost placement="window" />);
+    const run = vi.fn();
+    say('Place 2 findings on the model?', {
+      id: 'offer',
+      ttlMs: 0,
+      action: { label: 'Place', run },
+    });
+    say('Every suggestion here is checked.', { id: 'done', tone: 'ok' });
+    expect(text()).toEqual(['Place 2 findings on the model?']);
+    expect(isToastVisible('offer')).toBe(true);
+    expect(isToastVisible('done')).toBe(false);
+    expect(host.querySelector('[data-testid="toast-waiting-window"]')?.textContent).toBe('1 more');
+    tick(60_000); // the waiting info does not use up its time
+    expect(toastQueue().map((x) => x.id)).toEqual(['offer', 'done']);
+    act(() => {
+      dismissToast('offer');
+    });
+    expect(text()).toEqual(['Every suggestion here is checked.']);
+  });
+
+  it('a toast with buttons in its body, or an undo with a timeout, is not hidden by info', () => {
+    mount(<ToastHost placement="window" />);
+    say('1 measurement deleted', { id: 'undo', action: { label: 'Undo', run: vi.fn() } });
+    say('Synced', { id: 'info' });
+    expect(text()).toEqual(['1 measurement deleted']);
+    act(() => {
+      dismissToast('undo');
+    });
+    say('Dropped to ground', {
+      id: 'drop',
+      ttlMs: 0,
+      body: () => <button type="button">Undo</button>,
+    });
+    expect(text()).toEqual(['Dropped to ground']);
+    expect(isToastVisible('drop')).toBe(true);
+  });
+
+  it('actionable false: a body without buttons waits behind newer info like any notice', () => {
+    mount(<ToastHost placement="window" />);
+    say('Export saved', {
+      id: 'saved',
+      ttlMs: 0,
+      body: () => <span>file.las</span>,
+      actionable: false,
+    });
+    say('Synced', { id: 'info', ttlMs: 0 });
+    expect(text()).toEqual(['Synced']);
+  });
+
+  it('errors stay first; among offers the newest shows', () => {
+    mount(<ToastHost placement="window" />);
+    const act1 = { label: 'Yes', run: vi.fn() };
+    say('Saving failed', { id: 'err', tone: 'error', ttlMs: 0 });
+    say('Older offer', { id: 'o1', ttlMs: 0, action: act1 });
+    say('Newer offer', { id: 'o2', ttlMs: 0, action: act1 });
+    say('Info', { id: 'i', ttlMs: 0 });
+    expect(text()).toEqual(['Saving failed']);
+    expect(host.querySelector('[data-testid="toast-waiting-window"]')?.textContent).toBe('3 more');
+    act(() => {
+      dismissToast('err');
+    });
+    expect(text()).toEqual(['Newer offer']);
+    act(() => {
+      dismissToast('o2');
+    });
+    expect(text()).toEqual(['Older offer']);
+    act(() => {
+      dismissToast('o1');
+    });
+    expect(text()).toEqual(['Info']);
+  });
+
+  it('focus on an info toast moves to an offer that takes its place', () => {
+    mount(<ToastHost placement="window" />);
+    say('first', { ttlMs: 0, testId: 'one' });
+    const first = host.querySelector<HTMLElement>('[data-testid="one"]');
+    act(() => first?.focus());
+    say('offer', { ttlMs: 0, testId: 'two', action: { label: 'Go', run: vi.fn() } });
+    expect(document.activeElement).toBe(host.querySelector('[data-testid="two"]'));
+  });
 });
 
 describe('Progress', () => {

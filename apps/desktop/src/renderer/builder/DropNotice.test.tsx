@@ -128,7 +128,7 @@ describe('DropNotice', () => {
     expect(byId('drop-text')?.textContent).toBe('Dropped again.');
   });
 
-  it('leaves Ctrl+Z alone while a newer toast covers the notice', async () => {
+  it('leaves Ctrl+Z alone while a newer offer covers the notice; info does not cover it', async () => {
     const { dropToGround } = await import('./dropSession');
     root = createRoot(host);
     act(() =>
@@ -142,8 +142,18 @@ describe('DropNotice', () => {
     await act(async () => {
       await dropToGround.getState().drop(['c']);
     });
+    // a plain info toast waits behind the undo notice
     act(() => {
-      toast('Export saved', { id: 'newer', ttlMs: 0 });
+      toast('Export saved', { id: 'info', ttlMs: 0 });
+    });
+    expect(byId('drop-notice')).not.toBeNull();
+    act(() => {
+      dismissToast('info');
+      toast('Place on the model?', {
+        id: 'newer',
+        ttlMs: 0,
+        action: { label: 'Place', run: vi.fn() },
+      });
     });
     expect(byId('drop-notice')).toBeNull();
     press({ key: 'z', ctrlKey: true });

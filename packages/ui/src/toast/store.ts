@@ -1,6 +1,7 @@
 /**
  * The one toast queue. `toast(message)` from anywhere; a `<ToastHost />` shows one toast at a
- * time: the newest wins, older ones wait and show when it goes. A toast with the id of one that
+ * time: an error first, then a toast that needs acting on (an offer, an undo notice), then the
+ * rest; the newest wins within each, older ones wait and show when it goes. A toast with the id of one that
  * is still queued or showing replaces it in place (a notice that updates its text).
  */
 import type { ComponentType } from 'react';
@@ -45,6 +46,11 @@ export interface ToastOptions {
   closeTestId?: string;
   /** False: no close button, for a toast whose body answers it (Escape still dismisses). */
   closable?: boolean;
+  /**
+   * It has buttons to act on (an offer, an undo): it shows in front of plain info and ok toasts,
+   * whatever order they came in. Default: true when it has an `action` or a `body`.
+   */
+  actionable?: boolean;
 }
 
 export interface Toast {
@@ -64,6 +70,8 @@ export interface Toast {
   closeLabel?: string;
   closeTestId?: string;
   closable?: boolean;
+  /** In front of plain info and ok toasts: it has buttons to act on. */
+  actionable: boolean;
 }
 
 /** Time on screen by tone: errors and warnings stay longer, they may need acting on. */
@@ -97,6 +105,7 @@ export function toast(message: string, opts: ToastOptions = {}): string {
     tone,
     ttlMs: opts.ttlMs ?? TOAST_TTL[tone],
     version: (prev?.version ?? 0) + 1,
+    actionable: opts.actionable ?? (opts.action !== undefined || opts.body !== undefined),
     ...(opts.action && { action: opts.action }),
     ...(opts.detail !== undefined && { detail: opts.detail }),
     ...(opts.icon && { icon: opts.icon }),
@@ -145,19 +154,22 @@ function hostOf(x: Toast): ToastPlacement {
   return isMounted(want) || !isMounted(other) ? want : other;
 }
 
+/** Which toast shows first: an error, then one with buttons to act on, then the rest. */
+const tierOf = (x: Toast): number => (x.tone === 'error' ? 2 : x.actionable ? 1 : 0);
+
 /**
- * The toast a host shows now: the newest error routed to it, else the newest. An error is never
- * covered by a later notice; it shows until it goes.
+ * The toast a host shows now: the newest error routed to it, else the newest toast that needs
+ * acting on, else the newest. An error is never covered by a later notice, and an offer or undo
+ * notice never by a later info or ok toast; each shows until it goes.
  */
 export function visibleToast(placement: ToastPlacement): Toast | undefined {
-  let newest: Toast | undefined;
+  let shown: Toast | undefined;
   for (let i = queue.length - 1; i >= 0; i--) {
     const x = queue[i];
     if (!x || hostOf(x) !== placement) continue;
-    if (x.tone === 'error') return x;
-    newest ??= x;
+    if (!shown || tierOf(x) > tierOf(shown)) shown = x;
   }
-  return newest;
+  return shown;
 }
 
 /**
