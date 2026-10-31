@@ -300,7 +300,11 @@ const toLocal = (m: ProjectManifest, p: Vec3): Vec3 => [
   0 - (p[1] - m.origin[1]),
 ];
 
+/** What a local-frame project (a Flyability Inspector space) says to anything but an export. */
+const LOCAL_ONLY_EXPORTS = 'Only Flyability Inspector exports can go into this project.';
+
 function epsgOf(m: ProjectManifest): number {
+  if ('local' in m.crs) throw new Error(LOCAL_ONLY_EXPORTS);
   if (!('epsg' in m.crs)) throw new Error('Raw import needs a project CRS given as an EPSG code.');
   return m.crs.epsg;
 }
@@ -602,7 +606,7 @@ export async function importRawFiles(
           file: name,
           kind: 'unknown',
           status: 'error',
-          message: 'Raw import needs a project CRS given as an EPSG code.',
+          message: LOCAL_ONLY_EXPORTS,
         });
         continue;
       }
@@ -1186,6 +1190,17 @@ export async function planRawAltitudes(
   deps: { video?: VideoTools },
 ): Promise<AltitudePlan> {
   const m = await readManifestFile(root);
+  // a local frame has no EPSG code and no heights to plan
+  if ('local' in m.crs)
+    return {
+      files: 0,
+      absolute: 0,
+      relative: 0,
+      datum: m.verticalDatum ?? null,
+      recommended: 'absolute',
+      takeoff: null,
+      takeoffAbsAlt: null,
+    };
   const files: FileAltitudes[] = [];
   for (const file of paths) {
     const ext = extname(file).toLowerCase();

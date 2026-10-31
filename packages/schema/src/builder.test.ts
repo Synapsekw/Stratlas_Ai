@@ -396,4 +396,20 @@ describe('flyability import', () => {
         .success,
     ).toBe(true);
   });
+
+  it('inspectorScan request parses and refuses unknown keys', () => {
+    const req = ipc['builder:inspectorScan'].request;
+    expect(req.safeParse({ projectId: null, path: 'C:/export' }).success).toBe(true);
+    expect(req.safeParse({ projectId: 'p', path: 'C:/export' }).success).toBe(true);
+    expect(req.safeParse({ projectId: 'p', path: 'C:/export', extra: 1 }).success).toBe(false);
+  });
+
+  it('builder:import accepts an inspector selection and refuses an empty one', () => {
+    const req = ipc['builder:import'].request;
+    const sel = { inspections: [{ id: 'i1', flights: ['f1'] }] };
+    expect(req.safeParse({ projectId: 'p', paths: ['x'], inspector: sel }).success).toBe(true);
+    expect(
+      req.safeParse({ projectId: 'p', paths: ['x'], inspector: { inspections: [] } }).success,
+    ).toBe(false);
+  });
 });

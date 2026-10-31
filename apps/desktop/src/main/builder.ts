@@ -396,6 +396,9 @@ export function flyabilityPackRefusal(pipeline: string, packVersion: string | nu
   return `${FLYABILITY_FEATURE} needs processing tools ${FLYABILITY_MIN_PACK} or later (these are ${packVersion}). Update them in Settings, Processing tools.`;
 }
 
+/** Files the operating system adds to a folder; they are not part of what was dropped. */
+const OS_CLUTTER = /^(thumbs\.db|desktop\.ini|\.ds_store|\._.*|\..*)$/i;
+
 /**
  * A dropped folder that holds its export one level down: its other children are not imported, and
  * the list says so.
@@ -407,7 +410,7 @@ async function otherChildren(dropped: readonly string[]): Promise<ImportItem[]> 
     const found = await findInspectorExport(p);
     if (found === null || found === p) continue;
     for (const e of await readdir(p).catch(() => [] as string[])) {
-      if (join(p, e) === found) continue;
+      if (join(p, e) === found || OS_CLUTTER.test(e)) continue;
       out.push({
         file: e,
         kind: 'unknown',

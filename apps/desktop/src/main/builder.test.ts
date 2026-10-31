@@ -927,6 +927,19 @@ describe('Flyability Inspector exports', () => {
     ]);
   });
 
+  it('os clutter beside an export one level down is not listed', async () => {
+    const t = await setup(true);
+    const parent = join(base, 'drop');
+    await mkdir(parent, { recursive: true });
+    await writeInspectorFixture(join(parent, 'export'));
+    for (const f of ['Thumbs.db', 'desktop.ini', '.DS_Store', '._export']) {
+      await writeFile(join(parent, f), 'x');
+    }
+    await writeFile(join(parent, 'notes.txt'), 'x');
+    const r = await builderImport({ projectId: t.projectId, paths: [parent] }, t.deps);
+    expect(r.ok && r.items.map((i) => i.file)).toEqual(['drop', 'notes.txt']);
+  });
+
   it('without the picker an export folder imports as any folder, with no Flyability item', async () => {
     const t = await setup(true);
     const r = await builderImport(

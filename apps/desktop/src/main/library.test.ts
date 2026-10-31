@@ -1,11 +1,25 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as builderLib from '@aio/project/builder';
 import { writeInspectorFixture } from '@aio/project/builder/testing';
 import { addToLibrary, createLibraryStore, listLibrary, listPacks } from './library';
 import { ProjectRegistry } from './project';
 import { sampleManifest, writeProject } from './testing';
+
+const failCreate = vi.hoisted(() => ({ on: false }));
+vi.mock('@aio/project/builder', async (importOriginal) => {
+  const real = await importOriginal<typeof builderLib>();
+  return {
+    ...real,
+    createProject: (...a: Parameters<typeof real.createProject>) =>
+      failCreate.on ? Promise.reject(new Error('disk full')) : real.createProject(...a),
+  };
+});
+
+/** A pack version for tests that add no export. */
+const noPack = () => Promise.resolve<string | null>('dev');
 
 let base: string;
 let dataRoot: string;
@@ -124,10 +138,10 @@ describe('library store and addToLibrary', () => {
   it('adds a native folder, remembers it and returns its entry', async () => {
     const store = createLibraryStore(join(base, 'library.json'));
     const dir = await writeProject(join(base, 'mine'));
-    const r = await addToLibrary(dir, store, new ProjectRegistry());
+    const r = await addToLibrary(dir, store, new ProjectRegistry(), dataRoot, noPack);
     expect(r.ok && r.entry.kind).toBe('native');
     expect(await store.paths()).toEqual([dir]);
-    await addToLibrary(dir, store, new ProjectRegistry());
+    await addToLibrary(dir, store, new ProjectRegistry(), dataRoot, noPack);
     expect(await createLibraryStore(join(base, 'library.json')).paths()).toEqual([dir]);
   });
 
@@ -173,9 +187,53 @@ describe('library store and addToLibrary', () => {
     }
     expect(await readdir(join(dataRoot, 'projects'))).toEqual(before);
     // without a data folder it says so
-    expect(
-      await addToLibrary(exp, store, new ProjectRegistry(), '', undefined, true),
-    ).toMatchObject({ ok: false });
+    expect(await addToLibrary(exp, store, new ProjectRegistry(), '', noPack, true)).toMatchObject({
+      ok: false,
+    });
+  });
+
+  it('the same export dropped twice adds no second project', async () => {
+    const store = createLibraryStore(join(base, 'library.json'));
+    const exp = join(base, 'export');
+    const ids = await writeInspectorFixture(exp);
+    const registry = new ProjectRegistry();
+    const packV = () => Promise.resolve('0.31.0');
+    const one = await addToLibrary(exp, store, registry, dataRoot, packV, true);
+    expect(one.ok).toBe(true);
+    // once the import ran, the project holds the inspection's space
+    const mf = join(one.ok ? one.entry.path : '', 'manifest.json');
+    const m = JSON.parse(await readFile(mf, 'utf8')) as Record<string, unknown>;
+    m.spaces = [
+      {
+        id: 's1',
+        name: 'Chamber',
+        crs: { local: 'flyability' },
+        origin: [0, 0, 0],
+        source: { kind: 'flyability', inspectionId: ids.inspectionId },
+      },
+    ];
+    await writeFile(mf, JSON.stringify(m));
+    const two = await addToLibrary(exp, store, registry, dataRoot, packV, true);
+    expect(await readdir(join(dataRoot, 'projects'))).toHaveLength(1);
+    expect(one.ok && two.ok && two.entry.id).toBe(one.ok ? one.entry.id : '');
+  });
+
+  it('an export project that cannot be made leaves no folder', async () => {
+    const store = createLibraryStore(join(base, 'library.json'));
+    const exp = join(base, 'export');
+    await writeInspectorFixture(exp);
+    failCreate.on = true;
+    const r = await addToLibrary(
+      exp,
+      store,
+      new ProjectRegistry(),
+      dataRoot,
+      () => Promise.resolve('0.31.0'),
+      true,
+    );
+    failCreate.on = false;
+    expect(r).toMatchObject({ ok: false });
+    expect(await readdir(join(dataRoot, 'projects'))).toEqual([]);
   });
 
   it('adds no project for an Inspector export while its picker is not shipped', async () => {
@@ -197,7 +255,7 @@ describe('library store and addToLibrary', () => {
     await mkdir(dir);
     await writeFile(join(dir, 'layers.json'), '{}');
     await writeFile(join(dir, 'flights.json'), '{}');
-    const r = await addToLibrary(dir, store, new ProjectRegistry());
+    const r = await addToLibrary(dir, store, new ProjectRegistry(), dataRoot, noPack);
     expect(r.ok && r.entry).toMatchObject({ kind: 'twin', name: 'twin' });
   });
 
@@ -205,7 +263,7 @@ describe('library store and addToLibrary', () => {
     const store = createLibraryStore(join(base, 'library.json'));
     const dir = join(base, 'random');
     await mkdir(dir);
-    const r = await addToLibrary(dir, store, new ProjectRegistry());
+    const r = await addToLibrary(dir, store, new ProjectRegistry(), dataRoot, noPack);
     expect(r.ok).toBe(false);
     expect(!r.ok && r.error).toMatch(/manifest\.json/);
     expect(await store.paths()).toEqual([]);
@@ -218,7 +276,7 @@ describe('library store and addToLibrary', () => {
     const store = createLibraryStore(file);
     expect(await store.paths()).toEqual([old]);
     const dir = await writeProject(join(base, 'mine'));
-    expect((await addToLibrary(dir, store, new ProjectRegistry())).ok).toBe(true);
+    expect((await addToLibrary(dir, store, new ProjectRegistry(), dataRoot, noPack)).ok).toBe(true);
     expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({
       schema: 'aio.library/1',
       paths: [old, dir],
@@ -244,7 +302,7 @@ describe('library store and addToLibrary', () => {
     const store = createLibraryStore(file);
     expect(await store.paths()).toEqual([]);
     const dir = await writeProject(join(base, 'mine'));
-    expect(await addToLibrary(dir, store, new ProjectRegistry())).toEqual({
+    expect(await addToLibrary(dir, store, new ProjectRegistry(), dataRoot, noPack)).toEqual({
       ok: false,
       error:
         'library.json was saved by a newer version of Quadrion AI (aio.library/2). Update the app to open it. The file was not changed.',
@@ -267,7 +325,13 @@ describe('library store and addToLibrary', () => {
 
   it('refuses a missing folder', async () => {
     const store = createLibraryStore(join(base, 'library.json'));
-    const r = await addToLibrary(join(base, 'missing'), store, new ProjectRegistry());
+    const r = await addToLibrary(
+      join(base, 'missing'),
+      store,
+      new ProjectRegistry(),
+      dataRoot,
+      noPack,
+    );
     expect(r.ok).toBe(false);
   });
 });

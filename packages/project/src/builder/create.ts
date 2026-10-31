@@ -9,7 +9,7 @@ import type {
   Vec3,
 } from '@aio/schema';
 import { hasTurn, WalkCalibration } from '@aio/schema';
-import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { drawingStemOf, markDrawingPlaced, type PlacedDrawing } from './drawingPlacement';
 import { updateManifestFile, writeManifestFile } from './manifestFile';
@@ -88,14 +88,20 @@ export async function createProject(
   for (let n = 2; await exists(join(projects, chosen)); n++) chosen = `${base}-${String(n)}`;
   const root = join(projects, chosen);
   await mkdir(root);
-  for (const d of PACKAGE_DIRS) await mkdir(join(root, d), { recursive: true });
-  const manifest = { ...newProjectManifest(chosen, req, template), ...(crs ? { crs } : {}) };
-  await writeManifestFile(root, manifest);
-  await writeFile(
-    join(root, 'issues.json'),
-    `${JSON.stringify({ schema: 'aio.issues/1', issues: [] }, null, 2)}\n`,
-  );
-  return { root, manifest };
+  try {
+    for (const d of PACKAGE_DIRS) await mkdir(join(root, d), { recursive: true });
+    const manifest = { ...newProjectManifest(chosen, req, template), ...(crs ? { crs } : {}) };
+    await writeManifestFile(root, manifest);
+    await writeFile(
+      join(root, 'issues.json'),
+      `${JSON.stringify({ schema: 'aio.issues/1', issues: [] }, null, 2)}\n`,
+    );
+    return { root, manifest };
+  } catch (e) {
+    // a half-made project would be listed with no manifest
+    await rm(root, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined);
+    throw e;
+  }
 }
 
 /** Orientation bias to a thousandth of a degree (well below a pixel on any frame). */

@@ -360,7 +360,8 @@ async function projectForInspectorExport(
   dir: string,
   dataRoot: string,
   packVersion: () => Promise<string | null>,
-): Promise<{ root: string } | { error: string } | null> {
+  registry: ProjectRegistry,
+): Promise<{ root: string; existing?: true } | { error: string } | null> {
   const lib = await import('@aio/project/builder');
   const found = await lib.findInspectorExport(dir);
   if (found === null) return null;
@@ -378,6 +379,18 @@ async function projectForInspectorExport(
     };
   try {
     const scan = await lib.scanInspectorExport(found, null);
+    // the same export dropped again goes to the project that already holds its inspections
+    const wanted = new Set(scan.inspections.map((i) => i.id));
+    for (const e of await listLibrary({ dataRoot, extraPaths: [], registry })) {
+      const m = await readManifest(e.path);
+      if (
+        m.ok &&
+        (m.value.spaces ?? []).some(
+          (s) => s.source?.kind === 'flyability' && wanted.has(s.source.inspectionId),
+        )
+      )
+        return { root: e.path, existing: true };
+    }
     const asset = (scan.asset ?? '').trim();
     const made = await lib.createProject(
       dataRoot,
@@ -402,8 +415,8 @@ export async function addToLibrary(
   path: string,
   store: LibraryStore,
   registry: ProjectRegistry,
-  dataRoot = '',
-  packVersion: () => Promise<string | null> = () => Promise.resolve('dev'),
+  dataRoot: string,
+  packVersion: () => Promise<string | null>,
   flyabilityUi?: boolean,
 ): Promise<IpcResponse<'library:add'>> {
   const dir = resolve(path);
@@ -414,19 +427,22 @@ export async function addToLibrary(
     };
   }
   let target = dir;
+  let madeBefore = false;
   if (
     (flyabilityUi ?? (await import('@aio/project/builder')).FLYABILITY_IMPORT_UI) &&
     (await isDir(dir)) &&
     (await detectFolder(dir)) === null
   ) {
-    const made = await projectForInspectorExport(dir, dataRoot, packVersion);
+    const made = await projectForInspectorExport(dir, dataRoot, packVersion, registry);
     if (made !== null) {
       if ('error' in made) return { ok: false, error: made.error };
       target = made.root;
+      madeBefore = made.existing === true;
     }
   }
-  const created = target !== dir;
-  // a project made for an export is removed again when it cannot be listed
+  // a project made now for an export is removed again when it cannot be listed; one that was
+  // already there stays
+  const created = target !== dir && !madeBefore;
   const undo = () => (created ? rm(target, { recursive: true, force: true }) : Promise.resolve());
   const r = await buildEntry(target, registry);
   if (!r.ok) {

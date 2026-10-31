@@ -1763,6 +1763,34 @@ describe('GLB georeference on import (engineering model 5.6)', () => {
     expect('epsg' in (started[0] ?? {})).toBe(false);
   });
 
+  it('a photo dropped on a local project says only inspector exports go there', async () => {
+    const root = await project();
+    const m = await readManifestFile(root);
+    await writeManifestFile(root, { ...m, crs: { local: 'flyability' }, origin: [0, 0, 0] });
+    const a = join(dir, 'p.jpg');
+    await writeFile(a, withExif({ lat: 29.0276, lon: 48.1352 }));
+    const r = await importRawFiles(root, [a], deps());
+    expect(r.items[0]).toMatchObject({
+      status: 'error',
+      message: expect.stringContaining('Only Flyability Inspector exports') as string,
+    });
+  });
+
+  it('heights of a local project plan nothing and do not throw', async () => {
+    const root = await project();
+    const m = await readManifestFile(root);
+    await writeManifestFile(root, { ...m, crs: { local: 'flyability' }, origin: [0, 0, 0] });
+    const a = join(dir, 'p.jpg');
+    await writeFile(a, withExif({ lat: 29.0276, lon: 48.1352 }));
+    expect(await planRawAltitudes(root, [a], {})).toMatchObject({
+      files: 0,
+      absolute: 0,
+      relative: 0,
+      takeoff: null,
+      takeoffAbsAlt: null,
+    });
+  });
+
   it('refuses an export with the pack check message and reports a cancelled one', async () => {
     const root = await project();
     const exp = join(dir, 'export');
