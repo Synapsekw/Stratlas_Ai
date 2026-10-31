@@ -8,6 +8,7 @@ import ts from 'typescript';
 import { en } from '@aio/ui/i18n/en';
 import { describe, expect, it, vi } from 'vitest';
 import { detectPackRefusal } from './analytics/detectPack';
+import { flyabilityPackRefusal } from './builder';
 import { evidenceJobPackRefusal, evidencePackRefusal } from './evidencePack';
 import { thermalPackRefusal } from './thermalPack';
 
@@ -71,6 +72,7 @@ function jobsStart(
     walkPackRefusal: () => null,
     panoPackRefusal: () => null,
     cleanPackRefusal: () => null,
+    flyabilityPackRefusal,
     antennaPackRefusal: () => null,
     readAntennaInventory: () => Promise.resolve(null),
     readAntennaDeletions: () => Promise.resolve(false),
@@ -136,6 +138,18 @@ describe('jobs:start resume feature gate', () => {
     });
     expect(old.start).not.toHaveBeenCalled();
     const current = jobsStart('0.22.0', 'failed');
+    expect(await current.handle(req)).toEqual({ ok: true });
+  });
+
+  it('refuses flyability.import on a pack below 0.31.0', async () => {
+    const req = { pipeline: 'flyability.import' as const, project: 'synthetic', params: {} };
+    const old = jobsStart('0.30.0', 'failed');
+    expect(await old.handle(req)).toEqual({
+      ok: false,
+      error: flyabilityPackRefusal('flyability.import', '0.30.0'),
+    });
+    expect(old.start).not.toHaveBeenCalled();
+    const current = jobsStart('0.31.0', 'failed');
     expect(await current.handle(req)).toEqual({ ok: true });
   });
 

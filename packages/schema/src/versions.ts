@@ -708,6 +708,14 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'analytics pack manifest.json',
     since: '0.25',
   },
+  // the Flyability importer's own record of what each cloud was built from (python, not read by the app)
+  {
+    family: 'aio.flyability-clouds',
+    version: 1,
+    home: 'project',
+    where: 'imports/flyability/<space>/clouds.json',
+    since: '0.21',
+  },
 ];
 
 /**
