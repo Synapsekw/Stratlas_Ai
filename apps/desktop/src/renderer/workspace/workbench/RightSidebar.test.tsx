@@ -313,13 +313,15 @@ describe('RightSidebar', () => {
     expect(host.querySelector('[data-testid="wb-show-it"]')).toBeNull();
   });
 
-  it('shows Volumes with piles and Changes with two dates, and neither where the project has none', () => {
+  it('shows Volumes with piles, the digest and Changes with two dates, none where the project has neither', () => {
     render();
     clickTab('project');
     expect(sectionIds()).toEqual(['project.inThisProject', 'project.issues', 'project.jobs']);
     withVolumesAndDates();
     render();
+    // with two dates the site digest leads the tab
     expect(sectionIds()).toEqual([
+      'project.digest',
       'project.inThisProject',
       'project.volumes',
       'project.changes',
