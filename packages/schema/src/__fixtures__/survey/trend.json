@@ -329,6 +329,98 @@
         "in30DaysM3": 7.498616491422254,
         "lastRateZ": null
       }
+    },
+    {
+      "id": "bad-dates",
+      "note": "dates that are not ISO dates are left out: slashes, the basic form, a day that does not exist",
+      "points": [
+        {
+          "capture": "a",
+          "date": "2026-05-01",
+          "valueM3": 100
+        },
+        {
+          "capture": "b",
+          "date": "2026/05/11",
+          "valueM3": 1
+        },
+        {
+          "capture": "c",
+          "date": "20260521",
+          "valueM3": 1
+        },
+        {
+          "capture": "d",
+          "date": "2026-02-30",
+          "valueM3": 1
+        },
+        {
+          "capture": "e",
+          "date": "2026-05-31",
+          "valueM3": 70
+        },
+        {
+          "capture": "f",
+          "date": "2026-06-10",
+          "valueM3": 60
+        }
+      ],
+      "expected": {
+        "status": "ok",
+        "dates": 3,
+        "window": 3,
+        "lastCapture": "f",
+        "lastDate": "2026-06-10",
+        "lastM3": 60,
+        "lastChangeM3": -10,
+        "rateM3PerDay": -1.0000000000000002,
+        "r2": 1,
+        "daysToEmpty": 59.999999999999986,
+        "emptyOn": "2026-08-09",
+        "in30DaysM3": 29.999999999999993,
+        "lastRateZ": null
+      }
+    },
+    {
+      "id": "bool-values",
+      "note": "true and false are not figures, in either executor",
+      "points": [
+        {
+          "capture": "a",
+          "date": "2026-05-01",
+          "valueM3": 100
+        },
+        {
+          "capture": "b",
+          "date": "2026-05-11",
+          "valueM3": true
+        },
+        {
+          "capture": "c",
+          "date": "2026-05-21",
+          "valueM3": false
+        },
+        {
+          "capture": "d",
+          "date": "2026-05-31",
+          "valueM3": 40
+        }
+      ],
+      "expected": {
+        "status": "not-enough-dates",
+        "dates": 2,
+        "window": 0,
+        "lastCapture": "d",
+        "lastDate": "2026-05-31",
+        "lastM3": 40,
+        "lastChangeM3": -60,
+        "rateM3PerDay": -2,
+        "r2": null,
+        "daysToEmpty": null,
+        "emptyOn": null,
+        "in30DaysM3": null,
+        "lastRateZ": null
+      }
     }
   ]
 }

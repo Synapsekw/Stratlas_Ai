@@ -387,28 +387,7 @@ export const ComparisonResult = z.looseObject({
    * a base has one; absent between two surfaces, on a refused result and on every older file.
    */
   peakM: z.number().nonnegative().optional(),
-  /**
-   * How fit the figure is to trust, from the survey QA of its date (intelligence review I2):
-   * `QA_FLAGS` names the ones this build writes. Stamped by the app as derived data, never by a
-   * pipeline; absent when the date has no flag and on every older file. Kept as plain strings so
-   * a flag a later build adds never makes this one refuse the file.
-   */
-  qaFlags: z.array(z.string().min(1).max(40)).max(16).optional(),
 });
-
-/**
- * Fitness flags on a result (`ComparisonResult.qaFlags`): the date is held by a failed survey QA
- * check, a person released such a hold, the date was never checked, its check had no checkpoints,
- * or its checkpoint RMSE is over the site's limit.
- */
-export const QA_FLAGS = [
-  'qa-hold',
-  'qa-released',
-  'qa-unchecked',
-  'no-checkpoints',
-  'rmse-over-limit',
-] as const;
-export type QaFlag = (typeof QA_FLAGS)[number];
 
 /**
  * The results of a `survey.compare` run in items mode (`survey/compare/<job>.json`, or `out`):

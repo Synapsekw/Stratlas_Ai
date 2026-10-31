@@ -1,5 +1,6 @@
 /** Builders for the rule and flag fixtures (tests only). */
-import type { ChangeSetSummary, ComparisonResult, SurveyMeasurement, SurveyQa } from '@aio/schema';
+import type { ChangeSetSummary, ComparisonResult, SurveyQa } from '@aio/schema';
+import type { SiteFigure } from './rules';
 
 export const CAPTURES = [
   { id: 'm1', date: '2026-07-01', label: 'July' },
@@ -56,29 +57,19 @@ export function result(
   };
 }
 
-/** A stockpile polygon with a figure per date (`values` by capture id; null: no figure). */
-export function pile(
+/** A pile's counted figure per date (`values` by capture id; null: no figure). */
+export function fig(
   id: string,
   values: Readonly<Record<string, number | null>>,
-  patch: Partial<SurveyMeasurement> = {},
-): SurveyMeasurement {
-  const series = Object.entries(values).flatMap(([c, v]) => (v === null ? [] : [result(c, v)]));
+  captures: readonly { id: string; date: string }[] = CAPTURES,
+): SiteFigure {
+  const dates = new Map(captures.map((c) => [c.id, c.date]));
   return {
     id,
-    family: 'polygon',
-    tool: 'volume',
     label: `Pile ${id}`,
-    scope: { kind: 'site' },
-    points: [
-      [0, 0, 0],
-      [10, 0, 0],
-      [10, 10, 0],
-    ],
-    items: [],
-    results: series.slice(-1),
-    series,
-    createdAt: '2026-07-01T00:00:00.000Z',
-    ...patch,
+    points: Object.entries(values).flatMap(([capture, v]) =>
+      v === null ? [] : [{ capture, date: dates.get(capture) ?? '', valueM3: v }],
+    ),
   };
 }
 

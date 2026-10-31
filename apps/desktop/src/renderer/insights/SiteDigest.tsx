@@ -12,17 +12,27 @@
  */
 import { changeSetStale, useChange } from '@aio/change';
 import { siteInsights, type Insight } from '@aio/insights';
+import { inventoryPiles } from '@aio/survey';
 import { Button, Icon, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useId, useMemo, useState, type ReactElement } from 'react';
 import { useMeasure } from '../survey/measureStore';
+import { toastHost } from '../shell/actions/toastHost';
+import { useInventory } from '../survey/useInventory';
 import { useQa } from '../survey/qaStore';
-import { ACTION_LABEL, digestSnapshot, figureCount, FOLDED_ROWS, insightLine } from './digestModel';
+import {
+  ACTION_LABEL,
+  digestSnapshot,
+  figureCount,
+  FOLDED_ROWS,
+  insightLine,
+  localToday,
+} from './digestModel';
 import { focusInsight, runInsightAction } from './runInsight';
 import './siteDigest.css';
 
 /** The open project's insights, kept in step with its stores; null without two survey dates. */
-export function useSiteInsights(): Insight[] | null {
+export function useSiteInsights(today = localToday()): Insight[] | null {
   const manifest = useWorkspace((s) => s.project?.manifest ?? null);
   // the open project's id (a working copy's may differ from its manifest's)
   const id = useWorkspace((s) => s.project?.id ?? null);
@@ -35,6 +45,12 @@ export function useSiteInsights(): Insight[] | null {
   const changesOf = useChange((s) => s.projectId);
   const summaries = useChange((s) => s.summaries);
   const sets = useChange((s) => s.sets);
+  // the volume measurements and their counted figures per date: the card's and the totals' rule
+  const piles = useMemo(
+    () => (measuresOf === id ? inventoryPiles(measurements) : []),
+    [measuresOf, id, measurements],
+  );
+  const rows = useInventory(piles);
   return useMemo(() => {
     const mine = (of: string | null) => of === id;
     // no digest until the project's QA files are read: a date is never called unchecked early
@@ -44,17 +60,20 @@ export function useSiteInsights(): Insight[] | null {
         manifest,
         qa,
         settings,
-        measurements: mine(measuresOf) ? measurements : [],
+        piles,
+        rows,
         summaries: mine(changesOf) ? summaries : [],
         sets: mine(changesOf) ? sets : {},
         isStale: (set) => changeSetStale(set, manifest),
+        today,
       }),
     );
-  }, [manifest, id, qaOf, qa, measuresOf, settings, measurements, changesOf, summaries, sets]);
+  }, [manifest, id, qaOf, qa, settings, piles, rows, changesOf, summaries, sets, today]);
 }
 
 function Row({ insight }: { insight: Insight }): ReactElement {
   const t = useT();
+  const units = useMeasure((s) => s.settings);
   const figures = figureCount(insight);
   const showFigures = insight.rule === 'survey-held' && figures > 0;
   return (
@@ -72,11 +91,13 @@ function Row({ insight }: { insight: Insight }): ReactElement {
           type="button"
           className="sd-line"
           onClick={() => {
-            focusInsight(insight);
+            // evidence that is gone (a measurement deleted, a set recomputed) says so
+            if (!focusInsight(insight))
+              toastHost(t('insights.title')).note(t('insights.notFound'), true);
           }}
         >
           <span className="sr-only">{t(`insights.severity.${insight.severity}`)}: </span>
-          {insightLine(insight, t)}
+          {insightLine(insight, t, units)}
         </button>
         {showFigures && (
           <span className="sd-sub">{t('insights.evidence.figures', { count: figures })}</span>
@@ -124,8 +145,9 @@ export function SiteDigest(): ReactElement | null {
       <h3 className="sd-caption" id={titleId}>
         <span className="caps">{t('insights.title')}</span>
         {insights.length > 0 && (
-          <span className="sd-count" data-pressing={pressing > 0}>
-            {insights.length}
+          <span className="sd-count" data-pressing={pressing > 0} data-testid="site-digest-count">
+            <span aria-hidden="true">{insights.length}</span>
+            <span className="sr-only">{t('insights.count', { count: insights.length })}</span>
           </span>
         )}
       </h3>

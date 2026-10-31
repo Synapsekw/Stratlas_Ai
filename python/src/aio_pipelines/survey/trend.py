@@ -16,6 +16,7 @@ The Python twin of ``packages/insights/src/trend.ts``, step for step; both repro
 from __future__ import annotations
 
 import math
+import re
 from datetime import date as _date
 from datetime import timedelta
 from typing import Any, TypedDict
@@ -32,8 +33,16 @@ class TrendPoint(TypedDict):
     valueM3: float
 
 
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
 def _day(d: str) -> int:
-    return _date.fromisoformat(d[:10]).toordinal()
+    """Days of an ISO date (``YYYY-MM-DD``, a time after it ignored); ValueError for any other
+    text (``fromisoformat`` alone also takes ``20260105``, which the TypeScript twin refuses)."""
+    head = d[:10]
+    if not _ISO_DATE.match(head):
+        raise ValueError(f"not an ISO date: {d!r}")
+    return _date.fromisoformat(head).toordinal()
 
 
 def _median(xs: list[float]) -> float:
@@ -43,12 +52,16 @@ def _median(xs: list[float]) -> float:
 
 
 def _valid(p: TrendPoint) -> bool:
+    d = p.get("date")
+    if not isinstance(d, str):
+        return False
     try:
-        _day(p["date"])
+        _day(d)
     except ValueError:
         return False
-    v = p["valueM3"]
-    return isinstance(v, (int, float)) and math.isfinite(v)
+    v = p.get("valueM3")
+    # a bool is an int in Python, never a figure (TypeScript leaves ``true`` out too)
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
 def volume_trend(points: list[TrendPoint]) -> dict[str, Any]:

@@ -36,11 +36,10 @@ evidence: EvidenceRef[], actions: InsightAction[] }`. Text is an i18n key of the
    changes (needs 3 earlier changes; MAD 0 gives none). Fewer than 3 dates: status
    `not-enough-dates` (with 2 the rate between them is still given, no forecast). Python twin
    `aio_pipelines/survey/trend.py`; both read `packages/schema/src/__fixtures__/survey/trend.json`.
-6. **`qaFlags`** on `ComparisonResult` (contract row): `qa-hold`, `qa-released`, `qa-unchecked`,
-   `no-checkpoints`, `rmse-over-limit`, for the result's date. The earliest date is never
-   `qa-unchecked` (it has nothing to be checked against). Stamped by the app as derived numbers
-   (`stampQaFlags` in `measureStore`, no edit, written with the next save) whenever the QA files
-   or the site level change; absent when a result has no flag.
+6. **QA fitness flags** (`qa-hold`, `qa-released`, `qa-unchecked`, `no-checkpoints`,
+   `rmse-over-limit`) are a view worked out when read (`qaFlagsFor`, `resultQaFlags`), never stored
+   on a result (review decision: a stored flag goes stale and made Save light up on open). The
+   earliest date is never `qa-unchecked`. No contract change.
 7. **UI**: `renderer/insights/SiteDigest.tsx` + `siteDigest.css` + `en/insights.ts`, mounted with
    one line at the top of the Project tab (`MeasureBench`, before `ProjectList`). It reads the
    stores reactively, so it refreshes when I1's QA job and change compute land (both reload the
@@ -54,16 +53,16 @@ evidence: EvidenceRef[], actions: InsightAction[] }`. Text is an i18n key of the
 | ---- | ----------------------------------------------------------------- | --------------------------------------------------------------- | --------------------------------- |
 | T1   | `@aio/insights` package skeleton, types                           | -                                                               | insights (new)                    |
 | T2   | `volumeTrend` + fixture + Python twin                             | `trend.test.ts`, `trend.parity.test.ts`, `test_survey_trend.py` | insights, schema fixtures, python |
-| T3   | `qaFlags` schema field + `qaFlagsFor`                             | `qaFlags.test.ts`, schema test                                  | schema, insights                  |
+| T3   | `qaFlagsFor`, `resultQaFlags` (read-time view)                    | `qaFlags.test.ts`                                               | insights                          |
 | T4   | `siteInsights` rules                                              | `rules.test.ts` (one fixture per rule)                          | insights                          |
-| T5   | `stampQaFlags` in measureStore + watcher                          | `qaFlagsWatch.test.ts`                                          | desktop renderer                  |
+| T5   | Figures from the inventory rows (`figuresFromRows`), units        | `digestModel.test.ts` (digest figure equals the card's)         | insights, desktop renderer        |
 | T6   | `SiteDigest` component, CSS, `insights` i18n area, one mount line | `SiteDigest.test.tsx`, `runInsight.test.ts`; keys typed         | desktop renderer, ui              |
 | T7   | E2e `site-digest.spec.ts` on the change demo                      | itself                                                          | desktop e2e                       |
-| T8   | Contract row, session note                                        | `check-public-text`                                             | docs                              |
+| T8   | Session note                                                      | `check-public-text`                                             | docs                              |
 
 E2e added: `apps/desktop/e2e/site-digest.spec.ts`. None changed.
 
-Contract change: `ComparisonResult.qaFlags?` (row in `docs/architecture/contract-changes.md`).
+Contract change: none (flags are derived at read time; `QaState.loadedFor` is app state).
 
 ## Execution DAG
 
@@ -80,3 +79,13 @@ T1 --> T2 --+
 - Critical path: T1, T3, T4, T6, T7, T8.
 
 Built by one agent in order; the batches mark what could run at once.
+
+## Review round (31 Oct)
+
+The independent review asked for: flags never persisted (done, see 6); figures from the volume
+card's rule (`inventorySeries` through `useInventory`, `figuresFromRows`); quantities in the site's
+units; the forecast read against today ("At this rate, empty by", or "would already be empty" as a
+warning); only the latest held date critical, earlier holds in one note; the menu's own refusal of
+a date to compare with; a note when evidence is gone; the Python twin refusing non-ISO dates and
+booleans (two fixture cases); an accessible count; token spacing. The e2e spec also covers Compare
+dates through the registry and Save staying off.

@@ -13,7 +13,6 @@ import { Icon, t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { connectQaFlags } from '../insights/qaFlagsWatch';
 import { bridge, useCall, useShell } from '../shell';
 import { timeline } from '../workspace/timeline';
 import { PopTool } from '../workspace/StageTools';
@@ -93,8 +92,6 @@ export function SurveyQaMount() {
   useEffect(() => {
     void loadQa(projectId, root, pkg !== null);
   }, [projectId, root, pkg]);
-  // the QA fitness flags of each measurement result follow the QA files (intelligence review I2)
-  useEffect(() => connectQaFlags(), []);
 
   if (!projectId) return null;
   return createPortal(<HoldBanner />, document.body);

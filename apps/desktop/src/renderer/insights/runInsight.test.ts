@@ -17,7 +17,7 @@ vi.mock('../shell', () => ({
 vi.mock('../shell/actions', () => ({ registerSidebarActions: () => undefined }));
 vi.mock('../shell/actions/toastHost', () => ({
   toastHost: () => ({
-    note: () => undefined,
+    note: (text: string) => calls.log.push(['note', text]),
     renameDate: () => undefined,
     moveLayers: () => undefined,
     askUnplace: () => undefined,
@@ -58,6 +58,11 @@ registerActions([
     label: 'tree.dates.menu.compare',
     section: 'compare',
     targets: ['date'],
+    // the menu's own refusal of a date (not lined up, no data)
+    submenu: () => [
+      { id: 'm2', label: 'August' },
+      { id: 'm3', label: 'September', disabled: 'Those dates are not lined up.' },
+    ],
     run: (d, _ctx, sub) => {
       calls.log.push(['compare', d.captureId, sub]);
     },
@@ -96,6 +101,15 @@ describe('runInsightAction', () => {
     runInsightAction({ id: 'insights.openChanges', pair: { from: 'm1', to: 'm2' } });
     expect(calls.log).toEqual([['focus', 'm2'], ['qaPanel', 'qa'], ['changesTab']]);
     expect(changeStore.getState().pair).toEqual({ from: 'm1', to: 'm2' });
+  });
+
+  it('keeps the menu refusal of a date to compare with, and says why', () => {
+    expect(runInsightAction({ id: 'date.compare', pair: { from: 'm1', to: 'm3' } })).toBe(false);
+    expect(runInsightAction({ id: 'date.compare', pair: { from: 'm1', to: 'gone' } })).toBe(false);
+    expect(calls.log).toEqual([
+      ['note', 'Those dates are not lined up.'],
+      ['note', 'That item is no longer in the project.'],
+    ]);
   });
 
   it('refuses an action without its target', () => {

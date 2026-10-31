@@ -90,4 +90,17 @@ describe('volumeTrend', () => {
     ]);
     expect(t.lastRateZ).toBeNull();
   });
+
+  it('leaves out a date that is not an ISO date, and a value that is not a number', () => {
+    const t = volumeTrend([
+      p('2026-01-01', 100),
+      p('2026/01/06', 1),
+      p('20260108', 1),
+      p('2026-02-30', 1),
+      { capture: 'x', date: '2026-01-09', valueM3: true as unknown as number },
+      p('2026-01-11', 80),
+    ]);
+    expect(t.dates).toBe(2);
+    expect(t.rateM3PerDay).toBeCloseTo(-2, 12);
+  });
 });

@@ -1,29 +1,33 @@
 /**
  * The site digest's rules (study items 5.2 and 5.8), pure: `siteInsights` reads a snapshot of the
- * project (survey dates, QA files, measurements, change sets) and returns what is worth a look,
- * each insight with its evidence and the actions that answer it. Rules, never AI; insights
- * propose and never change data (the change verdicts stay proposals too).
+ * project (survey dates, QA files, the volume figures per date, change sets, today) and returns
+ * what is worth a look, each insight with its evidence and the actions that answer it. Rules,
+ * never AI; insights propose and never change data (the change verdicts stay proposals too).
  *
  * The rules, one fixture test each (`rules.test.ts`):
  *
- * | rule               | severity          | when                                                        |
- * | ------------------ | ----------------- | ----------------------------------------------------------- |
- * | `survey-held`      | critical          | a date is held by a failed QA check nobody released          |
- * | `rmse-over`        | warning           | a date's checkpoint RMSE is over the site limit (not held)   |
- * | `survey-unchecked` | info              | the latest date has no QA file, or no verdict (level Off)    |
- * | `no-checkpoints`   | info              | the latest date passed QA without checkpoints               |
- * | `change-stale`     | warning           | a change set is out of date after a line-up                  |
- * | `change-review`    | info              | the latest pair has change items nobody reviewed            |
- * | `pile-departs`     | warning           | a figure's last rate departs from its trend (robust z)       |
- * | `pile-moved`       | info              | a figure moved over 20 % and 5 m³ since the date before      |
- * | `pile-empties`     | warning or info   | a falling figure reaches 0 within 60 days (14: warning)      |
+ * | rule                | severity        | when                                                       |
+ * | ------------------- | --------------- | ---------------------------------------------------------- |
+ * | `survey-held`       | critical        | the latest held date (a failed QA check nobody released)    |
+ * | `survey-held-older` | info            | earlier dates still on hold, in one line                    |
+ * | `rmse-over`         | warning         | a date's checkpoint RMSE is over the site limit (not held)  |
+ * | `survey-unchecked`  | info            | the latest date has no QA file, or no verdict (level Off)   |
+ * | `no-checkpoints`    | info            | the latest date passed QA without checkpoints              |
+ * | `change-stale`      | warning         | a change set is out of date after a line-up                 |
+ * | `change-review`     | info            | the latest pair has change items nobody reviewed           |
+ * | `pile-departs`      | warning         | a figure's last rate departs from its trend (robust z)      |
+ * | `pile-moved`        | info            | a figure moved over 20 % and 5 m³ since the date before     |
+ * | `pile-empties`      | warning or info | at its rate a falling figure is empty within 60 days of     |
+ * |                     |                 | today (14: warning), or would already be empty (warning)    |
  *
- * Figure rules look only at measurements whose last figure is on the latest survey date, so the
- * digest speaks about now. Sorted by severity, then rule order, then subject.
+ * The figures are the app's counted figures per date (`figuresFromRows` over the inventory rows,
+ * the volume card's own rule), so the digest's numbers are the card's. Figure rules look only at
+ * figures whose last date is the latest survey date, so the digest speaks about now. Sorted by
+ * severity, then rule order, then subject.
  */
-import type { ChangeSetSummary, QaLevel, SurveyMeasurement, SurveyQa } from '@aio/schema';
-import { qaFlagsFor, resultCapture, type QaFlagContext } from './qaFlags';
-import { volumeTrend, type TrendPoint } from './trend';
+import type { ChangeSetSummary, QaLevel, SurveyQa } from '@aio/schema';
+import { qaFlagsFor, type QaFlagContext } from './qaFlags';
+import { dayOf, volumeTrend, type TrendPoint } from './trend';
 
 export type Severity = 'critical' | 'warning' | 'info';
 
@@ -51,6 +55,7 @@ export type InsightActionId =
 
 export type InsightRule =
   | 'survey-held'
+  | 'survey-held-older'
   | 'rmse-over'
   | 'survey-unchecked'
   | 'no-checkpoints'
@@ -60,14 +65,22 @@ export type InsightRule =
   | 'pile-moved'
   | 'pile-empties';
 
-/** The insight's words: an `insights.*` key and its values (dates as ISO dates). */
+/**
+ * A value in an insight's words: text, a plain number (a count, a whole percent), or a quantity
+ * in SI units that the reader formats in the site's units (`volume` m³, `distance` m). Dates are
+ * ISO dates in the `date`, `from` and `to` values.
+ */
+export type InsightParam = string | number | { volume: number } | { distance: number };
+
+/** The insight's words: an `insights.*` key and its values. */
 export interface InsightText {
   key: InsightTextKey;
-  params: Record<string, string | number>;
+  params: Record<string, InsightParam>;
 }
 
 export type InsightTextKey =
   | 'insights.held'
+  | 'insights.heldEarlier'
   | 'insights.rmseOver'
   | 'insights.unchecked'
   | 'insights.noVerdict'
@@ -77,7 +90,8 @@ export type InsightTextKey =
   | 'insights.pileDeparts'
   | 'insights.pileGrew'
   | 'insights.pileShrank'
-  | 'insights.pileEmpties';
+  | 'insights.pileEmpties'
+  | 'insights.pileEmptyPast';
 
 export interface Insight {
   /** Stable for the same rule and subject: `<rule>:<subject>`. */
@@ -90,6 +104,13 @@ export interface Insight {
   actions: InsightAction[];
 }
 
+/** One volume measurement's counted figure per survey date (m³). */
+export interface SiteFigure {
+  id: string;
+  label: string;
+  points: TrendPoint[];
+}
+
 export interface SiteSnapshot {
   captures: readonly { id: string; date: string; label: string }[];
   /** QA files by capture id. */
@@ -97,11 +118,14 @@ export interface SiteSnapshot {
   qaLevel: QaLevel;
   /** The site's checkpoint RMSE limit (`rmseLimit`), null at level Off. */
   rmseLimitM: number | null;
-  measurements: readonly SurveyMeasurement[];
+  /** The volume measurements' counted figures (`figuresFromRows`). */
+  figures: readonly SiteFigure[];
   /** Change set summaries of the project. */
   changes: readonly ChangeSetSummary[];
   /** Ids of change sets out of date after a line-up (`changeSetStale`, of the loaded sets). */
   staleChangeSets: readonly string[];
+  /** Today, an ISO date: forecasts are read against it. */
+  today: string;
 }
 
 /** A figure moved this share or more since the date before... */
@@ -110,13 +134,15 @@ export const MOVED_SHARE = 0.2;
 export const MOVED_MIN_M3 = 5;
 /** A last rate this many robust standard deviations off the earlier ones. */
 export const DEPARTS_Z = 3.5;
-/** A falling figure that reaches 0 within this many days. */
+/** A falling figure empty within this many days of today... */
 export const EMPTIES_DAYS = 60;
+/** ...and a warning within this many. */
 export const EMPTIES_SOON_DAYS = 14;
 
 const SEVERITY_ORDER: readonly Severity[] = ['critical', 'warning', 'info'];
 const RULE_ORDER: readonly InsightRule[] = [
   'survey-held',
+  'survey-held-older',
   'rmse-over',
   'survey-unchecked',
   'no-checkpoints',
@@ -130,48 +156,70 @@ const RULE_ORDER: readonly InsightRule[] = [
 const byDate = <T extends { id: string; date: string }>(xs: readonly T[]): T[] =>
   [...xs].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : 1));
 
-/** A measurement's usable figures per date: its series rows that are not refused or stale. */
-export function figuresOf(
-  m: SurveyMeasurement,
-  captures: readonly { id: string; date: string }[],
-): TrendPoint[] {
-  const dates = new Map(captures.map((c) => [c.id, c.date]));
-  const seen = new Set<string>();
-  const out: TrendPoint[] = [];
-  for (const r of m.series ?? []) {
-    if (r.status === 'refused' || r.status === 'stale') continue;
-    const capture = resultCapture(r);
-    const date = dates.get(capture);
-    if (!date || seen.has(capture)) continue;
-    seen.add(capture);
-    out.push({ capture, date, valueM3: r.netM3 });
-  }
-  return out;
+/**
+ * Each pile's counted figure per date from the inventory rows (`inventorySeries` in
+ * `@aio/survey`, run with the app's own staleness checks): the figures the volume card and the
+ * totals show, never a stale, refused or missing one.
+ */
+export function figuresFromRows(
+  rows: readonly {
+    capture: string;
+    date: string;
+    parts: readonly { id: string; valueM3: number }[];
+  }[],
+  piles: readonly { id: string; label: string }[],
+): SiteFigure[] {
+  return piles.map((m) => ({
+    id: m.id,
+    label: m.label,
+    points: rows.flatMap((r) => {
+      const part = r.parts.find((p) => p.id === m.id);
+      return part ? [{ capture: r.capture, date: r.date, valueM3: part.valueM3 }] : [];
+    }),
+  }));
 }
 
 const qaAction = (capture: string): InsightAction => ({ id: 'insights.openQa', capture });
 
 function qaRules(s: SiteSnapshot, ctx: QaFlagContext, latest: string | null): Insight[] {
   const out: Insight[] = [];
-  for (const c of byDate(s.captures)) {
+  const dated = byDate(s.captures);
+  const held = dated.filter((c) => qaFlagsFor(c.id, ctx).includes('qa-hold'));
+  const newest = held[held.length - 1];
+  if (newest) {
+    const figures = s.figures.filter((f) => f.points.some((p) => p.capture === newest.id));
+    out.push({
+      id: `survey-held:${newest.id}`,
+      rule: 'survey-held',
+      severity: 'critical',
+      text: { key: 'insights.held', params: { date: newest.date, count: figures.length } },
+      evidence: [
+        { kind: 'qa', capture: newest.id },
+        ...figures.map((f): EvidenceRef => ({ kind: 'measurement', id: f.id })),
+      ],
+      actions: [qaAction(newest.id)],
+    });
+    const older = held.slice(0, -1);
+    const last = older[older.length - 1];
+    if (last)
+      out.push({
+        id: `survey-held-older:${last.id}`,
+        rule: 'survey-held-older',
+        severity: 'info',
+        text: { key: 'insights.heldEarlier', params: { count: older.length } },
+        evidence: older.map((c): EvidenceRef => ({ kind: 'qa', capture: c.id })),
+        actions: [qaAction(last.id)],
+      });
+  }
+  for (const c of dated) {
     const flags = qaFlagsFor(c.id, ctx);
     const qa = s.qa[c.id];
-    if (flags.includes('qa-hold')) {
-      const figures = s.measurements.filter((m) =>
-        (m.series ?? []).some((r) => resultCapture(r) === c.id),
-      );
-      out.push({
-        id: `survey-held:${c.id}`,
-        rule: 'survey-held',
-        severity: 'critical',
-        text: { key: 'insights.held', params: { date: c.date, count: figures.length } },
-        evidence: [
-          { kind: 'qa', capture: c.id },
-          ...figures.map((m): EvidenceRef => ({ kind: 'measurement', id: m.id })),
-        ],
-        actions: [qaAction(c.id)],
-      });
-    } else if (flags.includes('rmse-over-limit') && qa?.checkpoints && ctx.rmseLimitM !== null) {
+    if (
+      !flags.includes('qa-hold') &&
+      flags.includes('rmse-over-limit') &&
+      qa?.checkpoints &&
+      ctx.rmseLimitM !== null
+    )
       out.push({
         id: `rmse-over:${c.id}`,
         rule: 'rmse-over',
@@ -180,14 +228,13 @@ function qaRules(s: SiteSnapshot, ctx: QaFlagContext, latest: string | null): In
           key: 'insights.rmseOver',
           params: {
             date: c.date,
-            rmse: Math.round(qa.checkpoints.rmseM * 1000) / 10,
-            limit: Math.round(ctx.rmseLimitM * 1000) / 10,
+            rmse: { distance: qa.checkpoints.rmseM },
+            limit: { distance: ctx.rmseLimitM },
           },
         },
         evidence: [{ kind: 'qa', capture: c.id }],
         actions: [qaAction(c.id)],
       });
-    }
   }
   if (latest !== null) {
     const date = s.captures.find((c) => c.id === latest)?.date ?? '';
@@ -276,30 +323,27 @@ function changeRules(s: SiteSnapshot, latestPair: { from: string; to: string } |
 function figureRules(s: SiteSnapshot, latest: string | null): Insight[] {
   if (latest === null) return [];
   const out: Insight[] = [];
-  for (const m of s.measurements) {
-    const points = figuresOf(m, s.captures);
-    const tr = volumeTrend(points);
+  const today = dayOf(s.today);
+  for (const f of s.figures) {
+    const tr = volumeTrend(f.points);
     if (tr.lastCapture !== latest || tr.lastM3 === null || tr.lastDate === null) continue;
-    const before = byDate(points.map((p) => ({ ...p, id: p.capture }))).at(-2);
+    const before = byDate(f.points.map((p) => ({ ...p, id: p.capture }))).at(-2);
     const evidence: EvidenceRef[] = [
-      { kind: 'measurement', id: m.id },
+      { kind: 'measurement', id: f.id },
       { kind: 'capture', id: latest },
       ...(before ? [{ kind: 'capture', id: before.capture } as EvidenceRef] : []),
     ];
-    const fly: InsightAction = { id: 'measure.flyTo', measurement: m.id };
+    const fly: InsightAction = { id: 'measure.flyTo', measurement: f.id };
     const compare: InsightAction[] = before
       ? [{ id: 'date.compare', pair: { from: before.capture, to: latest } }]
       : [];
     const departs = tr.lastRateZ !== null && Math.abs(tr.lastRateZ) >= DEPARTS_Z;
     if (departs)
       out.push({
-        id: `pile-departs:${m.id}`,
+        id: `pile-departs:${f.id}`,
         rule: 'pile-departs',
         severity: 'warning',
-        text: {
-          key: 'insights.pileDeparts',
-          params: { name: m.label, date: tr.lastDate, change: Math.round(tr.lastChangeM3 ?? 0) },
-        },
+        text: { key: 'insights.pileDeparts', params: { name: f.label, date: tr.lastDate } },
         evidence,
         actions: [fly, ...compare],
       });
@@ -309,14 +353,14 @@ function figureRules(s: SiteSnapshot, latest: string | null): Insight[] {
       const share = Math.abs(change / before.valueM3);
       if (Math.abs(change) >= MOVED_MIN_M3 && share >= MOVED_SHARE)
         out.push({
-          id: `pile-moved:${m.id}`,
+          id: `pile-moved:${f.id}`,
           rule: 'pile-moved',
           severity: 'info',
           text: {
             key: change > 0 ? 'insights.pileGrew' : 'insights.pileShrank',
             params: {
-              name: m.label,
-              change: Math.round(Math.abs(change)),
+              name: f.label,
+              change: { volume: Math.abs(change) },
               pct: Math.round(share * 100),
               from: before.date,
               date: tr.lastDate,
@@ -326,23 +370,27 @@ function figureRules(s: SiteSnapshot, latest: string | null): Insight[] {
           actions: [fly, ...compare],
         });
     }
-    if (tr.daysToEmpty !== null && tr.emptyOn !== null && tr.daysToEmpty <= EMPTIES_DAYS)
-      out.push({
-        id: `pile-empties:${m.id}`,
-        rule: 'pile-empties',
-        severity: tr.daysToEmpty <= EMPTIES_SOON_DAYS ? 'warning' : 'info',
-        text: {
-          key: 'insights.pileEmpties',
-          params: {
-            name: m.label,
-            count: Math.max(1, Math.ceil(tr.daysToEmpty)),
-            date: tr.emptyOn,
-            rate: Math.round(-(tr.rateM3PerDay ?? 0) * 10) / 10,
-          },
-        },
-        evidence,
-        actions: [fly],
-      });
+    if (tr.emptyOn !== null && !Number.isNaN(today)) {
+      const left = dayOf(tr.emptyOn) - today;
+      if (left < 0)
+        out.push({
+          id: `pile-empties:${f.id}`,
+          rule: 'pile-empties',
+          severity: 'warning',
+          text: { key: 'insights.pileEmptyPast', params: { name: f.label, date: tr.lastDate } },
+          evidence,
+          actions: [fly],
+        });
+      else if (left <= EMPTIES_DAYS)
+        out.push({
+          id: `pile-empties:${f.id}`,
+          rule: 'pile-empties',
+          severity: left <= EMPTIES_SOON_DAYS ? 'warning' : 'info',
+          text: { key: 'insights.pileEmpties', params: { name: f.label, date: tr.emptyOn } },
+          evidence,
+          actions: [fly],
+        });
+    }
   }
   return out;
 }
@@ -350,8 +398,7 @@ function figureRules(s: SiteSnapshot, latest: string | null): Insight[] {
 /** What is worth a look on the site now, most pressing first. Pure; never writes. */
 export function siteInsights(s: SiteSnapshot): Insight[] {
   const dated = byDate(s.captures);
-  const latestCapture = dated.length >= 2 ? dated[dated.length - 1] : undefined;
-  const latest = latestCapture?.id ?? null;
+  const latest = dated.length >= 2 ? (dated[dated.length - 1]?.id ?? null) : null;
   const before = dated.length >= 2 ? dated[dated.length - 2] : undefined;
   const latestPair = latest !== null && before ? { from: before.id, to: latest } : null;
   const ctx: QaFlagContext = { qa: s.qa, captures: s.captures, rmseLimitM: s.rmseLimitM };

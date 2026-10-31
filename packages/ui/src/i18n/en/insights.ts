@@ -8,6 +8,8 @@ export const enInsights = {
   'insights.hint':
     'Read from survey QA, changes and volumes. Suggestions only: nothing is changed until you act.',
   'insights.clear': 'Nothing needs a look on this site right now.',
+  'insights.count_one': '1 insight',
+  'insights.count_other': '{count} insights',
   'insights.more_one': 'Show 1 more',
   'insights.more_other': 'Show {count} more',
   'insights.less': 'Show fewer',
@@ -16,7 +18,9 @@ export const enInsights = {
   'insights.severity.info': 'Note',
   // What each rule says (dates are formatted by the digest)
   'insights.held': 'Survey of {date} is on hold after a failed QA check',
-  'insights.rmseOver': 'Checkpoint error on {date} is {rmse} cm, over the {limit} cm limit',
+  'insights.heldEarlier_one': '1 earlier date is still on hold',
+  'insights.heldEarlier_other': '{count} earlier dates are still on hold',
+  'insights.rmseOver': 'Checkpoint error on {date} is {rmse}, over the {limit} limit',
   'insights.unchecked': 'Survey of {date} has not been checked yet',
   'insights.noVerdict': 'Survey of {date} has no QA verdict: the site QA level is Off',
   'insights.noCheckpoints': 'Survey of {date} passed QA without checkpoints',
@@ -24,10 +28,10 @@ export const enInsights = {
   'insights.changeReview_one': '1 change from {from} to {to} to review',
   'insights.changeReview_other': '{count} changes from {from} to {to} to review',
   'insights.pileDeparts': '{name} broke from its trend on {date}',
-  'insights.pileGrew': '{name} grew {change} m³ ({pct}%) since {from}',
-  'insights.pileShrank': '{name} shrank {change} m³ ({pct}%) since {from}',
-  'insights.pileEmpties_one': '{name} runs out in about 1 day at {rate} m³ a day',
-  'insights.pileEmpties_other': '{name} runs out in about {count} days ({date}) at {rate} m³ a day',
+  'insights.pileGrew': '{name} grew {change} ({pct}%) since {from}',
+  'insights.pileShrank': '{name} shrank {change} ({pct}%) since {from}',
+  'insights.pileEmpties': 'At this rate, {name} is empty by {date}',
+  'insights.pileEmptyPast': 'At this rate, {name} would already be empty (last survey {date})',
   // What the evidence holds, under the line
   'insights.evidence.figures_one': '1 figure measured on that date',
   'insights.evidence.figures_other': '{count} figures measured on that date',
@@ -36,6 +40,5 @@ export const enInsights = {
   'insights.action.openChanges': 'Review changes',
   'insights.action.flyTo': 'Fly to',
   'insights.action.compare': 'Compare dates',
-  'insights.action.show': 'Show',
   'insights.notFound': 'That item is no longer in the project.',
 } as const satisfies Record<string, string>;

@@ -12,13 +12,13 @@
   align-items: center;
   gap: var(--sp-3);
   margin: 0;
-  padding: var(--sp-4) 8px var(--sp-1);
+  padding: var(--sp-4) var(--sp-4) var(--sp-1);
   color: var(--fg-3);
   font-size: var(--t-11);
   font-weight: 500;
 }
 .sd-count {
-  min-width: 16px;
+  min-width: var(--sp-6);
   padding: 0 var(--sp-2);
   border-radius: var(--r-4);
   background: var(--bg-2);
@@ -40,10 +40,10 @@
 }
 .sd-row {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
+  grid-template-columns: var(--sp-6) minmax(0, 1fr);
   align-items: start;
   column-gap: var(--sp-3);
-  padding: var(--sp-3) 8px;
+  padding: var(--sp-3) var(--sp-4);
   border-radius: var(--r-4);
 }
 .sd-row + .sd-row {
@@ -99,11 +99,11 @@
   color: var(--fg-0);
   text-decoration: underline;
   text-decoration-color: var(--line-strong);
-  text-underline-offset: 2px;
+  text-underline-offset: var(--sp-1);
 }
 .sd-line:focus-visible {
   outline: 2px solid var(--acc);
-  outline-offset: 2px;
+  outline-offset: var(--sp-1);
   border-radius: var(--r-2);
 }
 .sd-sub {
@@ -122,7 +122,7 @@
   align-items: center;
   gap: var(--sp-3);
   margin: 0;
-  padding: var(--sp-2) 8px;
+  padding: var(--sp-2) var(--sp-4);
   color: var(--fg-3);
   font-size: var(--t-12);
   line-height: 1.4;
@@ -134,7 +134,7 @@
 }
 .sd-more {
   align-self: flex-start;
-  margin: var(--sp-1) 0 0 calc(8px + 16px + var(--sp-3));
+  margin: var(--sp-1) 0 0 calc(var(--sp-4) + var(--sp-6) + var(--sp-3));
   padding: 0;
   border: 0;
   background: none;
@@ -148,5 +148,5 @@
 }
 .sd-more:focus-visible {
   outline: 2px solid var(--acc);
-  outline-offset: 2px;
+  outline-offset: var(--sp-1);
 }

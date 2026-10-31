@@ -1,7 +1,8 @@
 /**
  * QA fitness flags of a survey date (study item 5.5), pure: what a figure measured on that date
- * should be read with (`ComparisonResult.qaFlags`). From the date's survey QA file and the site's
- * QA level:
+ * should be read with. A view worked out when read (the digest, later the report and the agent),
+ * never stored: the QA files and the site level change after a figure is made. From the date's
+ * survey QA file and the site's QA level:
  *
  * - `qa-hold`: a failed check holds the date and nobody released it;
  * - `qa-released`: a person released such a hold;
@@ -10,7 +11,17 @@
  * - `no-checkpoints`: its check had no checkpoints (a check against the previous survey only);
  * - `rmse-over-limit`: its checkpoint RMSE is over the site's limit.
  */
-import type { ComparisonResult, QaFlag, QaLevel, SurveyQa } from '@aio/schema';
+import type { ComparisonResult, QaLevel, SurveyQa } from '@aio/schema';
+
+/** The flags, in the order they are given. */
+export const QA_FLAGS = [
+  'qa-hold',
+  'qa-released',
+  'qa-unchecked',
+  'no-checkpoints',
+  'rmse-over-limit',
+] as const;
+export type QaFlag = (typeof QA_FLAGS)[number];
 
 /** RMSE limits by level, metres, as the QA panel and the pipeline use them. */
 export const RMSE_LIMIT: Record<Exclude<QaLevel, 'off'>, number> = {
@@ -63,16 +74,11 @@ export function qaFlagsFor(capture: string, ctx: QaFlagContext): QaFlag[] {
 export const resultCapture = (r: Pick<ComparisonResult, 'toCapture' | 'fromCapture'>): string =>
   r.toCapture ?? r.fromCapture ?? '';
 
-/** The result with the flags of its date: `qaFlags` set, or taken off when there are none. */
-export function withQaFlags(r: ComparisonResult, ctx: QaFlagContext): ComparisonResult {
+/** The flags of the date a result is for (none for a result without a date). */
+export function resultQaFlags(
+  r: Pick<ComparisonResult, 'toCapture' | 'fromCapture'>,
+  ctx: QaFlagContext,
+): QaFlag[] {
   const capture = resultCapture(r);
-  const flags = capture ? qaFlagsFor(capture, ctx) : [];
-  if (flags.length === 0) {
-    if (r.qaFlags === undefined) return r;
-    const rest = { ...r };
-    delete rest.qaFlags;
-    return rest;
-  }
-  if (r.qaFlags?.length === flags.length && r.qaFlags.every((f, i) => f === flags[i])) return r;
-  return { ...r, qaFlags: flags };
+  return capture ? qaFlagsFor(capture, ctx) : [];
 }

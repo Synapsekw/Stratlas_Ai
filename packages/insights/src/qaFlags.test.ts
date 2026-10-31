@@ -1,6 +1,5 @@
-import { ComparisonResult } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { qaFlagsFor, rmseLimit, withQaFlags, type QaFlagContext } from './qaFlags';
+import { qaFlagsFor, resultQaFlags, rmseLimit, type QaFlagContext } from './qaFlags';
 import { CAPTURES, checkpoints, qaFile, result } from './testing';
 
 const ctx = (qa: QaFlagContext['qa'], rmseLimitM: number | null = 0.1): QaFlagContext => ({
@@ -68,20 +67,11 @@ describe('rmseLimit', () => {
   });
 });
 
-describe('withQaFlags', () => {
-  it('stamps the date flags on a result, and the result still parses', () => {
-    const r = withQaFlags(result('m2', 10), ctx({ m2: qaFile('m2', { status: 'hold' }) }));
-    expect(r.qaFlags).toEqual(['qa-hold', 'no-checkpoints']);
-    expect(ComparisonResult.safeParse(r).success).toBe(true);
-  });
-
-  it('takes the flags off when the date has none, and keeps an unchanged result as it is', () => {
-    const clean = ctx({ m2: qaFile('m2', { checkpoints: checkpoints(0.02) }) });
-    const r = withQaFlags(result('m2', 10, { qaFlags: ['qa-hold'] }), clean);
-    expect('qaFlags' in r).toBe(false);
-    const same = result('m2', 10);
-    expect(withQaFlags(same, clean)).toBe(same);
-    const flagged = result('m3', 10, { qaFlags: ['qa-unchecked'] });
-    expect(withQaFlags(flagged, clean)).toBe(flagged);
+describe('resultQaFlags', () => {
+  it('gives the flags of the date a result is for, worked out when read', () => {
+    const c = ctx({ m2: qaFile('m2', { status: 'hold' }) });
+    expect(resultQaFlags(result('m2', 10), c)).toEqual(['qa-hold', 'no-checkpoints']);
+    expect(resultQaFlags(result('m1', 10), c)).toEqual([]);
+    expect(resultQaFlags({}, c)).toEqual([]);
   });
 });

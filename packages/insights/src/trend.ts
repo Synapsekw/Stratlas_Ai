@@ -50,11 +50,22 @@ export const TREND_MIN_EARLIER = 3;
 const MAD_SCALE = 1.4826;
 const DAY_MS = 86_400_000;
 
-/** Whole days since 1970 of an ISO date. */
-const dayOf = (date: string): number => Date.parse(`${date.slice(0, 10)}T00:00:00Z`) / DAY_MS;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Whole days since 1970 of an ISO date (`YYYY-MM-DD`, a time after it ignored); NaN for any other
+ * text or a day that does not exist (the Python twin refuses the same ones).
+ */
+export function dayOf(date: string): number {
+  const d = date.slice(0, 10);
+  if (!ISO_DATE.test(d)) return NaN;
+  const ms = Date.parse(`${d}T00:00:00Z`);
+  if (Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 10) !== d) return NaN;
+  return ms / DAY_MS;
+}
 
 /** The ISO date `days` whole days after `date`. */
-const addDays = (date: string, days: number): string =>
+export const addDays = (date: string, days: number): string =>
   new Date((dayOf(date) + days) * DAY_MS).toISOString().slice(0, 10);
 
 function median(xs: readonly number[]): number {
@@ -65,7 +76,18 @@ function median(xs: readonly number[]): number {
 
 export function volumeTrend(points: readonly TrendPoint[]): VolumeTrend {
   const pts = [...points]
-    .filter((x) => Number.isFinite(x.valueM3) && !Number.isNaN(dayOf(x.date)))
+    .filter((x) => {
+      // read from files too: a value that is not a number (true, "12") or a date that is not an
+      // ISO date is left out, as the Python twin leaves it out
+      const v: unknown = x.valueM3;
+      const d: unknown = x.date;
+      return (
+        typeof v === 'number' &&
+        Number.isFinite(v) &&
+        typeof d === 'string' &&
+        !Number.isNaN(dayOf(d))
+      );
+    })
     .sort((a, b) =>
       a.date.slice(0, 10) < b.date.slice(0, 10)
         ? -1

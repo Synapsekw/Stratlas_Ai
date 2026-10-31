@@ -5,7 +5,7 @@
  * shows its first piece of evidence. Nothing here changes data.
  */
 import type { EvidenceRef, Insight, InsightAction } from '@aio/insights';
-import { actionsFor, makeActionCtx, type MenuTarget } from '@aio/ui';
+import { actionsFor, makeActionCtx, t, type MenuTarget } from '@aio/ui';
 import { changeStore } from '@aio/change';
 import { workspace } from '@aio/workspace';
 import { openChangesTab } from '../change';
@@ -16,12 +16,16 @@ import { revealMeasurement, select } from '../survey/measureStore';
 import { openQaPanel } from '../survey/qaStore';
 import { timeline } from '../workspace/timeline';
 
-/** Run a registry item on a target; false when it is not offered or is greyed. */
+/**
+ * Run a registry item on a target as the right-click menu would: false, with its reason in a note,
+ * when it is not offered, is greyed, or the sub item (a date to compare with) is refused.
+ */
 function runRegistry(id: string, target: MenuTarget, sub?: string): boolean {
   const project = workspace.getState().project;
   if (!project) return false;
   registerSidebarActions();
   const pkg = shell.getState().pkg !== null;
+  const host = toastHost(t('insights.title'));
   const item = actionsFor(
     target,
     makeActionCtx({
@@ -30,10 +34,22 @@ function runRegistry(id: string, target: MenuTarget, sub?: string): boolean {
       focus: timeline.getState().focus,
       pkg,
       canEdit: !pkg,
-      host: toastHost(''),
+      host,
     }),
   ).find((x) => x.id === id);
-  if (item?.disabled !== false) return false;
+  if (!item) return false;
+  if (item.disabled !== false) {
+    host.note(item.disabled, true);
+    return false;
+  }
+  if (sub !== undefined && item.sub.length > 0) {
+    const entry = item.sub.find((x) => x.id === sub);
+    const why = entry ? (entry.disabled ?? false) : t('insights.notFound');
+    if (why !== false) {
+      host.note(why, true);
+      return false;
+    }
+  }
   item.run(sub);
   return true;
 }

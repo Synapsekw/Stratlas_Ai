@@ -10,11 +10,17 @@ import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { compareStore } from '../survey/compareStore';
 import { measureStore } from '../survey/measureStore';
 import { qaStore } from '../survey/qaStore';
 import { SiteDigest } from './SiteDigest';
 
-const runs = vi.hoisted(() => ({ actions: [] as unknown[], focus: [] as unknown[] }));
+const runs = vi.hoisted(() => ({
+  actions: [] as unknown[],
+  focus: [] as unknown[],
+  notes: [] as string[],
+  found: true,
+}));
 vi.mock('./runInsight', () => ({
   runInsightAction: (a: unknown) => {
     runs.actions.push(a);
@@ -22,8 +28,11 @@ vi.mock('./runInsight', () => ({
   },
   focusInsight: (i: { id: string }) => {
     runs.focus.push(i.id);
-    return true;
+    return runs.found;
   },
+}));
+vi.mock('../shell/actions/toastHost', () => ({
+  toastHost: () => ({ note: (text: string) => runs.notes.push(text) }),
 }));
 vi.mock('../shell', () => ({
   bridge: { call: () => Promise.resolve({ ok: false, error: 'none' }) },
@@ -80,6 +89,8 @@ const lines = () =>
 beforeEach(() => {
   runs.actions.length = 0;
   runs.focus.length = 0;
+  runs.notes.length = 0;
+  runs.found = true;
   workspace.setState({ project: { id: 'p1', root: 'C:/p1', manifest } } as never);
   qaStore.setState({ projectId: 'p1', qa: {}, loadedFor: 'p1' });
   measureStore.setState({ projectId: 'p1', file: emptyMeasurements() });
@@ -159,9 +170,42 @@ describe('SiteDigest', () => {
     expect(runs.focus).toEqual(['change-review:m1>m2']);
   });
 
-  it('folds a long list to four lines', () => {
+  it('says so when the evidence of a line is gone', () => {
+    changeStore.setState({ summaries: [summary(1)] });
+    runs.found = false;
+    render();
+    act(() => {
+      host.querySelector<HTMLElement>('[data-rule="change-review"] .sd-line')?.click();
+    });
+    expect(runs.notes).toEqual(['That item is no longer in the project.']);
+  });
+
+  it('folds a long list to four lines, with pile figures in the site units', () => {
     qaStore.setState({ qa: { m2: qa('m2', 'hold') } });
     changeStore.setState({ summaries: [summary(1)] });
+    compareStore.setState({ captures: manifest.captures, current: {} });
+    const row = (toCapture: string, netM3: number) => ({
+      item: 'v',
+      status: 'ok',
+      cutM3: 0,
+      fillM3: netM3,
+      netM3,
+      totalM3: netM3,
+      areaM2: 1,
+      areaCutM2: 0,
+      areaFillM2: 1,
+      areaUnchangedM2: 0,
+      uncoveredM2: 0,
+      fromLabel: 'Base',
+      toLabel: toCapture,
+      toCapture,
+      deadbandM: 0,
+      usedDeadband: false,
+      cellM: 0.5,
+      engine: 'ts',
+      fingerprint: `v-${toCapture}`,
+      computedAt: '2026-10-01T00:00:00.000Z',
+    });
     measureStore.setState({
       file: {
         ...emptyMeasurements(),
@@ -172,23 +216,29 @@ describe('SiteDigest', () => {
           label: id,
           scope: { kind: 'site' },
           points: [[0, 0, 0]],
-          items: [],
-          results: [],
-          series: [
-            { toCapture: 'm1', status: 'ok', netM3: 100 },
-            { toCapture: 'm2', status: 'ok', netM3: 150 },
+          items: [
+            {
+              id: 'v',
+              from: { kind: 'lowest-point' },
+              to: { kind: 'current' },
+              useDeadband: false,
+            },
           ],
+          results: [row('m2', 150)],
+          series: [row('m1', 100), row('m2', 150)],
           createdAt: '2026-07-01T00:00:00.000Z',
         })) as never,
       },
     });
     render();
     expect(lines()).toHaveLength(4);
+    expect(q('site-digest-count')?.textContent).toContain('5 insights');
     const more = host.querySelector<HTMLElement>('.sd-more');
     expect(more?.textContent).toBe('Show 1 more');
     act(() => {
       more?.click();
     });
     expect(lines()).toHaveLength(5);
+    expect(lines()).toContain('a grew 50.0 m³ (50%) since 1 Jul 2026');
   });
 });

@@ -1187,38 +1187,6 @@ export function setSeries(id: string, results: readonly ComparisonResult[]): voi
 }
 
 /**
- * Put the QA fitness flags of each result's date on every result and series row (intelligence
- * review I2, `ComparisonResult.qaFlags`): `stamp` returns the row itself when its flags are
- * already right. Derived data as `setDerived` puts it (no edit, the baseline takes it too, written
- * with the next save), in one store update; a read-only project gets nothing.
- */
-export function stampQaFlags(stamp: (r: ComparisonResult) => ComparisonResult): void {
-  const s = get();
-  if (s.readOnly) return;
-  const patches = new Map<string, Partial<SurveyMeasurement>>();
-  for (const m of s.file.measurements) {
-    const patch: Partial<SurveyMeasurement> = {};
-    const results = m.results.map(stamp);
-    if (results.some((r, i) => r !== m.results[i])) patch.results = results;
-    const series = m.series?.map(stamp);
-    if (series?.some((r, i) => r !== m.series?.[i])) patch.series = series;
-    if (patch.results || patch.series) patches.set(m.id, patch);
-  }
-  if (patches.size === 0) return;
-  const apply = <T extends { id?: unknown }>(m: T): T => {
-    const p = typeof m.id === 'string' ? patches.get(m.id) : undefined;
-    return p ? { ...m, ...p } : m;
-  };
-  const saved = JSON.parse(s.savedText) as { measurements?: { id?: unknown }[] };
-  if (Array.isArray(saved.measurements)) saved.measurements = saved.measurements.map(apply);
-  set({
-    file: { ...s.file, measurements: s.file.measurements.map(apply) },
-    savedText: JSON.stringify(saved),
-    resultsUnwritten: true,
-  });
-}
-
-/**
  * The measurement with a standard-base result in place of the one for the same item. A carried
  * kit figure it replaces is kept in `previousResults` ("was X m³"), and the carried figures over
  * time are dropped (the engine computes those dates on demand). Pure: `recomputeStandard`
