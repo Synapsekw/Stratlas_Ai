@@ -13,7 +13,8 @@
     "./export/node": "./src/export/node.ts",
     "./fs": "./src/fs/index.ts",
     "./builder": "./src/builder/index.ts",
-    "./builder/testing": "./src/builder/testing.ts"
+    "./builder/testing": "./src/builder/testing.ts",
+    "./flags": "./src/builder/flyability/flags.ts"
   },
   "scripts": {
     "test": "vitest run",

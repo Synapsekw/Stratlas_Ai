@@ -285,6 +285,34 @@ describe('IssueRegister right-click menu', () => {
     ui.unmount();
   });
 
+  it('a right-click asks the issue menu hook when one is set', () => {
+    workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(3));
+    const issueMenu =
+      vi.fn<(at: { x: number; y: number }, ids: readonly string[], clicked: string) => void>();
+    const off = setIssueListActions({ issueMenu });
+    const ui = mount();
+    expect(rightClick(ui, 'D0002').defaultPrevented).toBe(true);
+    expect(issueMenu).toHaveBeenLastCalledWith({ x: 30, y: 40 }, ['i2'], 'i2');
+    ui.click('[data-tick="D0001"]');
+    ui.click('[data-tick="D0002"]');
+    rightClick(ui, 'D0002');
+    const [, ids, clicked] = issueMenu.mock.lastCall ?? [];
+    expect([...(ids ?? [])].sort()).toEqual(['i1', 'i2']);
+    expect(clicked).toBe('i2');
+    expect(document.querySelector('[data-testid="issue-place-on-model"]')).toBeNull();
+    off();
+    ui.unmount();
+  });
+
+  it('issueFilter leaves other issues out of the list', () => {
+    workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(3));
+    const ui = mount(<IssueRegister issueFilter={(i) => i.id !== 'i2'} />);
+    const codes = [...ui.el.querySelectorAll('.ann-row')].map((r) => r.textContent);
+    expect(codes.some((c) => c.includes('D0001'))).toBe(true);
+    expect(codes.some((c) => c.includes('D0002'))).toBe(false);
+    ui.unmount();
+  });
+
   it('leaves the browser menu alone in a read-only package', () => {
     workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(2));
     const off = setIssueListActions({ placeOnModel: vi.fn() });

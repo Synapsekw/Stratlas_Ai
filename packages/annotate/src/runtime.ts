@@ -130,6 +130,8 @@ export function useTeamPolicy(): boolean {
 export interface IssueListActions {
   /** "Place on model...": the ids of the issues right-clicked (the checked ones, else one). */
   placeOnModel?: (ids: readonly string[]) => void;
+  /** Opens the app's own menu for the right-clicked issues; when set it replaces the built-in one. */
+  issueMenu?: (at: { x: number; y: number }, ids: readonly string[], clicked: string) => void;
 }
 
 const listActions = createStore<IssueListActions>()(() => ({}));

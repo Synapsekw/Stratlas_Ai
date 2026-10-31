@@ -25,6 +25,7 @@ export const enWorkbench = {
   'wb.label': 'Workbench',
   'wb.tab.measure': 'Project',
   'wb.tab.display': 'Display',
+  'wb.section.flightlines': 'Flight lines',
   'wb.tab.clouds': 'Point cloud',
   'wb.tab.volumes': 'Volumes',
   'wb.tab.video': 'Video',

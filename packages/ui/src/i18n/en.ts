@@ -34,6 +34,7 @@ import { enAskSettings } from './en/askAiSettings';
 import { enAskReport } from './en/askAiReport';
 import { enLayoutSpike } from './en/layoutSpike';
 import { enInsights } from './en/insights';
+import { enFlyability } from './en/flyability';
 
 /**
  * English UI strings for the main shell (title bar, sidebar, settings). The source catalogue:
@@ -76,6 +77,7 @@ import { enInsights } from './en/insights';
  *   en/common.ts: dialog
  *   en/layoutSpike.ts: layoutSpike
  *   en/insights.ts: insights
+ *   en/flyability.ts: fly
  *   en/askAi*.ts: custom analytics, one module per UI task (askAi, askPanel, fields, house, report, settings keys)
  */
 export const en = {
@@ -116,6 +118,7 @@ export const en = {
   ...enAskReport,
   ...enLayoutSpike,
   ...enInsights,
+  ...enFlyability,
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

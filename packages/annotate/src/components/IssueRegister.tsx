@@ -148,12 +148,15 @@ export function IssueRegister({
   heading = 'Issues',
   headingLevel = 3,
   actions,
+  issueFilter,
 }: {
   className?: string;
   heading?: string;
   /** The level of the heading: 2 where the register is a screen's main content. */
   headingLevel?: 2 | 3;
   actions?: ReactNode;
+  /** Leaves out the issues it returns false for, before the filters and the view apply. */
+  issueFilter?: (issue: Issue) => boolean;
 }) {
   const Title = headingLevel === 2 ? 'h2' : 'h3';
   useUndoHotkeys();
@@ -212,19 +215,24 @@ export function IssueRegister({
     () =>
       sortIssues(
         search(
-          filterInView(mine ? issues.filter((i) => mine.has(i.id)) : issues, {
-            sev,
-            classId,
-            status,
-            dataset,
-            scope,
-          }),
+          filterInView(
+            (mine ? issues.filter((i) => mine.has(i.id)) : issues).filter(
+              issueFilter ?? (() => true),
+            ),
+            {
+              sev,
+              classId,
+              status,
+              dataset,
+              scope,
+            },
+          ),
           query,
         ),
         sort,
         dir,
       ),
-    [issues, mine, search, query, sev, classId, status, dataset, sort, dir, scope],
+    [issues, mine, issueFilter, search, query, sev, classId, status, dataset, sort, dir, scope],
   );
   const groups = useMemo(
     () => groupIssues(shown, groupBy, (id) => classById.get(id)?.label ?? id),
@@ -354,9 +362,12 @@ export function IssueRegister({
         aria-checked={readOnly ? undefined : on}
         className={`ann-row${i.status === 'draft' ? ' draft' : ''}${on ? ' checked' : ''}${readOnly ? ' ro' : ''}`}
         onContextMenu={(e) => {
-          if (readOnly || !listActions.placeOnModel) return;
+          if (readOnly || !(listActions.issueMenu || listActions.placeOnModel)) return;
           e.preventDefault();
-          setMenu({ x: e.clientX, y: e.clientY, ids: live.has(i.id) ? [...live] : [i.id] });
+          const ids = live.has(i.id) ? [...live] : [i.id];
+          if (listActions.issueMenu)
+            listActions.issueMenu({ x: e.clientX, y: e.clientY }, ids, i.id);
+          else setMenu({ x: e.clientX, y: e.clientY, ids });
         }}
         onClick={(e) => {
           if (!readOnly && (e.ctrlKey || e.metaKey)) {

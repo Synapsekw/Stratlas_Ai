@@ -42,7 +42,8 @@ export function defineAction<K extends MenuTarget['kind']>(
 /** How many items a target holds: layers, distinct photos; one for anything else. */
 export function targetCount(t: MenuTarget): number {
   if (t.kind === 'layers') return t.layerIds.length;
-  if (t.kind === 'measurements' || t.kind === 'antennas') return t.ids.length;
+  if (t.kind === 'measurements' || t.kind === 'antennas' || t.kind === 'issues')
+    return t.ids.length;
   if (t.kind === 'photos') return new Set(t.picks.map((p) => `${p.layerId}\n${p.photoId}`)).size;
   if (t.kind === 'media')
     return new Set(

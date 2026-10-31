@@ -689,3 +689,45 @@ describe('volumetric report strings', () => {
     expect(t('volumes.kitSiteDensity')).toBe('Stockpile material (site density)');
   });
 });
+
+describe('the flyability strings', () => {
+  it('has the picker, move point and location check strings', () => {
+    const keys = [
+      'fly.picker.title',
+      'fly.picker.description',
+      'fly.picker.flights',
+      'fly.picker.merged',
+      'fly.picker.noMerged',
+      'fly.picker.imported',
+      'fly.picker.aligned.relocalised',
+      'fly.picker.aligned.transform',
+      'fly.picker.aligned.reference',
+      'fly.picker.import',
+      'fly.picker.cancel',
+      'fly.picker.scanning',
+      'fly.picker.scanFailed',
+      'fly.picker.none',
+      'fly.addData',
+      'fly.library.tip',
+      'fly.space.all',
+      'fly.map.local',
+      'fly.move.action',
+      'fly.move.prompt',
+      'fly.move.done',
+      'fly.move.undo',
+      'fly.move.noHit',
+      'fly.check.disagrees',
+      'fly.check.noHit',
+      'fly.check.unchecked',
+      'fly.check.moved',
+      'wb.section.flightlines',
+    ] as const;
+    for (const k of keys) expect(t(k), k).not.toBe(k);
+    expect(t('fly.picker.findings', { count: 1 })).toBe('1 finding');
+    expect(t('fly.picker.findings', { count: 3 })).toBe('3 findings');
+    expect(t('fly.queued', { count: 2 })).toMatch(/^2 /);
+    expect(t('fly.check.wall', { wall: 'W1', hit: 'A' })).toContain('W1');
+    expect(t('fly.map.local')).toBe('No map: this space has its own frame');
+    expect(t('fly.move.prompt')).toBe('Click the point cloud where the finding is. Esc cancels.');
+  });
+});
