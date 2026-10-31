@@ -83,8 +83,13 @@ export function followMeasureTool(
     } else if (!s.tool && prev.tool && started) {
       started = false;
       bench.getState().toolStopped(BENCH);
-      // a telecom tool stops on its last pick: its reading stays in view
-      if (isTelecomTool(prev.tool.tool) && s.focus && s.focus !== focusAtStart) follow();
+      // a telecom tool stops on its last pick: its reading stays in view in Tools > Measure, beside
+      // Flip direction and Save, rather than moving to Selection
+      if (isTelecomTool(prev.tool.tool) && s.focus && s.focus !== focusAtStart) {
+        if (!isIssueEditing()) revealTab(BENCH, bench);
+        revealInList('measurements', s.focus);
+        return;
+      }
     }
     if (!s.tool && s.focus && s.focus !== prev.focus && !takeVolumesPick(s.focus)) follow();
   });

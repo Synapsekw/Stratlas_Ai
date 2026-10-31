@@ -78,6 +78,12 @@
 .rp-split.auto .ctx-wrap.wb-panel-body:not(.tall) {
   flex: none;
 }
+/* a selected thing's card with a long component list (workspace/components.css, .sel-scroll):
+   the card and its list scroll in a host capped to most of the panel, the agent keeping its share */
+.rp-split.auto .ctx-wrap.wb-panel-body:not(.tall):has(> .wb-panel-scroll > .sel-scroll) {
+  flex: 0 1 auto;
+  max-height: 62%;
+}
 .wb-panel-scroll {
   display: flex;
   flex: 1;
@@ -110,7 +116,11 @@
   min-inline-size: 0;
   padding: var(--sp-5) var(--sp-5) var(--sp-7);
 }
+/* Selection's hint stands at least as tall as the bench's least share of the agent split
+   (agent/AgentPane.tsx, BENCH_MIN): a first move of the divider then starts where it stood */
 .wb-empty {
+  box-sizing: border-box;
+  min-block-size: 160px;
   margin: 0;
   padding: var(--sp-5);
   color: var(--fg-2);

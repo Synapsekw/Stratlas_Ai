@@ -77,6 +77,13 @@
 /* in a panel too narrow for three figures in a row (the 300 px docked panel; the 360 px default
    keeps them in a row): the volume on its own row, tonnes and the change under it, so no figure
    ends in an ellipsis */
+/* the 360 px panel less its scroll bar (the right panel's tabs scroll in one box, UI revision
+   D2): the three stay in a row on a tighter side padding, so the change's figure is whole */
+@container vhead (max-width: 344px) {
+  .vh-kpi > .vh-tile {
+    padding-inline: var(--sp-4);
+  }
+}
 @container vhead (max-width: 320px) {
   .vh-kpi {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

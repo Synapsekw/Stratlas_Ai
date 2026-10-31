@@ -37,6 +37,18 @@
     display: none;
   }
 }
+/* the 300 px docked panel (below a 1280 px window, UI revision D1) with its scroll bar: the
+   height column goes too (the details still say it), so the status chip stays whole */
+@container (max-width: 300px) {
+  .antenna-cols,
+  .antenna-row.row[data-kind] {
+    grid-template-columns: 14px 8px minmax(28px, 1fr) 50px 44px 74px 24px;
+  }
+  .antenna-cols > :nth-child(7),
+  .antenna-row .antenna-height {
+    display: none;
+  }
+}
 /* the open details count beside the eight rows (project/rowList.css), never as rows */
 .pl-rows.antenna-rows {
   max-height: calc(8 * var(--pl-row-h) + var(--pl-details-h, 0px));

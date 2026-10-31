@@ -103,6 +103,19 @@ describe('followMeasureTool', () => {
     off();
   });
 
+  it("a telecom tool's last pick keeps its reading in Tools > Measure, not Selection", () => {
+    const bench = createWorkbenchStore(null);
+    const store = measure();
+    const off = followMeasureTool(store as never, bench);
+    store.setState({ tool: { tool: 'azimuth' } });
+    // the third pick saves the reading and stops the tool in one change
+    store.setState({ tool: null, focus: 'az1' });
+    expect(bench.getState().front).toBe('measure');
+    expect(bench.getState().panel).toBe('tools');
+    expect(projectListStore.getState().reveal).toMatchObject({ group: 'measurements', id: 'az1' });
+    off();
+  });
+
   it('reveals a picked measurement in the list', () => {
     const bench = createWorkbenchStore(null);
     const store = measure();
