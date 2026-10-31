@@ -13,9 +13,9 @@
   },
   "apps/desktop/src/renderer/builder/builder.css": {
     "fontPx": 2,
-    "colour": 7,
-    "shadow": 4,
-    "zIndex": 7
+    "colour": 5,
+    "shadow": 3,
+    "zIndex": 6
   },
   "apps/desktop/src/renderer/builder/CalibrateVideo.tsx": {
     "title": 2
@@ -142,10 +142,6 @@
   },
   "apps/desktop/src/renderer/panos/PanoSphereRows.tsx": {
     "title": 1
-  },
-  "apps/desktop/src/renderer/photogrammetry/photo.css": {
-    "colour": 2,
-    "shadow": 2
   },
   "apps/desktop/src/renderer/pointcloud/cleanup.css": {
     "shadow": 4,
