@@ -9,7 +9,7 @@ import { IconButton, Tip, t, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { ProcessingChip } from '../processing/ProcessingChip';
 import { shell } from '../shell';
-import { CloudChip } from '../shell/ConnectionStatus';
+import { AiStatusChip } from '../shell/AiStatusChip';
 import { DatePicker } from '../workspace/DatePicker';
 import { toggleLayoutSpike } from './flag';
 import { PURPOSES } from './model';
@@ -118,7 +118,7 @@ export function SpikeTitleBar({
       />
       {/* where W2's one AI chip goes: today's cloud AI chip stands in for it */}
       <span className="spk-status" role="group" aria-label={t('layoutSpike.aiChip')}>
-        <CloudChip store={shell} className="spk-ai" testId="spike-ai-chip" />
+        <AiStatusChip store={shell} className="spk-ai" testId="spike-ai-chip" placement="bottom" />
       </span>
       <ProcessingChip />
       <Tip content={t('layoutSpike.badgeTip')}>
