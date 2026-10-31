@@ -27,7 +27,19 @@ const vote = {
   score: 0.8,
   point: [1, 2, 3],
   placedOn: 'mesh',
-  sightings: [{ photo: 'p002', bbox: [12, 22, 62, 82], confidence: 0.75, id: 'd2' }],
+  sightings: [
+    { photo: 'p002', bbox: [12, 22, 62, 82], confidence: 0.75, id: 'd2' },
+    {
+      photo: 'p003',
+      bbox: [400, 300, 800, 600],
+      space: 'source',
+      width: 4000,
+      height: 3000,
+      note: 'Peak 61.2 °C',
+      fields: [{ key: 'peak', label: 'Peak', type: 'number', value: 61.2, unit: '°C' }],
+    },
+  ],
+  sightingsOmitted: 2,
 };
 const passOf = (detections) => ({
   schema: 'aio.detections/1',

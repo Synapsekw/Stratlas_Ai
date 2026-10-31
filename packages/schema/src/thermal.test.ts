@@ -212,6 +212,37 @@ describe('candidates and params', () => {
     expect(ThermalDecodeParams.safeParse({ layerId: 'l1', photos: [] }).success).toBe(false);
     expect(THERMAL_MIN_PACK).toBe('0.22.0');
   });
+  it('hot spot params match the job bounds', () => {
+    const ok = (p: Record<string, unknown>) =>
+      ThermalHotspotsParams.safeParse({ layerId: 'l1', rule: 'delta', thresholdC: 4, ...p })
+        .success;
+    // delta: 0.1 to 1000
+    expect(ok({ thresholdC: 0.1 })).toBe(true);
+    expect(ok({ thresholdC: 1000 })).toBe(true);
+    expect(ok({ thresholdC: 0.05 })).toBe(false);
+    expect(ok({ thresholdC: 1000.5 })).toBe(false);
+    expect(ok({ thresholdC: Infinity })).toBe(false);
+    expect(ok({ thresholdC: NaN })).toBe(false);
+    // absolute: -70 to 1000
+    expect(ok({ rule: 'absolute', thresholdC: -70 })).toBe(true);
+    expect(ok({ rule: 'absolute', thresholdC: -70.1 })).toBe(false);
+    expect(ok({ rule: 'absolute', thresholdC: 1000 })).toBe(true);
+    expect(ok({ rule: 'absolute', thresholdC: 1001 })).toBe(false);
+    expect(ok({ rule: 'delta', thresholdC: -5 })).toBe(false);
+    // maxPerPhoto 1 to 500, minAreaPx 1 to 100000, integers
+    expect(ok({ maxPerPhoto: 1 })).toBe(true);
+    expect(ok({ maxPerPhoto: 500 })).toBe(true);
+    expect(ok({ maxPerPhoto: 0 })).toBe(false);
+    expect(ok({ maxPerPhoto: 501 })).toBe(false);
+    expect(ok({ maxPerPhoto: 2.5 })).toBe(false);
+    expect(ok({ minAreaPx: 1 })).toBe(true);
+    expect(ok({ minAreaPx: 100000 })).toBe(true);
+    expect(ok({ minAreaPx: 0 })).toBe(false);
+    expect(ok({ minAreaPx: 100001 })).toBe(false);
+    // photos: leave it out for the whole layer, never an empty list
+    expect(ok({ photos: ['a'] })).toBe(true);
+    expect(ok({ photos: [] })).toBe(false);
+  });
   it('hot spot params and pack', () => {
     expect(
       ThermalHotspotsParams.safeParse({ layerId: 'l1', rule: 'delta', thresholdC: 4 }).success,

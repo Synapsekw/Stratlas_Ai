@@ -226,12 +226,24 @@ export const ThermalDecodeParams = z.object({
 export type ThermalDecodeParams = z.infer<typeof ThermalDecodeParams>;
 
 /** `thermal.hotspots` (M3): find hot spots over decoded rasters. */
-export const ThermalHotspotsParams = z.object({
-  layerId: Id,
-  photos: z.array(Id).optional(),
-  rule: z.enum(['absolute', 'delta']),
-  thresholdC: z.number(),
-  minAreaPx: z.number().int().positive().optional(),
-  maxPerPhoto: z.number().int().positive().optional(),
-});
+export const ThermalHotspotsParams = z
+  .object({
+    layerId: Id,
+    /** Leave it out for the whole layer; an empty list is refused, as the job refuses it. */
+    photos: z.array(Id).min(1).optional(),
+    rule: z.enum(['absolute', 'delta']),
+    /** `delta`: 0.1 to 1000 °C above the surroundings; `absolute`: -70 to 1000 °C. */
+    thresholdC: z.number(),
+    minAreaPx: z.number().int().min(1).max(100_000).optional(),
+    maxPerPhoto: z.number().int().min(1).max(500).optional(),
+  })
+  .superRefine((p, ctx) => {
+    const [lo, hi] = p.rule === 'delta' ? [0.1, 1000] : [-70, 1000];
+    if (p.thresholdC < lo || p.thresholdC > hi)
+      ctx.addIssue({
+        code: 'custom',
+        message: `A ${p.rule} threshold is from ${String(lo)} to ${String(hi)} °C.`,
+        path: ['thresholdC'],
+      });
+  });
 export type ThermalHotspotsParams = z.infer<typeof ThermalHotspotsParams>;

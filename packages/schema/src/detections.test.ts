@@ -226,6 +226,35 @@ describe('multi-view vote', () => {
       }).success,
     ).toBe(false);
   });
+  it('round-trips a sighting in its own space, with its fields and note', () => {
+    const v = {
+      views: 2,
+      sightingsOmitted: 3,
+      sightings: [
+        {
+          photo: 'p002',
+          bbox: [400, 300, 800, 600],
+          space: 'source',
+          width: 4000,
+          height: 3000,
+          confidence: 0.6,
+          id: 'd2',
+          note: 'Peak 61.2 °C',
+          fields: [{ key: 'peak', label: 'Peak', type: 'number', value: 61.2, unit: '°C' }],
+        },
+      ],
+    };
+    expect(DetectionVote.parse(v)).toEqual(v);
+  });
+  it('refuses no omitted sightings and a bad sighting size', () => {
+    expect(DetectionVote.safeParse({ views: 2, sightingsOmitted: 0 }).success).toBe(false);
+    expect(
+      DetectionVote.safeParse({
+        views: 2,
+        sightings: [{ photo: 'p2', bbox: [1, 1, 5, 5], width: 0 }],
+      }).success,
+    ).toBe(false);
+  });
   it('refuses zero views and a bad placement', () => {
     expect(DetectionsFile.safeParse(fileWith({ views: 0 })).success).toBe(false);
     expect(DetectionVote.safeParse({ views: 2, placedOn: 'sky' }).success).toBe(false);

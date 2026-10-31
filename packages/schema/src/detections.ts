@@ -92,20 +92,31 @@ export const DetectionVote = z
     point: z.tuple([z.number(), z.number(), z.number()]).optional(),
     /** What the point was placed on: a mesh, the point cloud, or crossing rays. */
     placedOn: z.enum(['mesh', 'cloud', 'rays']).optional(),
-    /** The other members of the cluster: photo, box (same space as `bbox`), score and id. */
+    /**
+     * The other members of the cluster: photo, box, score, id, note and read values. Each box is
+     * in that sighting's own `space` (default `preview`) and, for `source`, its own photo's
+     * original `width` x `height`; never assume the space of this draft's `bbox`.
+     */
     sightings: z
       .array(
         z
           .object({
             photo: Id,
             bbox: DetectionBox,
+            space: DetectionSpace.optional(),
+            width: z.number().positive().optional(),
+            height: z.number().positive().optional(),
             confidence: z.number().min(0).max(1).optional(),
             id: z.string().min(1).max(128).optional(),
+            note: z.string().optional(),
+            fields: z.array(FieldValue).max(14).optional(),
           })
           .strict(),
       )
       .max(200)
       .optional(),
+    /** Members past the cap of 200 sightings that were not listed. */
+    sightingsOmitted: z.number().int().min(1).optional(),
   })
   .strict();
 
