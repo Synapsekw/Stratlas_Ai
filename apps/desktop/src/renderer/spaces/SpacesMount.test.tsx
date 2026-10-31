@@ -152,4 +152,64 @@ describe('SpacesMount', () => {
     expect(h.load).not.toHaveBeenCalled();
     expect(scene.getObjectByName(FLIGHTLINE_GROUP)?.children ?? []).toHaveLength(0);
   });
+  it('an import into another space stays hidden', () => {
+    const m = withSpaces([photos('lm'), photos('la', 's-a')]);
+    open(m);
+    setActiveSpace('p1', 'main');
+    mount(null);
+    act(() => {
+      workspace
+        .getState()
+        .replaceManifest(withSpaces([photos('lm'), photos('la', 's-a'), photos('lb', 's-a')]));
+    });
+    expect(workspace.getState().hidden).toEqual({ la: true, lb: true });
+  });
+
+  it('a date jump cannot show another space layer', () => {
+    open(withSpaces([photos('lm'), photos('la', 's-a')]));
+    setActiveSpace('p1', 'main');
+    mount(null);
+    act(() => {
+      workspace.getState().applyVisibility(['la'], []);
+    });
+    expect(workspace.getState().hidden).toEqual({ la: true });
+  });
+
+  it('a single-space project makes no visibility call', () => {
+    open(ProjectManifest.parse({ ...base, layers: [photos('l1')] }));
+    const spy = vi.spyOn(workspace.getState(), 'applyVisibility');
+    setActiveSpace('p1', 'main');
+    mount(null);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('going there and back restores what was hidden in each space', () => {
+    open(withSpaces([photos('lm'), photos('lm2'), photos('la', 's-a')]));
+    setActiveSpace('p1', 'main');
+    mount(null);
+    act(() => {
+      workspace.getState().setLayersVisible(['lm2'], false);
+    });
+    act(() => {
+      setActiveSpace('p1', 's-a');
+    });
+    expect(workspace.getState().hidden).toEqual({ lm: true, lm2: true });
+    act(() => {
+      setActiveSpace('p1', 'main');
+    });
+    expect(workspace.getState().hidden).toEqual({ la: true, lm2: true });
+  });
+
+  it('a layer saved hidden in the second space stays hidden when entering it', () => {
+    open(
+      withSpaces([photos('lm'), photos('la', 's-a'), { ...photos('lb', 's-a'), visible: false }]),
+    );
+    setActiveSpace('p1', 'main');
+    mount(null);
+    act(() => {
+      setActiveSpace('p1', 's-a');
+    });
+    expect(workspace.getState().hidden).toEqual({ lm: true, lb: true });
+  });
 });

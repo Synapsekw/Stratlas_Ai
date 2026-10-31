@@ -12,7 +12,7 @@ import {
 import { attachFlightlines, type FlightlineView } from '../flyability/flightlineScene';
 import { shell, useShell } from '../shell';
 import { useActiveSpace } from './activeSpace';
-import { scopeChange, type SpaceMemory } from './spaceModel';
+import { offSpaceLayers, scopeChange, type SpaceMemory } from './spaceModel';
 
 /*
  * What the open project's active space does to the stage: the other spaces' layers are hidden
@@ -71,8 +71,19 @@ export function SpacesMount({ stage }: { stage: EngineStage | null }): null {
     // only the changes: an intent that already holds must not re-render everyone
     const show = r.show.filter((id) => cur[id]);
     const hide = r.hide.filter((id) => !cur[id]);
-    workspace.getState().applyVisibility(show, hide);
+    if (show.length > 0 || hide.length > 0) workspace.getState().applyVisibility(show, hide);
   }, [projectId, openSeq, spaceId]);
+
+  // The invariant behind (1): layers of another space never stay visible, whatever shows them
+  // (an import finishing, a timeline date jump). Only the differences go out, so it settles after
+  // one pass and never touches the active space.
+  useEffect(() => {
+    const m = workspace.getState().project?.manifest;
+    if (!m) return;
+    const cur = workspace.getState().hidden;
+    const hide = offSpaceLayers(m, spaceId).filter((id) => !cur[id]);
+    if (hide.length > 0) workspace.getState().applyVisibility([], hide);
+  }, [manifest, hidden, spaceId]);
 
   // (2) minimum map guard: a space with its own frame has no map
   useEffect(() => {
@@ -95,13 +106,19 @@ export function SpacesMount({ stage }: { stage: EngineStage | null }): null {
       view.current = null;
     };
   }, [stage]);
+  // the active space's flight lines and whether each is switched off: the draw ignores the rest
+  const lineKey = (manifest?.layers ?? [])
+    .filter((l) => l.kind === 'flightline' && (l.space ?? 'main') === spaceId)
+    .map((l) => `${l.id}:${hidden[l.id] ? 0 : 1}`)
+    .join('|');
   useEffect(() => {
     const v = view.current;
     if (!v || !manifest || projectId === null) return;
     const layers = manifest.layers.filter(
       (l): l is FlightlineLayer => l.kind === 'flightline' && (l.space ?? 'main') === spaceId,
     );
-    const shown = layers.filter((l) => l.visible && !hidden[l.id]);
+    const off = workspace.getState().hidden;
+    const shown = layers.filter((l) => !off[l.id]);
     if (shown.length === 0) {
       v.set([]);
       return;
@@ -129,7 +146,7 @@ export function SpacesMount({ stage }: { stage: EngineStage | null }): null {
     return () => {
       live = false;
     };
-  }, [stage, manifest, projectId, spaceId, hidden, theme]);
+  }, [stage, manifest, projectId, spaceId, lineKey, theme]);
 
   return null;
 }
