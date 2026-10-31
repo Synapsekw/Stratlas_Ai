@@ -3,8 +3,9 @@
  * top-centre slot, the outlines of the five fixed overlay slots (on request), and the popped-out
  * video window. Today's island is hidden under the spike (spike.css), not changed.
  */
-import { Icon, t, useT } from '@aio/ui';
+import { Icon, matchShortcut, t, useT } from '@aio/ui';
 import { useEffect, useRef, type RefObject } from 'react';
+import { isTyping } from '../keys';
 import { shell, useShell } from '../shell';
 import {
   entryOf,
@@ -92,6 +93,20 @@ function SpikeIsland({ data }: { data: ProjectData }) {
       window.removeEventListener('keydown', esc);
     };
   }, [open]);
+  // T opens and closes it, as it does today's notch (which the spike hides)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
+      if (matchShortcut('scene', e) !== 'scene.tools') return;
+      e.preventDefault();
+      const s = spike.getState();
+      s.setIsland(!s.islandOpen);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
   const pick = (m: IslandMode) => {
     spike.getState().setIsland(true, m);
     spike.getState().show(MODE_HOME[m]);

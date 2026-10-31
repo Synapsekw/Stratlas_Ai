@@ -120,9 +120,10 @@
   background: var(--line-soft);
   overflow: hidden;
 }
-/* in a panel too narrow for three figures in a row (the 300 px docked panel): the volume on its
-   own row, tonnes and the change under it, so no figure ends in an ellipsis */
-@container pile (max-width: 340px) {
+/* in a panel too narrow for three figures in a row (the 300 px docked panel; the 360 px default
+   keeps them in a row): the volume on its own row, tonnes and the change under it, so no figure
+   ends in an ellipsis */
+@container pile (max-width: 320px) {
   .pp-kpi {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }

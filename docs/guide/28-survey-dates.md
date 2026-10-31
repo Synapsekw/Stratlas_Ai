@@ -50,7 +50,7 @@ The name, colour and icon are saved in the project, so they are there when you o
 
 ## Moving between dates
 
-- The island at the top of the view shows the date you are viewing. Move the pointer near it for its arrows, or press **Alt+Left** and **Alt+Right** on the workspace screen. The shortcuts are ignored while you are typing in a text field. In a project with video, the date also sits in the top left corner of the timeline, which has one lane per date (see [One lane per survey date](03-scene.md#one-lane-per-survey-date)).
+- The island at the top of the view shows the date you are viewing, with its arrows beside it. Click them, or press **Alt+Left** and **Alt+Right** on the workspace screen. The shortcuts are ignored while you are typing in a text field. In a project with video, the date also sits in the top left corner of the timeline, which has one lane per date (see [One lane per survey date](03-scene.md#one-lane-per-survey-date)).
 - Click the date to open the calendar. Days with a survey are coloured, and other days are shown but can't be selected. The month arrows and **Page Up** and **Page Down** skip months without a survey, the arrow keys move day by day, **Enter** picks the day, and **Escape** closes the calendar and returns you to the island.
 - Press Ctrl+K and type "survey" to list **Go to previous survey**, **Go to next survey** and one command per date, such as **Go to survey 6 Nov 2024**.
 

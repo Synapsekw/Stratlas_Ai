@@ -98,6 +98,17 @@ test('flag on renders four tabs and the rail at 1100 x 720', async ({ win }) => 
   await win.getByTestId('spike-mode-measure').click();
   await expect(tabs.filter({ hasText: 'Tools' })).toHaveAttribute('aria-selected', 'true');
   await expect(win.getByTestId('spike-section-tools.measure')).toHaveAttribute('data-open', 'true');
+  // T opens and closes the spike's island, as it does today's notch (hidden here, left shut)
+  await win.keyboard.press('Escape');
+  await expect(win.getByTestId('spike-mode-measure')).toHaveCount(0);
+  await win.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+  });
+  await win.keyboard.press('t');
+  await expect(win.getByTestId('spike-mode-measure')).toBeVisible();
+  await win.keyboard.press('t');
+  await expect(win.getByTestId('spike-mode-measure')).toHaveCount(0);
+  await expect(win.locator('.island-wrap')).not.toHaveAttribute('data-state', 'tools');
 
   // Ctrl+Alt+L brings today's shell back, in place
   await win.keyboard.press('Control+Alt+L');
@@ -178,9 +189,18 @@ test('both side panels fold and come back, as in today’s app, and Layers shows
   await win.keyboard.press('Control+Alt+B');
   await expect(right).toBeVisible();
   await round1Shot(win, 'spike-both-open');
+  // the palette has no sidebar command in the spike: there is no sidebar to fold
+  await win.keyboard.press('Control+K');
+  const palette = win.getByRole('dialog', { name: 'Command search' });
+  await expect(palette).toBeVisible();
+  await palette.getByRole('combobox').fill('sidebar');
+  await expect(palette.getByRole('option', { name: /left sidebar/ })).toHaveCount(0);
+  await win.keyboard.press('Escape');
 
   await win.keyboard.press('Control+Alt+L');
   await expect(win.locator('aside.sidebar')).toBeVisible(VIEW_READY);
+  // Ctrl+B in the spike folded Layers only: today's sidebar comes back as it was, open
+  await expect(win.locator('.app')).toHaveAttribute('data-sb', 'expanded');
 });
 
 test.describe('a clicked pile in Selection', () => {
@@ -201,6 +221,43 @@ test.describe('a clicked pile in Selection', () => {
     await expect(strip.locator('[data-survey][data-state="ready"]')).toHaveCount(3, {
       timeout: 360_000,
     });
+    /** The figures `sel` finds are whole: none cut short, by an ellipsis or by its box. */
+    const whole = async (sel: string) => {
+      const cut = await win.evaluate(
+        (q) =>
+          [...document.querySelectorAll<HTMLElement>(q)]
+            .filter((el) => el.getClientRects().length > 0 && el.scrollWidth > el.clientWidth + 1)
+            .map((el) => el.textContent),
+        sel,
+      );
+      expect(cut, `${sel} cut short`).toEqual([]);
+    };
+    /** The tiles `sel` finds share one row. */
+    const oneRow = async (sel: string) => {
+      const tops = await win.evaluate(
+        (q) =>
+          [...document.querySelectorAll(q)].map((el) => Math.round(el.getBoundingClientRect().top)),
+        sel,
+      );
+      expect(tops, sel).toHaveLength(3);
+      expect(new Set(tops).size, `${sel} in one row`).toBe(1);
+    };
+
+    // today's shell with its right panel at the default width: the three figures stay in a row
+    await resize(app, win, 1440, 900);
+    await expect(view.getByTestId('volumes-kpi')).toBeVisible();
+    await oneRow('[data-testid="volumes-kpi"] > div');
+    await whole('[data-testid="volumes-kpi"] b');
+    await round1Shot(win, 'today-volumes-1440');
+    await view.getByTestId('volumes-pile').filter({ hasText: 'Stockpile SP1' }).click();
+    const todayPile = win.getByTestId('pile-panel');
+    await expect(todayPile.getByTestId('pile-name')).toHaveText('Stockpile SP1');
+    await oneRow('[data-testid="pile-kpi"] > div');
+    await whole('[data-testid="pile-kpi"] b');
+    await round1Shot(win, 'today-pile-1440');
+    await todayPile.getByRole('button', { name: /Inventory/ }).click();
+    await expect(todayPile).toHaveCount(0);
+
     await win.keyboard.press('Control+Alt+L');
     await expect(win.getByTestId('spike-scene')).toBeVisible(VIEW_READY);
     const panel = win.getByTestId('spike-right');
@@ -224,17 +281,6 @@ test.describe('a clicked pile in Selection', () => {
         expect(b.left, `${sel} "${b.text}" left`).toBeGreaterThanOrEqual(box.x + pad);
         expect(b.right, `${sel} "${b.text}" right`).toBeLessThanOrEqual(box.x + box.width + 0.5);
       }
-    };
-    /** The figures `sel` finds are whole: none cut short, by an ellipsis or by its box. */
-    const whole = async (sel: string) => {
-      const cut = await win.evaluate(
-        (q) =>
-          [...document.querySelectorAll<HTMLElement>(q)]
-            .filter((el) => el.getClientRects().length > 0 && el.scrollWidth > el.clientWidth + 1)
-            .map((el) => el.textContent),
-        sel,
-      );
-      expect(cut, `${sel} cut short`).toEqual([]);
     };
 
     for (const [w, h] of [
@@ -277,6 +323,8 @@ test.describe('a clicked pile in Selection', () => {
       await expect(sec.getByTestId('volumes-pile').first()).toBeVisible({ timeout: 60_000 });
       await inside('[data-testid="spike-section-project.volumes"] .vh-head *', 4);
       await whole('[data-testid="volumes-kpi"] b');
+      // the caption over the table wraps inside the panel, never past its right edge
+      await inside('[data-testid="spike-section-project.volumes"] .vi-cap', 4);
       await round1Shot(win, `spike-volumes-${String(w)}`);
       await win.getByTestId('spike-tab-selection').click();
     }

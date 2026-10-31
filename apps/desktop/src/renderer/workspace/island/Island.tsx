@@ -1,13 +1,13 @@
 /**
  * The stage notch (the island, D1 to D10): hung from the top centre of the stage. At rest its one
  * line: the 3D / Map / Split switch, the survey date with its arrows, the live reading and the
- * chevron that opens the tools; a second live item as a bubble beside it that swaps with it. The
- * pointer resting on it, a click on it, the chevron or T opens it: the line stays exactly where it
- * was (drawn once, never again), and under it come the group tabs with Jobs, Keep open and Close,
- * then a group's quick row (or the date's calendar). Unpinned it
- * closes when the pointer leaves, on Esc or a press outside, and once a group's workbench (its
- * full set, in the right sidebar) opens; kept open (pinned, on this computer) none of those
- * close it. Its size morphs between the states (instant under reduced motion).
+ * chevron that opens the tools; a second live item as a bubble beside it that swaps with it. A
+ * click on it, the chevron, Enter or Space with focus on it, or T opens it, never the pointer
+ * resting on it (founder, 30 Oct 2026): the line stays exactly where it was (drawn once, never
+ * again), and under it come the group tabs with Jobs, Keep open and Close, then a group's quick
+ * row (or the date's calendar). Unpinned it closes on a click again, Esc, Close or a press
+ * outside, and once a group's workbench (its full set, in the right sidebar) opens; it stays open
+ * when the pointer leaves. Kept open (pinned, on this computer) none of those close it. Its size morphs between the states (instant under reduced motion).
  */
 import { annotateUi } from '@aio/annotate';
 import type { EngineStage } from '@aio/engine';
@@ -25,6 +25,7 @@ import {
   type ReactNode,
 } from 'react';
 import { isTyping } from '../../keys';
+import { layoutSpikeOn } from '../../layoutSpike/flag';
 import { useRoad } from '../../road/store';
 import { useShell } from '../../shell';
 import type { StageMode } from '../../store';
@@ -349,6 +350,8 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
       if (annotateUi.getState().pending) return;
       if (e.target instanceof Element && e.target.closest('.vwin')) return;
       if (matchShortcut('scene', e) !== 'scene.tools') return;
+      // the layout spike hides this notch: its own island takes T (SpikeStageUi.tsx)
+      if (layoutSpikeOn()) return;
       e.preventDefault();
       const now = state.current;
       const opening = now.open !== 'tools';

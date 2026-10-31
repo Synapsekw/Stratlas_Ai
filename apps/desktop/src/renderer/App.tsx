@@ -139,8 +139,9 @@ function onKeyDown(e: KeyboardEvent) {
     if (isDockScreen(s.screen) && workspace.getState().project) s.toggleAgentDock();
     else s.toggleRight();
   } else if (id === 'global.sidebar') {
-    // the layout spike's Scene has no sidebar: Ctrl+B folds its Layers column (SpikeShell.tsx)
-    if (s.screen === 'scene' && layoutSpikeOn()) return;
+    // the layout spike has no sidebar: Ctrl+B folds the Scene's Layers column (SpikeShell.tsx)
+    // and never the hidden sidebar's fold
+    if (layoutSpikeOn()) return;
     e.preventDefault();
     void s.toggleSidebar();
   } else if (id === 'global.agent') {

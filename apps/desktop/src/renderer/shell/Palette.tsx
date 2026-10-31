@@ -31,6 +31,7 @@ import { processing } from '../processing/store';
 import { pickAndScanPanos } from '../panos/panos';
 import { openProcessingTools } from '../processingTools';
 import { shell, useShell } from '../shell';
+import { layoutSpikeOn } from '../layoutSpike/flag';
 import { isSidebarFolded, type Screen, type SettingsPage, type StageMode } from '../store';
 import { TOOL_ICON } from '../survey/card';
 import {
@@ -362,16 +363,18 @@ export function Palette() {
       },
       shortcutHint('global.help'),
     );
-    // the same words as the tab on the panel's edge: what the command does next
-    list.push({
-      id: 'sidebar',
-      title: t(panelHandleLabel('left', leftCollapsed)),
-      group: 'Actions',
-      icon: 'sidebar',
-      keywords: ['toggle sidebar', 'hide sidebar', 'show sidebar', 'fold', 'navigation'],
-      shortcut: shortcutHint('global.sidebar'),
-      run: () => void s.toggleSidebar(),
-    });
+    // the same words as the tab on the panel's edge: what the command does next (not in the
+    // layout spike, which has no sidebar to fold)
+    if (!layoutSpikeOn())
+      list.push({
+        id: 'sidebar',
+        title: t(panelHandleLabel('left', leftCollapsed)),
+        group: 'Actions',
+        icon: 'sidebar',
+        keywords: ['toggle sidebar', 'hide sidebar', 'show sidebar', 'fold', 'navigation'],
+        shortcut: shortcutHint('global.sidebar'),
+        run: () => void s.toggleSidebar(),
+      });
     action('add-folder', 'Add project folder', 'import', () => void s.addProjectFolder());
     action('open-package', 'Open a project package (.aio)', 'lock', () => void s.openPackageFile());
     action('report-problem', t('diag.report'), 'bell', () => {

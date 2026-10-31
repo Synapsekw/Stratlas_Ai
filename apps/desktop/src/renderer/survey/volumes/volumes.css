@@ -74,9 +74,10 @@
   background: var(--line-soft);
   overflow: hidden;
 }
-/* in a panel too narrow for three figures in a row (the 300 px docked panel): the volume on its
-   own row, tonnes and the change under it, so no figure ends in an ellipsis */
-@container vhead (max-width: 340px) {
+/* in a panel too narrow for three figures in a row (the 300 px docked panel; the 360 px default
+   keeps them in a row): the volume on its own row, tonnes and the change under it, so no figure
+   ends in an ellipsis */
+@container vhead (max-width: 320px) {
   .vh-kpi {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
@@ -144,13 +145,17 @@
 /* ---------- Inventory ---------- */
 .vi {
   display: grid;
+  /* the column is the panel's width, not the table's: in a narrow panel the caption wraps inside
+     it and the table scrolls sideways in the view, never pushing the caption past the edge */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-3);
   min-width: 0;
 }
 .vi-cap {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: var(--sp-4);
+  gap: var(--sp-1) var(--sp-4);
   font-size: var(--t-13);
   color: var(--fg-3);
 }

@@ -17,11 +17,11 @@
 
 ## The island: the stage tools and the date
 
-The stage has no toolbar and no date bar. At the top centre of the view sits the island. At rest it shows the survey date you are viewing, for example "13 Apr", in the survey's colour; move the pointer near the top of the view and it grows to the date's arrows, the view and **Tools**.
+The stage has no toolbar and no date bar. At the top centre of the view sits the island. At rest it shows the **3D**, **Map** and **Split** switch, the survey date you are viewing, for example "13 Apr", in the survey's colour, with its arrows, and **Tools**. It opens only when you ask: pointing at it does not open it.
 
 - Click the date for the calendar: the month with the survey days marked, the survey list and **Compare the two dates**. **Alt ←** and **Alt →** step through the dates.
-- Click the island, or press **T**, to open the stage tools: the **3D**, **Map** and **Split** switch, and a tab per group: **View**, **Measure**, **Display** and **Annotate**, and where the project has them **Point cloud**, **Volumes**, **Video** and **Road**. Pointing at a tab shows the group's quick tiles; clicking it opens the group's workbench, its full set, as a tab in the right panel (see [The right panel](#the-right-panel)), and the island goes back to rest. **All tools** at the end of a row does the same.
-- The arrow keys move between the tiles, **Tab** moves between the rows, and **Esc** closes the tools.
+- Click the island, press **Enter** or **Space** while it has the focus, or press **T**, to open the stage tools: the **3D**, **Map** and **Split** switch, and a tab per group: **View**, **Measure**, **Display** and **Annotate**, and where the project has them **Point cloud**, **Volumes**, **Video** and **Road**. Pointing at a tab shows the group's quick tiles; clicking it opens the group's workbench, its full set, as a tab in the right panel (see [The right panel](#the-right-panel)), and the island goes back to rest. **All tools** at the end of a row does the same.
+- The arrow keys move between the tiles, **Tab** moves between the rows, and **Esc** closes the tools. A click outside the island closes them too; moving the pointer away leaves them open. **Keep open** keeps them open through all of these.
 - While something is going on, the island says it beside the date: a measurement and its reading, the playing clip with its telemetry, a processing job with its progress, or **Offline** when the network is down. Click the reading, or press **Space** on it, to bring its tab to the front of the right panel. When two things are going on, the second one is a small bubble beside the island; click it to swap them.
 
 **T** no longer shows or hides the timeline: the timeline is the **Timeline** tile in the island's **View** group, and has no key.
