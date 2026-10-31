@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type { EngineStage } from '@aio/engine';
+import type { Issue } from '@aio/schema';
 import { ProjectManifest } from '@aio/schema';
 import { clearToasts, toastQueue } from '@aio/ui';
 import { workspace } from '@aio/workspace';
@@ -14,6 +15,20 @@ import { createStore } from 'zustand/vanilla';
 
 const h = vi.hoisted(() => ({
   load: vi.fn<(...a: unknown[]) => Promise<Float32Array | null>>(),
+  issues: [] as { id: string; sightings: { layer: string }[] }[],
+}));
+// the register itself is covered in @aio/annotate: here it lists what its issueFilter lets through
+vi.mock('@aio/annotate', async (orig: () => Promise<Record<string, unknown>>) => ({
+  ...(await orig()),
+  IssueRegister: ({ issueFilter }: { issueFilter?: (i: Issue) => boolean }) => (
+    <ul data-testid="issue-register">
+      {h.issues
+        .filter((i) => (issueFilter ?? (() => true))(i as unknown as Issue))
+        .map((i) => (
+          <li key={i.id}>{i.id}</li>
+        ))}
+    </ul>
+  ),
 }));
 vi.mock('../flyability/flightlineModel', async (orig: () => Promise<Record<string, unknown>>) => ({
   ...(await orig()),
@@ -36,6 +51,7 @@ vi.mock('../shell', () => ({
 }));
 
 const { SpacesMount } = await import('./SpacesMount');
+const { IssuesScreen } = await import('../screens/Issues');
 const { setActiveSpace } = await import('./activeSpace');
 const { FLIGHTLINE_GROUP } = await import('../flyability/flightlineScene');
 
@@ -211,5 +227,39 @@ describe('SpacesMount', () => {
       setActiveSpace('p1', 's-a');
     });
     expect(workspace.getState().hidden).toEqual({ lm: true, lb: true });
+  });
+
+  it('the issue register shows only the active space', () => {
+    h.issues = [
+      { id: 'i-main', sightings: [{ layer: 'lm' }] },
+      { id: 'i-in', sightings: [{ layer: 'la' }] },
+    ];
+    open(withSpaces([photos('lm'), photos('la', 's-a')]));
+    setActiveSpace('p1', 's-a');
+    const host = document.body.appendChild(document.createElement('div'));
+    root = createRoot(host);
+    act(() => {
+      root?.render(<IssuesScreen />);
+    });
+    const listed = () => [...host.querySelectorAll('li')].map((x) => x.textContent);
+    expect(listed()).toEqual(['i-in']);
+    act(() => {
+      setActiveSpace('p1', 'main');
+    });
+    expect(listed()).toEqual(['i-main']);
+  });
+
+  it('a single-space project lists every issue', () => {
+    h.issues = [
+      { id: 'i1', sightings: [{ layer: 'l1' }] },
+      { id: 'i2', sightings: [] },
+    ];
+    open(ProjectManifest.parse({ ...base, layers: [photos('l1')] }));
+    const host = document.body.appendChild(document.createElement('div'));
+    root = createRoot(host);
+    act(() => {
+      root?.render(<IssuesScreen />);
+    });
+    expect([...host.querySelectorAll('li')].map((x) => x.textContent)).toEqual(['i1', 'i2']);
   });
 });

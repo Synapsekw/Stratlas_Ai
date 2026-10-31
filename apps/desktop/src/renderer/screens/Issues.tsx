@@ -1,16 +1,26 @@
 import { IssueRegister } from '@aio/annotate';
 import { Icon, ResizableSplit, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
+import { useMemo } from 'react';
 import { ExportMenu } from '../exports/ExportMenu';
 import { FocusZone } from '../FocusZone';
 import { IssueCard } from '../issueCard/IssueCard';
 import { NoProject } from './NoProject';
 import { PageHeader } from '../shell/PageHeader';
+import { useActiveSpace } from '../spaces/activeSpace';
+import { inSpace } from '../spaces/spaceModel';
 
 /** The issue list and the card of the picked issue, on the `issues.card` split (420 px card). */
 export function IssuesScreen() {
   const t = useT();
   const hasProject = useWorkspace((s) => s.project !== null);
+  const manifest = useWorkspace((s) => s.project?.manifest);
+  const { spaceId, spaces } = useActiveSpace();
+  // the register lists the active space's issues; with one space nothing is filtered
+  const issueFilter = useMemo(
+    () => (manifest && spaces.length > 1 ? inSpace(manifest, spaceId) : () => true),
+    [manifest, spaceId, spaces.length],
+  );
   const issueId = useWorkspace((s) => (s.selection?.kind === 'issue' ? s.selection.id : null));
   if (!hasProject)
     return (
@@ -42,6 +52,7 @@ export function IssuesScreen() {
               heading={t('issues.register')}
               headingLevel={2}
               actions={<ExportMenu />}
+              issueFilter={issueFilter}
             />
           </div>
         }

@@ -66,6 +66,8 @@ import { usePlacedWalksOnMap, usePlacingOn } from '../walks/placeWalk';
 import { MAP_SURFACE, SCENE_SURFACE } from '../walks/placeModel';
 import { useCompareFollowsStage } from '../walks/walkCompare';
 import { WalkSceneMount } from '../walks/WalkSceneMount';
+import { MovePointMount } from '../flyability/MovePointMount';
+import { SpacesMount } from '../spaces/SpacesMount';
 import { useTimeline } from './timeline';
 import { hiddenPathClips } from './flightPaths';
 import { telemetryLabels, useTelemetryOn } from './telemetryPref';
@@ -1017,6 +1019,8 @@ export function Stage() {
       <RightPanelToggle />
       <MeasureMount stage={engine} />
       <WalkSceneMount stage={engine} />
+      <SpacesMount stage={engine} />
+      <MovePointMount />
       <SurveyQaMount />
       <HydroMount />
       <HaulRoadMount stage={engine} />
