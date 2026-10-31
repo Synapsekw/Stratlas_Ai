@@ -88,6 +88,7 @@ describe('design tokens', () => {
       '--z-drawer': '60',
       '--z-toast': '70',
       '--z-modal': '80',
+      '--z-dialog': '110',
       '--z-top': '120',
       '--d-1': '120ms',
       '--d-2': '180ms',

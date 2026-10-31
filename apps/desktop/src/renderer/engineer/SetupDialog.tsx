@@ -100,6 +100,13 @@ export function SetupDialog(props: SetupDialogProps) {
   const t = useT();
   const id = useId();
   const hidden = props.hidden === true;
+  // the control that first opened the setup: focus goes back there when it closes, not to the
+  // stage a pick left focused before the dialog came back
+  const [opener] = useState<HTMLElement | null>(() =>
+    typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null,
+  );
   const sources = props.layers.filter(isSource);
   const [chosen, setChosen] = useState<ReadonlySet<string>>(
     () => new Set((props.initial ?? []).filter((id) => sources.some((l) => l.id === id))),
@@ -269,6 +276,7 @@ export function SetupDialog(props: SetupDialogProps) {
       description={t('eng.setup.sub')}
       closeLabel={t('eng.setup.close')}
       onClose={props.onClose}
+      returnFocus={() => opener}
       footer={footer}
     >
       {/* keys typed in the setup stay in it: the app's shortcuts do not see them */}

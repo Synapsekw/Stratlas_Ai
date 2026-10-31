@@ -44,6 +44,8 @@ export interface DialogProps {
   /** Extra class on the dialog box (feature layout inside the body). */
   className?: string;
   testId?: string;
+  /** 'top' puts it above every other layer, other dialogs and tips included (a run's progress card). */
+  layer?: 'top';
   /** Extra `data-*` attributes on the dialog box (a feature's state for its CSS and tests). */
   data?: Record<`data-${string}`, string | undefined>;
   children?: ReactNode;
@@ -134,6 +136,7 @@ export function Dialog({
   footer,
   className,
   testId,
+  layer,
   data,
   children,
 }: DialogProps): ReactElement | null {
@@ -184,7 +187,7 @@ export function Dialog({
   if (!open) return null;
   const describer = description !== undefined ? descId : describedBy;
   return (
-    <PortalRoot opener={opener}>
+    <PortalRoot opener={opener} layer={layer}>
       <div
         ref={scrim}
         className="q-scrim"

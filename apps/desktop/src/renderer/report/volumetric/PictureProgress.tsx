@@ -15,6 +15,7 @@ function PictureProgressCard() {
       open
       onClose={stopPictures}
       role="alertdialog"
+      layer="top"
       size="sm"
       dismissable={false}
       hideClose

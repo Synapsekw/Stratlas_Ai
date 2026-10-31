@@ -382,7 +382,7 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
     const r = back.getBoundingClientRect();
     return {
       z: getComputedStyle(back).zIndex,
-      modal: getComputedStyle(document.documentElement).getPropertyValue('--z-modal').trim(),
+      modal: getComputedStyle(document.documentElement).getPropertyValue('--z-dialog').trim(),
       covers: r.left <= 0 && r.top <= 0 && r.right >= innerWidth && r.bottom >= innerHeight,
     };
   });

@@ -448,8 +448,8 @@ function SiteSettingsDialog({ project, onClose }: { project: OpenProject; onClos
 
   if (!draft) {
     return (
-      <Dialog open title="Site settings" dismissable={false} onClose={onClose}>
-        {error ?? 'Reading the site settings…'}
+      <Dialog open title={t('settings.siteDialog.title')} dismissable={false} onClose={onClose}>
+        {error ?? t('settings.siteDialog.reading')}
       </Dialog>
     );
   }
@@ -567,8 +567,8 @@ function SiteSettingsDialog({ project, onClose }: { project: OpenProject; onClos
       open
       size="lg"
       testId="site-settings"
-      title="Site settings"
-      description="How coordinates are shown and exported"
+      title={t('settings.siteDialog.title')}
+      description={t('settings.siteDialog.sub')}
       onClose={onClose}
       footer={
         <>

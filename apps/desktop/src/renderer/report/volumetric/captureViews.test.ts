@@ -4,8 +4,8 @@ import { OrthographicCamera, PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import {
   captureViews,
-  PICTURES_STOPPED,
   pictureRun,
+  picturesStopped,
   planShots,
   resetPictureStop,
   stopPictures,
@@ -366,7 +366,7 @@ describe('captureViews', () => {
     expect(pictureRun.getState().stopping).toBe(true);
     release();
     const r = await run;
-    expect(r).toEqual({ ok: false, error: PICTURES_STOPPED });
+    expect(r).toEqual({ ok: false, error: picturesStopped() });
     expect(save).not.toHaveBeenCalled();
     expect(calls.filter((c) => c.op === 'shoot').length).toBeLessThanOrEqual(1);
     expect(calls.at(-1)?.op).toBe('restore');
@@ -379,7 +379,7 @@ describe('captureViews', () => {
     const save = vi.fn(() => Promise.resolve({ ok: true }));
     stopPictures();
     const r = await captureViews(REQ, stage, { save });
-    expect(r).toEqual({ ok: false, error: PICTURES_STOPPED });
+    expect(r).toEqual({ ok: false, error: picturesStopped() });
     expect(calls.filter((c) => c.op === 'shoot')).toHaveLength(0);
     expect(save).not.toHaveBeenCalled();
     expect(pictureRun.getState()).toMatchObject({ running: false, stopping: false });
@@ -398,8 +398,34 @@ describe('captureViews', () => {
     const save = vi.fn(() => Promise.resolve({ ok: true }));
     const r = await captureViews(REQ, stage, { save });
     expect(n).toBe(10);
-    expect(r).toEqual({ ok: false, error: PICTURES_STOPPED });
+    expect(r).toEqual({ ok: false, error: picturesStopped() });
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it('a stop asked while the view comes back saves nothing', async () => {
+    const { stage } = fakeStage();
+    const restore = stage.restore.bind(stage);
+    stage.restore = (token) => {
+      stopPictures();
+      return restore(token);
+    };
+    const save = vi.fn(() => Promise.resolve({ ok: true }));
+    const r = await captureViews(REQ, stage, { save });
+    expect(r).toEqual({ ok: false, error: picturesStopped() });
+    expect(save).not.toHaveBeenCalled();
+    expect(pictureRun.getState()).toMatchObject({ running: false, stopping: false });
+  });
+
+  it('counts as running until its save is done', async () => {
+    let during: unknown = null;
+    const save = vi.fn(() => {
+      during = pictureRun.getState().running;
+      return Promise.resolve({ ok: true });
+    });
+    const r = await captureViews(REQ, fakeStage().stage, { save });
+    expect(r.ok).toBe(true);
+    expect(during).toBe(true);
+    expect(pictureRun.getState().running).toBe(false);
   });
 
   it('refuses without a pile and passes a failed save on', async () => {

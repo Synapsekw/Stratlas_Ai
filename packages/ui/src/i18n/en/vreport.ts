@@ -64,7 +64,8 @@ export const enVreport = {
   'vreport.pictures.progressText':
     'The stage shows each survey date in turn. Your view comes back when it is done.',
   'vreport.pictures.stop': 'Stop taking pictures',
-  'vreport.pictures.stopping': 'Stopping after this picture...',
+  'vreport.pictures.stopping': 'Stopping after this picture…',
+  'vreport.pictures.stopped': 'Taking them was stopped.',
   'vreport.pictures.failed': 'The pictures were not taken: {error}',
   'vreport.pictures.placeholder': 'Take pictures in the app',
   'vreport.export.pdf': 'Export PDF',

@@ -20,6 +20,7 @@ import {
 import { projectToLocal } from '@aio/geo';
 import { outlineOn } from '@aio/survey';
 import type { OrthographicCamera, PerspectiveCamera } from 'three';
+import { t as tr } from '@aio/ui';
 import { createStore } from 'zustand/vanilla';
 import { angledCamera, frameFor, pixelOf, topDownCamera, yardExtent, type Extent } from './framing';
 
@@ -126,7 +127,7 @@ export const pictureRun = createStore<PictureRunState>()(() => ({
 }));
 
 /** The error a stopped run returns; nothing is saved and the person's view comes back. */
-export const PICTURES_STOPPED = 'Taking them was stopped.';
+export const picturesStopped = (): string => tr('vreport.pictures.stopped');
 
 /**
  * Ask the picture run to stop after its current shot. Asked while the card is up but before the
@@ -274,7 +275,7 @@ export async function captureViews(
     let have = true;
     for (const [i, s] of shots.entries()) {
       if (pictureRun.getState().stopping) {
-        failed = PICTURES_STOPPED;
+        failed = picturesStopped();
         break;
       }
       const want = SURFACE_OF[s.kind];
@@ -310,8 +311,6 @@ export async function captureViews(
       pictureRun.setState({ done: i + 1 });
       opts.onProgress?.(i + 1, total);
     }
-    // a stop asked during the last shot still keeps the run from being saved
-    if (failed === null && pictureRun.getState().stopping) failed = PICTURES_STOPPED;
   } catch (e) {
     failed = message(e);
   } finally {
@@ -320,9 +319,17 @@ export async function captureViews(
     } catch (e) {
       failed ??= message(e);
     }
-    pictureRun.setState({ running: false, stopping: false });
   }
-  if (failed !== null) return { ok: false, error: failed };
+  // the run counts as going until its save: a stop asked during the last shot or while the view
+  // comes back still keeps it from being saved
+  const end = () => {
+    pictureRun.setState({ running: false, stopping: false });
+  };
+  if (failed === null && pictureRun.getState().stopping) failed = picturesStopped();
+  if (failed !== null) {
+    end();
+    return { ok: false, error: failed };
+  }
 
   const out: ReportViewsFrame = {
     schema: REPORT_VIEWS_SCHEMA,
@@ -335,7 +342,12 @@ export async function captureViews(
     fingerprint: req.fingerprint,
     ...(cutFill ? { cutFill } : {}),
   };
-  const saved = await opts.save(out, files);
+  let saved: Awaited<ReturnType<CaptureOptions['save']>>;
+  try {
+    saved = await opts.save(out, files);
+  } finally {
+    end();
+  }
   return saved.ok ? { ok: true, frame: out } : { ok: false, error: saved.error ?? 'Not saved.' };
 }
 

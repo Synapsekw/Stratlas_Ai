@@ -3,7 +3,7 @@
 .q-scrim {
   position: fixed;
   inset: 0;
-  z-index: var(--z-modal);
+  z-index: var(--z-dialog);
   display: flex;
   align-items: flex-start;
   justify-content: center;

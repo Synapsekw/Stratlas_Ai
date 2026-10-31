@@ -423,6 +423,9 @@ export const enSettings = {
   'settings.autoCheck.hint':
     'Runs the survey QA against the date before and works out what changed between them. One at a time, in Jobs and Changes. You can cancel it.',
   'settings.angles.title': 'Angles',
+  'settings.siteDialog.title': 'Site settings',
+  'settings.siteDialog.sub': 'How coordinates are shown and exported',
+  'settings.siteDialog.reading': 'Reading the site settings…',
   'settings.angles.decimal': 'Decimal degrees',
   'settings.angles.dms': 'Degrees, minutes, seconds',
   'settings.angles.bearings': 'Bearings',

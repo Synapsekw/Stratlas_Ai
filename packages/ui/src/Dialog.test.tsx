@@ -133,6 +133,12 @@ describe('Dialog', () => {
     expect(q('dlg')?.getAttribute('data-phase')).toBe('review');
   });
 
+  it("layer 'top' lifts its portal above every other dialog", () => {
+    render(<Page layer="top" />);
+    openIt();
+    expect(q('dlg')?.closest('.q-scrim')?.parentElement?.getAttribute('data-layer')).toBe('top');
+  });
+
   it('moves focus inside: the first control, or initialFocus', () => {
     render(<Page />);
     openIt();

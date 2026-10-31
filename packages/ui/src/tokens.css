@@ -118,6 +118,8 @@
   --z-drawer: 60;
   --z-toast: 70;
   --z-modal: 80;
+  /* the shared Dialog's scrim: above every app overlay and notice a modal must cover */
+  --z-dialog: 110;
   /* above every dialog and scrim (the app's dialogs reach 110): tips, and menus opened inside a dialog */
   --z-top: 120;
   /* durations */
