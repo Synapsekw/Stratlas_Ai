@@ -202,3 +202,23 @@ def test_pose_valid_flag_and_nan_time(tmp_path: Path) -> None:
     by_id = {s.id: s for p in read_export(syn.root).inspections[0].pois for s in p.snapshots}
     assert [by_id[i].pose_valid for i in syn.snapshot_ids] == [False, False, True, False]
     assert by_id[syn.snapshot_ids[2]].time_us == 0
+
+
+def _flight(root: Path, folder: str, data: dict) -> None:
+    (root / "flights" / folder).mkdir(parents=True)
+    (root / "flights" / folder / "flight.json").write_text(json.dumps(data), "utf-8")
+
+
+def test_flight_ids_and_order_match_the_scan(tmp_path: Path) -> None:
+    # The same rules as packages/project/src/builder/flyability/scan.ts: a flight with no id is
+    # named by its folder; order is datetime_utc (whole seconds), then name, then id, by code point.
+    syn = make_export(tmp_path / "x")
+    iid = syn.inspection_id
+    _flight(syn.root, "fl-no-id", {"name": "b", "inspection_id": iid, "datetime_utc": 5})
+    _flight(syn.root, "fl-empty-id", {"id": "", "name": "a", "inspection_id": iid, "datetime_utc": 5})
+    _flight(syn.root, "fl-upper", {"id": "z1", "name": "Z", "inspection_id": iid, "datetime_utc": 5.7})
+    _flight(syn.root, "fl-lower", {"id": "z0", "name": "a", "inspection_id": iid, "datetime_utc": 5})
+    _flight(syn.root, "fl-none", {"id": "n0", "name": 7, "inspection_id": iid})
+    flights = [f for f in _flights(read_export(syn.root)) if f.id not in syn.flight_ids]
+    assert [f.id for f in flights] == ["n0", "z1", "fl-empty-id", "z0", "fl-no-id"]
+    assert flights[0].name == ""

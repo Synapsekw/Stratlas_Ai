@@ -98,6 +98,16 @@ def _records(root: Path, folder: str, name: str) -> list[tuple[Path, dict[str, A
     return out
 
 
+def _id(folder: Path, data: dict[str, Any]) -> str:
+    """A record's id: its `id` when that is a non-empty string, else its folder name (as the scan)."""
+    v = data.get("id")
+    return v if isinstance(v, str) and v else folder.name
+
+
+def _text(v: Any) -> str:
+    return v if isinstance(v, str) else ""
+
+
 def _file(folder: Path, entries: Any) -> Path | None:
     """First listed file (`file_path`) that exists beside the map.json."""
     if not isinstance(entries, list):
@@ -189,8 +199,8 @@ def _snapshot(folder: Path, data: dict[str, Any]) -> Snapshot:
         image_size = (int(size["x"]), int(size["y"]))
     cam, drone = data.get("camera_pose"), data.get("drone_pose")
     return Snapshot(
-        id=str(data.get("id") or folder.name),
-        flight_id=str(data.get("flight_id") or ""),
+        id=_id(folder, data),
+        flight_id=_text(data.get("flight_id")),
         time_us=int(_number(data.get("time")) or 0),
         camera_pos=_vec(cam, "position", "xyz"),
         camera_q=_quat(cam),
@@ -238,8 +248,8 @@ def read_export(root: Path) -> Export:
 
     flights_by_insp: dict[str, list[Flight]] = {}
     flight_insp: dict[str, str] = {}
-    for _, f in _records(root, "flights", "flight.json"):
-        fid, iid = str(f.get("id") or ""), str(f.get("inspection_id") or "")
+    for fdir, f in _records(root, "flights", "flight.json"):
+        fid, iid = _id(fdir, f), _text(f.get("inspection_id"))
         cloud, traj = flight_maps.get(fid, (None, None))
         stamp = _number(f.get("datetime_utc"))
         sync = f.get("time_sync")
@@ -247,7 +257,7 @@ def read_export(root: Path) -> Export:
         flights_by_insp.setdefault(iid, []).append(
             Flight(
                 id=fid,
-                name=str(f.get("name") or ""),
+                name=_text(f.get("name")),
                 transform=_transform(f.get("transform")),
                 cloud=cloud,
                 trajectory=traj,
@@ -257,13 +267,14 @@ def read_export(root: Path) -> Export:
             )
         )
         flight_insp[fid] = iid
+    # The scan's order: datetime_utc (whole seconds, none = 0), then name, then id, by code point.
     for fl in flights_by_insp.values():
         fl.sort(key=lambda f: (f.datetime_utc if f.datetime_utc is not None else 0, f.name, f.id))
 
     inspections = _records(root, "inspections", "inspection.json")
-    insp_ids = [str(d.get("id") or p.name) for p, d in inspections]
+    insp_ids = [_id(p, d) for p, d in inspections]
 
-    poi_records = {str(d.get("id") or p.name): d for p, d in _records(root, "pois", "poi.json")}
+    poi_records = {_id(p, d): d for p, d in _records(root, "pois", "poi.json")}
     pois_by_insp: dict[str, dict[str, list[Snapshot]]] = {i: {} for i in insp_ids}
     skipped = 0
     for sdir, s in _records(root, "snapshots", "snapshot.json"):
@@ -274,7 +285,7 @@ def read_export(root: Path) -> Export:
                 skipped += 1
                 continue
             iid = insp_ids[0]
-        poi_id = str(s.get("poi_id") or "")
+        poi_id = _text(s.get("poi_id"))
         key = poi_id if poi_id in poi_records else f"orphan:{snap.id}"
         pois_by_insp[iid].setdefault(key, []).append(snap)
 

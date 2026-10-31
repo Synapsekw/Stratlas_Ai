@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { writeInspectorFixture, FIXTURE_EMAIL } from './fixture';
-import { findInspectorExport, scanInspectorExport } from './scan';
+import { byCodePoint, findInspectorExport, scanInspectorExport } from './scan';
 
 let dir: string;
 beforeEach(async () => {
@@ -129,5 +129,45 @@ describe('scanInspectorExport', () => {
     expect(second?.flights.map((f) => f.id)).toEqual(['fl-early', 'fl-late']);
     expect(second?.findings).toBe(1);
     expect(second?.mergedCloud).toBe(false);
+  });
+
+  it('names and orders flights like the import', async () => {
+    // Same case as test_flight_ids_and_order_match_the_scan in python/tests/test_flyability_export.py.
+    const ids = await writeInspectorFixture(dir);
+    const iid = ids.inspectionId;
+    const flights: [string, Record<string, unknown>][] = [
+      ['fl-no-id', { name: 'b', inspection_id: iid, datetime_utc: 5 }],
+      ['fl-empty-id', { id: '', name: 'a', inspection_id: iid, datetime_utc: 5 }],
+      ['fl-upper', { id: 'z1', name: 'Z', inspection_id: iid, datetime_utc: 5.7 }],
+      ['fl-lower', { id: 'z0', name: 'a', inspection_id: iid, datetime_utc: 5 }],
+      ['fl-none', { id: 'n0', name: 7, inspection_id: iid }],
+    ];
+    for (const [folder, data] of flights) {
+      await mkdir(join(dir, 'flights', folder), { recursive: true });
+      await writeFile(join(dir, 'flights', folder, 'flight.json'), JSON.stringify(data));
+    }
+    const scan = await scanInspectorExport(dir, null);
+    const order = scan.inspections[0]?.flights.map((f) => f.id);
+    expect(order?.filter((f) => !ids.flightIds.includes(f))).toEqual([
+      'n0',
+      'z1',
+      'fl-empty-id',
+      'z0',
+      'fl-no-id',
+    ]);
+  });
+});
+
+describe('byCodePoint', () => {
+  it('orders by code point, upper case first, astral after BMP', () => {
+    expect(['b', 'a', 'Z', '\u{1F600}', '\uFFFD'].sort(byCodePoint)).toEqual([
+      'Z',
+      'a',
+      'b',
+      '\uFFFD',
+      '\u{1F600}',
+    ]);
+    expect(byCodePoint('ab', 'a')).toBeGreaterThan(0);
+    expect(byCodePoint('a', 'a')).toBe(0);
   });
 });

@@ -106,6 +106,20 @@ async function generationOf(flights: Rec[]): Promise<InspectorScan['generation']
   return found.size === 1 && only ? only : 'unknown';
 }
 
+/** Compare strings by Unicode code point (Python's `str` order), not by locale or UTF-16 unit. */
+export function byCodePoint(a: string, b: string): number {
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    const x = a.codePointAt(i) ?? 0;
+    const y = b.codePointAt(j) ?? 0;
+    if (x !== y) return x - y;
+    i += x > 0xffff ? 2 : 1;
+    j += y > 0xffff ? 2 : 1;
+  }
+  return (i < a.length ? 1 : 0) - (j < b.length ? 1 : 0);
+}
+
 function alignment(f: Json): 'relocalised' | 'transform' | 'reference' {
   if (f.relocalized === true) return 'relocalised';
   return f.transform != null ? 'transform' : 'reference';
@@ -149,8 +163,12 @@ export async function scanInspectorExport(
 
   const mapsOf = (type: string, parent: string): Rec[] =>
     maps.filter((m) => m.data.parent_type === type && str(m.data.parent_id) === parent);
+  // The import's order (python flyability/export.py): datetime_utc in whole seconds (none = 0),
+  // then name, then id, both by code point so the picker and the import agree.
   const stamp = (f: Rec): number =>
-    typeof f.data.datetime_utc === 'number' ? f.data.datetime_utc : 0;
+    typeof f.data.datetime_utc === 'number' && Number.isFinite(f.data.datetime_utc)
+      ? Math.trunc(f.data.datetime_utc)
+      : 0;
 
   const out: InspectorScan['inspections'] = [];
   for (const insp of inspections) {
@@ -160,8 +178,8 @@ export async function scanInspectorExport(
       .sort(
         (x, y) =>
           stamp(x) - stamp(y) ||
-          (str(x.data.name) ?? '').localeCompare(str(y.data.name) ?? '') ||
-          idOf(x).localeCompare(idOf(y)),
+          byCodePoint(str(x.data.name) ?? '', str(y.data.name) ?? '') ||
+          byCodePoint(idOf(x), idOf(y)),
       );
     let mergedCloud = false;
     for (const m of mapsOf('Inspection', inspId)) {
