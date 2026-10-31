@@ -7,8 +7,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const place = vi.hoisted(() => vi.fn());
 const go = vi.hoisted(() => vi.fn());
 const space = vi.hoisted(() => vi.fn());
+const stageMode = vi.hoisted(() => ({ mode: '3d', set: vi.fn() }));
+const flag = vi.hoisted(() => ({ on: true }));
 vi.mock('../../placement', () => ({ offerPlacement: place }));
-vi.mock('../../shell', () => ({ shell: { getState: () => ({ go }) } }));
+vi.mock('../../shell', () => ({
+  shell: { getState: () => ({ go, stageMode: stageMode.mode, setStageMode: stageMode.set }) },
+}));
+vi.mock('../../flyability/flag', () => ({ isInspectorUiOn: () => flag.on }));
 vi.mock('../../spaces/activeSpace', () => ({ setActiveSpace: space }));
 
 const { registerFindingActions } = await import('./findingActions');
@@ -61,6 +66,9 @@ const items = (id: string, canEdit = true) =>
 
 let off: () => void;
 beforeEach(() => {
+  flag.on = true;
+  stageMode.mode = '3d';
+  stageMode.set.mockReset();
   off = registerFindingActions();
   workspace.getState().openProject({ id: 'p1', root: '/p1', manifest }, [cloud, plain, imported]);
 });
@@ -95,5 +103,26 @@ describe('finding actions', () => {
     expect(space).toHaveBeenCalledWith('p1', 'main');
     list.find((i) => i.id === 'issue.placeOnModel')?.run();
     expect(place).toHaveBeenCalledWith(['pc'], 'menu');
+  });
+
+  it('with the inspector UI off, Move point is offered only on an imported finding', () => {
+    flag.on = false;
+    expect(items('pc').some((i) => i.id === 'finding.movePoint')).toBe(false);
+    expect(items('imp').some((i) => i.id === 'finding.movePoint')).toBe(true);
+  });
+
+  it('Move point from the map view switches the stage to 3D', () => {
+    stageMode.mode = 'map';
+    items('pc')
+      .find((i) => i.id === 'finding.movePoint')
+      ?.run();
+    expect(stageMode.set).toHaveBeenCalledWith('3d');
+  });
+
+  it('Move point from the 3D view leaves the stage mode alone', () => {
+    items('pc')
+      .find((i) => i.id === 'finding.movePoint')
+      ?.run();
+    expect(stageMode.set).not.toHaveBeenCalled();
   });
 });

@@ -8,6 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock('../placement', () => ({ offerPlacement: vi.fn() }));
+// Move point on a cloud-point finding shows only while the inspector UI is on
+vi.mock('./flag', () => ({ isInspectorUiOn: () => true }));
 
 const { IssueMenuMount } = await import('./IssueMenuMount');
 const { closeIssueMenu, issueMenu, openIssueMenu } = await import('./issueMenuStore');

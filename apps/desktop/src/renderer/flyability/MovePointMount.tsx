@@ -9,6 +9,12 @@ import { applyMovePoint, cancelMovePoint, moveSession } from './movePoint';
 /** True once the 3D pane is on screen (the pick arms only if it is); polls while `wanted`. */
 function usePaneReady(wanted: boolean): boolean {
   const [found, setFound] = useState(false);
+  // a session that ends forgets the pane: the next one checks again before it arms
+  const [was, setWas] = useState(wanted);
+  if (was !== wanted) {
+    setWas(wanted);
+    if (!wanted) setFound(false);
+  }
   useEffect(() => {
     if (!wanted) return;
     const check = () => {

@@ -97,4 +97,27 @@ describe('MovePointMount', () => {
     root = undefined;
     expect(moveSession.getState().issueId).toBeNull();
   });
+
+  it('a second session does not arm before the 3D pane is back', async () => {
+    act(() => {
+      startMovePoint('i1');
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(pick.armed.at(-1)).toBe(true);
+    act(() => {
+      cancelMovePoint();
+    });
+    // the map view is on screen now: no 3D pane
+    pane.remove();
+    pick.armed.length = 0;
+    act(() => {
+      startMovePoint('i2');
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(pick.armed).not.toContain(true);
+  });
 });

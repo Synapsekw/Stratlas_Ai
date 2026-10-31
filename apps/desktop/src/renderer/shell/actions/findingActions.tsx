@@ -4,6 +4,7 @@ import { defineAction, registerActions, t, type Action } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { shell } from '../../shell';
 import { setActiveSpace } from '../../spaces/activeSpace';
+import { isInspectorUiOn } from '../../flyability/flag';
 import { startMovePoint } from '../../flyability/movePoint';
 import { offerPlacement } from '../../placement';
 import { editBlocked } from './reasons';
@@ -38,7 +39,10 @@ const actions: readonly Action[] = [
     testId: 'finding-move-point',
     appliesTo: (tg) => {
       const issue = clickedIssue(tg.clicked);
-      return issue !== undefined && (findingPoint(issue) !== null || issue.external !== undefined);
+      if (issue === undefined) return false;
+      // an imported finding always; any cloud-point finding only while the inspector UI is on
+      if (issue.external != null) return true;
+      return isInspectorUiOn() && findingPoint(issue) !== null;
     },
     disabled: (_tg, ctx) => editBlocked(ctx),
     run: (tg) => {
@@ -49,6 +53,9 @@ const actions: readonly Action[] = [
         setActiveSpace(ws.project.id, spaceOfIssue(ws.project.manifest, issue));
       }
       shell.getState().go('scene');
+      // the pick arms only on the 3D pane: from the map view switch the stage to 3D first
+      const sh = shell.getState();
+      if (sh.stageMode === 'map') sh.setStageMode('3d');
       startMovePoint(tg.clicked);
     },
   }),
