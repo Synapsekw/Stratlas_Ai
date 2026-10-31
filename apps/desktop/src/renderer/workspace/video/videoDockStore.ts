@@ -37,9 +37,6 @@ export interface VideoDockState {
   /** Back as the docked tile. */
   reopen: (projectId: string) => void;
   setRect: (rect: VideoRect | null) => void;
-  /** A side of the Split stage shows the video: the tile and the window give way (not kept). */
-  inPane: boolean;
-  setInPane: (on: boolean) => void;
 }
 
 function load(storage: KeyValue | null): Pick<VideoDockState, 'byProject' | 'rect'> {
@@ -82,10 +79,6 @@ export function createVideoDockStore(
       },
       setRect: (rect) => {
         set({ rect });
-      },
-      inPane: false,
-      setInPane: (inPane) => {
-        if (get().inPane !== inPane) set({ inPane });
       },
     };
   });

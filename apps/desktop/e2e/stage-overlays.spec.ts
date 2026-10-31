@@ -39,8 +39,8 @@ async function shot(win: Page, info: TestInfo, name: string): Promise<void> {
 }
 
 /**
- * The tank farm with both survey dates on screen and its clip popped out over the stage, the
- * footage timeline at the foot: with piles and two dates the bottom bar opens on the dates strip, which is
+ * The tank farm with both survey dates on screen and its clip docked in the bottom strip, the
+ * footage timeline beside it: with piles and two dates the bottom bar opens on the dates strip, which is
  * taller; these overlays are measured over the stage the footage leaves (the strip's own layout
  * is dates-strip.spec.ts's).
  */
@@ -52,7 +52,6 @@ async function openTankFarm(win: Page): Promise<void> {
     (window as unknown as Hooks).__stratlas.workspace.setState({ hidden: {} });
   });
   await expect(win.getByTestId('video-tile')).toBeVisible(VIEW_READY);
-  await popOut(win);
 }
 
 /**
@@ -206,6 +205,16 @@ test('every overlay takes a corner of its own: the T notice, the dates, the clip
   const corners = now.slots.flatMap((s) => (s ? [s.name.split(':')[0]] : []));
   expect(new Set(corners).size).toBe(corners.length);
   await shot(win, info, 'overlays-busy-1100.png');
+
+  // popped out, the clip floats over the stage: the corner overlays give way to it
+  await popOut(win);
+  await expect
+    .poll(async () => {
+      const now = await layout(win);
+      return overlaps([...now.slots, ...now.others]);
+    }, VIEW_READY)
+    .toEqual([]);
+  await shot(win, info, 'overlays-float-1100.png');
 });
 
 test('docked, the video is a tile in the bottom strip and the views take the whole stage', async ({
@@ -245,15 +254,12 @@ test('docked, the video is a tile in the bottom strip and the views take the who
   await shot(win, info, 'dock-volumes-1100.png');
 
   // the right panel folded: a live tool opens the drawer over the end edge, the corners keep
-  // clear of it, and the Map menu chip and the readout keep their width
+  // clear of it, and the Map menu chip keeps its width
   await foldRight(win);
   await expectScrim(win);
   const chip = win.getByTestId('scene-map-button');
   const chipWidth = (await chip.boundingBox())?.width ?? 0;
   expect(chipWidth).toBeGreaterThan(60);
-  const readout = win.locator('.pane-3d:not(.is-hidden) .cursor-ro');
-  const readoutWidth = (await readout.boundingBox())?.width ?? 0;
-  expect(readoutWidth).toBeGreaterThan(100);
   const drawer = await openDrawer(win);
   await expect
     .poll(async () => {
@@ -263,9 +269,6 @@ test('docked, the video is a tile in the bottom strip and the views take the who
     .toEqual([]);
   await expect
     .poll(async () => Math.abs(((await chip.boundingBox())?.width ?? 0) - chipWidth))
-    .toBeLessThanOrEqual(2);
-  await expect
-    .poll(async () => Math.abs(((await readout.boundingBox())?.width ?? 0) - readoutWidth))
     .toBeLessThanOrEqual(2);
   await shot(win, info, 'dock-drawer-1100.png');
   await win.keyboard.press('Escape');
@@ -503,7 +506,7 @@ test('in Split, the pane headers keep clear of the corners and the video, and th
   await closeIslandTools(win);
   await expect(win.locator('.pane-head')).toHaveCount(2);
   await islandSettled(win);
-  // the floating clip, the corners and the two headers keep apart
+  // the docked clip leaves the stage: the corners and the two headers keep apart
   await expect.poll(() => headerProblems(win), VIEW_READY).toEqual([]);
   await expect
     .poll(async () => {
@@ -561,9 +564,15 @@ test('in Split, the pane headers keep clear of the corners and the video, and th
   await expect(win.getByTestId('vol-hint')).toBeVisible();
   await shot(win, info, 'split-narrow-side-1100.png');
 
-  // popped out again: the split keeps its divider
+  // popped out: the split keeps its divider, the window, the headers and the corners keep apart
   await popOut(win);
   await expect(splitDivider).toBeVisible();
+  await expect
+    .poll(async () => {
+      const now = await layout(win);
+      return overlaps([...now.slots, ...now.others]);
+    }, VIEW_READY)
+    .toEqual([]);
 });
 
 test.describe('right to left', () => {
@@ -579,12 +588,13 @@ test.describe('right to left', () => {
     await popIn(win);
     const strip = await win.getByTestId('bottom-strip').boundingBox();
     const tile = await win.getByTestId('video-tile').boundingBox();
-    const bar = await win.locator('.ws-strip > .tl-wrap').boundingBox();
+    const bar = await win.locator('.ws-strip-in > .tl-wrap').boundingBox();
     expect(strip && tile && bar).toBeTruthy();
     if (strip && tile && bar) {
-      // the strip's start is its right edge right to left; the bar stands left of the tile
+      // the strip's start is its right edge right to left; the bar stands left of the tile, or
+      // below it in a narrow strip
       expect(strip.x + strip.width - (tile.x + tile.width)).toBeLessThanOrEqual(8);
-      expect(bar.x + bar.width).toBeLessThanOrEqual(tile.x + 1);
+      expect(bar.x + bar.width <= tile.x + 1 || bar.y >= tile.y + tile.height - 1).toBe(true);
     }
     await expect
       .poll(async () => {

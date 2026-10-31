@@ -27,8 +27,8 @@ import {
 } from './timelinePref';
 import { LaneFocusFollow, WorkspaceLanes } from './WorkspaceLanes';
 import { VideoStripStart } from './video/VideoTile';
-import { useVideoDockBridge } from './video/videoDockBridge';
-import { useVideoDock, videoDock } from './video/videoDockStore';
+import { useVideoDockBridge, useVideoInPane } from './video/videoDockBridge';
+import { useVideoDock } from './video/videoDockStore';
 import { Drawer } from './workbench/Drawer';
 import { RightSidebar, useSidebarSplit } from './workbench/RightSidebar';
 
@@ -123,7 +123,7 @@ export function WorkspaceScreen() {
   useVideoDockBridge();
   const videoMode = useVideoDock().mode;
   const videoHidden = useShell((s) => s.videoHidden);
-  const inPane = useStore(videoDock, (s) => s.inPane);
+  const inPane = useVideoInPane();
   const tiled = videoMode === 'docked' && !videoHidden && !inPane;
   // closed, its Show button waits only where the strip has a bar to stand beside; a Split pane
   // showing the clip takes the tile's place
@@ -144,23 +144,25 @@ export function WorkspaceScreen() {
       <Stage />
       <LayerPlaceholder />
       <div className="ws-strip" data-video={tiled ? '' : undefined} data-testid="bottom-strip">
-        <VideoStripStart hidden={!stripStart} />
-        <div
-          className="tl-wrap"
-          data-bottom={road ? 'road' : slot}
-          data-switch={!road && switchable ? '' : undefined}
-        >
-          {!road && switchable && <BottomSwitch slot={slot} />}
-          {/* folded away, the timeline comes back from the island's View tile */}
-          {road ? (
-            <ChainageRuler />
-          ) : slot === 'none' ? null : slot === 'dates' ? (
-            <DatesStrip />
-          ) : lanes ? (
-            <WorkspaceLanes />
-          ) : (
-            <WorkspaceTimeline />
-          )}
+        <div className="ws-strip-in">
+          <VideoStripStart hidden={!stripStart} />
+          <div
+            className="tl-wrap"
+            data-bottom={road ? 'road' : slot}
+            data-switch={!road && switchable ? '' : undefined}
+          >
+            {!road && switchable && <BottomSwitch slot={slot} />}
+            {/* folded away, the timeline comes back from the island's View tile */}
+            {road ? (
+              <ChainageRuler />
+            ) : slot === 'none' ? null : slot === 'dates' ? (
+              <DatesStrip />
+            ) : lanes ? (
+              <WorkspaceLanes />
+            ) : (
+              <WorkspaceTimeline />
+            )}
+          </div>
         </div>
       </div>
       <div

@@ -83,10 +83,12 @@ test.describe('the CI window', () => {
     expect(tile.y + tile.height).toBeLessThanOrEqual(strip.y + strip.height + 1);
     expect(tile.width / tile.height).toBeCloseTo(16 / 9, 1);
     expect(tile.y).toBeGreaterThanOrEqual(s.y + s.height - 1);
-    // the dates strip or the footage bar stands beside it, not under it
-    const bar = await win.locator('.ws-strip > .tl-wrap').boundingBox();
+    // the dates strip or the footage bar stands beside it, or below it in a strip too narrow
+    // for both (both sidebars open at 1100 px), never under it
+    const bar = await win.locator('.ws-strip-in > .tl-wrap').boundingBox();
     if (!bar) throw new Error('no bar');
-    expect(bar.x).toBeGreaterThanOrEqual(tile.x + tile.width - 1);
+    expect(overlap(tile, bar)).toBe(false);
+    expect(bar.width).toBeGreaterThanOrEqual(strip.width * 0.5);
     // the stage centre reaches the 3D view
     const hit = await win.evaluate(
       ([x, y]) => {

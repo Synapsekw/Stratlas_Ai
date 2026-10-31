@@ -8,7 +8,9 @@ import { useWorkspace } from '@aio/workspace';
 import { useEffect } from 'react';
 import { useStore } from 'zustand';
 import type { StoreApi } from 'zustand/vanilla';
-import { shell } from '../../shell';
+import { shell, useShell } from '../../shell';
+import { useStagePrefs } from '../stagePrefs';
+import { sideOf } from '../splitModel';
 import { videoDock, type VideoDockMode, type VideoDockState } from './videoDockStore';
 
 /** The shell flags a dock choice reads as: closed is hidden, only floating is undocked. */
@@ -46,4 +48,15 @@ export function useVideoDockBridge(store: StoreApi<VideoDockState> = videoDock):
       if (s.videoHidden !== prev.videoHidden) followHidden(store, projectId, s.videoHidden);
     });
   }, [projectId, store]);
+}
+
+/**
+ * A side of the Split stage shows the video: the tile gives way in the same render, so the clip's
+ * one player moves to the pane (the tile leaving later would take its picture with it).
+ */
+export function useVideoInPane(): boolean {
+  const projectId = useWorkspace((s) => s.project?.id ?? null);
+  const splitting = useShell((s) => s.stageMode === 'split');
+  const split = useStagePrefs((s) => (projectId ? s.byProject[projectId]?.split : undefined));
+  return splitting && split !== undefined && sideOf(split, 'video') !== undefined;
 }

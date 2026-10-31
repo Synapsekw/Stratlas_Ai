@@ -27,7 +27,7 @@ import { photoSplitIsOpen } from '../builder/photoOpen';
 import { shell, useShell } from '../shell';
 import { PANEL_ID } from '../shell/PanelHandle';
 import { FloatingVideo } from './FloatingVideo';
-import { useVideoDock, videoDock as videoDockStore } from './video/videoDockStore';
+import { useVideoDock } from './video/videoDockStore';
 import { useAnnotateStageBridge } from './workbench/benches/annotateStage';
 import {
   compareRuntime,
@@ -667,16 +667,6 @@ export function Stage() {
   };
   const floatClip =
     videoDock.mode === 'floating' && !videoHidden && !videoPane ? videoDock.clip : null;
-  // a pane shows the clip: the bottom strip's tile gives way too
-  useEffect(() => {
-    videoDockStore.getState().setInPane(videoPane);
-  }, [videoPane]);
-  useEffect(
-    () => () => {
-      videoDockStore.getState().setInPane(false);
-    },
-    [],
-  );
   // the corners the floating video takes as it rests, which the corner overlays keep out of (D30)
   const [videoCorners, setVideoCorners] = useState<readonly Corner[]>([]);
   const onVideoCorners = useCallback((c: readonly Corner[]) => {

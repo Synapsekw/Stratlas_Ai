@@ -145,8 +145,8 @@ export const enStage = {
   'stage.video.resize': 'Resize the video window',
   // the video docked as a tile in the bottom strip, popped out over the stage, or closed (D4)
   'stage.video.tile': 'Video {name}',
-  'stage.video.play': 'Play',
-  'stage.video.pause': 'Pause',
+  'stage.video.play': 'Play the video',
+  'stage.video.pause': 'Pause the video',
   'stage.video.popOut': 'Pop out the video',
   'stage.video.popIn': 'Pop in to the bottom strip',
   'stage.video.close': 'Close the video',

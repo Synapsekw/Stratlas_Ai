@@ -4,10 +4,14 @@
 .ws-strip {
   --vtile-h: 112px;
   grid-area: tl;
+  min-inline-size: 0;
+  background: var(--bg-1);
+  container: ws-strip / inline-size;
+}
+.ws-strip-in {
   display: flex;
   align-items: stretch;
   min-inline-size: 0;
-  background: var(--bg-1);
 }
 @media (min-width: 1280px) {
   .ws-strip {
@@ -19,7 +23,7 @@
     --vtile-h: 152px;
   }
 }
-.ws-strip > .tl-wrap {
+.ws-strip-in > .tl-wrap {
   flex: 1 1 auto;
   min-inline-size: 0;
 }
@@ -61,4 +65,18 @@
   align-items: flex-start;
   padding: var(--sp-1);
   border-inline-end: 1px solid var(--line-soft);
+}
+/* A strip too narrow for the tile and the bar side by side (both sidebars open at 1100 px): the
+   tile stands above the bar, smaller, so the bar keeps its whole width for its controls. */
+@container ws-strip (max-width: 599px) {
+  .ws-strip-in {
+    flex-direction: column;
+  }
+  .vtile {
+    --vtile-h: 96px;
+  }
+  .vtile-show {
+    border-inline-end: 0;
+    border-block-end: 1px solid var(--line-soft);
+  }
 }

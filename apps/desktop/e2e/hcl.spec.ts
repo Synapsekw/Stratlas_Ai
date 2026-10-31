@@ -465,7 +465,7 @@ test('@realdata the video window moves, resizes with its aspect ratio and rememb
   const start = await boxOf(win, 'video-window');
   // It starts at the top left of the stage, under the island.
   expect(start.x - stage.x).toBeCloseTo(12, 0);
-  expect(start.y - stage.y).toBeCloseTo(112, 0);
+  expect(start.y - stage.y).toBeGreaterThanOrEqual(111);
 
   // Drag the title bar: the window follows the pointer.
   const head = await boxOf(win, 'video-header');

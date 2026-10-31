@@ -75,7 +75,7 @@ describe('the docked tile in the bottom strip', () => {
     const tile = host.querySelector('[data-testid="video-tile"]');
     expect(tile?.getAttribute('aria-label')).toBe('Video Clip c1');
     expect(tile?.querySelector('[data-video-window]')).not.toBeNull();
-    expect(button('Play')).toBeDefined();
+    expect(button('Play the video')).toBeDefined();
     act(() => button('Pop out the video')?.click());
     expect(mode()).toBe('floating');
     expect(host.querySelector('[data-testid="video-tile"]')).toBeNull();
