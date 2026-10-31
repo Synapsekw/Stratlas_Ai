@@ -3,7 +3,15 @@ import { appendFile, mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { appendLedger, clearLedger, ledgerStats, readLedger, suggestThreshold } from './ledger';
+import {
+  appendLedger,
+  clearLedger,
+  ledgerStats,
+  readLedger,
+  scoredCount,
+  suggestFor,
+  suggestThreshold,
+} from './ledger';
 
 const SHA = 'a'.repeat(64);
 const entry = (
@@ -165,5 +173,44 @@ describe('ledger', () => {
       { ...a, crop: '1.jpg' },
       { ...b, crop: '2.jpg' },
     ]);
+  });
+
+  it('scoredCount counts the latest accepted or rejected verdicts with a score', () => {
+    expect(
+      scoredCount([
+        entry('accepted', 0.9, { detectionId: 'a' }),
+        entry('rejected', 0.4, { detectionId: 'a' }),
+        entry('accepted', null),
+        entry('miss', null),
+        entry('rejected', 0.2),
+      ]),
+    ).toBe(2);
+  });
+
+  /** 20 reviews, right at `hi` and wrong at `lo`, of runs with or without examples. */
+  const twenty = (fewShot: boolean | undefined, hi: number, lo: number) =>
+    Array.from({ length: 20 }, (_, i) =>
+      entry(i < 12 ? 'accepted' : 'rejected', i < 12 ? hi : lo, {
+        detectionId: `${String(fewShot)}-${String(i)}`,
+        ...(fewShot === undefined ? {} : { fewShot }),
+      }),
+    );
+
+  it('suggestFor uses reviews of runs like the next one once there are 20', () => {
+    const plain = twenty(undefined, 0.9, 0.6);
+    const shots = twenty(true, 0.7, 0.3);
+    const all = [...plain, ...shots];
+    expect(suggestFor(all, true)).toEqual({ value: suggestThreshold(shots), from: 'same' });
+    expect(suggestFor(all, false)).toEqual({ value: suggestThreshold(plain), from: 'same' });
+  });
+
+  it('suggestFor falls back to every review and says so', () => {
+    const plain = twenty(undefined, 0.9, 0.6);
+    const few = twenty(true, 0.7, 0.3).slice(0, 5);
+    expect(suggestFor([...plain, ...few], true)).toEqual({
+      value: suggestThreshold([...plain, ...few]),
+      from: 'all',
+    });
+    expect(suggestFor(plain.slice(0, 10), false)).toBeNull();
   });
 });

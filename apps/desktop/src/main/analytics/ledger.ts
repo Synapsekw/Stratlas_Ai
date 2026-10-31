@@ -134,6 +134,30 @@ export function suggestThreshold(all: readonly LedgerEntry[]): number | null {
   return best;
 }
 
+/** Accepted or rejected candidates with a score (latest verdict each): the count toward 20. */
+export function scoredCount(all: readonly LedgerEntry[]): number {
+  return latestPerDetection(all).filter((e) => e.verdict !== 'miss' && typeof e.score === 'number')
+    .length;
+}
+
+/**
+ * The suggested threshold for the next run. Reviews of runs like it (with few-shot example crops
+ * when `fewShot`, without otherwise; a line without the flag counts as without) are used once
+ * there are 20 scored ones (`from: 'same'`); until then every review is (`from: 'all'`). The
+ * scores of the two kinds of run are not on the same scale, so the first is preferred.
+ */
+export function suggestFor(
+  all: readonly LedgerEntry[],
+  fewShot: boolean,
+): { value: number; from: 'same' | 'all' } | null {
+  const latest = latestPerDetection(all);
+  const same = latest.filter((e) => e.verdict === 'miss' || (e.fewShot === true) === fewShot);
+  const mine = suggestThreshold(same);
+  if (mine !== null) return { value: mine, from: 'same' };
+  const any = suggestThreshold(latest);
+  return any === null ? null : { value: any, from: 'all' };
+}
+
 export async function clearLedger(dir: string, detectorId: string): Promise<void> {
   const id = safeId(detectorId);
   await rm(join(dir, `${id}.jsonl`), { force: true });

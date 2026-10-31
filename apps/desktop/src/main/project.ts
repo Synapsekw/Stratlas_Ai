@@ -86,11 +86,6 @@ export class ProjectRegistry {
     return id;
   }
 
-  /** The id of a path already registered; undefined for one that is not (nothing is added). */
-  idOf(path: string): string | undefined {
-    return this.byKey.get(keyOf(path));
-  }
-
   /** Root folder of a folder project; undefined for packages and unknown ids. */
   root(id: string): string | undefined {
     return this.packages.has(id) ? undefined : this.byId.get(id);

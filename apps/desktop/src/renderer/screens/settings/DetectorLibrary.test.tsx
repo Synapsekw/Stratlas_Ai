@@ -62,7 +62,23 @@ const item = (where: DetectorWhere, d: VlmDetector, modelMismatch = false): Item
   modelMismatch,
 });
 
-const NONE: Stats = { accepted: 0, rejected: 0, misses: 0, suggestedThreshold: null };
+const NONE: Stats = {
+  accepted: 0,
+  rejected: 0,
+  misses: 0,
+  scored: 0,
+  suggestedThreshold: null,
+  suggestedFrom: null,
+  applied: null,
+  learn: true,
+};
+/** Stats with every reviewed candidate scored, unless `over` says otherwise. */
+const st = (over: Partial<Stats>): Stats => ({
+  ...NONE,
+  scored: (over.accepted ?? 0) + (over.rejected ?? 0),
+  ...(over.suggestedThreshold != null ? { suggestedFrom: 'same' as const } : {}),
+  ...over,
+});
 const ALL: Item[] = [
   item('shipped', det('rust', { source: 'shipped' })),
   item('library', det('chimney')),
@@ -109,6 +125,7 @@ async function show(items: Item[], stats: Record<string, Stats> = {}) {
 }
 
 const q = (id: string) => host.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+const checkbox = (id: string) => host.querySelector<HTMLInputElement>(`[data-testid="${id}"]`);
 const byText = (text: string) =>
   [...host.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === text);
 const callsOf = (channel: string) => h.calls.filter((c) => c.channel === channel);
@@ -183,32 +200,43 @@ describe('Settings, detector library', () => {
 
   it('shows the hit rate and misses, and the suggested threshold in the learning status', async () => {
     await show([item('library', det('chimney'))], {
-      chimney: { accepted: 9, rejected: 3, misses: 2, suggestedThreshold: 0.85 },
+      chimney: st({ accepted: 9, rejected: 3, misses: 2, suggestedThreshold: 0.85 }),
     });
     expect(callsOf('ledger:stats')[0]?.req).toEqual({ detectorId: 'chimney' });
     expect(q('dl-stats-chimney')?.textContent).toBe('75% hit rate · 12 reviewed · 2 missed');
     expect(q('dl-learn-status-chimney')?.textContent).toBe('Suggested threshold 0.85, in use 0.80');
   });
 
-  it('counts reviews toward a suggestion, with no apply button', async () => {
+  it("counts main's scored reviews toward a suggestion, with no apply button", async () => {
     await show([item('library', det('chimney'))], {
-      chimney: { accepted: 5, rejected: 2, misses: 0, suggestedThreshold: null },
+      chimney: st({ accepted: 5, rejected: 2, scored: 6 }),
     });
     expect(q('dl-learn-status-chimney')?.textContent).toBe(
-      '7 of 20 reviews before a threshold is suggested',
+      '14 more scored reviews before a threshold is suggested',
     );
     expect(q('dl-learn-apply-chimney')).toBeNull();
+    expect(q('dl-learn-reset-chimney')).toBeNull();
   });
 
-  it('no learning status without reviews', async () => {
+  it('without reviews: no status, only the learning switch, on', async () => {
     await show([item('library', det('chimney'))]);
-    expect(q('dl-learn-chimney')).toBeNull();
+    expect(q('dl-learn-status-chimney')).toBeNull();
+    expect(checkbox('dl-learn-switch-chimney')?.checked).toBe(true);
+  });
+
+  it('a suggestion from every review says so', async () => {
+    await show([item('library', det('chimney'))], {
+      chimney: st({ accepted: 20, rejected: 4, suggestedThreshold: 0.6, suggestedFrom: 'all' }),
+    });
+    expect(q('dl-learn-status-chimney')?.textContent).toBe(
+      'Suggested threshold 0.60, in use 0.80 (from all reviews: fewer than 20 from runs like the next one)',
+    );
   });
 
   it('a suggestion already in use has no apply button', async () => {
     installPack();
     await show([item('shipped', det('rust', { threshold: 0.85 }))], {
-      rust: { accepted: 20, rejected: 4, misses: 0, suggestedThreshold: 0.85 },
+      rust: st({ accepted: 20, rejected: 4, suggestedThreshold: 0.85 }),
     });
     expect(q('dl-learn-status-rust')?.textContent).toBe('Suggested threshold 0.85 is in use');
     expect(q('dl-learn-apply-rust')).toBeNull();
@@ -216,23 +244,57 @@ describe('Settings, detector library', () => {
 
   it('apply calls ledger:applyThreshold, reads the library again and says so', async () => {
     installPack();
-    const stats = { accepted: 20, rejected: 4, misses: 0, suggestedThreshold: 0.85 };
-    await show([item('shipped', det('rust'))], { rust: stats });
+    await show([item('shipped', det('rust'))], {
+      rust: st({ accepted: 20, rejected: 4, suggestedThreshold: 0.85 }),
+    });
     expect(callsOf('ledger:applyThreshold')).toHaveLength(0);
     h.answers.set('ledger:applyThreshold', () => ({ ok: true, threshold: 0.85 }));
     h.answers.set('detectors:list', () => ({
       items: [item('shipped', det('rust', { threshold: 0.85 }))],
     }));
+    h.answers.set('ledger:stats', () =>
+      st({ accepted: 20, rejected: 4, suggestedThreshold: 0.85, applied: 0.85 }),
+    );
     await click(q('dl-learn-apply-rust'));
     expect(callsOf('ledger:applyThreshold')[0]?.req).toEqual({ detectorId: 'rust' });
     expect(q('dl-note')?.textContent).toBe('Threshold 0.85 applied. The next run uses it.');
-    expect(q('dl-learn-status-rust')?.textContent).toBe('Suggested threshold 0.85 is in use');
+    expect(q('dl-learn-status-rust')?.textContent).toBe('Applied threshold 0.85 in use');
     expect(q('dl-learn-apply-rust')).toBeNull();
+    expect(q('dl-learn-reset-rust')).not.toBeNull();
+  });
+
+  it('an applied threshold shows with no reviews, and can be undone', async () => {
+    await show([item('library', det('chimney', { threshold: 0.7 }))], {
+      chimney: st({ applied: 0.7 }),
+    });
+    expect(q('dl-learn-status-chimney')?.textContent).toBe('Applied threshold 0.70 in use');
+    h.answers.set('ledger:resetThreshold', () => ({ ok: true }));
+    h.answers.set('detectors:list', () => ({ items: [item('library', det('chimney'))] }));
+    h.answers.set('ledger:stats', () => NONE);
+    await click(q('dl-learn-reset-chimney'));
+    expect(callsOf('ledger:resetThreshold')[0]?.req).toEqual({ detectorId: 'chimney' });
+    expect(q('dl-note')?.textContent).toBe(
+      "Back to the detector's own threshold. The next run uses it.",
+    );
+    expect(q('dl-learn-reset-chimney')).toBeNull();
+  });
+
+  it('the learn switch turns learning off and the status says so', async () => {
+    await show([item('library', det('chimney'))], {
+      chimney: st({ accepted: 20, rejected: 4, suggestedThreshold: 0.6 }),
+    });
+    h.answers.set('ledger:setLearn', () => ({ ok: true }));
+    h.answers.set('ledger:stats', () => st({ accepted: 20, rejected: 4, learn: false }));
+    await click(q('dl-learn-switch-chimney'));
+    expect(callsOf('ledger:setLearn')[0]?.req).toEqual({ detectorId: 'chimney', on: false });
+    expect(q('dl-learn-status-chimney')?.textContent).toBe('Learning from reviews is off');
+    expect(checkbox('dl-learn-switch-chimney')?.checked).toBe(false);
+    expect(q('dl-learn-apply-chimney')).toBeNull();
   });
 
   it('a failed apply shows why and keeps the button', async () => {
     await show([item('library', det('chimney'))], {
-      chimney: { accepted: 20, rejected: 4, misses: 0, suggestedThreshold: 0.6 },
+      chimney: st({ accepted: 20, rejected: 4, suggestedThreshold: 0.6 }),
     });
     h.answers.set('ledger:applyThreshold', () => ({ ok: false, error: 'Disk full.' }));
     await click(q('dl-learn-apply-chimney'));
@@ -339,7 +401,7 @@ describe('Settings, detector library', () => {
 
   it('clear review history asks first and calls ledger:clear', async () => {
     await show([item('library', det('chimney'))], {
-      chimney: { accepted: 9, rejected: 3, misses: 2, suggestedThreshold: 0.85 },
+      chimney: st({ accepted: 9, rejected: 3, misses: 2, suggestedThreshold: 0.85 }),
     });
     h.answers.set('ledger:clear', () => ({ ok: true }));
     await click(q('dl-clear-chimney'));
@@ -416,7 +478,7 @@ describe('Settings, detector library', () => {
 
   it('a failed clear shows its error', async () => {
     await show([item('library', det('chimney'))], {
-      chimney: { accepted: 1, rejected: 0, misses: 0, suggestedThreshold: null },
+      chimney: st({ accepted: 1, rejected: 0, misses: 0, suggestedThreshold: null }),
     });
     h.answers.set('ledger:clear', () => ({ ok: false, error: 'The ledger is locked.' }));
     await click(q('dl-clear-chimney'));

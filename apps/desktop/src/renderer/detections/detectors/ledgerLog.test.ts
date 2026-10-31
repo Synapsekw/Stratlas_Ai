@@ -61,12 +61,19 @@ describe('logReview', () => {
       box: [100, 200, 150, 240],
       photo: { project: 'p1', layer: 'photos', id: 'p001' },
       detectionId: 'vlm-1.json#0',
+      pass: 'vlm-1.json',
     });
     expect(payload().entry.corrected).toBeUndefined();
     // the box is in the grid of the review image; the crop scales it to the photo
     expect(cropJpeg).toHaveBeenCalledWith(ctx.photoUrl, [100, 200, 150, 240], 512, 0.15, {
       grid: [4000, 3000],
     });
+  });
+
+  it('a pass name the ledger cannot keep is left out, the line is not', async () => {
+    await logReview(draft({ pass: 'odd name.json' }), 'rejected', ctx);
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(payload().entry.pass).toBeUndefined();
   });
 
   it('an acceptance carries no reason or note, even from an earlier rejection', async () => {

@@ -1,12 +1,24 @@
 import { VLM_DETECTOR_SCHEMA, type LedgerEntry, type VlmDetector } from '@aio/schema';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { detectorExamples, ledgerPicks, PER_VERDICT, runExamples } from './fewShot';
+import {
+  detectorExamples,
+  examplesForRun,
+  ledgerPicks,
+  passUsedExamples,
+  PER_VERDICT,
+  recordRun,
+  runExamples,
+} from './fewShot';
 import { appendLedger } from './ledger';
+import { setLearn } from './thresholds';
 
 const SHA = 'a'.repeat(64);
+const OTHER_SHA = 'b'.repeat(64);
+const HERE = join(tmpdir(), 'projects', 'site-a');
+const FOR = { version: 1, modelSha256: SHA, projectDir: HERE };
 const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
 
 const det = (over: Partial<VlmDetector> = {}): VlmDetector => ({
@@ -39,6 +51,7 @@ const entry = (verdict: LedgerEntry['verdict'], over: Partial<LedgerEntry> = {})
   verdict,
   box: [0, 0, 10, 10],
   photo: { project: 'here', layer: 'l', id: 'i' },
+  projectDir: HERE,
   at: '2026-10-21T10:00:00.000Z',
   detectionId: `d${String(++n)}`,
   ...over,
@@ -54,7 +67,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-const crop = (k: number) => join(ledgerDir, 'crops', 'chimney', `${String(k)}.jpg`);
+const crop = (k: number, id = 'chimney') => join(ledgerDir, 'crops', id, `${String(k)}.jpg`);
 
 describe('ledgerPicks', () => {
   it('takes uncorrected accepts as is and rejects that say "not the thing" as is not', () => {
@@ -70,25 +83,43 @@ describe('ledgerPicks', () => {
         entry('miss', { crop: '8.jpg' }),
         entry('rejected', { reason: 'not-a-defect' }), // no crop
       ],
-      'here',
+      FOR,
     );
     expect(picks.is.map((e) => e.crop)).toEqual(['1.jpg']);
     expect(picks.isNot.map((e) => e.crop)).toEqual(['7.jpg', '6.jpg', '3.jpg']);
   });
 
-  it('puts the open project first, then the newest; only the latest verdict counts', () => {
+  it('puts the open project folder first, then the newest; only the latest verdict counts', () => {
     const picks = ledgerPicks(
       [
-        entry('rejected', { crop: '1.jpg', photo: { project: 'other', layer: 'l', id: 'i' } }),
+        // the same registry id, another folder: not this project
+        entry('rejected', { crop: '1.jpg', projectDir: join(tmpdir(), 'elsewhere', 'site-a') }),
         entry('rejected', { crop: '2.jpg', at: '2026-10-20T00:00:00.000Z' }),
         entry('rejected', { crop: '3.jpg', at: '2026-10-22T00:00:00.000Z' }),
         entry('rejected', { crop: '4.jpg', detectionId: 'same' }),
         entry('accepted', { crop: '5.jpg', detectionId: 'same' }),
       ],
-      'here',
+      { ...FOR, projectDir: `${HERE}/` },
     );
     expect(picks.isNot.map((e) => e.crop)).toEqual(['3.jpg', '2.jpg', '1.jpg']);
     expect(picks.is.map((e) => e.crop)).toEqual(['5.jpg']);
+  });
+
+  it("only the detector's current version and the run's model", () => {
+    const picks = ledgerPicks(
+      [
+        entry('rejected', { crop: '1.jpg', detectorVersion: 2 }),
+        entry('rejected', { crop: '2.jpg', modelSha256: OTHER_SHA }),
+        entry('rejected', { crop: '3.jpg' }),
+      ],
+      FOR,
+    );
+    expect(picks.isNot.map((e) => e.crop)).toEqual(['3.jpg']);
+    const anyModel = ledgerPicks([entry('rejected', { crop: '2.jpg', modelSha256: OTHER_SHA })], {
+      ...FOR,
+      modelSha256: null,
+    });
+    expect(anyModel.isNot).toHaveLength(1);
   });
 });
 
@@ -111,7 +142,8 @@ describe('detectorExamples', () => {
       }),
       folder,
       ledgerDir,
-      projectId: 'here',
+      projectDir: HERE,
+      modelSha256: SHA,
     });
     expect(PER_VERDICT).toBe(2);
     expect(got).toEqual([
@@ -131,31 +163,90 @@ describe('detectorExamples', () => {
       detector: det(),
       folder: null,
       ledgerDir,
-      projectId: null,
+      projectDir: null,
+      modelSha256: SHA,
     });
     expect(got).toEqual([{ file: crop(1), verdict: 'is-not' }]);
   });
 
   it('no ledger and no examples is no examples', async () => {
     expect(
-      await detectorExamples({ detector: det(), folder: null, ledgerDir, projectId: null }),
+      await detectorExamples({
+        detector: det(),
+        folder: null,
+        ledgerDir,
+        projectDir: null,
+        modelSha256: SHA,
+      }),
     ).toEqual([]);
   });
 });
 
 describe('runExamples', () => {
+  const refs = [
+    { where: 'library' as const, id: 'chimney' },
+    { where: 'library' as const, id: 'flue' },
+  ];
+  const ctx = (learnOff: string[] = []) => ({
+    ledgerDir,
+    projectDir: HERE,
+    modelSha256: SHA,
+    learnOff: new Set(learnOff),
+  });
+
   it('gives each detector of the run its own list, empty when it cannot be found', async () => {
     await appendLedger(ledgerDir, entry('accepted'), jpeg);
     const got = await runExamples(
       { pack: null, userData: root },
-      [
+      refs,
+      [det(), det({ id: 'flue' })],
+      ctx(),
+    );
+    expect(got).toEqual([[{ file: crop(1), verdict: 'is' }], []]);
+  });
+
+  it('a detector with learning off gets none', async () => {
+    await appendLedger(ledgerDir, entry('accepted'), jpeg);
+    const got = await runExamples(
+      { pack: null, userData: root },
+      refs,
+      [det(), det({ id: 'flue' })],
+      ctx(['chimney']),
+    );
+    expect(got).toEqual([[], []]);
+  });
+});
+
+describe('the run record', () => {
+  it('files a review of a run with examples as one made with examples', async () => {
+    await recordRun(ledgerDir, 'run-abc', ['chimney']);
+    expect(await passUsedExamples(ledgerDir, 'vlm-run-abc.json', 'chimney')).toBe(true);
+    expect(await passUsedExamples(ledgerDir, 'vlm-run-abc.json', 'flue')).toBe(false);
+    expect(await passUsedExamples(ledgerDir, 'vlm-run-zzz.json', 'chimney')).toBe(false);
+    expect(await passUsedExamples(ledgerDir, 'ai-run-abc.json', 'chimney')).toBeUndefined();
+    expect(await passUsedExamples(ledgerDir, undefined, 'chimney')).toBeUndefined();
+  });
+
+  it('examplesForRun reads the switches and records only detectors shown examples', async () => {
+    await appendLedger(ledgerDir, entry('accepted'), jpeg);
+    await appendLedger(ledgerDir, entry('accepted', { detectorId: 'flue' }), jpeg);
+    await setLearn(root, 'flue', false);
+    const got = await examplesForRun({
+      userData: root,
+      ledgerDir,
+      o: { pack: null, userData: root, projectDir: HERE },
+      refs: [
         { where: 'library', id: 'chimney' },
         { where: 'library', id: 'flue' },
       ],
-      [det(), det({ id: 'flue' })],
-      ledgerDir,
-      'here',
-    );
+      stored: [det(), det({ id: 'flue' })],
+      run: 'run-abc',
+      modelSha256: SHA,
+    });
     expect(got).toEqual([[{ file: crop(1), verdict: 'is' }], []]);
+    const record = JSON.parse(
+      await readFile(join(ledgerDir, 'runs', 'run-abc.json'), 'utf8'),
+    ) as unknown;
+    expect(record).toEqual({ fewShot: ['chimney'] });
   });
 });

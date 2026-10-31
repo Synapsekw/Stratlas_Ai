@@ -54,6 +54,8 @@ const CHANNELS = {
   'ledger:append': true,
   'ledger:stats': true,
   'ledger:applyThreshold': true,
+  'ledger:resetThreshold': true,
+  'ledger:setLearn': true,
   'ledger:clear': true,
   'project:writeSelection': true,
   'project:writeCentreline': true,

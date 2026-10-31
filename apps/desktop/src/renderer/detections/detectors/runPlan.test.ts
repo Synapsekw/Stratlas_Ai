@@ -1,7 +1,13 @@
 import { VLM_DETECTOR_SCHEMA, type VlmDetector } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import type { DetectItem } from '../convert';
-import { estimateMinutes, orderForProject, planRuns, type Chosen } from './runPlan';
+import {
+  EXAMPLES_TIME_FACTOR,
+  estimateMinutes,
+  orderForProject,
+  planRuns,
+  type Chosen,
+} from './runPlan';
 
 const det = (id: string, assetTypes: string[]): VlmDetector => ({
   schema: VLM_DETECTOR_SCHEMA,
@@ -52,6 +58,13 @@ describe('runPlan', () => {
     expect(estimateMinutes(1, 1)).toBe(1);
     expect(estimateMinutes(240, 3)).toBe(84);
     expect(estimateMinutes(0, 2)).toBe(0);
+  });
+
+  it('estimateMinutes allows for example crops on learning detectors', () => {
+    expect(EXAMPLES_TIME_FACTOR).toBe(1.5);
+    expect(estimateMinutes(240, 1, 1)).toBe(42);
+    expect(estimateMinutes(240, 3, 1)).toBe(98);
+    expect(estimateMinutes(240, 1, 5)).toBe(42);
   });
 
   it("orders the project's asset type first", () => {

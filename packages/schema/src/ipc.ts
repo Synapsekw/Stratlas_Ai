@@ -4589,8 +4589,29 @@ export const ipc = {
       accepted: z.number(),
       rejected: z.number(),
       misses: z.number(),
+      /** Accepted or rejected candidates with a score: what counts toward a suggestion (20). */
+      scored: z.number(),
       suggestedThreshold: z.number().nullable(),
+      /**
+       * `same`: worked out from reviews of runs like the next one (with or without example
+       * crops); `all`: too few of those yet, so from every review. Null without a suggestion.
+       */
+      suggestedFrom: z.enum(['same', 'all']).nullable(),
+      /** A threshold applied from a suggestion and in use now, or null. */
+      applied: z.number().nullable(),
+      /** The **Learn from my reviews** switch (on unless turned off). */
+      learn: z.boolean(),
     }),
+  },
+  /** Back to the detector's own threshold: forget the applied one. */
+  'ledger:resetThreshold': {
+    request: z.object({ detectorId: z.string().min(1) }).strict(),
+    response: z.union([Ok, DetectorFailure]),
+  },
+  /** The **Learn from my reviews** switch: off means no example crops and no suggestion. */
+  'ledger:setLearn': {
+    request: z.object({ detectorId: z.string().min(1), on: z.boolean() }).strict(),
+    response: z.union([Ok, DetectorFailure]),
   },
   /**
    * Apply the ledger's suggested threshold to a detector on this computer (the user's click; main

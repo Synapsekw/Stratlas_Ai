@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DETECT_MIN_PACK, DETECT_PACK_FEATURE, detectPackRefusal } from './detectPack';
+import {
+  DETECT_EXAMPLES_MIN_PACK,
+  DETECT_MIN_PACK,
+  DETECT_PACK_FEATURE,
+  detectPackRefusal,
+  packTakesExamples,
+} from './detectPack';
 
 describe('pack gate for detect.vlm', () => {
   it('detect.vlm needs processing tools 0.28.0', () => {
@@ -14,5 +20,17 @@ describe('pack gate for detect.vlm', () => {
     expect(detectPackRefusal('detect.vlm', 'dev')).toBeNull();
     expect(detectPackRefusal('detect.vlm', null)).toBeNull();
     expect(detectPackRefusal('rf.coverage', '0.10.0')).toBeNull();
+  });
+});
+
+describe('few-shot examples need the newer processing tools', () => {
+  it('only from DETECT_EXAMPLES_MIN_PACK, and on a development pack', () => {
+    expect(DETECT_EXAMPLES_MIN_PACK).toBe('0.33.0');
+    expect(packTakesExamples('0.32.9')).toBe(false);
+    expect(packTakesExamples('0.28.0')).toBe(false);
+    expect(packTakesExamples(DETECT_EXAMPLES_MIN_PACK)).toBe(true);
+    expect(packTakesExamples('0.34.0')).toBe(true);
+    expect(packTakesExamples('dev')).toBe(true);
+    expect(packTakesExamples(null)).toBe(false);
   });
 });

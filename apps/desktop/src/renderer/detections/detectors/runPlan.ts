@@ -56,9 +56,20 @@ export function planRuns(
   return { runs, skippedFrames };
 }
 
-/** Whole minutes, rounded up. */
-export function estimateMinutes(photos: number, detectorCount: number): number {
-  return Math.ceil((photos * detectorCount * VLM_SECONDS_PER_PHOTO) / 60);
+/**
+ * How much longer a detector takes when its yes/no checks carry few-shot example crops (up to 4
+ * more images per check; the server's prompt cache keeps most of them across a photo's checks).
+ */
+export const EXAMPLES_TIME_FACTOR = 1.5;
+
+/**
+ * Whole minutes, rounded up. `learning` of the detectors learn from reviews: their checks carry
+ * example crops (on by default), so each takes `EXAMPLES_TIME_FACTOR` times as long.
+ */
+export function estimateMinutes(photos: number, detectorCount: number, learning = 0): number {
+  const plain = Math.max(0, detectorCount - learning);
+  const withExamples = Math.min(learning, detectorCount) * EXAMPLES_TIME_FACTOR;
+  return Math.ceil((photos * (plain + withExamples) * VLM_SECONDS_PER_PHOTO) / 60);
 }
 
 /** Detectors for the project's asset types first, then the rest ("All detectors"). */

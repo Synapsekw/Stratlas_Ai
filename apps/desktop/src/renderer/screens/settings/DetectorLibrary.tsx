@@ -114,8 +114,9 @@ interface RowProps {
   stats: Stats | null | undefined;
   projectId: string | null;
   onRemoved: () => Promise<void>;
-  onCleared: (id: string) => Promise<void>;
+  onCleared: () => Promise<void>;
   onApplied: (threshold: number) => Promise<void>;
+  onReset: () => Promise<void>;
   onNote: (text: string) => void;
   onError: (text: string) => void;
 }
@@ -127,6 +128,7 @@ function DetectorRow({
   onRemoved,
   onCleared,
   onApplied,
+  onReset,
   onNote,
   onError,
 }: RowProps) {
@@ -166,7 +168,7 @@ function DetectorRow({
       const r = await bridge.call('ledger:clear', { detectorId: d.id });
       const error = failure(r);
       if (error !== null) onError(error);
-      else await onCleared(d.id);
+      else await onCleared();
     });
   const confirm = (label: string, testid: string, act: () => Promise<void>) => (
     <>
@@ -218,6 +220,8 @@ function DetectorRow({
               stats={stats}
               threshold={d.threshold}
               onApplied={onApplied}
+              onReset={onReset}
+              onSwitched={onCleared}
             />
           )}
         </td>
@@ -343,11 +347,9 @@ export function DetectorLibrary() {
     setLibrary(r);
   }, []);
   const reload = () => readLibrary(projectId).then(apply);
-  const cleared = async (id: string) => {
-    const read = projectId;
-    const s = await readStats(id);
-    if (read !== current.current) return;
-    setLibrary((l) => (l?.projectId === read ? { ...l, stats: new Map(l.stats).set(id, s) } : l));
+  /** After a clear or a switch: the stats and an applied threshold may have changed. */
+  const cleared = async () => {
+    await reload();
   };
   useEffect(() => {
     current.current = projectId;
@@ -371,6 +373,10 @@ export function DetectorLibrary() {
   const applied = async (threshold: number) => {
     await reload();
     say(t('detect.learn.applied', { value: threshold.toFixed(2) }));
+  };
+  const reset = async () => {
+    await reload();
+    say(t('detect.learn.resetDone'));
   };
 
   const importFile = async (req: ImportRequest = { where: 'library' }) => {
@@ -501,6 +507,7 @@ export function DetectorLibrary() {
                         onRemoved={reload}
                         onCleared={cleared}
                         onApplied={applied}
+                        onReset={reset}
                         onNote={say}
                         onError={fail}
                       />

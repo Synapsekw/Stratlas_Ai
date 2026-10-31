@@ -13,7 +13,7 @@ import {
   type DetectorOptions,
 } from './detectors';
 import type { AnalyticsPack } from './pack';
-import { readApplied, withApplied } from './thresholds';
+import { forgetDetector, readApplied, withApplied, type Warn } from './thresholds';
 
 export interface DetectorsIpcDeps {
   handle: <C extends IpcChannel>(channel: C, handler: Handler<C>) => void;
@@ -28,6 +28,8 @@ export interface DetectorsIpcDeps {
   /** Native save dialog, offered `defaultName`; null when closed. */
   chooseSave: (defaultName: string) => Promise<string | null>;
   assertWritable?: (path: string, op: string) => void;
+  /** A line for the app log. */
+  warn?: Warn;
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -66,6 +68,8 @@ export function registerDetectorsIpc(d: DetectorsIpcDeps): void {
   d.handle('detectors:remove', async ({ where, projectId, id }) => {
     try {
       await removeDetector(await options(projectId, where === 'project'), where, id);
+      // its applied threshold and learning switch go with it
+      await forgetDetector(d.userData(), id, d.warn);
       return { ok: true };
     } catch (e) {
       return { ok: false, error: message(e) };

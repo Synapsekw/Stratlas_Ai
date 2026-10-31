@@ -226,7 +226,7 @@ import { createLocalAsk } from './analytics/ask';
 import { detectJobGate, detectLane } from './analytics/gate';
 import { checkHardware, execNvidiaSmi } from './analytics/hardware';
 import { ledgerDir, registerLedgerIpc } from './analytics/ledgerIpc';
-import { runExamples } from './analytics/fewShot';
+import { examplesForRun } from './analytics/fewShot';
 import { DETECT_PACK_FEATURE, detectPackRefusal } from './analytics/detectPack';
 import { localVlmModel } from './analytics/models';
 import { findAnalyticsPack, unusablePacks } from './analytics/pack';
@@ -1050,6 +1050,15 @@ const vlmServer = new VlmServer(
     join(logsDir, 'analytics-server.log'),
   ),
 );
+/** The installed processing tools' version (`dev` for a development pack), null for none. */
+async function pipelinePackVersion(): Promise<string | null> {
+  const found = await findPack({
+    dataRoot: settings.current().dataRoot,
+    env: process.env,
+    app: packApp,
+  });
+  return found.pack?.version ?? null;
+}
 /** `detect.vlm` starts: one at a time, never beside a GPU pipeline job; the others wait in line. */
 const detectQueue = detectLane({
   gate: (req, running) =>
@@ -1070,14 +1079,17 @@ const detectQueue = detectLane({
         const j = jobStore.get(id);
         if (j) jobStore.put({ ...j, params: { ...j.params, ...model } }, true);
       },
-      examples: (o, refs, stored) =>
-        runExamples(
+      examples: (o, refs, stored, { run, modelSha256 }) =>
+        examplesForRun({
+          userData: app.getPath('userData'),
+          ledgerDir: ledgerDir(app.getPath('userData')),
           o,
           refs,
           stored,
-          ledgerDir(app.getPath('userData')),
-          o.projectDir ? (registry.idOf(o.projectDir) ?? null) : null,
-        ),
+          run,
+          modelSha256,
+        }),
+      pipelinePack: pipelinePackVersion,
     }),
   start: (req) => jobs.start(req),
   jobs: () => jobStore.all(),
@@ -2644,7 +2656,15 @@ function registerIpc(): void {
     },
     assertWritable,
   });
-  registerLedgerIpc({ handle, userData: app.getPath('userData') });
+  registerLedgerIpc({
+    handle,
+    userData: app.getPath('userData'),
+    projectDir: (projectId) => registry.root(projectId) ?? null,
+    pipelinePack: pipelinePackVersion,
+    warn: (line) => {
+      appLog.write('warn', [line]);
+    },
+  });
 }
 
 /**

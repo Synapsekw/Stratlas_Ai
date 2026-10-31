@@ -18,3 +18,15 @@ export function detectPackRefusal(pipeline: string, packVersion: string | null):
   if (compareVersions(packVersion, DETECT_MIN_PACK) >= 0) return null;
   return `${DETECT_PACK_FEATURE.label} need processing tools ${DETECT_MIN_PACK} or later (these are ${packVersion}). Update them in Settings, Processing tools.`;
 }
+
+/**
+ * The first processing tools whose `detect.vlm` takes few-shot example crops on a detector item
+ * (`examples`). An older pack refuses the key, so its runs get none and run exactly as before.
+ */
+export const DETECT_EXAMPLES_MIN_PACK = '0.33.0';
+
+/** Whether a run on these processing tools may carry example crops. A development pack may. */
+export function packTakesExamples(packVersion: string | null): boolean {
+  if (packVersion === 'dev') return true;
+  return packVersion !== null && compareVersions(packVersion, DETECT_EXAMPLES_MIN_PACK) >= 0;
+}

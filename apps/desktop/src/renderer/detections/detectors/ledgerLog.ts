@@ -9,6 +9,9 @@ import type { DetectionsFile, LedgerEntry } from '@aio/schema';
 import { bridge } from '../../shell';
 import { cropJpeg } from './crop';
 
+/** A pass name the ledger keeps (`LedgerEntry.pass`). */
+const PASS_NAME = /^[A-Za-z0-9._-]{1,120}$/;
+
 /** Where the decision was made, and the URL of the photo the review shows (null when unknown). */
 export interface LedgerCtx {
   projectId: string;
@@ -110,6 +113,8 @@ export async function logReview(
       photo: { project: ctx.projectId, layer: d.source.layer, id: d.source.photo },
       at: new Date().toISOString(),
       detectionId: d.id,
+      // main reads from the pass whether its run showed the model example crops
+      ...(PASS_NAME.test(d.pass) ? { pass: d.pass } : {}),
     },
     box,
     ctx,

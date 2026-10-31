@@ -231,7 +231,7 @@ describe('detectJobGate', () => {
         [],
       ]),
     );
-    const { d } = deps({ examples });
+    const { d } = deps({ examples, pipelinePack: () => Promise.resolve('0.33.0') });
     const req = newRequest();
     if (!('params' in req)) throw new Error('expected a new request');
     const sent = req.params.detectors as Record<string, unknown>[];
@@ -245,6 +245,7 @@ describe('detectJobGate', () => {
         { where: 'shipped', id: 'crack' },
       ],
       expect.any(Array),
+      { run: 'run-abc', modelSha256: SHA },
     );
     const items = r.req.params.detectors as Record<string, unknown>[];
     expect(items[0]?.examples).toEqual([
@@ -253,8 +254,25 @@ describe('detectJobGate', () => {
     expect(items[1] && 'examples' in items[1]).toBe(false);
   });
 
+  it('processing tools older than DETECT_EXAMPLES_MIN_PACK get no examples, as before', async () => {
+    for (const version of ['0.32.0', null]) {
+      const examples = vi.fn(() =>
+        Promise.resolve([[{ file: 'C:/x/1.jpg', verdict: 'is' as const }], []]),
+      );
+      const { d } = deps({ examples, pipelinePack: () => Promise.resolve(version) });
+      const r = await detectJobGate(newRequest(), d);
+      if (!('req' in r) || !('params' in r.req)) throw new Error('expected a request');
+      const items = r.req.params.detectors as Record<string, unknown>[];
+      expect(items.every((i) => !('examples' in i))).toBe(true);
+      expect(examples).not.toHaveBeenCalled();
+    }
+  });
+
   it('a failing example picker never stops the run', async () => {
-    const { d } = deps({ examples: () => Promise.reject(new Error('disk')) });
+    const { d } = deps({
+      examples: () => Promise.reject(new Error('disk')),
+      pipelinePack: () => Promise.resolve('0.33.0'),
+    });
     const r = await detectJobGate(newRequest(), d);
     if (!('req' in r) || !('params' in r.req)) throw new Error('expected a request');
     const items = r.req.params.detectors as Record<string, unknown>[];
@@ -265,6 +283,7 @@ describe('detectJobGate', () => {
     const { d } = deps({
       env: { QUADRION_VLM_SERVER_URL: 'http://127.0.0.1:40000' },
       examples: () => Promise.resolve([[{ file: 'C:/x/1.jpg', verdict: 'is' }], []]),
+      pipelinePack: () => Promise.resolve('dev'),
     });
     const r = await detectJobGate(newRequest(), d);
     if (!('req' in r) || !('params' in r.req)) throw new Error('expected a request');

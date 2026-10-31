@@ -27,6 +27,7 @@ import { en } from '@aio/ui/i18n/en';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { DetectorOptions, resolveDetectors } from './detectors';
+import { packTakesExamples } from './detectPack';
 import type { FewShotExample } from './fewShot';
 import { localVlmModel } from './models';
 import type { AnalyticsPack, UnusablePack } from './pack';
@@ -68,13 +69,19 @@ export interface GateDeps {
   restamp?: (id: string, model: { model: string; modelSha256: string }) => void;
   /**
    * The few-shot example crops of each detector of a new run, in the order of `refs`
-   * (`fewShot.runExamples`). Absent, or failing, a run goes without them.
+   * (`fewShot.examplesForRun`). Absent, or failing, a run goes without them.
    */
   examples?: (
     o: DetectorOptions,
     refs: { where: DetectorWhere; id: string }[],
     stored: VlmDetector[],
+    run: { run: string; modelSha256: string },
   ) => Promise<FewShotExample[][]>;
+  /**
+   * The installed processing tools' version (`dev` for a development pack, null for none).
+   * Example crops go only to tools that take them (`packTakesExamples`); without this, none.
+   */
+  pipelinePack?: () => Promise<string | null>;
 }
 
 /** What the gate reads of the request's detectors; the rest is checked by the job runner. */
@@ -111,7 +118,7 @@ export async function detectJobGate(req: StartRequest, d: GateDeps): Promise<Gat
     } catch (e) {
       return { refuse: message(e) };
     }
-    const shots = await examplesOf(d, null, refs.data, stored);
+    const shots = await examplesOf(d, null, req, refs.data, stored, tuned.modelSha256);
     return {
       req: withServer(req, refs.data, stored, serverFile, tuned.model, tuned.modelSha256, shots),
     };
@@ -167,7 +174,7 @@ export async function detectJobGate(req: StartRequest, d: GateDeps): Promise<Gat
     return { req };
   }
   if (!refs?.success) return { req };
-  const shots = await examplesOf(d, pack, refs.data, stored);
+  const shots = await examplesOf(d, pack, req, refs.data, stored, pack.manifest.model.sha256);
   return {
     req: withServer(
       req,
@@ -181,19 +188,27 @@ export async function detectJobGate(req: StartRequest, d: GateDeps): Promise<Gat
   };
 }
 
-/** The run's example crops per detector; none when there is no picker or it fails. */
+/**
+ * The run's example crops per detector; none when there is no picker, the processing tools are
+ * older than `DETECT_EXAMPLES_MIN_PACK` (the run goes exactly as before) or the picker fails.
+ */
 async function examplesOf(
   d: GateDeps,
   pack: AnalyticsPack | null,
+  req: Extract<StartRequest, { params: unknown }>,
   refs: readonly { where: DetectorWhere; detector: { id: string } }[],
   stored: VlmDetector[],
+  modelSha256: string,
 ): Promise<FewShotExample[][]> {
-  if (!d.examples) return [];
+  if (!d.examples || !d.pipelinePack) return [];
   try {
+    if (!packTakesExamples(await d.pipelinePack())) return [];
+    const run = typeof req.params.run === 'string' ? req.params.run : '';
     return await d.examples(
       { pack, userData: d.userData, projectDir: d.projectDir },
       refs.map((r) => ({ where: r.where, id: r.detector.id })),
       stored,
+      { run, modelSha256 },
     );
   } catch {
     return [];

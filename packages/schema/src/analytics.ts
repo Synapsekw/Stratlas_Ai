@@ -166,7 +166,7 @@ export const DetectVlmParams = z
             detector: VlmDetector,
             threshold: z.number().min(0).max(1),
             /**
-             * Few-shot example crops for the yes/no check, absolute files (pipeline pack 0.30.0).
+             * Few-shot example crops for the yes/no check, absolute files (pipeline pack 0.33.0).
              * Main picks them when the run starts (`main/analytics/fewShot.ts`); at most 2 of
              * each verdict.
              */
@@ -270,6 +270,18 @@ export const LedgerEntry = z
     at: IsoTime,
     /** The review's id for the candidate: when it has several lines, the latest one counts. */
     detectionId: z.string().max(300).optional(),
+    /** The detections pass the candidate came from (`vlm-run-....json`), when known. */
+    pass: z
+      .string()
+      .regex(/^[A-Za-z0-9._-]{1,120}$/)
+      .optional(),
+    /**
+     * Set by main when it writes the line: whether the run that proposed the candidate showed the
+     * model few-shot example crops. Absent on older lines and unknown runs (counted as without).
+     */
+    fewShot: z.boolean().optional(),
+    /** Set by main when it writes the line: the project's folder, absolute. */
+    projectDir: z.string().max(1024).optional(),
     /** The crop file in `crops/<detectorId>/`, set by the app when it writes the line. */
     crop: z
       .string()

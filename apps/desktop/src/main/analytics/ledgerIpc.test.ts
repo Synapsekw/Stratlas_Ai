@@ -6,14 +6,16 @@ import {
   type LedgerEntry,
   type VlmDetector,
 } from '@aio/schema';
+import { en } from '@aio/ui/i18n/en';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Handler } from '../ipc';
 import { registerDetectorsIpc } from './detectorsIpc';
 import { ledgerDir, registerLedgerIpc } from './ledgerIpc';
+import { readLearning } from './thresholds';
 import type { AnalyticsPack } from './pack';
 
 const SHA = 'a'.repeat(64);
@@ -51,6 +53,9 @@ const entry: LedgerEntry = {
 
 let root: string;
 let userData: string;
+let tools: string | null = '0.33.0';
+const warnings: string[] = [];
+const PROJECT = join(tmpdir(), 'projects', 'site-a');
 const handlers = new Map<string, unknown>();
 const call = <C extends IpcChannel>(c: C, req: IpcRequest<C>): Promise<IpcResponse<C>> =>
   Promise.resolve((handlers.get(c) as Handler<C>)(req) as Promise<IpcResponse<C>>);
@@ -67,7 +72,15 @@ beforeEach(async () => {
     dir: join(root, 'pack'),
     manifest: { model: { sha256: SHA } },
   } as unknown as AnalyticsPack;
-  registerLedgerIpc({ handle, userData });
+  tools = '0.33.0';
+  warnings.length = 0;
+  registerLedgerIpc({
+    handle,
+    userData,
+    projectDir: (id) => (id === 'p' ? PROJECT : null),
+    pipelinePack: () => Promise.resolve(tools),
+    warn: (w) => warnings.push(w),
+  });
   registerDetectorsIpc({
     handle,
     pack: () => Promise.resolve(pack),
@@ -134,22 +147,19 @@ describe('ledger ipc', () => {
       accepted: 0,
       rejected: 0,
       misses: 0,
+      scored: 0,
       suggestedThreshold: null,
+      suggestedFrom: null,
+      applied: null,
+      learn: true,
     });
     expect(existsSync(join(ledgerDir(userData), 'crops', 'chimney'))).toBe(false);
     expect((await call('ledger:stats', { detectorId: 'flue' })).accepted).toBe(1);
   });
 
-  it('ledger:applyThreshold needs a suggestion, then lists the detector with it', async () => {
-    const crop = Buffer.from([1, 2]).toString('base64');
-    await call('detectors:save', { where: 'library', detector: det('chimney') });
-    expect(await call('ledger:applyThreshold', { detectorId: 'chimney' })).toMatchObject({
-      ok: false,
-    });
-    expect(await call('ledger:applyThreshold', { detectorId: '../x' })).toMatchObject({
-      ok: false,
-    });
-    // 12 right at 0.9 and 8 wrong at 0.6: the suggestion is above 0.6
+  const crop = Buffer.from([1, 2]).toString('base64');
+  /** 20 reviews: 12 right at 0.9 and 8 wrong at 0.6. */
+  async function twentyReviews(over: Partial<LedgerEntry> = {}) {
     for (let i = 0; i < 20; i++) {
       const wrong = i < 8;
       await call('ledger:append', {
@@ -158,28 +168,110 @@ describe('ledger ipc', () => {
           detectionId: `d${String(i)}`,
           score: wrong ? 0.6 : 0.9,
           verdict: wrong ? 'rejected' : 'accepted',
+          ...over,
         },
         cropJpegBase64: crop,
       });
     }
+  }
+  const listed = async (id: string) =>
+    (await call('detectors:list', {})).items.find((i) => i.detector.id === id)?.detector.threshold;
+
+  it('ledger:append stamps the project folder and the run examples, never the window', async () => {
+    await mkdir(join(ledgerDir(userData), 'runs'), { recursive: true });
+    await writeFile(
+      join(ledgerDir(userData), 'runs', 'run-abc.json'),
+      JSON.stringify({ fewShot: ['chimney'] }),
+    );
+    await call('ledger:append', {
+      entry: { ...entry, pass: 'vlm-run-abc.json', projectDir: 'C:/forged', fewShot: false },
+      cropJpegBase64: crop,
+    });
+    await call('ledger:append', {
+      entry: { ...entry, detectionId: 'x', photo: { ...entry.photo, project: 'gone' } },
+      cropJpegBase64: crop,
+    });
+    const lines = (await readFile(join(ledgerDir(userData), 'chimney.jsonl'), 'utf8'))
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l) as LedgerEntry);
+    expect(lines[0]).toMatchObject({ fewShot: true, projectDir: PROJECT });
+    expect(lines[1]?.fewShot).toBeUndefined();
+    expect(lines[1]?.projectDir).toBeUndefined();
+  });
+
+  it('stats count scored reviews toward 20, and suggest only from 20', async () => {
+    await call('ledger:append', { entry: { ...entry, score: null }, cropJpegBase64: crop });
+    const s = await call('ledger:stats', { detectorId: 'chimney' });
+    expect(s).toMatchObject({ accepted: 1, scored: 0, suggestedThreshold: null, learn: true });
+    await twentyReviews();
+    const t = await call('ledger:stats', { detectorId: 'chimney' });
+    expect(t.scored).toBe(20);
+    expect(t.suggestedThreshold).not.toBeNull();
+  });
+
+  it('the next run has examples: the suggestion falls back to all reviews and says so', async () => {
+    await twentyReviews();
+    expect((await call('ledger:stats', { detectorId: 'chimney' })).suggestedFrom).toBe('all');
+    // processing tools that take no examples: the next run is like the reviewed ones
+    tools = '0.28.0';
+    expect((await call('ledger:stats', { detectorId: 'chimney' })).suggestedFrom).toBe('same');
+  });
+
+  it('apply needs a suggestion, lists the detector with it, and reset undoes it', async () => {
+    await call('detectors:save', { where: 'library', detector: det('chimney') });
+    expect(await call('ledger:applyThreshold', { detectorId: 'chimney' })).toEqual({
+      ok: false,
+      error: en['detect.learn.err.none'],
+    });
+    expect(await call('ledger:applyThreshold', { detectorId: '../x' })).toEqual({
+      ok: false,
+      error: en['detect.learn.err.badId'],
+    });
+    await twentyReviews();
     const suggested = (await call('ledger:stats', { detectorId: 'chimney' })).suggestedThreshold;
     expect(suggested).not.toBeNull();
-    const before = await call('detectors:list', {});
-    expect(before.items.find((i) => i.detector.id === 'chimney')?.detector.threshold).toBe(0.8);
+    expect(await listed('chimney')).toBe(0.8);
 
     expect(await call('ledger:applyThreshold', { detectorId: 'chimney' })).toEqual({
       ok: true,
       threshold: suggested,
     });
-    const after = await call('detectors:list', {});
-    expect(after.items.find((i) => i.detector.id === 'chimney')?.detector.threshold).toBe(
-      suggested,
-    );
-    // clearing the review history keeps the applied threshold
+    expect(await listed('chimney')).toBe(suggested);
+    expect((await call('ledger:stats', { detectorId: 'chimney' })).applied).toBe(suggested);
+
+    expect(await call('ledger:resetThreshold', { detectorId: 'chimney' })).toEqual({ ok: true });
+    expect(await listed('chimney')).toBe(0.8);
+    expect((await call('ledger:stats', { detectorId: 'chimney' })).applied).toBeNull();
+  });
+
+  it('clearing the reviews or removing the detector drops its applied threshold', async () => {
+    await call('detectors:save', { where: 'library', detector: det('chimney') });
+    await twentyReviews();
+    await call('ledger:applyThreshold', { detectorId: 'chimney' });
     await call('ledger:clear', { detectorId: 'chimney' });
-    const cleared = await call('detectors:list', {});
-    expect(cleared.items.find((i) => i.detector.id === 'chimney')?.detector.threshold).toBe(
-      suggested,
-    );
+    expect(await listed('chimney')).toBe(0.8);
+    expect((await call('ledger:stats', { detectorId: 'chimney' })).applied).toBeNull();
+
+    await twentyReviews();
+    await call('ledger:applyThreshold', { detectorId: 'chimney' });
+    await call('ledger:setLearn', { detectorId: 'chimney', on: false });
+    await call('detectors:remove', { where: 'library', id: 'chimney' });
+    expect(await readLearning(userData)).toEqual({ thresholds: {}, learnOff: [] });
+  });
+
+  it('learning off: no suggestion, and apply is refused', async () => {
+    await twentyReviews();
+    expect(await call('ledger:setLearn', { detectorId: 'chimney', on: false })).toEqual({
+      ok: true,
+    });
+    const s = await call('ledger:stats', { detectorId: 'chimney' });
+    expect(s).toMatchObject({ learn: false, suggestedThreshold: null, scored: 20 });
+    expect(await call('ledger:applyThreshold', { detectorId: 'chimney' })).toEqual({
+      ok: false,
+      error: en['detect.learn.err.off'],
+    });
+    await call('ledger:setLearn', { detectorId: 'chimney', on: true });
+    expect((await call('ledger:stats', { detectorId: 'chimney' })).learn).toBe(true);
   });
 });
