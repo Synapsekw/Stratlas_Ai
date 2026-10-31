@@ -33,7 +33,17 @@ function ArmedTool() {
       ref.current?.querySelector<HTMLElement>('[data-testid="tools-back"]')?.focus();
   }, []);
   return (
-    <div ref={ref} className="tools-armed" data-testid="tools-armed">
+    <div
+      ref={ref}
+      className="tools-armed"
+      data-testid="tools-armed"
+      onKeyDown={(e) => {
+        // Esc in the card puts the tool down, as on the stage: the list comes back
+        if (e.key !== 'Escape' || e.defaultPrevented) return;
+        e.preventDefault();
+        stopTool();
+      }}
+    >
       <Button
         variant="quiet"
         size="sm"

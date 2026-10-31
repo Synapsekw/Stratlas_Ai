@@ -142,7 +142,6 @@ export function IslandTools({
                 aria-selected={g === group}
                 aria-controls={`${id}-panel`}
                 aria-disabled={reason ? true : undefined}
-                title={reason}
                 className={g === shown ? 'isl-shown' : undefined}
                 onPointerMove={(event) => {
                   const at = { x: event.clientX, y: event.clientY };
@@ -159,6 +158,8 @@ export function IslandTools({
               >
                 <Icon name={m.icon} size={14} />
                 <span className="isl-gl">{t(m.labelKey)}</span>
+                {/* a mode that cannot be picked here says why (read with its name) */}
+                {reason && <span className="sr-only">{reason}</span>}
               </button>
             );
           })}
