@@ -4,9 +4,11 @@ Same on-disk layout as a real export (`flights/`, `inspections/`, `maps/`, `pois
 one folder per id, each JSON with `.json.<ms>.backup` revisions beside it), but the content is a
 10 x 6 x 4 m box room sampled as a few hundred points. Frames: the inspection frame is the room
 (x 0..10, y 0..6, z 0..4, z up). Flight A is relocalised (no `transform`, written in the inspection
-frame). Flight B has a `transform` (flight to inspection frame, row-major 4 x 4) and its cloud,
+frame). Each flight cloud is a different subset of the merged cloud's points. Flight B has a `transform` (flight to inspection frame, row-major 4 x 4) and its cloud,
 livetraj and poses are written in its own frame, as Inspector does. Nothing here describes a real
-site, person or flight.
+site, person or flight. In the '2024' generation every snapshot `criticality` is null, as in the
+real 2024 samples. An Asset-parent decoy map, an asset and an empty `orgs/` folder are included
+as in real exports; readers must ignore them.
 
 Runs as a script too (`python flyability_synth.py <root> [--generation 2024|2025]`) and prints a
 small JSON summary of the ids; it imports only the standard library and numpy.
@@ -261,6 +263,8 @@ def make_export(
 
     inspection_id = new_id()
     asset_id = new_id()
+    base = _room_points(np_rng, points)  # the merged cloud; flight clouds are subsets
+    (root / "orgs").mkdir(exist_ok=True)
     flight_ids = [new_id(), new_id()]
     poi_ids = [new_id() for _ in range(3)]
     snapshot_ids = [new_id() for _ in _SNAPS]
@@ -350,7 +354,7 @@ def make_export(
                 "camera_pitch": pitch,
                 "camera_pose": _pose(cpos, crot),
                 "drone_pose": _pose(dpos, drot),
-                "criticality": crit,
+                "criticality": None if generation == "2024" else crit,
                 "comment": f"finding {pi + 1}" if crit else None,
                 "tags": tags,
                 "wall_distance": wall_distance,
@@ -379,7 +383,7 @@ def make_export(
     # flights: json, map (cloud + livetraj), logs
     for fi, fid in enumerate(flight_ids):
         identifier = f"SYNTH_{fi + 1:03d}_flight"
-        pts = _room_points(np_rng, points)
+        pts = base[np.sort(np_rng.choice(len(base), size=max(1, len(base) * 3 // 5), replace=False))]
         if fi == 1:
             pts = (pts - shift) @ rot  # inspection -> flight frame
         wps = waypoints[fi]
@@ -473,7 +477,7 @@ def make_export(
         map_id = new_id()
         las_name = "inspection_map1.las" if generation == "2024" else "inspection_map2.las"
         mdir = root / "maps" / map_id
-        _write_las(mdir / las_name, _room_points(np_rng, points))
+        _write_las(mdir / las_name, base)
         _write_json(
             mdir / "map.json",
             {
@@ -498,6 +502,48 @@ def make_export(
             {"parent_type": "Asset", "parent_id": asset_id},
             ms,
         )
+    # asset and its relocalisation map (ignored by readers)
+    _write_json(
+        root / "assets" / asset_id / "asset.json",
+        {
+            "id": asset_id,
+            "name": "Synthetic chamber",
+            "description": None,
+            "tags": [],
+            "path": None,
+            "audit": _audit(epoch - 100),
+        },
+        {"name": "Old asset"},
+        ms,
+    )
+    map_id = new_id()
+    las_name = f"{map_id}_map.las"
+    mdir = root / "maps" / map_id
+    _write_las(mdir / las_name, _room_points(np_rng, 10) + np.array([50.0, 50.0, 0.0]))
+    _write_json(
+        mdir / "map.json",
+        {
+            "id": map_id,
+            "parent_type": "Asset",
+            "parent_id": asset_id,
+            "source": "Flyaware",
+            "folder_path": "",
+            "path": None,
+            "transform": None,
+            "point_clouds": [
+                {
+                    "id": new_id(),
+                    "file_path": las_name,
+                    "octree": None,
+                    "file": {"last_updated_date": epoch, "path": las_name},
+                }
+            ],
+            "trajectories": [],
+            "audit": _audit(epoch + 60),
+        },
+        {"parent_type": "Inspection", "parent_id": inspection_id},
+        ms,
+    )
     return syn
 
 

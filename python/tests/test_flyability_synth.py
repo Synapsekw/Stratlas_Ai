@@ -183,3 +183,55 @@ def test_main_entry_runs_standalone(tmp_path: Path) -> None:
     info = json.loads(out.stdout)
     assert (tmp_path / "e" / "inspections" / info["inspection_id"]).is_dir()
     assert len(info["snapshot_ids"]) == 4
+
+
+def test_asset_decoy_and_orgs(tmp_path: Path) -> None:
+    syn = make_export(tmp_path / "exp")
+    assert (syn.root / "orgs").is_dir()
+    assets = list((syn.root / "assets").glob("*/asset.json"))
+    assert len(assets) == 1 and _json(assets[0])["name"] == "Synthetic chamber"
+    kinds = sorted(_json(p)["parent_type"] for p in (syn.root / "maps").glob("*/map.json"))
+    assert kinds == ["Asset", "Flight", "Flight", "Inspection"]
+
+
+def test_flight_clouds_are_subsets_of_merged(tmp_path: Path) -> None:
+    syn = make_export(tmp_path / "exp")
+    m = np.array(_flights(syn)[syn.flight_ids[1]]["transform"]["v"]).reshape(4, 4)
+    maps = _flight_maps(syn)
+    merged = None
+    for mp in (syn.root / "maps").glob("*/map.json"):
+        d = _json(mp)
+        if d["parent_type"] == "Inspection":
+            merged = _las(mp.parent / d["point_clouds"][0]["file_path"])[3]
+    assert merged is not None
+    ca = _las(maps[syn.flight_ids[0]][0])[3]
+    cb = _las(maps[syn.flight_ids[1]][0])[3] @ m[:3, :3].T + m[:3, 3]
+    for cloud in (ca, cb):
+        d = np.linalg.norm(cloud[:, None, :] - merged[None, :, :], axis=2).min(axis=1)
+        assert d.max() < 0.005
+    assert len(ca) < len(merged) and not np.array_equal(ca, cb)
+
+
+def test_pose_transform_and_hit_truth(tmp_path: Path) -> None:
+    syn = make_export(tmp_path / "exp")
+    m = np.array(_flights(syn)[syn.flight_ids[1]]["transform"]["v"]).reshape(4, 4)
+    for sid in syn.snapshot_ids:
+        s = _json(syn.root / "snapshots" / sid / "snapshot.json")
+        cam = _p(s["camera_pose"]["position"])
+        if s["flight_id"] == syn.flight_ids[1]:
+            cam = m[:3, :3] @ cam + m[:3, 3]
+        np.testing.assert_allclose(cam, syn.camera_position[sid], atol=1e-6)
+        hit = syn.hit[sid]
+        if hit is None:
+            assert math.isinf(syn.wall[sid])
+            continue
+        assert np.linalg.norm(np.array(hit) - cam) == pytest.approx(syn.wall[sid], abs=1e-6)
+        h = np.array(hit)
+        on_face = np.isclose(h, 0.0, atol=1e-9) | np.isclose(h, [10.0, 6.0, 4.0], atol=1e-9)
+        assert on_face.any() and (h >= -1e-9).all() and (h <= [10.0, 6.0, 4.0]).all()
+
+
+def test_2024_criticality_is_null(tmp_path: Path) -> None:
+    syn = make_export(tmp_path / "a", generation="2024")
+    for sid in syn.snapshot_ids:
+        assert _json(syn.root / "snapshots" / sid / "snapshot.json")["criticality"] is None
