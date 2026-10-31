@@ -192,26 +192,26 @@ test.describe('with the bundled demos', () => {
     const clock = win.getByTestId('timecode');
     const footage = win.getByTestId('bottom-switch-footage');
     await expect(footage).toBeVisible({ timeout: 60_000 });
-    // the strip may still settle on its remembered side as the project opens: pick Footage until
-    // it holds
+    await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible({ timeout: 60_000 });
+    // the strip may still settle on its remembered side as the project opens: pick Footage and
+    // read the clock until both hold
     await expect(async () => {
       if ((await footage.getAttribute('aria-pressed')) !== 'true') await footage.click();
-      await expect(clock).toBeVisible({ timeout: 2_000 });
+      await expect(clock).toHaveText(/^\d\d:\d\d:\d\d\.\d\d$/, { timeout: 2_000 });
+      const fit = await clock.evaluate((el) => {
+        const bar = el.parentElement?.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        return {
+          whole: el.scrollWidth <= el.clientWidth + 1,
+          inBar: bar !== undefined && r.left >= bar.left - 0.5 && r.right <= bar.right + 0.5,
+          // nothing of the bar spills out of it either
+          spill: [...(el.parentElement?.children ?? [])]
+            .filter((c) => c.getBoundingClientRect().right > (bar?.right ?? 0) + 0.5)
+            .map((c) => c.className),
+        };
+      });
+      expect(fit).toEqual({ whole: true, inBar: true, spill: [] });
     }).toPass({ timeout: 30_000 });
-    await expect(clock).toHaveText(/^\d\d:\d\d:\d\d\.\d\d$/);
-    const fit = await clock.evaluate((el) => {
-      const bar = el.parentElement?.getBoundingClientRect();
-      const r = el.getBoundingClientRect();
-      return {
-        whole: el.scrollWidth <= el.clientWidth + 1,
-        inBar: bar !== undefined && r.left >= bar.left - 0.5 && r.right <= bar.right + 0.5,
-        // nothing of the bar spills out of it either
-        spill: [...(el.parentElement?.children ?? [])]
-          .filter((c) => c.getBoundingClientRect().right > (bar?.right ?? 0) + 0.5)
-          .map((c) => c.className),
-      };
-    });
-    expect(fit).toEqual({ whole: true, inBar: true, spill: [] });
     // a narrow bar drops zoom in and out (Ctrl + wheel zooms), never Fit
     await expect(
       win.getByTestId('lane-timeline').getByRole('button', { name: 'Fit', exact: true }),
