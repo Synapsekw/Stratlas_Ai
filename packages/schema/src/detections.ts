@@ -75,7 +75,7 @@ export const DetectionOrigin = z
   .strict();
 
 /**
- * Multi-view vote (`detect.vlm` and `thermal.hotspots`, pipeline pack 0.29.0): this draft stands for
+ * Multi-view vote (`detect.vlm` and `thermal.hotspots`, pipeline pack 0.32.0): this draft stands for
  * the drafts of every photo that saw the same object in 3D. Their boxes live on in `sightings`.
  */
 export const DetectionVote = z

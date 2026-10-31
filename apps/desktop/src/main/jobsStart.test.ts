@@ -153,19 +153,19 @@ describe('jobs:start resume feature gate', () => {
     expect(await current.handle(req)).toEqual({ ok: true });
   });
 
-  it('refuses thermal.hotspots on a pack below 0.29.0 with the update text', async () => {
+  it('refuses thermal.hotspots on a pack below 0.32.0 with the update text', async () => {
     const req = {
       pipeline: 'thermal.hotspots' as const,
       project: 'synthetic',
       params: { layerId: 'ph', rule: 'delta', thresholdC: 4 },
     };
-    const old = jobsStart('0.28.0', 'failed');
+    const old = jobsStart('0.31.0', 'failed');
     expect(await old.handle(req)).toEqual({
       ok: false,
-      error: thermalPackRefusal('thermal.hotspots', '0.28.0'),
+      error: thermalPackRefusal('thermal.hotspots', '0.31.0'),
     });
     expect(old.start).not.toHaveBeenCalled();
-    const current = jobsStart('0.29.0', 'failed');
+    const current = jobsStart('0.32.0', 'failed');
     expect(await current.handle(req)).toEqual({ ok: true });
   });
 

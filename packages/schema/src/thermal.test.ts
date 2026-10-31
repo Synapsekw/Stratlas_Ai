@@ -250,6 +250,6 @@ describe('candidates and params', () => {
     expect(
       ThermalHotspotsParams.safeParse({ layerId: 'l1', rule: 'hot', thresholdC: 4 }).success,
     ).toBe(false);
-    expect(THERMAL_HOTSPOTS_MIN_PACK).toBe('0.29.0');
+    expect(THERMAL_HOTSPOTS_MIN_PACK).toBe('0.32.0');
   });
 });

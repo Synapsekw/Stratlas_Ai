@@ -1,6 +1,6 @@
 /*
  * The `thermal.decode` job needs the processing tools of pack 0.22.0 or later, `thermal.hotspots`
- * those of pack 0.29.0. `jobs:start` asks here first, so an older pack gets the update message, not
+ * those of pack 0.32.0. `jobs:start` asks here first, so an older pack gets the update message, not
  * a failed job (as `telecomPack.ts`).
  */
 import { THERMAL_HOTSPOTS_MIN_PACK, THERMAL_MIN_PACK } from '@aio/schema';

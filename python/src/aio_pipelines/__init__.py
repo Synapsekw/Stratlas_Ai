@@ -30,7 +30,9 @@ PROTOCOL = "aio.pipelines/1"
 # Qwen2.5-VL pixels, chosen from the run's model param, and repairs replies ending in }}) and pack 0.28.0 (the
 # detector engine caps candidates at 30 per tile and per photo, keeps the higher-scored box when one
 # contains another, and sizes tiles from a detector's objectSizeM and the photo's GSD)) and pack 0.31.0
-# (adds flyability.import, which only an app with the Flyability Inspector import starts).
+# (adds flyability.import, which only an app with the Flyability Inspector import starts) and pack 0.32.0
+# (the multi-view vote folds drafts of one object into one, and adds thermal.hotspots; 0.29.0 and
+# 0.30.0 were reserved and stay unused).
 # Each keeps the floor.
 # The app refuses a pack outside the range; the syntax is read by `appRangeAllows` in packages/schema/src/versions.ts
 # (space-separated >=, >, <=, <, =).

@@ -17,12 +17,12 @@ describe('pack gate for thermal.decode', () => {
     expect(thermalPackRefusal('thermal.decode', null)).toBeNull();
     expect(thermalPackRefusal('telecom.antennas', '0.10.0')).toBeNull();
   });
-  it('requires processing tools 0.29.0 for thermal.hotspots', () => {
+  it('requires processing tools 0.32.0 for thermal.hotspots', () => {
     expect(thermalPackRefusal('thermal.hotspots', '0.28.0')).toBe(
-      'Thermal hot spots need processing tools 0.29.0 or later (these are 0.28.0). Update them in Settings, Processing tools.',
+      'Thermal hot spots need processing tools 0.32.0 or later (these are 0.28.0). Update them in Settings, Processing tools.',
     );
     expect(thermalPackRefusal('thermal.hotspots', '0.22.0')).toContain('(these are 0.22.0)');
-    expect(thermalPackRefusal('thermal.hotspots', '0.29.0')).toBeNull();
+    expect(thermalPackRefusal('thermal.hotspots', '0.32.0')).toBeNull();
     expect(thermalPackRefusal('thermal.hotspots', 'dev')).toBeNull();
     expect(thermalPackRefusal('thermal.hotspots', null)).toBeNull();
     // decode keeps its own bar
@@ -32,7 +32,7 @@ describe('pack gate for thermal.decode', () => {
     expect(THERMAL_PACK_FEATURE).toEqual({ label: 'Thermal analysis', minVersion: '0.22.0' });
     expect(THERMAL_HOTSPOTS_PACK_FEATURE).toEqual({
       label: 'Thermal hot spots',
-      minVersion: '0.29.0',
+      minVersion: '0.32.0',
     });
   });
 });

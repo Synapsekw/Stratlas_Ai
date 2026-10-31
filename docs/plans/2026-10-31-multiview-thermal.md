@@ -60,7 +60,7 @@ below are decided, not open.
 9. **UI (minimal).** Inspect findings row: a chip "Seen in N photos" or, flagged, "Only 1 of N photos".
    Thermal bench: a Find hot spots button where the plan keeps room for the hot-spot list, with the
    result line. No shell, right panel, island, palette, toast or dialog file is touched.
-10. **Pack.** Pipeline pack 0.29.0 in one last commit. `THERMAL_HOTSPOTS_MIN_PACK = '0.29.0'` gates
+10. **Pack.** Pipeline pack 0.32.0 in one last commit. `THERMAL_HOTSPOTS_MIN_PACK = '0.32.0'` gates
     `thermal.hotspots`. `DETECT_MIN_PACK` stays 0.28.0: an older pack simply writes drafts without
     `vote`, which the app reads as before.
 11. **Thermal ortho.** There is no thermal orthomosaic in the app yet, so the finder works on the
@@ -90,7 +90,7 @@ below are decided, not open.
 | C3   | Renderer: `vote` through `annotate` detections model; vote chip; Find hot spots button                       | component tests                                                                                                                                                                                                    | @aio/annotate, desktop, @aio/ui |
 | D1   | Bench `tools/detectors/vote_bench.py` (synthetic multi-view fixture, E2 metrics before and after)            | `test_vote_bench.py`                                                                                                                                                                                               | tools                           |
 | E1   | Docs: contract row, data-conventions, session note                                                           | `check-public-text`                                                                                                                                                                                                | docs                            |
-| F1   | Pack 0.29.0 (last commit)                                                                                    | `test_app_range`, `packVersions.test.ts`                                                                                                                                                                           | pipelines, desktop              |
+| F1   | Pack 0.32.0 (last commit)                                                                                    | `test_app_range`, `packVersions.test.ts`                                                                                                                                                                           | pipelines, desktop              |
 
 e2e: none added. The button starts a job and prints its count; the job is covered by the Python tests
 and the button by a component test. `thermal-bench.spec.ts` is not changed.
