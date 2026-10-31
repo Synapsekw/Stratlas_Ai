@@ -54,7 +54,7 @@ test('three marked rows share one menu: Hide and Move to date act on all three',
   await row.click({ button: 'right' });
   const menu = win.getByTestId('move-menu');
   await expect(menu).toContainText('3 datasets');
-  await expect(menu.getByTestId('move-to-nov')).toBeVisible();
+  await expect(menu.getByTestId('ctx-item-layer.moveToDate')).toBeVisible();
   await expect(menu.getByTestId('menu-delete')).toBeVisible();
   await expect(menu.getByTestId('ctx-item-layer.rename')).toHaveCount(0);
   await expect(menu.getByTestId('ctx-item-layer.properties')).toHaveCount(0);
@@ -74,6 +74,7 @@ test('three marked rows share one menu: Hide and Move to date act on all three',
 
   // Move to date November files all three there and the list says so
   await row.click({ button: 'right' });
+  await win.getByTestId('ctx-item-layer.moveToDate').click();
   await win.getByTestId('move-to-nov').click();
   const manifest = async () =>
     (

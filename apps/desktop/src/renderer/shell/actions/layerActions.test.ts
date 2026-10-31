@@ -123,7 +123,7 @@ describe('dataset actions', () => {
     const move = items(['v'], { host: { ...NO_HOST, from: 'oct' } }).find(
       (i) => i.id === 'layer.moveToDate',
     );
-    expect(move?.present).toBe('inline');
+    expect(move?.present).toBe('submenu');
     // its own group: never glued to Rename above or Compare with another date below
     expect(move?.section).toBe('date');
     const order = items(['v']).map((i) => i.id);

@@ -193,6 +193,18 @@ describe('actions per kind', () => {
     ]);
   });
 
+  it('placing and lifting a dataset share the Position submenu; the rest stay at the top level', () => {
+    const fold = (target: MenuTarget) =>
+      actionsFor(target, ctx)
+        .filter((i) => i.fold === 'position')
+        .map((i) => i.id);
+    expect(fold(on('mesh'))).toEqual(
+      expect.arrayContaining(['mesh.georef', 'mesh.place', 'layer.dropToGround']),
+    );
+    expect(fold(on('mesh'))).not.toContain('engineering.create');
+    expect(fold(on('walk'))).toEqual(expect.arrayContaining(['walk.place', 'layer.dropToGround']));
+  });
+
   it('Create engineering model is offered for one source layer, not a vector layer or two layers', () => {
     const plain = {
       ...manifest,

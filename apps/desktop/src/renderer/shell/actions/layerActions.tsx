@@ -204,7 +204,8 @@ export function registerLayerActions(): () => void {
       section: 'date',
       targets: ['layers', 'group'],
       multi: true,
-      present: 'inline',
+      // a submenu, so a project with many dates does not grow the menu by one row a date
+      present: 'submenu',
       appliesTo: (target, ctx) => ctx.datesOn && everyLayer(target, ctx, editable),
       disabled: (_t, ctx) => readOnly(ctx),
       submenu: (_t, ctx): SubItem[] => {

@@ -96,6 +96,7 @@ export function actionsFor(target: MenuTarget, ctx: ActionCtx): ResolvedItem[] {
       present: a.submenu ? (a.present ?? 'submenu') : 'action',
       sub: a.submenu?.(target, ctx) ?? [],
       subTitle: a.submenuTitle?.(target, ctx) ?? null,
+      ...(a.fold ? { fold: a.fold } : {}),
       run: (sub) => {
         if (disabled !== false) return;
         const fail = (e: unknown) => {

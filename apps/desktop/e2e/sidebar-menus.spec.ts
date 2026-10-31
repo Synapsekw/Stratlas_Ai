@@ -162,7 +162,7 @@ test('a row: Rename persists, Properties shows its file, Hide hides', async ({
     for (const id of [
       'ctx-item-layer.zoomTo',
       'ctx-item-layer.rename',
-      'move-to-oct',
+      'ctx-item-layer.moveToDate',
       'ctx-item-layer.properties',
       'menu-delete',
     ])
@@ -208,7 +208,7 @@ test('a row of each kind in the change demo has its kind items', async ({ demoPr
   }
   let seen = 0;
   const extra: Record<string, string> = {
-    mesh: 'ctx-item-mesh.georef',
+    mesh: 'ctx-fold-position',
     pointcloud: 'ctx-item-cloud.settings',
     photos: 'ctx-item-photos.alignTo',
     video: 'ctx-item-video.calibrate',
@@ -229,6 +229,32 @@ test('a row of each kind in the change demo has its kind items', async ({ demoPr
     seen++;
   }
   expect(seen).toBeGreaterThan(2);
+});
+
+test('a model row gathers Position and File under into submenus', async ({
+  threeDateProject,
+  win,
+}) => {
+  await openThreeDates(win, threeDateProject.id);
+  await win.getByTestId('date-name-sep').click();
+  const row = win.getByTestId('tree-row-quad-sep');
+  await row.click({ button: 'right' });
+  const menu = win.getByTestId('move-menu');
+  // the placing items and the dates sit one step down, not as rows of the menu itself
+  await expect(menu.getByTestId('menu-place-model')).toHaveCount(0);
+  await expect(menu.getByTestId('move-to-oct')).toHaveCount(0);
+  await menu.getByTestId('ctx-fold-position').click();
+  await expect(menu.getByTestId('ctx-item-mesh.georef')).toBeVisible();
+  await expect(menu.getByTestId('menu-place-model')).toBeVisible();
+  await menu.getByTestId('ctx-back').click();
+  // by keyboard: Right opens File under, its current date marked
+  await menu.getByTestId('ctx-item-layer.moveToDate').focus();
+  await win.keyboard.press('ArrowRight');
+  await expect(menu.getByTestId('move-to-sep')).toHaveAttribute('aria-checked', 'true');
+  await expect(menu.getByTestId('move-to-oct')).toBeVisible();
+  await win.keyboard.press('Escape');
+  await win.keyboard.press('Escape');
+  await expect(menus(win)).toHaveCount(0);
 });
 
 test('a row menu fits the window, so every item can be reached', async ({

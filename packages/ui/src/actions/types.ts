@@ -138,11 +138,19 @@ export interface Action<T extends MenuTarget = MenuTarget> {
   submenuTitle?(t: T, ctx: ActionCtx): string;
   /** A kept test id (`menu-delete`); default `ctx-item-<id>`. */
   testId?: string;
+  /**
+   * Gathered with the other items of the same fold under one "Position >" entry when two or
+   * more of them apply; a lone one stays a plain item.
+   */
+  fold?: MenuFold;
   run(t: T, ctx: ActionCtx, sub?: string): void | Promise<void>;
   risk?: ToolRisk;
   input?: { safeParse(value: unknown): { success: boolean } };
   surfaces?: readonly ('menu' | 'palette' | 'agent')[];
 }
+
+/** A submenu several actions share ("Position >"). */
+export type MenuFold = 'position';
 
 export interface ResolvedItem {
   id: string;
@@ -156,6 +164,7 @@ export interface ResolvedItem {
   present: 'action' | 'submenu' | 'inline' | 'picks';
   sub: SubItem[];
   subTitle: string | null;
+  fold?: MenuFold;
   run(sub?: string): void;
 }
 

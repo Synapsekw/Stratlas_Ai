@@ -73,6 +73,8 @@ test.describe('Drop to ground for a walk', () => {
 
     const row = await walkRow(win);
     await row.click({ button: 'right' });
+    // a walk's Place and Drop to ground share the Position submenu
+    await win.getByTestId('ctx-fold-position').click();
     await win.getByTestId('menu-drop-to-ground').click();
     const text = win.getByTestId('drop-text');
     await expect(text).toHaveText(

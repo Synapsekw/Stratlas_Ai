@@ -209,6 +209,7 @@ export const enLayers = {
   'actions.layer.reveal': 'Reveal in folder',
   'actions.layer.properties': 'Properties...',
   'actions.layer.dropToGround': 'Drop to ground',
+  'actions.fold.position': 'Position',
   'actions.layer.deleteCount_one': 'Delete {count} dataset…',
   'actions.layer.deleteCount_other': 'Delete {count} datasets…',
   'actions.cloud.settings': 'Display settings...',

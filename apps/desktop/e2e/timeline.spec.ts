@@ -268,18 +268,21 @@ test.describe('survey date folders', () => {
     // the same move without dragging: the row's menu
     await every.getByTestId('tree-row-design').click({ button: 'right' });
     await expect(win.getByTestId('move-menu')).toBeVisible();
+    await win.getByTestId('ctx-item-layer.moveToDate').click();
     await expect(win.getByTestId('move-to-every')).toBeDisabled();
     await win.getByTestId('move-to-sep').click();
     await expand(win, 'sep');
     await expect(sep.getByTestId('tree-row-design')).toBeVisible();
     expect(await design()).toMatchObject({ capture: 'sep' });
     await sep.getByTestId('tree-row-design').click({ button: 'right' });
+    await win.getByTestId('ctx-item-layer.moveToDate').click();
     await win.getByTestId('move-to-every').click();
     await expect(every.getByTestId('tree-row-design')).toBeVisible();
     expect(await design()).not.toHaveProperty('capture');
 
     // "Quad 2024-09-04" names its date: it stays under 4 Sep, and the list says why
     await sep.getByTestId('tree-row-quad-sep').click({ button: 'right' });
+    await win.getByTestId('ctx-item-layer.moveToDate').click();
     await win.getByTestId('move-to-every').click();
     await expect(win.getByTestId('date-note')).toContainText('4 Sep 2024');
     await expect(sep.getByTestId('tree-row-quad-sep')).toBeVisible();
@@ -406,6 +409,7 @@ test.describe('survey date folders', () => {
     await header.click({ button: 'right' });
     const menu = win.getByTestId('move-menu');
     await expect(menu).toContainText('Maps and rasters · 2 datasets');
+    await menu.getByTestId('ctx-item-layer.moveToDate').click();
     await expect(menu.getByTestId('move-to-nov')).toBeDisabled();
     await menu.getByTestId('move-to-sep').click();
 
@@ -572,8 +576,11 @@ test.describe('survey date folders in the smallest window', () => {
     await row.scrollIntoViewIfNeeded();
     await row.click({ button: 'right' });
     await expect(win.getByTestId('move-menu')).toBeInViewport({ ratio: 1 });
+    await win.getByTestId('ctx-item-layer.moveToDate').click();
     for (const to of ['every', 'nov', 'oct', 'sep'])
       await expect(win.getByTestId(`move-to-${to}`)).toBeInViewport({ ratio: 1 });
+    // Escape leaves File under, a second closes the menu
+    await win.keyboard.press('Escape');
     await win.keyboard.press('Escape');
     await expect(win.getByTestId('move-menu')).toHaveCount(0);
   });

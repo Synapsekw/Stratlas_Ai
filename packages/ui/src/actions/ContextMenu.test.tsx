@@ -4,7 +4,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ContextMenu, placeMenu } from './ContextMenu';
+import { ContextMenu, foldItems, placeMenu } from './ContextMenu';
 import type { ResolvedItem } from './types';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -163,6 +163,44 @@ describe('ContextMenu', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('gathers two or more Position items under one Position submenu that runs each', () => {
+    const place = item('place', { section: 'edit', fold: 'position', testId: 'menu-place-model' });
+    const drop = item('drop', { section: 'edit', fold: 'position', disabled: 'Kit cloud.' });
+    const onClose = open([
+      item('rename', { section: 'edit' }),
+      place,
+      drop,
+      item('eng', { section: 'edit' }),
+    ]);
+    const order = [...(q('ctx-menu')?.querySelectorAll('[role="menuitem"]') ?? [])].map((e) =>
+      e.getAttribute('data-testid'),
+    );
+    expect(order).toEqual(['ctx-item-rename', 'ctx-fold-position', 'ctx-item-eng']);
+    expect(q('ctx-fold-position')?.getAttribute('aria-haspopup')).toBe('menu');
+    expect(q('ctx-fold-position')?.textContent).toContain('Position');
+    act(() => q('ctx-fold-position')?.click());
+    expect(q('ctx-item-drop')?.getAttribute('aria-disabled')).toBe('true');
+    act(() => q('menu-place-model')?.click());
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(place.run).toHaveBeenCalled();
+    expect(drop.run).not.toHaveBeenCalled();
+  });
+
+  it('a submenu of choices with a current one marks its items as radios', () => {
+    open([
+      item('file', {
+        present: 'submenu',
+        sub: [
+          { id: 'sep', label: 'Sep', testId: 'move-to-sep', checked: true },
+          { id: 'oct', label: 'Oct', testId: 'move-to-oct', checked: false },
+        ],
+      }),
+    ]);
+    act(() => q('ctx-item-file')?.click());
+    expect(q('move-to-sep')?.getAttribute('role')).toBe('menuitemradio');
+    expect(q('move-to-sep')?.getAttribute('aria-checked')).toBe('true');
+  });
+
   it('gives focus back to the invoker on close', async () => {
     const invoker = document.createElement('button');
     document.body.append(invoker);
@@ -178,6 +216,27 @@ describe('ContextMenu', () => {
     });
     expect(document.activeElement).toBe(invoker);
     invoker.remove();
+  });
+});
+
+describe('foldItems', () => {
+  const label = () => 'Position';
+  it('leaves a lone Position item where it is', () => {
+    const one = [item('a'), item('drop', { fold: 'position' })];
+    expect(foldItems(one, label).map((i) => i.id)).toEqual(['a', 'drop']);
+  });
+
+  it('greys the entry only when every item in it is greyed', () => {
+    const both = [
+      item('p', { fold: 'position', disabled: 'Read only.' }),
+      item('d', { fold: 'position', disabled: 'Read only.' }),
+    ];
+    expect(foldItems(both, label)[0]?.disabled).toBe('Read only.');
+    const some = [
+      item('p', { fold: 'position' }),
+      item('d', { fold: 'position', disabled: 'No.' }),
+    ];
+    expect(foldItems(some, label)[0]?.disabled).toBe(false);
   });
 });
 

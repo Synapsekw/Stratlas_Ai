@@ -282,6 +282,9 @@ describe('date folder menu: Compare with', () => {
 describe('dataset menu', () => {
   it('lists Every date and the dates newest first, the current one marked and off', () => {
     layers(['design'], EVERY_DATE);
+    // File under is a submenu: the dates show once it is open
+    expect(q('move-to-every')).toBeNull();
+    click('ctx-item-layer.moveToDate');
     const ids = [...document.body.querySelectorAll('[data-testid^="move-to-"]')].map((b) =>
       b.getAttribute('data-testid'),
     );
@@ -298,6 +301,7 @@ describe('dataset menu', () => {
   it('files the dataset under the picked date, or under none', () => {
     const moveLayers = vi.fn();
     const { onClose } = layers(['design'], 'oct', { hostExtra: { moveLayers } });
+    click('ctx-item-layer.moveToDate');
     click('move-to-sep');
     expect(moveLayers).toHaveBeenLastCalledWith(['design'], 'sep');
     click('move-to-every');
@@ -307,6 +311,7 @@ describe('dataset menu', () => {
 
   it('the current date is marked and off', () => {
     layers(['a'], 'sep');
+    click('ctx-item-layer.moveToDate');
     expect(q('move-to-sep')?.getAttribute('aria-checked')).toBe('true');
     expect(disabled('move-to-sep')).toBe(true);
   });
@@ -333,6 +338,7 @@ describe('dataset menu', () => {
         hostExtra: { moveLayers },
       },
     );
+    click('ctx-item-layer.moveToDate');
     click('move-to-oct');
     expect(moveLayers).toHaveBeenCalledWith(['a', 'b'], 'oct');
   });
@@ -341,9 +347,11 @@ describe('dataset menu', () => {
     layers(['design'], 'oct', { canEdit: false });
     expect(q('move-compare')).not.toBeNull();
     expect(disabled('move-to-sep')).toBe(false);
-    expect(disabled('ctx-item-layer.moveToDate')).toBe(false);
+    expect(disabled('ctx-item-layer.moveToDate')).toBe(true);
     act(() => root?.unmount());
     layers(['design'], 'oct');
+    expect(disabled('ctx-item-layer.moveToDate')).toBe(false);
+    click('ctx-item-layer.moveToDate');
     expect(q('move-to-sep')).not.toBeNull();
     expect(document.body.textContent).toContain('File under');
   });

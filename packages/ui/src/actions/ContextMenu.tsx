@@ -13,7 +13,7 @@ import { createPortal } from 'react-dom';
 import { arrowFocus, useFocusTrap } from '../focus';
 import { useT } from '../i18n';
 import { Icon } from '../icons/Icon';
-import { SECTION_ORDER, type ResolvedItem, type SubItem } from './types';
+import { SECTION_ORDER, type MenuFold, type ResolvedItem, type SubItem } from './types';
 
 export const MENU_WIDTH = 286;
 const TYPE_AHEAD_MS = 700;
@@ -32,6 +32,56 @@ export function placeMenu(x: number, y: number, w: number, h: number, vw: number
     top: Math.max(EDGE, Math.min(y, vh - used - EDGE)),
     maxHeight,
   };
+}
+
+/**
+ * The items with every fold that two or more of them share gathered into one submenu entry
+ * ("Position >") where the first of them stood; a fold with one item leaves it as it is. The
+ * entry keeps each item's test id, reason and run, so nothing becomes harder to reach than one
+ * more step.
+ */
+export function foldItems(
+  items: readonly ResolvedItem[],
+  label: (fold: MenuFold) => string,
+): ResolvedItem[] {
+  const members = new Map<MenuFold, ResolvedItem[]>();
+  for (const it of items)
+    if (it.fold && it.present === 'action')
+      members.set(it.fold, [...(members.get(it.fold) ?? []), it]);
+  const out: ResolvedItem[] = [];
+  for (const it of items) {
+    const group = it.fold && it.present === 'action' ? members.get(it.fold) : undefined;
+    if (!group || group.length < 2 || !it.fold) {
+      out.push(it);
+      continue;
+    }
+    if (group[0] !== it) continue;
+    const fold = it.fold;
+    const name = label(fold);
+    const shut = group.every((m) => m.disabled !== false);
+    out.push({
+      id: `fold.${fold}`,
+      label: name,
+      ...(it.icon ? { icon: it.icon } : {}),
+      section: it.section,
+      disabled: shut ? it.disabled : false,
+      shortcut: null,
+      testId: `ctx-fold-${fold}`,
+      present: 'submenu',
+      sub: group.map((m): SubItem => ({
+        id: m.id,
+        label: m.label,
+        disabled: m.disabled,
+        testId: m.testId,
+        ...(m.icon ? { icon: m.icon } : {}),
+      })),
+      subTitle: name,
+      run: (sub) => {
+        group.find((m) => m.id === sub)?.run();
+      },
+    });
+  }
+  return out;
 }
 
 export interface ContextMenuProps {
@@ -56,8 +106,9 @@ export interface ContextMenuProps {
  * the invoker on close.
  */
 export function ContextMenu(props: ContextMenuProps) {
-  const { items, onClose } = props;
+  const { onClose } = props;
   const t = useT();
+  const items = foldItems(props.items, (fold) => t(`actions.fold.${fold}`));
   const list = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<string | null>(props.initialSub ?? null);
   const [height, setHeight] = useState<number | null>(null);
@@ -198,6 +249,8 @@ export function ContextMenu(props: ContextMenuProps) {
     const open = view === null ? null : items.find((i) => i.id === view);
     if (open) {
       let group: string | undefined;
+      // a list of choices with a current one (File under: the date it is filed under)
+      const radio = open.sub.some((x) => x.checked !== undefined);
       return (
         <>
           {props.initialSub === undefined && (
@@ -227,9 +280,13 @@ export function ContextMenu(props: ContextMenuProps) {
               return (
                 <Fragment key={s.id}>
                   {head}
-                  {subButton(s, () => {
-                    run(open, s.id);
-                  })}
+                  {subButton(
+                    s,
+                    () => {
+                      run(open, s.id);
+                    },
+                    radio ? 'menuitemradio' : 'menuitem',
+                  )}
                 </Fragment>
               );
             })}

@@ -206,6 +206,7 @@ const actions: readonly Action[] = [
   // models
   defineAction({
     id: 'mesh.georef',
+    fold: 'position',
     label: 'actions.mesh.georef',
     section: 'edit',
     targets: ['layers'],
@@ -218,6 +219,7 @@ const actions: readonly Action[] = [
   }),
   defineAction({
     id: 'mesh.place',
+    fold: 'position',
     label: 'place.menu',
     icon: 'target',
     section: 'edit',
@@ -232,6 +234,7 @@ const actions: readonly Action[] = [
   }),
   defineAction({
     id: 'layer.dropToGround',
+    fold: 'position',
     label: 'actions.layer.dropToGround',
     icon: 'target',
     section: 'edit',
@@ -298,6 +301,7 @@ const actions: readonly Action[] = [
   }),
   defineAction({
     id: 'drawing.place',
+    fold: 'position',
     label: (tg, ctx) => {
       const l = only(tg, ctx);
       const provisional = l ? drawings.getState().placed[l.id]?.provisional === true : false;
@@ -392,6 +396,7 @@ const actions: readonly Action[] = [
   }),
   defineAction({
     id: 'walk.place',
+    fold: 'position',
     label: (tg, ctx) => {
       const w = oneOf(tg, ctx, 'walk');
       return t(w && walkPlaced(w) ? 'actions.walk.editPlacement' : 'actions.walk.place');

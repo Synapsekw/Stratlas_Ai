@@ -99,6 +99,7 @@ describe('Datasets: re-filing one dataset', () => {
   it('File under a date says so and offers Undo, which puts the date back', async () => {
     h.move.mockResolvedValue({ error: null, stays: {}, moved: [{ id: 'walk-b', capture: null }] });
     rightClick('tree-row-walk-b');
+    click('ctx-item-layer.moveToDate');
     click('move-to-c1');
     await flush();
     expect(h.move).toHaveBeenCalledWith(['walk-b'], 'c1');
