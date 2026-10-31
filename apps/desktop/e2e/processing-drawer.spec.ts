@@ -21,6 +21,7 @@ import {
   test,
 } from './fixtures';
 import { openInspect } from './inspect';
+import { BENCH_ONLY } from '../src/renderer/processing/pipelines';
 
 /** Screenshots for a person to look at: only with QUADRION_E2E_SHOTS set to a folder. */
 const SHOTS = process.env.QUADRION_E2E_SHOTS;
@@ -260,11 +261,13 @@ test('Settings, Advanced holds every pipeline by area and every job on this comp
   const values = await pick
     .locator('option')
     .evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value));
-  // thermal.decode is started from the Thermal bench only (BENCH_ONLY in processing/pipelines.ts)
-  const benchOnly = new Set<string>(['thermal.decode']);
+  // Bench-only pipelines never show in Advanced; the set comes from the product (BENCH_ONLY), so
+  // a new one cannot break this spec. Today: thermal.decode and thermal.hotspots start from the
+  // Thermal bench only, and flyability.import needs an inspection selection only the import
+  // picker supplies, so starting it from Advanced could only fail validation.
   expect([...values].sort()).toEqual(
     PIPELINES.map((p) => p.name)
-      .filter((n) => !benchOnly.has(n))
+      .filter((n) => !BENCH_ONLY.has(n))
       .sort(),
   );
 
