@@ -65,6 +65,7 @@ const input = (over: Partial<ToolCtxInput> = {}): ToolCtxInput => ({
   dated: false,
   volumes: false,
   road: false,
+  flightlines: false,
   ...over,
 });
 

@@ -166,6 +166,7 @@ export const NO_DATA: PanelData = {
   dated: false,
   volumes: false,
   road: false,
+  flightlines: false,
 };
 
 export const EMPTY_CTX: ToolCtx = {

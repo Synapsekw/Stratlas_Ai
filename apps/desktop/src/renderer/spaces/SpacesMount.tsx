@@ -90,7 +90,7 @@ export function SpacesMount({ stage }: { stage: EngineStage | null }): null {
   // already in the map view when a space without a map comes on goes to 3D. A georeferenced space
   // has a map, so this never runs for it.
   useEffect(() => {
-    if (mapAvailable || stageMode !== 'map') return;
+    if (mapAvailable || stageMode === '3d') return;
     shell.getState().setStageMode('3d');
   }, [mapAvailable, stageMode]);
 

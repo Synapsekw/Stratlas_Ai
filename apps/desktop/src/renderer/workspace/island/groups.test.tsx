@@ -26,6 +26,7 @@ const DATA = {
   dated: true,
   volumes: true,
   road: false,
+  flightlines: false,
 };
 
 /** The registry's context: everything shown in 3D unless a test says otherwise. */

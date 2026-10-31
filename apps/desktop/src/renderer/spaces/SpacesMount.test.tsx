@@ -149,6 +149,18 @@ describe('SpacesMount', () => {
     expect(toastQueue().some((x) => x.id === 'fly-map-local')).toBe(false);
   });
 
+  it('a local space never stays on the split view, even when it is set later', () => {
+    open(withSpaces([photos('lm'), photos('la', 's-a')]));
+    setActiveSpace('p1', 's-a');
+    shellStore.setState({ stageMode: 'split' });
+    mount(null);
+    expect(shellStore.getState().stageMode).toBe('3d');
+    act(() => {
+      shellStore.getState().setStageMode('split');
+    });
+    expect(shellStore.getState().stageMode).toBe('3d');
+  });
+
   it('a project in a crs the map cannot project stays on the map view', () => {
     for (const crs of [{ epsg: 2229 }, { wkt: 'PROJCS["Custom grid",GEOGCS["WGS 84"]]' }]) {
       open(ProjectManifest.parse({ ...base, crs, layers: [photos('l1')] }));

@@ -63,6 +63,7 @@ export interface ToolCtxInput extends Omit<ToolCtx, 'data' | 'stage' | 'compare'
   dated: boolean;
   volumes: boolean;
   road: boolean;
+  flightlines: boolean;
 }
 
 /** The context from what the project holds (pure): the manifest's layers, never its type. */
@@ -70,12 +71,13 @@ export function toolCtxOf(
   input: ToolCtxInput,
   extra: Pick<ToolCtx, 'stage' | 'compare'> = { stage: null, compare: null },
 ): ToolCtx {
-  const { manifest, dated, volumes, road, ...rest } = input;
+  const { manifest, dated, volumes, road, flightlines, ...rest } = input;
   const data: PanelData = {
     ...layerData(new Set(manifest.layers.map((l) => l.kind))),
     dated,
     volumes,
     road,
+    flightlines,
   };
   return { ...rest, data, ...extra };
 }
