@@ -42,4 +42,9 @@ export const enFlyability = {
   'fly.check.noHit': 'No point cloud was found at the recorded location.',
   'fly.check.unchecked': 'Location not checked yet.',
   'fly.check.moved': 'Moved by hand. The recorded location is no longer checked.',
+  'fly.display.width': 'Line width',
+  'fly.display.colour': 'Colour',
+  'fly.display.byFlight': 'By flight',
+  'fly.display.oneColour': 'One colour',
+  'fly.display.activeOnly': 'Show the selected flight only',
 } as const satisfies Record<string, string>;

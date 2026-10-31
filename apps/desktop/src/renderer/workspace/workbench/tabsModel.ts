@@ -198,6 +198,7 @@ export type SectionId =
   | 'layers.clouds'
   | 'layers.overlays'
   | 'layers.cutaway'
+  | 'layers.flightlines'
   | 'project.digest'
   | 'project.inThisProject'
   | 'project.volumes'
@@ -220,6 +221,8 @@ export interface PanelData {
   /** Piles or the stockpile kit's volumes. */
   volumes: boolean;
   road: boolean;
+  /** A flight line in the active space (a confined-space drone flight's path). */
+  flightlines: boolean;
 }
 
 export const NO_PANEL_DATA: PanelData = {
@@ -231,6 +234,7 @@ export const NO_PANEL_DATA: PanelData = {
   dated: false,
   volumes: false,
   road: false,
+  flightlines: false,
 };
 
 export interface SectionDef {
@@ -291,6 +295,13 @@ export const SECTIONS: readonly SectionDef[] = [
   { id: 'layers.clouds', label: 'wb.sec.clouds', body: 'clouds', needs: (d) => d.pointcloud },
   { id: 'layers.overlays', label: 'wb.sec.overlays', body: 'overlays', needs: (d) => d.surface },
   { id: 'layers.cutaway', label: 'wb.sec.cutaway', body: 'cutaway', needs: (d) => d.model3d },
+  // how the flight lines are drawn: next to the other display options, with any flight line
+  {
+    id: 'layers.flightlines',
+    label: 'wb.section.flightlines',
+    body: null,
+    needs: (d) => d.flightlines,
+  },
   // what is worth a look on the site now (intelligence review I2): with two survey dates or more
   { id: 'project.digest', label: 'wb.sec.digest', body: null, needs: (d) => d.dated },
   { id: 'project.inThisProject', label: 'wb.sec.inThisProject', body: null },

@@ -3,9 +3,11 @@ import { layersOfSpace, spacesOf } from '@aio/schema';
 import { t, toast } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
+import { useFlightlineDisplay } from '../flyability/flightlineDisplay';
 import {
   clearFlightlines,
-  flightlineColour,
+  displayColour,
+  linesToDraw,
   loadFlightline,
   type FlightlineLayer,
 } from '../flyability/flightlineModel';
@@ -112,6 +114,11 @@ export function SpacesMount({ stage }: { stage: EngineStage | null }): null {
       drawn.current = false;
     };
   }, [stage]);
+  const display = useFlightlineDisplay(projectId);
+  // the selected flight (a click on its line, or its row), for "selected flight only"
+  const activeId = useWorkspace((s) =>
+    s.selection === null ? null : s.selection.kind === 'layer' ? s.selection.id : null,
+  );
   // the active space's flight lines and whether each is switched off: the draw ignores the rest
   const lineKey = (manifest?.layers ?? [])
     .filter((l) => l.kind === 'flightline' && (l.space ?? 'main') === spaceId)
@@ -124,7 +131,7 @@ export function SpacesMount({ stage }: { stage: EngineStage | null }): null {
       (l): l is FlightlineLayer => l.kind === 'flightline' && (l.space ?? 'main') === spaceId,
     );
     const off = workspace.getState().hidden;
-    const shown = layers.filter((l) => !off[l.id]);
+    const shown = linesToDraw(layers, off, display, activeId);
     if (shown.length === 0) {
       if (drawn.current) v.set([]);
       drawn.current = false;
@@ -141,8 +148,9 @@ export function SpacesMount({ stage }: { stage: EngineStage | null }): null {
               {
                 id: l.id,
                 points,
-                colour: flightlineColour(l, layers.indexOf(l)),
+                colour: displayColour(l, layers.indexOf(l), display),
                 visible: true,
+                widthPx: display.widthPx,
               },
             ]
           : [],
@@ -154,7 +162,7 @@ export function SpacesMount({ stage }: { stage: EngineStage | null }): null {
     return () => {
       live = false;
     };
-  }, [stage, manifest, projectId, spaceId, lineKey, theme]);
+  }, [stage, manifest, projectId, spaceId, lineKey, theme, display, activeId]);
 
   return null;
 }

@@ -1,5 +1,6 @@
 import type { Layer, Vec3 } from '@aio/schema';
 import { assetUrl, autoDateColour } from '@aio/workspace';
+import { ONE_COLOUR, type FlightlineDisplay } from './flightlineDisplay';
 
 /*
  * A flight line of a confined-space drone flight (data-conventions section 40): the drone's
@@ -32,6 +33,30 @@ export function flightlinePoints(samples: readonly { t: number; pos: Vec3 }[]): 
 /** The line's colour: the one set on the layer, else the survey-date palette by flight order. */
 export function flightlineColour(layer: Pick<FlightlineLayer, 'color'>, order: number): string {
   return layer.color ?? `var(--date-${String(autoDateColour(order))})`;
+}
+
+/** The line's colour under the display options: its own, or the one colour chosen for all. */
+export function displayColour(
+  layer: Pick<FlightlineLayer, 'color'>,
+  order: number,
+  display: Pick<FlightlineDisplay, 'colourMode'>,
+): string {
+  return display.colourMode === 'one' ? ONE_COLOUR : flightlineColour(layer, order);
+}
+
+/**
+ * The flight lines to draw: those not switched off, and with "selected flight only" on, just the
+ * selected one (all of them while none of the flights is selected).
+ */
+export function linesToDraw<T extends { id: string }>(
+  layers: readonly T[],
+  off: Readonly<Record<string, boolean | undefined>>,
+  display: Pick<FlightlineDisplay, 'activeOnly'>,
+  activeId: string | null,
+): T[] {
+  const shown = layers.filter((l) => !off[l.id]);
+  if (!display.activeOnly || activeId === null) return shown;
+  return layers.some((l) => l.id === activeId) ? shown.filter((l) => l.id === activeId) : shown;
 }
 
 const cache = new Map<string, { src: string; points: Float32Array }>();

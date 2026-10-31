@@ -20,6 +20,8 @@ export interface FlightlineDraw {
   points: Float32Array;
   colour: string;
   visible: boolean;
+  /** Screen px; the default width when absent. */
+  widthPx?: number;
 }
 export interface FlightlineView {
   set(lines: readonly FlightlineDraw[]): void;
@@ -65,7 +67,7 @@ export function attachFlightlines(stage: EngineStage): FlightlineView {
         g.setPositions(l.points);
         const mat = new LineMaterial({
           color: hexOf(l.colour),
-          linewidth: FLIGHTLINE_PX,
+          linewidth: l.widthPx ?? FLIGHTLINE_PX,
           transparent: true,
           opacity: 0.95,
           depthTest: false,

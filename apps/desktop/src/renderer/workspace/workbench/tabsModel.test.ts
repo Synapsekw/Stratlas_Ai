@@ -333,6 +333,17 @@ describe('the four panel tabs (D2)', () => {
     expect(sectionsOf('tools', NO_PANEL_DATA).map((s) => s.id)).not.toContain('tools.coverage');
   });
 
+  it('the flight lines row shows only with flight lines', () => {
+    const layers = (d = NO_PANEL_DATA) => sectionsOf('layers', d).map((s) => s.id);
+    expect(layers()).not.toContain('layers.flightlines');
+    // after the display options, whatever the project type
+    expect(layers({ ...NO_PANEL_DATA, flightlines: true })).toEqual([
+      'layers.display',
+      'layers.flightlines',
+    ]);
+    expect(sectionDef('layers.flightlines')?.label).toBe('wb.section.flightlines');
+  });
+
   it('marks Coverage, Thermal, Volumes and Changes as wide (Expand panel), nothing else', () => {
     expect(SECTIONS.filter((s) => s.wide).map((s) => s.id)).toEqual([
       'tools.coverage',

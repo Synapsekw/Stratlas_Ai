@@ -6,6 +6,7 @@
 import { canCompare, useWorkspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { useIsRoad } from '../../road/useRoadMap';
+import { useActiveSpace } from '../../spaces/activeSpace';
 import { useCaptureIndex } from '../compare';
 import type { PanelData } from './tabsModel';
 import { useHasVolumeMeasurements, useKitVolumes } from './view';
@@ -13,7 +14,7 @@ import { useHasVolumeMeasurements, useKitVolumes } from './view';
 /** The layer kinds a project holds (pure). */
 export function layerData(
   kinds: ReadonlySet<string>,
-): Omit<PanelData, 'dated' | 'volumes' | 'road'> {
+): Omit<PanelData, 'dated' | 'volumes' | 'road' | 'flightlines'> {
   const pointcloud = kinds.has('pointcloud');
   const model3d = pointcloud || kinds.has('mesh');
   return {
@@ -34,13 +35,21 @@ export function usePanelData(): PanelData {
   const kit = useKitVolumes();
   const piles = useHasVolumeMeasurements();
   const road = useIsRoad();
+  const { spaceId } = useActiveSpace();
+  // any flight line in the active space, whatever the project type
+  const flightlines = useWorkspace((s) =>
+    (s.project?.manifest.layers ?? []).some(
+      (l) => l.kind === 'flightline' && (l.space ?? 'main') === spaceId,
+    ),
+  );
   return useMemo(
     () => ({
       ...layerData(new Set(kindsKey.split(','))),
       dated,
       volumes: kit || piles,
       road,
+      flightlines,
     }),
-    [kindsKey, dated, kit, piles, road],
+    [kindsKey, dated, kit, piles, road, flightlines],
   );
 }
