@@ -6,7 +6,7 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { PIPELINE_ENV, expect, hasPipelinePython, processingChip, test } from './fixtures';
-import { measureControl } from './island';
+import { measureControl, measureSection } from './island';
 import { openSection } from './panel';
 import { writeTelecomTower } from './telecomFixtures';
 
@@ -349,10 +349,8 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   await control.getByRole('button', { name: 'All' }).click();
   await expect(pins).toHaveCount(7);
 
-  // the inventory's CSV export sits next to Export survey data, in Site data
-  const site = win.getByTestId('wb-section-siteData');
-  const siteHead = site.locator('.wb-section-head');
-  if ((await siteHead.getAttribute('aria-expanded')) !== 'true') await siteHead.click();
+  // the inventory's CSV export sits next to Export survey data, in Site data (Tools > Measure)
+  const site = await measureSection(win, 'siteData');
   const csvTool = site.getByRole('button', { name: 'Export antenna inventory (CSV)' });
   await expect(site.getByTestId('survey-export-open')).toBeVisible();
   await expect(csvTool).toBeVisible();
