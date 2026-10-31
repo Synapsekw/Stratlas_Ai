@@ -705,7 +705,11 @@ async function attempt(
   const started = Date.now();
   await knownState(win, c, home, selection);
   const before = await appState(win);
-  const start = { issueCount: before.issueCount, measurementCount: before.measurementCount };
+  const start = {
+    issueCount: before.issueCount,
+    measurementCount: before.measurementCount,
+    hidden: before.hidden,
+  };
   const turns = [{ ask: c.ask, expect: c.expect, gap: c.gap }, ...(c.then ?? [])];
   const verdicts: { why: string | null; gap?: string | null }[] = [];
   const traces: TurnTrace[] = [];

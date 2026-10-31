@@ -204,8 +204,8 @@ export function moreTankFarmCases(demo: DemoFacts): EvalCase[] {
     {
       ask: 'Hide all layers',
       expect: (s) =>
-        s.hidden.length === 0
-          ? `no layer is hidden (${list(s.steps.map((p) => `${p.name} ${p.status}`))})`
+        s.hidden.length <= (s.start.hidden?.length ?? 0)
+          ? `no more layers are hidden than before (${list(s.steps.map((p) => `${p.name} ${p.status}`))})`
           : ranAction(s, 'project.hideAll') || s.toolCalls.includes('run_action')
             ? null
             : `the layers were hidden without the menu action (${list(s.toolCalls)})`,
@@ -213,7 +213,9 @@ export function moreTankFarmCases(demo: DemoFacts): EvalCase[] {
         {
           ask: 'Show them again',
           expect: (s) =>
-            s.hidden.length > 0 ? `${String(s.hidden.length)} layers are still hidden` : null,
+            s.hidden.length > (s.start.hidden?.length ?? 0)
+              ? `${String(s.hidden.length - (s.start.hidden?.length ?? 0))} layers are still hidden`
+              : null,
         },
       ],
     },

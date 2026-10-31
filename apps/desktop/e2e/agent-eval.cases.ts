@@ -48,7 +48,7 @@ export interface EvalState {
   /** Ids of the layers hidden now. */
   hidden: string[];
   /** The counts as the conversation started, before its first request. */
-  start: { issueCount: number; measurementCount: number | null };
+  start: { issueCount: number; measurementCount: number | null; hidden?: string[] };
   /**
    * The tools that ran to the end in the last reply, in order. A step that failed or was rejected
    * is not here.
