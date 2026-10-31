@@ -235,3 +235,4 @@ export {
   type RereadOrientation,
   type RereadResult,
 } from './reread';
+export { findInspectorExport, scanInspectorExport } from './flyability/scan';
