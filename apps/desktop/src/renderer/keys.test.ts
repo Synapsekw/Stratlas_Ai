@@ -28,6 +28,11 @@ describe('Space for play and pause', () => {
     expect(spaceIsPlayPause(el('<div role="dialog"><button data-t>OK</button></div>'))).toBe(false);
     expect(isTyping(el('<select data-t></select>'))).toBe(true);
   });
+
+  it('leaves Space to every kind of menu item: plain, radio and checkbox', () => {
+    for (const role of ['menuitem', 'menuitemradio', 'menuitemcheckbox'])
+      expect(spaceIsPlayPause(el(`<button data-t role="${role}"></button>`))).toBe(false);
+  });
 });
 
 describe('isTypingTarget', () => {

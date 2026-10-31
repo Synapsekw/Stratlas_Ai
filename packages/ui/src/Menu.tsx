@@ -10,9 +10,9 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import { createPortal } from 'react-dom';
 import { Icon, type IconName } from './icons/Icon';
 import { Popover } from './Popover';
+import { PortalRoot } from './portal';
 import { shortcutHint, type ShortcutId } from './shortcuts';
 
 export interface MenuItem {
@@ -69,6 +69,10 @@ export interface MenuProps {
   title?: string;
   /** Drawn under the items, inside the menu (a note field an item asks for). */
   after?: ReactNode;
+  /** Always on the top layer, above drawers, toasts and dialogs (a right-click menu). */
+  layer?: 'top';
+  /** Where focus goes back when it closes or an item runs, when not to the opener. */
+  returnFocus?: () => HTMLElement | null;
 }
 
 /** A typed prefix is forgotten after this pause, so the next letter starts a new search. */
@@ -100,6 +104,8 @@ export function Menu({
   testId,
   title,
   after,
+  layer,
+  returnFocus,
 }: MenuProps): ReactElement | null {
   // the button that opens it says so, and says whether the menu is open
   useEffect(() => {
@@ -109,7 +115,15 @@ export function Menu({
     el.setAttribute('aria-expanded', String(open));
   }, [open, opener]);
   return (
-    <Popover open={open} onClose={onClose} opener={opener} anchor={anchor} className="menu-pop">
+    <Popover
+      open={open}
+      onClose={onClose}
+      opener={opener}
+      anchor={anchor}
+      className="menu-pop"
+      layer={layer}
+      returnFocus={returnFocus}
+    >
       {title !== undefined && (
         <div className="menu-title" aria-hidden="true">
           {title}
@@ -120,6 +134,7 @@ export function Menu({
         label={label}
         onClose={onClose}
         opener={opener}
+        returnFocus={returnFocus}
         testId={testId}
         root
       />
@@ -134,6 +149,8 @@ interface LevelProps {
   onClose: () => void;
   /** The menu's opener: focus goes back to it before a chosen item runs. */
   opener: RefObject<HTMLElement | null>;
+  /** Where focus goes back instead of the opener (a menu hung from a point). */
+  returnFocus?: (() => HTMLElement | null) | undefined;
   testId?: string | undefined;
   id?: string;
   /** In a submenu: close it and focus its item. */
@@ -155,6 +172,7 @@ function MenuLevel({
   label,
   onClose,
   opener,
+  returnFocus,
   testId,
   id,
   onBack,
@@ -211,6 +229,10 @@ function MenuLevel({
         e.preventDefault();
         e.stopPropagation();
       };
+      // Enter and Space press the item; they are the menu's, never a global shortcut's (Space
+      // plays the video), so they stop here and the button still gets its click
+      if ((e.key === 'Enter' || e.key === ' ') && all.includes(e.target as HTMLElement))
+        e.stopPropagation();
       if (e.key === 'ArrowDown') {
         used();
         go(at + 1);
@@ -313,7 +335,7 @@ function MenuLevel({
           }
           onClose();
           // focus back on the opener first, so a dialog the item opens returns focus there
-          opener.current?.focus();
+          (returnFocus ? returnFocus() : opener.current)?.focus();
           it.onSelect?.();
         }}
       >
@@ -378,6 +400,7 @@ function MenuLevel({
           label={openItem.label}
           onClose={onClose}
           opener={opener}
+          returnFocus={returnFocus}
           focusFirst={sub.focus}
           onBack={() => {
             const back = parentEl();
@@ -429,22 +452,38 @@ function SubMenu({ anchor, ...level }: SubMenuProps): ReactElement {
   );
 }
 
-export interface MenuAtProps extends Omit<MenuProps, 'open' | 'opener' | 'anchor'> {
+export interface MenuAtProps extends Omit<MenuProps, 'open' | 'opener' | 'anchor' | 'layer'> {
   /** Client pixels of the right-click it opens at. */
   x: number;
   y: number;
+  /**
+   * What was right-clicked: the menu wears its theme and surface (a dark map, a light panel).
+   * Default: the element under the point when the menu opens.
+   */
+  from?: Element | null;
 }
 
 /**
  * A `Menu` opened at a point (a right-click on the map, the 3D view or a list row) rather than
  * under a button: it hangs from an empty spot there, flips and scrolls to stay in the window, and
- * a press anywhere else closes it, also on a view that keeps its own pointer events. Focus goes
- * back to what had it before. Mount it to open it; `onClose` unmounts it.
+ * a press anywhere else closes it, also on a view that keeps its own pointer events. It sits on
+ * the top layer, above the drawer, toast or dialog it was opened from, in the theme and surface
+ * of what was right-clicked. Focus goes back to what had it before (a list row opened by the menu
+ * key), on Escape and when an item runs. Mount it to open it; `onClose` unmounts it.
  */
-export function MenuAt({ x, y, onClose, ...menu }: MenuAtProps): ReactElement {
+export function MenuAt({ x, y, from, onClose, ...menu }: MenuAtProps): ReactElement {
   // the spot is drawn first, so the menu can be placed from it: a ref callback, as state
   const [spotEl, setSpotEl] = useState<HTMLSpanElement | null>(null);
   const spot = useMemo(() => ({ current: spotEl }), [spotEl]);
+  // read once, when it opens: what had focus, and what is under the point
+  const [before] = useState(() => {
+    const el = document.activeElement;
+    return el instanceof HTMLElement && el !== document.body ? el : null;
+  });
+  // (a document without hit testing, as in tests, has nothing under the point)
+  const [source] = useState(
+    () => from ?? ('elementFromPoint' in document ? document.elementFromPoint(x, y) : null),
+  );
   const close = useRef(onClose);
   useLayoutEffect(() => {
     close.current = onClose;
@@ -472,16 +511,24 @@ export function MenuAt({ x, y, onClose, ...menu }: MenuAtProps): ReactElement {
   }, []);
   return (
     <>
-      {createPortal(
+      {/* the spot wears the source's surface attributes, so the menu placed from it does too */}
+      <PortalRoot opener={source}>
         <span
           ref={setSpotEl}
           className="menu-at"
           aria-hidden="true"
           style={{ position: 'fixed', left: x, top: y, width: 0, height: 0 }}
-        />,
-        document.body,
-      )}
-      <Menu {...menu} open={spotEl !== null} opener={spot} onClose={onClose} anchor="below" />
+        />
+      </PortalRoot>
+      <Menu
+        {...menu}
+        open={spotEl !== null}
+        opener={spot}
+        onClose={onClose}
+        anchor="below"
+        layer="top"
+        returnFocus={() => (before?.isConnected ? before : null)}
+      />
     </>
   );
 }

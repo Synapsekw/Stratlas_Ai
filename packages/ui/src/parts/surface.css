@@ -69,11 +69,13 @@
   display: grid;
   align-content: start;
 }
-.menu-list > .row[data-kind][aria-disabled='true'] {
+.menu-list > .row[data-kind][aria-disabled='true'],
+.menu-list > [role='group'] > .row[data-kind][aria-disabled='true'] {
   opacity: 0.45;
   cursor: default;
 }
-.menu-list > .row[data-kind][data-danger] {
+.menu-list > .row[data-kind][data-danger],
+.menu-list > [role='group'] > .row[data-kind][data-danger] {
   color: var(--s5);
 }
 .menu-lead {
@@ -112,7 +114,8 @@
   color: var(--fg-3);
 }
 /* an item with a second line: its name and when to use it */
-.menu-list > .row[data-kind][data-note] {
+.menu-list > .row[data-kind][data-note],
+.menu-list > [role='group'] > .row[data-kind][data-note] {
   height: auto;
   min-height: 30px;
   padding-block: var(--sp-2);

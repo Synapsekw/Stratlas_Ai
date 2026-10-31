@@ -29,6 +29,13 @@ export interface PopoverProps {
   /** A title row (at the title size) with a close button. */
   title?: ReactNode;
   footer?: ReactNode;
+  /**
+   * Always on the top layer (a right-click menu over a drawer, a toast or a dialog), not only when
+   * the opener sits in a floating panel or a dialog.
+   */
+  layer?: 'top' | undefined;
+  /** Where focus goes back on close, when not to the opener (a menu hung from a point). */
+  returnFocus?: (() => HTMLElement | null) | undefined;
   /** The close button's name; default "Close". */
   closeLabel?: string;
   children: ReactNode;
@@ -96,6 +103,8 @@ export function Popover({
   title,
   footer,
   closeLabel,
+  layer,
+  returnFocus,
   children,
 }: PopoverProps) {
   const t = useT();
@@ -111,7 +120,7 @@ export function Popover({
     onEscape: () => {
       close.current();
     },
-    returnTo: () => opener.current,
+    returnTo: () => (returnFocus ? returnFocus() : opener.current),
   });
   useEffect(() => {
     if (!open) return;
@@ -136,7 +145,7 @@ export function Popover({
       const own = box.getBoundingClientRect();
       // the content's own height: a box held to its room is shorter than what it holds
       const next = anchoredStyle(anchor, r, own.width, Math.max(own.height, box.scrollHeight));
-      const top = overPopLayer(opener.current);
+      const top = layer === 'top' || overPopLayer(opener.current);
       const key = `${JSON.stringify(next)}|${String(top)}`;
       if (key === placed.current) return;
       placed.current = key;

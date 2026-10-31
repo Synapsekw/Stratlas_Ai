@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, useRef, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { Dialog } from './Dialog';
 import { Menu, MenuAt, type MenuEntry, type MenuRow } from './Menu';
 
@@ -552,6 +552,92 @@ describe('Menu', () => {
         host.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
       });
       expect(onClose).toHaveBeenCalled();
+    });
+
+    /** A list row with focus right-clicks open a MenuAt; closing it unmounts it. */
+    function rowMenu(onSelect = vi.fn()) {
+      const row = document.createElement('button');
+      row.textContent = 'D0004';
+      const panel = document.createElement('div');
+      panel.setAttribute('data-surface', 'dark');
+      panel.append(row);
+      // beside the render host: React owns what is inside it
+      document.body.append(panel);
+      onTestFinished(() => {
+        panel.remove();
+      });
+      row.focus();
+      function H() {
+        const [open, setOpen] = useState(true);
+        return open ? (
+          <MenuAt
+            x={10}
+            y={20}
+            from={row}
+            label="Row"
+            testId="row-menu"
+            items={[
+              { id: 'a', label: 'Place on model', onSelect },
+              { id: 'b', label: 'Copy' },
+            ]}
+            onClose={() => {
+              setOpen(false);
+            }}
+          />
+        ) : null;
+      }
+      root = createRoot(host);
+      act(() => root?.render(<H />));
+      return { row, onSelect };
+    }
+    const flush = () =>
+      act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+    it('MenuAt gives focus back to what had it on Escape', async () => {
+      const { row } = rowMenu();
+      const first = rows()[0];
+      act(() => first?.focus());
+      expect(document.activeElement).toBe(first);
+      key(first ?? null, 'Escape');
+      await flush();
+      expect(document.querySelector('[data-testid="row-menu"]')).toBeNull();
+      expect(document.activeElement).toBe(row);
+    });
+
+    it('MenuAt gives focus back to what had it when an item runs', async () => {
+      const seen: (Element | null)[] = [];
+      const { row } = rowMenu(
+        vi.fn(() => {
+          seen.push(document.activeElement);
+        }),
+      );
+      act(() => rows()[0]?.click());
+      await flush();
+      expect(seen).toEqual([row]);
+      expect(document.activeElement).toBe(row);
+    });
+
+    it('MenuAt sits on the top layer in the surface of what was right-clicked', () => {
+      rowMenu();
+      const pop = document.body.querySelector('.menu-pop');
+      expect(pop?.parentElement?.getAttribute('data-layer')).toBe('top');
+      expect(pop?.parentElement?.getAttribute('data-surface')).toBe('dark');
+    });
+
+    it('Enter and Space on an item stay in the menu, never reaching a global shortcut', () => {
+      const global = vi.fn();
+      window.addEventListener('keydown', global);
+      try {
+        show(abc);
+        key(rows()[0] ?? null, ' ');
+        key(rows()[0] ?? null, 'Enter');
+        expect(global).not.toHaveBeenCalled();
+      } finally {
+        window.removeEventListener('keydown', global);
+      }
     });
   });
 });

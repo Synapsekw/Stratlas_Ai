@@ -27,9 +27,18 @@ export function spaceIsPlayPause(target: EventTarget | null): boolean {
   const role = target.getAttribute('role');
   if (
     role &&
-    ['treeitem', 'option', 'checkbox', 'radio', 'switch', 'menuitem', 'tab', 'slider'].includes(
-      role,
-    )
+    [
+      'treeitem',
+      'option',
+      'checkbox',
+      'radio',
+      'switch',
+      'menuitem',
+      'menuitemradio',
+      'menuitemcheckbox',
+      'tab',
+      'slider',
+    ].includes(role)
   )
     return false;
   return !(target instanceof HTMLInputElement);
