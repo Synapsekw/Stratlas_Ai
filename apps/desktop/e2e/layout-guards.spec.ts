@@ -22,14 +22,14 @@ const VIEW_READY = { timeout: 60_000 };
 const HAS_DEMOS = existsSync(join(DEMO_FOLDER, 'demo-tank-farm', 'manifest.json'));
 
 /**
- * The shell's own text: the project's name in the switcher and its customer above it, the
- * sidebar, the right panel's tabs. (Text only: an icon button's tip is absolutely placed inside
- * it and would read as cut.)
+ * The shell's own text: the project's name and its customer in the title bar's breadcrumb, the
+ * Layers column's rows, the right panel's tabs. (Text only: an icon button's tip is absolutely
+ * placed inside it and would read as cut; the rail's names are read out, never drawn.)
  */
 const SHELL_TEXT = [
-  '.proj-switch .pt > b',
-  '.proj-switch .pt > span',
-  '.nav-item .lbl',
+  '.proj-switch > b',
+  '.tb-crumb-customer',
+  '.sidebar .nav-item .lbl',
   '.ws > .right [id^="wb-tab-"]',
 ];
 
