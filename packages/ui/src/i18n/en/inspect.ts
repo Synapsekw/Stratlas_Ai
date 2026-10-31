@@ -67,6 +67,9 @@ export const enInspect = {
   'det.toIssues': 'Turn detections into issues',
   // Reports screen: the house report and its text
   'issues.register': 'Issue register',
+  'issues.filters': 'Filters',
+  'issues.filters.on': 'Filters ({n})',
+  'issues.filters.tip': 'The dataset and Mine filters',
   'reports.viewer.none':
     'No PDF report to read yet. Export the project report or the issue register to make one.',
   'reports.viewer.pick': 'Pick a report to read it here.',

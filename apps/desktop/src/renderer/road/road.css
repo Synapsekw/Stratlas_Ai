@@ -297,6 +297,11 @@
 .rr-type-pick {
   margin-inline-start: auto;
   max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  cursor: pointer;
 }
 .rr-chip {
   display: inline-flex;

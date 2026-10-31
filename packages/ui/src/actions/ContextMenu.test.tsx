@@ -238,6 +238,28 @@ describe('foldItems', () => {
     ];
     expect(foldItems(some, label)[0]?.disabled).toBe(false);
   });
+
+  it('a greyed entry says each distinct reason of its items once', () => {
+    const shut = [
+      item('p', { fold: 'position', disabled: 'Read only.' }),
+      item('d', { fold: 'position', disabled: 'Kit cloud.' }),
+      item('g', { fold: 'position', disabled: 'Read only.' }),
+    ];
+    expect(foldItems(shut, label)[0]?.disabled).toBe('Read only. Kit cloud.');
+  });
+
+  it('items of different sections join the first one, where it stood', () => {
+    const mixed = [
+      item('a', { section: 'view' }),
+      item('place', { section: 'edit', fold: 'position' }),
+      item('b', { section: 'edit' }),
+      item('drop', { section: 'danger', fold: 'position' }),
+    ];
+    const out = foldItems(mixed, label);
+    expect(out.map((i) => i.id)).toEqual(['a', 'fold.position', 'b']);
+    expect(out[1]?.section).toBe('edit');
+    expect(out[1]?.sub.map((s) => s.id)).toEqual(['place', 'drop']);
+  });
 });
 
 describe('placeMenu', () => {

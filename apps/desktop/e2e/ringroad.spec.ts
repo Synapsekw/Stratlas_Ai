@@ -98,15 +98,30 @@ test('@realdata the Ring Road opens in the native road workspace with its map ov
   await win.getByRole('group', { name: 'Severity' }).getByRole('button', { name: 'Low' }).click();
   await expect(win.getByTestId('defect-count')).toHaveText('29 of 2,115 defects');
   await win.getByRole('button', { name: 'Reset' }).click();
-  // the defect types in one list, not a wall of chips: one type, then Reset shows all again
+  // the defect types in one menu, not a wall of chips: two types on at once, then Reset
   await expect(win.locator('.rr-chips[aria-label="Defect type"]')).toHaveCount(0);
-  const type = win.getByRole('combobox', { name: 'Defect type' });
-  await expect(type).toHaveValue('');
-  await type.selectOption({ index: 1 });
-  await expect(win.getByTestId('defect-count')).not.toHaveText('2,115 of 2,115 defects');
-  await expect(win.getByTestId('defect-count')).toHaveText(/^[\d,]+ of 2,115 defects$/);
+  const type = win.getByTestId('defect-type');
+  await expect(type).toHaveText('All types');
+  const menu = win.getByTestId('defect-type-menu');
+  await type.click();
+  await menu.getByRole('menuitemcheckbox').nth(1).click();
+  await expect(win.getByTestId('defect-count')).not.toHaveText(/^2,115 of/);
+  const one = Number(
+    ((await win.getByTestId('defect-count').textContent()) ?? '').split(' ')[0]?.replace(/,/g, ''),
+  );
+  expect(one).toBeLessThan(2115);
+  await type.click();
+  await menu.getByRole('menuitemcheckbox').nth(2).click();
+  await expect(type).toHaveText('2 types');
+  const two = Number(
+    ((await win.getByTestId('defect-count').textContent()) ?? '').split(' ')[0]?.replace(/,/g, ''),
+  );
+  expect(two).toBeGreaterThan(one);
+  await type.click();
+  await expect(menu.getByRole('menuitemcheckbox', { checked: true })).toHaveCount(2);
+  await win.keyboard.press('Escape');
   await win.getByRole('button', { name: 'Reset' }).click();
-  await expect(type).toHaveValue('');
+  await expect(type).toHaveText('All types');
 
   // Dragging on the ruler filters a chainage range.
   const track = win.getByRole('slider', { name: 'Chainage, km' });

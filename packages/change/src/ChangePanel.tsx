@@ -390,6 +390,8 @@ export function ChangePanel({
                 type="button"
                 className="chg-btn primary chg-more"
                 data-testid="change-run-more"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
                 aria-label={t('change.runMore')}
                 title={areaRunWhy ?? t('change.runMore')}
                 disabled={!pair || !!s.area || producers.length === 0}

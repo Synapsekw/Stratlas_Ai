@@ -38,7 +38,7 @@ export function placeMenu(x: number, y: number, w: number, h: number, vw: number
  * The items with every fold that two or more of them share gathered into one submenu entry
  * ("Position >") where the first of them stood; a fold with one item leaves it as it is. The
  * entry keeps each item's test id, reason and run, so nothing becomes harder to reach than one
- * more step.
+ * more step. The entry sits in the first item's section, wherever the others were registered.
  */
 export function foldItems(
   items: readonly ResolvedItem[],
@@ -64,7 +64,12 @@ export function foldItems(
       label: name,
       ...(it.icon ? { icon: it.icon } : {}),
       section: it.section,
-      disabled: shut ? it.disabled : false,
+      // greyed only when nothing in it can run; then it says every distinct reason
+      disabled: shut
+        ? [...new Set(group.map((m) => m.disabled).filter((d): d is string => d !== false))].join(
+            ' ',
+          )
+        : false,
       shortcut: null,
       testId: `ctx-fold-${fold}`,
       present: 'submenu',

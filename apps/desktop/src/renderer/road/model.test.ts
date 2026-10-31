@@ -11,8 +11,8 @@ import {
   gridCellRing,
   isRoadProject,
   pciRating,
+  pickType,
   pointAtKm,
-  SEVERAL_TYPES,
   sortDefects,
   typeChoice,
   type DefectRow,
@@ -273,10 +273,21 @@ describe('defect rows', () => {
 });
 
 describe('typeChoice', () => {
-  it('the Defect type list shows all, the one type, or several picked elsewhere', () => {
-    expect(typeChoice(null)).toBe('');
-    expect(typeChoice(new Set())).toBe('');
-    expect(typeChoice(new Set(['pothole']))).toBe('pothole');
-    expect(typeChoice(new Set(['pothole', 'rutting']))).toBe(SEVERAL_TYPES);
+  it('the Defect type button names all, the one type, or how many', () => {
+    expect(typeChoice(null)).toEqual({ kind: 'all' });
+    expect(typeChoice(new Set())).toEqual({ kind: 'all' });
+    expect(typeChoice(new Set(['pothole']))).toEqual({ kind: 'one', id: 'pothole' });
+    expect(typeChoice(new Set(['pothole', 'rutting']))).toEqual({ kind: 'some', count: 2 });
+  });
+
+  it('two types can be on at once, and unticking the last shows all again', () => {
+    const all = ['pothole', 'rutting', 'patching'];
+    const one = pickType(null, 'pothole', all);
+    expect([...(one ?? [])]).toEqual(['pothole']);
+    const two = pickType(one, 'rutting', all);
+    expect([...(two ?? [])].sort()).toEqual(['pothole', 'rutting']);
+    expect(typeChoice(two)).toEqual({ kind: 'some', count: 2 });
+    expect(pickType(two, 'patching', all)).toBeNull();
+    expect(pickType(pickType(two, 'rutting', all), 'pothole', all)).toBeNull();
   });
 });

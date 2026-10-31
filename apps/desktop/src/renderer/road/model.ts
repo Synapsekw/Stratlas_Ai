@@ -315,12 +315,28 @@ export function chainageBins(
   return bins;
 }
 
-/** The Defect type list's value when more than one type is picked (from elsewhere). */
-export const SEVERAL_TYPES = '*several';
+/** What the Defect type button says for a class filter: all, the one type, or several. */
+export type TypeChoice =
+  { kind: 'all' } | { kind: 'one'; id: string } | { kind: 'some'; count: number };
 
-/** What the Defect type list shows for a class filter: all, the one type, or several. */
-export function typeChoice(classes: ReadonlySet<string> | null): string {
-  if (classes === null || classes.size === 0) return '';
-  if (classes.size === 1) return [...classes][0] ?? '';
-  return SEVERAL_TYPES;
+export function typeChoice(classes: ReadonlySet<string> | null): TypeChoice {
+  if (classes === null || classes.size === 0) return { kind: 'all' };
+  if (classes.size === 1) return { kind: 'one', id: [...classes][0] ?? '' };
+  return { kind: 'some', count: classes.size };
+}
+
+/**
+ * The class filter after a type is ticked or unticked in the Defect type menu. From all types a
+ * tick shows only that type; after that each tick adds or removes one, and none or every type
+ * left means no filter.
+ */
+export function pickType(
+  classes: ReadonlySet<string> | null,
+  id: string,
+  all: readonly string[],
+): Set<string> | null {
+  const next = new Set(classes ?? []);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return next.size === 0 || next.size === all.length ? null : next;
 }

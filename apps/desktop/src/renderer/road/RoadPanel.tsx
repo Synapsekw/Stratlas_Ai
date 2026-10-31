@@ -1,4 +1,4 @@
-import { t } from '@aio/ui';
+import { Icon, Menu, t, type MenuEntry } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { IssueCard } from '../issueCard/IssueCard';
@@ -8,7 +8,7 @@ import { bridge, useShell } from '../shell';
 import {
   defectsCsv,
   pciRating,
-  SEVERAL_TYPES,
+  pickType,
   typeChoice,
   type DefectRow,
   type DefectSort,
@@ -203,6 +203,76 @@ function ExportCsv({ rows, filtered }: { rows: readonly DefectRow[]; filtered: b
   );
 }
 
+/** The Defect type button: a menu of the types, any number of them ticked at once. */
+function TypePicker({
+  classes,
+  picked,
+}: {
+  classes: readonly { id: string; label: string; color: string }[];
+  picked: ReadonlySet<string> | null;
+}) {
+  const opener = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const all = classes.map((c) => c.id);
+  const choice = typeChoice(picked);
+  const label =
+    choice.kind === 'all'
+      ? t('road.types.all')
+      : choice.kind === 'one'
+        ? (classes.find((c) => c.id === choice.id)?.label ?? choice.id)
+        : t('road.types.some', { n: nf.format(choice.count) });
+  const items: MenuEntry[] = [
+    {
+      id: '*all',
+      label: t('road.types.all'),
+      checked: picked === null,
+      testId: 'defect-type-all',
+      onSelect: () => {
+        setFilter({ classes: null });
+      },
+    },
+    'separator',
+    ...classes.map((c): MenuEntry => ({
+      id: c.id,
+      label: c.label,
+      checked: picked?.has(c.id) ?? false,
+      testId: `defect-type-${c.id}`,
+      onSelect: () => {
+        setFilter({ classes: pickType(picked, c.id, all) });
+      },
+    })),
+  ];
+  return (
+    <>
+      <button
+        ref={opener}
+        type="button"
+        className="rr-sort rr-type-pick"
+        data-testid="defect-type"
+        aria-label={`${t('road.types.label')}: ${label}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen((o) => !o);
+        }}
+      >
+        <span>{label}</span>
+        <Icon name="chev-d" size={12} />
+      </button>
+      <Menu
+        open={open}
+        onClose={() => {
+          setOpen(false);
+        }}
+        opener={opener}
+        label={t('road.types.label')}
+        items={items}
+        testId="defect-type-menu"
+      />
+    </>
+  );
+}
+
 function DefectFilters({ rows }: { rows: readonly DefectRow[] }) {
   const shown = rows.length;
   const filter = useRoad((s) => s.filter);
@@ -245,29 +315,8 @@ function DefectFilters({ rows }: { rows: readonly DefectRow[] }) {
             </button>
           ))}
         </div>
-        {/* the types in a list: a road can hold a dozen of them, too many for a wall of chips */}
-        <select
-          className="rr-sort rr-type-pick"
-          aria-label="Defect type"
-          value={typeChoice(filter.classes)}
-          onChange={(e) => {
-            const id = e.target.value;
-            if (id === SEVERAL_TYPES) return;
-            setFilter({ classes: id ? new Set([id]) : null });
-          }}
-        >
-          <option value="">All types</option>
-          {typeChoice(filter.classes) === SEVERAL_TYPES && (
-            <option value={SEVERAL_TYPES} disabled>
-              {nf.format(filter.classes?.size ?? 0)} types
-            </option>
-          )}
-          {classes.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.label}
-            </option>
-          ))}
-        </select>
+        {/* the types in a menu: a road can hold a dozen of them, too many for a wall of chips */}
+        <TypePicker classes={classes} picked={filter.classes} />
       </div>
       <div className="rr-count">
         <span data-testid="defect-count">

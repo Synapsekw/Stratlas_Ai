@@ -1,6 +1,6 @@
 import { MineFilter, useMineIssueIds } from '@aio/collab/ui';
 import type { Issue, IssueStatus } from '@aio/schema';
-import { Icon, shortcutHint } from '@aio/ui';
+import { Icon, shortcutHint, t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import {
   useCallback,
@@ -547,12 +547,12 @@ export function IssueRegister({
           data-testid="issue-filters"
           aria-expanded={moreFilters}
           aria-controls={moreFilters ? moreId : undefined}
-          title="The dataset and Mine filters"
+          title={t('issues.filters.tip')}
           onClick={() => {
             setMoreFilters((o) => !o);
           }}
         >
-          {hidden > 0 ? `Filters (${String(hidden)})` : 'Filters'}
+          {hidden > 0 ? t('issues.filters.on', { n: String(hidden) }) : t('issues.filters')}
         </button>
         <select
           className="ann-select"

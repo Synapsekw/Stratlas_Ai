@@ -3,6 +3,9 @@
  * Part of the `en` catalogue (see `../en.ts`). No em or en dashes.
  */
 export const enRoad = {
+  'road.types.label': 'Defect type',
+  'road.types.all': 'All types',
+  'road.types.some': '{n} types',
   // Road workspace before the road builder has run
   'road.setup.title': 'Road setup',
   'road.setup.text':
