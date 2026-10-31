@@ -532,7 +532,12 @@ function flyabilityFollowUp(
   if (path === undefined) return;
   if (asks.length > 1)
     toast(t('fly.picker.more', { count: asks.length - 1 }), { testId: 'flyability-more' });
-  void import('../flyability/pickerStore').then((m) => m.openInspectorPicker(path));
+  // the picker's chunk failing to load (or the picker failing to open) must not go unnoticed
+  void import('../flyability/pickerStore')
+    .then((m) => m.openInspectorPicker(path))
+    .catch(() => {
+      toast(t('fly.picker.scanFailed'), { tone: 'error', testId: 'flyability-picker-failed' });
+    });
 }
 
 /** Main imports the files (`importing` is set), then the drawing pages are drawn here. */

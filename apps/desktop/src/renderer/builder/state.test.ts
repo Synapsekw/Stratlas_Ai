@@ -819,6 +819,17 @@ describe('importFiles, Flyability Inspector exports', () => {
     ]);
   });
 
+  it('a picker that fails to open says so', async () => {
+    run('skipped');
+    openInspectorPicker.mockImplementationOnce(() => Promise.reject(new Error('chunk')));
+    await b().importFiles(['/drops/export']);
+    await vi.waitFor(() => {
+      expect(toastQueue().map((x) => x.message)).toContain(
+        'Could not open this folder as a Flyability Inspector export.',
+      );
+    });
+  });
+
   it('a choice goes to main with the import and opens no picker', async () => {
     run('skipped');
     const inspector = { inspections: [{ id: 'a' }] };
