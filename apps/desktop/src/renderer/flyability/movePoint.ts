@@ -12,6 +12,7 @@ import { createStore } from 'zustand';
 export const moveSession = createStore<{ issueId: string | null }>()(() => ({ issueId: null }));
 
 export function startMovePoint(issueId: string): void {
+  dismissToast('fly-move-hit');
   moveSession.setState({ issueId });
 }
 
@@ -20,7 +21,7 @@ export function cancelMovePoint(): void {
   dismissToast('fly-move-hit');
 }
 
-export type MoveResult = 'moved' | 'no-hit' | 'not-cloud';
+export type MoveResult = 'moved' | 'no-hit' | 'not-cloud' | 'no-issue';
 
 /** Undo the move only while it is still the editor's latest step (a later edit stays). */
 function undoIfLatest(label: string): void {
@@ -42,7 +43,7 @@ export function applyMovePoint(
   const issue = id === null ? undefined : ws.issues.find((i) => i.id === id);
   if (!manifest || !issue) {
     cancelMovePoint();
-    return 'no-hit';
+    return 'no-issue';
   }
   const miss = (result: MoveResult): MoveResult => {
     toast(t('fly.move.noHit'), { tone: 'warn', id: 'fly-move-hit', testId: 'fly-move-hit' });

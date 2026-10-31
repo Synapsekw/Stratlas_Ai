@@ -17,6 +17,7 @@ import { placement } from '../placement';
 import { MeasureUndoNotice } from '../survey/MeasureUndoNotice';
 import { PlaceOnModelNotice } from '../placement/PlaceOnModelNotice';
 import { ProcessingToolsNotice } from '../ProcessingToolsNotice';
+import { IssueMenuMount } from '../flyability/IssueMenuMount';
 import { SyncNotices } from '../team/SyncNotices';
 import { cancelExport, toasts } from './exports';
 import type { Toast as ExportToastState } from './exportModel';
@@ -149,6 +150,7 @@ export function Toasts() {
       <LineUpNotice />
       <PhotoPicksNotice />
       <MeasureUndoNotice />
+      <IssueMenuMount />
       <PlaceOnModelNotice store={placement} />
       <ProjectMapNotice />
       <FarContentNotice />

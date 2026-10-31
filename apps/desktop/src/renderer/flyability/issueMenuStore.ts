@@ -7,15 +7,13 @@ export interface IssueMenuAt {
   clicked: string;
 }
 
-/** The issue register's right-click menu: where it opened (null closed) and how many mounts show it. */
-export const issueMenu = createStore<{ at: IssueMenuAt | null; mounted: number }>()(() => ({
-  at: null,
-  mounted: 0,
-}));
+/** The issue register's right-click menu: where it opened (null closed). `IssueMenuMount` shows it. */
+export const issueMenu = createStore<{ at: IssueMenuAt | null }>()(() => ({ at: null }));
 
-/** Open the menu for the right-clicked issues; false when nothing is mounted to show it. */
-export function openIssueMenu(at: IssueMenuAt): boolean {
-  if (issueMenu.getState().mounted === 0) return false;
+export function openIssueMenu(at: IssueMenuAt): void {
   issueMenu.setState({ at });
-  return true;
+}
+
+export function closeIssueMenu(): void {
+  issueMenu.setState({ at: null });
 }

@@ -100,12 +100,24 @@ describe('move point', () => {
   });
 
   it('undo from the toast puts the point back', () => {
-    applyMovePoint(hit, NOW);
+    applyMovePoint(hit, '2026-10-05T00:00:00.000Z');
+    expect(current()?.updatedAt).toBe('2026-10-05T00:00:00.000Z');
     const toast = toastQueue().find((x) => x.id === 'fly-move');
     expect(toast?.action?.testId).toBe('fly-move-undo');
     toast?.action?.run();
-    expect(pointOf()?.p).toEqual([1, 2, 3]);
-    expect(current()?.external?.locationCheck).toBe('disagrees');
+    expect(current()).toEqual(issue());
+  });
+
+  it('a missing issue is its own result', () => {
+    workspace.getState().closeProject();
+    expect(applyMovePoint(hit, NOW)).toBe('no-issue');
+  });
+
+  it('starting again clears a stale off-cloud notice', () => {
+    applyMovePoint(null, NOW);
+    expect(toastQueue().some((x) => x.id === 'fly-move-hit')).toBe(true);
+    startMovePoint('i1');
+    expect(toastQueue().some((x) => x.id === 'fly-move-hit')).toBe(false);
   });
 
   it('undo after a later edit does nothing', () => {

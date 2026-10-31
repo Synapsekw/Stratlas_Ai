@@ -1,6 +1,9 @@
 import { findingPoint } from '@aio/annotate';
+import { spaceOfIssue } from '@aio/schema';
 import { defineAction, registerActions, t, type Action } from '@aio/ui';
 import { workspace } from '@aio/workspace';
+import { shell } from '../../shell';
+import { setActiveSpace } from '../../spaces/activeSpace';
 import { startMovePoint } from '../../flyability/movePoint';
 import { offerPlacement } from '../../placement';
 import { editBlocked } from './reasons';
@@ -20,6 +23,7 @@ const actions: readonly Action[] = [
     section: 'edit',
     targets: ['issues'],
     multi: true,
+    testId: 'issue-place-on-model',
     disabled: (_tg, ctx) => editBlocked(ctx),
     run: (tg) => {
       offerPlacement(tg.ids, 'menu');
@@ -38,6 +42,13 @@ const actions: readonly Action[] = [
     },
     disabled: (_tg, ctx) => editBlocked(ctx),
     run: (tg) => {
+      // the pick needs the 3D view, showing the space the finding is in
+      const ws = workspace.getState();
+      const issue = clickedIssue(tg.clicked);
+      if (ws.project && issue) {
+        setActiveSpace(ws.project.id, spaceOfIssue(ws.project.manifest, issue));
+      }
+      shell.getState().go('scene');
       startMovePoint(tg.clicked);
     },
   }),

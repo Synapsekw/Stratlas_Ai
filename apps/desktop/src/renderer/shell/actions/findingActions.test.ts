@@ -5,7 +5,11 @@ import { workspace } from '@aio/workspace';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const place = vi.hoisted(() => vi.fn());
+const go = vi.hoisted(() => vi.fn());
+const space = vi.hoisted(() => vi.fn());
 vi.mock('../../placement', () => ({ offerPlacement: place }));
+vi.mock('../../shell', () => ({ shell: { getState: () => ({ go }) } }));
+vi.mock('../../spaces/activeSpace', () => ({ setActiveSpace: space }));
 
 const { registerFindingActions } = await import('./findingActions');
 const { moveSession, cancelMovePoint } = await import('../../flyability/movePoint');
@@ -77,7 +81,8 @@ describe('finding actions', () => {
 
   it('Move point is not offered on an issue without a cloud point or import', () => {
     expect(items('plain').some((i) => i.id === 'finding.movePoint')).toBe(false);
-    expect(items('plain').some((i) => i.id === 'issue.placeOnModel')).toBe(true);
+    const placeItem = items('plain').find((i) => i.id === 'issue.placeOnModel');
+    expect(placeItem?.testId).toBe('issue-place-on-model');
   });
 
   it('Move point starts a session and Place on model makes the offer', () => {
@@ -86,6 +91,8 @@ describe('finding actions', () => {
     const list = actionsFor(tg, ctx);
     list.find((i) => i.id === 'finding.movePoint')?.run();
     expect(moveSession.getState().issueId).toBe('pc');
+    expect(go).toHaveBeenCalledWith('scene');
+    expect(space).toHaveBeenCalledWith('p1', 'main');
     list.find((i) => i.id === 'issue.placeOnModel')?.run();
     expect(place).toHaveBeenCalledWith(['pc'], 'menu');
   });

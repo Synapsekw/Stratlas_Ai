@@ -71,9 +71,9 @@ export function startPlacement(): () => void {
     placeOnModel: (ids) => {
       offerPlacement(ids, 'menu');
     },
-    // the registry menu (Place on model, Move point) when a mount shows it; else the old offer
+    // the registry menu (Place on model, Move point), shown by the app-wide IssueMenuMount
     issueMenu: (at, ids, clicked) => {
-      if (!openIssueMenu({ ...at, ids: [...ids], clicked })) offerPlacement(ids, 'menu');
+      openIssueMenu({ ...at, ids: [...ids], clicked });
     },
   });
   const stopProject = followProject(placement, workspace);

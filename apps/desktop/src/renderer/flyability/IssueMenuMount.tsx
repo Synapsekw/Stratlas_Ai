@@ -1,13 +1,12 @@
 import { useAnnotateReadOnly } from '@aio/annotate';
 import { actionsFor, ContextMenu, makeActionCtx } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect } from 'react';
 import { useStore } from 'zustand';
 import { useShell } from '../shell';
 import { registerSidebarActions } from '../shell/actions';
 import { toastHost } from '../shell/actions/toastHost';
 import { timeline } from '../workspace/timeline';
-import { issueMenu } from './issueMenuStore';
+import { closeIssueMenu, issueMenu } from './issueMenuStore';
 
 /** The registered actions of the right-clicked issues (Place on model, Move point). */
 export function IssueMenuMount() {
@@ -17,12 +16,6 @@ export function IssueMenuMount() {
   const pkg = useShell((s) => s.pkg);
   const lookOnly = useAnnotateReadOnly();
   const code = useWorkspace((s) => s.issues.find((i) => i.id === at?.clicked)?.code);
-  useEffect(() => {
-    issueMenu.setState((s) => ({ mounted: s.mounted + 1 }));
-    return () => {
-      issueMenu.setState((s) => ({ mounted: s.mounted - 1, at: null }));
-    };
-  }, []);
   if (!at || !project || code === undefined) return null;
   registerSidebarActions();
   const items = actionsFor(
@@ -45,9 +38,7 @@ export function IssueMenuMount() {
       label={code}
       title={code}
       testId="issue-menu"
-      onClose={() => {
-        issueMenu.setState({ at: null });
-      }}
+      onClose={closeIssueMenu}
     />
   );
 }

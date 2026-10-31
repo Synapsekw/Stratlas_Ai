@@ -519,7 +519,7 @@ export function IssueCard({
             <FieldsList fields={issue.fields} />
           </div>
         )}
-        {issue.external && <LocationCheckRow issue={issue} />}
+        <LocationCheckRow issue={issue} />
         {facts.action && (
           <div className="ic-block">
             <h4>{t('card.action')}</h4>
