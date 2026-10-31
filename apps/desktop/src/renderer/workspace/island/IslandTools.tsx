@@ -33,7 +33,8 @@ export function IslandModes({ mode, ctx }: { mode: StageMode; ctx: ToolCtx }) {
           <Tip
             key={m.mode}
             content={reason ?? t(m.label)}
-            {...(reason ? {} : { shortcut: MODE_KEY[m.mode], repeatsName: true })}
+            repeatsName
+            {...(reason ? {} : { shortcut: MODE_KEY[m.mode] })}
           >
             <button
               type="button"

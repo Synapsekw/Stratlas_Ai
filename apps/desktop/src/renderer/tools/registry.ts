@@ -935,7 +935,7 @@ export const MODE_DEFS: Readonly<Record<IslandMode, IslandModeDef>> = {
     section: 'project.road',
     group: 'road',
     shows: (c) => c.data.road && c.tools !== '3d',
-    available: (c) => needs(c.mapAvailable, 'fly.map.local'),
+    available: () => OK,
   },
 };
 

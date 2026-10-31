@@ -12,6 +12,8 @@ import {
 } from '../flyability/flightlineModel';
 import { attachFlightlines, type FlightlineView } from '../flyability/flightlineScene';
 import { shell, useShell } from '../shell';
+import { DEFAULT_SPLIT, sidesOf } from '../workspace/splitModel';
+import { useStagePrefs } from '../workspace/stagePrefs';
 import { useActiveSpace } from './activeSpace';
 import { offSpaceLayers, scopeChange, type SpaceMemory } from './spaceModel';
 
@@ -86,13 +88,17 @@ export function SpacesMount({ stage }: { stage: EngineStage | null }): null {
     if (hide.length > 0) workspace.getState().applyVisibility([], hide);
   }, [manifest, hidden, spaceId]);
 
-  // (2) backstop for the greyed Map and Split (the island and the keys explain them): a stage
-  // already in the map view when a space without a map comes on goes to 3D. A georeferenced space
-  // has a map, so this never runs for it.
+  // (2) backstop for the greyed Map and Split (the island and the keys explain them): a stage in
+  // the map view, or in a split with a map pane, when a space without a map comes on goes to 3D.
+  // A split without the map (a photo or a comparison beside 3D) stays. A georeferenced space has
+  // a map, so this never runs for it.
+  const splitPref = useStagePrefs((s) => (projectId ? s.byProject[projectId]?.split : undefined));
+  const splitHasMap = sidesOf(splitPref ?? DEFAULT_SPLIT, 'map').length > 0;
   useEffect(() => {
-    if (mapAvailable || stageMode === '3d') return;
-    shell.getState().setStageMode('3d');
-  }, [mapAvailable, stageMode]);
+    if (mapAvailable) return;
+    if (stageMode === 'map' || (stageMode === 'split' && splitHasMap))
+      shell.getState().setStageMode('3d');
+  }, [mapAvailable, stageMode, splitHasMap]);
 
   // (3) flight lines of the active space; a project switch forgets what was loaded
   useEffect(() => {

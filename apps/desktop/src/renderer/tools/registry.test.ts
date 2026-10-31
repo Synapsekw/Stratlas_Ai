@@ -169,12 +169,10 @@ describe("the island's modes", () => {
     expect(stageModeAvailable('3d', local)).toBe(true);
     expect(stageModeAvailable('map', local)).toEqual({ reason: 'fly.map.local' });
     expect(stageModeAvailable('split', local)).toEqual({ reason: 'fly.map.local' });
-    expect(MODE_DEFS.road.available(local)).toEqual({ reason: 'fly.map.local' });
     // a georeferenced project keeps them
     const geo = toolCtxOf(input());
     expect(stageModeAvailable('map', geo)).toBe(true);
     expect(stageModeAvailable('split', geo)).toBe(true);
-    expect(MODE_DEFS.road.available(geo)).toBe(true);
   });
 
   it('a mode shows its top tools: favourites, then recent, those that start here first', () => {

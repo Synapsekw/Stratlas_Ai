@@ -53,6 +53,7 @@ vi.mock('../shell', () => ({
 const { SpacesMount } = await import('./SpacesMount');
 const { IssuesScreen } = await import('../screens/Issues');
 const { setActiveSpace } = await import('./activeSpace');
+const { stagePrefs } = await import('../workspace/stagePrefs');
 const { FLIGHTLINE_GROUP } = await import('../flyability/flightlineScene');
 
 const photos = (id: string, space?: string) => ({
@@ -149,16 +150,38 @@ describe('SpacesMount', () => {
     expect(toastQueue().some((x) => x.id === 'fly-map-local')).toBe(false);
   });
 
-  it('a local space never stays on the split view, even when it is set later', () => {
+  it('a local space never stays on a split that shows the map', () => {
     open(withSpaces([photos('lm'), photos('la', 's-a')]));
     setActiveSpace('p1', 's-a');
+    stagePrefs.getState().update('p1', { split: undefined });
     shellStore.setState({ stageMode: 'split' });
     mount(null);
     expect(shellStore.getState().stageMode).toBe('3d');
+    // a photo with the map beside it, set later
     act(() => {
+      stagePrefs.getState().update('p1', { split: { left: 'map', right: 'photo' } });
       shellStore.getState().setStageMode('split');
     });
     expect(shellStore.getState().stageMode).toBe('3d');
+  });
+
+  it('splits without the map survive in a local space', () => {
+    open(withSpaces([photos('lm'), photos('la', 's-a')]));
+    setActiveSpace('p1', 's-a');
+    mount(null);
+    for (const split of [
+      { left: '3d', right: 'photo' },
+      { left: 'pano', right: '3d' },
+      // a comparison of two dates
+      { left: '3d', right: '3d', leftCapture: 'c1', rightCapture: 'c2' },
+    ] as const) {
+      act(() => {
+        stagePrefs.getState().update('p1', { split });
+        shellStore.getState().setStageMode('split');
+      });
+      expect(shellStore.getState().stageMode).toBe('split');
+    }
+    stagePrefs.getState().update('p1', { split: undefined });
   });
 
   it('a project in a crs the map cannot project stays on the map view', () => {
