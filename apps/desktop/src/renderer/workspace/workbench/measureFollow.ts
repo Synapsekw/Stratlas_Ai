@@ -54,8 +54,8 @@ export function showMeasureBench(bench: StoreApi<WorkbenchState> = workbench): v
  * front unless an issue is being edited); stopping one that opened the tab closes it again. A
  * drawing for another panel (a one-shot shape, or one started from a survey panel's tab) leaves
  * that panel in front. Opening the measurements list, or picking a measurement while no tool
- * draws, brings the Measure tab forward (not a pile: `openPile` notes its pick, and the Volumes tab
- * shows it). Closing the live tab with its X stops the drawing
+ * draws, brings Selection forward with its card (not a pile: `openPile` notes its pick and opens it
+ * in Selection itself). Closing the live tab with its X stops the drawing
  * (`linkLiveTab`). Returns unsubscribe.
  */
 export function followMeasureTool(
@@ -65,7 +65,8 @@ export function followMeasureTool(
   let started = false;
   let focusAtStart: string | null = null;
   const follow = () => {
-    if (!isIssueEditing()) revealTab(BENCH, bench);
+    // a picked measurement opens in Selection (founder, 30 Oct), its row revealed in the list too
+    if (!isIssueEditing()) revealTab('selection', bench);
     // the Measurements group holds itself open and scrolls to the picked row
     const focus = measure.getState().focus;
     if (focus) revealInList('measurements', focus);

@@ -8,7 +8,8 @@ import { threeDates } from '../__fixtures__/threeDates';
 import { shell } from '../../shell';
 import type { LiveItem } from '../island/islandModel';
 import type * as LiveModule from '../island/useIslandLive';
-import { Drawer, drawerWidthPx } from './Drawer';
+import { Drawer } from './Drawer';
+import { panelBandOf, RIGHT_BANDS, rightSplitId } from './panelWidth';
 import { drawerStore } from './drawerStore';
 import { RightSidebar } from './RightSidebar';
 import { workbench } from './workbenchStore';
@@ -241,19 +242,25 @@ describe('Drawer', () => {
     }
   });
 
-  it("is as wide as the person's right panel, and at least the front tab's minimum (D17)", () => {
-    expect(drawerWidthPx(undefined, undefined)).toBe(360);
-    expect(drawerWidthPx(420, undefined)).toBe(420);
-    // a folded split's strip is no panel width
-    expect(drawerWidthPx(13, undefined)).toBe(360);
-    expect(drawerWidthPx(420, 470)).toBe(470);
+  it("is as wide as the person's right panel in the window's band, and widest while expanded", () => {
+    const band = panelBandOf(window.innerWidth);
     const before = splitPrefs.getState().byId;
-    splitPrefs.setState({ byId: { ...before, 'scene.right': { size: 420 } } });
+    splitPrefs.setState({ byId: { ...before, [rightSplitId(band)]: { size: 340 } } });
     try {
       render();
       startTool();
-      expect(drawer()?.style.getPropertyValue('--drawer-w')).toBe('420px');
+      expect(drawer()?.style.getPropertyValue('--drawer-w')).toBe('340px');
+      // "Expand panel" on a wide tool opens it at the band's widest
+      act(() => {
+        workbench.getState().expand(true);
+      });
+      expect(drawer()?.style.getPropertyValue('--drawer-w')).toBe(
+        `${String(RIGHT_BANDS[band].max)}px`,
+      );
     } finally {
+      act(() => {
+        workbench.getState().expand(false);
+      });
       splitPrefs.setState({ byId: before });
     }
   });

@@ -70,21 +70,23 @@ describe('isPile', () => {
 });
 
 describe('openPile', () => {
-  it('selects the pile and brings the Volumes tab, not Measure', () => {
+  it('selects the pile and brings the Selection tab, not Project > Volumes', () => {
+    // the person was on another tab
+    bench.getState().show('layers');
     openPile('pile1', bench);
     expect(measureStore.getState().focus).toBe('pile1');
     expect(measureStore.getState().selected).toEqual(['pile1']);
-    expect(bench.getState().front).toBe('volumes');
-    // the Project tab (id `measure`) is always there now, but it is not the one in front
-    expect(bench.getState().front).not.toBe('measure');
+    expect(bench.getState().front).toBe('selection');
+    expect(bench.getState().panel).toBe('selection');
     // the sidebar is open: the tab comes forward, no drawer pops
     expect(drawerStore.getState().opened).toBeNull();
   });
 
-  it('a folded sidebar brings the drawer out with the Volumes tab', () => {
+  it('a folded sidebar brings the drawer out with the Selection tab', () => {
     shellState.rightCollapsed = true;
+    bench.getState().show('layers');
     openPile('pile1', bench);
-    expect(bench.getState().front).toBe('volumes');
+    expect(bench.getState().panel).toBe('selection');
     expect(drawerStore.getState().opened).toBe('click');
   });
 
@@ -145,7 +147,7 @@ describe('openPile on a kit pile', () => {
     expect(v.state.selected).toBe('P01');
     expect(v.state.select).toHaveBeenCalledWith('P01', { fly: false });
     expect(measureStore.getState().focus).toBe('kit1');
-    expect(bench.getState().front).toBe('volumes');
+    expect(bench.getState().panel).toBe('selection');
   });
 
   it('leaves a kit pile already selected alone', () => {
@@ -164,15 +166,18 @@ describe('openPile on a kit pile', () => {
 });
 
 describe('openMeasurement (a sidebar row)', () => {
-  it('a pile row opens the pile in the Volumes tab', () => {
+  it('a pile row opens the pile in the Selection tab', () => {
+    bench.getState().show('project');
     openMeasurement('pile1', bench);
     expect(measureStore.getState().focus).toBe('pile1');
-    expect(bench.getState().front).toBe('volumes');
+    expect(bench.getState().panel).toBe('selection');
   });
 
-  it('a non-pile measurement still goes to Measure', () => {
+  it('a non-pile measurement is selected and shows in the Selection tab too', () => {
+    bench.getState().show('project');
     openMeasurement('line1', bench);
     expect(measureStore.getState().focus).toBe('line1');
-    expect(bench.getState().front).toBe('measure');
+    expect(measureStore.getState().selected).toEqual(['line1']);
+    expect(bench.getState().panel).toBe('selection');
   });
 });

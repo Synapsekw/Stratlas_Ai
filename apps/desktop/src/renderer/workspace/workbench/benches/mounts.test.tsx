@@ -73,6 +73,9 @@ const render = () => {
   });
 };
 const front = () => host.querySelector('[role="tabpanel"]');
+/** The open body of the section that shows an old tab id's bench. */
+const body = (id: string) =>
+  host.querySelector(`.wb-psec[data-body="${id}"][data-open="true"] .wb-psec-inner`);
 
 beforeEach(() => {
   localStorage.clear();
@@ -103,19 +106,19 @@ describe('the benches in the sidebar', () => {
     expect(front()?.querySelector('[data-testid="inventory"]')).not.toBeNull();
   });
 
-  it('shows the Road bench, with Collapse all, in the Road tab', () => {
+  it('shows the Road bench, with Collapse all, in Project > Road', () => {
     render();
     act(() => {
       workbench.getState().open('road');
     });
-    expect(front()?.getAttribute('data-front')).toBe('road');
-    expect(front()?.querySelector('[data-testid="road-bench"]')).not.toBeNull();
-    expect(front()?.querySelector('.wb-bench-head button')).not.toBeNull();
+    expect(front()?.getAttribute('data-front')).toBe('project');
+    expect(body('road')?.querySelector('[data-testid="road-bench"]')).not.toBeNull();
+    expect(body('road')?.querySelector('.wb-bench-head button')).not.toBeNull();
   });
 
   // (Video needs a project with flights, Environment and Cutaway the 3D stage, Clean up a cloud:
   // bench-scroll.spec.ts covers them in the app, on the layout itself)
-  it('makes every bench the scroller of its tab (the tab body does not scroll)', () => {
+  it('makes every bench the scroller of its section (the section body does not scroll)', () => {
     act(() => {
       jobs.setState({ jobs: [runningJob], logs: {} });
     });
@@ -124,8 +127,7 @@ describe('the benches in the sidebar', () => {
       act(() => {
         workbench.getState().open(id);
       });
-      expect(front()?.getAttribute('data-front')).toBe(id);
-      const benches = [...(front()?.children ?? [])].filter(
+      const benches = [...(body(id)?.children ?? [])].filter(
         (el) => !el.classList.contains('wb-bench-head'),
       );
       expect(
@@ -146,7 +148,8 @@ describe('the benches in the sidebar', () => {
     act(() => {
       annotateStage.getState().setTool('point');
     });
-    expect(front()?.getAttribute('data-front')).toBe('annotate');
+    expect(front()?.getAttribute('data-front')).toBe('tools');
+    expect(body('annotate')).not.toBeNull();
     // what picking an issue does: the card asks to come to the front (the sidebar's follow)
     act(() => {
       cardFocus.setState((s) => ({ seq: s.seq + 1, id: 'f01' }));
@@ -161,18 +164,21 @@ describe('the benches in the sidebar', () => {
     });
   });
 
-  it('shows Environment and Cutaway as panel tabs', () => {
+  it('shows Environment in Tools and Cutaway in Layers & display, open', () => {
     render();
     act(() => {
       workbench.getState().open('environment');
     });
-    expect(document.getElementById('wb-tab-environment')?.textContent).toContain('Environment');
-    expect(front()?.getAttribute('data-front')).toBe('environment');
+    expect(front()?.getAttribute('data-front')).toBe('tools');
+    const env = host.querySelector('[data-testid="panel-section-tools.environment"]');
+    expect(env?.textContent).toContain('Environment');
+    expect(env?.getAttribute('data-open')).toBe('true');
     act(() => {
       workbench.getState().open('cutaway');
     });
-    expect(front()?.getAttribute('data-front')).toBe('cutaway');
-    // an unpinned panel replaces the previous unpinned one
-    expect(document.getElementById('wb-tab-environment')).toBeNull();
+    expect(front()?.getAttribute('data-front')).toBe('layers');
+    expect(
+      host.querySelector('[data-testid="panel-section-layers.cutaway"]')?.getAttribute('data-open'),
+    ).toBe('true');
   });
 });

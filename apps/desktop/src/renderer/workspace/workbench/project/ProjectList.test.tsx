@@ -8,7 +8,6 @@ import { sectionStore } from '../sectionState';
 import { PROJECT_GROUPS, type ProjectGroupDef } from './groupRegistry';
 import type { GroupId } from './projectGroups';
 import { ProjectList } from './ProjectList';
-import { projectListStore, revealInList } from './projectListStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -82,27 +81,14 @@ afterEach(() => {
 });
 
 describe('ProjectList', () => {
-  it('shows the caption and the TOOLS caption', () => {
-    render();
-    expect(PROJECT_GROUPS.map((g) => g.id)).toContain('antennas');
-    expect(q('project-caption')?.textContent).toBe('In this project');
-    expect(q('project-caption')?.tagName).toBe('BUTTON');
-    expect(q('project-tools-caption')?.tagName).toBe('H3');
-    expect(q('project-tools-caption')?.textContent).toBe('Tools');
-  });
-
-  it('folds the whole list from the caption and remembers it', () => {
+  it('is the groups alone: Project > In this project is its header, no TOOLS caption', () => {
     render([issues]);
-    const caption = q('project-caption');
-    expect(caption?.getAttribute('aria-expanded')).toBe('true');
-    act(() => caption?.click());
-    expect(caption?.getAttribute('aria-expanded')).toBe('false');
-    expect(sectionStore.getState().byBench.measure?.ids['project-contents']).toBe(false);
-    expect(q('issues-body')?.closest('[inert]')).not.toBeNull();
-    // the TOOLS caption is not folded with it
-    expect(q('project-tools-caption')?.closest('[inert]')).toBeNull();
-    act(() => caption?.click());
-    expect(caption?.getAttribute('aria-expanded')).toBe('true');
+    expect(PROJECT_GROUPS.map((g) => g.id)).toContain('antennas');
+    expect(q('project-list')).not.toBeNull();
+    expect(q('wb-section-project-issues')).not.toBeNull();
+    expect(q('project-caption')).toBeNull();
+    expect(q('project-tools-caption')).toBeNull();
+    expect(host.textContent).not.toContain('In this project');
   });
 
   it('shows a registered group with count 0', () => {
@@ -119,22 +105,6 @@ describe('ProjectList', () => {
     expect(head?.getAttribute('aria-expanded')).toBe('true');
     // a group that does not apply to the project is left out
     expect(q('wb-section-project-sectors')).toBeNull();
-  });
-
-  it('a reveal holds a folded list open until its caption is clicked', () => {
-    render([issues]);
-    const caption = q('project-caption');
-    act(() => caption?.click());
-    expect(caption?.getAttribute('aria-expanded')).toBe('false');
-    act(() => {
-      revealInList('issues', null);
-    });
-    expect(caption?.getAttribute('aria-expanded')).toBe('true');
-    expect(sectionStore.getState().byBench.measure?.ids['project-contents']).toBe(false);
-    act(() => caption?.click());
-    expect(caption?.getAttribute('aria-expanded')).toBe('false');
-    expect(sectionStore.getState().byBench.measure?.ids['project-contents']).toBe(false);
-    projectListStore.setState({ reveal: null });
   });
 
   describe('order and default open', () => {

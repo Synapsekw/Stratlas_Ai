@@ -1,4 +1,4 @@
-import { Button, t, useT } from '@aio/ui';
+import { IconButton, t, useT } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { AGENT_DOCK_ID } from '../agent/AgentDock';
 import { AgentToggle } from '../agent/AgentToggle';
@@ -72,22 +72,22 @@ export function openAgent(): void {
   go();
 }
 
-/** The Scene's Agent button: the agent is in the right panel, so it takes the person there. */
+/**
+ * The Scene's Ask AI button, an icon button (D2: not a tab look-alike): the agent is in the right
+ * panel, so it takes the person there.
+ */
 function SceneAgentButton() {
   useT();
   const scene = useShell((s) => s.screen === 'scene');
   const folded = useShell((s) => s.rightCollapsed);
   if (!scene || folded) return null;
   return (
-    <Button
-      variant="quiet"
+    <IconButton
       icon="agent"
       data-testid="agent-open"
-      tip={t('island.askAgent')}
+      label={t('agent.dock.name')}
       onClick={focusSceneAgent}
-    >
-      {t('agent.dock.name')}
-    </Button>
+    />
   );
 }
 

@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 /* eslint-disable @typescript-eslint/no-non-null-assertion -- DOM lookups that fail the test when missing */
 /**
- * The antenna inventory in the real Project tab (the Measure workbench), with the runner the stage
- * mounts beside it: its Antennas group in the "In this project" list, its CSV tool next to Export
- * survey data, a tools search, the live strip, a 3D pick, and the AI send preview, a dialog under
- * <body> that a run opens whatever is on screen. The group's reveal hold is AntennasGroup.test's.
+ * The antenna inventory in the real right panel: Project > In this project (the list) beside Tools >
+ * Measure (the Measure workbench), with the runner the stage mounts beside them: its Antennas group
+ * in the list, its CSV tool next to Export survey data, a tools search, the live strip, a 3D pick,
+ * and the AI send preview, a dialog under <body> that a run opens whatever is on screen. The
+ * group's reveal hold is AntennasGroup.test's.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -19,9 +20,10 @@ import type * as StageToolsModule from '../workspace/StageTools';
 import { jobs, shell } from '../shell';
 import { measureStore, startTool, stopTool } from '../survey/measureStore';
 import { MeasureBench } from '../workspace/workbench/benches/MeasureBench';
+import { ProjectList } from '../workspace/workbench/project/ProjectList';
 import { AntennaRunner } from './AntennaRunner';
 import { sectionStore } from '../workspace/workbench/sectionState';
-import { workbench } from '../workspace/workbench/workbenchStore';
+import { workbench, type WorkbenchState } from '../workspace/workbench/workbenchStore';
 import {
   antennaStore,
   filteredUnits,
@@ -153,6 +155,20 @@ let runnerRoot: Root | undefined;
 let restore: (() => void)[] = [];
 let scrollSpy = vi.fn();
 
+/** Project > In this project and Tools > Measure, as the panel's two sections show them. */
+const Bench = () => (
+  <>
+    <ProjectList />
+    <MeasureBench />
+  </>
+);
+/** Project > In this project is in front, open. */
+const inThisProject = (s: WorkbenchState) => ({
+  panel: s.panel,
+  open: s.sections['project.inThisProject'],
+});
+const PROJECT_LIST = { panel: 'project', open: true };
+
 const flush = () =>
   act(async () => {
     for (let i = 0; i < 6; i++) await Promise.resolve();
@@ -166,7 +182,7 @@ async function mount(where: 'sidebar' | 'inert' | 'none' = 'sidebar') {
   root ??= createRoot(host);
   runnerRoot ??= createRoot(runnerHost);
   act(() => {
-    root?.render(where === 'none' ? null : <MeasureBench />);
+    root?.render(where === 'none' ? null : <Bench />);
     runnerRoot?.render(<AntennaRunner />);
   });
   await flush();
@@ -251,18 +267,15 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('the antenna inventory in the Measure workbench', () => {
+describe('the antenna inventory in Project > In this project', () => {
   it('is the Antennas group of the list, with its CSV tool next to Export survey data', async () => {
     await mount();
     expect(head()?.getAttribute('aria-expanded')).toBe('true');
     expect(head()?.textContent).toContain('Antennas');
-    // in the "In this project" list, above the TOOLS caption
+    // in the "In this project" list, not among the Measure tools
     const list = q('[data-testid="project-list"]')!;
     expect(list.contains(section())).toBe(true);
-    const tools = q('[data-testid="project-tools-caption"]')!;
-    expect(
-      section()!.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(section()?.closest('.meb')).toBeNull();
     // the review filter starts on the drafts; the All tab lists every unit
     expect(section()?.querySelectorAll('[data-testid="antenna-row"]')).toHaveLength(2);
     expect(q('[data-testid="antenna-filter-all"]')?.textContent).toBe('All 3');
@@ -394,7 +407,7 @@ describe('the antenna menu on a row', () => {
           .click();
       });
       await flush();
-      expect(workbench.getState().front).toBe('measure');
+      expect(inThisProject(workbench.getState())).toEqual(PROJECT_LIST);
       expect(document.activeElement).toBe(row.querySelector('[data-testid="antenna-row-az"]'));
     },
   );
@@ -448,12 +461,12 @@ describe('openAntennaReview (another tool asks for the review)', () => {
     act(() => {
       openAntennaReview();
     });
-    expect(workbench.getState().front).toBe('measure');
+    expect(inThisProject(workbench.getState())).toEqual(PROJECT_LIST);
     workbench.getState().show('selection');
     act(() => {
       openAntennaReview();
     });
-    expect(workbench.getState().front).toBe('measure');
+    expect(inThisProject(workbench.getState())).toEqual(PROJECT_LIST);
   });
 });
 

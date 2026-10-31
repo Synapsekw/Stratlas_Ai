@@ -10,6 +10,7 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { NetworkGuard } from './fixtures';
 import { expect, launchApp, test, tinyGlb, type DataRoot } from './fixtures';
+import { openBench } from './panel';
 import { pdfText } from './pdf';
 
 const PROJECT = 'e2e-audit';
@@ -108,11 +109,11 @@ async function start(data: DataRoot, network: NetworkGuard) {
 /** The issue card of F01 with its Edit part open (History sits at its end). */
 async function openF01(win: Page) {
   await win.locator('.sb-nav .nav-item', { hasText: 'Scene' }).click();
-  await win.getByRole('tab', { name: /Issues/ }).click();
   const card = win.getByTestId('issue-card');
-  await win.locator('.ann-list').getByText('F01').first().click();
-  // F01 may already be selected: its card is on the Selection tab
-  if (!(await card.isVisible())) await win.getByRole('tab', { name: 'Selection' }).click();
+  // Project > Issues: a row of the summary picks the issue and shows its card in Selection
+  const issues = await openBench(win, 'issues');
+  await issues.locator('.wb-issues-row').filter({ hasText: 'F01' }).first().click();
+  if (!(await card.isVisible())) await openBench(win, 'selection');
   await expect(card).toBeVisible();
   const edit = card.locator('details.ic-edit');
   if (!(await edit.evaluate((d) => (d as HTMLDetailsElement).open))) {

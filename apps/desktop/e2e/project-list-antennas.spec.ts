@@ -1,11 +1,11 @@
 /**
- * The Antennas group of the Project tab's "In this project" list in the real app: the list is
- * the first tab and holds the detected antennas with their azimuth and downtilt as fields, a
- * delete that stays deleted through a new detection run, the sector a unit sits in, a pick in
- * the 3D view, the right-click menu (the same on a unit in 3D and on its row), the bulk bar and
- * the island's Measure group. The inventory is the synthetic RF fixture (three accepted panels
- * and a draft, a tower cloud) except for the delete, which runs the real detection on the
- * synthetic tower, as `telecom-antennas.spec.ts` does.
+ * The Antennas group of the right panel's Project > In this project list in the real app: it
+ * holds the detected antennas with their azimuth and downtilt as fields, a delete that stays
+ * deleted through a new detection run, the sector a unit sits in, a pick in the 3D view, the
+ * right-click menu (the same on a unit in 3D and on its row), the bulk bar and the island's
+ * Measure group. The inventory is the synthetic RF fixture (three accepted panels and a draft, a
+ * tower cloud) except for the delete, which runs the real detection on the synthetic tower, as
+ * `telecom-antennas.spec.ts` does.
  */
 import type { EngineStage } from '@aio/engine';
 import {
@@ -17,8 +17,10 @@ import {
 import type { Locator, Page } from '@playwright/test';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { PanelTab } from '../src/renderer/workspace/workbench/tabsModel';
 import { PIPELINE_ENV, expect, hasPipelinePython, processingChip, test } from './fixtures';
 import { island, measureControl, openIslandTools } from './island';
+import { benchBody, expectBench, panelSection, panelTab } from './panel';
 import { readRfSectors, writeRfProject } from './rfFixtures';
 import { projectAntennas, writeTelecomTower } from './telecomFixtures';
 
@@ -40,7 +42,7 @@ async function evidence(win: Page, name: string, atTop = false): Promise<void> {
   if (!EVIDENCE) return;
   if (atTop)
     await win
-      .locator('.right .wb-scroll')
+      .locator('.right .wb-panel-scroll')
       .first()
       .evaluate((el) => (el.scrollTop = 0));
   // a beat and two frames: a fold or a dialog that was just opened has stopped moving
@@ -117,17 +119,19 @@ const menuLabels = (menu: Locator) => menu.getByRole('menuitem').allInnerTexts()
 
 test.describe('project list: the Antennas group', () => {
   test.describe('without the pipeline', () => {
-    test('finds the antennas in the Project tab and edits an azimuth in its row', async ({
+    test('finds the antennas in Project, In this project and edits an azimuth in its row', async ({
       win,
       dataRoot,
     }) => {
       const dir = dataRoot.projectDir;
       await writeRfProject(dir, { cloud: true });
       await openTiny(win);
-      // the Project tab is the first tab, and its list names what the project holds
-      await expect(win.locator('.right [role="tab"]').first()).toHaveText(/^Project/);
+      // the four tabs (D2), Selection first; Project's In this project names what the project holds
+      await expect(win.locator('.right [role="tab"]').first()).toHaveText(/^Selection/);
       const group = await projectAntennas(win);
-      await expect(win.getByTestId('project-caption')).toContainText('In this project');
+      await expect(
+        panelSection(win, 'project.inThisProject').locator(':scope > .wb-section-head'),
+      ).toContainText('In this project');
       await expect(group.locator('.wb-section-title')).toHaveText('Antennas');
       await expect(group.locator('.wb-section-count')).toHaveText('4');
       await evidence(win, 'a-project-tab', true);
@@ -195,14 +199,14 @@ test.describe('project list: the Antennas group', () => {
       await writeRfProject(dataRoot.projectDir, { cloud: true });
       await openTiny(win);
       await viewTower(win);
-      const tab = (id: string) => win.locator(`.right #wb-tab-${id}`);
+      const tab = (id: PanelTab) => panelTab(win, id);
       await expect(tab('selection')).toHaveAttribute('aria-selected', 'true');
 
       // a pick with Selection in front brings the Project tab forward, the unit's row open
       const p3 = await boxOnScreen(win, 'ant-p3');
       expect(p3.free, 'nothing but the 3D view lies on the box').toBe(true);
       await win.mouse.click(p3.x, p3.y);
-      await expect(tab('measure')).toHaveAttribute('aria-selected', 'true');
+      await expect(tab('project')).toHaveAttribute('aria-selected', 'true');
       const group = win.getByTestId('wb-section-project-antennas');
       await expect(rowOf(group, 'ant-p3')).toHaveAttribute('aria-selected', 'true');
       await expect(win.getByTestId('antenna-details')).toBeVisible();
@@ -212,7 +216,7 @@ test.describe('project list: the Antennas group', () => {
       await win.evaluate(() => {
         (window as unknown as Inspect).__stratlas.workbench.getState().open('rf');
       });
-      await expect(tab('rf')).toHaveAttribute('aria-selected', 'true');
+      await expectBench(win, 'rf');
       // the fly from the first pick must have settled: the box holds its place for two reads
       let last = '';
       await expect
@@ -237,9 +241,9 @@ test.describe('project list: the Antennas group', () => {
           ),
         )
         .toBe('ant-p1');
-      await expect(tab('rf')).toHaveAttribute('aria-selected', 'true');
+      await expectBench(win, 'rf');
       // the list updated behind it
-      await tab('measure').click();
+      await tab('project').click();
       await expect(rowOf(group, 'ant-p1')).toHaveAttribute('aria-selected', 'true');
       await expect(win.getByTestId('antenna-details')).toHaveCount(1);
     });
@@ -299,24 +303,22 @@ test.describe('project list: the Antennas group', () => {
       await expect(group.locator('.wb-section-count')).toHaveText('2');
     });
 
-    test('the notch Measure group opens Project with TOOLS at the top', async ({
-      win,
-      dataRoot,
-    }) => {
+    test('the notch Measure group opens Tools, Measure at the top', async ({ win, dataRoot }) => {
       await writeRfProject(dataRoot.projectDir, { cloud: true });
       await openTiny(win);
       const bar = await openIslandTools(win);
       await bar.getByRole('tab', { name: 'Measure', exact: true }).focus();
       await win.keyboard.press('Enter');
-      await expect(win.locator('.right #wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
+      await expectBench(win, 'measure');
       await expect(island(win)).not.toHaveAttribute('data-state', 'tools');
-      const caption = win.getByTestId('project-tools-caption');
+      const caption = panelSection(win, 'tools.measure').locator(':scope > .wb-section-head');
       await expect(caption).toBeVisible();
-      // the tools lead the view: their caption sits at the top of the scrolling bench
+      await expect(benchBody(win, 'measure').getByTestId('survey-tools')).toBeVisible();
+      // the tools lead the view: their section sits at the top of the tab's scroll box
       await expect
         .poll(() =>
           caption.evaluate((el) => {
-            const scroller = el.closest('.wb-scroll');
+            const scroller = el.closest('.wb-panel-scroll');
             return scroller
               ? Math.round(el.getBoundingClientRect().top - scroller.getBoundingClientRect().top)
               : 9999;

@@ -16,6 +16,9 @@ function memory(seed: Record<string, string> = {}) {
     setItem: (k: string, v: string) => {
       m.set(k, v);
     },
+    removeItem: (k: string) => {
+      m.delete(k);
+    },
   } as unknown as Storage;
 }
 const ids = (s: WorkbenchState) => s.tabs.map((t) => t.id);
@@ -57,15 +60,16 @@ describe('workbench store', () => {
     expect(store.getState().front).toBe('measure');
   });
 
-  it('ignores a remembered pin of measure', () => {
+  it('drops the old pins once and lands on the new home of the old front tab', () => {
     const storage = memory({
-      'quadrion.workbench': JSON.stringify({ pinned: ['measure', 'rf'] }),
+      'quadrion.workbench': JSON.stringify({ pinned: ['measure', 'rf'], front: 'display' }),
     });
     const s = createWorkbenchStore(storage).getState();
-    expect(s.tabs.filter((t) => t.id === 'measure')).toEqual([
-      { id: 'measure', live: false, pinned: false, fixed: true },
-    ]);
-    expect(s.tabs.find((t) => t.id === 'rf')?.pinned).toBe(true);
+    expect(ids(s)).not.toContain('rf');
+    expect(s.panel).toBe('layers');
+    expect(s.sections['layers.display']).toBe(true);
+    expect(storage.getItem('quadrion.workbench')).toBeNull();
+    expect(JSON.parse(storage.getItem('quadrion.panel') ?? '{}')).toMatchObject({ tab: 'layers' });
   });
 
   it('keeps Project in front after the tool that made it live stops', () => {
@@ -161,24 +165,13 @@ describe('workbench store', () => {
     expect(store.getState().front).toBe('jobs');
   });
 
-  it('pins persist per computer and close unpins', () => {
+  it('remembers the tab and its open sections per computer', () => {
     const storage = memory();
     const a = createWorkbenchStore(storage);
-    a.getState().open('display', { pinned: true });
-    const b = createWorkbenchStore(storage);
-    expect(b.getState().tabs.find((t) => t.id === 'display')?.pinned).toBe(true);
-    b.getState().close('display');
-    expect(ids(b.getState())).not.toContain('display');
-    expect(ids(createWorkbenchStore(storage).getState())).not.toContain('display');
-  });
-
-  it('drops a remembered pin of a tab that is gone (the old Measurements list)', () => {
-    const storage = memory({
-      'quadrion.workbench': JSON.stringify({ pinned: ['measurements', 'video', 7] }),
-    });
-    const tabs = ids(createWorkbenchStore(storage).getState());
-    expect(tabs).toContain('video');
-    expect(tabs).not.toContain('measurements');
+    a.getState().show('project', 'project.jobs');
+    const b = createWorkbenchStore(storage).getState();
+    expect(b.panel).toBe('project');
+    expect(b.sections['project.jobs']).toBe(true);
   });
 
   it('pin(id, on) toggles a panel pin', () => {
@@ -258,5 +251,55 @@ describe('workbench store', () => {
     expect(store.getState().front).toBe('selection');
     stop();
     workspace.setState({ project: null });
+  });
+
+  it('a tool brings its tab forward with its section open; a waiting one moves nothing', () => {
+    const store = createWorkbenchStore(memory());
+    store.getState().toolStarted('annotate');
+    expect(store.getState().panel).toBe('tools');
+    expect(store.getState().sections['tools.annotate']).toBe(true);
+    store.getState().show('selection');
+    beginIssueEdit('a');
+    store.getState().toolStarted('rf');
+    expect(store.getState().panel).toBe('selection');
+    expect(store.getState().attention).toBe('rf');
+  });
+
+  it('show(tab, section) opens the section and brings its body forward', () => {
+    const store = createWorkbenchStore(memory());
+    store.getState().show('layers', 'layers.cutaway');
+    expect(store.getState().panel).toBe('layers');
+    expect(store.getState().front).toBe('cutaway');
+    expect(store.getState().sections['layers.cutaway']).toBe(true);
+    // a tab alone keeps a front that is already one of its own
+    store.getState().show('layers');
+    expect(store.getState().front).toBe('cutaway');
+    store.getState().show('project', 'project.inThisProject');
+    expect(store.getState().panel).toBe('project');
+    expect(store.getState().front).toBe('issues');
+    expect(store.getState().sections['project.inThisProject']).toBe(true);
+  });
+
+  it('toggleSection opens and closes; opening brings the body forward', () => {
+    const store = createWorkbenchStore(memory());
+    store.getState().show('tools');
+    store.getState().toggleSection('tools.environment');
+    expect(store.getState().sections['tools.environment']).toBe(true);
+    expect(store.getState().front).toBe('environment');
+    store.getState().toggleSection('tools.environment');
+    expect(store.getState().sections['tools.environment']).toBe(false);
+    expect(store.getState().front).toBe('environment');
+  });
+
+  it('opening a tab or a section never changes the width: only Expand panel does', () => {
+    const store = createWorkbenchStore(memory());
+    store.getState().show('project', 'project.volumes');
+    store.getState().show('tools', 'tools.coverage');
+    store.getState().toolStarted('thermal');
+    expect(store.getState().expanded).toBe(false);
+    store.getState().expand(true);
+    expect(store.getState().expanded).toBe(true);
+    store.getState().reset();
+    expect(store.getState().expanded).toBe(false);
   });
 });

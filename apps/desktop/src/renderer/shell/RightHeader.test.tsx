@@ -51,9 +51,10 @@ afterEach(() => {
 });
 
 describe('RightHeader', () => {
-  it('has an Agent button on the Scene that takes the person to the agent', () => {
+  it('has an Ask AI icon button on the Scene that takes the person to the agent', () => {
     const agent = q('agent-open');
-    expect(agent?.textContent).toBe('Ask AI');
+    expect(agent?.getAttribute('aria-label')).toBe('Ask AI');
+    expect(agent?.textContent).toBe('');
     act(() => agent?.click());
     expect(document.activeElement).toBe(host.querySelector('.agent textarea'));
   });

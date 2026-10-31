@@ -3,7 +3,8 @@ import type { SurveyMeasurement } from '@aio/schema';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { WIDE_TAB_PX, workbench } from '../workbenchStore';
+import { sectionFor } from '../tabsModel';
+import { workbench } from '../workbenchStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -180,9 +181,9 @@ describe('VolumesBench', () => {
     expect(q('[role="group"][aria-label="Volume bodies"]')).toBeNull();
   });
 
-  it('is the fixed Volumes tab, which opens at least 470 px wide', () => {
+  it('is a fixed body, shown as Project > Volumes', () => {
     const tab = workbench.getState().tabs.find((t) => t.id === 'volumes');
-    expect(tab).toMatchObject({ fixed: true, minWidth: 470 });
-    expect(WIDE_TAB_PX).toBe(470);
+    expect(tab).toMatchObject({ fixed: true });
+    expect(sectionFor('volumes')).toEqual({ tab: 'project', section: 'project.volumes' });
   });
 });

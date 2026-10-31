@@ -9,6 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, PIPELINE_ENV, VENV_PYTHON, type DataRoot } from './fixtures';
+import { benchBody, expectBench } from './panel';
 
 export const FIXTURE = join(import.meta.dirname, 'engineering-fixture.py');
 export const PROJECT = { id: 'e2e-eng-flow', name: 'E2E engineering chimney' };
@@ -128,9 +129,9 @@ export async function startSetup(setup: Locator) {
 export async function openReview(win: Page) {
   if (!(await win.getByTestId('eng-model-review').isVisible()))
     await win.getByTestId('eng-review').click();
-  const bench = win.locator('#wb-panel-review').getByTestId('review-bench');
+  const bench = benchBody(win, 'review').getByTestId('review-bench');
   await expect(bench).toBeVisible();
-  await expect(win.locator('#wb-tab-review')).toHaveAttribute('aria-selected', 'true');
+  await expectBench(win, 'review');
   await expect(bench.getByTestId('eng-model-review')).toBeVisible();
   // Reviewing must leave a usable 3D view beside the tab, not an inspector over the model.
   const canvas = win.locator('[data-scene-view] canvas').first();

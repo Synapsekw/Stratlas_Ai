@@ -1,7 +1,8 @@
 /**
- * A pile opens in the Volumes tab wherever it is clicked: in 3D, on the Map, in the sidebar's
- * rows or the Inventory (spec section 3, "Opening it"). Every other measurement still brings the
- * Measure tab (`followMeasureTool`).
+ * A pile opens in the right panel's Selection tab wherever it is clicked: in 3D, on the Map, in
+ * the panel's rows or the Inventory (spec section 3, "Opening it"; founder, 30 Oct: a clicked pile
+ * opens in Selection, Project > Volumes keeps the full table). Every other measurement opens in
+ * Selection through `followMeasureTool`.
  */
 import type { SurveyMeasurement } from '@aio/schema';
 import { volumetric } from '@aio/volumetric';
@@ -27,8 +28,8 @@ export interface KitPileSelection {
 }
 
 /**
- * Open a pile: select it and bring the Volumes tab forward so its panel shows (unless an issue is
- * being edited, as the Measure tab waits then). With the sidebar folded the workbench drawer comes
+ * Open a pile: select it and bring Selection forward so its panel shows (unless an issue is being
+ * edited, as the Measure tab waits then). With the sidebar folded the workbench drawer comes
  * out with it, and a maximised agent steps back (`showBench`); an open sidebar only changes tab.
  * The pick is noted first so the Measure tab does not follow it.
  *
@@ -52,7 +53,7 @@ export function openPile(
 ): void {
   pickInVolumesView(id);
   select([id], id);
-  if (!isIssueEditing()) showBench('volumes', bench);
+  if (!isIssueEditing()) showBench('selection', bench);
   const origin = measureStore.getState().file.measurements.find((x) => x.id === id)?.origin;
   if (origin?.kind === 'kit-pile' && vol.getState().selected !== origin.pile)
     vol.getState().select(origin.pile, { fly: false });
@@ -60,7 +61,7 @@ export function openPile(
 }
 
 /**
- * A measurement row picked: a pile opens in the Volumes tab (and the camera frames it, `fly`),
+ * A measurement row picked: a pile opens in Selection (and the camera frames it, `fly`),
  * anything else is selected.
  */
 export function openMeasurement(

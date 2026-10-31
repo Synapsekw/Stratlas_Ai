@@ -37,6 +37,7 @@ import {
   test,
   VENV_PYTHON,
 } from './fixtures';
+import { expectBench } from './panel';
 
 test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
 /**
@@ -145,7 +146,8 @@ engTest('A: from a partial chimney cloud to an accepted model layer', async ({ e
     .poll(() =>
       review.getByTestId('component-card').evaluate((card) => {
         const box = card.getBoundingClientRect();
-        const scroller = card.closest('.wb-scroll');
+        // the tab's one scroll box (D2: a bench in a section sizes to its content)
+        const scroller = card.closest('.wb-panel-scroll');
         const viewport = scroller?.getBoundingClientRect();
         const body = scroller?.closest('[role="tabpanel"]')?.getBoundingClientRect();
         return (
@@ -159,7 +161,7 @@ engTest('A: from a partial chimney cloud to an accepted model layer', async ({ e
     )
     .toBe(true);
   await win.screenshot({ path: test.info().outputPath('review-1100.png') });
-  await expect(win.locator('#wb-tab-review')).toHaveAttribute('aria-selected', 'true');
+  await expectBench(win, 'review');
   await review.getByTestId('eng-view-overlay').click();
   await expect(review.getByTestId('eng-view-overlay')).toHaveAttribute('aria-pressed', 'true');
   await review.getByTestId('eng-view-model').click();

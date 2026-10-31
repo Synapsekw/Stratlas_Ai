@@ -254,14 +254,15 @@ describe('measurement pick in 3D', () => {
     expect(measureStore.getState().selected).toEqual([]);
   });
 
-  it('a click on a pile in 3D opens the Volumes tab, not Measure', () => {
+  it('a click on a pile in 3D opens it in Selection, not Measure', () => {
     expect(claim(leftClickAt(onPile))).toBe(true);
     expect(measureStore.getState().focus).toBe('v1');
     expect(measureStore.getState().reveal).toMatchObject({ id: 'v1', openSidebar: false });
-    expect(workbench.getState().front).toBe('volumes');
+    expect(workbench.getState().front).toBe('selection');
+    expect(workbench.getState().panel).toBe('selection');
   });
 
-  it('a non-pile measurement does not bring the Volumes tab', () => {
+  it('a non-pile measurement does not bring Project > Volumes', () => {
     expect(claim(leftClickAt(onShape))).toBe(true);
     expect(workbench.getState().front).not.toBe('volumes');
   });
@@ -373,10 +374,10 @@ describe('measurement pick on the map', () => {
     expect(measureStore.getState().focus).toBeNull();
   });
 
-  it('a click on a pile on the map opens the Volumes tab', () => {
+  it('a click on a pile on the map opens it in Selection', () => {
     mapLeftClick(onPile);
     expect(measureStore.getState().focus).toBe('v1');
-    expect(workbench.getState().front).toBe('volumes');
+    expect(workbench.getState().front).toBe('selection');
   });
 
   it('a photo pin, a map pick in progress or a measure tool keep the click', () => {

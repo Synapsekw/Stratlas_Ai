@@ -1,5 +1,7 @@
-// Pure model of the right-sidebar workbench tabs (stage island D11, D13-D15, D17).
-// No React, no DOM: the Tabs part renders what this decides.
+// Pure model of the right panel (UI revision D2): four fixed tabs, each a list of sections, and
+// under them the workbench's old tab ids (stage island D11, D13-D15), which still say which body
+// a tool brings forward. No React, no DOM: the panel renders what this decides.
+import type { MessageKey } from '@aio/ui';
 
 /** Every workbench tab, in no particular order (the row's order is decided below). */
 export const TAB_IDS = [
@@ -23,9 +25,9 @@ export const TAB_IDS = [
   // Road, Volumes and environment benches
   'environment',
   'cutaway',
-  // RF coverage bench (rf-coverage T9): a panel tab, at least 470 px wide (workbenchStore.ts, D20)
+  // RF coverage bench (rf-coverage T9): Tools > Coverage, with "Expand panel"
   'rf',
-  // Thermal bench (thermal analysis M1): a wide panel tab, the photo needs the room
+  // Thermal bench (thermal analysis M1): Tools > Thermal, with "Expand panel"
   'thermal',
 ] as const;
 
@@ -36,12 +38,16 @@ export function isTabId(x: unknown): x is TabId {
   return typeof x === 'string' && (TAB_IDS as readonly string[]).includes(x);
 }
 
+/**
+ * One of the old tab ids as the store keeps it: live while its tool runs, `pinned` while it stays
+ * shown when another tool panel opens (Coverage opened from its chip), `fixed` for the bodies that
+ * are always there. None of it is a tab on screen any more: the four panel tabs are.
+ */
 export interface Tab {
   id: TabId;
   live: boolean;
   pinned: boolean;
   fixed: boolean;
-  minWidth?: number;
 }
 
 export interface TabsState {
@@ -155,29 +161,258 @@ export function onToolStop(
   };
 }
 
-/**
- * The `overflowOrder` for the foundation `Tabs` part (higher value leaves first; Tabs never
- * drops the selected tab): fixed tabs leave first, then panels, then Selection and Project, live
- * tabs last. Within a group the later tab leaves first. Unknown ids get 0.
- */
-export function overflowOrderFor(state: Pick<TabsState, 'tabs'>): (id: TabId) => number {
-  const ordered = orderTabs(state.tabs);
-  const group = (t: Tab): number => {
-    if (t.live) return 0;
-    if (t.id === 'selection' || t.id === 'measure') return 1;
-    return t.fixed ? 3 : 2;
-  };
-  const order = new Map(ordered.map((t, index) => [t.id, group(t) * 100 + index]));
-  return (id) => order.get(id) ?? 0;
+// ---------------------------------------------------------------- the four tabs (D2)
+
+/** The right panel's tabs, in this order, always present: never pinned, closed or overflowed. */
+export const PANEL_TABS = ['selection', 'tools', 'layers', 'project'] as const;
+export type PanelTab = (typeof PANEL_TABS)[number];
+
+export function isPanelTab(x: unknown): x is PanelTab {
+  return typeof x === 'string' && (PANEL_TABS as readonly string[]).includes(x);
+}
+
+export const PANEL_TAB_LABEL: Readonly<Record<PanelTab, MessageKey>> = {
+  selection: 'wb.panel.selection',
+  tools: 'wb.panel.tools',
+  layers: 'wb.panel.layers',
+  project: 'wb.panel.project',
+};
+
+/** A section of a tab: `<tab>.<name>`. */
+export type SectionId =
+  | 'selection.selected'
+  | 'tools.measure'
+  | 'tools.annotate'
+  | 'tools.pointcloud'
+  | 'tools.terrain'
+  | 'tools.checks'
+  | 'tools.video'
+  | 'tools.engineering'
+  | 'tools.coverage'
+  | 'tools.thermal'
+  | 'tools.environment'
+  | 'layers.display'
+  | 'layers.clouds'
+  | 'layers.overlays'
+  | 'layers.cutaway'
+  | 'project.inThisProject'
+  | 'project.volumes'
+  | 'project.changes'
+  | 'project.issues'
+  | 'project.road'
+  | 'project.jobs';
+
+/** What the project holds, as far as the panel's sections care (never the project type). */
+export interface PanelData {
+  pointcloud: boolean;
+  /** A point cloud or mesh: a 3D model to review, cut or plan coverage on. */
+  model3d: boolean;
+  /** A point cloud, mesh or raster: a surface to measure terrain on. */
+  surface: boolean;
+  video: boolean;
+  photos: boolean;
+  /** Two or more survey dates to compare. */
+  dated: boolean;
+  /** Piles or the stockpile kit's volumes. */
+  volumes: boolean;
+  road: boolean;
+}
+
+export const NO_PANEL_DATA: PanelData = {
+  pointcloud: false,
+  model3d: false,
+  surface: false,
+  video: false,
+  photos: false,
+  dated: false,
+  volumes: false,
+  road: false,
+};
+
+export interface SectionDef {
+  id: SectionId;
+  label: MessageKey;
+  /** The old tab id whose body the section shows; null: a body of its own. */
+  body: TabId | null;
+  /**
+   * Shown when the project holds this data, or while its tool is open (its old tab is in the
+   * store); absent: always. Never decided by the project type.
+   */
+  needs?: (d: PanelData) => boolean;
+  /** A wide tool: its header offers "Expand panel". */
+  wide?: true;
+}
+
+/** Every section, in its tab's order (a preset may lead with some of them later, W13). */
+export const SECTIONS: readonly SectionDef[] = [
+  { id: 'selection.selected', label: 'wb.panel.selection', body: 'selection' },
+  { id: 'tools.measure', label: 'wb.sec.measure', body: 'measure' },
+  { id: 'tools.annotate', label: 'wb.sec.annotate', body: 'annotate' },
+  {
+    id: 'tools.pointcloud',
+    label: 'wb.sec.pointcloud',
+    body: 'cleanup',
+    needs: (d) => d.pointcloud,
+  },
+  { id: 'tools.terrain', label: 'wb.sec.terrain', body: 'hydro', needs: (d) => d.surface },
+  { id: 'tools.checks', label: 'wb.sec.checks', body: 'qa', needs: (d) => d.surface },
+  { id: 'tools.video', label: 'wb.sec.video', body: 'video', needs: (d) => d.video },
+  {
+    id: 'tools.engineering',
+    label: 'wb.sec.engineering',
+    body: 'review',
+    needs: (d) => d.model3d,
+  },
+  {
+    id: 'tools.coverage',
+    label: 'wb.sec.coverage',
+    body: 'rf',
+    needs: (d) => d.model3d,
+    wide: true,
+  },
+  {
+    id: 'tools.thermal',
+    label: 'wb.sec.thermal',
+    body: 'thermal',
+    needs: (d) => d.photos,
+    wide: true,
+  },
+  { id: 'tools.environment', label: 'wb.sec.environment', body: 'environment' },
+  { id: 'layers.display', label: 'wb.sec.display', body: 'display' },
+  { id: 'layers.clouds', label: 'wb.sec.clouds', body: 'clouds', needs: (d) => d.pointcloud },
+  { id: 'layers.overlays', label: 'wb.sec.overlays', body: 'overlays', needs: (d) => d.surface },
+  { id: 'layers.cutaway', label: 'wb.sec.cutaway', body: 'cutaway', needs: (d) => d.model3d },
+  { id: 'project.inThisProject', label: 'wb.sec.inThisProject', body: null },
+  { id: 'project.volumes', label: 'wb.sec.volumes', body: 'volumes', needs: (d) => d.volumes },
+  { id: 'project.changes', label: 'wb.sec.changes', body: 'changes', needs: (d) => d.dated },
+  { id: 'project.issues', label: 'wb.sec.issues', body: 'issues' },
+  { id: 'project.road', label: 'wb.sec.road', body: 'road', needs: (d) => d.road },
+  { id: 'project.jobs', label: 'wb.sec.jobs', body: 'jobs' },
+];
+
+/** The tab a section sits in. */
+export function tabOfSection(id: SectionId): PanelTab {
+  return id.slice(0, id.indexOf('.')) as PanelTab;
+}
+
+export function sectionDef(id: SectionId): SectionDef | undefined {
+  return SECTIONS.find((s) => s.id === id);
+}
+
+export function isSectionId(x: unknown): x is SectionId {
+  return typeof x === 'string' && SECTIONS.some((s) => s.id === x);
 }
 
 /**
- * Pane width: the preference raised to the front tab's minimum (D17), then clamped so the stage
- * keeps `stageMin`. `available` is the width shared by stage AND pane (not the room left for the
- * pane). A result below `front.minWidth` means the stage floor won: chrome (rail, margins) must
- * give way first, or the tab is shown cramped.
+ * Where each of the 20 old tab ids lives now (the D2 table). Measure splits: its "In this project"
+ * list is a Project section, its catalogue and live tool card are Tools > Measure, where the old id
+ * leads. Road's defect register and condition are Project > Road.
  */
-export function paneWidth(pref: number, front: Tab, stageMin: number, available: number): number {
-  const wanted = Math.max(pref, front.minWidth ?? 0);
-  return Math.max(0, Math.min(wanted, available - stageMin));
+const OLD_HOME: Readonly<Record<TabId, SectionId>> = {
+  selection: 'selection.selected',
+  measure: 'tools.measure',
+  annotate: 'tools.annotate',
+  volumes: 'project.volumes',
+  changes: 'project.changes',
+  issues: 'project.issues',
+  road: 'project.road',
+  jobs: 'project.jobs',
+  display: 'layers.display',
+  clouds: 'layers.clouds',
+  overlays: 'layers.overlays',
+  cutaway: 'layers.cutaway',
+  video: 'tools.video',
+  qa: 'tools.checks',
+  hydro: 'tools.terrain',
+  cleanup: 'tools.pointcloud',
+  review: 'tools.engineering',
+  environment: 'tools.environment',
+  rf: 'tools.coverage',
+  thermal: 'tools.thermal',
+};
+
+/** The tab and section an old tab id lives in now (pure, the D2 table). */
+export function sectionFor(old: TabId): { tab: PanelTab; section: SectionId } {
+  const section = OLD_HOME[old];
+  return { tab: tabOfSection(section), section };
+}
+
+/**
+ * The sections a tab shows: those whose data the project holds, and those whose tool is open (its
+ * old id in `opened`), in the tab's order.
+ */
+export function sectionsOf(
+  tab: PanelTab,
+  data: PanelData,
+  opened: ReadonlySet<TabId> = new Set(),
+): SectionDef[] {
+  return SECTIONS.filter(
+    (s) =>
+      tabOfSection(s.id) === tab &&
+      (s.needs === undefined || s.needs(data) || (s.body !== null && opened.has(s.body))),
+  );
+}
+
+/** The body a tab brings forward when it is picked and none of its own is in front. */
+export const TAB_FRONT: Readonly<Record<PanelTab, TabId>> = {
+  selection: 'selection',
+  tools: 'measure',
+  layers: 'display',
+  project: 'issues',
+};
+
+/** The sections open before the person chose (W13's presets decide this per project type). */
+export const DEFAULT_OPEN: readonly SectionId[] = [
+  'tools.measure',
+  'layers.display',
+  'project.inThisProject',
+  'project.issues',
+];
+
+export interface PanelPlace {
+  tab: PanelTab;
+  open: Partial<Record<SectionId, boolean>>;
+}
+
+const defaultPlace = (): PanelPlace => ({
+  tab: 'selection',
+  open: Object.fromEntries(DEFAULT_OPEN.map((id) => [id, true])),
+});
+
+function parseObject(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as unknown;
+    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What the panel opens on, from what this computer remembers: the new key (`quadrion.panel`), or
+ * once, the old workbench key (`quadrion.workbench`): its pins are dropped, and a front tab it
+ * names lands on that tab's new home, open. Anything unreadable gives Selection.
+ */
+export function readPanelPlace(panelJson: string | null, oldJson: string | null): PanelPlace {
+  const now = parseObject(panelJson);
+  const place = defaultPlace();
+  if (now) {
+    if (isPanelTab(now.tab)) place.tab = now.tab;
+    const open = now.open;
+    if (open && typeof open === 'object') {
+      place.open = {};
+      for (const [id, on] of Object.entries(open as Record<string, unknown>)) {
+        if (isSectionId(id) && typeof on === 'boolean') place.open[id] = on;
+      }
+    }
+    return place;
+  }
+  const old = parseObject(oldJson);
+  if (old && isTabId(old.front)) {
+    const home = sectionFor(old.front);
+    place.tab = home.tab;
+    place.open[home.section] = true;
+  }
+  return place;
 }

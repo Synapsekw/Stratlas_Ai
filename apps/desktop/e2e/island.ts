@@ -4,6 +4,7 @@
  */
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import type { TabId } from '../src/renderer/workspace/workbench/tabsModel';
+import { benchBody, openBench as openPanelBench } from './panel';
 
 /** The island's group tabs, by the short names it shows (`island.group.*`). */
 export type GroupId =
@@ -103,7 +104,8 @@ export async function toggleCompareDates(win: Page): Promise<void> {
  */
 export async function islandGroup(win: Page, g: GroupId): Promise<Locator> {
   if (g === 'view') return islandRow(win, 'view');
-  const bench = win.locator(`#wb-panel-${g}`);
+  // the group's section in the right panel (D2), open
+  const bench = benchBody(win, g);
   await pickGroupTab(win, g, bench);
   await unfoldAll(bench);
   return bench;
@@ -398,58 +400,10 @@ export function measureStrip(win: Page): Locator {
   return win.getByRole('group', { name: 'Measure tools', exact: true });
 }
 
-/** The workbench tabs' names (`wb.tab.*`); Issues and Volumes add a count after theirs. */
-const TAB_NAME: Record<TabId, string> = {
-  measure: 'Measure',
-  display: 'Display',
-  clouds: 'Point cloud',
-  volumes: 'Volumes',
-  video: 'Video',
-  road: 'Road',
-  annotate: 'Annotate',
-  jobs: 'Jobs',
-  selection: 'Selection',
-  issues: 'Issues',
-  changes: 'Changes',
-  qa: 'Survey QA',
-  overlays: 'Terrain overlays',
-  hydro: 'Hydrology',
-  cleanup: 'Point cloud cleanup',
-  environment: 'Environment',
-  cutaway: 'Cutaway',
-  rf: 'Coverage',
-  review: 'Model review',
-  thermal: 'Thermal',
-};
-
 /**
- * Bring a workbench tab that is open in the right sidebar to the front, and return its panel. A
- * tab that does not fit on the row sits in the row's "More tabs" menu (its element leaves the DOM:
- * `tab-changes` too), so it is picked there. The tabs are owned by the tablist through
- * `aria-owns`, so they are found by their ids, not inside the tablist. The sidebar is shown
- * first when it is folded.
+ * Bring the section an old workbench tab id lives in forward in the right panel (D2: its tab in
+ * front, the section open) and return its body (`panel.ts`).
  */
 export async function openBench(win: Page, id: TabId): Promise<Locator> {
-  const side = win.locator('.ws > .right');
-  if (await win.locator('.ws.right-off').count()) {
-    await win.locator('.stage-rp button').click();
-    await expect(win.locator('.ws.right-off')).toHaveCount(0);
-  }
-  const tab = side.locator(`#wb-tab-${id}`);
-  if (await tab.isVisible()) await tab.click();
-  else {
-    await side.getByRole('button', { name: 'More tabs', exact: true }).click();
-    // the item says the tab's name, then its count and Live ("Issues · 3"); a pinned tab is a
-    // checked item
-    const name = new RegExp(`^${TAB_NAME[id]}( · .*)?$`);
-    await win
-      .getByRole('menu', { name: 'More tabs' })
-      .locator('[role="menuitem"], [role="menuitemcheckbox"]')
-      .filter({ hasText: name })
-      .click();
-  }
-  await expect(side.locator(`#wb-tab-${id}`)).toHaveAttribute('aria-selected', 'true');
-  const panel = side.locator(`#wb-panel-${id}`);
-  await expect(panel).toBeVisible();
-  return panel;
+  return openPanelBench(win, id);
 }

@@ -14,7 +14,7 @@
   align-self: center;
 }
 /* the road's own panel fills the Selection tab instead of sizing itself (a road keeps 72%) */
-.ws .right .wb-body.ctx-wrap > .ctx-wrap.tall.rr-panel {
+.ws .right .wb-panel-scroll > .ctx-wrap.tall.rr-panel {
   flex: 1 1 auto;
   border-block-end: 0;
 }
@@ -44,6 +44,70 @@
   gap: var(--sp-3);
   padding-block: var(--sp-1);
   padding-inline: var(--sp-5);
+  color: var(--fg-2);
+  font-size: var(--t-12);
+}
+
+/* The four fixed tabs (D2) share the row at every width: they never wrap or overflow */
+.wb-bar-fixed {
+  padding-inline: var(--sp-2);
+}
+.wb-bar-fixed .tabs-list {
+  flex-wrap: nowrap;
+  inline-size: 100%;
+}
+.wb-bar-fixed .tab-wrap {
+  flex: 1 1 auto;
+  justify-content: center;
+  min-inline-size: 0;
+}
+.wb-bar-fixed .tab {
+  padding-inline: var(--sp-2);
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* a tab's body: one scroll box for the tab's sections (or Selection's card) */
+.wb-panel-body {
+  flex: 1 1 auto;
+}
+.wb-panel-scroll {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-block-size: 0;
+  overflow: auto;
+}
+.wb-sections {
+  flex: none;
+  padding-block-end: var(--sp-4);
+}
+.wb-psec {
+  border-block-end: 1px solid var(--line-soft);
+}
+.wb-psec > .wb-section-head {
+  padding-block: var(--sp-3);
+  padding-inline: var(--sp-5);
+}
+.wb-psec > .wb-section-head .tab-live {
+  display: inline-flex;
+}
+/* a body in a section sizes to its content; the tab's scroll box scrolls them all */
+.wb-psec-inner > .wb-scroll,
+.wb-psec-inner > .ctx-fill {
+  flex: none;
+  overflow: visible;
+}
+/* a clicked pile in Selection: the panel's side padding, as the Volumes tab gives it */
+.wb-pile {
+  min-inline-size: 0;
+  padding: var(--sp-5) var(--sp-5) var(--sp-7);
+}
+.wb-empty {
+  margin: 0;
+  padding: var(--sp-5);
   color: var(--fg-2);
   font-size: var(--t-12);
 }

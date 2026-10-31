@@ -97,10 +97,12 @@ async function draftPass(root: string, date: 'd1' | 'd2', issueId: string): Prom
 const issues = (win: Page) =>
   win.evaluate(() => (window as unknown as Inspect).__stratlas.workspace.getState().issues);
 
-/** Right-click the issue in the scene's issue list and place it on `layer`. */
+/**
+ * Right-click the issue in the Issues screen's register (the one full register: the right panel's
+ * Project > Issues is a summary) and place it on `layer`, then back to the Scene.
+ */
 async function placeFromList(win: Page, code: string, layer: string): Promise<void> {
-  // the workbench tablist owns its tabs through aria-owns: find the tab on the page
-  await win.getByRole('tab', { name: /^Issues/ }).click();
+  await win.locator('.sb-nav .nav-item', { hasText: 'Issues' }).first().click();
   // the list is virtual (only rows in view exist): search for the code to bring its row up
   const register = win.getByTestId('issue-register');
   await register.getByRole('searchbox', { name: 'Search issues' }).fill(code);
@@ -113,6 +115,10 @@ async function placeFromList(win: Page, code: string, layer: string): Promise<vo
   await expect(win.getByTestId('place-result-text')).toContainText('Placed 1 of 1 on', {
     timeout: 60_000,
   });
+  if ((await win.locator('[data-screen="scene"]').count()) === 0) {
+    await win.locator('.sb-nav .nav-item', { hasText: 'Scene' }).first().click();
+    await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible({ timeout: 60_000 });
+  }
 }
 
 /** The overlay's area of an issue, in canvas pixels, once the camera has settled on it. */

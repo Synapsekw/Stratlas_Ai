@@ -1,10 +1,10 @@
 /**
- * The right sidebar as the workbench (stage island D11, D13 to D17) in the real app: a tool that
- * starts takes the front, except from an issue being edited, where its tab waits live beside it
- * and Show it brings it forward;
- * a pinned tab stays when a tool starts and an unpinned one gives way; a bench's sections fold
- * and open all at once and the search keeps only what matches; the sidebar's dragged width is
- * remembered across a relaunch. The agent pane (agent-pane.spec.ts) and the drawer
+ * The right panel (stage island D13, D14, D16, D17; UI revision D2) in the real app: a tool that
+ * starts brings its tab and section forward, except from an issue being edited, where its tab
+ * waits live beside it and Show it brings it forward; the four tabs have no pins, and a tool
+ * starting leaves the other tabs' sections as they were; a bench's sections fold and open all at
+ * once and the search keeps only what matches; the panel's dragged width is remembered across a
+ * relaunch. The agent pane (agent-pane.spec.ts) and the drawer
  * (drawer.spec.ts) have their own specs.
  *
  * Screenshots go to the test's output folder (test-results/), or to QUADRION_E2E_SHOTS.
@@ -14,6 +14,8 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, launchApp, NetworkGuard, openProject, test } from './fixtures';
 import { islandGroup, islandRow, measureBench, openBench } from './island';
+import { benchBody, expectBench, panelSection, panelTab } from './panel';
+import type { PanelTab } from '../src/renderer/workspace/workbench/tabsModel';
 
 const VIEW_READY = { timeout: 30_000 };
 
@@ -29,10 +31,7 @@ interface Inspect {
   };
 }
 
-/**
- * The tabs the workbench has open, pinned or not: on the row or, where the row is too narrow
- * (1100 px), in its More tabs menu, whose tabs leave the DOM.
- */
+/** The bodies the workbench store holds (old tab ids), pinned or not. */
 const openTabs = (win: Page) =>
   win.evaluate(() =>
     (window as unknown as Inspect).__stratlas.workbench
@@ -61,8 +60,8 @@ async function pressM(win: Page): Promise<void> {
   await win.keyboard.press('m');
 }
 
-const tab = (win: Page, id: string) => win.locator(`.right #wb-tab-${id}`);
-const liveDot = (win: Page, id: string) =>
+const tab = (win: Page, id: PanelTab) => panelTab(win, id);
+const liveDot = (win: Page, id: PanelTab) =>
   tab(win, id).getByRole('img', { name: 'Live', exact: true });
 
 test.describe('following (D14)', () => {
@@ -71,19 +70,19 @@ test.describe('following (D14)', () => {
     win,
   }) => {
     await openCard(win, twoDateProject.id);
-    // the Project tab is a fixed tab from the start; a fresh project still opens on Selection
-    await expect(tab(win, 'measure')).toHaveText(/Project/);
+    // the four tabs from the start; a fresh project opens on Selection
+    await expect(tab(win, 'tools')).toHaveText(/^Tools/);
     await expect(tab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
 
-    // nothing edited: Measure opens live, in front
+    // nothing edited: Measure opens live, Tools in front with its Measure section open
     await pressM(win);
-    await expect(tab(win, 'measure')).toHaveAttribute('aria-selected', 'true');
-    await expect(liveDot(win, 'measure')).toBeVisible();
+    await expectBench(win, 'measure');
+    await expect(liveDot(win, 'tools')).toBeVisible();
     await expect(win.getByTestId('survey-drawbar')).toBeVisible();
-    // stopped, the Project tab is a fixed tab: it stays, in front, without its live dot
+    // stopped, Tools stays in front without its live dot
     await pressM(win);
-    await expect(liveDot(win, 'measure')).toHaveCount(0);
-    await expect(tab(win, 'measure')).toHaveAttribute('aria-selected', 'true');
+    await expect(liveDot(win, 'tools')).toHaveCount(0);
+    await expectBench(win, 'measure');
     await openBench(win, 'selection');
 
     // an issue's edit form open in Selection
@@ -102,61 +101,57 @@ test.describe('following (D14)', () => {
     // M while it is edited: Measure starts, its tab waits live behind the issue
     await pressM(win);
     await expect(win.locator('.island [data-live="tool"]')).toContainText('Distance');
-    await expect(liveDot(win, 'measure')).toBeVisible();
-    await expect(tab(win, 'measure')).toHaveAttribute('aria-selected', 'false');
+    await expect(liveDot(win, 'tools')).toBeVisible();
+    await expect(tab(win, 'tools')).toHaveAttribute('aria-selected', 'false');
     await expect(tab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
     await expect(card.locator('.ic-edit')).toHaveAttribute('open', '');
     await shot(win, 'workbench-follow-issue-edit.png');
 
     // the sidebar says so, and "Show it" brings it forward when they want it (I-R52)
     const showIt = win.locator('.right').getByTestId('wb-show-it');
-    await expect(showIt).toContainText('Project');
+    await expect(showIt).toContainText('Measure');
     await showIt.getByRole('button', { name: 'Show it', exact: true }).click();
-    await expect(tab(win, 'measure')).toHaveAttribute('aria-selected', 'true');
+    await expectBench(win, 'measure');
     await expect(showIt).toHaveCount(0);
-    await expect(win.locator('.right #wb-panel-measure')).toBeVisible();
+    await expect(benchBody(win, 'measure')).toBeVisible();
     await pressM(win);
-    await expect(liveDot(win, 'measure')).toHaveCount(0);
-    await expect(tab(win, 'measure')).toHaveAttribute('aria-selected', 'true');
+    await expect(liveDot(win, 'tools')).toHaveCount(0);
+    await expectBench(win, 'measure');
   });
 });
 
-test.describe('pins (D15)', () => {
-  // the size CI runs at, where the row has no room for Display beside the live tool (T20 M6)
+test.describe('no pins (D2)', () => {
+  // the size CI runs at
   test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x720' } });
-  test('a pinned tab stays when a tool starts; an unpinned panel gives way', async ({
+  test("a tool brings Tools forward and leaves the other tabs' sections as they were", async ({
     twoDateProject,
     win,
   }) => {
     await openCard(win, twoDateProject.id);
-    // Display from the island, pinned
+    // Display from the island: Layers & display, its Display section open; no pin, no close
     await islandGroup(win, 'display');
-    await expect(tab(win, 'display')).toHaveAttribute('aria-selected', 'true');
-    const pin = win.locator('.right').getByRole('button', { name: 'Pin Display', exact: true });
-    await pin.click();
-    await expect(pin).toHaveAttribute('aria-pressed', 'true');
-    // Environment from the View row: an unpinned panel beside it
+    await expectBench(win, 'display');
+    await expect(
+      win.locator('.ws > .right').getByRole('button', { name: /^(Pin|Close) / }),
+    ).toHaveCount(0);
+    // Environment from the View row: Tools > Environment
     const row = await islandRow(win, 'view');
     await row.getByRole('button', { name: 'Environment and time of day', exact: true }).click();
-    await expect(tab(win, 'environment')).toHaveAttribute('aria-selected', 'true');
-    await expect.poll(() => openTabs(win)).toContain('display pinned');
+    await expectBench(win, 'environment');
     await expect.poll(() => openTabs(win)).toContain('environment');
 
-    // a tool starts: the unpinned panel closes, the pinned one stays, the tool is in front
+    // a tool starts: Tools in front with Measure open, the Display section still open behind
     await pressM(win);
-    await expect(tab(win, 'measure')).toHaveAttribute('aria-selected', 'true');
-    await expect.poll(() => openTabs(win)).not.toContain('environment');
-    expect(await openTabs(win)).toContain('display pinned');
-    // the Project tab was in the row already, so the tool takes no new place: the pinned tab
-    // keeps its own
-    await expect(tab(win, 'display')).toHaveCount(1);
-    await shot(win, 'workbench-pin-survives-tool.png');
+    await expectBench(win, 'measure');
+    await expect(panelSection(win, 'tools.environment')).toHaveCount(1);
+    await shot(win, 'workbench-tool-keeps-sections.png');
+    await tab(win, 'layers').click();
+    await expect(panelSection(win, 'layers.display')).toHaveAttribute('data-open', 'true');
 
-    // and when it stops, the pinned tab is still there beside the Project tab
+    // and when it stops, the tabs are the same four, in the same order
     await pressM(win);
-    await expect(tab(win, 'measure')).toHaveAttribute('aria-selected', 'true');
-    await expect(tab(win, 'display')).toHaveCount(1);
-    expect(await openTabs(win)).toContain('display pinned');
+    const tabs = win.locator('.ws > .right').getByRole('tablist').first().getByRole('tab');
+    await expect(tabs).toHaveText([/^Selection/, /^Tools/, /^Layers & display/, /^Project/]);
   });
 });
 
@@ -167,7 +162,7 @@ test.describe('sections (D16)', () => {
   }) => {
     await openCard(win, twoDateProject.id);
     const bench = await measureBench(win);
-    const panel = win.locator('.right #wb-panel-measure');
+    const panel = benchBody(win, 'measure');
     const heads = bench.locator('.wb-section-head');
     await expect(heads.first()).toBeVisible();
     const total = await heads.count();
@@ -207,7 +202,7 @@ test.describe('sections (D16)', () => {
   });
 });
 
-test.describe('the sidebar width (D17)', () => {
+test.describe('the panel width (D1, D17)', () => {
   test('is as wide as it was dragged, and still that wide after a relaunch', async ({
     twoDateProject,
     dataRoot,

@@ -1,13 +1,14 @@
 /**
  * The pile panel (volumetrics redesign, spec section 3, Stage B) in the real app, on the synthetic
  * quarry demo: three monthly surveys, prepared quietly on open (`autoPrepareSurfaces`). A pile
- * opens in its panel in the Volumes tab wherever it is picked: an Inventory row, its body in 3D,
- * its outline on the Map, its sidebar row, with the right workbench folded too. The panel shows the
- * pile's volume, tonnes and change against the demo's `truth.json`; Profile has a chip per survey
- * and the chart along the pile's long axis, whose point shows on the line in 3D and whose ends can
- * be moved there; History has one row per survey; Esc returns to the inventory. A distance line
- * drawn across a pile is picked as the line, the pile's body beside it opens the pile. The panel's
- * floats leave the view free at 1100 x 700. Off-screen, zero network, pipeline Python needed.
+ * opens in its panel in the right panel's Selection tab wherever it is picked: an Inventory row,
+ * its body in 3D, its outline on the Map, its sidebar row, with the right workbench folded too.
+ * The panel shows the pile's volume, tonnes and change against the demo's `truth.json`; Profile
+ * has a chip per survey and the chart along the pile's long axis, whose point shows on the line in
+ * 3D and whose ends can be moved there; History has one row per survey; Esc lets the pile go. A
+ * distance line drawn across a pile is picked as the line, the pile's body beside it opens the
+ * pile. The panel's floats leave the view free at 1100 x 700. Off-screen, zero network, pipeline
+ * Python needed.
  */
 import { toWgs84 } from '@aio/geo';
 import { MeasurementsFile, ProjectManifest } from '@aio/schema';
@@ -15,7 +16,8 @@ import type { Locator, Page } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
-import { measureBench, measureTree, selectMeasure, stageMode, volumesView } from './island';
+import { measureTree, selectMeasure, stageMode, volumesView } from './island';
+import { openSection, panelTab } from './panel';
 import { focusPile } from './measureCard';
 import { openDemo } from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
@@ -168,7 +170,7 @@ test('an Inventory row opens the pile panel with volume, tonnes and change', asy
   const view = await opened(win, quarryProject);
   await view.getByTestId('volumes-pile').filter({ hasText: SP1 }).click();
 
-  const panel = view.getByTestId('pile-panel');
+  const panel = win.getByTestId('pile-panel');
   await expect(panel).toBeVisible();
   await expect(panel.getByTestId('pile-name')).toHaveText(SP1);
   await expect(panel.getByTestId('pile-material')).toContainText('Crushed rock 20 mm');
@@ -192,10 +194,10 @@ test('an Inventory row opens the pile panel with volume, tonnes and change', asy
   await expect(panel.getByTestId('pile-name')).not.toHaveText(SP1);
   await panel.getByTestId('pile-prev').click();
   await expect(panel.getByTestId('pile-name')).toHaveText(SP1);
-  // ‹ Inventory returns to the list
+  // ‹ Inventory lets the pile go: Selection has nothing picked (Project > Volumes keeps the list)
   await panel.getByTestId('pile-back').click();
-  await expect(view.getByTestId('pile-panel')).toHaveCount(0);
-  await expect(view.getByTestId('volumes-inventory')).toBeVisible();
+  await expect(win.getByTestId('pile-panel')).toHaveCount(0);
+  await expect(win.getByTestId('selection-empty')).toBeVisible();
 });
 
 test('a click on the pile in 3D and on its outline in Map opens the same panel', async ({
@@ -203,8 +205,8 @@ test('a click on the pile in 3D and on its outline in Map opens the same panel',
   win,
 }) => {
   test.setTimeout(600_000);
-  const view = await opened(win, quarryProject);
-  const panel = view.getByTestId('pile-panel');
+  await opened(win, quarryProject);
+  const panel = win.getByTestId('pile-panel');
   await expect(panel).toHaveCount(0);
 
   // 3D: the pile's body, at its label's anchor (the outline's centroid)
@@ -263,7 +265,7 @@ test('an opened pile shows as its glass box, framed, Solid or Height, and Edit b
   await expect(win.locator('[data-pile-look]')).toHaveCount(0);
 
   await view.getByTestId('volumes-pile').filter({ hasText: SP1 }).click();
-  const panel = view.getByTestId('pile-panel');
+  const panel = win.getByTestId('pile-panel');
   await expect(panel).toHaveAttribute('data-id', SP1_ID);
   // the box drawn in place of the pile's outline, solid red
   const box = win.locator(`[data-pile-look="${SP1_ID}"]`);
@@ -367,7 +369,7 @@ test('Profile shows a chip per survey and the chart, its point on the line in 3D
   const truth = (quarryProject.truth as unknown as QuarryTruth).stockpiles.sp1?.dates ?? {};
   const view = await opened(win, quarryProject);
   await view.getByTestId('volumes-pile').filter({ hasText: SP1 }).click();
-  const panel = view.getByTestId('pile-panel');
+  const panel = win.getByTestId('pile-panel');
   await figuresIn(panel);
 
   // Profile: a chip per survey date, the chart along the long axis, its length said
@@ -440,17 +442,17 @@ test('Profile shows a chip per survey and the chart, its point on the line in 3D
   await expect(panel.getByTestId('pile-history-chart').first()).toBeVisible();
 });
 
-test('Esc returns to the inventory', async ({ quarryProject, win }) => {
+test('Esc lets the pile go', async ({ quarryProject, win }) => {
   test.setTimeout(600_000);
   const view = await opened(win, quarryProject);
   await view.getByTestId('volumes-pile').filter({ hasText: SP1 }).click();
-  const panel = view.getByTestId('pile-panel');
+  const panel = win.getByTestId('pile-panel');
   await expect(panel).toBeVisible();
   await expect(win.getByTestId('stage-hint')).toHaveAttribute('data-kind', 'pile');
   await panel.getByTestId('pile-tab-overview').focus();
   await win.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
-  await expect(view.getByTestId('volumes-inventory')).toBeVisible();
+  await expect(win.getByTestId('selection-empty')).toBeVisible();
   await expect(win.getByTestId('stage-hint')).toHaveCount(0);
 
   // from the stage too: the pile opened in 3D, Esc on the view closes it
@@ -492,7 +494,7 @@ test('a distance line across a pile: the line picks the line, the body beside it
   });
   await writeFile(mfile, JSON.stringify(MeasurementsFile.parse(file), null, 1));
 
-  const view = await opened(win, quarryProject);
+  await opened(win, quarryProject);
   // the line, at its north end (its label's anchor): selected for the Measure tab, no pile panel
   const end = await labelAnchor3d(win, 'line-sp1');
   await win.mouse.click(end.x, end.y);
@@ -526,7 +528,7 @@ test('a distance line across a pile: the line picks the line, the body beside it
     Math.hypot(end.x - far.x, end.y - far.y),
   );
   await win.mouse.click(body.x, body.y);
-  await expect(view.getByTestId('pile-panel')).toHaveAttribute('data-id', SP1_ID);
+  await expect(win.getByTestId('pile-panel')).toHaveAttribute('data-id', SP1_ID);
 
   // and the line from the tree still goes to the Measure tab
   await measureTree(win, 'm3');
@@ -543,7 +545,7 @@ test('Open larger opens one section window, and closing it leaves none', async (
   test.setTimeout(600_000);
   const view = await opened(win, quarryProject);
   await view.getByTestId('volumes-pile').filter({ hasText: SP1 }).click();
-  const panel = view.getByTestId('pile-panel');
+  const panel = win.getByTestId('pile-panel');
   await figuresIn(panel);
   await panel.getByTestId('pile-tab-profile').click();
   await expect(panel.getByTestId('pile-profile-chart')).toBeVisible({ timeout: 120_000 });
@@ -556,23 +558,25 @@ test('Open larger opens one section window, and closing it leaves none', async (
   await expect(win.getByTestId('section-dock')).toHaveCount(0);
 });
 
-test('the pile panel opened from Project, In this project, Measurements scrolls with the wheel over its middle', async ({
+test('a pile picked in Project, In this project, Measurements opens in Selection and scrolls with the wheel over its middle', async ({
   quarryProject,
   win,
 }) => {
   test.setTimeout(600_000);
   await opened(win, quarryProject);
-  await measureBench(win);
-  const group = win.getByTestId('wb-section-project-measurements');
+  const list = await openSection(win, 'project', 'project.inThisProject');
+  const group = list.getByTestId('wb-section-project-measurements');
   const head = group.locator('.wb-section-head').first();
   await head.scrollIntoViewIfNeeded();
   if ((await head.getAttribute('aria-expanded')) !== 'true') await head.click();
   await expect(head).toHaveAttribute('aria-expanded', 'true');
   await group.getByTestId('project-measurement-row').filter({ hasText: SP1 }).click();
-  const panel = group.getByTestId('survey-side');
+  // a picked pile opens in Selection (D2), its panel there
+  await expect(panelTab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
+  const panel = win.locator('#wb-panel-selection').getByTestId('selection-pile');
   await expect(panel).toBeVisible();
-  // the panel's scroller: the right sidebar's tab body
-  const scroller = win.locator('.right .wb-scroll').filter({ has: panel });
+  // the panel's scroller: the Selection tab's scroll box
+  const scroller = win.locator('.right .wb-panel-scroll').filter({ has: panel });
   await expect(scroller).toHaveCount(1);
   await scroller.evaluate((el) => {
     el.scrollTop = 0;
@@ -600,7 +604,7 @@ test.describe('in the smallest window', () => {
     test.setTimeout(600_000);
     const view = await opened(win, quarryProject);
     await view.getByTestId('volumes-pile').filter({ hasText: SP1 }).click();
-    const panel = view.getByTestId('pile-panel');
+    const panel = win.getByTestId('pile-panel');
     await figuresIn(panel);
     await panel.getByTestId('pile-tab-profile').click();
     await expect(panel.getByTestId('pile-profile-chart')).toBeVisible({ timeout: 120_000 });

@@ -1,12 +1,12 @@
 /**
- * The groups of the Project tab's "In this project" list in the real app, and the order a
+ * The groups of the right panel's Project > In this project list in the real app, and the order a
  * project's category gives them: a telecom project lists Antennas, Sectors, Coverage plan,
  * Measurements, Issues; a survey project Measurements then Issues, with no tower group or
  * Telecom tool even with an antenna inventory and an RF plan on disk. A measurement picked in the
- * left tree is the selected row in Measurements with its panel under it, an issue row opens the
- * issue's card in Selection, a saved sector shows its bearing and opens in Coverage, and the new
- * project wizard offers Telecom towers. The inventory is the synthetic RF fixture; nothing here
- * runs the pipeline.
+ * left tree opens its card in Selection and is the selected row in Measurements, an issue row
+ * opens the issue's card in Selection, a saved sector shows its bearing and opens in Coverage, and
+ * the new project wizard offers Telecom towers. The inventory is the synthetic RF fixture; nothing
+ * here runs the pipeline.
  */
 import { MeasurementsFile, ProjectManifest, RfSectorsFile } from '@aio/schema';
 import type { Page } from '@playwright/test';
@@ -14,6 +14,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from './fixtures';
 import { measureBench, measureTree, selectMeasure } from './island';
+import { expectBench, openSection, panelTab } from './panel';
 import { writeRfProject } from './rfFixtures';
 
 /**
@@ -26,7 +27,7 @@ async function evidence(win: Page, name: string, atTop = false): Promise<void> {
   if (!EVIDENCE) return;
   if (atTop)
     await win
-      .locator('.right .wb-scroll')
+      .locator('.right .wb-panel-scroll')
       .first()
       .evaluate((el) => (el.scrollTop = 0));
   // a beat and two frames: a fold or a dialog that was just opened has stopped moving
@@ -54,7 +55,7 @@ async function setPurpose(dir: string, purpose: 'telecom' | 'survey'): Promise<v
 
 /** The titles of the list's groups in the order shown, and which of them are open. */
 async function groups(win: Page): Promise<{ order: string[]; open: string[] }> {
-  await measureBench(win);
+  await openSection(win, 'project', 'project.inThisProject');
   return win.evaluate(() => {
     const sections = [
       ...document.querySelectorAll<HTMLElement>('[data-testid^="wb-section-project-"]'),
@@ -159,13 +160,14 @@ test.describe('project list: groups and category order', () => {
     const { order, open } = await groups(win);
     expect(order).toEqual(['Measurements', 'Issues']);
     expect(open).toEqual(['Measurements']);
-    // the catalogue is there (Polygon), only its Telecom family is not
+    // the catalogue is there (Polygon, Tools > Measure), only its Telecom family is not
+    await measureBench(win);
     await expect(win.getByTestId('wb-section-polygon')).toHaveCount(1);
     await expect(win.getByTestId('wb-section-telecom')).toHaveCount(0);
     await evidence(win, 'b-survey-order', true);
   });
 
-  test('a measurement picked in the left tree is the selected row in Measurements with its panel inline', async ({
+  test('a measurement picked in the left tree opens its card in Selection and is the selected row in Measurements', async ({
     win,
     dataRoot,
   }) => {
@@ -175,26 +177,29 @@ test.describe('project list: groups and category order', () => {
     await openTiny(win);
     await measureTree(win);
     await selectMeasure(win, 'Line B');
-    const side = win.getByTestId('project-measurements');
+    // the pick opens in Selection (D2): the measurement's one card
+    await expect(panelTab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
+    const card = win.locator('#wb-panel-selection').getByTestId('selection-measurement');
+    await expect(card.getByTestId('survey-panel')).toHaveCount(1);
+    await expect(card.getByTestId('survey-panel')).toContainText('Line B');
+    await evidence(win, 'c-measurement-selection');
+
+    // Project > In this project has it as the selected row, its panel under it
+    const list = await openSection(win, 'project', 'project.inThisProject');
+    const side = list.getByTestId('project-measurements');
     const row = side.getByTestId('project-measurement-row').filter({ hasText: 'Line B' });
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute('aria-current', 'true');
-    // the one panel for the measurement sits under its row, not in a card of the bench
-    const panel = side.getByTestId('survey-side');
-    await expect(panel).toHaveCount(1);
-    await expect(panel).toBeVisible();
-    await expect(win.locator('.right #wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
+    await expect(side.getByTestId('survey-side')).toHaveCount(1);
     await expect(
       side.getByTestId('project-measurement-row').filter({ hasText: 'Spot C' }),
     ).not.toHaveAttribute('aria-current', 'true');
     await evidence(win, 'c-measurement-inline');
 
-    // another pick moves the panel with it
+    // another pick brings Selection back with that one's card
     await selectMeasure(win, 'Spot C');
-    await expect(
-      side.getByTestId('project-measurement-row').filter({ hasText: 'Spot C' }),
-    ).toHaveAttribute('aria-current', 'true');
-    await expect(panel).toHaveCount(1);
+    await expect(panelTab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
+    await expect(card.getByTestId('survey-panel')).toContainText('Spot C');
   });
 
   test('an issue row opens its card in Selection', async ({ win, dataRoot }) => {
@@ -207,7 +212,7 @@ test.describe('project list: groups and category order', () => {
     const section = await openGroup(win, 'issues');
     await expect(section.locator('.wb-section-count')).toHaveText('1');
     await section.getByTestId('project-issue-row').click();
-    await expect(win.locator('.right #wb-tab-selection')).toHaveAttribute('aria-selected', 'true');
+    await expect(panelTab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
     await expect(win.getByTestId('issue-card')).toHaveAttribute('data-issue', ISSUE.id);
     await evidence(win, 'd-issue-opened');
   });
@@ -240,7 +245,7 @@ test.describe('project list: groups and category order', () => {
     // the row's actions show when it is pointed at
     await row.hover();
     await row.getByRole('button', { name: 'Open in Coverage' }).click();
-    await expect(win.locator('.right #wb-tab-rf')).toHaveAttribute('aria-selected', 'true');
+    await expectBench(win, 'rf');
   });
 
   test('the new project wizard offers Telecom towers', async ({ win }) => {

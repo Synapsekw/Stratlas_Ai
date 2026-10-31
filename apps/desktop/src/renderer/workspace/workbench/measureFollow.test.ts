@@ -87,7 +87,7 @@ describe('followMeasureTool', () => {
     again();
   });
 
-  it("a pile picked in the Volumes view's list stays there; a pick elsewhere brings Measure", () => {
+  it("a pile picked in the Volumes view's list stays there; a pick elsewhere brings Selection", () => {
     const bench = createWorkbenchStore(null);
     const store = measure();
     const off = followMeasureTool(store as never, bench);
@@ -96,9 +96,10 @@ describe('followMeasureTool', () => {
     pickInVolumesView('p1');
     store.setState({ focus: 'p1' });
     expect(bench.getState().front).toBe('volumes');
-    // another pile picked in the tree: the Measure tab comes forward, as before
+    // another pile picked in the tree: Selection comes forward with its card
     store.setState({ focus: 'p2' });
-    expect(bench.getState().front).toBe('measure');
+    expect(bench.getState().front).toBe('selection');
+    expect(bench.getState().panel).toBe('selection');
     off();
   });
 

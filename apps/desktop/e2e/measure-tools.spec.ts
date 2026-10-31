@@ -80,7 +80,7 @@ test.describe('survey measurement tools', () => {
     // the card's primary value: the line's length
     await expect(panel.getByTestId('card-primary').locator('.mc-unit')).toHaveText('m');
     await expectAccessible(win, 'Survey measurement panel', {
-      include: '[data-testid="survey-side"]',
+      include: '[data-testid="survey-panel"]',
     });
 
     // autosave is off: nothing on disk until Save

@@ -1,10 +1,10 @@
 /**
- * Every workbench tab scrolls its own body (stage island D12): the tab body (`.wb-body`) is a
- * column that does not scroll, so each bench's root is the scroller (`.wb-scroll`). Asserted on
- * the layout itself, not through a click: Playwright's click scrolls even an `overflow: hidden`
- * box into view, which a person cannot. With the context/agent divider moved up to its smallest,
- * the bench is taller than its pane, and the mouse wheel alone brings the end of its last section
- * into view.
+ * Every right-panel tab scrolls its sections in one box (UI revision D2): the tab body
+ * (`.wb-body`) is a column that does not scroll, its `.wb-panel-scroll` is the one scroller, and a
+ * bench in an open section sizes to its content inside it. Asserted on the layout itself, not
+ * through a click: Playwright's click scrolls even an `overflow: hidden` box into view, which a
+ * person cannot. With the context/agent divider moved up to its smallest, the tab is taller than
+ * its pane, and the mouse wheel alone brings the end of the open bench into view.
  * Runs at the CI window (1100 x 720) on the tiny project with a point cloud, so the Point cloud
  * and Clean up tabs are there too.
  */
@@ -23,7 +23,7 @@ interface Hooks {
 }
 
 /** The benches whose content is always taller than the smallest pane. */
-// ('measure' is the Project tab: the "In this project" list above the tools, one scroller)
+// ('measure' is Tools > Measure: the catalogue and the live tool card)
 const LONG = ['display', 'clouds', 'video', 'annotate', 'measure', 'cleanup'] as const;
 /** Short panel tabs: they only have to be the scroller. */
 const SHORT = ['environment', 'cutaway'] as const;
@@ -45,7 +45,9 @@ async function openBench(win: Page, id: Bench): Promise<void> {
     await win.evaluate((tab) => {
       (window as unknown as Hooks).__stratlas.workbench.getState().open(tab);
     }, id);
-  await expect(win.locator(`.right .wb-body[data-front="${id}"] > ${BENCH_ROOT}`)).toBeVisible();
+  await expect(
+    win.locator(`.right .wb-psec-inner[data-front="${id}"] > ${BENCH_ROOT}`).first(),
+  ).toBeVisible();
 }
 
 async function closeBench(win: Page, id: Bench): Promise<void> {
@@ -65,18 +67,21 @@ interface Box {
   scrolls: boolean;
   atEnd: boolean;
   /**
-   * The bottom edge of the bench's last section is inside the scroller's visible box: the end of
-   * the bench is reached (the section itself may be taller than the pane, as the Measure
+   * The bottom edge of the open bench's last section is inside the scroller's visible box: the
+   * end of the bench is reached (the section itself may be taller than the pane, as the Measure
    * catalogue is).
    */
   lastShown: boolean;
 }
 
-const measure = (win: Page): Promise<Box | null> =>
-  win.evaluate(() => {
+const measure = (win: Page, id: Bench): Promise<Box | null> =>
+  win.evaluate((front) => {
     const body = document.querySelector('.right .wb-body');
-    const root = body?.querySelector<HTMLElement>(':scope > :not(.wb-bench-head)');
-    const last = root?.lastElementChild;
+    const root = body?.querySelector<HTMLElement>(':scope .wb-panel-scroll');
+    const bench = body?.querySelector(
+      `.wb-psec-inner[data-front="${front}"] > :not(.wb-bench-head)`,
+    );
+    const last = bench?.lastElementChild ?? bench;
     if (!body || !root || !last) return null;
     const b = body.getBoundingClientRect();
     const r = root.getBoundingClientRect();
@@ -88,31 +93,34 @@ const measure = (win: Page): Promise<Box | null> =>
       atEnd: root.scrollTop + root.clientHeight >= root.scrollHeight - 1,
       lastShown: l.bottom >= r.top - 1 && l.bottom <= r.bottom + 1,
     };
-  });
+  }, id);
 
-/** Wheel over the bench until it has scrolled to its end. */
-async function wheelToEnd(win: Page): Promise<void> {
-  const root = win.locator(`.right .wb-body > ${BENCH_ROOT}`);
+/** Wheel over the tab until the open bench's end shows (or the tab is at its end). */
+async function wheelToEnd(win: Page, id: Bench): Promise<void> {
+  const root = win.locator('.right .wb-body .wb-panel-scroll');
   const box = await root.boundingBox();
   if (!box) throw new Error('no bench');
   await win.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  for (let i = 0; i < 30 && !(await measure(win))?.atEnd; i++) {
+  // (until the bench's end shows: sections under it may scroll on further)
+  for (let i = 0; i < 30; i++) {
+    const at = await measure(win, id);
+    if (at?.lastShown || at?.atEnd) break;
     await win.mouse.wheel(0, 240);
     await win.waitForTimeout(60);
   }
 }
 
-test('every workbench tab scrolls its own body with the mouse wheel', async ({ win }, info) => {
+test('every tab scrolls its sections in one box with the mouse wheel', async ({ win }, info) => {
   test.setTimeout(180_000);
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
   await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
 
-  // the divider where it always stands: each bench is already the scroller
+  // the divider where it always stands: the tab's scroll box holds each bench
   for (const id of [...LONG, ...SHORT]) {
     await openBench(win, id);
-    const box = await measure(win);
-    expect(box?.overflowY, `${id}: the bench scrolls`).toBe('auto');
-    expect(box?.bounded, `${id}: the bench ends inside its tab`).toBe(true);
+    const box = await measure(win, id);
+    expect(box?.overflowY, `${id}: the tab scrolls`).toBe('auto');
+    expect(box?.bounded, `${id}: the scroller ends inside its tab`).toBe(true);
     await closeBench(win, id);
   }
 
@@ -129,16 +137,12 @@ test('every workbench tab scrolls its own body with the mouse wheel', async ({ w
     .toBe(false);
   for (const id of LONG) {
     await openBench(win, id);
-    // the Project tab's list leads, and the tools below it are the end of the same scroller
-    if (id === 'measure') await expect(win.getByTestId('project-list')).toHaveCount(1);
-    const before = await measure(win);
-    expect(before?.overflowY, `${id}: the bench scrolls`).toBe('auto');
-    expect(before?.bounded, `${id}: the bench ends inside its tab`).toBe(true);
-    expect(before?.scrolls, `${id}: the bench is taller than its pane`).toBe(true);
-    expect(before?.lastShown, `${id}: the end of the last section starts out of view`).toBe(false);
-    await wheelToEnd(win);
-    const after = await measure(win);
-    expect(after?.atEnd, `${id}: the wheel scrolls the bench to its end`).toBe(true);
+    const before = await measure(win, id);
+    expect(before?.overflowY, `${id}: the tab scrolls`).toBe('auto');
+    expect(before?.bounded, `${id}: the scroller ends inside its tab`).toBe(true);
+    expect(before?.scrolls, `${id}: the tab is taller than its pane`).toBe(true);
+    await wheelToEnd(win, id);
+    const after = await measure(win, id);
     expect(after?.lastShown, `${id}: the end of the last section is reachable`).toBe(true);
     if (id === 'clouds' || id === 'cleanup') {
       const dir = process.env.QUADRION_E2E_SHOTS;

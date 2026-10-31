@@ -1,0 +1,63 @@
+/* Project > Issues: counts by severity, the five most severe open issues, Open in Issues */
+.wb-issues {
+  display: grid;
+  gap: var(--sp-3);
+  justify-items: start;
+  padding: var(--sp-2) var(--sp-2) var(--sp-4);
+}
+.wb-issues-none,
+.wb-issues-counts {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: var(--t-12);
+}
+.wb-issues-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+.wb-issues-count b {
+  color: var(--fg-0);
+  font-variant-numeric: tabular-nums;
+}
+.wb-issues-list {
+  display: grid;
+  gap: var(--sp-1);
+  inline-size: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wb-issues-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  inline-size: 100%;
+  padding: var(--sp-1) var(--sp-2);
+  border: 0;
+  border-radius: var(--r-4);
+  background: transparent;
+  color: var(--fg-1);
+  font-size: var(--t-12);
+  text-align: start;
+  cursor: pointer;
+}
+.wb-issues-row:hover {
+  background: var(--bg-2);
+}
+.wb-issues-row:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+.wb-issues-sev {
+  flex: none;
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.wb-issues-title {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

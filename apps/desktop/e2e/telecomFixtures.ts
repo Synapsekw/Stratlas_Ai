@@ -8,15 +8,16 @@ import { promisify } from 'node:util';
 import sharp from 'sharp';
 import type { Locator, Page } from '@playwright/test';
 import { VENV_PYTHON, expect, tinyManifest } from './fixtures';
-import { measureBench } from './island';
+import { openSection } from './panel';
 
 /**
- * The Antennas group of the Project tab's "In this project" list, with the Project tab in front
- * and the group open (it starts open only when it is first in the project's order).
+ * The Antennas group of the right panel's Project > In this project list, with Project in front,
+ * the section open and the group open (it starts open only when it is first in the project's
+ * order).
  */
 export async function projectAntennas(win: Page): Promise<Locator> {
-  await measureBench(win);
-  const group = win.getByTestId('wb-section-project-antennas');
+  const list = await openSection(win, 'project', 'project.inThisProject');
+  const group = list.getByTestId('wb-section-project-antennas');
   const head = group.locator('.wb-section-head').first();
   if ((await head.getAttribute('aria-expanded')) !== 'true') await head.click();
   await expect(head).toHaveAttribute('aria-expanded', 'true');

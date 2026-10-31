@@ -32,6 +32,7 @@ import {
   test,
 } from './fixtures';
 import { stageMode } from './island';
+import { panelSection, panelTab } from './panel';
 import { RF_DRAFT, RF_PANELS, readRfOrigins, readRfSectors, writeRfProject } from './rfFixtures';
 
 test.use({ appEnv: PIPELINE_ENV });
@@ -349,14 +350,15 @@ test('no accepted antennas: Auto-plan asks for a review, Review antennas opens P
   await evidence(win, 'review-first');
   await dlg.getByRole('button', { name: 'Review antennas', exact: true }).click();
   await expect(dlg).toBeHidden();
-  await expect(win.locator('#wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
-  await expect(win.locator('[role="tabpanel"][data-front="measure"]')).toBeVisible();
+  // Project > In this project comes forward (D2)
+  await expect(panelTab(win, 'project')).toHaveAttribute('aria-selected', 'true');
+  await expect(panelSection(win, 'project.inThisProject')).toHaveAttribute('data-open', 'true');
   await evidence(win, 'review-first-project');
   // nothing was planned or written
   expect(await readRfSectors(dataRoot.projectDir)).toBeNull();
 });
 
-test('drafts with the inventory drawn: Review antennas opens Project on the first draft', async ({
+test('drafts with the inventory drawn: Review antennas opens Project, In this project on the first draft', async ({
   win,
   dataRoot,
 }) => {
@@ -369,10 +371,11 @@ test('drafts with the inventory drawn: Review antennas opens Project on the firs
   const chip = stageChip(win);
   await expect(chip).toHaveAttribute('data-state', 'review-first');
   await chip.getByTestId('rf-chip-review').click();
-  // the Project tab comes forward, the Coverage tab kept, the first draft's details shown
-  await expect(win.locator('#wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
-  await expect(win.locator('[role="tabpanel"][data-front="measure"]')).toBeVisible();
-  // (kept and pinned; a narrow panel may list it under More tabs)
+  // Project > In this project comes forward, Coverage kept (in Tools), the first draft's details
+  // shown
+  await expect(panelTab(win, 'project')).toHaveAttribute('aria-selected', 'true');
+  await expect(panelSection(win, 'project.inThisProject')).toHaveAttribute('data-open', 'true');
+  // (kept and pinned)
   const rfTab = await win.evaluate(
     () =>
       (

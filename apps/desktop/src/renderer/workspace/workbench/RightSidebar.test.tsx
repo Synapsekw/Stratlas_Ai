@@ -15,6 +15,8 @@ import { agentPane } from '../../agent/agentPaneStore';
 import { measureStore } from '../../survey/measureStore';
 import { RightSidebar, useSidebarSplit } from './RightSidebar';
 import { useIslandLinked } from './view';
+import { panelBandOf, RIGHT_BANDS, rightSplitId } from './panelWidth';
+import { readPanelPlace } from './tabsModel';
 import { workbench } from './workbenchStore';
 import { Drawer } from './Drawer';
 import { drawerStore } from './drawerStore';
@@ -65,6 +67,9 @@ vi.mock('../../agent/AgentHost', () => ({
 }));
 vi.mock('../../issueCard/IssueCard', () => ({ IssueCard: () => <p>issue card</p> }));
 vi.mock('../SelectionCard', () => ({ SelectionCard: () => <p>selection</p> }));
+vi.mock('../../survey/MeasurementPanel', () => ({
+  MeasurementPanel: () => <p>measurement card</p>,
+}));
 vi.mock('../../road/RoadPanel', () => ({ RoadPanel: () => <p>road</p> }));
 vi.mock('../../road/RoadSetup', () => ({ RoadSetupCard: () => null }));
 vi.mock('../../survey/volumes/InventoryPane', () => ({
@@ -120,6 +125,16 @@ const render = () => {
   });
 };
 const tabIds = () => [...document.querySelectorAll('[role="tab"]')].map((e) => e.id);
+/** The sections the tab in front shows, by id. */
+const sectionIds = () =>
+  [...host.querySelectorAll<HTMLElement>('.wb-psec')].map((e) => e.dataset.section);
+const sectionEl = (id: string) =>
+  host.querySelector<HTMLElement>(`[data-testid="panel-section-${id}"]`);
+const clickTab = (id: string) => {
+  act(() => {
+    document.getElementById(`wb-tab-${id}`)?.click();
+  });
+};
 const ws = () => host.querySelector<HTMLElement>('.ws');
 const handle = () => host.querySelector<HTMLElement>('[role="separator"]');
 
@@ -144,6 +159,9 @@ beforeEach(() => {
   shell.getState().setRight(false);
   workspace.getState().openProject({ id: 'p3', root: '/p3', manifest: threeDates });
   workbench.getState().reset();
+  // the tab and its open sections outlive a project: each test starts where a new computer does
+  const place = readPanelPlace(null, null);
+  workbench.setState({ panel: place.tab, sections: place.open });
   agentPane.getState().setMode('normal');
   host = document.createElement('div');
   document.body.append(host);
@@ -153,7 +171,7 @@ afterEach(() => {
   root = undefined;
   host.remove();
   volumetric.setState({ status: 'idle' });
-  measureStore.setState({ file: { schema: 'aio.measurements/1', measurements: [] } });
+  measureStore.setState({ file: { schema: 'aio.measurements/1', measurements: [] }, focus: null });
   workspace.getState().closeProject();
   vi.restoreAllMocks();
 });
@@ -205,12 +223,15 @@ describe('RightSidebar', () => {
       vi.useRealTimers();
     }
   });
-  it('shows model review inside its workbench tab beside the stage', () => {
+  it('shows model review in Tools > Engineering beside the stage', () => {
     render();
     act(() => {
       workbench.getState().open('review');
     });
-    expect(document.getElementById('wb-tab-review')?.textContent).toContain('Model review');
+    expect(workbench.getState().panel).toBe('tools');
+    const section = sectionEl('tools.engineering');
+    expect(section?.textContent).toContain('Engineering');
+    expect(section?.getAttribute('data-open')).toBe('true');
     expect(host.querySelector('[data-front="review"]')?.textContent).toContain(
       'engineering review bench',
     );
@@ -219,9 +240,10 @@ describe('RightSidebar', () => {
       'build',
     );
   });
-  it('shows Volumes for a project with a volume measurement, without the stockpile kit', () => {
+  it('shows Project > Volumes for a project with a volume measurement, without the stockpile kit', () => {
     render();
-    expect(tabIds()).not.toContain('wb-tab-volumes');
+    clickTab('project');
+    expect(sectionIds()).not.toContain('project.volumes');
     act(() => {
       measureStore.setState({
         file: {
@@ -243,27 +265,30 @@ describe('RightSidebar', () => {
       });
     });
     expect(volumetric.getState().status).toBe('idle');
-    expect(tabIds()).toContain('wb-tab-volumes');
+    expect(sectionIds()).toContain('project.volumes');
   });
 
-  it('renders the tabs in model order, Changes keeping its test id', () => {
-    withVolumesAndDates();
+  it('renders the four fixed tabs in order, whatever the project holds', () => {
+    const four = ['wb-tab-selection', 'wb-tab-tools', 'wb-tab-layers', 'wb-tab-project'];
     render();
-    act(() => {
-      workbench.getState().open('measure');
-    });
-    expect(tabIds()).toEqual([
-      'wb-tab-measure',
-      'wb-tab-selection',
-      'wb-tab-issues',
-      'wb-tab-volumes',
-      'wb-tab-changes',
+    expect(tabIds()).toEqual(four);
+    expect([...document.querySelectorAll('[role="tab"]')].map((e) => e.textContent)).toEqual([
+      'Selection',
+      'Tools',
+      'Layers & display',
+      'Project',
     ]);
-    expect(document.getElementById('wb-tab-changes')?.dataset.testid).toBe('tab-changes');
     expect(document.querySelector('[role="tablist"]')?.getAttribute('aria-label')).toBe(
       'Workbench',
     );
-    expect(host.querySelector('[role="tabpanel"]')?.getAttribute('data-front')).toBe('measure');
+    expect(host.querySelector('[role="tabpanel"]')?.id).toBe('wb-panel-selection');
+    act(() => {
+      workbench.getState().open('measure');
+    });
+    expect(tabIds()).toEqual(four);
+    expect(host.querySelector('[role="tabpanel"]')?.getAttribute('data-front')).toBe('tools');
+    withVolumesAndDates();
+    expect(tabIds()).toEqual(four);
   });
 
   it('offers Show it for a tool tab waiting behind an issue edit, and brings it front (I-R52)', () => {
@@ -275,7 +300,7 @@ describe('RightSidebar', () => {
       workbench.setState({ attention: 'measure', waiting: ['measure'] });
     });
     const note = host.querySelector<HTMLElement>('[data-testid="wb-show-it"]');
-    expect(note?.textContent).toContain('Project');
+    expect(note?.textContent).toContain('Measure');
     const button = [...(note?.querySelectorAll('button') ?? [])].find(
       (b) => b.textContent === 'Show it',
     );
@@ -288,32 +313,64 @@ describe('RightSidebar', () => {
     expect(host.querySelector('[data-testid="wb-show-it"]')).toBeNull();
   });
 
-  it('hides Volumes and Changes where the project has none', () => {
+  it('shows Volumes with piles and Changes with two dates, and neither where the project has none', () => {
     render();
-    expect(tabIds()).toEqual(['wb-tab-measure', 'wb-tab-selection', 'wb-tab-issues']);
+    clickTab('project');
+    expect(sectionIds()).toEqual(['project.inThisProject', 'project.issues', 'project.jobs']);
+    withVolumesAndDates();
+    render();
+    expect(sectionIds()).toEqual([
+      'project.inThisProject',
+      'project.volumes',
+      'project.changes',
+      'project.issues',
+      'project.jobs',
+    ]);
   });
 
-  it('labels the Measure bench tab Project, a fixed tab with its bench head and bench', () => {
+  it('shows the Measure catalogue in Tools > Measure, with its bench head', () => {
     render();
-    const tab = document.getElementById('wb-tab-measure');
-    expect(tab?.textContent).toBe('Project');
-    act(() => {
-      tab?.click();
-    });
+    clickTab('tools');
+    expect(workbench.getState().panel).toBe('tools');
     expect(workbench.getState().front).toBe('measure');
-    const panel = host.querySelector('[role="tabpanel"]');
-    expect(panel?.querySelector('.wb-bench-head')).not.toBeNull();
-    expect(panel?.textContent).toContain('measure bench');
+    const section = sectionEl('tools.measure');
+    expect(section?.getAttribute('data-open')).toBe('true');
+    expect(section?.querySelector('.wb-bench-head')).not.toBeNull();
+    expect(section?.textContent).toContain('measure bench');
   });
 
-  it('shows the front tab content and follows a click', () => {
+  it("shows the tab's sections on a click, each body only while it is open", () => {
     render();
-    expect(host.textContent).toContain('selection');
+    expect(host.querySelector('[data-testid="selection-empty"]')).not.toBeNull();
+    clickTab('project');
+    expect(host.querySelector('[role="tabpanel"]')?.id).toBe('wb-panel-project');
+    expect(document.getElementById('wb-tab-project')?.getAttribute('aria-selected')).toBe('true');
+    expect(host.querySelector('[data-testid="issues-summary"]')).not.toBeNull();
+    // a closed section keeps its header and mounts no body; a click on it opens it
     act(() => {
-      document.getElementById('wb-tab-issues')?.click();
+      sectionEl('project.issues')?.querySelector<HTMLButtonElement>('.wb-section-head')?.click();
     });
-    expect(workbench.getState().front).toBe('issues');
-    expect(host.textContent).toContain('register');
+    expect(sectionEl('project.issues')?.getAttribute('data-open')).toBe('false');
+    expect(host.querySelector('[data-testid="issues-summary"]')).toBeNull();
+    act(() => {
+      sectionEl('project.issues')?.querySelector<HTMLButtonElement>('.wb-section-head')?.click();
+    });
+    expect(host.querySelector('[data-testid="issues-summary"]')).not.toBeNull();
+  });
+
+  it("shows a picked measurement's card in Selection, and the hint once it is let go", () => {
+    render();
+    act(() => {
+      measureStore.setState({ focus: 'line-1' });
+    });
+    const card = host.querySelector('[data-testid="selection-measurement"]');
+    expect(card?.textContent).toBe('measurement card');
+    expect(host.querySelector('[data-testid="selection-empty"]')).toBeNull();
+    act(() => {
+      measureStore.setState({ focus: null });
+    });
+    expect(host.querySelector('[data-testid="selection-measurement"]')).toBeNull();
+    expect(host.querySelector('[data-testid="selection-empty"]')).not.toBeNull();
   });
 
   it('brings the workbench back from the maximised agent when a tab is clicked (D22)', () => {
@@ -323,14 +380,12 @@ describe('RightSidebar', () => {
     });
     expect(host.querySelector('[role="tabpanel"]')?.closest('[hidden]')).not.toBeNull();
     expect(host.querySelector('[role="tablist"]')?.closest('[hidden]')).toBeNull();
-    act(() => {
-      document.getElementById('wb-tab-issues')?.click();
-    });
+    clickTab('project');
     expect(agentPane.getState().mode).toBe('normal');
     expect(host.querySelector('[role="tabpanel"]')?.closest('[hidden]')).toBeNull();
   });
 
-  it('moves the tabs that do not fit at 300 px into "More tabs"', () => {
+  it('keeps all four tabs on the row at 300 px, with no "More tabs"', () => {
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (
       this: HTMLElement,
     ) {
@@ -343,113 +398,67 @@ describe('RightSidebar', () => {
     });
     withVolumesAndDates();
     render();
-    act(() => {
-      workbench.getState().open('measure');
-      workbench.getState().show('selection');
-    });
-    // fixed tabs leave first, the later first; Selection is in front and stays
-    expect(tabIds()).toEqual(['wb-tab-measure', 'wb-tab-selection']);
-    const more = host.querySelector<HTMLButtonElement>('button[aria-label="More tabs"]');
-    expect(more?.textContent).toContain('3');
-    act(() => {
-      more?.click();
-    });
-    const menu = document.querySelector('[role="menu"]');
-    expect(menu?.getAttribute('aria-label')).toBe('More tabs');
-    const items = [...(menu?.querySelectorAll('[role^="menuitem"]') ?? [])].map(
-      (e) => e.textContent,
-    );
-    expect(items).toEqual(['Issues · 0', 'Volumes · 0', 'Changes']);
+    expect(tabIds()).toEqual([
+      'wb-tab-selection',
+      'wb-tab-tools',
+      'wb-tab-layers',
+      'wb-tab-project',
+    ]);
+    expect(host.querySelector('button[aria-label="More tabs"]')).toBeNull();
   });
 
-  it('opens at least 470 px wide while Volumes is in front, then returns', () => {
+  it("keeps the band's width across every tab; only Expand panel on Coverage widens it", () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
       this: HTMLElement,
     ) {
       return this.classList.contains('ws') ? new DOMRect(0, 0, 1000, 700) : new DOMRect();
     });
+    const bandId = panelBandOf(window.innerWidth);
+    const band = RIGHT_BANDS[bandId];
+    const width = String(band.px);
     withVolumesAndDates();
     render();
-    act(() => {
-      workbench.getState().show('selection');
-    });
-    expect(ws()?.style.getPropertyValue('--split-min')).toBe('280px');
-    expect(handle()?.getAttribute('aria-valuenow')).toBe('360');
+    expect(handle()?.getAttribute('aria-valuenow')).toBe(width);
+    for (const tab of ['tools', 'layers', 'project', 'selection']) {
+      clickTab(tab);
+      expect(handle()?.getAttribute('aria-valuenow'), tab).toBe(width);
+    }
     act(() => {
       workbench.getState().show('volumes');
     });
-    expect(ws()?.style.getPropertyValue('--split-min')).toBe('470px');
-    expect(handle()?.getAttribute('aria-valuenow')).toBe('470');
-    act(() => {
-      workbench.getState().show('issues');
-    });
-    expect(handle()?.getAttribute('aria-valuenow')).toBe('360');
-    // the person's width was never overwritten
-    expect(splitPrefs.getState().byId['scene.right']?.size).toBeUndefined();
-  });
-
-  it('opens at least 470 px wide while the RF tab is in front, then returns', () => {
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
-      this: HTMLElement,
-    ) {
-      return this.classList.contains('ws') ? new DOMRect(0, 0, 1000, 700) : new DOMRect();
-    });
-    render();
-    expect(handle()?.getAttribute('aria-valuenow')).toBe('360');
+    expect(handle()?.getAttribute('aria-valuenow')).toBe(width);
+    // Coverage is a wide tool: its header offers Expand panel, which opens the band's widest
     act(() => {
       workbench.getState().open('rf');
     });
     expect(document.body.textContent).toContain('rf bench');
-    expect(ws()?.style.getPropertyValue('--split-min')).toBe('470px');
-    expect(handle()?.getAttribute('aria-valuenow')).toBe('470');
+    expect(handle()?.getAttribute('aria-valuenow')).toBe(width);
+    const expand = sectionEl('tools.coverage')?.querySelector<HTMLButtonElement>(
+      '[data-testid="panel-expand"]',
+    );
+    expect(expand?.getAttribute('aria-label')).toBe('Expand panel');
     act(() => {
-      workbench.getState().show('selection');
+      expand?.click();
     });
-    expect(handle()?.getAttribute('aria-valuenow')).toBe('360');
-    expect(splitPrefs.getState().byId['scene.right']?.size).toBeUndefined();
+    expect(ws()?.style.getPropertyValue('--split-min')).toBe(`${String(band.max)}px`);
+    expect(handle()?.getAttribute('aria-valuenow')).toBe(String(band.max));
+    act(() => {
+      expand?.click();
+    });
+    expect(handle()?.getAttribute('aria-valuenow')).toBe(width);
+    // the person's width was never overwritten
+    expect(splitPrefs.getState().byId[rightSplitId(bandId)]?.size).toBeUndefined();
   });
 
-  it('stops a drag at 470 px while Volumes is in front, and folds only past the usual point', () => {
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
-      this: HTMLElement,
-    ) {
-      return this.classList.contains('ws') ? new DOMRect(0, 0, 1000, 700) : new DOMRect();
-    });
-    const pointer = (type: string, clientX: number) => {
-      act(() => {
-        handle()?.dispatchEvent(
-          new PointerEvent(type, { bubbles: true, cancelable: true, clientX, button: 0 }),
-        );
-      });
-    };
-    // the panel is the end pane: its edge moving right makes it narrower
-    const drag = (by: number) => {
-      pointer('pointerdown', 530);
-      pointer('pointermove', 530 + by);
-      pointer('pointerup', 530 + by);
-    };
-    withVolumesAndDates();
-    render();
-    act(() => {
-      workbench.getState().show('volumes');
-    });
-    // 470 less 100 is 370: held at 470, not folded (it once folded below 422)
-    drag(100);
-    expect(handle()?.getAttribute('aria-valuenow')).toBe('470');
-    expect(shell.getState().rightCollapsed).toBe(false);
-    drag(220); // 250: still above the usual fold point, 280 less 48
-    expect(shell.getState().rightCollapsed).toBe(false);
-    drag(240); // 230: past it
-    expect(shell.getState().rightCollapsed).toBe(true);
-  });
-
-  it('opens a volumetric project on Volumes', () => {
+  it('opens a volumetric project on Project > Volumes', () => {
     render();
     expect(workbench.getState().front).toBe('selection');
     act(() => {
       volumetric.setState({ status: 'ready' });
     });
     expect(workbench.getState().front).toBe('volumes');
+    expect(workbench.getState().panel).toBe('project');
+    expect(sectionEl('project.volumes')?.getAttribute('data-open')).toBe('true');
   });
 
   it('opens the next volumetric project on Volumes too, straight from another', () => {
@@ -466,19 +475,20 @@ describe('RightSidebar', () => {
     expect(workbench.getState().front).toBe('volumes');
   });
 
-  it('links the island while the live tool tab is in front', () => {
+  it("links the island while the live tool's section is in front", () => {
     render();
     expect(linked).toBe(false);
     act(() => {
       live = [{ kind: 'tool', label: 'Distance', reading: null }];
       workbench.getState().toolStarted('measure');
     });
-    expect(document.getElementById('wb-tab-measure')?.textContent).toContain('Project');
+    expect(workbench.getState().panel).toBe('tools');
+    expect(sectionEl('tools.measure')?.querySelector('.tab-live')).not.toBeNull();
     expect(linked).toBe(true);
-    act(() => {
-      workbench.getState().show('issues');
-    });
+    clickTab('project');
     expect(linked).toBe(false);
+    clickTab('tools');
+    expect(linked).toBe(true);
   });
 
   it('has a workbench heading above the bench, so the agent h3 follows an h2 (I-R45)', () => {
@@ -521,7 +531,7 @@ describe('RightSidebar', () => {
     expect(host.querySelector('[data-testid="wb-section-display-pins"]')).not.toBeNull();
   });
 
-  it('shows the Point cloud tab and its Clean up tab only in a project with a cloud', () => {
+  it('shows the Point cloud sections only in a project with a cloud', () => {
     const cloud = {
       kind: 'pointcloud',
       id: 'scan',
@@ -531,19 +541,23 @@ describe('RightSidebar', () => {
       format: 'copc',
     };
     render();
-    act(() => {
-      workbench.getState().open('clouds');
-    });
-    expect(tabIds()).not.toContain('wb-tab-clouds');
+    clickTab('layers');
+    expect(sectionIds()).not.toContain('layers.clouds');
+    clickTab('tools');
+    expect(sectionIds()).not.toContain('tools.pointcloud');
     act(() => {
       workspace.getState().openProject({
         id: 'pc',
         root: '/pc',
         manifest: { ...threeDates, layers: [...threeDates.layers, cloud] } as typeof threeDates,
       });
+    });
+    expect(sectionIds()).toContain('tools.pointcloud');
+    act(() => {
       workbench.getState().open('clouds');
     });
-    expect(tabIds()).toContain('wb-tab-clouds');
+    expect(workbench.getState().panel).toBe('layers');
+    expect(sectionIds()).toContain('layers.clouds');
     expect(host.querySelector('[data-testid="cloud-bench"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="cloud-panel"]')).not.toBeNull();
   });

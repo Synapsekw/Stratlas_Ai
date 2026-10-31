@@ -7,7 +7,7 @@ import { beginIssueEdit, clearIssueEditing } from '../../../issueCard/state';
 import { shell } from '../../../shell';
 import { antennaStore, openAntennaReview, showAntennaField } from '../../../telecom/antennaStore';
 import { drawerStore } from '../drawerStore';
-import { createWorkbenchStore } from '../workbenchStore';
+import { createWorkbenchStore, type WorkbenchState } from '../workbenchStore';
 import { followAntennaPick } from './antennaFollow';
 import { projectListStore } from './projectListStore';
 
@@ -21,11 +21,18 @@ const contract = JSON.parse(
   ),
 ) as { example: unknown };
 
+/** Project > In this project is in front, open. */
+const inThisProject = (s: WorkbenchState) => ({
+  panel: s.panel,
+  open: s.sections['project.inThisProject'],
+});
+const PROJECT_LIST = { panel: 'project', open: true };
+
 beforeEach(() => {
   clearIssueEditing();
   shell.getState().setRight(false);
   drawerStore.getState().close();
-  projectListStore.setState({ reveal: null, toolsSeq: 0 });
+  projectListStore.setState({ reveal: null });
   antennaStore.setState({
     ...antennaStore.getInitialState(),
     projectId: 'p1',
@@ -40,7 +47,7 @@ describe('followAntennaPick', () => {
     followAntennaPick('ant-d1', bench);
     expect(antennaStore.getState().selected).toBe('ant-d1');
     expect(projectListStore.getState().reveal).toMatchObject({ group: 'antennas', id: 'ant-d1' });
-    expect(bench.getState().front).toBe('measure');
+    expect(inThisProject(bench.getState())).toEqual(PROJECT_LIST);
   });
 
   it('shows every unit when the filter would hide the picked one', () => {
@@ -77,7 +84,7 @@ describe('openAntennaReview', () => {
     bench.getState().open('rf');
     bench.getState().show('rf');
     openAntennaReview(bench);
-    expect(bench.getState().front).toBe('measure');
+    expect(inThisProject(bench.getState())).toEqual(PROJECT_LIST);
     expect(antennaStore.getState()).toMatchObject({ filter: 'draft', selected: 'ant-d1' });
   });
 
@@ -86,7 +93,7 @@ describe('openAntennaReview', () => {
     bench.getState().show('selection');
     openAntennaReview(bench);
     expect(projectListStore.getState().reveal).toMatchObject({ group: 'antennas', id: 'ant-d1' });
-    expect(bench.getState().front).toBe('measure');
+    expect(inThisProject(bench.getState())).toEqual(PROJECT_LIST);
   });
 });
 
@@ -103,7 +110,7 @@ describe('the drawer of a folded sidebar', () => {
     bench.getState().show('selection');
     showAntennaField('ant-d1', 'azimuthGridDeg', bench);
     expect(drawerStore.getState().opened).toBe('click');
-    expect(bench.getState().front).toBe('measure');
+    expect(inThisProject(bench.getState())).toEqual(PROJECT_LIST);
   });
 });
 
@@ -113,7 +120,7 @@ describe('showAntennaField (Edit azimuth)', () => {
     bench.getState().open('rf');
     bench.getState().show('rf');
     showAntennaField('ant-d1', 'downtiltDeg', bench);
-    expect(bench.getState().front).toBe('measure');
+    expect(inThisProject(bench.getState())).toEqual(PROJECT_LIST);
     expect(antennaStore.getState().focusField).toMatchObject({ id: 'ant-d1', key: 'downtiltDeg' });
     expect(projectListStore.getState().reveal).toMatchObject({ group: 'antennas', id: 'ant-d1' });
   });

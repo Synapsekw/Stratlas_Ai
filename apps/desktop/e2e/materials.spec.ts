@@ -133,7 +133,7 @@ test('site materials from CSV, a material on a measurement, and the weight calcu
   await expect(calc.getByTestId('survey-achieved-density')).toContainText(
     formatQuantity(63_000 / volume, 'density', settings.units, 3),
   );
-  await expectAccessible(win, 'Survey calculators', { include: '[data-testid="survey-side"]' });
+  await expectAccessible(win, 'Survey calculators', { include: '[data-testid="survey-panel"]' });
 
   // the material is stored on the measurement; the volume is not changed by the calculators
   await (await measureSaved(win)).getByTestId('survey-list-save').click();

@@ -18,7 +18,7 @@ import type { StoreApi } from 'zustand/vanilla';
 import { agentPane, type AgentPaneState } from '../../agent/agentPaneStore';
 import { shell } from '../../shell';
 import { openDrawer } from './drawerStore';
-import type { TabId } from './tabsModel';
+import type { PanelTab, SectionId, TabId } from './tabsModel';
 import { workbench, type WorkbenchState } from './workbenchStore';
 
 export interface FollowToolOptions {
@@ -53,6 +53,22 @@ export function showBench(
   if (b.tabs.some((t) => t.id === id)) b.show(id);
   else b.open(id);
   // a maximised agent covers the bench: the open would look dead
+  if (pane.getState().mode === 'max') pane.getState().setMode('normal');
+  if (sh.getState().rightCollapsed) openDrawer();
+}
+
+/**
+ * The person opens a section of the right panel from the stage (an antenna pick's row in Project >
+ * In this project): as `showBench`, for a section that is no old tab's body.
+ */
+export function showSection(
+  tab: PanelTab,
+  section: SectionId,
+  bench: StoreApi<WorkbenchState> = workbench,
+  sh: Pick<typeof shell, 'getState'> = shell,
+  pane: Pick<StoreApi<AgentPaneState>, 'getState'> = agentPane,
+): void {
+  bench.getState().show(tab, section);
   if (pane.getState().mode === 'max') pane.getState().setMode('normal');
   if (sh.getState().rightCollapsed) openDrawer();
 }

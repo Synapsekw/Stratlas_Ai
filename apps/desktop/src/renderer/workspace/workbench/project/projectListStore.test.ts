@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { projectListStore, requestToolsScroll, revealInList } from './projectListStore';
+import { projectListStore, revealInList } from './projectListStore';
 
 beforeEach(() => {
   projectListStore.setState(projectListStore.getInitialState());
@@ -17,12 +17,5 @@ describe('projectListStore', () => {
       id: null,
       seq: 3,
     });
-  });
-
-  it('a tools-scroll request grows toolsSeq', () => {
-    expect(projectListStore.getState().toolsSeq).toBe(0);
-    requestToolsScroll();
-    requestToolsScroll();
-    expect(projectListStore.getState().toolsSeq).toBe(2);
   });
 });

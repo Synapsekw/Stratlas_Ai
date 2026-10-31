@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { shell } from '../../shell';
 import { drawerStore } from '../workbench/drawerStore';
 import { createWorkbenchStore } from '../workbench/workbenchStore';
-import { projectListStore } from '../workbench/project/projectListStore';
 import { liveTab } from '../workbench/view';
 import { GROUP_TAB, openBenchFromIsland } from './islandBench';
 
@@ -73,14 +72,11 @@ describe('islandBench', () => {
     expect(drawerStore.getState().opened).toBe('click');
   });
 
-  it('the island Measure group asks for the tools scroll', () => {
-    const seq = projectListStore.getState().toolsSeq;
+  it('the island Measure group brings Tools > Measure forward, open', () => {
     openBenchFromIsland(GROUP_TAB.measure ?? 'measure', bench);
     expect(bench.getState().front).toBe('measure');
-    expect(projectListStore.getState().toolsSeq).toBe(seq + 1);
-    // another group's bench asks for nothing
-    openBenchFromIsland('volumes', bench);
-    expect(projectListStore.getState().toolsSeq).toBe(seq + 1);
+    expect(bench.getState().panel).toBe('tools');
+    expect(bench.getState().sections['tools.measure']).toBe(true);
   });
 
   it('does not open the drawer while the right panel shows (guarded on rightCollapsed)', () => {

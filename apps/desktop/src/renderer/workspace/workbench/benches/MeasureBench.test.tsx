@@ -19,7 +19,6 @@ import { followMeasureTool, followRecent } from '../measureFollow';
 import { createFavouritesStore } from '../../../survey/measureCatalogue';
 import { MeasureBench } from './MeasureBench';
 import { UnsavedBar } from '../../../survey/MeasureToolbar';
-import { openBenchFromIsland } from '../../island/islandBench';
 
 // the site data tools are their own screens: here only that the bench lists them
 vi.mock('../../../survey/Designs', () => ({
@@ -263,21 +262,17 @@ const before = (a: Element | null, b: Element | null): boolean =>
   b !== null &&
   (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
-describe('the Project tab: In this project above the tools', () => {
-  it('puts the project list above the tools and the live card above the list', () => {
+describe('Tools > Measure: the tools only', () => {
+  it('holds no project list, and keeps the live card above the save controls and the catalogue', () => {
     render();
-    const caption = q('project-caption');
-    const tools = q('project-tools-caption');
-    expect(caption?.textContent).toContain('In this project');
-    expect(tools?.textContent).toBe('Tools');
-    expect(before(caption, tools)).toBe(true);
-    // the save controls and the catalogue come after the TOOLS caption
-    expect(before(tools, host.querySelector('.sv-saved'))).toBe(true);
-    expect(before(tools, q('survey-tools'))).toBe(true);
-    // a live tool's card stays first, above the list; the strip is under the TOOLS caption
+    // "In this project" is Project's section now
+    expect(q('project-list')).toBeNull();
+    expect(q('project-caption')).toBeNull();
+    expect(q('project-tools-caption')).toBeNull();
+    expect(before(host.querySelector('.sv-saved'), q('survey-tools'))).toBe(true);
+    // a live tool's card stays first, above the strip
     press('m');
-    expect(before(q('survey-drawbar'), q('project-caption'))).toBe(true);
-    expect(before(q('project-tools-caption'), host.querySelector('.meb-strip'))).toBe(true);
+    expect(before(q('survey-drawbar'), host.querySelector('.meb-strip'))).toBe(true);
     act(() => {
       stopTool();
     });
@@ -289,19 +284,6 @@ describe('the Project tab: In this project above the tools', () => {
     expect(q('antenna-panel')).toBeNull();
     const src = readFileSync(join(import.meta.dirname, 'MeasureBench.tsx'), 'utf8');
     expect(src).not.toContain('AntennaSection');
-  });
-
-  it('scrolls the TOOLS caption to the top on a tools-scroll request', () => {
-    render();
-    const scroller = host.querySelector<HTMLElement>('.meb.wb-scroll');
-    const tools = q('project-tools-caption') as HTMLElement | null;
-    if (!scroller || !tools) throw new Error('no scroller or caption');
-    scroller.getBoundingClientRect = () => ({ top: 100 }) as DOMRect;
-    tools.getBoundingClientRect = () => ({ top: 340 }) as DOMRect;
-    act(() => {
-      openBenchFromIsland('measure', createWorkbenchStore(null));
-    });
-    expect(scroller.scrollTop).toBe(240);
   });
 });
 

@@ -1,7 +1,7 @@
 /**
- * The Measure workbench, the body of the Project tab (stage island D12, D13, D16, D18, D19): the
- * "In this project" list (`project/ProjectList.tsx`) over a TOOLS caption, then the tools as they
- * always were: the save controls, search, Favourites and recent, every measuring tool by family,
+ * The Measure workbench, the body of Tools > Measure (UI revision D2; stage island D12, D13, D16,
+ * D18, D19); its "In this project" list is Project's section now (`project/ProjectList.tsx`). The
+ * tools as they always were: the save controls, search, Favourites and recent, every measuring tool by family,
  * Site data, Drawing aids and Templates.
  * While a tool is live it morphs in place: the live card on top (the shared measurement card in
  * its live variant, then the points, Undo, Stop and Save with their keys) and the catalogue
@@ -82,8 +82,6 @@ import {
 import { AntennaCsvTool } from '../../../telecom/AntennaCsvTool';
 import { Tool, useEngineStage } from '../../StageTools';
 import { SectionPanel, toggleMeasure, toggleSection } from '../../tools/measure';
-import { SiteDigest } from '../../../insights/SiteDigest';
-import { ProjectList } from '../project/ProjectList';
 import { Section } from '../Section';
 import { filterSections, sectionStore } from '../sectionState';
 import type { TabId } from '../tabsModel';
@@ -891,9 +889,6 @@ export function MeasureBench() {
     <div className="meb wb-scroll">
       {/* a running tool is never pushed down: its card (or the unsaved state) stays first */}
       {live ? <LiveCard /> : <PendingCard />}
-      {/* In this project, then the TOOLS caption; a search filters only the tools */}
-      <SiteDigest />
-      <ProjectList />
       {/* a search is about the tools: the save controls step aside until it is cleared */}
       {!searching && <SavedFooter />}
       {live ? (

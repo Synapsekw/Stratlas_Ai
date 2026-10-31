@@ -27,6 +27,7 @@ import {
   openIslandTools,
   stageMode,
 } from './island';
+import { benchBody, expectBench } from './panel';
 import { openDemo } from './surveyJobs';
 
 /** A view that was just created (the map loads its style, the 3D scene its model) takes a while. */
@@ -123,7 +124,7 @@ test.describe('the island on a project with two dates', () => {
     await win.mouse.click(away.x, away.y);
     await expect(bar).toHaveAttribute('data-state', 'tools');
     await bar.getByRole('tab', { name: 'Measure', exact: true }).click();
-    await expect(win.locator('#wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
+    await expectBench(win, 'measure');
     await expect(bar).toHaveAttribute('data-state', 'tools');
     await expect(bar.getByRole('tabpanel')).toHaveAccessibleName('Measure');
     // let go, a press outside closes it again
@@ -133,7 +134,7 @@ test.describe('the island on a project with two dates', () => {
     await expect(bar).toHaveAttribute('data-state', 'rest');
   });
 
-  test('a click on a group tab picks it and opens its workbench in the right panel', async ({
+  test('a click on a group tab picks it and opens its section in the right panel', async ({
     twoDateProject,
     win,
   }) => {
@@ -161,14 +162,13 @@ test.describe('the island on a project with two dates', () => {
       // a tab that showed its name already does not move at all
       if (named) expect(after).toEqual(before);
       await tab(bar, name).click();
-      // the group's workbench opens in the right sidebar (D4, D12), and the island folds back
+      // the group's section opens in the right panel (D2: Tools > Measure, Layers & display >
+      // Display), and the island folds back
       await expect(bar).not.toHaveAttribute('data-state', 'tools');
-      const id = name.toLowerCase();
-      await expect(win.locator(`#wb-tab-${id}`)).toHaveAttribute('aria-selected', 'true');
+      const id = name === 'Measure' ? 'measure' : 'display';
+      await expectBench(win, id);
       await expect(
-        win
-          .locator(`#wb-panel-${id}`)
-          .getByTestId(name === 'Measure' ? 'survey-tools' : 'display-bench'),
+        benchBody(win, id).getByTestId(name === 'Measure' ? 'survey-tools' : 'display-bench'),
       ).toBeVisible();
       // the island has no full set of its own any more
       await expect(win.locator('.isl-full')).toHaveCount(0);
@@ -183,7 +183,7 @@ test.describe('the island on a project with two dates', () => {
     await tab(bar, 'Measure').focus();
     await win.keyboard.press('Space');
     await expect(bar).not.toHaveAttribute('data-state', 'tools');
-    await expect(win.locator('#wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
+    await expectBench(win, 'measure');
   });
 
   test('previewing Annotate names Annotate, and the picked tab keeps its name', async ({
@@ -300,7 +300,7 @@ test.describe('the island on a project with two dates', () => {
     await open.focus();
     await expect(open).toBeFocused();
     await win.keyboard.press('Space');
-    await expect(win.locator('#wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
+    await expectBench(win, 'measure');
     await expect(island(win)).not.toHaveAttribute('data-state', 'tools');
     await win.locator('[data-scene-view] canvas').first().hover();
     await win.keyboard.press('Escape');
@@ -539,7 +539,10 @@ test.describe('in the window CI runs, 1100 x 720', () => {
           ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom }
           : null;
       };
-      const panel = document.querySelector('#wb-panel-volumes');
+      // Project > Volumes (D2)
+      const panel = document.querySelector(
+        '.ws > .right [data-section="project.volumes"] .wb-psec-inner',
+      );
       return {
         width: innerWidth,
         stage: box(document.querySelector('.ws > .stage')),
@@ -812,10 +815,8 @@ test.describe('the quick rows (D5, I-R48)', () => {
     await pin.click();
     await expect(pin).toHaveAttribute('aria-pressed', 'true');
     // the annotation tools are on, their tab live in front, with Pin picked there too
-    await expect(win.locator('#wb-tab-annotate')).toHaveAttribute('aria-selected', 'true');
-    const tools = win
-      .locator('#wb-panel-annotate')
-      .getByRole('toolbar', { name: '3D annotation tools' });
+    await expectBench(win, 'annotate');
+    const tools = benchBody(win, 'annotate').getByRole('toolbar', { name: '3D annotation tools' });
     await expect(tools.getByRole('button', { name: 'Pin', exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',

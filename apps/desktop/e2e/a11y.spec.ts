@@ -49,7 +49,7 @@ async function islandSetAccessible(
   win: Page,
   group: GroupId,
   label: string,
-  panel?: { tile: string; tab: string },
+  panel?: { tile: string; tab: TabId },
 ): Promise<boolean> {
   const full = await islandGroup(win, group);
   if (panel) {
@@ -60,13 +60,16 @@ async function islandSetAccessible(
     }
     await tile.focus();
     await win.keyboard.press('Enter');
-    await expect(win.locator(`#wb-panel-${panel.tab}`)).toBeVisible();
+    await expectBench(win, panel.tab);
+    await expect(benchBody(win, panel.tab)).toBeVisible();
   }
   await expectAccessible(win, `island set: ${label}`);
   await expectFocusMeaningful(win, `opening ${label}`);
   return true;
 }
+import { benchBody, expectBench } from './panel';
 import { hasRealProject, missingRealProject } from './realData';
+import type { TabId } from '../src/renderer/workspace/workbench/tabsModel';
 
 test.setTimeout(240_000);
 
@@ -355,7 +358,7 @@ test.describe('a synthetic project', () => {
     // Every set of the island's groups, which is a workbench or a panel tab in the right sidebar
     // now (D4): the island keeps every tool in the same place at every width (D6), so the sets
     // are walked at the size the window got and again in the smallest window the app allows.
-    const SETS: [string, GroupId, { tile: string; tab: string }?][] = [
+    const SETS: [string, GroupId, { tile: string; tab: TabId }?][] = [
       ['Display', 'display'],
       ['Point cloud', 'clouds'],
       [
@@ -402,9 +405,9 @@ test.describe('a synthetic project', () => {
     }, size);
 
     // the issue card from the register, its photo full size, and back
-    // (the Project tab takes a place in the row: Issues may be under More tabs)
-    await openBench(win, 'issues');
-    await win.locator('.ann-list').getByText('F01').first().click();
+    // (Project > Issues is a summary: a row of it opens the issue's card in Selection)
+    const issues = await openBench(win, 'issues');
+    await issues.locator('.wb-issues-row').filter({ hasText: 'F01' }).first().click();
     await expect(win.getByTestId('issue-card')).toBeVisible();
     await expectAccessible(win, 'Scene, issue card');
     const photo = win.getByTestId('issue-card-photo');
@@ -634,13 +637,12 @@ test.describe('@realdata HCl (real data, local only)', () => {
       });
       await expect(win.locator('.vwin').first()).toBeVisible({ timeout: 60_000 });
       await expectAccessible(win, 'HCl, scene with the video window');
-      const see = { tile: 'See inside the asset: cut or transparent', tab: 'cutaway' };
+      const see = { tile: 'See inside the asset: cut or transparent', tab: 'cutaway' as const };
       await islandSetAccessible(win, 'display', 'Display');
       await islandSetAccessible(win, 'clouds', 'Point cloud');
       await islandSetAccessible(win, 'view', 'See inside the asset', see);
       await islandSetAccessible(win, 'video', 'Video');
-      await win.getByRole('tab', { name: /Issues/ }).click();
-      await win.locator('.ann-list [role="option"]').first().click();
+      await (await openBench(win, 'issues')).locator('.wb-issues-row').first().click();
       await expect(win.getByTestId('issue-card')).toBeVisible();
       await expectAccessible(win, 'HCl, issue card');
       expect(await network.outbound()).toEqual([]);

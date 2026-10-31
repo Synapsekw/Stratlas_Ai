@@ -154,7 +154,7 @@
 }
 .wb-body .qa-side,
 .wb-body .ov-panel,
-.wb-body > .hydro-panel {
+.wb-body .hydro-panel {
   position: static;
   inset: auto;
   inline-size: auto;
@@ -164,6 +164,6 @@
   overflow: auto;
   pointer-events: auto;
 }
-.wb-body > .hydro-panel {
+.wb-body .hydro-panel {
   padding: var(--sp-4) var(--sp-5);
 }

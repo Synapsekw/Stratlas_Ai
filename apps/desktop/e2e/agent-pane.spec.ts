@@ -120,12 +120,12 @@ test('the agent pane: off row, maximise, minimise, a live tool, the divider and 
     // maximise: the agent has the column below the tab bar (D22)
     await agent(win).getByRole('button', { name: 'Maximise' }).click();
     await expect(win.locator('.right .wb-body')).toBeHidden();
-    await expect(win.locator('#wb-tab-issues')).toBeVisible();
+    await expect(win.locator('#wb-tab-project')).toBeVisible();
     const max = await heights(win);
     expect(max.agent).toBeGreaterThan(max.split - 2);
     await shot(win, 'agent-pane-02-maximised');
     // a tab brings the workbench back
-    await win.locator('#wb-tab-issues').click();
+    await win.locator('#wb-tab-project').click();
     await expect(win.locator('.right .wb-body')).toBeVisible();
     await expect(agent(win).getByRole('button', { name: 'Maximise' })).toBeVisible();
 

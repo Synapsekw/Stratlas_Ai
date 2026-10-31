@@ -13,6 +13,7 @@ import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PIPELINE_ENV, expect, hasPipelinePython, test, tinyManifest } from './fixtures';
 import { stageMode } from './island';
+import { expectBench, panelSection, panelTab } from './panel';
 import { RF_DRAFT, RF_PANELS, RF_SITE, readRfSectors, writeRfProject } from './rfFixtures';
 
 interface Hooks {
@@ -222,7 +223,10 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
 
   // 1. the Coverage tab, from the project menu's Coverage...: the AI card, three steps, Advanced
   let bench = await openRfFromProjectMenu(win);
-  await expect(win.locator('#wb-tab-rf')).toContainText('Coverage');
+  await expectBench(win, 'rf');
+  await expect(
+    panelSection(win, 'tools.coverage').locator(':scope > .wb-section-head'),
+  ).toContainText('Coverage');
   await expect(bench.getByTestId('rf-ai-card')).toBeVisible();
   await expect(bench.getByTestId('rf-step-antennas')).toContainText('3 accepted · 1 draft');
   await expect(bench.locator('.rf-step-title')).toHaveText([
@@ -516,8 +520,8 @@ for (const size of ['1100x720', '1440x900']) {
         // nothing floats over the stage: the prompt keeps its corner and clears the overlays
         await expect(card).toBeVisible();
         await expect.poll(() => antennaClash(win)).toEqual([]);
-        // the Project tab holds the unit's row and details; the prompt is still there with it
-        await win.locator('#wb-tab-measure').click();
+        // Project > In this project holds the unit's row and details; the prompt is still there with it
+        await panelTab(win, 'project').click();
         await expect(unitDetails).toBeVisible();
         await expect(card).toBeVisible();
         await expect.poll(() => antennaClash(win)).toEqual([]);
@@ -565,7 +569,7 @@ for (const size of ['1100x720', '1440x900']) {
         await selectUnit(win, id);
         await expect(legend).toBeVisible();
         await expect(legend).not.toHaveAttribute('data-covered', /.*/);
-        await win.locator('#wb-tab-measure').click();
+        await panelTab(win, 'project').click();
         await expect(unitDetails).toBeVisible();
         await expect(legend).toBeVisible();
         await expect.poll(() => antennaClash(win)).toEqual([]);

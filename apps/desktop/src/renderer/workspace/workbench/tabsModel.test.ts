@@ -3,10 +3,17 @@ import {
   isTabId,
   onToolStart,
   onToolStop,
+  NO_PANEL_DATA,
   openPanel,
-  overflowOrderFor,
   orderTabs,
-  paneWidth,
+  PANEL_TABS,
+  readPanelPlace,
+  sectionDef,
+  sectionFor,
+  sectionsOf,
+  SECTIONS,
+  TAB_IDS,
+  tabOfSection,
   toolInFront,
   type Tab,
   type TabId,
@@ -22,8 +29,8 @@ const tab = (id: TabId, over: Partial<Tab> = {}): Tab => ({
 const fixedTabs = (): Tab[] => [
   tab('selection', { fixed: true }),
   tab('issues', { fixed: true }),
-  tab('volumes', { fixed: true, minWidth: 470 }),
-  tab('changes', { fixed: true, minWidth: 470 }),
+  tab('volumes', { fixed: true }),
+  tab('changes', { fixed: true }),
 ];
 const ids = (tabs: readonly Tab[]) => tabs.map((t) => t.id);
 
@@ -134,7 +141,7 @@ describe('onToolStart', () => {
       'volumes',
     );
     expect(next.tabs.filter((t) => t.id === 'volumes')).toHaveLength(1);
-    expect(next.tabs[0]).toMatchObject({ id: 'volumes', live: true, fixed: true, minWidth: 470 });
+    expect(next.tabs[0]).toMatchObject({ id: 'volumes', live: true, fixed: true });
   });
 });
 
@@ -194,45 +201,6 @@ describe('onToolStop', () => {
   });
 });
 
-describe('overflowOrderFor', () => {
-  // Tabs contract: higher value leaves first.
-  const tabs = [
-    ...fixedTabs(),
-    tab('display'),
-    tab('clouds', { pinned: true }),
-    tab('measure', { live: true }),
-    tab('video', { live: true }),
-  ];
-  const leaving = () => {
-    const order = overflowOrderFor({ tabs });
-    return tabs.map((t) => t.id).sort((a, b) => order(b) - order(a));
-  };
-
-  it('fixed leave first, then panels, then selection, live last', () => {
-    expect(leaving()).toEqual([
-      'changes',
-      'volumes',
-      'issues',
-      'clouds',
-      'display',
-      'selection',
-      'video',
-      'measure',
-    ]);
-  });
-
-  it('gives unknown ids 0', () => {
-    expect(overflowOrderFor({ tabs })('hydro')).toBe(0);
-  });
-
-  it('never drops Project before a panel (it overflows with Selection)', () => {
-    const withProject = [tab('measure', { fixed: true }), ...fixedTabs(), tab('display')];
-    const order = overflowOrderFor({ tabs: withProject });
-    const leaving = withProject.map((t) => t.id).sort((a, b) => order(b) - order(a));
-    expect(leaving).toEqual(['changes', 'volumes', 'issues', 'display', 'selection', 'measure']);
-  });
-});
-
 describe('the Project tab (id measure)', () => {
   it('keeps the Project tab first among the fixed tabs', () => {
     const tabs = [
@@ -267,22 +235,6 @@ describe('the Project tab (id measure)', () => {
     expect(stopped.front).toBe('measure');
     expect(ids(stopped.tabs)).toContain('measure');
     expect(ids(stopped.tabs).indexOf('measure')).toBe(ids(stopped.tabs).indexOf('selection') - 1);
-  });
-});
-
-describe('paneWidth', () => {
-  const volumes = tab('volumes', { fixed: true, minWidth: 470 });
-  it('raises the preference to the tab minimum when there is room', () => {
-    expect(paneWidth(360, volumes, 360, 1100 - 52)).toBe(470);
-  });
-  it('width clamps to keep the stage', () => {
-    expect(paneWidth(360, volumes, 360, 1100 - 52 - 360)).toBe(328);
-  });
-  it('keeps the preference for tabs without a minimum', () => {
-    expect(paneWidth(380, tab('selection', { fixed: true }), 360, 1200)).toBe(380);
-  });
-  it('never goes negative', () => {
-    expect(paneWidth(380, volumes, 360, 200)).toBe(0);
   });
 });
 
@@ -330,5 +282,88 @@ describe('toolInFront', () => {
   });
   it('is true when the front tab is live', () => {
     expect(toolInFront(state('measure', { fixed: true, live: true }))).toBe(true);
+  });
+});
+
+describe('the four panel tabs (D2)', () => {
+  it('every one of the 20 old ids maps to a tab and section', () => {
+    expect(TAB_IDS).toHaveLength(20);
+    for (const id of TAB_IDS) {
+      const { tab, section } = sectionFor(id);
+      expect(PANEL_TABS).toContain(tab);
+      expect(tabOfSection(section)).toBe(tab);
+      expect(sectionDef(section)).toBeDefined();
+    }
+  });
+
+  it('follows the D2 table for the moved homes', () => {
+    expect(sectionFor('measure')).toEqual({ tab: 'tools', section: 'tools.measure' });
+    expect(sectionFor('volumes')).toEqual({ tab: 'project', section: 'project.volumes' });
+    expect(sectionFor('issues')).toEqual({ tab: 'project', section: 'project.issues' });
+    expect(sectionFor('cutaway')).toEqual({ tab: 'layers', section: 'layers.cutaway' });
+    expect(sectionFor('qa')).toEqual({ tab: 'tools', section: 'tools.checks' });
+    expect(sectionFor('hydro')).toEqual({ tab: 'tools', section: 'tools.terrain' });
+    expect(sectionFor('rf')).toEqual({ tab: 'tools', section: 'tools.coverage' });
+    expect(sectionFor('selection')).toEqual({ tab: 'selection', section: 'selection.selected' });
+  });
+
+  it('every section body is shown by exactly one section', () => {
+    const bodies = SECTIONS.map((s) => s.body).filter((b) => b !== null);
+    expect(new Set(bodies).size).toBe(bodies.length);
+  });
+
+  it('shows a section for its data or its open tool, never for the project type', () => {
+    const project = (d = NO_PANEL_DATA, opened = new Set<TabId>()) =>
+      sectionsOf('project', d, opened).map((s) => s.id);
+    expect(project()).toEqual(['project.inThisProject', 'project.issues', 'project.jobs']);
+    expect(project({ ...NO_PANEL_DATA, volumes: true, dated: true, road: true })).toEqual([
+      'project.inThisProject',
+      'project.volumes',
+      'project.changes',
+      'project.issues',
+      'project.road',
+      'project.jobs',
+    ]);
+    // a tool opened without its data (Coverage from its chip) still shows its section
+    expect(sectionsOf('tools', NO_PANEL_DATA, new Set<TabId>(['rf'])).map((s) => s.id)).toContain(
+      'tools.coverage',
+    );
+    expect(sectionsOf('tools', NO_PANEL_DATA).map((s) => s.id)).not.toContain('tools.coverage');
+  });
+
+  it('marks Coverage and Thermal as wide (Expand panel), nothing else', () => {
+    expect(SECTIONS.filter((s) => s.wide).map((s) => s.id)).toEqual([
+      'tools.coverage',
+      'tools.thermal',
+    ]);
+  });
+});
+
+describe('readPanelPlace', () => {
+  it('opens on Selection with the default sections when nothing is remembered', () => {
+    const place = readPanelPlace(null, null);
+    expect(place.tab).toBe('selection');
+    expect(place.open['tools.measure']).toBe(true);
+  });
+
+  it('migrates the old front tab once and drops pins', () => {
+    const old = JSON.stringify({ pinned: ['rf', 'display'], front: 'volumes' });
+    const place = readPanelPlace(null, old);
+    expect(place.tab).toBe('project');
+    expect(place.open['project.volumes']).toBe(true);
+    expect(JSON.stringify(place)).not.toContain('rf');
+    // once the new key is there, the old one is not read again
+    const now = JSON.stringify({ tab: 'layers', open: { 'layers.display': true } });
+    expect(readPanelPlace(now, old)).toEqual({ tab: 'layers', open: { 'layers.display': true } });
+  });
+
+  it('pins alone land on Selection; junk is ignored', () => {
+    expect(readPanelPlace(null, JSON.stringify({ pinned: ['rf'] })).tab).toBe('selection');
+    expect(readPanelPlace('not json', '[1]').tab).toBe('selection');
+    const odd = JSON.stringify({
+      tab: 'nowhere',
+      open: { 'tools.nothing': true, 'tools.measure': 1 },
+    });
+    expect(readPanelPlace(odd, null)).toEqual({ tab: 'selection', open: {} });
   });
 });

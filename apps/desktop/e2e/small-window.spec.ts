@@ -23,6 +23,7 @@ import {
   toggleCompareDates,
 } from './island';
 import { captionArea } from './caption';
+import { expectBench } from './panel';
 import { headerProblems } from './split';
 import { openDemo } from './surveyJobs';
 
@@ -453,9 +454,9 @@ test.describe('with online satellite', () => {
 // ------------------------------------------------------------------------- Volumes in front
 
 /**
- * The stage with the widest tab in front (Volumes, 470 px): what a click at the middle of the
- * stage reaches, the rows the workbench tabs take, and where the resting island lies against the
- * stage (a split's pane headers: headerProblems).
+ * The stage with Project > Volumes in front (the panel at its band's one width, D1): what a click
+ * at the middle of the stage reaches, the rows the four panel tabs take, and where the resting
+ * island lies against the stage (a split's pane headers: headerProblems).
  */
 async function narrowStage(win: Page) {
   return win.evaluate(() => {
@@ -531,7 +532,7 @@ test.describe('with Volumes in front', () => {
   );
   test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x700', QUADRION_DEMO: DEMO_FOLDER } });
 
-  test('the stage centre takes a click, the tabs keep one row and the island fits', async ({
+  test('the stage centre takes a click, the four tabs fit one row and the island fits', async ({
     app,
     win,
   }, info) => {
@@ -545,11 +546,11 @@ test.describe('with Volumes in front', () => {
       const at = await narrowStage(win);
       expect(at, size).not.toBeNull();
       if (!at) return;
-      // the right panel at its Volumes width leaves the stage narrow, but whole
+      // the right panel at its band's width (Volumes asks for no more) leaves the stage whole
       expect(at.width, `the stage at ${size}`).toBeGreaterThanOrEqual(360);
       expect(at.middle, `a click at the middle of the stage at ${size}`).toBe('canvas');
-      expect(at.tabs, `the workbench tabs at ${size}`).toBeGreaterThan(1);
-      expect(at.tabRows, `rows of workbench tabs at ${size}`).toBe(1);
+      expect(at.tabs, `the panel tabs at ${size}`).toBe(4);
+      expect(at.tabRows, `rows of panel tabs at ${size}`).toBe(1);
       expect(at.islandIn, `the island inside the stage at ${size}`).toBe(true);
       expect(await islandCutOff(win), `the open island at ${size}`).toEqual([]);
       await closeIslandTools(win);
@@ -601,9 +602,10 @@ test.describe('with Volumes in front', () => {
         .play();
     });
     await expect(island(win).locator('[data-live]')).toHaveCount(1);
-    // and in the sidebar, "Video" with its live dot (D11, I-R62); Volumes stays in front
-    await expect(win.locator('.right #wb-tab-video .tab-live')).toHaveCount(1);
-    await expect(win.locator('.right #wb-tab-volumes')).toHaveAttribute('aria-selected', 'true');
+    // and in the panel, Tools (where Video lives) with its live dot (D11, I-R62); Volumes stays
+    // in front
+    await expect(win.locator('.right #wb-tab-tools .tab-live')).toHaveCount(1);
+    await expectBench(win, 'volumes');
     await near();
     const narrow = await islandOverToggle(win);
     await shot(win, info, 'island-toggle-narrow.png');
@@ -612,7 +614,7 @@ test.describe('with Volumes in front', () => {
     // as the bubble beside the capsule
     await win.locator('[data-scene-view] canvas').first().focus();
     await win.keyboard.press('m');
-    await expect(win.locator('.right #wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
+    await expectBench(win, 'measure');
     await near();
     const both = await islandOverToggle(win);
     await shot(win, info, 'island-toggle-live-tool.png');

@@ -53,10 +53,11 @@ export interface StagePile {
   profile: boolean;
 }
 
-/** The focused pile while the Volumes tab is in front, else null. */
+/** The focused pile while its panel shows (Selection, or Project > Volumes), else null. */
 export function stagePile(): StagePile | null {
   const s = measureStore.getState();
-  if (s.focus === null || workbench.getState().front !== 'volumes') return null;
+  const front = workbench.getState().front;
+  if (s.focus === null || (front !== 'volumes' && front !== 'selection')) return null;
   const m = s.file.measurements.find((x) => x.id === s.focus);
   if (!m || !isPile(m)) return null;
   const ring = drawnPoints(m, workspace.getState().project?.manifest ?? null);

@@ -241,9 +241,9 @@ test.describe('annotations follow their survey date', () => {
     await expect(folderEye(win, 'oct')).toHaveAttribute('data-visibility', 'none');
     await expect.poll(() => pins3d(win)).toEqual(['on-nov', 'undated']);
 
-    // nothing was removed: the register still holds every issue
+    // nothing was removed: the register (the Issues screen) still holds every issue
     expect(await issueCount(win)).toBe(ISSUES.length);
-    await win.getByRole('tab', { name: /Issues/ }).click();
+    await win.locator('.sb-nav .nav-item', { hasText: 'Issues' }).first().click();
     for (const i of ISSUES) await expect(win.getByText(i.title).first()).toBeVisible();
   });
 

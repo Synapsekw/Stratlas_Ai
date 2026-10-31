@@ -1,10 +1,11 @@
 /**
  * The command palette finds the workspace's tools (UI revision W5): on the demo tank farm, Ctrl+K
  * and "measure" put Measure: Distance first with its key, Enter starts it and the tool card shows;
- * an island group opens its workbench and a Settings page is a search away. Off-screen, in the
+ * an island group opens its section and a Settings page is a search away. Off-screen, in the
  * window CI runs.
  */
 import { DEMO_FOLDER, expect, test } from './fixtures';
+import { expectBench } from './panel';
 import { openDemo } from './surveyJobs';
 
 test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x720', QUADRION_DEMO: DEMO_FOLDER } });
@@ -33,7 +34,7 @@ test('"measure" finds Distance first and Enter starts it', async ({ win }) => {
   await win.keyboard.press('Escape');
 });
 
-test('an island group opens its workbench and a Settings page opens by name', async ({ win }) => {
+test('an island group opens its section and a Settings page opens by name', async ({ win }) => {
   await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
   const palette = win.getByRole('dialog', { name: 'Command search' });
 
@@ -42,7 +43,8 @@ test('an island group opens its workbench and a Settings page opens by name', as
   await expect(palette.getByRole('option').first()).toHaveText(/^Display tools/);
   await win.keyboard.press('Enter');
   await expect(palette).toBeHidden();
-  await expect(win.getByRole('tab', { name: /^Display/, selected: true })).toBeVisible();
+  // its section in the right panel: Layers & display > Display (D2)
+  await expectBench(win, 'display');
 
   await win.keyboard.press('Control+K');
   await palette.getByRole('combobox').fill('settings: keyboard');

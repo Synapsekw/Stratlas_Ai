@@ -245,7 +245,7 @@ test.describe('volumes and comparisons', () => {
     expect(customOf.vertices[0]?.z).toBeCloseTo(level, 6);
 
     await expectAccessible(win, 'Survey comparisons panel', {
-      include: '[data-testid="survey-side"]',
+      include: '[data-testid="survey-panel"]',
     });
 
     // bulk totals of the two stockpiles' changes (same item positions)

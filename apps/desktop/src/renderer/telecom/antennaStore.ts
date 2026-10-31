@@ -843,13 +843,13 @@ export function selectAntenna(id: string | null): void {
 }
 
 /**
- * How the Project tab is brought forward for an explicit ask (a review link, an edit from the
+ * How Project > In this project is brought forward for an explicit ask (a review link, an edit from the
  * menu): the stage registers `showBench`, which also opens a folded sidebar's drawer and gives the
  * bench back from a maximised agent. Injected so the store keeps `../shell` out of its imports.
  */
 type ShowProject = (bench: StoreApi<WorkbenchState>) => void;
 let showProject: ShowProject = (bench) => {
-  bench.getState().show('measure');
+  bench.getState().show('project', 'project.inThisProject');
 };
 export function setShowProject(fn: ShowProject): void {
   showProject = fn;
@@ -877,7 +877,7 @@ export function revealAntenna(
   const { tabs, front } = bench.getState();
   if (ask) showProject(bench);
   else if (!toolInFront({ tabs, front, issueEditing: isIssueEditing() }))
-    bench.getState().show('measure');
+    bench.getState().show('project', 'project.inThisProject');
 }
 
 /** Edit azimuth / Edit downtilt: show the row and focus the field (the one path for both menus). */
