@@ -8,7 +8,7 @@
 import { annotateUi, severityColor, SeverityBadge, useTaxonomy } from '@aio/annotate';
 import { detectorThreshold, isDetectorDraft, type Detection } from '@aio/annotate/detections';
 import type { Issue } from '@aio/schema';
-import { Icon, Tip, useT } from '@aio/ui';
+import { Chip, Icon, Tip, useT } from '@aio/ui';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { RejectReasonMenu } from '../detections/detectors/RejectReasonMenu';
 import { ScoreBadge } from '../detections/detectors/ScoreBadge';
@@ -66,6 +66,30 @@ function YouCard({
         </button>
       </Tip>
     </li>
+  );
+}
+
+/**
+ * The multi-view vote of a draft: how many photos found the same object, or a warning when only
+ * this one of several photos that look at the spot did. Nothing for a draft without a vote.
+ */
+function VoteChip({ vote }: { vote: Detection['vote'] }): ReactElement | null {
+  const t = useT();
+  if (!vote) return null;
+  if (vote.singleView && vote.seenBy !== undefined) {
+    return (
+      <span data-testid="inspect-vote">
+        <Chip kind="tag" tone="warn">
+          {t('inspect.vote.single', { count: vote.seenBy })}
+        </Chip>
+      </span>
+    );
+  }
+  if (vote.views < 2) return null;
+  return (
+    <span data-testid="inspect-vote">
+      <Chip kind="tag">{t('inspect.vote.views', { count: vote.views })}</Chip>
+    </span>
   );
 }
 
@@ -140,6 +164,7 @@ function AiCard(p: {
               : t('inspect.tag.ai', { pct: Math.round(row.confidence * 100) })}
           </span>
         )}
+        <VoteChip vote={d?.vote} />
         <span className="inspect-row-class">{cls?.label ?? row.label ?? t('det.class.pick')}</span>
         {severity !== null && <SeverityBadge model={model} severity={severity} />}
       </button>

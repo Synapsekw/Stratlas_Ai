@@ -79,3 +79,45 @@ describe('detector fields in the model', () => {
     }
   });
 });
+
+describe('multi-view vote in the model', () => {
+  const vote = {
+    views: 3,
+    seenBy: 5,
+    score: 0.8,
+    point: [1, 2, 3] as [number, number, number],
+    placedOn: 'mesh' as const,
+    sightings: [{ photo: 'p002', bbox: [1, 1, 5, 5] as [number, number, number, number] }],
+  };
+  const voted: DetectionsFile = {
+    schema: 'aio.detections/1',
+    source: 'model',
+    producer: 'detect.vlm',
+    detections: [
+      {
+        id: 'w1',
+        photo: 'p001',
+        class: 'corrosion',
+        status: 'draft',
+        bbox: [10, 20, 60, 80],
+        vote,
+      },
+      { id: 'w2', photo: 'p001', class: 'corrosion', status: 'draft', bbox: [100, 20, 160, 80] },
+    ],
+  };
+  it('carries the vote and writes it back on review', () => {
+    const { detections, passes } = readPasses([{ name: 'vlm-run-b.json', file: voted }], passCtx);
+    expect(detections[0]?.vote).toEqual(vote);
+    expect(detections[1]?.vote).toBeUndefined();
+    const rec = passes[0];
+    if (!rec) throw new Error('no pass');
+    // the reviewer accepts the voted draft: it is written from the model, the vote stays
+    const reviewed = detections.map((d) =>
+      d.id === 'w1' ? { ...d, status: 'accepted' as const } : d,
+    );
+    const out = writePass(rec, reviewed, new Map());
+    expect(out.detections[0]?.vote).toEqual(vote);
+    expect(out.detections[0]?.status).toBe('accepted');
+    expect(out.detections[1]?.vote).toBeUndefined();
+  });
+});

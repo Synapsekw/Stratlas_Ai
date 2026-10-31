@@ -270,6 +270,30 @@ describe('FindingsPanel', () => {
     expect(row?.textContent).toContain('Needle in the red zone');
   });
 
+  it('says how many photos saw a voted draft', async () => {
+    h.detections = [draft('d1', { origin: detectorOrigin, vote: { views: 3, seenBy: 5 } })];
+    await render();
+    const chip = byId('inspect-vote', row('det:d1'));
+    expect(chip?.textContent).toBe('Seen in 3 photos');
+    expect(chip?.querySelector('.tag.warn')).toBeNull();
+  });
+
+  it('flags a draft only one of the photos found', async () => {
+    h.detections = [draft('d1', { vote: { views: 1, seenBy: 4, singleView: true } })];
+    await render();
+    const chip = byId('inspect-vote', row('det:d1'));
+    expect(chip?.textContent).toBe('Only 1 of 4 photos');
+    expect(chip?.querySelector('.tag.warn')).not.toBeNull();
+  });
+
+  it('shows no vote chip without a vote or for a lone unflagged view', async () => {
+    await render();
+    expect(byId('inspect-vote')).toBeNull();
+    h.detections = [draft('d1', { vote: { views: 1, seenBy: 1 } })];
+    await render();
+    expect(byId('inspect-vote')).toBeNull();
+  });
+
   it('says so when the photo has no findings', async () => {
     await render({ rows: [] });
     expect(host.textContent).toContain('No findings on this photo yet.');

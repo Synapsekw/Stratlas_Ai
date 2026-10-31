@@ -262,6 +262,12 @@ export const enInspect = {
   'thermal.readOnly': 'Open the project folder to analyse thermal photos.',
   'thermal.none': 'No thermal photos in this dataset.',
   'thermal.filmstrip': 'Thermal photos',
+  'thermal.find.run': 'Find hot spots',
+  'thermal.find.running': 'Looking for hot spots',
+  'thermal.find.found_one': '1 possible hot spot. Review it in Inspect.',
+  'thermal.find.found_other': '{count} possible hot spots. Review them in Inspect.',
+  'thermal.find.none': 'No spot is 4 °C or more above its surroundings.',
+  'thermal.find.done': 'Done. Review hot spots in Inspect.',
   'detect.preset.hw.noGpu':
     'No NVIDIA graphics card found. Detectors need one with at least 8 GB of memory.',
   'detect.preset.hw.tooSmall':
@@ -416,6 +422,8 @@ export const enInspect = {
   'inspect.tag.you': 'YOU',
   'inspect.tag.ai': 'AI {pct}%',
   'inspect.tag.aiUnscored': 'AI',
+  'inspect.vote.views': 'Seen in {count} photos',
+  'inspect.vote.single': 'Only 1 of {count} photos',
   'inspect.accept': 'Accept',
   'inspect.change': 'Change',
   'inspect.dismiss': 'Dismiss',
