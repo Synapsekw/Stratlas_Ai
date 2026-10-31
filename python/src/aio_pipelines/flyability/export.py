@@ -9,6 +9,7 @@ at all. Clouds are located through `maps/*/map.json` (`parent_type` Flight or In
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,8 @@ class Snapshot:
     points: list[tuple[float, float, str]]
     image_size: tuple[int, int] | None
     folder: Path
+    # False when the camera pose has a missing, non-numeric or non-finite value or a zero quaternion
+    pose_valid: bool = True
 
 
 @dataclass(frozen=True)
@@ -119,11 +122,25 @@ def _quat(pose: Any) -> np.ndarray:
 
 
 def _number(v: Any) -> float | None:
-    return float(v) if isinstance(v, int | float) and not isinstance(v, bool) else None
+    ok = isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v)
+    return float(v) if ok else None
 
 
 def _str_list(v: Any) -> list[str]:
     return [str(t) for t in v] if isinstance(v, list) else []
+
+
+def _pose_valid(pose: Any) -> bool:
+    if not isinstance(pose, dict):
+        return False
+    pos, ori = pose.get("position"), pose.get("orientation")
+    if not isinstance(pos, dict) or not isinstance(ori, dict):
+        return False
+    p = [_number(pos.get(n)) for n in "xyz"]
+    q = [_number(ori.get(n)) for n in "xyzw"]
+    if any(v is None for v in p + q):
+        return False
+    return math.sqrt(sum(v * v for v in q if v is not None)) > 1e-6
 
 
 def _transform(v: Any) -> np.ndarray | None:
@@ -188,6 +205,7 @@ def _snapshot(folder: Path, data: dict[str, Any]) -> Snapshot:
         points=points,
         image_size=image_size,
         folder=folder,
+        pose_valid=_pose_valid(cam),
     )
 
 

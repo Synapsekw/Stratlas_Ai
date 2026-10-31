@@ -181,3 +181,23 @@ def test_orphans_get_own_pois_and_unknown_flights_are_counted(tmp_path: Path) ->
     export = read_export(syn.root)
     assert export.skipped_snapshots == 1
     assert sum(len(p.snapshots) for i in export.inspections for p in i.pois) == 3
+
+
+def test_pose_valid_flag_and_nan_time(tmp_path: Path) -> None:
+    syn = make_export(tmp_path / "x")
+    snaps = [s for p in read_export(syn.root).inspections[0].pois for s in p.snapshots]
+    assert all(s.pose_valid for s in snaps)
+
+    def edit(sid: str, fn) -> None:
+        sj = syn.root / "snapshots" / sid / "snapshot.json"
+        data = json.loads(sj.read_text())
+        fn(data)
+        sj.write_text(json.dumps(data))  # json writes NaN as a bare NaN token
+
+    edit(syn.snapshot_ids[0], lambda d: d["camera_pose"]["position"].update(x="bad"))
+    edit(syn.snapshot_ids[1], lambda d: d["camera_pose"]["orientation"].update(w=float("nan")))
+    edit(syn.snapshot_ids[2], lambda d: d.update(time=float("nan")))
+    edit(syn.snapshot_ids[3], lambda d: d["camera_pose"]["orientation"].update(x=0, y=0, z=0, w=0))
+    by_id = {s.id: s for p in read_export(syn.root).inspections[0].pois for s in p.snapshots}
+    assert [by_id[i].pose_valid for i in syn.snapshot_ids] == [False, False, True, False]
+    assert by_id[syn.snapshot_ids[2]].time_us == 0
