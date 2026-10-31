@@ -9,6 +9,7 @@ import { getActiveScene } from '@aio/engine';
 import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { acceptByIds } from '../detections/store';
+import { openIssueMenu } from '../flyability/issueMenuStore';
 import { bridge, shell } from '../shell';
 import { createPlacementHooks } from './agentHooks';
 import { ensureSizes, layerReady, placeOnScene } from './controller';
@@ -69,6 +70,10 @@ export function startPlacement(): () => void {
   const stopList = setIssueListActions({
     placeOnModel: (ids) => {
       offerPlacement(ids, 'menu');
+    },
+    // the registry menu (Place on model, Move point) when a mount shows it; else the old offer
+    issueMenu: (at, ids, clicked) => {
+      if (!openIssueMenu({ ...at, ids: [...ids], clicked })) offerPlacement(ids, 'menu');
     },
   });
   const stopProject = followProject(placement, workspace);

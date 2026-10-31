@@ -252,6 +252,21 @@
   line-height: 1.5;
   color: var(--fg-1);
 }
+/* the location check of an imported finding: a quiet line, a boxed warning when it disagrees */
+.ic-loc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-12);
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+.ic-loc[data-tone='warn'] {
+  padding: 6px 8px;
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-6);
+  color: var(--warn-ink);
+}
 .ic-note {
   white-space: pre-wrap;
 }

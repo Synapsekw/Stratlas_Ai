@@ -1,6 +1,7 @@
 import { registerAntennaActions } from './antennaActions';
 import { registerAreaActions } from './areaActions';
 import { registerDateActions } from './dateActions';
+import { registerFindingActions } from './findingActions';
 import { registerKindActions } from './kindActions';
 import { registerLayerActions } from './layerActions';
 import { registerMeasureActions } from './measureActions';
@@ -31,4 +32,5 @@ export function registerSidebarActions(): void {
   registerRfActions();
   registerThermalActions();
   registerAntennaActions();
+  registerFindingActions();
 }

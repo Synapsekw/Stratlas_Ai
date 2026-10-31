@@ -32,7 +32,7 @@ export const enFlyability = {
   'fly.move.done': 'Finding moved.',
   'fly.move.undo': 'Undo',
   'fly.move.noHit': 'No point cloud under the cursor. Click on the cloud.',
-  'fly.check.wall': 'Checked against the wall: {wall} (hit {hit})',
+  'fly.check.wall': 'Wall distance {wall}, point {hit} away',
   'fly.check.disagrees': 'The recorded location does not match the point cloud here.',
   'fly.check.noHit': 'No point cloud was found at the recorded location.',
   'fly.check.unchecked': 'Location not checked yet.',
