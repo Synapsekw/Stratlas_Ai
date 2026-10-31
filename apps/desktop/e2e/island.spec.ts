@@ -764,7 +764,11 @@ test.describe('the mode rows and the Tools tab (D5, W8)', () => {
     const bar = await openIslandTools(win);
     await expect(bar.getByRole('tab', { name: 'Point cloud', exact: true })).toHaveCount(0);
     await closeIslandTools(win);
-    const section = await openSection(win, 'tools', 'tools.pointcloud');
+    // (the panel may bring Selection forward once while the cloud loads: open it until it holds)
+    let section = win.locator('[data-section="tools.pointcloud"] .wb-psec-inner');
+    await expect(async () => {
+      section = await openSection(win, 'tools', 'tools.pointcloud');
+    }).toPass({ timeout: 30_000 });
     const colour = section.getByRole('group', { name: 'Colour', exact: true });
     await expect(colour.getByRole('button')).toHaveText([
       'RGB',
