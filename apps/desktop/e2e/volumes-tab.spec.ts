@@ -18,6 +18,7 @@ import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fi
 import { stageMode, stageShow, showSurface, volumesView } from './island';
 import { openDemo } from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
+import { selectedPile } from './panel';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
@@ -154,12 +155,13 @@ test('Inventory groups the piles by material with subtotals and a site total tha
 
   // a row opens the pile panel; ‹ Inventory comes back
   await view.getByTestId('volumes-pile').filter({ hasText: SP1 }).click();
-  const panel = view.getByTestId('pile-panel');
+  // (in Selection, where a clicked pile opens)
+  const panel = selectedPile(win);
   await expect(panel).toHaveAttribute('data-id', SP1_ID);
   await expect(panel.getByTestId('pile-name')).toHaveText(SP1);
   await panel.getByTestId('pile-back').click();
   await expect(panel).toHaveCount(0);
-  await expect(view.getByTestId('volumes-inventory')).toBeVisible();
+  await expect((await volumesView(win)).getByTestId('volumes-inventory')).toBeVisible();
 });
 
 test('Cut & fill: totals and a bar per pile for the pair; Inside piles and Whole site; the threshold changes the totals; a bar opens its pile', async ({
@@ -230,7 +232,7 @@ test('Cut & fill: totals and a bar per pile for the pair; Inside piles and Whole
 
   // a pile's bar opens it
   await bars.filter({ hasText: SP1 }).click();
-  await expect(view.getByTestId('pile-panel')).toHaveAttribute('data-id', SP1_ID);
+  await expect(selectedPile(win)).toHaveAttribute('data-id', SP1_ID);
 });
 
 test('Materials: a density from the latest survey changes only its tonnes; History keeps both densities; piles are assigned from the editor', async ({
@@ -430,8 +432,8 @@ test('Show → Cut & fill with no pile picked draws the whole site between the c
   win,
 }) => {
   test.setTimeout(600_000);
-  const view = await opened(win, quarryProject);
-  await expect(view.getByTestId('pile-panel')).toHaveCount(0);
+  await opened(win, quarryProject);
+  await expect(win.getByTestId('pile-panel')).toHaveCount(0);
   await stageMode(win, 'Map');
   await showSurface(win, 'Cut & fill');
   // the legend in a bottom corner of the stage, the site's heat map on the map
@@ -444,7 +446,7 @@ test('Show → Cut & fill with no pile picked draws the whole site between the c
     .poll(() => mapHasLayer(win, 'aio-survey-heat-layer'), { timeout: 120_000 })
     .toBe(true);
   // still no pile picked: it is the whole site's
-  await expect(view.getByTestId('pile-panel')).toHaveCount(0);
+  await expect(win.getByTestId('pile-panel')).toHaveCount(0);
   // Photo: the legend goes
   await showSurface(win, 'Photo');
   await expect(legend).toHaveCount(0);

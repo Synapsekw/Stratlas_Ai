@@ -127,8 +127,11 @@ export async function startSetup(setup: Locator) {
   await setup.getByTestId('eng-start').click();
 }
 export async function openReview(win: Page) {
-  if (!(await win.getByTestId('eng-model-review').isVisible()))
-    await win.getByTestId('eng-review').click();
+  // the run panel's Review, while it shows: the Review section can show already beside it (its
+  // section stays open in Tools across a restart, UI revision D2) with the run panel still up
+  const review = win.getByTestId('eng-review');
+  if (!(await win.getByTestId('eng-model-review').isVisible()) || (await review.isVisible()))
+    await review.click();
   const bench = benchBody(win, 'review').getByTestId('review-bench');
   await expect(bench).toBeVisible();
   await expectBench(win, 'review');
@@ -140,14 +143,14 @@ export async function openReview(win: Page) {
     .poll(() =>
       canvas.evaluate((element) => {
         const r = element.getBoundingClientRect();
-        return (
-          r.width > 100 &&
-          r.height > 100 &&
-          document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === element
-        );
+        if (r.width <= 100 || r.height <= 100)
+          return `the view is ${String(Math.round(r.width))} x ${String(Math.round(r.height))}`;
+        // what lies on the view's centre, when it is not the view: said in the failure
+        const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return top === element ? 'clear' : `${top?.tagName ?? ''}.${top?.className ?? ''}`;
       }),
     )
-    .toBe(true);
+    .toBe('clear');
 }
 
 /** Confirm every send the run asks for (allow the kinds for the project, then send). */

@@ -274,7 +274,8 @@ test('a stray Delete is taken back with Undo, on disk too with Autosave on', asy
   expect((await onDisk()).find((m) => m.id === 'line-b')).toEqual(
     SEED.measurements.find((m) => m.id === 'line-b'),
   );
-  await expect(saved).not.toContainText('Unsaved changes');
+  // (the restored measurement shows in Selection: the save line is Tools > Measure's)
+  await expect(await measureSaved(win)).not.toContainText('Unsaved changes');
 });
 
 test('the filter box shows only the matching rows; clearing it brings them all back', async ({

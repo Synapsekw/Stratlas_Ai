@@ -27,6 +27,11 @@ export function panelTab(win: Page, tab: PanelTab): Locator {
   return side(win).locator(`#wb-tab-${tab}`);
 }
 
+/** A clicked pile's panel: Selection's (founder, 30 Oct: a clicked pile opens in Selection). */
+export function selectedPile(win: Page): Locator {
+  return side(win).locator('#wb-panel-selection').getByTestId('pile-panel');
+}
+
 /** A section of the panel, header and body. */
 export function panelSection(win: Page, section: SectionId): Locator {
   return side(win).locator(`[data-section="${section}"]`);

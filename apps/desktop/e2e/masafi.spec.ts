@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { expect, realDataTest } from './fixtures';
 import { closeIslandTools, islandRow, pickGroupTab, showSurface, volumesView } from './island';
 import { hasRealData, missingRealProject, realProjectDir } from './realData';
+import { selectedPile } from './panel';
 
 /** A survey's marker in the dates strip under the stage, by its date. */
 const surveyMarker = (win: Page, date: string): Locator =>
@@ -208,8 +209,9 @@ test('@realdata the stockpile project: piles as volume measurements, 3D selectio
   await expect(view.getByTestId('volumes-pile')).toHaveCount(19, { timeout: 30_000 });
   await expect(win.getByTestId('vol-register')).toHaveCount(0);
   await pileCard(view, p02.name || p02.id).click();
-  // the pile opens in its panel: the carried figure with its status, both dates in History
-  const panel = view.getByTestId('pile-panel');
+  // the pile opens in its panel, in Selection: the carried figure with its status, both dates in
+  // History
+  const panel = selectedPile(win);
   await expect(panel).toBeVisible();
   await expect(panel.getByTestId('pile-status')).toContainText('From an earlier version');
   const shown = (l: Locator) => l.innerText().then((t) => figure(t.replace(/\s/g, ' ')));

@@ -25,6 +25,7 @@ import {
 import { islandDate, volumesView } from './island';
 import { openDemo } from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
+import { selectedPile } from './panel';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
@@ -357,7 +358,8 @@ test('a selected pile shows its line over the site total, faded, and the Pile ch
   const view = await volumesView(win);
   await expect(strip.getByTestId('strip-pile-line')).toHaveCount(0);
   await view.getByTestId('volumes-pile').filter({ hasText: 'Stockpile SP1' }).click();
-  await expect(view.getByTestId('pile-panel')).toBeVisible();
+  // a clicked pile opens in Selection
+  await expect(selectedPile(win)).toBeVisible();
 
   // the pile's own line, a dot on each survey; the site total faded behind it
   const line = strip.getByTestId('strip-pile-line');
@@ -372,8 +374,8 @@ test('a selected pile shows its line over the site total, faded, and the Pile ch
   await strip.getByTestId('strip-clear-pile').click();
   await expect(line).toHaveCount(0);
   await expect(strip.getByTestId('strip-legend')).toHaveCount(1);
-  await expect(view.getByTestId('pile-panel')).toHaveCount(0);
-  await expect(view.getByTestId('volumes-inventory')).toBeVisible();
+  await expect(win.getByTestId('pile-panel')).toHaveCount(0);
+  await expect((await volumesView(win)).getByTestId('volumes-inventory')).toBeVisible();
 });
 
 test.describe('the smallest window, 1100 x 700', () => {
