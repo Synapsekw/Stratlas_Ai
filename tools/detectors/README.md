@@ -142,7 +142,7 @@ Reference run (31 Oct 2026, 10 seeds, defaults):
 | --------- | ---------------- | ---- | ----- | --------------- | ------------ | --------- | ----- | -------------- |
 | before    | 510              | 479  | 31    | 139 of 150      | 0.939        | 0.306     | 0.462 | 0.831          |
 | afterMesh | 145              | 144  | 1     | 144 of 150      | 0.999        | 0.742     | 0.851 | 0.857          |
-| afterRays | 142              | 142  | 0     | 142 of 150      | 1.000        | 0.737     | 0.848 | 0.853          |
+| afterRays | 142              | 142  | 0     | 142 of 150      | 1.000        | 0.737     | 0.849 | 0.853          |
 
 The fixture's poses are exact and its objects flat: real poses (GPS and gimbal) place drafts less well,
 so the vote still needs a run on a reference project with posed photos.

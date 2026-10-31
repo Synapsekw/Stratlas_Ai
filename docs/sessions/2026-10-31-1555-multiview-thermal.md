@@ -24,7 +24,20 @@ related:
   | ------------------ | ---------------- | ------------ | --------------- | ----- |
   | Before             | 510              | 31           | 139 of 150      | 0.462 |
   | After, on the mesh | 145              | 1            | 144 of 150      | 0.851 |
-  | After, rays only   | 142              | 0            | 142 of 150      | 0.848 |
+  | After, rays only   | 142              | 0            | 142 of 150      | 0.849 |
+
+- Review fixes in this PR:
+  - `seenBy` counts only the photos the run looked at for that class: for `detect.vlm`, the photos each detector actually ran on; for `thermal.hotspots`, the searched photos and those of earlier searches.
+  - A ray no other photo's ray crosses never merges. Its depth is a guess, used only for `seenBy`.
+  - Sightings keep their own space, size, note and fields. A merged hot spot reports its hottest view, and members past the 200 cap are counted in `sightingsOmitted`.
+  - A thermal re-run votes the new drafts together with the kept detections, and treats a reviewed detection's sightings as reviewed. A run on photo B alone therefore adds B to the kept draft of photo A, and never revives a reviewed object.
+  - The vote can be cancelled, reports progress, and scales:
+    - a sampled KD-tree prefilter for ray crossings;
+    - a grid of cluster centres;
+    - one projection per camera for `seenBy`;
+    - batched surface rays;
+    - a vectorised cloud march whose step never exceeds its tolerance.
+  - On 2000 photos with 57,728 drafts, the vote takes about 5 s on a flat surface and 11 s with rays only (test bound 120 s).
 
 ## Why
 
@@ -35,13 +48,15 @@ Vision audit items 3.6 and 3.14 (intelligence review, 30 Oct). The same defect i
 1. Install pipeline pack 0.29.0 (Settings > Processing tools > Choose file). Settings lists "Thermal hot spots 0.29.0".
 2. Open a project with a thermal photo set. Right-click the dataset > Analyse thermal. Once the temperatures are read, press **Find hot spots** above the filmstrip. "Looking for hot spots" shows, then "N possible hot spots. Review them in Inspect."
 3. Open Inspect. The hot spots are AI drafts with class "Hot spot" (Create class the first time), a note "Peak ... °C, ... °C above its surroundings", and Peak, ΔT, Surroundings and Mean values. Accept one: it becomes an issue.
-4. Press Find hot spots again: the accepted one stays as it is, and the drafts are found again.
+4. Press Find hot spots again: the accepted one stays as it is, no new draft appears on top of it, and the other drafts are found again.
 5. In a project with posed photos (a mapping or orbit flight) and a model or point cloud, run a detector over several photos of the same spot. Inspect shows one draft with "Seen in N photos" where there used to be one per photo. A box found in only one of several photos shows "Only 1 of N photos" and usually falls under the threshold.
 
 ## Open threads
 
 - The vote has only been run on synthetic fixtures (exact poses, flat objects). It needs a bench on a reference project with posed photos. GPS and gimbal error may need a larger radius than 0.5 m.
-- Visibility uses the mesh (occlusion is tested) or the cloud. With rays only, seenBy counts every photo whose frame holds the point.
+- Visibility uses the mesh (occlusion is tested) or the cloud. With rays only, seenBy counts every looked-at photo whose frame holds the point.
+- A kept draft that gains a sighting on a re-run keeps its confidence; a re-vote of its old sightings is left out.
+- The crossing prefilter samples each ray between a quarter and four times the median crossing depth of neighbouring photos; crossings far outside that band are not found.
 - There is no thermal orthomosaic yet, so the finder works per photo. The vote merges the same hot spot across overlapping posed thermal photos.
 - The hot-spot thresholds are tuned on synthetic rasters only. The thermal plan's real-data check (task 3.9: sun glints, sky) is still to do. Severity stays `uncertain`: the "Thermal ΔT" grading and the hot-spot list of M3 tasks 3.6 and 3.7 are not built.
 - The bench reads the found count from the job's commit step file (`jobs/<id>/steps/02-commit.json`). If that file cannot be read, it says "Done".

@@ -65,6 +65,16 @@ below are decided, not open.
     `vote`, which the app reads as before.
 11. **Thermal ortho.** There is no thermal orthomosaic in the app yet, so the finder works on the
     per-photo rasters; an ortho is a follow-up.
+12. **Review fixes (independent review, 31 Oct).**
+    - `seenBy` counts only the photos the run looked at for the class.
+    - A guessed ray depth never merges.
+    - Sightings keep their own space, size, note and fields, plus `sightingsOmitted`.
+    - Hot spots are led by the highest ΔT.
+    - A thermal re-run votes the new drafts with the kept detections: new drafts of reviewed
+      objects are dropped, and those of kept drafts are added to them.
+    - The vote can be cancelled and scales (prefiltered ray pairs, a centre grid, batched
+      projections and rays).
+    - The cloud march never steps past its tolerance.
 
 ## Tasks
 
