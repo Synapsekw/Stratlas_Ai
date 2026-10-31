@@ -60,16 +60,22 @@ export function createActiveSpaceStore(
   return store;
 }
 
-export const activeSpace = createActiveSpaceStore();
+let shared: StoreApi<ActiveSpaceState> | null = null;
+
+/** The app's store, created on first use so importing this module reads no storage. */
+export function activeSpace(): StoreApi<ActiveSpaceState> {
+  shared ??= createActiveSpaceStore();
+  return shared;
+}
 
 export function setActiveSpace(projectId: string, spaceId: string): void {
-  activeSpace.getState().set(projectId, spaceId);
+  activeSpace().getState().set(projectId, spaceId);
 }
 
 /** The open project's active space, whether the map can show it, and all its spaces. */
 export function useActiveSpace(): { spaceId: string; mapAvailable: boolean; spaces: Space[] } {
   const project = useWorkspace((s) => s.project);
-  const pref = useStore(activeSpace, (s) => (project ? s.byProject[project.id] : undefined));
+  const pref = useStore(activeSpace(), (s) => (project ? s.byProject[project.id] : undefined));
   const manifest = project?.manifest;
   return useMemo(() => {
     if (!manifest) return { spaceId: 'main', mapAvailable: true, spaces: [] };

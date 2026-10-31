@@ -1,4 +1,4 @@
-import { ProjectManifest, type Issue } from '@aio/schema';
+import { Issue, ProjectManifest } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
   activeSpaceOf,
@@ -37,7 +37,21 @@ const two = ProjectManifest.parse({
 });
 
 const issue = (id: string, layer: string): Issue =>
-  ({ id, sightings: [{ layer }] }) as unknown as Issue;
+  Issue.parse({
+    id,
+    code: 'F01',
+    classId: 'c',
+    severityModelId: 'm',
+    severity: 'uncertain',
+    status: 'draft',
+    title: id,
+    note: '',
+    author: 'a',
+    createdAt: '2026-10-31T00:00:00Z',
+    updatedAt: '2026-10-31T00:00:00Z',
+    sightings: [{ on: 'mesh', layer, geom: { type: 'spoint', p: [0, 0, 0], n: [0, 1, 0] } }],
+    source: 'human',
+  });
 
 describe('space model', () => {
   it('one space hides the switcher', () => {
@@ -79,6 +93,14 @@ describe('space model', () => {
     const again = scopeChange(two, 'main', 's-a', { la: true, lb: true }, back.memory);
     expect(again.show).toEqual(['la']);
     expect(again.hide).toEqual(['lb', 'lm']);
+  });
+
+  it('first entry keeps what is hidden now hidden', () => {
+    // lb is hidden (manifest visible:false or a timeline date); first entry must not show it
+    const first = scopeChange(two, 'main', 's-a', { lb: true }, {});
+    expect(first.show).toEqual(['la']);
+    expect(first.hide).toEqual(['lb', 'lm']);
+    expect(first.memory['s-a']).toEqual(['lb']);
   });
 
   it('issues follow the space of their first sighting', () => {

@@ -66,7 +66,11 @@ export function scopeChange(
       .filter((l) => hidden[l.id])
       .map((l) => l.id);
   }
-  const kept = new Set(next[to] ?? []);
+  // First entry: what is hidden now (saved `visible: false`, timeline dates) stays hidden.
+  next[to] ??= layersOfSpace(m, to)
+    .filter((l) => hidden[l.id])
+    .map((l) => l.id);
+  const kept = new Set(next[to]);
   const show: string[] = [];
   const hide: string[] = [];
   for (const l of layersOfSpace(m, to)) (kept.has(l.id) ? hide : show).push(l.id);

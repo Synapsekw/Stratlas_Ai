@@ -1,5 +1,7 @@
+import { createElement } from 'react';
+import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { createActiveSpaceStore } from './activeSpace';
+import { createActiveSpaceStore, useActiveSpace } from './activeSpace';
 
 function memoryStorage(initial: Record<string, string> = {}): Storage {
   const m = new Map(Object.entries(initial));
@@ -29,6 +31,36 @@ describe('active space store', () => {
     a.getState().set('p2', 's-b');
     const b = createActiveSpaceStore(storage);
     expect(b.getState().byProject).toEqual({ p1: 's-a', p2: 's-b' });
+  });
+
+  it('a throwing getItem or setItem leaves the store working', () => {
+    const ok = memoryStorage();
+    const storage: Storage = {
+      clear: () => {
+        ok.clear();
+      },
+      key: () => null,
+      removeItem: () => undefined,
+      length: 0,
+      getItem: () => {
+        throw new Error('blocked');
+      },
+      setItem: () => {
+        throw new Error('blocked');
+      },
+    };
+    const store = createActiveSpaceStore(storage);
+    expect(store.getState().byProject).toEqual({});
+    store.getState().set('p1', 's-a');
+    expect(store.getState().byProject).toEqual({ p1: 's-a' });
+  });
+
+  it('importing the module reads no storage, and the hook defaults with no project', () => {
+    function Probe() {
+      const a = useActiveSpace();
+      return createElement('i', null, `${a.spaceId}|${String(a.mapAvailable)}|${a.spaces.length}`);
+    }
+    expect(renderToString(createElement(Probe))).toContain('main|true|0');
   });
 
   it('a broken stored value reads as none', () => {
