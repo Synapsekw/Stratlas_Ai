@@ -97,9 +97,12 @@ test('two reviewers: assign, mention with a view, four-eyes approval, sign-off, 
   await expect.poll(async () => (await read(omar.win)).comments.length).toBe(1);
   const saved = (await read(omar.win)).comments[0]?.view?.camera.target ?? [];
   await omar.win.locator('.sb-nav .nav-item', { hasText: 'Issues' }).click();
+  // Mine and My work sit behind Filters, which counts Mine while it is on
+  await omar.win.getByTestId('issue-filters').click();
   await expect(omar.win.getByTestId('my-work-button')).toHaveText('My work (2)');
   await omar.win.getByTestId('mine-filter').click();
   await expect(omar.win.locator('.ann-row')).toHaveCount(1);
+  await expect(omar.win.getByTestId('issue-filters')).toHaveText('Filters (1)');
   await omar.win.getByTestId('mine-filter').click();
   await omar.win.getByTestId('my-work-button').click();
   const work = omar.win.getByTestId('my-work');

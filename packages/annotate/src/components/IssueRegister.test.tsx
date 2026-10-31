@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setIssueView, issueView } from '../model/view';
 import { issueEditor, setAnnotateReadOnly, setIssueListActions } from '../runtime';
 import { catalogue, makeIssue, strictModel, tankModel } from '../testing';
-import { IssueRegister } from './IssueRegister';
+import { hiddenFilterCount, IssueRegister } from './IssueRegister';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const noop = () => undefined;
@@ -357,6 +357,41 @@ describe('IssueRegister right-click menu', () => {
     const row = ui.q('.ann-h');
     expect(row?.querySelector('[data-testid="extra"]')).not.toBeNull();
     expect(row?.textContent).toContain('Undo');
+    ui.unmount();
+  });
+});
+
+describe('Filters (n)', () => {
+  afterEach(() => {
+    setIssueView({ dataset: '' });
+    workspace.getState().closeProject();
+  });
+
+  it('Filters (n) counts the active hidden filters', () => {
+    expect(hiddenFilterCount({ dataset: '', mine: false })).toBe(0);
+    expect(hiddenFilterCount({ dataset: 'video', mine: false })).toBe(1);
+    expect(hiddenFilterCount({ dataset: 'mesh', mine: true })).toBe(2);
+    workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(20));
+    const ui = mount();
+    const button = () => ui.q('[data-testid="issue-filters"]');
+    // three filters show (severity, class, status); the dataset waits behind Filters
+    expect(ui.q('select[aria-label="Class"]')).not.toBeNull();
+    expect(ui.q('select[aria-label="Status"]')).not.toBeNull();
+    expect(ui.q('select[aria-label="Dataset"]')).toBeNull();
+    expect(button()?.textContent).toBe('Filters');
+    expect(button()?.getAttribute('aria-expanded')).toBe('false');
+    ui.click('[data-testid="issue-filters"]');
+    expect(button()?.getAttribute('aria-expanded')).toBe('true');
+    ui.change('Dataset', 'video');
+    expect(button()?.textContent).toBe('Filters (1)');
+    // folded away again, the count still says a filter cuts the list
+    ui.click('[data-testid="issue-filters"]');
+    expect(ui.q('select[aria-label="Dataset"]')).toBeNull();
+    expect(button()?.textContent).toBe('Filters (1)');
+    act(() => {
+      setIssueView({ dataset: '' });
+    });
+    expect(button()?.textContent).toBe('Filters');
     ui.unmount();
   });
 });

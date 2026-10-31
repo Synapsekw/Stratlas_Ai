@@ -16,6 +16,8 @@ const css = `
 .ann-btn.primary { background: var(--acc); border-color: var(--acc); color: var(--acc-ink); }
 .ann-btn.danger { color: var(--danger); }
 .ann-btn[aria-pressed='true'] { background: var(--acc-a20); border-color: var(--acc-a40); color: var(--acc-strong); }
+/* Filters (n) while a folded-away filter is on */
+.ann-btn.on { border-color: var(--acc-a40); color: var(--acc-strong); }
 .ann-btn:focus-visible, .ann-row:focus-visible, .ann-input:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
 .ann-save { font: 400 var(--t-11)/1 var(--f-mono); color: var(--fg-3); display: inline-flex; align-items: center; gap: 5px; }
 .ann-save i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }

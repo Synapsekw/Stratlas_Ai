@@ -6,6 +6,7 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -59,6 +60,14 @@ const ROW_H = 48;
 const HEAD_H = 30;
 /** Height assumed before the list is measured (and in tests without layout). */
 const FALLBACK_VIEWPORT = 600;
+
+/**
+ * How many of the filters behind "Filters (n)" are on (the dataset and Mine), so a list cut by
+ * one of them never looks whole while they are folded away.
+ */
+export function hiddenFilterCount(f: { dataset: DatasetKind | ''; mine: boolean }): number {
+  return (f.dataset ? 1 : 0) + (f.mine ? 1 : 0);
+}
 
 const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
@@ -196,9 +205,12 @@ export function IssueRegister({
   const [notice, setNotice] = useState<string | null>(null);
   const { create, disabledReason } = useNewClass();
   const [newClassOpen, setNewClassOpen] = useState(false);
+  const [moreFilters, setMoreFilters] = useState(false);
+  const moreId = useId();
   const listRef = useRef<HTMLDivElement>(null);
   const view = useViewport(listRef);
 
+  const hidden = hiddenFilterCount({ dataset, mine: mine !== null });
   const selectedId = selection?.kind === 'issue' ? selection.id : null;
   const label = (id: string) => classById.get(id)?.label ?? id;
 
@@ -529,22 +541,19 @@ export function IssueRegister({
             </option>
           ))}
         </select>
-        <select
-          className="ann-select"
-          aria-label="Dataset"
-          value={dataset}
-          onChange={(e) => {
-            setIssueView({ dataset: e.target.value as DatasetKind | '' });
+        <button
+          type="button"
+          className={`ann-btn${hidden > 0 ? ' on' : ''}`}
+          data-testid="issue-filters"
+          aria-expanded={moreFilters}
+          aria-controls={moreFilters ? moreId : undefined}
+          title="The dataset and Mine filters"
+          onClick={() => {
+            setMoreFilters((o) => !o);
           }}
         >
-          <option value="">Any dataset</option>
-          {DATASETS.map((d) => (
-            <option key={d} value={d}>
-              {kindLabel(d)}
-            </option>
-          ))}
-        </select>
-        <MineFilter headingLevel={headingLevel === 2 ? 3 : 4} />
+          {hidden > 0 ? `Filters (${String(hidden)})` : 'Filters'}
+        </button>
         <select
           className="ann-select"
           aria-label="Sort"
@@ -588,6 +597,26 @@ export function IssueRegister({
           ))}
         </select>
       </div>
+      {moreFilters && (
+        <div className="ann-filter" id={moreId} data-testid="issue-more-filters">
+          <select
+            className="ann-select"
+            aria-label="Dataset"
+            value={dataset}
+            onChange={(e) => {
+              setIssueView({ dataset: e.target.value as DatasetKind | '' });
+            }}
+          >
+            <option value="">Any dataset</option>
+            {DATASETS.map((d) => (
+              <option key={d} value={d}>
+                {kindLabel(d)}
+              </option>
+            ))}
+          </select>
+          <MineFilter headingLevel={headingLevel === 2 ? 3 : 4} />
+        </div>
+      )}
       {!readOnly && (
         <div className="ann-bulk" data-active={live.size > 0}>
           <input
