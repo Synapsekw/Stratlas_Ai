@@ -30,7 +30,7 @@ import { openProcessingTools } from '../processingTools';
 import { shell, useShell } from '../shell';
 import { isSidebarFolded, type Screen, type SettingsPage, type StageMode } from '../store';
 import { favouritesAndRecent, useFavourites } from '../survey/measureCatalogue';
-import { islandModes, measureToolId, openMode } from '../tools/registry';
+import { islandModes, measureToolId, openMode, stageModeAvailable } from '../tools/registry';
 import { useToolCtx } from '../tools/useToolCtx';
 import { GROUP_TAB } from '../workspace/island/islandBench';
 import { showBench } from '../workspace/workbench/followTool';
@@ -215,6 +215,8 @@ export function Palette() {
   // running, nor on a read-only project
   const canAutoplan = canAutoplanCoverage(chip, rfReadOnly);
   const hasProject = project !== null;
+  // the same context the island and the tool list read: what the stage views can show here
+  const toolCtx = useToolCtx();
   const indexed = useIndexedCommands();
   useEffect(() => {
     if (open && hasProject) rasterPacks.getState().refresh();
@@ -262,8 +264,34 @@ export function Palette() {
       icon: IconName,
       run: () => void,
       shortcut?: string,
+      off?: string,
     ) => {
-      list.push({ id, title, group: 'Actions', icon, run, ...(shortcut ? { shortcut } : {}) });
+      list.push({
+        id,
+        title,
+        group: 'Actions',
+        icon,
+        run,
+        ...(shortcut ? { shortcut } : {}),
+        ...(off ? { hint: off, disabled: true } : {}),
+      });
+    };
+    // a view the island greys out stays listed with its reason and does nothing when run
+    const modeAction = (mode: StageMode, title: string, icon: IconName) => {
+      const can = stageModeAvailable(mode, toolCtx);
+      action(
+        `mode:${mode}`,
+        title,
+        icon,
+        can === true
+          ? () => {
+              s.go('scene');
+              s.setStageMode(mode);
+            }
+          : () => undefined,
+        modeKey(mode),
+        can === true ? undefined : t(can.reason),
+      );
     };
     action(
       'help',
@@ -322,33 +350,9 @@ export function Palette() {
         fn();
       };
       action('model-builder', 'Open the model builder', 'plant', openModelBuilder);
-      action(
-        'mode:3d',
-        'Show 3D view',
-        'scene',
-        scene(() => {
-          s.setStageMode('3d');
-        }),
-        modeKey('3d'),
-      );
-      action(
-        'mode:map',
-        'Show map',
-        'map',
-        scene(() => {
-          s.setStageMode('map');
-        }),
-        modeKey('map'),
-      );
-      action(
-        'mode:split',
-        'Show 3D and map side by side',
-        'split',
-        scene(() => {
-          s.setStageMode('split');
-        }),
-        modeKey('split'),
-      );
+      modeAction('3d', 'Show 3D view', 'scene');
+      modeAction('map', 'Show map', 'map');
+      modeAction('split', 'Show 3D and map side by side', 'split');
       list.push({
         id: 'right',
         title: t(panelHandleLabel('right', rightCollapsed)),
@@ -396,14 +400,16 @@ export function Palette() {
           }),
         );
       if (coverageShown) action('rf:open', t('rf.chip.paletteOpen'), 'layers', scene(openCoverage));
-      // the base maps, as the Map menu on the map offers them (a greyed one is not listed)
+      // the base maps, as the Map menu on the map offers them (a greyed one is not listed, nor any
+      // while this space has no map)
+      const mapOn = stageModeAvailable('map', toolCtx) === true;
       const onMap = (fn: () => void) =>
         scene(() => {
           if (shell.getState().stageMode === '3d') s.setStageMode('map');
           fn();
         });
       for (const tile of mapMenu.sections.flatMap((sec) => sec.tiles)) {
-        if (tile.state !== 'available') continue;
+        if (tile.state !== 'available' || !mapOn) continue;
         list.push({
           id: `map:base:${tile.id}`,
           title: t('palette.mapBase', { name: t(tile.name) }),
@@ -421,7 +427,7 @@ export function Palette() {
         });
       }
       const shade = mapMenu.onTop.find((r) => r.key === 'hillshade');
-      if (shade && !shade.disabled)
+      if (shade && !shade.disabled && mapOn)
         list.push({
           id: 'basemap:hillshade',
           title: t(shade.on ? 'palette.hillshade.off' : 'palette.hillshade.on'),
@@ -851,6 +857,7 @@ export function Palette() {
     mapMenu,
     coverageShown,
     canAutoplan,
+    toolCtx,
   ]);
 
   if (!open) return null;
