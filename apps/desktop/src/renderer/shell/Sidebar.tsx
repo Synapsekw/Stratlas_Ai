@@ -92,6 +92,7 @@ import { openWalk, placeWalk, removeWalkPlacement, useWalks } from '../walks/wal
 import { WalkRowProcess } from '../walks/WalkProcessLine';
 import { walkFilesMissing, walkRecordKey } from '../walks/walkStore';
 import { PANEL_ID, PanelHandle } from './PanelHandle';
+import { SidebarProcessing } from './SidebarProcessing';
 import { isSidebarFolded, type Screen } from '../store';
 import { useCaptureIndex } from '../workspace/compare';
 import { flightPathShown, toggleFlightPath } from '../workspace/flightPaths';
@@ -1366,6 +1367,8 @@ export function Sidebar({ resize }: SidebarProps = {}) {
           />
         ))}
       </nav>
+      {/* Create maps from photos in plain sight, under its own heading (founder, 31 Oct) */}
+      <SidebarProcessing />
       {/* the dataset tree is the Scene's; on the other screens the space stays empty */}
       <div className="sb-scroll">{screen === 'scene' && <Datasets collapsed={collapsed} />}</div>
       <div className="sb-foot">

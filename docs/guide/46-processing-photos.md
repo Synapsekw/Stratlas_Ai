@@ -4,7 +4,7 @@
 
 ## Create maps
 
-1. Open a project, then click **Create maps from photos**. The button is at the top of the left sidebar, under the project's name; with the sidebar folded, it is the photo button under the project's icon. It is also at the top of the **Processing** drawer (click **Processing** in the status row at the foot of the left sidebar), and beside **Import files** on an empty project.
+1. Open a project, then click **Create maps from photos**. It is in the left sidebar under the **Processing** heading, below the screens; with the sidebar folded, it is the photo button there. It is also at the top of the **Processing** drawer (click **Processing** in the status row at the foot of the left sidebar), and beside **Import files** on an empty project.
 2. Choose the photos: drop a folder of photos on the window, or click **Choose a folder**. On a project that already has photos, **Photos in this project** is chosen for you. Folders inside the folder are read too.
 3. Read the summary, for example "248 photos, 1 camera, GPS on all", the time on this computer underneath, and the survey date the new layers will go under. The top of the screen names the project they are added to.
 4. Click **Create maps**.

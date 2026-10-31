@@ -1,8 +1,8 @@
 /**
  * UI revision W1a, polish of the shell, the library, compare and processing, at the CI window:
  * - the project switcher shows whole project names (the customer on a second line);
- * - Create maps from photos has no copy in the sidebar; a photo-only project offers it on its
- *   library card and over its scene;
+ * - Create maps from photos sits in the sidebar's calm Processing section (founder, 31 Oct); a
+ *   photo-only project also offers it on its library card and over its scene;
  * - Delete run sits behind the run's ··· menu and asks before deleting;
  * - Compare dates at 1100 x 700 keeps both pane dates readable;
  * - the footage clock (HH:MM:SS.ff) is never cut;
@@ -104,7 +104,7 @@ const card = (win: Page, name: string): Locator =>
 
 photoOnly.describe('a photo-only project', () => {
   photoOnly(
-    'sidebar has no Create maps button; the card and the scene offer it',
+    'the sidebar shows Create maps under Processing; the card and the scene offer it too',
     async ({ win }) => {
       // the library card: photos and no maps, so Create maps from photos is one click away
       const action = card(win, TINY).getByTestId('card-create-maps');
@@ -117,8 +117,10 @@ photoOnly.describe('a photo-only project', () => {
       await win.keyboard.press('Escape');
       await expect(wizard).toHaveCount(0);
 
-      // no copy of it in the sidebar
-      await expect(win.getByTestId('sidebar-create-maps')).toHaveCount(0);
+      // in the sidebar, under its own Processing heading, as a row (not a filled button)
+      const row = win.getByTestId('sidebar-processing').getByTestId('sidebar-create-maps');
+      await expect(row).toBeVisible();
+      await expect(row).not.toHaveClass(/(^|\s)primary(\s|$)/);
       await expect(
         win.locator('.sb-proj').getByRole('button', { name: /Create maps/ }),
       ).toHaveCount(0);

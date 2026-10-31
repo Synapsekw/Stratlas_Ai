@@ -1,0 +1,31 @@
+/* The sidebar's Processing section (shell/SidebarProcessing.tsx): a quiet heading in the tree
+   header's look and one nav row, never a filled button. Folded to the rail the heading fades
+   (.sb-hide) and the row keeps its glyph and tip, as the nav rows do. */
+.sb-proc {
+  position: relative;
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  border-block-end: 1px solid var(--line-soft);
+}
+/* the nav above already draws the line between them */
+.sidebar > .sb-sec.sb-proc {
+  border-top: 0;
+}
+.sb-proc-h {
+  display: flex;
+  align-items: center;
+  block-size: 22px;
+  padding-inline: 10px;
+  color: var(--fg-3);
+}
+.sb-proc .nav-item .lbl {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* in the spike's Layers column: the same section above the dataset tree */
+.spk-layers > .sb-proc {
+  padding-block-end: var(--sp-2);
+}

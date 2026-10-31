@@ -380,12 +380,44 @@ test.describe('with the runtime', () => {
   });
 });
 
-test("Create maps is the drawer's primary action, and the sidebar has no copy of it", async ({
+test('the sidebar shows a Processing section with Create maps from photos, calm and in sight', async ({
   win,
 }) => {
+  // no project: nothing to make maps in
+  await expect(win.getByTestId('sidebar-processing')).toHaveCount(0);
   await openTiny(win);
-  // one home for the app's main job: the Processing drawer, not a second button in the sidebar
-  await expect(win.getByTestId('sidebar-create-maps')).toHaveCount(0);
+  // founder, 31 Oct: in plain sight without opening anything, under a Processing heading
+  const section = win.getByTestId('sidebar-processing');
+  await expect(section).toBeVisible();
+  await expect(section).toHaveAccessibleName('Processing');
+  await expect(section.locator('.sb-proc-h')).toHaveText(/processing/i);
+  const row = section.getByTestId('sidebar-create-maps');
+  await expect(row).toBeVisible();
+  await expect(row.locator('.lbl')).toHaveText('Create maps from photos');
+  // a sidebar row, not the loudest button on screen
+  await expect(row).toHaveClass(/(^|\s)nav-item(\s|$)/);
+  await expect(row).not.toHaveClass(/(^|\s)primary(\s|$)/);
+  await shot(win, 'sidebar-processing');
+  await row.click();
+  const wizard = win.getByRole('dialog', { name: 'Create maps from photos' });
+  await expect(wizard).toBeVisible();
+  await win.keyboard.press('Escape');
+  await expect(wizard).toHaveCount(0);
+
+  // folded to the rail: the glyph stays, named by its tip
+  await win.getByTestId('sidebar-toggle').click();
+  await expect(win.locator('.app')).toHaveAttribute('data-sb', 'collapsed');
+  await expect(row).toBeVisible();
+  await expect(row).toHaveAccessibleName('Create maps from photos');
+  await row.hover();
+  await expect(row.locator('.tip')).toHaveCSS('opacity', '1');
+  await shot(win, 'sidebar-processing-rail');
+  await win.getByTestId('sidebar-toggle').click();
+  await expect(win.locator('.app')).toHaveAttribute('data-sb', 'expanded');
+});
+
+test("Create maps is the drawer's primary action too", async ({ win }) => {
+  await openTiny(win);
   const drawer = await openProcessing(win);
   const button = drawer.getByTestId('create-maps');
   await expect(button).toHaveText('Create maps from photos');
