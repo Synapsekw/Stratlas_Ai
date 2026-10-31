@@ -290,6 +290,7 @@ export const enLayers = {
   'layerProps.kind.vector': 'Vector map',
   'layerProps.kind.video': 'Video',
   'layerProps.kind.walk': '360 walk',
+  'layerProps.kind.flightline': 'Flight line',
   'layerProps.kind.photos': 'Photos',
   'layerProps.kind.panoramas': 'Panoramas',
   'layerProps.kind.legacy': 'Retired viewer',

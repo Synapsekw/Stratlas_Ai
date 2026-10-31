@@ -72,7 +72,7 @@ export function enuToEcefMatrix(lon: number, lat: number, h: number): number[] {
 
 /** How a project sits on the Earth: its CRS, its local-frame origin and its height offset. */
 export interface SiteGeoref {
-  crs: { epsg: number } | { wkt: string };
+  crs: { epsg: number } | { wkt: string } | { local: string };
   /** The local frame's origin in the project CRS (E, N, H). */
   origin: Vec3;
   /** Added to project heights to get ellipsoidal heights (the geoid separation, or 0). */
@@ -81,6 +81,7 @@ export interface SiteGeoref {
 
 const converters = new Map<string, proj4.Converter>();
 function converter(crs: SiteGeoref['crs']): proj4.Converter {
+  if ('local' in crs) throw new Error('A local frame has no place on the Earth.');
   const def = 'epsg' in crs ? crsDefinition(crs.epsg) : crs.wkt;
   let c = converters.get(def);
   if (!c) {

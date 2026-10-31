@@ -89,6 +89,8 @@ describe('M9 additive rule: no new field inside existing records', () => {
       'classId',
       'code',
       'createdAt',
+      // external: Flyability Inspector import, safe for an older build to strip (31 Oct 2026)
+      'external',
       'fields',
       'id',
       'measurements',

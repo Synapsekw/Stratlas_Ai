@@ -13,7 +13,8 @@ import type { RendererToolContext } from './tool-kit';
 const MAX_GROUPS = 14;
 const EXAMPLES = 3;
 
-function crsText(crs: { epsg: number } | { wkt: string }): string {
+function crsText(crs: { epsg: number } | { wkt: string } | { local: string }): string {
+  if ('local' in crs) return `local frame (${crs.local})`;
   if (!('epsg' in crs)) return 'custom (WKT)';
   const e = crs.epsg;
   if (e > 32600 && e <= 32660) return `EPSG:${String(e)} (UTM ${String(e - 32600)}N, WGS84)`;

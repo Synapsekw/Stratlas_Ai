@@ -103,6 +103,7 @@ const KIND: Record<Layer['kind'], { label: string; icon: IconName }> = {
   vector: { label: 'Map overlay', icon: 'map' },
   video: { label: 'Video clip', icon: 'video' },
   walk: { label: '360 walk', icon: 'pano' },
+  flightline: { label: 'Flight line', icon: 'path' },
   photos: { label: 'Photo set', icon: 'photo' },
   panoramas: { label: 'Panoramas', icon: 'pano' },
 };

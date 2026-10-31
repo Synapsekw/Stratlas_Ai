@@ -125,6 +125,18 @@ export const Measurement = z.object({
 
 export const IssueStatus = z.enum(['draft', 'reviewed', 'approved', 'closed']);
 
+/** What an imported Flyability Inspector point of interest says about a finding. */
+export const ExternalFinding = z.object({
+  source: z.literal('flyability'),
+  poi: z.string().min(1),
+  snapshots: z.array(z.string().min(1)).min(1),
+  flight: z.string().optional(),
+  capturedAt: IsoTime.optional(),
+  wallDistanceM: z.number().nullable(),
+  hitDistanceM: z.number().nullable(),
+  locationCheck: z.enum(['agrees', 'disagrees', 'no-hit', 'unchecked', 'moved']),
+});
+
 export const Issue = z.object({
   id: Id,
   code: z.string().regex(/^[A-Z]{1,3}\d{2,4}$/, 'Issue code must look like F01 or D012'),
@@ -152,6 +164,8 @@ export const Issue = z.object({
   resolvedIn: Id.optional(),
   /** Values a custom analytics request read (29 Oct 2026); absent on older issues. */
   fields: z.array(FieldValue).max(14).optional(),
+  /** The Flyability Inspector point this finding was imported from; absent otherwise. */
+  external: ExternalFinding.optional(),
 });
 
 export type ImageGeom = z.infer<typeof ImageGeom>;
@@ -160,6 +174,7 @@ export type MeshGeom = z.infer<typeof MeshGeom>;
 export type CloudGeom = z.infer<typeof CloudGeom>;
 export type Sighting = z.infer<typeof Sighting>;
 export type IssueStatus = z.infer<typeof IssueStatus>;
+export type ExternalFinding = z.infer<typeof ExternalFinding>;
 export type Issue = z.infer<typeof Issue>;
 
 /** Check an issue's severity against the severity model it names. */

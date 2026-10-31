@@ -14,7 +14,7 @@ import { fromWgs84, isKnownCrs, localToProject, toWgs84 } from './index';
 
 /** The project side of a placement: its CRS, float64 origin (E0, N0, H0) and vertical datum. */
 export interface ProjectGeo {
-  crs: { epsg: number } | { wkt: string };
+  crs: { epsg: number } | { wkt: string } | { local: string };
   origin: Vec3;
   /** Absent or 'unknown' when the project does not declare one. */
   verticalDatum?: string;
@@ -152,7 +152,7 @@ function localToEnh(m: readonly number[], o: Vec3): Mat4 {
 }
 
 /** A metric CRS the bundled registry reads (4326 is in degrees, so not a placement frame). */
-function metricEpsg(crs: { epsg: number } | { wkt: string }): number | null {
+function metricEpsg(crs: { epsg: number } | { wkt: string } | { local: string }): number | null {
   if (!('epsg' in crs)) return null;
   return crs.epsg !== 4326 && isKnownCrs(crs.epsg) ? crs.epsg : null;
 }
@@ -306,8 +306,8 @@ function wktInMetres(text: string): boolean {
  * the registry does not know has units that are not known. Null when the two differ.
  */
 function sameCrs(
-  a: { epsg: number } | { wkt: string },
-  b: { epsg: number } | { wkt: string },
+  a: { epsg: number } | { wkt: string } | { local: string },
+  b: { epsg: number } | { wkt: string } | { local: string },
 ): { metres: true } | { metres: false; reason: string } | null {
   if ('epsg' in a && 'epsg' in b) {
     if (a.epsg !== b.epsg) return null;
@@ -334,8 +334,8 @@ function sameCrs(
   return null;
 }
 
-const crsLabel = (crs: { epsg: number } | { wkt: string }) =>
-  'epsg' in crs ? `EPSG:${String(crs.epsg)}` : 'a WKT definition';
+const crsLabel = (crs: { epsg: number } | { wkt: string } | { local: string }) =>
+  'epsg' in crs ? `EPSG:${String(crs.epsg)}` : 'wkt' in crs ? 'a WKT definition' : 'a local frame';
 
 const knownDatum = (d: string | undefined): string | null =>
   d === undefined || d.trim() === '' || d.trim().toLowerCase() === 'unknown' ? null : d.trim();
@@ -561,7 +561,12 @@ export function layerTransformToGeoref(
       };
   return {
     schema: 'aio.georef/1',
-    crs: 'epsg' in project.crs ? { epsg: project.crs.epsg } : { wkt: project.crs.wkt },
+    crs:
+      'epsg' in project.crs
+        ? { epsg: project.crs.epsg }
+        : 'wkt' in project.crs
+          ? { wkt: project.crs.wkt }
+          : { wkt: '' },
     anchor,
     axes: 'x-east,y-up,z-south',
     units: 'm',

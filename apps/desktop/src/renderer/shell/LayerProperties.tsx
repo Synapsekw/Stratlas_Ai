@@ -44,6 +44,7 @@ const num = (v: number) => String(Math.round(v * 10) / 10);
 
 function crsText(crs: LayerInfo['crs']): string {
   if ('epsg' in crs) return `EPSG:${crs.epsg}`;
+  if ('local' in crs) return crs.local;
   return /^\w+\["([^"]+)"/.exec(crs.wkt)?.[1] ?? crs.wkt.slice(0, 40);
 }
 

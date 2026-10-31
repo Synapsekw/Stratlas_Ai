@@ -89,7 +89,10 @@ export interface AcceptPlacement {
 export function acceptPlacement(
   modelGeoref: Georef | undefined,
   layer: Layer | undefined,
-  project: { crs: { epsg: number } | { wkt: string }; origin: [number, number, number] },
+  project: {
+    crs: { epsg: number } | { wkt: string } | { local: string };
+    origin: [number, number, number];
+  },
 ): AcceptPlacement {
   if (layer?.kind === 'mesh' && layer.georef?.provenance.by === 'place-model')
     return {

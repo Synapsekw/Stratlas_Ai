@@ -82,6 +82,7 @@ const LAYER_ICON: Record<ListedKind, IconName> = {
   vector: 'map',
   video: 'video',
   walk: 'pano',
+  flightline: 'path',
   photos: 'photo',
   panoramas: 'pano',
 };
@@ -94,6 +95,7 @@ const LAYER_KIND: Record<ListedKind, string> = {
   vector: 'Map overlay',
   video: 'Video',
   walk: '360 walk',
+  flightline: 'Flight line',
   photos: 'Photos',
   panoramas: 'Panoramas',
 };

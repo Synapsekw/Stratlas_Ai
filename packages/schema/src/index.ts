@@ -9,6 +9,8 @@ export * from './aiRequest';
 // Findings on a model: the point selection file (selections/<name>.sel)
 export * from './selection';
 export * from './manifest';
+// Spaces: helpers over the manifest's spaces (data-conventions section 40)
+export * from './spaces';
 export * from './road';
 export * from './agent';
 export * from './conversation';

@@ -48,7 +48,31 @@ export const Capture = z.object({
 export const Crs = z.union([
   z.object({ epsg: z.number().int() }).strict(),
   z.object({ wkt: z.string().min(1) }).strict(),
+  /**
+   * A named local metric frame with no EPSG code (a confined-space inspection space): maps,
+   * basemaps, recentring and reprojection are off for it.
+   */
+  z.object({ local: z.string().min(1).max(64) }).strict(),
 ]);
+
+/** Where a space came from: a Flyability Inspector inspection. */
+export const SpaceSource = z.object({
+  kind: z.literal('flyability'),
+  inspectionId: z.string().min(1),
+  assetName: z.string().optional(),
+});
+
+/**
+ * One place with its own frame (data-conventions section 40). Layers without `space` belong to
+ * the implicit `main` space, which carries the project's own `crs` and `origin`.
+ */
+export const Space = z.object({
+  id: Id,
+  name: z.string().min(1),
+  crs: Crs,
+  origin: Vec3,
+  source: SpaceSource.optional(),
+});
 
 export const ProjectManifest = z
   .object({
@@ -97,11 +121,19 @@ export const ProjectManifest = z
      * `package.aiPolicy`; declared here so the app's own saves stop stripping it.
      */
     aiPolicy: AiPolicy.optional(),
+    /** Further spaces beside the implicit `main` one (section 40); absent on every older project. */
+    spaces: z.array(Space).optional(),
   })
   .superRefine(uniqueIds('layers'))
   .superRefine(uniqueIds('severityModels'))
-  .superRefine(uniqueIds('captures'));
+  .superRefine(uniqueIds('captures'))
+  .superRefine((m, ctx) => {
+    if (m.spaces) uniqueIds('spaces')({ spaces: m.spaces }, ctx);
+  });
 
+export type Crs = z.infer<typeof Crs>;
+export type Space = z.infer<typeof Space>;
+export type SpaceSource = z.infer<typeof SpaceSource>;
 export type Capture = z.infer<typeof Capture>;
 export type ProjectManifest = z.infer<typeof ProjectManifest>;
 export type ProjectManifestInput = z.input<typeof ProjectManifest>;

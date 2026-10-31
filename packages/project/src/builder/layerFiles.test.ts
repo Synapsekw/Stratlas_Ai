@@ -167,7 +167,10 @@ describe('layer files', () => {
         ],
       }),
     );
-    const placed = { ...walk, flight: { src: { path: 'walks/w/pose.json' }, startUtcMs: 0 } };
+    const placed = {
+      ...(walk as Extract<Layer, { kind: 'walk' }>),
+      flight: { src: { path: 'walks/w/pose.json' }, startUtcMs: 0 },
+    };
     const info = await readLayerInfo(root, m, placed, null);
     expect(info.extent).toEqual({ min: [-4, 2, 3], max: [1, 2.5, 9] });
   });

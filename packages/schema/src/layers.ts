@@ -155,6 +155,8 @@ const base = {
   capture: Id.optional(),
   /** Set on layers Stratlas computed (change results, built models). */
   derived: LayerDerived.optional(),
+  /** The space the layer is in (data-conventions section 40); absent means `main`. */
+  space: Id.optional(),
 };
 
 const Opacity = z.number().min(0).max(1);
@@ -280,6 +282,19 @@ export const Layer = z.discriminatedUnion('kind', [
      */
     heightOffsetM: z.number().min(-2000).max(2000).optional(),
     flight: FlightRef.optional(),
+  }),
+  /**
+   * The flight line of a confined-space drone flight (section 40): `src` is its pose file
+   * (`aio.flight/1`), `flight` the Inspector flight id, `bootStartS` the flight's first sample
+   * in seconds since boot (pose `t` runs in ms from it).
+   */
+  z.object({
+    kind: z.literal('flightline'),
+    ...base,
+    src: AssetRef,
+    flight: z.string().min(1),
+    bootStartS: z.number().nonnegative(),
+    color: HexColor.optional(),
   }),
   /**
    * Retired (11 Oct 2026): the delivered viewer is no longer shown. Kept so manifests and

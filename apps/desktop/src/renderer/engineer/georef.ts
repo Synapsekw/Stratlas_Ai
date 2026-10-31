@@ -6,7 +6,7 @@ export function georefFor(
   model: ProcModel,
   setup: EngineerSetup,
   evidence: EvidencePack | null,
-  project: { crs: { epsg: number } | { wkt: string }; origin: Vec3 },
+  project: { crs: { epsg: number } | { wkt: string } | { local: string }; origin: Vec3 },
 ): Georef {
   const metric = (evidence?.samples.kept ?? 0) > 0;
   const anchor = setup.placement === 'anchor' ? setup.anchor : undefined;

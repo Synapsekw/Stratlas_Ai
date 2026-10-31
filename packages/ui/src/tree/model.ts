@@ -91,6 +91,8 @@ const groupOf: Record<Layer['kind'], TreeGroupKind> = {
   vector: 'maps',
   video: 'video',
   walk: 'walks',
+  // a flight line sits with the models of its space, drawn as a path
+  flightline: 'models',
   photos: 'photos',
   panoramas: 'panoramas',
 };

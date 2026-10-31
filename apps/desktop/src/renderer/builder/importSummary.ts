@@ -22,6 +22,7 @@ const GROUP: Record<Layer['kind'], string> = {
   vector: 'Maps and rasters',
   video: 'Video',
   walk: '360 walks',
+  flightline: 'Models',
   photos: 'Photos',
   panoramas: 'Panoramas',
 };

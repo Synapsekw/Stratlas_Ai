@@ -143,7 +143,7 @@ export interface RunIpc {
 
 export interface RunDeps {
   ipc: RunIpc;
-  project: { crs: { epsg: number } | { wkt: string }; origin: Vec3 };
+  project: { crs: { epsg: number } | { wkt: string } | { local: string }; origin: Vec3 };
   now(): string;
   online(): boolean;
   sleep?(ms: number): Promise<void>;

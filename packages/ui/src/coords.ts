@@ -2,6 +2,7 @@ import type { ProjectManifest, Vec3 } from '@aio/schema';
 
 /** Short display name of the project CRS, e.g. "UTM 39N · WGS84". */
 export function crsLabel(crs: ProjectManifest['crs']): string {
+  if ('local' in crs) return 'Local frame';
   if ('wkt' in crs) return 'Project CRS';
   const { epsg } = crs;
   if (epsg > 32600 && epsg <= 32660) return `UTM ${epsg - 32600}N · WGS84`;

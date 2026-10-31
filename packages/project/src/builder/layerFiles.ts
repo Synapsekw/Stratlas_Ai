@@ -49,7 +49,13 @@ export function layerFolderName(name: string): string {
 export function isLocalFrame(l: Layer): boolean {
   if (l.kind === 'pointcloud') return l.format !== 'copc';
   if (l.kind === 'raster') return l.corners !== undefined;
-  return l.kind === 'mesh' || l.kind === 'photos' || l.kind === 'panoramas' || l.kind === 'walk';
+  return (
+    l.kind === 'mesh' ||
+    l.kind === 'photos' ||
+    l.kind === 'panoramas' ||
+    l.kind === 'walk' ||
+    l.kind === 'flightline'
+  );
 }
 
 const commonDir = (paths: readonly string[]): string => {

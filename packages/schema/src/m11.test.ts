@@ -77,6 +77,8 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
         'video',
         // the one kind added since, by the 0.12 major change (contract-changes, 12 Oct 2026)
         'walk',
+        // flightline: Flyability Inspector import (contract-changes, 31 Oct 2026)
+        'flightline',
       ].sort(),
     );
     const raster = Layer.options.find((o) => o.shape.kind.value === 'raster');
