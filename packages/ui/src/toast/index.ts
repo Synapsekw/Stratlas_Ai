@@ -3,6 +3,7 @@ export {
   TOAST_TTL,
   clearToasts,
   dismissToast,
+  isToastVisible,
   toast,
   toastQueue,
   type Toast,

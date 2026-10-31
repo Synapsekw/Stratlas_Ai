@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { LayerPatch, ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
-import { clearToasts, ToastHost } from '@aio/ui';
+import { clearToasts, dismissToast, toast, ToastHost } from '@aio/ui';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -126,6 +126,37 @@ describe('DropNotice', () => {
     await flush();
     expect(saves.at(-1)).toEqual({ layerIds: ['c'], patch: { heightOffsetM: -31.2 } });
     expect(byId('drop-text')?.textContent).toBe('Dropped again.');
+  });
+
+  it('leaves Ctrl+Z alone while a newer toast covers the notice', async () => {
+    const { dropToGround } = await import('./dropSession');
+    root = createRoot(host);
+    act(() =>
+      root?.render(
+        <>
+          <DropNotice />
+          <ToastHost placement="window" />
+        </>,
+      ),
+    );
+    await act(async () => {
+      await dropToGround.getState().drop(['c']);
+    });
+    act(() => {
+      toast('Export saved', { id: 'newer', ttlMs: 0 });
+    });
+    expect(byId('drop-notice')).toBeNull();
+    press({ key: 'z', ctrlKey: true });
+    await flush();
+    expect(saves).toHaveLength(1);
+    // the newer one goes: the notice is back, and Ctrl+Z is its own again
+    act(() => {
+      dismissToast('newer');
+    });
+    expect(byId('drop-notice')).not.toBeNull();
+    press({ key: 'z', ctrlKey: true });
+    await flush();
+    expect(saves.at(-1)).toEqual({ layerIds: ['c'], patch: { heightOffsetM: null } });
   });
 
   it('leaves Ctrl+Z to a field', async () => {

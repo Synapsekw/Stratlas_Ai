@@ -145,13 +145,29 @@ function hostOf(x: Toast): ToastPlacement {
   return isMounted(want) || !isMounted(other) ? want : other;
 }
 
-/** The toast a host shows now: the newest routed to it. */
+/**
+ * The toast a host shows now: the newest error routed to it, else the newest. An error is never
+ * covered by a later notice; it shows until it goes.
+ */
 export function visibleToast(placement: ToastPlacement): Toast | undefined {
+  let newest: Toast | undefined;
   for (let i = queue.length - 1; i >= 0; i--) {
     const x = queue[i];
-    if (x && hostOf(x) === placement) return x;
+    if (!x || hostOf(x) !== placement) continue;
+    if (x.tone === 'error') return x;
+    newest ??= x;
   }
-  return undefined;
+  return newest;
+}
+
+/**
+ * Whether toast `id` is on screen now: the one a mounted host shows. A notice's keys (Ctrl+Z on
+ * an undo notice) act only while it is.
+ */
+export function isToastVisible(id: string): boolean {
+  for (const p of ['stage', 'window'] as const)
+    if (isMounted(p) && visibleToast(p)?.id === id) return true;
+  return false;
 }
 
 /** Toasts waiting behind the visible one on a host. */

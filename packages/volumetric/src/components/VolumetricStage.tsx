@@ -473,14 +473,13 @@ function Legend({ view, hint = true }: { view?: { refused: boolean }; hint?: boo
  * What went wrong in the volumetric layer (a failed compute or draw) goes to the app's toast host
  * as an error, read out at once; the store's message is taken off once it is handed over.
  */
-function MessageToToast() {
+function useMessageToast(on: boolean): void {
   const message = useVolumetric((s) => s.message);
   useEffect(() => {
-    if (!message) return;
+    if (!on || !message) return;
     toast(message, { id: 'volumetric-message', tone: 'error', testId: 'vol-message' });
     volumetric.getState().setMessage(null);
-  }, [message]);
-  return null;
+  }, [on, message]);
 }
 
 /**
@@ -517,6 +516,8 @@ export function VolumetricStage({
   hint?: boolean;
 }) {
   const ready = useVolumetric((s) => s.status === 'ready');
+  // the main view hands what went wrong to the toast host, ready or not
+  useMessageToast(!display);
   const picking = useVolumetric((s) => s.section.mode === 'picking');
   const scene = useMemo(
     () =>
@@ -633,7 +634,6 @@ export function VolumetricStage({
     <div className="vol-stage">
       <SwipeDivider />
       <Legend hint={hint} />
-      <MessageToToast />
     </div>
   );
 }

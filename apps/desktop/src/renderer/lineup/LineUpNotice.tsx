@@ -1,4 +1,4 @@
-import { Button, useT } from '@aio/ui';
+import { Button, isToastVisible, useT } from '@aio/ui';
 import { useEffect, useMemo } from 'react';
 import { useStore } from 'zustand';
 import type { StoreApi } from 'zustand/vanilla';
@@ -39,7 +39,14 @@ function Notice({ store }: { store: StoreApi<LineUpStore> }) {
     const kind = notice.action.kind;
     const onKey = (e: KeyboardEvent) => {
       // the line-up step open over the notice owns the keys (its date may be the one Undo writes)
-      if (!(e.ctrlKey || e.metaKey) || otherUndo(e) || store.getState().dialog) return;
+      // only while its toast is the one on screen, not hidden behind another
+      if (
+        !(e.ctrlKey || e.metaKey) ||
+        otherUndo(e) ||
+        store.getState().dialog ||
+        !isToastVisible('lineup-notice')
+      )
+        return;
       const k = e.key.toLowerCase();
       const undo = k === 'z' && !e.shiftKey;
       const redo = k === 'y' || (k === 'z' && e.shiftKey);

@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type FocusEvent,
+  type ReactElement,
+} from 'react';
 import { Button, IconButton } from '../controls';
 import { useT } from '../i18n';
 import { Icon, type IconName } from '../icons/Icon';
@@ -8,6 +16,7 @@ import {
   subscribeToasts,
   toastStamp,
   visibleToast,
+  waitingCount,
   type Toast,
   type ToastPlacement,
   type ToastTone,
@@ -72,20 +81,68 @@ function useDocumentHidden(): boolean {
  * Where toasts show: one at a time, the newest first. Errors are read out at once (`role="alert"`),
  * the rest politely (`role="status"`). Both live regions stay mounted so a toast's arrival is
  * announced. The timer pauses while the toast is hovered or focused and while the window is
- * hidden; Escape on a focused toast dismisses it.
+ * hidden; Escape on a focused toast dismisses it (or, on one without a close button, only leaves
+ * it). A count says how many wait behind it. When a newer toast takes the place of the one that
+ * had focus, focus moves to the newer card instead of falling to the page.
  */
 export function ToastHost({ placement }: ToastHostProps): ReactElement {
+  const t = useT();
   useEffect(() => registerHost(placement), [placement]);
   useSyncExternalStore(subscribeToasts, toastStamp, toastStamp);
   const shown = visibleToast(placement);
+  const waiting = waitingCount(placement);
+  const root = useRef<HTMLDivElement>(null);
+  // focus was in a card that then left the screen (not moved away by the person)
+  const hadFocus = useRef(false);
+  const onFocus = () => {
+    hadFocus.current = true;
+  };
+  const onBlur = (e: FocusEvent<HTMLDivElement>) => {
+    const from = e.target;
+    const to = e.relatedTarget;
+    if (to instanceof Node && root.current?.contains(to)) return;
+    if (to !== null) {
+      hadFocus.current = false;
+      return;
+    }
+    // to nowhere: a click on the page, or the focused card was taken off; only the second keeps it
+    setTimeout(() => {
+      if (from.isConnected) hadFocus.current = false;
+    }, 0);
+  };
+  const shownId = shown?.id;
+  useLayoutEffect(() => {
+    if (!hadFocus.current) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && root.current?.contains(active)) return;
+    if (active && active !== document.body) {
+      hadFocus.current = false;
+      return;
+    }
+    const card = root.current?.querySelector<HTMLElement>('.q-toast');
+    if (card) card.focus();
+    else hadFocus.current = false;
+  }, [shownId]);
   return (
-    <div className="q-toasts" data-placement={placement} data-testid={`toast-host-${placement}`}>
+    <div
+      ref={root}
+      className="q-toasts"
+      data-placement={placement}
+      data-testid={`toast-host-${placement}`}
+      onFocus={onFocus}
+      onBlur={onBlur}
+    >
       <div role="status" aria-live="polite" aria-atomic="true" className="q-toast-region">
         {shown && shown.tone !== 'error' && <ToastCard key={shown.id} toast={shown} />}
       </div>
       <div role="alert" aria-atomic="true" className="q-toast-region">
         {shown?.tone === 'error' && <ToastCard key={shown.id} toast={shown} />}
       </div>
+      {waiting > 0 && (
+        <div className="q-toast-waiting" data-testid={`toast-waiting-${placement}`}>
+          {t('toast.waiting', { count: waiting })}
+        </div>
+      )}
     </div>
   );
 }
@@ -110,6 +167,7 @@ function ToastCard({ toast: x }: { toast: Toast }): ReactElement {
       className="q-toast"
       data-tone={x.tone}
       data-body={Body ? '' : undefined}
+      tabIndex={-1}
       data-testid={x.testId ?? 'toast'}
       onPointerEnter={() => {
         setHover(true);
@@ -127,6 +185,12 @@ function ToastCard({ toast: x }: { toast: Toast }): ReactElement {
         if (e.key !== 'Escape') return;
         e.preventDefault();
         e.stopPropagation();
+        // no close button: it stays (a running export, picks still picked); focus leaves it
+        if (x.closable === false) {
+          const active = document.activeElement;
+          if (active instanceof HTMLElement) active.blur();
+          return;
+        }
         dismiss();
       }}
     >

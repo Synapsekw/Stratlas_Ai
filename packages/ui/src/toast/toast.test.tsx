@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearToasts,
   dismissToast,
+  isToastVisible,
   Progress,
   toast,
   toastQueue,
@@ -293,6 +294,59 @@ describe('toast', () => {
     say('', { body: () => <span>all of it</span> });
     expect(host.querySelector('.q-toast-msg')).toBeNull();
     expect(host.querySelector('.q-toast-body')?.textContent).toBe('all of it');
+  });
+  it('Escape on a toast without a close button keeps it and only moves focus away', () => {
+    mount(<ToastHost placement="window" />);
+    const onDismiss = vi.fn();
+    say('Exporting', { closable: false, onDismiss, testId: 'run' });
+    const card = host.querySelector<HTMLElement>('[data-testid="run"]');
+    act(() => card?.focus());
+    expect(document.activeElement).toBe(card);
+    act(() => {
+      card?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(text()).toEqual(['Exporting']);
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(card);
+  });
+
+  it('an error is not covered by a newer notice; a count says how many wait', () => {
+    mount(<ToastHost placement="window" />);
+    say('Saving failed', { tone: 'error', ttlMs: 0 });
+    say('1 measurement deleted', { ttlMs: 0 });
+    say('Export saved', { ttlMs: 0 });
+    expect(text()).toEqual(['Saving failed']);
+    expect(alert()?.textContent).toContain('Saving failed');
+    expect(host.querySelector('[data-testid="toast-waiting-window"]')?.textContent).toBe('2 more');
+    act(() => {
+      dismissToast(toastQueue()[0]?.id ?? '');
+    });
+    expect(text()).toEqual(['Export saved']);
+    expect(host.querySelector('[data-testid="toast-waiting-window"]')?.textContent).toBe('1 more');
+    act(() => {
+      clearToasts();
+    });
+    expect(host.querySelector('[data-testid="toast-waiting-window"]')).toBeNull();
+  });
+
+  it('isToastVisible: only the toast a mounted host shows', () => {
+    say('alone', { id: 'a', ttlMs: 0 });
+    expect(isToastVisible('a')).toBe(false); // no host on screen
+    mount(<ToastHost placement="window" />);
+    expect(isToastVisible('a')).toBe(true);
+    say('newer', { id: 'b', ttlMs: 0 });
+    expect(isToastVisible('a')).toBe(false);
+    expect(isToastVisible('b')).toBe(true);
+    expect(isToastVisible('nope')).toBe(false);
+  });
+
+  it('focus on a toast moves to the newer one that takes its place', () => {
+    mount(<ToastHost placement="window" />);
+    say('first', { ttlMs: 0, testId: 'one' });
+    const first = host.querySelector<HTMLElement>('[data-testid="one"]');
+    act(() => first?.focus());
+    say('second', { ttlMs: 0, testId: 'two' });
+    expect(document.activeElement).toBe(host.querySelector('[data-testid="two"]'));
   });
 });
 

@@ -1,4 +1,4 @@
-import { Icon, useT } from '@aio/ui';
+import { Icon, isToastVisible, useT } from '@aio/ui';
 import { useEffect } from 'react';
 import { useToastNotice } from '../exports/useToastNotice';
 import { positionEdit, usePositionEdit } from './alignSession';
@@ -36,7 +36,8 @@ export function EditPositionNotice() {
     if (!notice?.action) return;
     const kind = notice.action.kind;
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || otherUndo(e)) return;
+      // only while its toast is the one on screen, not hidden behind another
+      if (!(e.ctrlKey || e.metaKey) || otherUndo(e) || !isToastVisible('position-notice')) return;
       const k = e.key.toLowerCase();
       const undo = k === 'z' && !e.shiftKey;
       const redo = k === 'y' || (k === 'z' && e.shiftKey);

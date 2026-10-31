@@ -80,6 +80,19 @@
   font-size: var(--t-12);
   overflow-wrap: anywhere;
 }
+.q-toast:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+/* how many toasts wait behind the one on show */
+.q-toast-waiting {
+  pointer-events: none;
+  margin-block-start: var(--sp-2);
+  text-align: end;
+  color: var(--fg-2);
+  font-size: var(--t-11);
+}
+
 /* a notice's own content under the message: its text, rows and buttons */
 .q-toast-body {
   display: grid;
