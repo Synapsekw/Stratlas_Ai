@@ -565,3 +565,43 @@ def test_metadata_is_not_read_without_an_object_size(tmp_path, monkeypatch):
     with FakeVlm(scoring([0.9])) as vlm:
         run_job(pipeline(), root, params(state_file(root, vlm.url), photos=("p1",)))
     assert calls == []
+
+
+def test_drafts_of_one_object_in_posed_photos_are_voted_into_one(tmp_path):
+    from test_inspection import look_q
+
+    root = make_project(tmp_path / "p")
+    m = json.loads((root / "manifest.json").read_text("utf-8"))
+    target = [0.0, 0.0, 0.0]
+    for k, item in enumerate(m["layers"][0]["items"]):
+        a = 2 * math.pi * k / 3
+        pos = [12 * math.cos(a), 10.0, 12 * math.sin(a)]
+        item.update(pos=pos, q=look_q(pos, target), lens={"model": "pinhole", "hfovDeg": 60.0})
+    (root / "manifest.json").write_text(json.dumps(m), "utf-8")
+    centred = '[{"bbox_2d": [572, 404, 772, 604], "label": "x", "note": "middle"}]'
+
+    def handle(body: dict):
+        if body.get("logprobs"):
+            return logprob_response([("Yes", math.log(0.9)), ("No", math.log(0.1))])
+        return text_response(centred)
+
+    with FakeVlm(handle) as vlm:
+        result, _ = run_job(pipeline(), root, params(state_file(root, vlm.url)))
+    doc = pass_of(root)
+    dets = doc["detections"]
+    assert len(dets) == 1
+    v = dets[0]["vote"]
+    assert v["views"] == 3 and v["seenBy"] == 3 and v["placedOn"] == "rays"
+    assert v["point"] == pytest.approx(target, abs=0.3)
+    assert {s["photo"] for s in v["sightings"]} == {"p1", "p2", "p3"} - {dets[0]["photo"]}
+    assert doc["run"]["detections"] == 1
+    assert result["outputs"]["commit"]["voted"] == {"objects": 1, "merged": 2, "singleView": 0}
+
+
+def test_unposed_photos_keep_every_draft_and_no_vote(tmp_path):
+    root = make_project(tmp_path / "p")
+    with FakeVlm(scoring([0.9])) as vlm:
+        result, _ = run_job(pipeline(), root, params(state_file(root, vlm.url)))
+    dets = pass_of(root)["detections"]
+    assert len(dets) == 6 and not any("vote" in d for d in dets)
+    assert "voted" not in result["outputs"]["commit"]

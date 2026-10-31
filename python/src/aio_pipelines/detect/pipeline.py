@@ -12,7 +12,9 @@ Steps (each resumable):
    prepare could read one (near-nadir photos); a result cut to ``engine.MAX_CANDIDATES`` is staged
    with ``capped`` and counted in the step outputs (``capped``).
 3. commit: assembles `detections/vlm-<run>.json` (an `aio.detections/1` pass of draft detections)
-   from the staged results and moves it into the project.
+   from the staged results and moves it into the project. Before it is written, the multi-view
+   vote (``multiview/``) folds the drafts of one object seen in several posed photos into one
+   draft with a ``vote``; single-view outliers are kept and flagged.
 
 Every candidate is kept; one scored under its detector's threshold carries ``belowThreshold``, one
 the model could not score carries ``unscored`` and no ``confidence``. A detector whose class is not
@@ -27,6 +29,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from ..multiview.scene import radius_for, vote_pass
 from ..params import known_keys
 from ..runtime import JobError, Step, StepContext, atomic_write_json, commit_files, now_iso
 
@@ -363,6 +366,9 @@ class DetectVlm:
                         dets.append(d)
                 if ran_all:
                     assessed.append(photo["id"])
+            # one draft per object seen in several posed photos (multiview/, vision audit 3.6)
+            sizes = {e["detector"]["id"]: e["detector"] for e in detectors}
+            dets, voted = vote_pass(ctx, params["layer"], dets, radius_for(sizes))
             doc = {
                 "schema": DETECTIONS_SCHEMA,
                 "source": "model",
@@ -397,12 +403,17 @@ class DetectVlm:
             commit_files(ctx, [(rel, f"detections/{rel}")])
             ctx.log(f"{len(dets)} candidates on {len(assessed)} photos.")
             ctx.progress(1.0)
-            return {
+            out = {
                 "pass": f"detections/{rel}",
                 "photos": len(assessed),
                 "detections": len(dets),
                 "capped": capped,
             }
+            if voted:
+                out["voted"] = {k: voted[k] for k in ("merged", "singleView")} | {
+                    "objects": voted["clusters"]
+                }
+            return out
 
         return [
             Step("prepare", "Finding the photos", prepare_step, 0.05),
