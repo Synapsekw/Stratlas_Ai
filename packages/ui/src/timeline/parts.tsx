@@ -328,7 +328,12 @@ export function ZoomControls({ axis, anchor }: { axis: TimeAxis; anchor: () => n
       >
         <Icon name="minus" size={14} />
       </button>
-      <button type="button" aria-label="Fit" title="Fit everything" onClick={axis.fit}>
+      <button
+        type="button"
+        aria-label="Fit"
+        title={`Fit everything (${platformKeys('Ctrl')} + wheel to zoom)`}
+        onClick={axis.fit}
+      >
         <Icon name="maximize" size={14} />
       </button>
       <button
