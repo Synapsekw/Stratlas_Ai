@@ -177,6 +177,7 @@ export const enStage = {
   'frames.nextPhoto': 'Next photo',
   'frames.atTime': '{time} s',
   'frames.run': 'Find changes in matched frames',
+  'frames.menu': 'Matched frames',
   'frames.run.noPhotos': 'Both dates need photos with camera positions.',
   'frames.run.noPairs': 'No photos of the two dates show the same view.',
   'frames.run.noProject': 'Open the project on this computer first.',

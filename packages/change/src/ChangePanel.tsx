@@ -1,11 +1,16 @@
 import { ChangeCollab } from '@aio/collab/ui';
 import type { ChangeItem, ChangeKind, ChangeSet, ChangeVerdict } from '@aio/schema';
-import { useT, type MessageKey } from '@aio/ui';
+import { Icon, Menu, t, useT, type MenuEntry, type MessageKey } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useStore } from 'zustand';
 import { VERDICT_COLOR } from './overlay';
-import { changeProducers, subscribeChangeProducers, type ChangePairContext } from './producers';
+import {
+  changeProducers,
+  subscribeChangeProducers,
+  type ChangePairContext,
+  type ChangeProducer,
+} from './producers';
 import { registerRows, verdictCounts, type RegisterRow, type ReviewStatus } from './register';
 import { changeSetStale } from './stale';
 import {
@@ -20,7 +25,7 @@ import {
 
 /**
  * The Changes panel (FUS-12): the register of the chosen date pair with filters and sort, the
- * "Find changes" run and one "Run ..." action per registered producer (C2 to C4), and a person's
+ * "Find changes" run with a menu of the registered producers (C2 to C4) beside it, and a person's
  * review of each item. What a review does to issues is the app's (`actions`): nothing here
  * changes an issue.
  */
@@ -77,6 +82,10 @@ const css = `
 .chg-btn.primary, .chg-btn.primary:hover:not(:disabled) { background: var(--acc); border-color: var(--acc); color: var(--acc-ink); }
 .chg-btn.primary:hover:not(:disabled) { filter: brightness(1.08); }
 .chg-btn.ghost { background: transparent; border-color: transparent; }
+/* Find changes and its menu of the other comparisons: one control, two halves */
+.chg-split { display: inline-flex; }
+.chg-split > .chg-btn:first-child { border-start-end-radius: 0; border-end-end-radius: 0; }
+.chg-split > .chg-more { padding: 0 4px; border-start-start-radius: 0; border-end-start-radius: 0; border-inline-start-color: var(--acc-ink); }
 .chg-btn:focus-visible, .chg-row:focus-visible, .chg-input:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
 .chg-input { height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-4); background: var(--bg-2); color: var(--fg-0); font: 400 var(--t-12)/1 var(--f-ui); min-width: 0; }
 .chg-input.grow { flex: 1; }
@@ -144,6 +153,29 @@ function detailText(item: ChangeItem, t: ReturnType<typeof useT>): string {
   }
   if (item.method) parts.push(t('change.method', { method: item.method }));
   return parts.join(' · ');
+}
+
+/**
+ * The Find changes menu: one item per registered producer, greyed with what the dates lack when
+ * it cannot run for them.
+ */
+export function producerItems(
+  producers: readonly ChangeProducer[],
+  ctx: ChangePairContext | null,
+  run: (p: ChangeProducer) => void,
+): MenuEntry[] {
+  return producers.map((p) => {
+    const ok = ctx ? p.available(ctx) : t('change.producerNoDates');
+    return {
+      id: p.id,
+      label: p.menuLabel ?? p.label,
+      testId: `change-producer-${p.id}`,
+      ...(ok !== true ? { disabledReason: t('change.producerMissing', { why: ok }) } : {}),
+      onSelect: () => {
+        run(p);
+      },
+    };
+  });
 }
 
 export function ChangePanel({
@@ -216,6 +248,8 @@ export function ChangePanel({
 
   // producers registered after mount (C2 to C4) show up
   const producers = useSyncExternalStore(subscribeChangeProducers, changeProducers);
+  const more = useRef<HTMLButtonElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   if (captures.length < 2)
     return (
@@ -225,6 +259,8 @@ export function ChangePanel({
       </div>
     );
 
+  // a run or an area takes the menu away; it does not come back by itself afterwards
+  if (menuOpen && (s.run || s.area)) setMenuOpen(false);
   const pair = s.pair;
   // a kept refusal belongs to its pair and to its area (a scoped run keeps the area in its params)
   const refusedArea = (s.misaligned?.params?.scope as { id?: unknown } | undefined)?.id ?? null;
@@ -338,37 +374,45 @@ export function ChangePanel({
               </button>
             </>
           ) : (
-            <button
-              type="button"
-              className="chg-btn primary"
-              data-testid="change-run"
-              title={areaRunWhy ?? t('change.run')}
-              disabled={!pair || !!s.area}
-              onClick={() => void s.compute()}
-            >
-              {t('change.runShort')}
-            </button>
-          )}
-          {producers.map((p) => {
-            const ok = ctx ? p.available(ctx) : 'no dates';
-            return (
+            <span className="chg-split" role="group" aria-label={t('change.runShort')}>
               <button
-                key={p.id}
                 type="button"
-                className="chg-btn"
-                data-testid={`change-producer-${p.id}`}
-                disabled={ok !== true || !!s.run || !!s.area}
-                title={
-                  areaRunWhy ?? (ok === true ? p.label : t('change.producerMissing', { why: ok }))
-                }
+                className="chg-btn primary"
+                data-testid="change-run"
+                title={areaRunWhy ?? t('change.run')}
+                disabled={!pair || !!s.area}
+                onClick={() => void s.compute()}
+              >
+                {t('change.runShort')}
+              </button>
+              <button
+                ref={more}
+                type="button"
+                className="chg-btn primary chg-more"
+                data-testid="change-run-more"
+                aria-label={t('change.runMore')}
+                title={areaRunWhy ?? t('change.runMore')}
+                disabled={!pair || !!s.area || producers.length === 0}
                 onClick={() => {
-                  if (ctx) void act(() => runProducer(p, ctx));
+                  setMenuOpen((o) => !o);
                 }}
               >
-                {p.label}
+                <Icon name="chev-d" size={12} />
               </button>
-            );
-          })}
+            </span>
+          )}
+          <Menu
+            open={menuOpen}
+            onClose={() => {
+              setMenuOpen(false);
+            }}
+            opener={more}
+            label={t('change.runMore')}
+            testId="change-run-menu"
+            items={producerItems(producers, ctx, (p) => {
+              if (ctx) void act(() => runProducer(p, ctx));
+            })}
+          />
         </div>
       )}
       {(areas.length > 0 || s.area) && (

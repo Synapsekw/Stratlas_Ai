@@ -15,6 +15,7 @@ import {
   VENV_PYTHON,
   type ChangeDemoTruth,
 } from './fixtures';
+import { producerItem } from './changeRun';
 import { openBench } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
@@ -193,7 +194,7 @@ test('Find changes in matched frames: one frame change per photo pair, drafts on
   await openBench(win, 'changes');
   const panel = win.getByTestId('change-panel');
   await expect(panel).toBeVisible();
-  const run = panel.getByTestId('change-producer-frames');
+  const run = await producerItem(win, 'frames');
   await expect(run).toBeEnabled();
   await run.click();
   // the job runs in the pipeline pack; its change set joins the register when it finishes

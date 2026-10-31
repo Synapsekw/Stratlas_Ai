@@ -29,8 +29,10 @@ export type ChangeRunResult =
 export interface ChangeProducer {
   /** Stable id: `issues`, `raster`, `surface`, `cloud`, `mesh`, `frames`... */
   id: string;
-  /** Action label in the panel ("Run imagery change"). */
+  /** What it does, as a sentence ("Run imagery change"): job lists and the agent. */
   label: string;
+  /** Its name in the Find changes menu ("Imagery"); `label` when absent. */
+  menuLabel?: string;
   /** Item kinds its change sets hold. */
   kinds: readonly ChangeKind[];
   /** True when the pair has what it needs; a string says what is missing. */

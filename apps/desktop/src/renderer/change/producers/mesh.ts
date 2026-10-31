@@ -45,6 +45,7 @@ export function meshChangeProducer(deps: ProducerDeps): ChangeProducer {
   return {
     id: 'mesh',
     label: t('change.run.model'),
+    menuLabel: t('change.menu.model'),
     kinds: ['component'],
     available: (ctx) => {
       const pair = meshPair(ctx);

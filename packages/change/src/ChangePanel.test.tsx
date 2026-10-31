@@ -264,19 +264,77 @@ describe('the Changes panel and a line-up', () => {
       await render({ context: () => ({}) as never });
       const why = 'Choose "Whole map" to run for the whole map.';
       const run = q('change-run') as HTMLButtonElement;
-      const producer = q('change-producer-raster') as HTMLButtonElement;
+      const more = q('change-run-more') as HTMLButtonElement;
       expect(run.disabled).toBe(true);
       expect(run.title).toBe(why);
-      expect(producer.disabled).toBe(true);
-      expect(producer.title).toBe(why);
+      expect(more.disabled).toBe(true);
+      expect(more.title).toBe(why);
       await act(async () => {
         changeStore.getState().setArea(null);
         await Promise.resolve();
       });
       expect((q('change-run') as HTMLButtonElement).disabled).toBe(false);
-      expect((q('change-producer-raster') as HTMLButtonElement).disabled).toBe(false);
+      expect((q('change-run-more') as HTMLButtonElement).disabled).toBe(false);
     } finally {
       off();
+    }
+  });
+
+  it('Find changes is one button; the other comparisons sit in its menu, greyed with why', async () => {
+    open(false);
+    const ran: string[] = [];
+    const offs = [
+      registerChangeProducer({
+        id: 'raster',
+        label: 'Run imagery change',
+        menuLabel: 'Imagery',
+        kinds: ['region'],
+        available: () => true,
+        run: () => {
+          ran.push('raster');
+          return Promise.resolve({ ok: true });
+        },
+      }),
+      registerChangeProducer({
+        id: 'surface',
+        label: 'Run surface change',
+        menuLabel: 'Surface',
+        kinds: ['region'],
+        available: () => 'needs a DSM on each date',
+        run: () => Promise.resolve({ ok: true }),
+      }),
+    ];
+    try {
+      changeStore.setState({ projectId: 'p', sets: {}, pair: { from: 'd1', to: 'd2' } });
+      await render({ context: () => ({}) as never });
+      // the menu sits on the floating layer, outside the panel
+      const inBody = (id: string) =>
+        document.body.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+      // no row of equal buttons: the producers are not drawn until the menu opens
+      expect(q('change-producer-raster')).toBeNull();
+      await act(async () => {
+        (q('change-run-more') as HTMLButtonElement | null)?.click();
+        await Promise.resolve();
+      });
+      expect(q('change-run-more')?.getAttribute('aria-expanded')).toBe('true');
+      const items = [
+        ...document.querySelectorAll('[data-testid="change-run-menu"] [role="menuitem"]'),
+      ];
+      expect(items.map((i) => i.textContent)).toEqual(['Imagery', 'Surface']);
+      const surface = inBody('change-producer-surface');
+      expect(surface?.getAttribute('aria-disabled')).toBe('true');
+      expect(surface?.getAttribute('aria-description')).toBe(
+        'Not available for these dates: needs a DSM on each date',
+      );
+      await act(async () => {
+        surface?.click();
+        inBody('change-producer-raster')?.click();
+        await Promise.resolve();
+      });
+      expect(ran).toEqual(['raster']);
+      expect(inBody('change-run-menu')).toBeNull();
+    } finally {
+      for (const off of offs) off();
     }
   });
 

@@ -78,6 +78,15 @@ test('the change demo: compare dates, find changes as truth.json says, review an
   await expect(panel.getByTestId('change-from')).toHaveValue(truth.captures.from);
   await expect(panel.getByTestId('change-to')).toHaveValue(truth.captures.to);
 
+  // one Find changes; imagery, surface, point cloud, model and matched frames sit in its menu
+  await expect(panel.locator('[data-testid^="change-producer-"]')).toHaveCount(0);
+  await panel.getByTestId('change-run-more').click();
+  const more = win.getByTestId('change-run-menu');
+  for (const name of ['Imagery', 'Surface', 'Point cloud', 'Model', 'Matched frames'])
+    await expect(more.getByRole('menuitem', { name, exact: true })).toBeVisible();
+  await win.keyboard.press('Escape');
+  await expect(more).toHaveCount(0);
+  await expect(panel.getByTestId('change-run-more')).toBeFocused();
   await panel.getByTestId('change-run').click();
   const issues = truth.changes.issue as { verdicts: Record<string, number>; items: Item[] };
   const total = Object.values(issues.verdicts).reduce((a, b) => a + b, 0);

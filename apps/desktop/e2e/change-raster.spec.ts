@@ -11,6 +11,7 @@ import type { Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
+import { producerItem } from './changeRun';
 import { expectRegionsMatchTruth, inside, type Item, type RasterTruth } from './changeRaster';
 import { openBench, toggleCompareDates } from './island';
 import { choosePane } from './panoFixtures';
@@ -42,7 +43,7 @@ const layerIds = (win: Page) =>
 /** Changes tab, the producer's Run button, then its layers in the reloaded manifest. */
 async function run(win: Page, producer: string, layers: string[]) {
   await openBench(win, 'changes');
-  const button = win.getByTestId('change-panel').getByTestId(`change-producer-${producer}`);
+  const button = await producerItem(win, producer);
   await expect(button).toBeEnabled();
   await button.click();
   await expect

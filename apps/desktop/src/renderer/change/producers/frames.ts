@@ -60,6 +60,7 @@ export function framesProducer(deps: FramesProducerDeps): ChangeProducer {
   return {
     id: 'frames',
     label: t('frames.run'),
+    menuLabel: t('frames.menu'),
     kinds: ['frame'],
     available: (ctx) =>
       posedPhotos(ctx.layersFrom) && posedPhotos(ctx.layersTo) ? true : t('frames.run.noPhotos'),

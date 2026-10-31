@@ -137,6 +137,7 @@ export function cloudChangeProducer(deps: ProducerDeps): ChangeProducer {
   return {
     id: 'cloud',
     label: t('change.run.cloud'),
+    menuLabel: t('change.menu.cloud'),
     kinds: ['region'],
     available: (ctx) => {
       const pair = cloudPair(ctx);

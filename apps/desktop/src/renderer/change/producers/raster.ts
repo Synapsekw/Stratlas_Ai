@@ -233,6 +233,7 @@ export function imageryProducers(deps: ProducerDeps): ChangeProducer[] {
     {
       id: 'raster',
       label: t('change.run.imagery'),
+      menuLabel: t('change.menu.imagery'),
       kinds: ['region'],
       available: (ctx) => {
         const pair = orthoPair(ctx);
@@ -249,6 +250,7 @@ export function imageryProducers(deps: ProducerDeps): ChangeProducer[] {
     {
       id: 'surface',
       label: t('change.run.surface'),
+      menuLabel: t('change.menu.surface'),
       kinds: ['region'],
       available: (ctx) => {
         const pair = surfacePair(ctx);

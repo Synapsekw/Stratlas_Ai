@@ -28,6 +28,7 @@ import {
   test,
   VENV_PYTHON,
 } from './fixtures';
+import { producerItem } from './changeRun';
 import { measureRow, measureTree, openBench } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
@@ -317,7 +318,7 @@ test('Run again on a stale area replays the area; the whole-map set stays as it 
 
   // 1. the whole map first, from the Changes panel's own button
   await openBench(win, 'changes');
-  const button = win.getByTestId('change-panel').getByTestId('change-producer-raster');
+  const button = await producerItem(win, 'raster');
   await expect(button).toBeEnabled();
   await button.click();
   await layersOf(win, `${pair}-raster`);

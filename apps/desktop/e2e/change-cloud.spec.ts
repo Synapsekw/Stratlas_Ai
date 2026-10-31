@@ -24,6 +24,7 @@ import {
   tinyManifest,
   VENV_PYTHON,
 } from './fixtures';
+import { producerItem } from './changeRun';
 import { islandGroup, openBench } from './island';
 
 const repo = join(import.meta.dirname, '..', '..', '..');
@@ -256,7 +257,7 @@ test.describe('change runs on the change demo', () => {
     await openBench(win, 'changes');
     const panel = win.getByTestId('change-panel');
     await expect(panel).toBeVisible();
-    const run = panel.getByTestId(`change-producer-${id}`);
+    const run = await producerItem(win, id);
     await expect(run).toBeEnabled();
     await run.click();
     return panel;

@@ -24,6 +24,7 @@ import {
   changeDemoTruth,
   type DataRoot,
 } from './fixtures';
+import { producerItem } from './changeRun';
 import { expectRegionsMatchTruth, type Item, type RasterTruth } from './changeRaster';
 import { openBench, toggleCompareDates } from './island';
 import { choosePane } from './panoFixtures';
@@ -610,7 +611,7 @@ test('imagery change refused, lined up from the Changes panel, then runs clean',
 
   // 1. the run is refused, and the panel says why
   await openBench(win, 'changes');
-  const run = win.getByTestId('change-panel').getByTestId('change-producer-raster');
+  const run = await producerItem(win, 'raster');
   await expect(run).toBeEnabled();
   await run.click();
   const refused = win.getByTestId('chg-misaligned');
@@ -1044,7 +1045,7 @@ test.describe('at the window size CI uses', () => {
     const truth = changeDemoTruth();
     const { from, to } = truth.captures;
     await openBench(win, 'changes');
-    const run = win.getByTestId('change-panel').getByTestId('change-producer-raster');
+    const run = await producerItem(win, 'raster');
     await expect(run).toBeEnabled();
     await run.click();
     await expect(win.getByTestId('chg-misaligned')).toHaveCount(0);

@@ -31,6 +31,7 @@ import {
   test,
   VENV_PYTHON,
 } from './fixtures';
+import { producerItem } from './changeRun';
 import { openBench } from './island';
 import { ODM_FAKE_DIR, odmEnv } from './photoPack';
 
@@ -270,11 +271,10 @@ const layersNow = (win: Page) =>
 /** The Changes tab's Run button of a producer, enabled with no sentence of what is missing. */
 async function producerButton(win: Page, producer: string) {
   await openBench(win, 'changes');
-  const button = win.getByTestId('change-panel').getByTestId(`change-producer-${producer}`);
+  const button = await producerItem(win, producer);
   await expect(button).toBeEnabled({ timeout: 30_000 });
-  const label = (await button.textContent()) ?? '';
-  // an unavailable producer says what it needs in the title ("... needs a DSM ... on each date")
-  await expect(button).toHaveAttribute('title', label);
+  // an unavailable producer says what it needs ("... needs a DSM ... on each date")
+  await expect(button).not.toHaveAttribute('aria-description');
   return button;
 }
 
