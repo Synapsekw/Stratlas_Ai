@@ -5,7 +5,7 @@
  * until the next reveal. A click on the group's header ends the hold and folds the group (a fold
  * the person asks for, so it is kept). A reveal made while the group was not mounted is honoured
  * when it mounts. The row is found by `data-row-id` inside the group's `.pl-rows` scroller, which
- * is scrolled by its own `scrollTop`, then the bench; never `scrollIntoView`, which would move
+ * is scrolled by its own `scrollTop`, then the panel tab's scroll box; never `scrollIntoView`, which would move
  * every scroller up to the window.
  */
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type RefObject } from 'react';
@@ -35,7 +35,8 @@ function scrollRow(section: HTMLElement, id: string): void {
   if (!row) return;
   const rows = row.closest<HTMLElement>('.pl-rows');
   if (rows) nudge(rows, row);
-  const bench = section.closest<HTMLElement>('.wb-scroll');
+  // the right panel tab's one scroll box (UI revision D2), or a bench that scrolls by itself
+  const bench = section.closest<HTMLElement>('.wb-panel-scroll, .wb-scroll');
   if (bench) nudge(bench, row);
 }
 

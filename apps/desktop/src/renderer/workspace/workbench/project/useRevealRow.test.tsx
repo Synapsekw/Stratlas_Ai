@@ -62,7 +62,7 @@ const mount = (shown = true) => {
   act(() => {
     root?.render(
       shown ? (
-        <div className="wb-scroll">
+        <div className="wb-panel-scroll">
           <ProjectList groups={[antennas, issues]} />
         </div>
       ) : null,
@@ -140,6 +140,22 @@ describe('useRevealRow', () => {
     // the row no longer selected ends the hold: the saved fold is back
     select(null);
     expect(expanded()).toBe('false');
+  });
+
+  it("scrolls the panel tab's one box too, so the row and its details show", () => {
+    mount();
+    const box = host.querySelector<HTMLElement>('.wb-panel-scroll')!;
+    // the tab's box shows 0-120; the group's rows scroll inside it, the row is still below
+    box.getBoundingClientRect = () => ({ top: 0, bottom: 120 }) as DOMRect;
+    const a3 = host.querySelector<HTMLElement>('[data-row-id="a3"]')!;
+    a3.getBoundingClientRect = () => ({ top: 200, bottom: 226 }) as DOMRect;
+    select('a3');
+    act(() => {
+      revealInList('antennas', 'a3');
+    });
+    wait();
+    // by the least that shows it whole: its foot at the box's foot
+    expect(box.scrollTop).toBe(106);
   });
 
   it('holds a row selected just after its reveal', () => {
