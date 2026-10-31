@@ -279,6 +279,16 @@ test('a photo pin on the map opens the photo menu with Align to', async ({ demoP
   // the map beside 3D, so the pins show
   const mode = await win.locator('.stage').getAttribute('data-mode');
   if (mode !== 'split') await stageMode(win, 'Split');
+  // the clip's floating window steps aside: on the narrower stage it can lie over the pin
+  await win.evaluate(() => {
+    (
+      window as unknown as {
+        __stratlas: { shell: { getState(): { setVideoHidden(h: boolean): void } } };
+      }
+    ).__stratlas.shell
+      .getState()
+      .setVideoHidden(true);
+  });
   const found: { at: { x: number; y: number } | null } = { at: null };
   await expect
     .poll(

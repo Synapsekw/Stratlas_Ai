@@ -515,6 +515,9 @@ test.describe('survey date folders in the smallest window', () => {
   }) => {
     const id = threeDateProject.id;
     await openThreeDates(win, id);
+    // the Layers column runs the window's height under the title bar (no nav above it any more):
+    // a shorter list keeps the oldest folder below the fold, as on a busier project
+    await win.addStyleTag({ content: '.sb-scroll { max-height: 180px; }' });
     const row = win.getByTestId('date-folder-nov').getByTestId('tree-row-quad-nov');
     const target = win.getByTestId('date-name-sep');
     await row.scrollIntoViewIfNeeded();
