@@ -9,6 +9,8 @@ import {
   captureRef,
   capturesOf,
   registerRendererTool,
+  registerStepDescriber,
+  resolveLayer,
   surveyToolInputs,
   type AppHooks,
   type RendererToolContext,
@@ -19,6 +21,7 @@ import {
 } from '@aio/ai';
 import type { Detection } from '@aio/annotate/detections';
 import { ThermalFile, type JobRecord, type Layer } from '@aio/schema';
+import { formatDate, t } from '@aio/ui';
 import { assetUrl, captureIndex, workspace } from '@aio/workspace';
 import { acceptByIds, detections, rejectAll, dispatch, undoReview } from '../detections/store';
 import { isActive, sameFolder } from '../jobs';
@@ -44,7 +47,6 @@ function define<N extends SurveyToolName>(
   ]);
 }
 
-const plural = (n: number, w: string) => `${String(n)} ${w}${n === 1 ? '' : 's'}`;
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
 function openProject(ctx: RendererToolContext) {
@@ -79,7 +81,7 @@ define('list_surveys', (_input, ctx) => {
   const common = p.manifest.layers.filter((l) => index.of[l.id] === undefined).length;
   return {
     result: { total: dates.length, commonLayers: common, dates },
-    summary: plural(dates.length, 'survey date'),
+    summary: t('agentTool.summary.dates', { count: dates.length }),
   };
 });
 
@@ -98,11 +100,19 @@ define('set_survey_date', (input, ctx) => {
   }
   return {
     result: { inView: { id: c.id, date: c.date, name: c.label } },
-    summary: c.date,
-    ...(before && before !== c.id
+    summary: t('agentTool.summary.inView', { date: formatDate(c.date) }),
+    ...(before !== c.id
       ? {
+          // back to the date before, or to none; refused in another project or once the date
+          // in view was changed since
           undo: () => {
-            timeline.getState().focusSurvey(before);
+            const now = timeline.getState();
+            if (workspace.getState().project?.id !== p.id || now.projectId !== p.id)
+              return t('agentTool.undo.otherProject');
+            if (now.focus !== c.id) return t('agentTool.undo.dateMovedSince');
+            if (before) now.focusSurvey(before);
+            else timeline.setState({ focus: null });
+            return null;
           },
         }
       : {}),
@@ -161,7 +171,7 @@ define('list_detections', (input, ctx) => {
       byClass: countBy(hits, (d) => d.classId || 'unclassified'),
       detections: rows,
     },
-    summary: plural(hits.length, 'detection'),
+    summary: t('agentTool.summary.detections', { count: hits.length }),
   };
 });
 
@@ -173,16 +183,28 @@ define('review_detections', (input, ctx) => {
   const want = new Set(input.ids);
   const list = all.filter((d) => want.has(d.id));
   const missing = input.ids.filter((id) => !all.some((d) => d.id === id));
-  const undo = () => {
+  const projectId = openProject(ctx).id;
+  /**
+   * The review's own undo, tied to the revision this step left: refused once another review
+   * came in after it (by hand or by the agent), or in another project.
+   */
+  const undoAt = (revision: number) => () => {
+    const s = detections.getState();
+    if (s.projectId !== projectId) return t('agentTool.undo.otherProject');
+    if (s.review.revision !== revision) return t('agentTool.undo.reviewedSince');
     undoReview();
+    return detections.getState().review.revision === revision
+      ? t('agentTool.undo.reviewBlocked')
+      : null;
   };
+  const revision = () => detections.getState().review.revision;
   if (input.decision === 'accept') {
     const r = acceptByIds(input.ids);
     if ('error' in r) throw new ToolError(r.error);
     return {
       result: { accepted: r.accepted, skipped: r.skipped },
-      summary: `${plural(r.accepted.length, 'draft issue')} from detections`,
-      ...(r.accepted.length > 0 ? { undo } : {}),
+      summary: t('agentTool.summary.accepted', { count: r.accepted.length }),
+      ...(r.accepted.length > 0 ? { undo: undoAt(revision()) } : {}),
     };
   }
   if (input.decision === 'reject') {
@@ -193,27 +215,37 @@ define('review_detections', (input, ctx) => {
         notWaiting: list.filter((d) => d.status !== 'draft').map((d) => d.id),
         ...(missing.length ? { notFound: missing } : {}),
       },
-      summary: `${plural(n, 'detection')} rejected`,
-      ...(n > 0 ? { undo } : {}),
+      summary: t('agentTool.summary.rejected', { count: n }),
+      ...(n > 0 ? { undo: undoAt(revision()) } : {}),
     };
   }
   const now = new Date().toISOString();
   const issues = new Set(ctx.workspace.getState().issues.map((i) => i.id));
   const reopened: string[] = [];
   const kept: { id: string; why: string }[] = [];
+  const items: { id: string; issueGone?: boolean }[] = [];
   for (const d of list) {
     if (d.status === 'draft') kept.push({ id: d.id, why: 'already waiting' });
     else if (d.status === 'accepted' && d.issueId && issues.has(d.issueId))
       kept.push({ id: d.id, why: `its issue ${d.issueId} exists; delete that first` });
     else {
-      dispatch({ type: 'reopen', id: d.id, now, issueGone: d.status === 'accepted' });
+      items.push({ id: d.id, ...(d.status === 'accepted' ? { issueGone: true } : {}) });
       reopened.push(d.id);
     }
   }
+  // one review step for them all, so one undo takes them all back
+  if (items.length > 0) {
+    dispatch({
+      type: 'reopenMany',
+      items,
+      label: t('agentTool.summary.reopened', { count: items.length }),
+      now,
+    });
+  }
   return {
     result: { reopened, kept, ...(missing.length ? { notFound: missing } : {}) },
-    summary: `${plural(reopened.length, 'detection')} reopened`,
-    ...(reopened.length > 0 ? { undo } : {}),
+    summary: t('agentTool.summary.reopened', { count: reopened.length }),
+    ...(reopened.length > 0 ? { undo: undoAt(revision()) } : {}),
   };
 });
 
@@ -241,7 +273,7 @@ define('list_jobs', (input, ctx) => {
       running: mine.filter(isActive).length,
       jobs: hits.slice(0, input.limit).map(jobRow),
     },
-    summary: plural(hits.length, 'job'),
+    summary: t('agentTool.summary.jobs', { count: hits.length }),
   };
 });
 
@@ -256,10 +288,7 @@ define('thermal_summary', async (input, ctx) => {
   const p = openProject(ctx);
   let layers = thermalLayers(p.id, p.manifest.layers);
   if (input.layer !== undefined) {
-    const q = input.layer.toLowerCase();
-    const l = p.manifest.layers.find((x) => x.id === input.layer || x.name.toLowerCase() === q);
-    if (!l) throw new ToolError(`No layer "${input.layer}".`);
-    layers = [l];
+    layers = [resolveLayer(p.manifest, input.layer)];
   }
   const raw: unknown = await ctx
     .fetchJson(assetUrl(p.id, { path: 'thermal/thermal.json' }))
@@ -309,7 +338,7 @@ define('thermal_summary', async (input, ctx) => {
       hotSpots: hottest,
       ...(file ? {} : { note: 'No thermal analysis is saved yet: open a thermal photo to start.' }),
     },
-    summary: plural(spots.length, 'hot spot'),
+    summary: t('agentTool.summary.hotSpots', { count: spots.length }),
   };
 });
 
@@ -336,7 +365,7 @@ define('list_walks', (_input, ctx) => {
   });
   return {
     result: { total: rows.length, walks: rows },
-    summary: plural(rows.length, 'walk'),
+    summary: t('agentTool.summary.walks', { count: rows.length }),
   };
 });
 
@@ -364,6 +393,20 @@ export const agentFacts: NonNullable<AppHooks['agentFacts']> = () => {
   return out;
 };
 
+/** The approval card of a review: what it does and to how many. */
+export function describeReview(input: unknown): string | null {
+  const parsed = surveyToolInputs.review_detections.safeParse(input);
+  if (!parsed.success) return null;
+  const { ids, decision } = parsed.data;
+  const key =
+    decision === 'accept'
+      ? 'agentTool.card.accept'
+      : decision === 'reject'
+        ? 'agentTool.card.reject'
+        : 'agentTool.card.reopen';
+  return t(key, { count: ids.length });
+}
+
 let registered = false;
 
 /** Register the executors, once (the specs come with `@aio/ai`). */
@@ -371,4 +414,5 @@ export function registerDataTools(): void {
   if (registered) return;
   registered = true;
   for (const [name, run] of executors) registerRendererTool(name, run);
+  registerStepDescriber('review_detections', describeReview);
 }

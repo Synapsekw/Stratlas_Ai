@@ -2,6 +2,7 @@ import { enShell } from './en/shell';
 import { enPalette } from './en/palette';
 import { enKeys } from './en/keys';
 import { enAgent } from './en/agent';
+import { enAgentTools } from './en/agentTools';
 import { enSettings } from './en/settings';
 import { enLibrary } from './en/library';
 import { enIsland } from './en/island';
@@ -47,6 +48,7 @@ import { enLayoutSpike } from './en/layoutSpike';
  *   en/palette.ts: palette
  *   en/keys.ts: keys
  *   en/agent.ts: agent, aiStatus
+ *   en/agentTools.ts: agentTool
  *   en/settings.ts: settings, identity, classes, graphics, mapSources, tools, blobs
  *   en/library.ts: library, project, package, remove, trash, gate
  *   en/island.ts: island
@@ -79,6 +81,7 @@ export const en = {
   ...enPalette,
   ...enKeys,
   ...enAgent,
+  ...enAgentTools,
   ...enSettings,
   ...enLibrary,
   ...enIsland,

@@ -8,7 +8,9 @@ import type {
   IpcResponse,
 } from '@aio/schema';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { AppHooks, RendererToolContext } from './renderer-tools';
+import { z } from 'zod';
+import { registerRendererTool, type AppHooks, type RendererToolContext } from './renderer-tools';
+import { registerToolSpec } from './tools';
 import { AgentSession, resetPreviewMemory } from './session';
 import { fixtureWorkspace } from './test-fixtures';
 
@@ -288,6 +290,47 @@ describe('agent session conversation', () => {
     t.session.undo('c1');
     expect(t.ws.getState().isLayerVisible('m1')).toBe(true);
     expect(t.session.getState().steps.c1?.status).toBe('undone');
+  });
+
+  it('keeps a step done, with the reason, when its undo is refused; waits for an async undo', async () => {
+    let answer: string | null = 'A later review came in.';
+    registerToolSpec({
+      meta: {
+        name: 'test_guarded_undo',
+        description: 'A test tool.',
+        scope: 'project',
+        risk: 'navigate',
+      },
+      input: z.object({}),
+      undoable: true,
+    });
+    registerRendererTool('test_guarded_undo', () =>
+      Promise.resolve({ result: {}, summary: 'did it', undo: () => Promise.resolve(answer) }),
+    );
+    const t = setup();
+    await t.session.send('do it');
+    for (const callId of ['g1', 'g2']) {
+      t.emit({
+        type: 'tool-call',
+        runId: 'id1',
+        callId,
+        name: 'test_guarded_undo',
+        input: {},
+        risk: 'navigate',
+      });
+    }
+    await flush();
+    t.session.undo('g1');
+    await flush();
+    expect(t.session.getState().steps.g1).toMatchObject({
+      status: 'done',
+      canUndo: false,
+      summary: 'did it · A later review came in.',
+    });
+    answer = null;
+    t.session.undo('g2');
+    await flush();
+    expect(t.session.getState().steps.g2?.status).toBe('undone');
   });
 
   it('keeps the compacted result and sends the tool work with the next message', async () => {

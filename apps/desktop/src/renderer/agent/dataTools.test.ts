@@ -8,11 +8,8 @@ vi.mock('../detections/store', async (orig) => {
   const real = await orig<Record<string, unknown>>();
   return {
     ...real,
+    // accepting makes issues through the issue editor; the rest is the real review store
     acceptByIds: vi.fn(() => ({ accepted: [{ id: 'd1', issueId: 'i9' }], skipped: [] })),
-    rejectAll: vi.fn(
-      (list: { status: string }[]) => list.filter((d) => d.status === 'draft').length,
-    ),
-    undoReview: vi.fn(),
   };
 });
 
@@ -84,7 +81,15 @@ beforeEach(() => {
     readOnly: false,
     review: {
       ...det.detections.getState().review,
-      detections: [d('d1', 'draft', 0.9), d('d2', 'draft', 0.4, 'leak'), d('d3', 'rejected', 0.7)],
+      detections: [
+        d('d1', 'draft', 0.9),
+        d('d2', 'draft', 0.4, 'leak'),
+        d('d3', 'rejected', 0.7),
+        d('d4', 'rejected', 0.6),
+      ],
+      past: [],
+      future: [],
+      revision: 0,
     },
   } as never);
 });
@@ -111,13 +116,40 @@ describe('survey dates', () => {
     const r = await runRendererTool('set_survey_date', { date: '2024-09-04' }, ctx());
     expect(focusSurvey).toHaveBeenCalledWith('c1');
     expect(r.result).toMatchObject({ inView: { id: 'c1' } });
-    r.undo?.();
+    expect(r.undo?.()).toBeNull();
     expect(focusSurvey).toHaveBeenLastCalledWith('c2');
+  });
+
+  it('clears the focus on undo when no date was in view before', async () => {
+    timeline.setState({ projectId: 'p', index: captureIndex(manifest), focus: null } as never);
+    timeline.setState({
+      focusSurvey: (id: string) => {
+        timeline.setState({ focus: id } as never);
+      },
+    } as never);
+    const r = await runRendererTool('set_survey_date', { date: 'latest' }, ctx());
+    expect(timeline.getState().focus).toBe('c2');
+    expect(r.undo?.()).toBeNull();
+    expect(timeline.getState().focus).toBeNull();
+  });
+
+  it('refuses the undo after a project switch, or once the date in view changed since', async () => {
+    timeline.setState({ projectId: 'p', index: captureIndex(manifest), focus: 'c2' } as never);
+    timeline.setState({
+      focusSurvey: (id: string) => {
+        timeline.setState({ focus: id } as never);
+      },
+    } as never);
+    const r = await runRendererTool('set_survey_date', { date: 'earliest' }, ctx());
+    timeline.setState({ focus: 'c2' } as never);
+    expect(r.undo?.()).toMatch(/changed since/);
+    timeline.setState({ focus: 'c1', projectId: 'other' } as never);
+    expect(r.undo?.()).toMatch(/another project/);
   });
 
   it('names the dates when the asked one does not exist', async () => {
     await expect(runRendererTool('set_survey_date', { date: 'June' }, ctx())).rejects.toThrow(
-      /No capture "June"/,
+      /No survey date "June"/,
     );
   });
 });
@@ -126,8 +158,8 @@ describe('detections', () => {
   it('lists the waiting ones by default, most confident first, with counts', async () => {
     const r = await runRendererTool('list_detections', {}, ctx());
     expect(r.result).toMatchObject({
-      total: 3,
-      byStatus: { draft: 2, rejected: 1 },
+      total: 4,
+      byStatus: { draft: 2, rejected: 2 },
       matching: 2,
       byClass: { crack: 1, leak: 1 },
     });
@@ -135,7 +167,10 @@ describe('detections', () => {
     expect(rows.map((x) => x.id)).toEqual(['d1', 'd2']);
   });
 
-  it('accepts into draft issues and rejects, each with the review undo', async () => {
+  const statusOf = (id: string) =>
+    det.detections.getState().review.detections.find((x) => x.id === id)?.status;
+
+  it('accepts into draft issues through the review', async () => {
     const a = await runRendererTool(
       'review_detections',
       { ids: ['d1'], decision: 'accept' },
@@ -143,14 +178,47 @@ describe('detections', () => {
     );
     expect(det.acceptByIds).toHaveBeenCalledWith(['d1']);
     expect(a.result).toMatchObject({ accepted: [{ id: 'd1', issueId: 'i9' }] });
-    a.undo?.();
-    expect(det.undoReview).toHaveBeenCalled();
+    expect(a.summary).toBe('1 detection accepted as a draft issue');
+  });
+
+  it('rejects the waiting ones, and its undo puts them back', async () => {
     const r = await runRendererTool(
       'review_detections',
-      { ids: ['d2', 'd3', 'zz'], decision: 'reject' },
+      { ids: ['d1', 'd2', 'd3', 'zz'], decision: 'reject' },
       ctx(),
     );
-    expect(r.result).toMatchObject({ rejected: 1, notWaiting: ['d3'], notFound: ['zz'] });
+    expect(r.result).toMatchObject({ rejected: 2, notWaiting: ['d3'], notFound: ['zz'] });
+    expect([statusOf('d1'), statusOf('d2')]).toEqual(['rejected', 'rejected']);
+    expect(r.undo?.()).toBeNull();
+    expect([statusOf('d1'), statusOf('d2')]).toEqual(['draft', 'draft']);
+  });
+
+  it('reopens several as one review step, so one undo takes them all back', async () => {
+    const before = det.detections.getState().review.past.length;
+    const r = await runRendererTool(
+      'review_detections',
+      { ids: ['d3', 'd4'], decision: 'reopen' },
+      ctx(),
+    );
+    expect([statusOf('d3'), statusOf('d4')]).toEqual(['draft', 'draft']);
+    expect(det.detections.getState().review.past.length).toBe(before + 1);
+    expect(r.undo?.()).toBeNull();
+    expect([statusOf('d3'), statusOf('d4')]).toEqual(['rejected', 'rejected']);
+  });
+
+  it('refuses the undo once a later review came in by hand, and leaves both as they are', async () => {
+    const r = await runRendererTool(
+      'review_detections',
+      { ids: ['d3', 'd4'], decision: 'reopen' },
+      ctx(),
+    );
+    det.dispatch({ type: 'reject', id: 'd1', by: 'x', now: '2026-10-31T12:00:00Z' });
+    expect(r.undo?.()).toMatch(/reviewed again since/);
+    expect([statusOf('d1'), statusOf('d3'), statusOf('d4')]).toEqual([
+      'rejected',
+      'draft',
+      'draft',
+    ]);
   });
 
   it('refuses in a read-only project', async () => {

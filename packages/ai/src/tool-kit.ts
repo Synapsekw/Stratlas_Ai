@@ -225,12 +225,44 @@ export interface AppHooks {
    * What the open project has beyond its manifest (measurements, volumes, detections, thermal,
    * walks), so the agent is offered only the read tools that can answer. A key left out: unknown.
    */
+  /** A UI string from the app's catalogue (step summaries shown in the panel); null: unknown key. */
+  say?: (key: string, vars: Record<string, string | number>) => string | null;
   agentFacts?: () => Partial<
     Pick<AgentFacts, 'measurements' | 'volumes' | 'detections' | 'thermal' | 'walks'>
   >;
 }
 
 export const appHooks: AppHooks = {};
+
+const describers = new Map<string, (input: unknown) => string | null>();
+
+/**
+ * Let the app say what an approval card of `name` will do, from the call's input as the app
+ * resolves it (the layer name and date, not the model's text). Answers the unregister.
+ */
+export function registerStepDescriber(
+  name: string,
+  describe: (input: unknown) => string | null,
+): () => void {
+  describers.set(name, describe);
+  return () => {
+    if (describers.get(name) === describe) describers.delete(name);
+  };
+}
+
+/** What the app's describer says of a call, or null (none, nothing to say, or it failed). */
+export function describedByApp(name: string, input: unknown): string | null {
+  try {
+    return describers.get(name)?.(input) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** A UI string through the app's catalogue (`AppHooks.say`), or `fallback` outside the app. */
+export function say(key: string, vars: Record<string, string | number>, fallback: string): string {
+  return appHooks.say?.(key, vars) ?? fallback;
+}
 
 /** Register host app hooks (merged; later calls replace the hooks they name). */
 export function registerAppHooks(hooks: AppHooks): () => void {
@@ -247,9 +279,18 @@ export interface ToolRunResult {
   result: unknown;
   /** Short text for the step chip, e.g. "4 of 25 clips". */
   summary: string;
-  /** Puts the view back as it was (time, camera, selection, visibility, a new draft). */
-  undo?: () => void;
+  /**
+   * Puts the view back as it was (time, camera, selection, visibility, a new draft). An undo that
+   * cannot run any more (a later change came in) answers why, and the step stays done.
+   */
+  undo?: StepUndo;
 }
+
+/**
+ * An undo: it answers nothing (or null) when done, else the sentence that says why it was refused
+ * (a string); it may answer through a promise.
+ */
+export type StepUndo = () => unknown;
 
 export type RendererToolRun = (input: unknown, ctx: RendererToolContext) => Promise<ToolRunResult>;
 

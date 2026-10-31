@@ -19,6 +19,7 @@ import {
   issuesInView,
   setIssueView,
 } from '@aio/annotate';
+import { t, type MessageKey } from '@aio/ui';
 import { nowOf, workspace, type OpenProject } from '@aio/workspace';
 import { createClass } from '../classes/store';
 import { detections, loadDetections } from '../detections/store';
@@ -211,6 +212,11 @@ export function registerAgentHooks(): () => void {
   registerActionTools();
   const unregister = registerAppHooks({
     agentFacts,
+    // the step summaries of the agent's tools, through the catalogue
+    say: (key, vars) => {
+      const text = t(key as MessageKey, vars);
+      return text === key ? null : text;
+    },
     screen,
     openScreen,
     showPhotos,

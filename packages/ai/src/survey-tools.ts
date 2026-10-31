@@ -3,12 +3,19 @@
  * (the compare_captures path: the cards' figures, stale as the app judges it) and where findings
  * gather. The rest run in the desktop renderer (agent/dataTools.ts). Specs in survey-tool-specs.ts.
  */
-import type { ComparisonResult, Issue, SurveyMeasurement, Vec3 } from '@aio/schema';
+import type {
+  ComparisonResult,
+  Issue,
+  Layer,
+  ProjectManifest,
+  SurveyMeasurement,
+  Vec3,
+} from '@aio/schema';
+import { dateShiftOf } from '@aio/workspace';
 import { densityOn, pileSeries, seriesDate } from '@aio/survey';
 import {
   bySeverity,
   loadPiles,
-  pickCapture,
   round2,
   worstCodes,
   zoneOf,
@@ -22,6 +29,7 @@ import {
   project,
   registerRendererTool,
   round1,
+  say,
   severityRank,
   ToolError,
   type RendererToolContext,
@@ -46,16 +54,74 @@ export function capturesOf(ctx: RendererToolContext): CaptureRef[] {
   return [...project(ctx).manifest.captures].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-/** A survey date by id, date or name; an error that lists the dates when none matches. */
-export function captureRef(ctx: RendererToolContext, ref: string): CaptureRef {
-  const all = capturesOf(ctx);
+type DateRef = Pick<CaptureRef, 'id' | 'date' | 'label'>;
+
+const dateRow = (c: DateRef) =>
+  c.label && c.label !== c.date ? `${c.id} (${c.date}, ${c.label})` : `${c.id} (${c.date})`;
+
+/**
+ * The one survey date `ref` names, among `captures` (any order): an exact id; "earliest" or
+ * "latest"; else the first of these that matches: the exact date, the exact name, a date prefix,
+ * a name containing it. A step that fits several is refused, naming each with its id and date,
+ * so nothing runs on a guess.
+ */
+export function resolveCapture<C extends DateRef>(captures: readonly C[], ref: string): C {
+  const all = [...captures].sort((a, b) => a.date.localeCompare(b.date));
+  const byId = all.find((c) => c.id === ref);
+  if (byId) return byId;
   const first = all[0];
   const last = all.at(-1);
   if (!first || !last) throw new ToolError('This project has no survey dates.');
-  const q = ref.toLowerCase();
+  const q = ref.trim().toLowerCase();
   if (q === 'earliest' || q === 'first' || q === 'oldest') return first;
   if (q === 'latest' || q === 'last' || q === 'newest') return last;
-  return pickCapture(all, ref, first);
+  const tiers: ((c: C) => boolean)[] = [
+    (c) => c.date === ref,
+    (c) => c.label.toLowerCase() === q,
+    (c) => c.date.startsWith(ref),
+    (c) => q.length > 0 && c.label.toLowerCase().includes(q),
+  ];
+  for (const fits of tiers) {
+    const hits = all.filter(fits);
+    if (hits.length === 1 && hits[0]) return hits[0];
+    if (hits.length > 1) {
+      throw new ToolError(
+        `"${ref}" fits several survey dates: ${hits.map(dateRow).join(', ')}. Name one by its id.`,
+      );
+    }
+  }
+  throw new ToolError(`No survey date "${ref}". The dates: ${all.map(dateRow).join(', ')}.`);
+}
+
+/** A survey date of the open project by id, date, name, "earliest" or "latest". */
+export function captureRef(ctx: RendererToolContext, ref: string): CaptureRef {
+  return resolveCapture(capturesOf(ctx), ref);
+}
+
+/**
+ * The one layer `ref` names: its id, else its name (any case). A name several layers share is
+ * refused, naming each with its id and date.
+ */
+export function resolveLayer(
+  manifest: Pick<ProjectManifest, 'layers' | 'captures'>,
+  ref: string,
+): Layer {
+  const byId = manifest.layers.find((l) => l.id === ref);
+  if (byId) return byId;
+  const q = ref.trim().toLowerCase();
+  const hits = manifest.layers.filter((l) => l.name.toLowerCase() === q);
+  if (hits.length === 1 && hits[0]) return hits[0];
+  const dateOf = (l: Layer) => manifest.captures.find((c) => c.id === l.capture)?.date;
+  const row = (l: Layer) => {
+    const d = dateOf(l);
+    return d ? `${l.id} (${l.name}, ${d})` : `${l.id} (${l.name})`;
+  };
+  if (hits.length > 1) {
+    throw new ToolError(
+      `"${ref}" fits several layers: ${hits.map(row).join(', ')}. Name one by its id.`,
+    );
+  }
+  throw new ToolError(`No layer "${ref}". Use list_layers for the ids.`);
 }
 
 /** The measurements the app shows: its store when it has the project open, else none read yet. */
@@ -128,7 +194,11 @@ define('list_measurements', (input, ctx) => {
         : {}),
       measurements: rows,
     },
-    summary: plural(hits.length, 'measurement'),
+    summary: say(
+      'agentTool.summary.measurements',
+      { count: hits.length },
+      plural(hits.length, 'measurement'),
+    ),
   };
 });
 
@@ -199,7 +269,7 @@ define('get_volume', async (input, ctx) => {
       note: 'Net volume as each card shows it; stale figures are flagged and need a recompute.',
       piles: out,
     },
-    summary: plural(out.length, 'pile'),
+    summary: say('agentTool.summary.piles', { count: out.length }, plural(out.length, 'pile')),
   };
 });
 
@@ -214,11 +284,13 @@ define('rank_locations', (input, ctx) => {
     .issues.filter(
       (i) => (input.status === 'all' || i.status !== 'closed') && (!ids || ids.has(i.id)),
     );
-  const layerNames = new Map(project(ctx).manifest.layers.map((l) => [l.id, l.name]));
+  const manifest = project(ctx).manifest;
+  const layerNames = new Map(manifest.layers.map((l) => [l.id, l.name]));
   const groups = new Map<string, { label: string; list: Issue[]; points: Vec3[] }>();
   let unplaced = 0;
   for (const i of issues) {
-    const p = issuePoint(i);
+    // where the view draws it: with its date's line-up, as find_issues_near does
+    const p = issuePoint(i, (id) => dateShiftOf(manifest, id));
     let key: string;
     let label: string;
     if (input.by === 'zone') {
@@ -270,6 +342,10 @@ define('rank_locations', (input, ctx) => {
       score: 'Each finding counts 1 plus its severity squared.',
       locations: ranked.slice(0, input.limit),
     },
-    summary: plural(ranked.length, 'location'),
+    summary: say(
+      'agentTool.summary.locations',
+      { count: ranked.length },
+      plural(ranked.length, 'location'),
+    ),
   };
 });

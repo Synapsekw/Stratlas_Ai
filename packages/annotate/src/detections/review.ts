@@ -94,6 +94,16 @@ export type ReviewAction =
       by: string;
       now: string;
     }
+  /**
+   * Reopen several as one step: rejected ones back to draft, accepted ones only when `issueGone`
+   * (as `reopen`). The ones that cannot reopen are left as they are.
+   */
+  | {
+      type: 'reopenMany';
+      items: readonly { id: string; issueGone?: boolean }[];
+      label: string;
+      now: string;
+    }
   /** Reject all: the waiting detections among `ids` rejected as one step. */
   | { type: 'rejectMany'; ids: readonly string[]; label: string; by: string; now: string }
   /**
@@ -603,6 +613,25 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
       }
       if (Object.keys(after).length === 0) return state;
       return commit(state, { label: action.label, before, after, issues: true });
+    }
+    case 'reopenMany': {
+      const gone = new Map(action.items.map((x) => [x.id, x.issueGone === true]));
+      const before: Record<string, Detection> = {};
+      const after: Record<string, Detection> = {};
+      for (const d of state.detections) {
+        if (!gone.has(d.id) || d.status === 'draft') continue;
+        if (d.status === 'accepted' && !gone.get(d.id)) continue;
+        const next: Detection = { ...d, status: 'draft', updatedAt: action.now };
+        delete next.reviewedBy;
+        delete next.reviewedAt;
+        delete next.issueId;
+        delete next.rejectReason;
+        delete next.rejectNote;
+        before[d.id] = d;
+        after[d.id] = next;
+      }
+      if (Object.keys(after).length === 0) return state;
+      return commit(state, { label: action.label, before, after });
     }
     case 'rejectMany': {
       const wanted = new Set(action.ids);

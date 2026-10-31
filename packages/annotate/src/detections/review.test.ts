@@ -411,3 +411,38 @@ describe('detector drafts and per-pass thresholds', () => {
     expect(queueOf(loaded([steep])).map((d) => d.id)).toEqual(['s']);
   });
 });
+
+describe('reopenMany', () => {
+  it('reopens rejected ones and accepted ones whose issue is gone, as one undo step', () => {
+    let s = loaded([
+      det('a', { status: 'rejected' }),
+      det('b', { status: 'rejected' }),
+      det('c', { status: 'accepted', issueId: 'i1' }),
+      det('d', { status: 'accepted', issueId: 'i2' }),
+      det('e'),
+    ]);
+    const before = s.past.length;
+    s = run(s, {
+      type: 'reopenMany',
+      items: [{ id: 'a' }, { id: 'b' }, { id: 'c', issueGone: true }, { id: 'd' }, { id: 'e' }],
+      label: 'Reopen 3 detections',
+      now: NOW,
+    });
+    const status = (id: string) => s.detections.find((x) => x.id === id)?.status;
+    expect(['a', 'b', 'c', 'd', 'e'].map(status)).toEqual([
+      'draft',
+      'draft',
+      'draft',
+      'accepted',
+      'draft',
+    ]);
+    expect(s.past.length).toBe(before + 1);
+    s = run(s, { type: 'undo' });
+    expect(['a', 'b', 'c'].map(status)).toEqual(['rejected', 'rejected', 'accepted']);
+  });
+
+  it('changes nothing, and adds no step, when none can reopen', () => {
+    const s = loaded([det('e')]);
+    expect(run(s, { type: 'reopenMany', items: [{ id: 'e' }], label: 'x', now: NOW })).toBe(s);
+  });
+});

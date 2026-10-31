@@ -16,6 +16,13 @@ import type { ToolSpec } from './tools';
 /** An action the agent may run: `navigate` changes only the view, `write` changes data or files. */
 export interface CoveredAction {
   risk: Extract<ToolRisk, 'navigate' | 'write'>;
+  /**
+   * What the run leaves to the person: `confirm`, a confirm box (a delete); `finish`, a dialog or
+   * tool the person completes (a save dialog, a wizard). The result says so instead of "done".
+   */
+  then?: 'confirm' | 'finish';
+  /** Why a view risk is right for an action filed in an edit, date, file or danger section. */
+  why?: string;
 }
 /** An action that stays with the person, and why. */
 export interface ExcludedAction {
@@ -25,6 +32,12 @@ export type AgentActionEntry = CoveredAction | ExcludedAction;
 
 const VIEW: CoveredAction = { risk: 'navigate' };
 const WRITE: CoveredAction = { risk: 'write' };
+/** A write the app then asks the person to confirm (its own confirm box). */
+const CONFIRM: CoveredAction = { risk: 'write', then: 'confirm' };
+/** A write the person finishes in a dialog or tool the action opens. */
+const FINISH: CoveredAction = { risk: 'write', then: 'finish' };
+/** A view action filed in an edit or file section of the menu. */
+const viewIn = (why: string): CoveredAction => ({ risk: 'navigate', why });
 
 const PICKS_FILES = 'Opens a file picker: the person chooses the files.';
 const NAME_FIELD = 'Opens a name field for the person to type in.';
@@ -43,8 +56,10 @@ export const AGENT_ACTIONS: Readonly<Record<string, AgentActionEntry>> = {
   'project.import360': { exclude: PICKS_FILES },
   'project.importTiles': { exclude: PICKS_FILES },
   'project.checkPlacement': VIEW,
-  'project.exports': WRITE,
-  'project.properties': VIEW,
+  'project.exports': FINISH,
+  'project.properties': viewIn(
+    'Opens the properties panel; nothing changes until the person edits it.',
+  ),
   'project.close': { exclude: 'Closes the project the agent works in.' },
   'project.emptyTrash': {
     exclude: 'Cannot be undone; the person empties the trash and confirms in the Datasets list.',
@@ -60,14 +75,14 @@ export const AGENT_ACTIONS: Readonly<Record<string, AgentActionEntry>> = {
   'date.zoomTo': VIEW,
   'date.compare': VIEW,
   'date.rename': { exclude: NAME_FIELD },
-  'date.lineUp': WRITE,
+  'date.lineUp': FINISH,
   'date.removeLineUp': WRITE,
   'date.colour': WRITE,
   'date.icon': WRITE,
   'date.reset': WRITE,
   'date.addData': { exclude: PICKS_FILES },
-  'date.export': WRITE,
-  'date.delete': WRITE,
+  'date.export': FINISH,
+  'date.delete': CONFIRM,
   // dataset rows
   'layer.show': VIEW,
   'layer.hide': VIEW,
@@ -75,10 +90,12 @@ export const AGENT_ACTIONS: Readonly<Record<string, AgentActionEntry>> = {
   'layer.rename': { exclude: NAME_FIELD },
   'layer.moveToDate': WRITE,
   'layer.compare': VIEW,
-  'layer.export': WRITE,
-  'layer.reveal': VIEW,
-  'layer.properties': VIEW,
-  'layer.delete': WRITE,
+  'layer.export': FINISH,
+  'layer.reveal': viewIn('Shows the file in the file manager; nothing changes.'),
+  'layer.properties': viewIn(
+    'Opens the properties panel; nothing changes until the person edits it.',
+  ),
+  'layer.delete': CONFIRM,
   'cloud.settings': VIEW,
   'cloud.colourBy': VIEW,
   'pointcloud.cleanup': { exclude: 'Opens the cleanup tools for hand editing.' },
@@ -88,7 +105,7 @@ export const AGENT_ACTIONS: Readonly<Record<string, AgentActionEntry>> = {
   'mesh.georef': { exclude: HAND_WORK },
   'mesh.place': { exclude: HAND_WORK },
   'layer.dropToGround': WRITE,
-  'engineering.create': WRITE,
+  'engineering.create': FINISH,
   'drawing.settings': VIEW,
   'drawing.sideBySide': VIEW,
   'drawing.place': { exclude: HAND_WORK },
@@ -101,7 +118,7 @@ export const AGENT_ACTIONS: Readonly<Record<string, AgentActionEntry>> = {
   'video.alignCamera': { exclude: HAND_WORK },
   'video.flightPath': VIEW,
   'photos.alignTo': WRITE,
-  'photos.createMaps': WRITE,
+  'photos.createMaps': FINISH,
   'photos.openFirst': VIEW,
   'pano.open': VIEW,
   'pano.stitch': WRITE,
@@ -116,19 +133,19 @@ export const AGENT_ACTIONS: Readonly<Record<string, AgentActionEntry>> = {
   'media.remove': WRITE,
   'photos.editPosition': { exclude: 'Opens a position form for the person to fill in.' },
   'photos.resetPosition': WRITE,
-  'layers.rereadPhotos': WRITE,
+  'layers.rereadPhotos': CONFIRM,
   // measurements
   'measure.rename': { exclude: NAME_FIELD },
   'measure.colour': WRITE,
-  'measure.visibility': VIEW,
-  'measure.flyTo': VIEW,
+  'measure.visibility': viewIn('Hides or shows the measurement in the view, as the eye icon does.'),
+  'measure.flyTo': viewIn('Moves the camera to the measurement.'),
   'measure.editBoundary': { exclude: HAND_WORK },
   'measure.moveToFolder': WRITE,
   'measure.moveToDate': WRITE,
   'measure.delete': WRITE,
   'measure.addToReport': WRITE,
   'measure.removeFromReport': WRITE,
-  'measure.export': WRITE,
+  'measure.export': FINISH,
   'change.areaCompare': VIEW,
   // RF, thermal, antennas
   'rf.coverage': VIEW,
@@ -142,7 +159,7 @@ export const AGENT_ACTIONS: Readonly<Record<string, AgentActionEntry>> = {
   'antenna.accept': WRITE,
   'antenna.reject': WRITE,
   'antenna.redraw': { exclude: HAND_WORK },
-  'antenna.delete': WRITE,
+  'antenna.delete': CONFIRM,
 };
 
 /** The target kinds the agent can name (the menu's `group` heading stays with the person). */
@@ -245,6 +262,8 @@ export const ACTION_TOOL_SPECS: ToolSpec[] = [
       risk: 'write',
     },
     input: actionToolInputs.run_action,
+    // a filed date move can be taken back; the others answer no undo
+    undoable: true,
     riskFor: (input) =>
       actionRisk(
         typeof input === 'object' && input !== null

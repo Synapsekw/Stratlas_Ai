@@ -15,13 +15,19 @@ import {
   ToolError,
   actionToolInputs,
   registerRendererTool,
+  registerStepDescriber,
+  resolveCapture,
+  resolveLayer,
   type ActionTarget,
   type ToolRunResult,
 } from '@aio/ai';
+import type { ProjectManifest } from '@aio/schema';
 import {
   EVERY_DATE,
   NO_HOST,
   actionsFor,
+  formatDate,
+  t,
   makeActionCtx,
   registeredActions,
   type ActionCtx,
@@ -31,7 +37,8 @@ import {
 import { captureIndex, dateTags, workspace } from '@aio/workspace';
 import { shell } from '../shell';
 import { registerSidebarActions } from '../shell/actions';
-import { moveLayersToDate } from '../shell/dateFolders';
+import { moveLayersToDate, undoDateMove, type DateMoveResult } from '../shell/dateFolders';
+import { measureStore } from '../survey/measureStore';
 import { timeline } from '../workspace/timeline';
 
 /** At most this many picks per action in a listing (a long date list stays readable). */
@@ -43,68 +50,104 @@ function openProject() {
   return p;
 }
 
-/** A survey date by id, date or name; null stays the Every date folder. */
+/** A survey date by id, date, name, "earliest" or "latest" (one resolver); null: Every date. */
 function captureOf(ref: string | null): string | null {
-  if (ref === null) return null;
-  const captures = openProject().manifest.captures;
-  const q = ref.toLowerCase();
-  const c =
-    captures.find((x) => x.id === ref) ??
-    captures.find((x) => x.date === ref || x.label.toLowerCase() === q) ??
-    captures.find((x) => x.date.startsWith(ref));
-  if (!c) {
-    const list = captures.map((x) => `${x.id} (${x.date})`).join(', ');
-    throw new ToolError(`No survey date "${ref}". The dates: ${list || 'none'}.`);
-  }
-  return c.id;
+  return ref === null ? null : resolveCapture(openProject().manifest.captures, ref).id;
 }
 
-/** Layer ids by id or exact name. */
+/** Layer ids by id or exact name; a name several layers share is refused. */
 function layerIds(refs: readonly string[]): string[] {
-  const layers = openProject().manifest.layers;
-  return refs.map((ref) => {
-    const l =
-      layers.find((x) => x.id === ref) ??
-      layers.find((x) => x.name.toLowerCase() === ref.toLowerCase());
-    if (!l) throw new ToolError(`No layer "${ref}". Use list_layers for the ids.`);
-    return l.id;
-  });
+  const manifest = openProject().manifest;
+  return refs.map((ref) => resolveLayer(manifest, ref).id);
 }
 
 /** The menu target the model named. */
-export function menuTarget(t: ActionTarget): MenuTarget {
-  switch (t.kind) {
+export function menuTarget(target: ActionTarget): MenuTarget {
+  switch (target.kind) {
     case 'project':
       return { kind: 'project' };
     case 'date':
-      return { kind: 'date', captureId: captureOf(t.date) };
+      return { kind: 'date', captureId: captureOf(target.date) };
     case 'layers':
-      return { kind: 'layers', layerIds: layerIds(t.ids) };
+      return { kind: 'layers', layerIds: layerIds(target.ids) };
     case 'measurements':
-      return { kind: 'measurements', ids: t.ids, clicked: t.ids[0] ?? '' };
+      return { kind: 'measurements', ids: target.ids, clicked: target.ids[0] ?? '' };
     case 'antennas':
-      return { kind: 'antennas', ids: t.ids, clicked: t.ids[0] ?? '' };
+      return { kind: 'antennas', ids: target.ids, clicked: target.ids[0] ?? '' };
     case 'photos': {
-      const [layerId] = layerIds([t.layer]);
+      const [layerId] = layerIds([target.layer]);
       return {
         kind: 'photos',
-        picks: t.ids.map((photoId) => ({ layerId: layerId ?? '', photoId })),
+        picks: target.ids.map((photoId) => ({ layerId: layerId ?? '', photoId })),
       };
     }
     case 'media': {
-      const [layerId] = layerIds([t.layer]);
+      const [layerId] = layerIds([target.layer]);
       return {
         kind: 'media',
-        picks: t.ids.map((itemId) => ({ layerId: layerId ?? '', itemId, kind: t.as })),
+        picks: target.ids.map((itemId) => ({ layerId: layerId ?? '', itemId, kind: target.as })),
       };
     }
     case 'annotations':
-      return { kind: 'annotations', row: t.row };
+      return { kind: 'annotations', row: target.row };
   }
 }
 
-/** The Datasets list's context, with a host that keeps the notes an action writes. */
-export function agentActionCtx(notes: string[]): ActionCtx {
+/** Names, the first three and how many more. */
+function names(list: readonly string[]): string {
+  if (list.length <= 3) return list.join(', ');
+  return t('agentTool.target.more', {
+    names: list.slice(0, 3).join(', '),
+    count: list.length - 3,
+  });
+}
+
+/** What a target is, as a person reads it: layer names with their date, the date, the rows. */
+export function targetText(menu: MenuTarget, manifest: ProjectManifest): string {
+  const dateOf = (id: string | undefined) => manifest.captures.find((c) => c.id === id)?.date;
+  const layerName = (id: string) => {
+    const l = manifest.layers.find((x) => x.id === id);
+    if (!l) return id;
+    const d = dateOf(l.capture);
+    return d ? t('agentTool.target.layerOn', { name: l.name, date: formatDate(d) }) : l.name;
+  };
+  switch (menu.kind) {
+    case 'project':
+      return t('agentTool.target.project');
+    case 'date': {
+      const d = menu.captureId === null ? undefined : dateOf(menu.captureId);
+      return d ? formatDate(d) : t('agentTool.target.everyDate');
+    }
+    case 'layers':
+    case 'group':
+      return names(menu.layerIds.map(layerName));
+    case 'measurements': {
+      const all = measureStore.getState().file.measurements;
+      return names(menu.ids.map((id) => all.find((m) => m.id === id)?.label ?? id));
+    }
+    case 'antennas':
+      return t('agentTool.target.antennas', { count: menu.ids.length });
+    case 'photos':
+    case 'media': {
+      const layer = menu.picks[0]?.layerId ?? '';
+      return t('agentTool.target.photos', { count: menu.picks.length, layer: layerName(layer) });
+    }
+    case 'annotations':
+      return t(menu.row === 'issues' ? 'agentTool.target.issues' : 'agentTool.target.drafts');
+  }
+}
+
+/** What one run of an action leaves behind: its notes, its problems, the date moves it started. */
+interface RunLog {
+  notes: string[];
+  problems: string[];
+  moves: Promise<DateMoveResult & { target: string | null }>[];
+}
+
+const newLog = (): RunLog => ({ notes: [], problems: [], moves: [] });
+
+/** The Datasets list's context, with a host that keeps what an action writes and starts. */
+export function agentActionCtx(log: RunLog = newLog()): ActionCtx {
   const project = openProject();
   const manifest = project.manifest;
   const tl = timeline.getState();
@@ -112,9 +155,6 @@ export function agentActionCtx(notes: string[]): ActionCtx {
   const common = manifest.layers.map((l) => l.id).filter((id) => index.of[id] === undefined);
   const pkg = shell.getState().pkg !== null;
   const lookOnly = isAnnotateReadOnly();
-  const note = (text: string, danger?: boolean) => {
-    notes.push(danger ? `Problem: ${text}` : text);
-  };
   return makeActionCtx({
     manifest,
     hidden: workspace.getState().hidden,
@@ -127,17 +167,18 @@ export function agentActionCtx(notes: string[]): ActionCtx {
     drafts: workspace.getState().issues.filter((i) => i.status === 'draft').length,
     host: {
       ...NO_HOST,
-      note,
+      note: (text, danger) => {
+        (danger ? log.problems : log.notes).push(text);
+      },
+      // the Datasets move, awaited by the run: what it wrote, what stayed, why it was refused
       moveLayers: (ids, capture) => {
-        void moveLayersToDate(ids, capture).then((r) => {
-          if (r.error) note(r.error, true);
-        });
+        log.moves.push(moveLayersToDate(ids, capture).then((r) => ({ ...r, target: capture })));
       },
       askUnplace: () => {
-        note('The person confirms this in the Datasets list.', true);
+        log.problems.push('The person confirms this in the Datasets list.');
       },
       emptyTrash: () => {
-        note('The person empties the trash from the Datasets list.', true);
+        log.problems.push('The person empties the trash from the Datasets list.');
       },
     },
   });
@@ -163,9 +204,7 @@ function pickRows(item: ResolvedItem) {
 
 export function listActions(input: unknown): Promise<ToolRunResult> {
   const { target } = actionToolInputs.list_actions.parse(input);
-  const notes: string[] = [];
-  const ctx = agentActionCtx(notes);
-  const items = offered(menuTarget(target), ctx);
+  const items = offered(menuTarget(target), agentActionCtx());
   const rows = items.map((i) => {
     const e = AGENT_ACTIONS[i.id];
     const asks = e !== undefined && 'risk' in e && e.risk === 'write';
@@ -184,8 +223,28 @@ export function listActions(input: unknown): Promise<ToolRunResult> {
         ? { note: 'Nothing the agent can run is offered on this target.' }
         : {}),
     },
-    summary: `${String(rows.length)} action${rows.length === 1 ? '' : 's'}`,
+    summary: t('agentTool.summary.actions', { count: rows.length }),
   });
+}
+
+/** The approval card of a run: the action's label and the target as the app resolved it. */
+export function describeRun(input: unknown): string | null {
+  const parsed = actionToolInputs.run_action.safeParse(input);
+  if (!parsed.success || !workspace.getState().project) return null;
+  const { action, target, pick } = parsed.data;
+  try {
+    const menu = menuTarget(target);
+    const item = offered(menu, agentActionCtx()).find((i) => i.id === action);
+    if (!item) return null;
+    const chosen = pick ? item.sub.find((s) => s.id === pick || s.label === pick) : undefined;
+    return t('agentTool.card.run', {
+      action: chosen ? `${item.label}: ${chosen.label}` : item.label,
+      target: targetText(menu, openProject().manifest),
+    });
+  } catch {
+    // an ambiguous or unknown target: the run refuses it, the card keeps the tool's description
+    return null;
+  }
 }
 
 export async function runAction(input: unknown): Promise<ToolRunResult> {
@@ -194,9 +253,10 @@ export async function runAction(input: unknown): Promise<ToolRunResult> {
   if (entry && 'exclude' in entry) {
     throw new ToolError(`"${action}" stays with the person: ${entry.exclude}`);
   }
-  const notes: string[] = [];
-  const ctx = agentActionCtx(notes);
+  const log = newLog();
+  const ctx = agentActionCtx(log);
   const menu = menuTarget(target);
+  const manifest = openProject().manifest;
   const items = offered(menu, ctx);
   const item = items.find((i) => i.id === action);
   if (!item) {
@@ -229,14 +289,58 @@ export async function runAction(input: unknown): Promise<ToolRunResult> {
   } catch (e) {
     throw new ToolError(e instanceof Error ? e.message : String(e));
   }
-  const failed = notes.find((n) => n.startsWith('Problem: '));
-  if (failed) throw new ToolError(failed.slice('Problem: '.length));
+  // a date move is written before the step ends; a refused write fails the step
+  const moves = await Promise.all(log.moves);
+  const refusedWrite = moves.find((m) => m.error)?.error;
+  if (refusedWrite) throw new ToolError(refusedWrite);
+  const [problem] = log.problems;
+  if (problem) throw new ToolError(problem);
   const label = sub
     ? `${item.label}: ${item.sub.find((s) => s.id === sub)?.label ?? sub}`
     : item.label;
+  const kept = moves.flatMap((m) =>
+    Object.entries(m.stays).map(([layer, capture]) => ({
+      layer: manifest.layers.find((l) => l.id === layer)?.name ?? layer,
+      keeps: manifest.captures.find((c) => c.id === capture)?.date ?? capture,
+    })),
+  );
+  const moved = moves.filter((m) => m.moved.length > 0);
+  const waits = entry && 'risk' in entry ? entry.then : undefined;
+  const status = waits === 'confirm' ? 'waiting' : waits === 'finish' ? 'opened' : 'done';
+  const summary =
+    waits !== undefined
+      ? t(waits === 'confirm' ? 'agentTool.summary.confirm' : 'agentTool.summary.finish', {
+          action: label,
+        })
+      : kept.length > 0
+        ? t('agentTool.summary.kept', { action: label, count: kept.length })
+        : t('agentTool.summary.ran', { action: label });
   return {
-    result: { action, label, done: true, ...(notes.length > 0 ? { notes } : {}) },
-    summary: label,
+    result: {
+      action,
+      label,
+      target: targetText(menu, manifest),
+      status,
+      ...(status === 'waiting' ? { note: 'Waiting for the person to confirm in the app.' } : {}),
+      ...(status === 'opened' ? { note: 'Opened in the app for the person to finish.' } : {}),
+      ...(kept.length > 0
+        ? { kept, keptNote: 'These layers keep the date their name or the volumes give them.' }
+        : {}),
+      ...(log.notes.length > 0 ? { notes: log.notes } : {}),
+    },
+    summary,
+    // the Datasets Undo: the moved layers go back, unless they were filed elsewhere since
+    ...(moved.length > 0
+      ? {
+          undo: async () => {
+            for (const m of [...moved].reverse()) {
+              const why = await undoDateMove(m.moved, m.target);
+              if (why) return why;
+            }
+            return null;
+          },
+        }
+      : {}),
   };
 }
 
@@ -248,4 +352,5 @@ export function registerActionTools(): void {
   registered = true;
   registerRendererTool('list_actions', listActions);
   registerRendererTool('run_action', runAction);
+  registerStepDescriber('run_action', describeRun);
 }

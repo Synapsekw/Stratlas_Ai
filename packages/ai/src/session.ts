@@ -32,7 +32,12 @@ import { assembleContext } from './context';
 import { conversationMarkdown } from './exporting';
 import { compactValue, historyFromConversation } from './history';
 import { addProviderUsage, type ProviderUsageRow, type UsageTotals } from './pricing';
-import { runRendererTool, ToolError, type RendererToolContext } from './renderer-tools';
+import {
+  runRendererTool,
+  ToolError,
+  type RendererToolContext,
+  type StepUndo,
+} from './renderer-tools';
 import type { ModelRoute } from './routes';
 import { spatialContext } from './site';
 import { viewContext } from './view-context';
@@ -141,7 +146,7 @@ type Listener = () => void;
 export class AgentSession {
   private state: SessionState;
   private readonly listeners = new Set<Listener>();
-  private readonly undos = new Map<string, () => void>();
+  private readonly undos = new Map<string, StepUndo>();
   /** Tool calls of the live run; any other awaiting step belongs to a run that has ended. */
   private readonly live = new Set<string>();
   private runId: string | null = null;
@@ -455,8 +460,26 @@ export class AgentSession {
     const fn = this.undos.get(callId);
     if (!fn) return;
     this.undos.delete(callId);
-    fn();
-    this.patchStep(callId, { status: 'undone', canUndo: false });
+    const settle = (refused: unknown) => {
+      if (typeof refused === 'string' && refused !== '') {
+        // the change cannot be taken back any more: the step stays done and says why
+        const summary = this.state.steps[callId]?.summary;
+        this.patchStep(callId, {
+          canUndo: false,
+          summary: summary ? `${summary} · ${refused}` : refused,
+        });
+      } else this.patchStep(callId, { status: 'undone', canUndo: false });
+    };
+    const fail = (e: unknown) => {
+      settle(e instanceof ToolError ? e.message : SESSION_TEXT.failed);
+    };
+    try {
+      const r = fn();
+      if (r instanceof Promise) r.then(settle, fail);
+      else settle(r);
+    } catch (e) {
+      fail(e);
+    }
   }
 
   cancel(): void {

@@ -13,6 +13,7 @@ import { PANEL_CSS } from './panel-css';
 import { formatMeter, totalUsage } from './pricing';
 import { WINDOW_LABELS, WINDOW_SUBJECTS } from './prompt';
 import { defaultToolContext } from './renderer-tools';
+import { describedByApp } from './tool-kit';
 import { modelLabel, PROVIDER_LABELS } from './routes';
 import { SendDialog } from './SendDialog';
 import {
@@ -756,6 +757,8 @@ function StepRow({ step, session }: { step: Step; session: AgentSession }) {
 
 /** What an approval will do, in one line. */
 export function describeStep(step: Pick<Step, 'name' | 'input'>): string {
+  const byApp = describedByApp(step.name, step.input);
+  if (byApp) return byApp;
   const input = (step.input ?? {}) as Record<string, unknown>;
   if (step.name === 'propose_class') {
     const label = typeof input.label === 'string' ? input.label : 'untitled';

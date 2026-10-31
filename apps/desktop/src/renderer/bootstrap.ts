@@ -38,7 +38,8 @@ import { agentPhotoRuns, agentProcessPhotos } from './photogrammetry/agentHooks'
 import { placement, startPlacement } from './placement';
 import { cleanupDebug } from './pointcloud/cleanupScene';
 import { cleanup, followProjectForCleanup } from './pointcloud/cleanupStore';
-import { bridge, shell } from './shell';
+import { bridge, jobs, shell } from './shell';
+import { timeline } from './workspace/timeline';
 import { COMPARE_GPU_BYTES, compareRuntime } from './workspace/compare';
 import { tilesDebug } from './workspace/siteTiles';
 import { registerCorrectedPhotos } from './builder/photoPoses';
@@ -139,6 +140,10 @@ export function bootstrap(): void {
       volumetric,
       /** The open project's measurements as held in memory (e2e: heights repaired in a package). */
       measurements: () => measureStore.getState().file,
+      /** The survey date in view (agent eval: set_survey_date). */
+      timeline,
+      /** The Jobs store (agent eval: list_jobs). */
+      jobs,
       graphics,
       /** Tier, detection facts and memory now (diagnostics, the performance tests). */
       memory: graphicsReport,

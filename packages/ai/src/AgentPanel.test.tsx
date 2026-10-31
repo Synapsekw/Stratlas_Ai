@@ -18,6 +18,7 @@ import {
   type AgentPanelProps,
 } from './AgentPanel';
 import { OFFLINE_ONLY_MESSAGE } from './errors';
+import { registerStepDescriber } from './tool-kit';
 import { defaultToolContext } from './renderer-tools';
 import { AgentSession } from './session';
 import { fixtureIssue, fixtureManifest } from './test-fixtures';
@@ -407,6 +408,33 @@ describe('describeStep', () => {
     ).toBe('Adds draft issue "Rust", severity 3');
     expect(describeStep({ name: 'capture_frame', input: {} })).toBe(
       'Sends the current frame to the AI provider',
+    );
+  });
+});
+
+describe('describeStep with a describer the app registers', () => {
+  it('uses it for that tool, and falls back when it answers nothing or throws', () => {
+    const off = registerStepDescriber('run_action', (input) =>
+      (input as { action?: string }).action === 'boom'
+        ? (() => {
+            throw new Error('x');
+          })()
+        : (input as { action?: string }).action === 'layer.delete'
+          ? 'Delete Outline (4 Sep 2024)'
+          : null,
+    );
+    try {
+      expect(describeStep({ name: 'run_action', input: { action: 'layer.delete' } })).toBe(
+        'Delete Outline (4 Sep 2024)',
+      );
+      const fallback = describeStep({ name: 'run_action', input: { action: 'x' } });
+      expect(fallback).toMatch(/menu action/);
+      expect(describeStep({ name: 'run_action', input: { action: 'boom' } })).toBe(fallback);
+    } finally {
+      off();
+    }
+    expect(describeStep({ name: 'run_action', input: { action: 'layer.delete' } })).toMatch(
+      /menu action/,
     );
   });
 });

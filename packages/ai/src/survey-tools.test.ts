@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { runRendererTool, type RendererToolContext } from './renderer-tools';
 import { registerAppHooks } from './tool-kit';
 import { fixtureIssue, fixtureManifest, fixtureWorkspace } from './test-fixtures';
+import { resolveCapture, resolveLayer } from './survey-tools';
 import { allToolSpecs, approvalFor, fitsProject, riskOf, toolsForWindow } from './tools';
 
 const result = (item: string, toCapture: string, netM3: number) => ({
@@ -240,5 +241,70 @@ describe('A2 tools in the catalogue', () => {
     expect(compact).not.toContain('list_actions');
     expect(compact).not.toContain('thermal_summary');
     expect(compact).not.toContain('list_detections');
+  });
+});
+
+describe('one resolver for survey dates and layers', () => {
+  const caps = [
+    { id: 'c1', label: 'March', date: '2024-03-02' },
+    { id: 'c2', label: 'March retake', date: '2024-03-20' },
+    { id: 'c3', label: 'April', date: '2024-04-13' },
+  ];
+  it('takes exact ids, exact dates and names, and earliest or latest', () => {
+    expect(resolveCapture(caps, 'c2').id).toBe('c2');
+    expect(resolveCapture(caps, '2024-04-13').id).toBe('c3');
+    expect(resolveCapture(caps, 'earliest').id).toBe('c1');
+    expect(resolveCapture(caps, 'Latest').id).toBe('c3');
+    expect(resolveCapture(caps, 'april').id).toBe('c3');
+    expect(resolveCapture(caps, 'march').id).toBe('c1');
+  });
+
+  it('refuses a name or prefix that fits several, naming each with its id and date', () => {
+    expect(() => resolveCapture(caps, '2024-03')).toThrow(
+      /"2024-03" fits several survey dates: c1 \(2024-03-02, March\), c2 \(2024-03-20, March retake\)/,
+    );
+    expect(() => resolveCapture(caps, 'mar')).toThrow(/fits several survey dates/);
+    expect(() => resolveCapture(caps, 'June')).toThrow(/No survey date "June"/);
+  });
+
+  it('takes a layer by id or exact name, and refuses a name two layers share', () => {
+    const m = {
+      captures: caps,
+      layers: [
+        { id: 'a', name: 'Cloud', capture: 'c1' },
+        { id: 'b', name: 'Cloud', capture: 'c3' },
+        { id: 'c', name: 'Outline' },
+      ],
+    } as unknown as Parameters<typeof resolveLayer>[0];
+    expect(resolveLayer(m, 'b').id).toBe('b');
+    expect(resolveLayer(m, 'outline').id).toBe('c');
+    expect(() => resolveLayer(m, 'cloud')).toThrow(
+      /"cloud" fits several layers: a \(Cloud, 2024-03-02\), b \(Cloud, 2024-04-13\)/,
+    );
+    expect(() => resolveLayer(m, 'nope')).toThrow(/No layer "nope"/);
+  });
+});
+
+describe('rank_locations on lined-up dates', () => {
+  it('places each finding where the view draws it, with its date line-up', async () => {
+    const c = surveyCtx();
+    const p = c.workspace.getState().project;
+    if (!p) throw new Error('no project');
+    c.workspace.setState({
+      project: {
+        ...p,
+        manifest: {
+          ...p.manifest,
+          captures: [
+            { id: 'c1', label: 'First', date: '2020-12-31', lineUp: { eastM: 1000, northM: 0 } },
+            { id: 'c2', label: 'Second', date: '2021-01-10' },
+          ],
+          layers: p.manifest.layers.map((l) => (l.id === 'm1' ? { ...l, capture: 'c1' } : l)),
+        },
+      },
+    } as never);
+    const r = await runRendererTool('rank_locations', {}, c);
+    const out = r.result as { locations: { target: { p: number[] } }[] };
+    expect(out.locations[0]?.target.p[0]).toBeCloseTo(1000, 0);
   });
 });

@@ -70,7 +70,7 @@ export {
   type AgentActionEntry,
 } from './action-tool-specs';
 export { surveyToolInputs, type SurveyToolInput, type SurveyToolName } from './survey-tool-specs';
-export { captureRef, capturesOf } from './survey-tools';
+export { captureRef, capturesOf, resolveCapture, resolveLayer } from './survey-tools';
 export {
   allToolSpecs,
   approvalFor,
@@ -85,6 +85,8 @@ export {
   registerAppHooks,
   registerFrameSource,
   registerRendererTool,
+  registerStepDescriber,
+  say,
   runRendererTool,
   ToolError,
   type AppHooks,
@@ -103,6 +105,7 @@ export {
   type ProcessPhotosStarted,
   type RendererToolContext,
   type RendererToolRun,
+  type StepUndo,
   type SeverityLevel,
   type ToolRunResult,
   type ViewFilters,
