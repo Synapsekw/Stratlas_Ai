@@ -46,6 +46,7 @@ from ..runtime import (
     now_iso,
     safe_project_path,
 )
+from .ids import ID_MAX, cap_id
 
 NAME = "flyability.import"
 LENS = {"model": "ftheta", "hfovDeg": 114, "aspect": 1.7778}
@@ -59,7 +60,6 @@ CATALOGUE_NAME = "Confined-space findings"
 ASSET_TYPE = "confined-space"
 DEFAULT_CLASS = {"id": "finding", "label": "Finding", "color": "#95a0ab"}
 MAIN_SPACE = "main"
-ID_MAX = 128
 
 
 def _id(v: Any, what: str) -> str:
@@ -324,7 +324,7 @@ class FlyabilityImport:
                     if f.cloud is None:
                         ctx.log(f"{f.name or f.id} has no point cloud in the export.", "warn")
                         continue
-                    lid = f"{sid}-{f.id[:8]}-cloud"
+                    lid = cap_id(f"{sid}-{f.id[:8]}-cloud")
                     n = order[f.id]
                     todo.append(
                         {
@@ -338,7 +338,7 @@ class FlyabilityImport:
                         }
                     )
                 if insp.merged_cloud is not None:
-                    lid = f"{sid}-merged"
+                    lid = cap_id(f"{sid}-merged")
                     todo.append(
                         {
                             "space": sid,
@@ -458,7 +458,7 @@ class FlyabilityImport:
                             "flight": f.id,
                             "staged": staged,
                             "rel": f"{_imports(sid)}/poses/{f8}.flight.json",
-                            "layer": f"{sid}-{f8}-path",
+                            "layer": cap_id(f"{sid}-{f8}-path"),
                             "name": f"Flight #{n} path",
                             "bootStartS": t0,
                             "color": LINE_COLORS[(n - 1) % len(LINE_COLORS)],
@@ -477,7 +477,7 @@ class FlyabilityImport:
                 sid = sp["id"]
                 by_id = {f.id: f for f in insp.flights}
                 layer = layers.setdefault(
-                    sid, {"space": sid, "layer": f"{sid}-photos", "items": [], "files": []}
+                    sid, {"space": sid, "layer": cap_id(f"{sid}-photos"), "items": [], "files": []}
                 )
                 for poi in insp.pois:
                     for s in poi.snapshots:
@@ -493,7 +493,10 @@ class FlyabilityImport:
                                 "q": [round(v, 7) for v in three_camera_q(q)],
                             }
                         taken = _captured_at(flight, s.time_us)
-                        for image, pid in ((s.photo, s.id), (s.annotated, f"{s.id}-annotated")):
+                        for image, pid in (
+                            (s.photo, cap_id(s.id)),
+                            (s.annotated, cap_id(f"{s.id}-annotated")),
+                        ):
                             if image is None or image.suffix.lower() not in PHOTO_SUFFIXES:
                                 continue
                             name = f"{pid}{image.suffix.lower()}"
@@ -591,7 +594,7 @@ class FlyabilityImport:
                     hit_layer=dict(loc.get("hit_layer") or {}),
                     hit_m={k: (math.nan if v is None else v) for k, v in (loc.get("hit_m") or {}).items()},
                     scene_point=dict(loc.get("scene_point") or {}),
-                    photos_layer=f"{sp['id']}-photos",
+                    photos_layer=cap_id(f"{sp['id']}-photos"),
                     severity_model_id=model_id,
                     now=now,
                     existing_codes=codes,

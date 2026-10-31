@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -423,6 +424,26 @@ def test_an_inspection_listed_twice_is_refused(tmp_path, exports):
         run_job(FlyabilityImport(), _project(tmp_path), params)
 
 
+def test_two_inspections_into_one_space_are_refused(tmp_path, exports):
+    syn = exports()
+    src = tmp_path / "export"
+    shutil.copytree(syn.root, src)
+    (src / "inspections" / "insp-two").mkdir()
+    (src / "inspections" / "insp-two" / "inspection.json").write_text(
+        json.dumps({"id": "insp-two", "name": "Second room"}), "utf-8"
+    )
+    root = _project(tmp_path)
+    params = {
+        **_params(syn, spaces={syn.inspection_id: "tank-a", "insp-two": "tank-a"}),
+        "src": str(src),
+        "inspections": [{"id": syn.inspection_id}, {"id": "insp-two"}],
+    }
+    with pytest.raises(JobError, match="would go into space tank-a"):
+        run_job(FlyabilityImport(), root, params)
+    assert "spaces" not in _manifest(root)
+    assert _manifest(root)["layers"] == []
+
+
 def test_existing_space_is_reused(tmp_path, exports):
     syn = exports()
     root = _project(tmp_path)
@@ -529,3 +550,60 @@ def test_output_matches_committed_fixture(tmp_path, exports):
     for name, body in text.items():
         on_disk = (FIXTURE / name).read_text("utf-8") if (FIXTURE / name).is_file() else ""
         assert on_disk == body, f"{name} is out of date: rerun with AIO_REGEN_FIXTURES=1"
+
+
+def test_cap_id():
+    from aio_pipelines.flyability.ids import cap_id
+
+    assert cap_id("a" * 128) == "a" * 128
+    long_a, long_b = "x" * 130 + "a", "x" * 130 + "b"
+    assert len(cap_id(long_a)) == 128 and cap_id(long_a) == cap_id(long_a)
+    assert cap_id(long_a) != cap_id(long_b)
+    assert cap_id(long_a).startswith("x" * 119 + "-")
+
+
+@pytest.mark.parametrize("what", ["space", "snapshot"])
+def test_long_ids_are_capped_and_still_linked(tmp_path, exports, what):
+    # A space id of 114 characters makes the flight cloud layer id 129 long; a snapshot id of 120
+    # makes its annotated photo id 130 long. The project sits in a short folder so the long names
+    # stay inside the Windows path limit.
+    syn = exports()
+    src = tmp_path / "export"
+    shutil.copytree(syn.root, src)
+    long_snap = "s" * 120
+    spaces = {}
+    if what == "snapshot":
+        snap_json = src / "snapshots" / syn.snapshot_ids[0] / "snapshot.json"
+        snap = json.loads(snap_json.read_text("utf-8"))
+        snap["id"] = long_snap
+        snap_json.write_text(json.dumps(snap), "utf-8")
+    else:
+        spaces = {syn.inspection_id: "t" * 114}
+    short = Path(tempfile.mkdtemp(prefix="fl"))
+    try:
+        root = _project(short)
+        params = {**_params(syn, spaces=spaces), "src": str(src)}
+        _run(root, params)
+        m = _manifest(root)
+        layer_ids = {layer["id"] for layer in m["layers"]}
+        assert all(len(i) <= 128 for i in layer_ids) and len(layer_ids) == 6
+        photos = next(layer for layer in m["layers"] if layer["kind"] == "photos")
+        photo_ids = {item["id"] for item in photos["items"]}
+        assert all(len(i) <= 128 for i in photo_ids)
+        if what == "snapshot":
+            assert long_snap in photo_ids
+            annotated = [i for i in photo_ids if i.startswith("s" * 119 + "-")]
+            assert len(annotated) == 1 and len(annotated[0]) == 128
+        else:
+            assert any(i.startswith("t" * 114 + "-") and len(i) == 128 for i in layer_ids)
+        for issue in _issues(root):
+            assert len(issue["id"]) <= 128
+            for s in issue["sightings"]:
+                assert s["layer"] in layer_ids
+                if "photo" in s:
+                    assert s["photo"] in photo_ids
+        # a second run finds the same ids again
+        _run(root, params, job_id="j2")
+        assert {layer["id"] for layer in _manifest(root)["layers"]} == layer_ids
+    finally:
+        shutil.rmtree(short, ignore_errors=True)

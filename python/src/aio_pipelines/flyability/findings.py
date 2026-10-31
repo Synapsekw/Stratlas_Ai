@@ -19,6 +19,7 @@ from PIL import Image
 
 from aio_pipelines.flyability.export import Poi, Snapshot
 from aio_pipelines.flyability.frames import location_check
+from aio_pipelines.flyability.ids import cap_id
 
 SEVERITY = {"Low": 1, "Medium": 2, "High": 3, "Critical": 4}
 
@@ -172,9 +173,13 @@ def build_issue(poi: Poi, ctx: FindingContext) -> dict[str, Any] | None:
         if s.points:
             for nx, ny, _ in s.points:
                 geom = {"type": "point", "x": nx * w, "y": ny * h}
-                sightings.append({"on": "image", "layer": ctx.photos_layer, "photo": s.id, "geom": geom})
+                sightings.append(
+                    {"on": "image", "layer": ctx.photos_layer, "photo": cap_id(s.id), "geom": geom}
+                )
         else:
-            sightings.append({"on": "image", "layer": ctx.photos_layer, "photo": s.id, "geom": _box(w, h)})
+            sightings.append(
+                {"on": "image", "layer": ctx.photos_layer, "photo": cap_id(s.id), "geom": _box(w, h)}
+            )
     # (3) the annotated image of each snapshot
     for s in snaps:
         size = _size(s)
@@ -184,14 +189,14 @@ def build_issue(poi: Poi, ctx: FindingContext) -> dict[str, Any] | None:
             {
                 "on": "image",
                 "layer": ctx.photos_layer,
-                "photo": f"{s.id}-annotated",
+                "photo": cap_id(f"{s.id}-annotated"),
                 "geom": _box(*size),
             }
         )
     if not sightings:
         return None
 
-    issue_id = f"fly-{poi.id}"[:128]
+    issue_id = cap_id(f"fly-{poi.id}")
     code = ctx.existing_codes.get(issue_id)
     if code is None:
         code = _next_code(ctx.existing_codes)
