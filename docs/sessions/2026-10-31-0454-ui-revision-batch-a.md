@@ -21,7 +21,7 @@ The UI review named `en.ts` the top conflict hotspot, so the split went first. D
 
 ## How to test
 
-1. Open the demo tank farm at 1280 x 800: no "Create maps from photos" in the sidebar; the Create maps offer sits where the switcher and library now show it, with the new names.
+1. Open Demo tank farm: the sidebar has no "Create maps from photos" button (it is the Processing drawer's primary and a card action on the Photo processing demo), and the project switcher shows full names with the customer below.
 2. The AI chip reads "AI off: no key" without a key and opens AI providers; with the cloud switch off it reads a neutral "AI off".
 3. Press Ctrl+K, type "measure": tools, tabs and Settings pages are listed.
 4. Open Settings: the new topic pages (Project settings, Models and detection, Datums) appear.
