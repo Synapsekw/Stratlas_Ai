@@ -5,6 +5,7 @@ import {
   type IpcResponse,
   type VlmDetector,
 } from '@aio/schema';
+import { clearToasts, toastQueue } from '@aio/ui';
 import { workspace, type OpenProject } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -90,6 +91,7 @@ let root: Root | undefined;
 beforeEach(() => {
   h.answers.clear();
   h.calls.length = 0;
+  clearToasts();
   analyticsPack.setState(analyticsPack.getInitialState());
   workspace.setState({ project: null });
   host = document.createElement('div');
@@ -257,7 +259,9 @@ describe('Settings, detector library', () => {
     );
     await click(q('dl-learn-apply-rust'));
     expect(callsOf('ledger:applyThreshold')[0]?.req).toEqual({ detectorId: 'rust' });
-    expect(q('dl-note')?.textContent).toBe('Threshold 0.85 applied. The next run uses it.');
+    expect(toastQueue().map((x) => x.message)).toContain(
+      'Threshold 0.85 applied. The next run uses it.',
+    );
     expect(q('dl-learn-status-rust')?.textContent).toBe('Applied threshold 0.85 in use');
     expect(q('dl-learn-apply-rust')).toBeNull();
     expect(q('dl-learn-reset-rust')).not.toBeNull();
@@ -273,7 +277,7 @@ describe('Settings, detector library', () => {
     h.answers.set('ledger:stats', () => NONE);
     await click(q('dl-learn-reset-chimney'));
     expect(callsOf('ledger:resetThreshold')[0]?.req).toEqual({ detectorId: 'chimney' });
-    expect(q('dl-note')?.textContent).toBe(
+    expect(toastQueue().map((x) => x.message)).toContain(
       "Back to the detector's own threshold. The next run uses it.",
     );
     expect(q('dl-learn-reset-chimney')).toBeNull();

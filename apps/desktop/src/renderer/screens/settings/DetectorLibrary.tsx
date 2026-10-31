@@ -7,7 +7,7 @@
  * be removed here.
  */
 import type { DetectorWhere, IpcRequest, IpcResponse } from '@aio/schema';
-import { Chip, Icon, t, Tip, type MessageKey } from '@aio/ui';
+import { Chip, Icon, t, Tip, toast, type MessageKey } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAnalyticsPack } from '../../analyticsPack';
@@ -372,11 +372,14 @@ export function DetectorLibrary() {
   };
   const applied = async (threshold: number) => {
     await reload();
-    say(t('detect.learn.applied', { value: threshold.toFixed(2) }));
+    toast(t('detect.learn.applied', { value: threshold.toFixed(2) }), {
+      tone: 'ok',
+      id: 'detector-learning',
+    });
   };
   const reset = async () => {
     await reload();
-    say(t('detect.learn.resetDone'));
+    toast(t('detect.learn.resetDone'), { tone: 'ok', id: 'detector-learning' });
   };
 
   const importFile = async (req: ImportRequest = { where: 'library' }) => {
