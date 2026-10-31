@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -21,7 +22,7 @@ from aio_pipelines import pointcloud as pc
 from aio_pipelines.flyability.frames import to_scene
 from aio_pipelines.flyability.pipeline import FlyabilityImport
 from aio_pipelines.pipelines import all_pipelines
-from aio_pipelines.runtime import JobError
+from aio_pipelines.runtime import JobError, Step
 from aio_pipelines.volumetric.cloud import read_las_chunks
 from conftest import run_job
 
@@ -189,15 +190,15 @@ def test_import_one_space_per_inspection(tmp_path, exports):
     assert all(layer["space"] == sid for layer in m["layers"])
     by_id = {layer["id"]: layer for layer in m["layers"]}
     fa, fb = (f[:8] for f in syn.flight_ids)
-    assert by_id[f"fly-{sid}-{fa}-cloud"]["name"] == "Flight #1 cloud"
-    assert by_id[f"fly-{sid}-{fb}-cloud"]["src"] == {"path": f"clouds/flyability/{sid}/flight-2.copc.laz"}
-    merged = by_id[f"fly-{sid}-merged"]
+    assert by_id[f"{sid}-{fa}-cloud"]["name"] == "Flight #1 cloud"
+    assert by_id[f"{sid}-{fb}-cloud"]["src"] == {"path": f"clouds/flyability/{sid}/flight-2.copc.laz"}
+    merged = by_id[f"{sid}-merged"]
     assert merged["name"] == "Merged cloud" and merged["format"] == "copc"
     assert merged["src"] == {"path": f"clouds/flyability/{sid}/merged.copc.laz"}
-    path_b = by_id[f"fly-{sid}-{fb}-path"]
+    path_b = by_id[f"{sid}-{fb}-path"]
     assert path_b["name"] == "Flight #2 path"
     assert path_b["flight"] == syn.flight_ids[1] and path_b["bootStartS"] == 20.0
-    photos = by_id[f"fly-{sid}-photos"]
+    photos = by_id[f"{sid}-photos"]
     assert photos["name"] == "Finding photos"
     ids = {item["id"] for item in photos["items"]}
     assert ids == set(syn.snapshot_ids) | {f"{s}-annotated" for s in syn.snapshot_ids}
@@ -253,7 +254,7 @@ def test_transformed_flight_lands_aligned(tmp_path, exports):
     # P1 (on flight B) pinned where its camera ray meets the room
     p1 = next(i for i in _issues(root) if i["id"] == f"fly-{syn.poi_ids[0]}")
     (cloud,) = [s for s in p1["sightings"] if s["on"] == "pointcloud"]
-    assert cloud["layer"] == f"fly-{sid}-merged"
+    assert cloud["layer"] == f"{sid}-merged"
     truth = to_scene(np.array(syn.hit[syn.snapshot_ids[0]]))
     assert np.linalg.norm(np.array(cloud["geom"]["p"]) - truth) < 0.05
     assert p1["external"]["locationCheck"] == "agrees"
@@ -264,8 +265,9 @@ def test_transformed_flight_lands_aligned(tmp_path, exports):
     assert np.linalg.norm(np.array(item["pos"]) - cam) < 0.01
 
 
-def test_privacy(tmp_path, exports):
-    syn = exports()
+@pytest.mark.parametrize("generation", ["2025", "2024"])
+def test_privacy(tmp_path, exports, generation):
+    syn = exports(generation=generation)
     root = _project(tmp_path)
     _run(root, _params(syn))
     for f in root.rglob("*"):
@@ -316,6 +318,109 @@ def test_reimport_keeps_unchanged_clouds(tmp_path, exports, monkeypatch):
     monkeypatch.setattr(pc, "build_copc", counting)
     _run(root, _params(syn), job_id="j2")
     assert built == []
+    # a re-export with the same points but a new change time is built again
+    las = next(Path(c) for c in syn.root.glob("maps/*/SYNTH_002_flight_livemap.las"))
+    st = las.stat()
+    os.utime(las, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
+    try:
+        _run(root, _params(syn), job_id="j3")
+    finally:
+        os.utime(las, ns=(st.st_atime_ns, st.st_mtime_ns))
+    assert len(built) == 1
+    record = json.loads(
+        (root / "imports" / "flyability" / f"fly-{syn.inspection_id[:8]}" / "clouds.json").read_text()
+    )
+    assert all(set(r) == {"bytes", "mtimeNs", "matrix"} for r in record["clouds"].values())
+
+
+def test_a_space_of_another_inspection_is_refused(tmp_path, exports):
+    syn = exports()
+    root = _project(tmp_path)
+    m = _manifest(root)
+    m["spaces"] = [
+        {
+            "id": "tank-a",
+            "name": "Tank A",
+            "crs": {"local": "flyability"},
+            "origin": [0, 0, 0],
+            "source": {"kind": "flyability", "inspectionId": "another-inspection"},
+        }
+    ]
+    (root / "manifest.json").write_text(json.dumps(m), "utf-8")
+    with pytest.raises(JobError, match="holds another Flyability inspection"):
+        run_job(FlyabilityImport(), root, _params(syn, spaces={syn.inspection_id: "tank-a"}))
+    assert [s["id"] for s in _manifest(root)["spaces"]] == ["tank-a"]
+    assert _manifest(root)["layers"] == []
+
+
+def _manual_issue(iid: str, code: str, layer: str = "some-layer") -> dict:
+    return {
+        "id": iid,
+        "code": code,
+        "classId": "finding",
+        "severityModelId": "confined-space-4",
+        "severity": 2,
+        "status": "draft",
+        "title": "Added by hand",
+        "note": "",
+        "author": "someone",
+        "createdAt": "2026-10-31T08:00:00Z",
+        "updatedAt": "2026-10-31T08:00:00Z",
+        "sightings": [{"on": "pointcloud", "layer": layer, "geom": {"type": "point3", "p": [0, 0, 0]}}],
+        "source": "human",
+    }
+
+
+def test_kept_missing_counts_only_this_inspections_findings(tmp_path, exports):
+    syn = exports()
+    root = _project(tmp_path)
+    _run(root, _params(syn))
+    sid = f"fly-{syn.inspection_id[:8]}"
+    issues = _issues(root)
+    # a finding of this inspection the export no longer has, one of another inspection, a manual one
+    gone = copy.deepcopy(next(i for i in issues if i["id"] == f"fly-{syn.poi_ids[2]}"))
+    gone["id"], gone["code"] = "fly-gone-poi", "F90"
+    other = copy.deepcopy(gone)
+    other["id"], other["code"] = "fly-other-poi", "F91"
+    for s in other["sightings"]:
+        s["layer"] = "fly-elsewhere-merged"
+    issues += [gone, other, _manual_issue("manual-1", "F92", f"{sid}-merged")]
+    (root / "issues.json").write_text(json.dumps({"schema": "aio.issues/1", "issues": issues}), "utf-8")
+    out = _run(root, _params(syn), job_id="j2")
+    assert out["findings"]["kept_missing"] == 1
+    assert {"fly-gone-poi", "fly-other-poi", "manual-1"} <= {i["id"] for i in _issues(root)}
+
+
+def test_new_codes_do_not_clash_with_an_issue_added_meanwhile(tmp_path, exports, monkeypatch):
+    syn = exports()
+    root = _project(tmp_path)
+    real_plan = FlyabilityImport.plan
+
+    def plan(self, params):
+        steps = real_plan(self, params)
+
+        def meddle(ctx):  # the app saves an issue between the findings and register steps
+            doc = {"schema": "aio.issues/1", "issues": [_manual_issue("manual-1", "F01")]}
+            (root / "issues.json").write_text(json.dumps(doc), "utf-8")
+            return {}
+
+        at = [s.name for s in steps].index("register")
+        return [*steps[:at], Step("meddle", "meddle", meddle), *steps[at:]]
+
+    monkeypatch.setattr(FlyabilityImport, "plan", plan)
+    _run(root, _params(syn))
+    issues = _issues(root)
+    codes = [i["code"] for i in issues]
+    assert len(codes) == len(set(codes)) == 4
+    assert next(i for i in issues if i["id"] == "manual-1")["code"] == "F01"
+
+
+def test_an_inspection_listed_twice_is_refused(tmp_path, exports):
+    syn = exports()
+    params = _params(syn)
+    params["inspections"] = [{"id": syn.inspection_id}, {"id": syn.inspection_id}]
+    with pytest.raises(JobError, match="listed twice"):
+        run_job(FlyabilityImport(), _project(tmp_path), params)
 
 
 def test_existing_space_is_reused(tmp_path, exports):
@@ -337,17 +442,17 @@ def test_without_merged_cloud(tmp_path, exports):
     m = _manifest(root)
     sid = f"fly-{syn.inspection_id[:8]}"
     ids = {layer["id"] for layer in m["layers"]}
-    assert f"fly-{sid}-merged" not in ids
+    assert f"{sid}-merged" not in ids
     assert not (root / "clouds" / "flyability" / sid / "merged.copc.laz").exists()
     issues = {i["id"]: i for i in _issues(root)}
     p1 = issues[f"fly-{syn.poi_ids[0]}"]
     (cloud,) = [s for s in p1["sightings"] if s["on"] == "pointcloud"]
-    assert cloud["layer"] == f"fly-{sid}-{syn.flight_ids[1][:8]}-cloud"
+    assert cloud["layer"] == f"{sid}-{syn.flight_ids[1][:8]}-cloud"
     truth = to_scene(np.array(syn.hit[syn.snapshot_ids[0]]))
     assert np.linalg.norm(np.array(cloud["geom"]["p"]) - truth) < 0.05
     p2 = issues[f"fly-{syn.poi_ids[1]}"]
     (cloud2,) = [s for s in p2["sightings"] if s["on"] == "pointcloud"]
-    assert cloud2["layer"] == f"fly-{sid}-{syn.flight_ids[0][:8]}-cloud"
+    assert cloud2["layer"] == f"{sid}-{syn.flight_ids[0][:8]}-cloud"
     assert out["findings"]["added"] == 3 and out["findings"]["no_hit"] == 1
 
 
@@ -369,8 +474,8 @@ def test_selected_flights_only(tmp_path, exports):
     sid = f"fly-{syn.inspection_id[:8]}"
     ids = {layer["id"] for layer in _manifest(root)["layers"]}
     fa, fb = (f[:8] for f in syn.flight_ids)
-    assert {f"fly-{sid}-{fa}-cloud", f"fly-{sid}-{fa}-path"} <= ids
-    assert not ({f"fly-{sid}-{fb}-cloud", f"fly-{sid}-{fb}-path"} & ids)
+    assert {f"{sid}-{fa}-cloud", f"{sid}-{fa}-path"} <= ids
+    assert not ({f"{sid}-{fb}-cloud", f"{sid}-{fb}-path"} & ids)
 
 
 def test_an_unknown_inspection_is_refused(tmp_path, exports):

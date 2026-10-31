@@ -86,6 +86,11 @@ def _cloud_rel(taken: dict[Any, Any], sid: str, stem: str, lid: str, fallback: s
     return rel
 
 
+def _cloud_key(c: dict[str, Any]) -> dict[str, Any]:
+    """What a built cloud came from: the source's size and change time (ns) and the matrix."""
+    return {"bytes": c["bytes"], "mtimeNs": c["mtimeNs"], "matrix": c["matrix"]}
+
+
 def _check_severity_model(v: Any) -> dict[str, Any]:
     ok = (
         isinstance(v, dict)
@@ -116,6 +121,8 @@ def _check_inspections(v: Any) -> list[dict[str, Any]]:
     for item in v:
         if not isinstance(item, dict) or not isinstance(item.get("id"), str) or not item["id"]:
             raise JobError("Each of inspections needs an id.")
+        if any(e["id"] == item["id"] for e in out):
+            raise JobError(f"Inspection {item['id']} is listed twice.")
         entry: dict[str, Any] = {"id": item["id"]}
         flights = item.get("flights")
         if flights is not None:
@@ -262,11 +269,21 @@ class FlyabilityImport:
             }
             mapping = params.get("spaces") or {}
             spaces: list[dict[str, Any]] = []
-            primary: dict[str, str] = dict(source_of)  # space id -> the inspection owning its names
+            claimed: dict[str, str] = {}  # space id -> the inspection this job puts in it
             for sel in params["inspections"]:
                 insp = _inspection(export, sel["id"])
                 sid = mapping.get(insp.id) or by_source.get(insp.id) or f"fly-{insp.id[:8]}"
-                primary.setdefault(sid, insp.id)
+                owner = source_of.get(sid)
+                if owner and owner != insp.id:
+                    raise JobError(
+                        f"Space {sid} holds another Flyability inspection ({owner}); one space takes one "
+                        f"inspection. Import inspection {insp.id} into a space of its own."
+                    )
+                if claimed.setdefault(sid, insp.id) != insp.id:
+                    raise JobError(
+                        f"Two inspections ({claimed[sid]} and {insp.id}) would go into space {sid}; "
+                        "one space takes one inspection."
+                    )
                 known = {f.id for f in insp.flights}
                 wanted = sel.get("flights")
                 flights = [f.id for f in insp.flights if wanted is None or f.id in wanted]
@@ -278,7 +295,6 @@ class FlyabilityImport:
                         "id": sid,
                         "name": insp.name.strip() or f"Inspection {insp.id[:8]}",
                         "inspection": insp.id,
-                        "primary": primary[sid] == insp.id,
                         "flights": flights,
                     }
                 )
@@ -308,7 +324,7 @@ class FlyabilityImport:
                     if f.cloud is None:
                         ctx.log(f"{f.name or f.id} has no point cloud in the export.", "warn")
                         continue
-                    lid = f"fly-{sid}-{f.id[:8]}-cloud"
+                    lid = f"{sid}-{f.id[:8]}-cloud"
                     n = order[f.id]
                     todo.append(
                         {
@@ -322,8 +338,7 @@ class FlyabilityImport:
                         }
                     )
                 if insp.merged_cloud is not None:
-                    tail = "" if sp["primary"] else f"-{insp.id[:8]}"
-                    lid = f"fly-{sid}{tail}-merged"
+                    lid = f"{sid}-merged"
                     todo.append(
                         {
                             "space": sid,
@@ -332,7 +347,7 @@ class FlyabilityImport:
                             "matrix": None,
                             "layer": lid,
                             "name": "Merged cloud",
-                            "rel": _cloud_rel(taken, sid, f"merged{tail}", lid, insp.id[:8]),
+                            "rel": _cloud_rel(taken, sid, "merged", lid, insp.id[:8]),
                         }
                     )
             if not todo:
@@ -345,7 +360,8 @@ class FlyabilityImport:
                 ctx.check()
                 lo, hi = i / len(todo), (i + 1) / len(todo)
                 src = Path(c["src"])
-                c["bytes"] = src.stat().st_size
+                st = src.stat()
+                c["bytes"], c["mtimeNs"] = st.st_size, st.st_mtime_ns
                 c["points"] = _las_count(ctx, pdal, src)
                 sid = c["space"]
                 if sid not in records:
@@ -356,7 +372,7 @@ class FlyabilityImport:
                         doc = {}
                     records[sid] = doc.get("clouds") if isinstance(doc.get("clouds"), dict) else {}
                 was = records[sid].get(c["rel"])
-                if ctx.out(c["rel"]).is_file() and was == {"bytes": c["bytes"], "matrix": c["matrix"]}:
+                if ctx.out(c["rel"]).is_file() and was == _cloud_key(c):
                     c["staged"] = None
                     ctx.log(f"{c['name']}: unchanged since the last import, kept as it is.")
                     continue
@@ -409,6 +425,10 @@ class FlyabilityImport:
                     if not len(rows):
                         ctx.log(f"{f.name or f.id}: the trajectory has no usable sample.", "warn")
                         continue
+                    rows = rows[rows[:, 0] >= 0]  # seconds since boot; nothing before it
+                    if not len(rows):
+                        ctx.log(f"{f.name or f.id}: the trajectory has no usable sample.", "warn")
+                        continue
                     t0 = float(rows[0, 0])
                     samples = []
                     for row in rows:
@@ -438,9 +458,9 @@ class FlyabilityImport:
                             "flight": f.id,
                             "staged": staged,
                             "rel": f"{_imports(sid)}/poses/{f8}.flight.json",
-                            "layer": f"fly-{sid}-{f8}-path",
+                            "layer": f"{sid}-{f8}-path",
                             "name": f"Flight #{n} path",
-                            "bootStartS": max(0.0, t0),
+                            "bootStartS": t0,
                             "color": LINE_COLORS[(n - 1) % len(LINE_COLORS)],
                             "samples": len(samples),
                         }
@@ -457,7 +477,7 @@ class FlyabilityImport:
                 sid = sp["id"]
                 by_id = {f.id: f for f in insp.flights}
                 layer = layers.setdefault(
-                    sid, {"space": sid, "layer": f"fly-{sid}-photos", "items": [], "files": []}
+                    sid, {"space": sid, "layer": f"{sid}-photos", "items": [], "files": []}
                 )
                 for poi in insp.pois:
                     for s in poi.snapshots:
@@ -571,7 +591,7 @@ class FlyabilityImport:
                     hit_layer=dict(loc.get("hit_layer") or {}),
                     hit_m={k: (math.nan if v is None else v) for k, v in (loc.get("hit_m") or {}).items()},
                     scene_point=dict(loc.get("scene_point") or {}),
-                    photos_layer=f"fly-{sp['id']}-photos",
+                    photos_layer=f"{sp['id']}-photos",
                     severity_model_id=model_id,
                     now=now,
                     existing_codes=codes,
@@ -713,14 +733,23 @@ class FlyabilityImport:
                     recs = doc.get("clouds") if isinstance(doc.get("clouds"), dict) else {}
                     for c in cloud_out:
                         if c["space"] == sid:
-                            recs[c["rel"]] = {"bytes": c["bytes"], "matrix": c["matrix"]}
+                            recs[c["rel"]] = _cloud_key(c)
                     atomic_write_json(rpath, {"schema": CLOUD_RECORD, "clouds": recs}, indent=2)
                 shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
                 atomic_write_json(mpath, manifest, indent=2)
                 # issues: every edit and every issue the import does not make are kept
                 ipath, current, doc = _read_issues(ctx.project, with_doc=True)
                 imported = json.loads(ctx.stage("issues-imported.json").read_text("utf-8"))["issues"]
+                _settle_codes(current, imported)
                 issues, counts = merge_issues(current, imported)
+                # earlier findings of this inspection the export no longer has (never other issues)
+                mine = {
+                    layer.get("id")
+                    for layer in manifest["layers"]
+                    if isinstance(layer, dict) and layer.get("space") in made
+                }
+                fresh = {i["id"] for i in imported}
+                counts["kept_missing"] = sum(1 for i in issues if i["id"] not in fresh and _ours(i, mine))
                 if ipath.exists():
                     shutil.copyfile(ipath, ipath.with_name("issues.json.bak"))
                 atomic_write_json(ipath, {**doc, "schema": ISSUES_SCHEMA, "issues": issues}, indent=2)
@@ -763,6 +792,36 @@ class FlyabilityImport:
             Step("findings", "Make the findings", findings, weight=0.3),
             Step("register", "Add everything to the project", register, weight=0.3),
         ]
+
+
+def _settle_codes(current: list[dict[str, Any]], imported: list[dict[str, Any]]) -> None:
+    """Codes against ``issues.json`` as it is now (read under the manifest lock): an issue already
+    there keeps its code, and a new one whose code another issue took meanwhile gets the next free
+    one. In place."""
+    from .findings import _next_code
+
+    now = {
+        i["id"]: i["code"] for i in current if isinstance(i.get("id"), str) and isinstance(i.get("code"), str)
+    }
+    pool = {**{i["id"]: i["code"] for i in imported}, **now}
+    for i in imported:
+        if i["id"] in now:
+            i["code"] = now[i["id"]]
+            continue
+        if any(code == i["code"] and iid != i["id"] for iid, code in pool.items()):
+            i["code"] = _next_code(pool)
+            pool[i["id"]] = i["code"]
+
+
+def _ours(issue: dict[str, Any], layers: set[Any]) -> bool:
+    """A Flyability finding with a sighting on one of ``layers`` (this import's space)."""
+    ext = issue.get("external")
+    return (
+        str(issue.get("id", "")).startswith("fly-")
+        and isinstance(ext, dict)
+        and ext.get("source") == "flyability"
+        and any(isinstance(s, dict) and s.get("layer") in layers for s in issue.get("sightings") or [])
+    )
 
 
 def _read_issues(project: Path, with_doc: bool = False):
