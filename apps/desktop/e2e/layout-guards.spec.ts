@@ -86,8 +86,27 @@ for (const size of SIZES) {
       expect(twoDateProject.captures).toHaveLength(2);
       await expectSize(win, size);
       await openProject(win, 'E2E two dates');
+      // the Low tier (a CI runner's software GPU, pinned here whatever the GPU): Compare dates
+      // shows the two dates on maps with its notice, the busiest the panes get
+      await win.evaluate(() => {
+        (
+          window as unknown as {
+            __stratlas: { graphics(): { getState(): { setOverride(t: string): void } } };
+          }
+        ).__stratlas
+          .graphics()
+          .getState()
+          .setOverride('low');
+      });
       await toggleCompareDates(win);
       await expect(win.getByTestId('pane-chooser-right')).toBeVisible();
+      // what is measured below is there to measure
+      await expect(win.locator('.pane-map')).toHaveCount(2);
+      await expect(win.locator('.pane-date-t')).toHaveCount(2);
+      for (const date of await win.locator('.pane-date-t').all()) await expect(date).toBeVisible();
+      await expect(win.getByTestId('compare-notice')).toBeVisible();
+      await expect(win.getByTestId('map-no-packs').first()).toBeVisible(VIEW_READY);
+      await expect(win.locator('.stage-slot[data-slot="bl"] > *').first()).toBeVisible();
       await expectIslandFits(win);
       await expect.poll(() => headerProblems(win)).toEqual([]);
       await expectNoClippedText(win, [...SHELL_TEXT, '.pane-date-t'], 'compare text cut');

@@ -753,7 +753,8 @@
    bubble): a spacer at each end of the wrap, the end one at least as wide as that, so the notch
    centres while both fit and steps left of centre when they do not (Compare dates at 1100 px, W1d).
    The line then has the room less the aside on one side only, so it is never cut. Open, the
-   notch centres as before (its tools may spill past the room at both ends). */
+   notch centres as before (its tools may spill past the room at both ends). So a notch stepped
+   left at rest comes back to the centre as it opens, and that is intended. */
 .island-wrap[data-state='rest']::before,
 .island-wrap[data-state='rest']::after {
   content: '';
