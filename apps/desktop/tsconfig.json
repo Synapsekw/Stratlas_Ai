@@ -31,6 +31,7 @@
     { "path": "../../packages/collab" },
     { "path": "../../packages/sync" },
     { "path": "../../packages/tiles" },
-    { "path": "../../packages/survey" }
+    { "path": "../../packages/survey" },
+    { "path": "../../packages/insights" }
   ]
 }

@@ -82,6 +82,7 @@ import {
 import { AntennaCsvTool } from '../../../telecom/AntennaCsvTool';
 import { Tool, useEngineStage } from '../../StageTools';
 import { SectionPanel, toggleMeasure, toggleSection } from '../../tools/measure';
+import { SiteDigest } from '../../../insights/SiteDigest';
 import { ProjectList } from '../project/ProjectList';
 import { Section } from '../Section';
 import { filterSections, sectionStore } from '../sectionState';
@@ -891,6 +892,7 @@ export function MeasureBench() {
       {/* a running tool is never pushed down: its card (or the unsaved state) stays first */}
       {live ? <LiveCard /> : <PendingCard />}
       {/* In this project, then the TOOLS caption; a search filters only the tools */}
+      <SiteDigest />
       <ProjectList />
       {/* a search is about the tools: the save controls step aside until it is cleared */}
       {!searching && <SavedFooter />}

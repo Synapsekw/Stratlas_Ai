@@ -151,6 +151,9 @@ importers:
       '@aio/globe':
         specifier: workspace:*
         version: link:../../packages/globe
+      '@aio/insights':
+        specifier: workspace:*
+        version: link:../../packages/insights
       '@aio/maps':
         specifier: workspace:*
         version: link:../../packages/maps
@@ -389,6 +392,12 @@ importers:
       '@types/topojson-specification':
         specifier: ^1.0.5
         version: 1.0.5
+
+  packages/insights:
+    dependencies:
+      '@aio/schema':
+        specifier: workspace:*
+        version: link:../schema
 
   packages/journal:
     dependencies:

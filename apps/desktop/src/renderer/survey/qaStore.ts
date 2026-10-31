@@ -28,6 +28,8 @@ export interface QaState {
   readOnly: boolean;
   /** QA results by capture id. */
   qa: Record<string, SurveyQa>;
+  /** The project whose QA files `qa` holds once read (null: not read yet). */
+  loadedFor: string | null;
   surfaces: HeightTiles[];
   edits: TerrainEditsFile;
   panel: QaPanel;
@@ -44,6 +46,7 @@ export const qaStore = createStore<QaState>()(() => ({
   root: null,
   readOnly: false,
   qa: {},
+  loadedFor: null,
   surfaces: [],
   edits: emptyEdits(),
   panel: null,
@@ -91,6 +94,7 @@ export async function loadQa(projectId: string | null, root: string | null, read
       root,
       readOnly,
       qa: {},
+      loadedFor: null,
       surfaces: [],
       edits: emptyEdits(),
       busy: null,
@@ -114,6 +118,7 @@ export async function refreshQa(): Promise<void> {
   const patch: Partial<QaState> = {};
   if (q.ok && q.value.ok) {
     patch.qa = Object.fromEntries(q.value.files.map((f) => [f.capture, f]));
+    patch.loadedFor = projectId;
     patch.readOnly = get().readOnly || q.value.readOnly;
   }
   if (s.ok && s.value.ok) patch.surfaces = s.value.surfaces;
@@ -451,6 +456,7 @@ export function resetQa(): void {
     root: null,
     readOnly: false,
     qa: {},
+    loadedFor: null,
     surfaces: [],
     edits: emptyEdits(),
     panel: null,

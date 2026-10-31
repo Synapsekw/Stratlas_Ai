@@ -1,0 +1,152 @@
+/* The site digest (SiteDigest.tsx) at the top of the Project tab: a caption in the faint caps of
+   the tab's other captions ("IN THIS PROJECT"), then a plain list, no cards. A line's mark says how
+   pressing it is by shape as well as colour (a triangle for what needs action or a check, a dot for
+   a note); its buttons are the bench's quiet small buttons. Mission tokens only. */
+.sd {
+  display: flex;
+  flex-direction: column;
+  padding-block-end: var(--sp-2);
+}
+.sd-caption {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: var(--sp-4) 8px var(--sp-1);
+  color: var(--fg-3);
+  font-size: var(--t-11);
+  font-weight: 500;
+}
+.sd-count {
+  min-width: 16px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-4);
+  background: var(--bg-2);
+  color: var(--fg-2);
+  font-size: var(--t-11);
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  text-align: center;
+}
+.sd-count[data-pressing='true'] {
+  color: var(--warn-ink);
+}
+.sd-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sd-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  column-gap: var(--sp-3);
+  padding: var(--sp-3) 8px;
+  border-radius: var(--r-4);
+}
+.sd-row + .sd-row {
+  border-top: 1px solid var(--line-soft);
+  border-radius: 0;
+}
+.sd-mark {
+  align-self: start;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+  color: var(--fg-3);
+}
+.sd-row[data-severity='critical'] .sd-mark {
+  color: var(--danger-ink);
+}
+.sd-row[data-severity='warning'] .sd-mark {
+  color: var(--warn-ink);
+}
+.sd-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.sd-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+/* the line: shows its evidence on a click, reads as text until hovered */
+.sd-line {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-1);
+  font: inherit;
+  font-size: var(--t-12);
+  line-height: 18px;
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.sd-row[data-severity='critical'] .sd-line {
+  color: var(--fg-0);
+  font-weight: 500;
+}
+.sd-line:hover {
+  color: var(--fg-0);
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 2px;
+}
+.sd-line:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+  border-radius: var(--r-2);
+}
+.sd-sub {
+  color: var(--fg-3);
+  font-size: var(--t-11);
+  line-height: 16px;
+}
+.sd-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-2);
+  margin-inline-start: calc(-1 * var(--sp-4));
+}
+.sd-clear {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: var(--sp-2) 8px;
+  color: var(--fg-3);
+  font-size: var(--t-12);
+  line-height: 1.4;
+}
+.sd-clear .icon,
+.sd-clear svg {
+  color: var(--ok);
+  flex: none;
+}
+.sd-more {
+  align-self: flex-start;
+  margin: var(--sp-1) 0 0 calc(8px + 16px + var(--sp-3));
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-3);
+  font: inherit;
+  font-size: var(--t-11);
+  cursor: pointer;
+}
+.sd-more:hover {
+  color: var(--fg-0);
+}
+.sd-more:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
