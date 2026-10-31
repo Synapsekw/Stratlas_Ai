@@ -376,6 +376,22 @@ describe('captureViews', () => {
     expect(pictureRun.getState().stopping).toBe(false);
   });
 
+  it('a stop asked during the last shot still saves nothing', async () => {
+    const { stage } = fakeStage();
+    const shoot = stage.shoot.bind(stage);
+    let n = 0;
+    stage.shoot = (...a) => {
+      n++;
+      if (n === 10) stopPictures();
+      return shoot(...a);
+    };
+    const save = vi.fn(() => Promise.resolve({ ok: true }));
+    const r = await captureViews(REQ, stage, { save });
+    expect(n).toBe(10);
+    expect(r).toEqual({ ok: false, error: PICTURES_STOPPED });
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it('refuses without a pile and passes a failed save on', async () => {
     const none = await captureViews({ ...REQ, piles: [] }, fakeStage().stage, {
       save: () => Promise.resolve({ ok: true }),

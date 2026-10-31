@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const UI = join(import.meta.dirname, '../../../../packages/ui/src');
-const PARTS = ['button', 'tip', 'surface', 'tabs', 'chip', 'row', 'empty', 'split'];
+const PARTS = ['button', 'tip', 'surface', 'tabs', 'chip', 'row', 'empty', 'split', 'dialog'];
 
 const FILES = {
   'mission.css': join(UI, 'mission.css'),

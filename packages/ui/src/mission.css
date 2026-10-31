@@ -8,6 +8,7 @@
 @import './parts/row.css';
 @import './parts/empty.css';
 @import './parts/split.css';
+@import './parts/dialog.css';
 * {
   box-sizing: border-box;
   scrollbar-width: thin;

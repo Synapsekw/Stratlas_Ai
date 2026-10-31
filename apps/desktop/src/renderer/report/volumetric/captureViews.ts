@@ -302,6 +302,8 @@ export async function captureViews(
       pictureRun.setState({ done: i + 1 });
       opts.onProgress?.(i + 1, total);
     }
+    // a stop asked during the last shot still keeps the run from being saved
+    if (failed === null && pictureRun.getState().stopping) failed = PICTURES_STOPPED;
   } catch (e) {
     failed = message(e);
   } finally {

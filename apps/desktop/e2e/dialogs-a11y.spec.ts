@@ -53,6 +53,7 @@ test('the picture progress card traps focus and closes on Escape', async ({
   await expect(progress).toHaveAttribute('data-testid', 'volumetric-picture-progress');
   await expect(progress).toHaveAttribute('aria-modal', 'true');
   await expect.poll(() => focusInside(win, 'volumetric-picture-progress')).toBe(true);
+  await win.screenshot({ path: test.info().outputPath('picture-progress.png') });
   for (const key of ['Tab', 'Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab']) {
     await win.keyboard.press(key);
     expect(await focusInside(win, 'volumetric-picture-progress'), `focus after ${key}`).toBe(true);
@@ -68,4 +69,37 @@ test('the picture progress card traps focus and closes on Escape', async ({
   await expect(
     editor.getByTestId('volumetric-pictures').getByRole('button', { name: /^Take pictures/ }),
   ).toBeVisible();
+});
+
+test('Report a problem and the new project wizard are modal Dialogs that Escape closes', async ({
+  win,
+}) => {
+  // Report a problem, from the command search: focus in its first field, kept inside, Escape
+  await win.keyboard.press('Control+K');
+  await expect(win.getByRole('dialog', { name: 'Command search' })).toBeVisible();
+  await win.keyboard.type('Report a problem');
+  await win.keyboard.press('Enter');
+  const problem = win.getByRole('dialog', { name: 'Report a problem' });
+  await expect(problem).toBeVisible();
+  await expect(problem).toHaveAttribute('aria-modal', 'true');
+  await expect(win.getByTestId('problem-what')).toBeFocused();
+  for (let i = 0; i < 8; i++) {
+    await win.keyboard.press('Tab');
+    expect(await focusInside(win, 'report-problem'), `focus after Tab ${String(i + 1)}`).toBe(true);
+  }
+  await win.screenshot({ path: test.info().outputPath('report-problem.png') });
+  await win.keyboard.press('Escape');
+  await expect(problem).toHaveCount(0);
+
+  // the new project wizard: modal, focus inside, Escape closes it like Cancel and focus returns
+  const opener = win.getByTestId('new-project').first();
+  await opener.click();
+  const wizard = win.getByTestId('new-project-wizard');
+  await expect(wizard).toBeVisible();
+  await expect(wizard).toHaveAttribute('aria-modal', 'true');
+  await expect.poll(() => focusInside(win, 'new-project-wizard')).toBe(true);
+  await win.screenshot({ path: test.info().outputPath('new-project.png') });
+  await win.keyboard.press('Escape');
+  await expect(wizard).toHaveCount(0);
+  await expect(opener).toBeFocused();
 });
