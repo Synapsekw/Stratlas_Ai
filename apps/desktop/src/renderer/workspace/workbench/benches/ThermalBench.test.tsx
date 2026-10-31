@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { setAnnotateReadOnly } from '@aio/annotate';
+import { en } from '@aio/ui/i18n/en';
 import type { ProjectManifest, ThermalRasterIndex } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { jobs, shell } from '../../../shell';
-import { hotspotFinder } from '../../../thermal/findHotspots';
+import { HOTSPOT_PARAMS, hotspotFinder } from '../../../thermal/findHotspots';
 import type * as RasterModule from '../../../thermal/raster';
 import type { ThermalRaster } from '../../../thermal/raster';
 import { useThermal } from '../../../thermal/thermalStore';
@@ -497,6 +498,9 @@ describe('Find hot spots', () => {
     expect(byId('thermal-find-result')?.textContent).toBe(
       'No spot is 4 °C or more above its surroundings.',
     );
+    // the threshold comes from the run's parameters, not the sentence
+    expect(en['thermal.find.none']).toContain('{threshold}');
+    expect(HOTSPOT_PARAMS.thresholdC).toBe(4);
     act(() => {
       hotspotFinder.setState({ find: { layerId: 'th', phase: 'done', count: null, error: null } });
     });

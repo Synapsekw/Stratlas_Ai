@@ -6,7 +6,7 @@
 import { Button, useT } from '@aio/ui';
 import type { ReactElement } from 'react';
 import { useJobs } from '../shell';
-import { useHotspotFinder } from './findHotspots';
+import { HOTSPOT_PARAMS, useHotspotFinder } from './findHotspots';
 import './hotspotFinder.css';
 
 const RUNNING = new Set(['starting', 'running', 'cancelling']);
@@ -50,7 +50,7 @@ export function HotspotFinder(p: {
           {find.count === null
             ? t('thermal.find.done')
             : find.count === 0
-              ? t('thermal.find.none')
+              ? t('thermal.find.none', { threshold: HOTSPOT_PARAMS.thresholdC })
               : t('thermal.find.found', { count: find.count })}
         </p>
       )}

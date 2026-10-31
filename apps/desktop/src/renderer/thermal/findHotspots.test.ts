@@ -85,6 +85,22 @@ describe('hot spot finder', () => {
     expect(failed.store.getState().find).toMatchObject({ phase: 'error', error: 'No rasters.' });
   });
 
+  it('a job without its own error text gets a sentence, never a raw status word', async () => {
+    for (const status of ['failed', 'cancelled', 'interrupted'] as const) {
+      const { store } = setup({ wait: () => Promise.resolve(job({ status })) });
+      await store.getState().run('p', 'th');
+      expect(store.getState().find).toMatchObject({
+        phase: 'error',
+        error: 'The hot spot search did not finish. Open Processing for its log.',
+      });
+    }
+    const gone = setup({ wait: () => Promise.resolve(null) });
+    await gone.store.getState().run('p', 'th');
+    expect(gone.store.getState().find?.error).toBe(
+      'The hot spot search stopped before it finished.',
+    );
+  });
+
   it('a count it cannot read leaves the generic line', async () => {
     const { store } = setup({ readCandidates: () => Promise.resolve(null) });
     await store.getState().run('p', 'th');

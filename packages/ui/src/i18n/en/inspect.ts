@@ -266,8 +266,11 @@ export const enInspect = {
   'thermal.find.running': 'Looking for hot spots',
   'thermal.find.found_one': '1 possible hot spot. Review it in Inspect.',
   'thermal.find.found_other': '{count} possible hot spots. Review them in Inspect.',
-  'thermal.find.none': 'No spot is 4 °C or more above its surroundings.',
+  'thermal.find.none': 'No spot is {threshold} °C or more above its surroundings.',
   'thermal.find.done': 'Done. Review hot spots in Inspect.',
+  'thermal.find.failed': 'The hot spot search did not finish. Open Processing for its log.',
+  'thermal.find.gone': 'The hot spot search stopped before it finished.',
+  'thermal.find.noProject': 'Open a project to look for hot spots.',
   'detect.preset.hw.noGpu':
     'No NVIDIA graphics card found. Detectors need one with at least 8 GB of memory.',
   'detect.preset.hw.tooSmall':

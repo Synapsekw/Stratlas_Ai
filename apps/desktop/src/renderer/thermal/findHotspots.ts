@@ -5,6 +5,7 @@
  * at import, so it runs in a unit test with fake deps; `useHotspotFinder` is the app's instance.
  */
 import type { JobRecord, ThermalHotspotsParams } from '@aio/schema';
+import { t } from '@aio/ui';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
@@ -55,18 +56,19 @@ export function createHotspotFinder(deps: HotspotFinderDeps): StoreApi<HotspotFi
         }
         const done = await deps.wait(started.jobId);
         if (!done) {
-          fail('The hot spot job disappeared before it finished.');
+          fail(t('thermal.find.gone'));
           return;
         }
         if (done.status !== 'done') {
-          fail(done.error ?? `The hot spot job ${done.status}.`);
+          // the job's own words when it has them, never a bare status word
+          fail(done.error?.trim() ? done.error : t('thermal.find.failed'));
           return;
         }
         const count = await deps.readCandidates(projectId, done).catch(() => null);
         await deps.reload(projectId).catch(() => undefined);
         set({ find: { layerId, phase: 'done', count, error: null } });
       } catch (e) {
-        fail(e instanceof Error ? e.message : String(e));
+        fail(e instanceof Error && e.message ? e.message : t('thermal.find.failed'));
       }
     },
   }));
@@ -101,7 +103,7 @@ const appDeps: HotspotFinderDeps = {
       import('@aio/workspace'),
     ]);
     const root = workspace.getState().project?.root;
-    if (!root) return { error: 'No project is open.' };
+    if (!root) return { error: t('thermal.find.noProject') };
     return jobs.getState().startQuiet({ pipeline: 'thermal.hotspots', project: root, params });
   },
   wait: async (jobId) => {
