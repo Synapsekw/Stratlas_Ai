@@ -5,9 +5,11 @@ import { help, useHelp } from '../help/store';
 import { processing, useProcessing } from '../processing/store';
 import { shell, useShell } from '../shell';
 import { isSidebarFolded, type Screen } from '../store';
+import { photoUi } from '../photogrammetry/store';
 import { WebsiteUpdateNotice } from '../updates/WebsiteUpdates';
 import { BrandSymbol } from './BrandMark';
 import { PanelHandle } from './PanelHandle';
+import { useCanCreateMaps } from './SidebarProcessing';
 
 /**
  * The Layers column's tab, on the Scene: at the main area's start, so it rides the column's inner
@@ -95,8 +97,10 @@ function RailItem({
 
 /**
  * The 52 px rail on every screen (UI revision W11, D1): the logo, the screens, then at its foot
- * Processing (the drawer, with a count while jobs run), the user guide and Settings. Labels show
- * on hover and focus. It never folds: the Layers column beside it does (Ctrl+B, Ctrl+L).
+ * the Processing group (the drawer, and **Create maps from photos** whenever a project may make
+ * maps: in sight on every screen and with Layers folded, founder 31 Oct 2026), the user guide and
+ * Settings. Names show as tips on hover and focus. It never folds: the Layers column beside it
+ * does (Ctrl+B, Ctrl+L).
  */
 export function Rail() {
   useT();
@@ -104,6 +108,8 @@ export function Rail() {
   const issues = useWorkspace((s) => (s.project ? s.issues.length : undefined));
   const drawer = useProcessing((s) => s.open);
   const guide = useHelp((s) => s.open);
+  const library = useShell((s) => s.library?.length);
+  const canMake = useCanCreateMaps();
   return (
     <nav className="rail" aria-label={t('nav.primary')} data-testid="rail">
       <span className="rail-logo" data-testid="brand-mark">
@@ -116,7 +122,7 @@ export function Rail() {
             icon={d.icon}
             label={t(d.label)}
             current={screen === d.screen}
-            count={d.screen === 'issues' ? issues : undefined}
+            count={d.screen === 'issues' ? issues : d.screen === 'projects' ? library : undefined}
             testId={`rail-${d.screen}`}
             onClick={() => {
               shell.getState().go(d.screen);
@@ -127,17 +133,34 @@ export function Rail() {
       <span className="rail-fill" />
       <div className="rail-foot">
         <WebsiteUpdateNotice />
-        <RailItem
-          icon="refresh"
-          label={t('nav.processing')}
-          pressed={drawer}
-          testId="rail-processing"
-          onClick={() => {
-            const p = processing.getState();
-            if (p.open) p.closeDrawer();
-            else p.openDrawer();
-          }}
-        />
+        <div
+          className="rail-proc"
+          role="group"
+          aria-label={t('processing.title')}
+          data-testid="rail-processing-group"
+        >
+          <RailItem
+            icon="refresh"
+            label={t('nav.processing')}
+            pressed={drawer}
+            testId="rail-processing"
+            onClick={() => {
+              const p = processing.getState();
+              if (p.open) p.closeDrawer();
+              else p.openDrawer();
+            }}
+          />
+          {canMake && (
+            <RailItem
+              icon="photo"
+              label={t('processing.createMaps')}
+              testId="rail-create-maps"
+              onClick={() => {
+                photoUi.getState().openWizard();
+              }}
+            />
+          )}
+        </div>
         <RailItem
           icon="flag"
           label={t('nav.help')}

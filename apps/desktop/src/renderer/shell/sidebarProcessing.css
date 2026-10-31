@@ -1,6 +1,6 @@
-/* The sidebar's Processing section (shell/SidebarProcessing.tsx): a quiet heading in the tree
-   header's look and one nav row, never a filled button. Folded to the rail the heading fades
-   (.sb-hide) and the row keeps its glyph and tip, as the nav rows do. */
+/* The Layers column's Processing section (shell/SidebarProcessing.tsx): a quiet heading in the
+   tree header's look and one nav row, never a filled button. The rail's foot holds the same
+   action as a glyph on every screen (Rail.tsx). */
 .sb-proc {
   position: relative;
   flex: none;

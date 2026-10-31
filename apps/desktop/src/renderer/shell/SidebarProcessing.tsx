@@ -6,24 +6,33 @@ import { useShell } from '../shell';
 import './sidebarProcessing.css';
 
 /**
- * The sidebar's Processing section: a heading and **Create maps from photos** as a calm row, in
- * plain sight without opening anything (founder, 31 Oct 2026). It opens the same wizard as the
- * Processing drawer's primary, a photo project's library card and the offer over the scene. Not
- * shown without a project, in a package, or to a reviewer who may only look. Folded to the rail,
- * the row keeps its glyph and names itself in a tip, as the nav rows do. The layout spike shows
- * the same section at the top of its Layers column.
+ * Whether **Create maps from photos** is offered: a project is open, not a package, and the person
+ * may change it (a reviewer who may only look gets none).
  */
-export function SidebarProcessing() {
-  useT();
+export function useCanCreateMaps(): boolean {
   const project = useWorkspace((s) => s.project !== null);
   const pkg = useShell((s) => s.pkg !== null);
   const lookOnly = useAnnotateReadOnly();
-  if (!project || pkg || lookOnly) return null;
+  return project && !pkg && !lookOnly;
+}
+
+/**
+ * The Layers column's Processing section: a heading and **Create maps from photos** as a calm row,
+ * in plain sight without opening anything (founder, 31 Oct 2026). It opens the same wizard as the
+ * Processing drawer's primary, a photo project's library card, the offer over the scene and the
+ * rail's Processing group (Rail.tsx), which keeps it in sight on every screen and with the column
+ * folded. Not shown without a project, in a package, or to a reviewer who may only look. The
+ * layout spike shows the same section at the top of its Layers column.
+ */
+export function SidebarProcessing() {
+  useT();
+  const can = useCanCreateMaps();
+  if (!can) return null;
   const heading = t('processing.title');
   const label = t('processing.createMaps');
   return (
     <section className="sb-sec sb-proc" aria-label={heading} data-testid="sidebar-processing">
-      <div className="sb-proc-h caps sb-hide" aria-hidden="true">
+      <div className="sb-proc-h caps" aria-hidden="true">
         {heading}
       </div>
       <button

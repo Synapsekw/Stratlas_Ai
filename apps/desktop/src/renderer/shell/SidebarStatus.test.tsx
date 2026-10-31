@@ -38,14 +38,13 @@ describe('SidebarStatus', () => {
     expect(q('readonly-chip')?.textContent).toBe('Read-only package');
     expect(q('origin-chip')).toBeNull();
   });
-  it('keeps the package chip for the rail: never faded out, its words apart from its lock', () => {
+  it('keeps the package chip whole: its lock always drawn, its words apart from it', () => {
     shell.setState({
       pkg: { file: 'site.aio', header: { readOnly: true } } as unknown as PackageInfo,
     });
     render();
     const chip = q('readonly-chip');
-    // the rail fades .sb-hide out; the chip stays, and only its words leave the drawing there
-    expect(chip?.classList.contains('sb-hide')).toBe(false);
+    // a narrow window hides only the words (styles.css); the lock stays
     expect(chip?.querySelector('svg')).not.toBeNull();
     expect(chip?.querySelector('.sb-pkg-lbl')?.textContent).toBe('Read-only package');
   });

@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { shell } from '../shell';
 import { help } from '../help/store';
+import { photoUi } from '../photogrammetry/store';
 import { processing } from '../processing/store';
 import { LayersHandle, Rail } from './Rail';
 import { customerOf, TitleBar } from './TitleBar';
@@ -63,6 +64,7 @@ afterEach(() => {
   host.remove();
   help.getState().closeHelp();
   processing.getState().closeDrawer();
+  photoUi.setState({ view: null });
 });
 
 describe('TitleBar', () => {
@@ -73,6 +75,15 @@ describe('TitleBar', () => {
     // the full name, never cut in the DOM (only drawn with an ellipsis when it must)
     expect(q('crumb-project')?.querySelector('b')?.textContent).toBe(NAME);
     expect(q('crumb-project')?.getAttribute('aria-label')).toContain(NAME);
+  });
+
+  it('is an ordered list whose last crumb is where you are', () => {
+    workspace.getState().openProject({ id: 'p', root: 'C:/p', manifest });
+    render(<TitleBar />);
+    const items = [...document.body.querySelectorAll('.tb-crumbs > ol > li')];
+    expect(items.map((li) => li.className)).toEqual(['tb-crumb-customer', 'tb-crumb-project']);
+    expect(items.at(-1)?.getAttribute('aria-current')).toBe('location');
+    expect(items[0]?.hasAttribute('aria-current')).toBe(false);
   });
 
   it('falls back to the site for the customer, and says when no project is open', () => {
@@ -135,6 +146,32 @@ describe('Rail', () => {
       'User guide',
       'Settings',
     ]);
+  });
+
+  it('keeps Create maps from photos in the Processing group on every screen', () => {
+    workspace.getState().openProject({ id: 'p', root: 'C:/p', manifest });
+    shell.setState({
+      screen: 'settings',
+      settings: { ...shell.getState().settings, sidebarCollapsed: true },
+    });
+    render(<Rail />);
+    const group = q('rail-processing-group');
+    expect(group?.getAttribute('aria-label')).toBe('Processing');
+    const make = q('rail-create-maps');
+    expect(make?.closest('[data-testid="rail-processing-group"]')).toBe(group);
+    expect(make?.querySelector('.tip')?.textContent).toBe('Create maps from photos');
+    click(make);
+    expect(photoUi.getState().view?.kind).toBe('wizard');
+    act(() => {
+      shell.setState({ pkg: { file: 'a.aio', header: { readOnly: true } } as never });
+    });
+    expect(q('rail-create-maps')).toBeNull();
+  });
+
+  it('counts the library on Projects and the issues on Issues', () => {
+    shell.setState({ library: [{ id: 'a' }, { id: 'b' }] as never });
+    render(<Rail />);
+    expect(q('rail-projects')?.querySelector('.count')?.textContent).toBe('2');
   });
 
   it('goes to a screen and marks it current', () => {

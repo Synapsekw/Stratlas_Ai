@@ -408,18 +408,37 @@ test('the sidebar shows a Processing section with Create maps from photos, calm 
   await win.keyboard.press('Escape');
   await expect(wizard).toHaveCount(0);
 
-  // Layers folded away: the rail's Processing opens the drawer, whose primary is Create maps
-  await win.getByTestId('layers-toggle').click();
-  await expect(win.locator('.app')).toHaveAttribute('data-sb', 'collapsed');
-  await expect(row).toBeHidden();
-  const rail = win.getByTestId('rail-processing');
-  await expect(rail).toHaveAccessibleName('Processing');
-  await rail.hover();
-  await expect(rail.locator('.tip')).toHaveCSS('opacity', '1');
+  // Layers folded away: the rail's Processing group keeps Create maps from photos in sight,
+  // named by its tip, and it opens the same wizard
+  const railRow = win.getByTestId('rail-processing-group').getByTestId('rail-create-maps');
+  const folded = async () => {
+    if ((await win.locator('.app').getAttribute('data-sb')) !== 'collapsed')
+      await win.getByTestId('layers-toggle').click();
+    await expect(win.locator('.app')).toHaveAttribute('data-sb', 'collapsed');
+    await expect(railRow).toBeVisible();
+    await expect(railRow).toBeInViewport({ ratio: 1 });
+    await expect(railRow).toHaveAccessibleName('Create maps from photos');
+  };
+  await folded();
+  await railRow.hover();
+  await expect(railRow.locator('.tip')).toHaveCSS('opacity', '1');
   await shot(win, 'sidebar-processing-rail');
-  await rail.click();
+  await railRow.click();
+  await expect(wizard).toBeVisible();
+  await win.keyboard.press('Escape');
+  await expect(wizard).toHaveCount(0);
+  // the Processing drawer beside it, whose primary is the same action
+  const drawerButton = win.getByTestId('rail-processing');
+  await expect(drawerButton).toHaveAccessibleName('Processing');
+  await drawerButton.click();
   await expect(win.getByTestId('processing-drawer').getByTestId('create-maps')).toBeVisible();
-  await rail.click();
+  await drawerButton.click();
+  // in the CI window, 1100 x 720, with Layers folded: still in sight, and on another screen too
+  await win.setViewportSize({ width: 1100, height: 720 });
+  await folded();
+  await win.getByTestId('rail-issues').click();
+  await expect(railRow).toBeVisible();
+  await win.getByTestId('rail-scene').click();
   await win.getByTestId('layers-toggle').click();
   await expect(win.locator('.app')).toHaveAttribute('data-sb', 'expanded');
   await expect(row).toBeVisible();

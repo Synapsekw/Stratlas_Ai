@@ -533,6 +533,13 @@ button.chip-status:hover {
 .rail-fill {
   flex: 1;
 }
+/* the Processing group at the rail's foot: the drawer and Create maps from photos, set apart */
+.rail-proc {
+  display: grid;
+  gap: 2px;
+  padding-block: var(--sp-1);
+  border-block: 1px solid var(--line-soft);
+}
 .nav-item {
   position: relative;
   display: flex;
@@ -628,25 +635,44 @@ button.chip-status:hover {
 }
 .tb-crumbs {
   display: flex;
-  align-items: center;
-  gap: var(--sp-1);
   min-inline-size: 0;
   font-size: var(--t-13);
 }
-.tb-crumb-customer {
+.tb-crumbs > ol {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tb-crumbs li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-inline-size: 0;
+}
+/* the separator before each crumb after the first, drawn, never read */
+.tb-crumbs li + li::before {
+  content: '/' / '';
+  flex: none;
+  color: var(--fg-4);
+}
+.tb-crumb-project {
+  flex: 0 1 auto;
+}
+.tb-crumb-date {
+  flex: none;
+}
+.tb-crumbs .tb-crumb-customer {
+  display: block;
   flex: 0 1 auto;
   min-inline-size: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--fg-3);
-}
-.tb-crumb-sep {
-  flex: none;
-  color: var(--fg-4);
-}
-.tb-crumbs .dpick {
-  flex: none;
 }
 .tb-fill {
   flex: 1;
@@ -1776,7 +1802,8 @@ button.chip-status:hover {
   background: var(--bg-0);
   min-height: 0;
   min-width: 0;
-  container-type: inline-size;
+  /* both axes: the open island's tools keep above the stage's middle (island.css) */
+  container-type: size;
 }
 .dates-on {
   display: flex;

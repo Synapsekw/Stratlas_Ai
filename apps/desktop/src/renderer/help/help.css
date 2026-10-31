@@ -357,23 +357,3 @@
   align-self: center;
   margin-inline: 4px;
 }
-
-/* The "?" in the title bar, beside the search. */
-.help-btn {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--r-4);
-  background: var(--bg-1);
-  color: var(--fg-3);
-  font: 600 13px/1 var(--f-ui);
-}
-
-.help-btn:hover {
-  border-color: var(--line-strong);
-  color: var(--fg-1);
-}

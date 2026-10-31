@@ -492,10 +492,6 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     await expect(win.locator('.ws')).toHaveClass(/right-off/);
     await win.keyboard.press('Control+B');
     await expect(win.locator('.app')).toHaveAttribute('data-sb', 'collapsed');
-    // the title bar (UI revision W11) takes 40 px of the stage's height: the window grows by as
-    // much, so the island's open tools stay above the stage's middle as before and the corners'
-    // return is still what is checked (W10's fixed slots revisit this at 720)
-    await win.setViewportSize({ width: 1100, height: 760 });
     await expect(bar).toHaveAttribute('data-state', 'tools');
     await expect(win.getByTestId('t-notice')).toBeVisible();
     // the panel slid away and the capsule has grown around its content on the wider stage

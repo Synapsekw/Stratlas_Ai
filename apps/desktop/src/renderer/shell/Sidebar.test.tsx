@@ -146,6 +146,21 @@ describe('Layers column', () => {
     expect(q('layers-column')?.firstElementChild).toBe(section);
   });
 
+  it('folding hands the focus to the Layers toggle before the column goes inert', () => {
+    const toggle = document.createElement('button');
+    toggle.dataset.testid = 'layers-toggle';
+    document.body.append(toggle);
+    render(null);
+    q('tree-row-walk-a')?.focus();
+    expect(document.activeElement).toBe(q('tree-row-walk-a'));
+    act(() => {
+      shell.setState({ settings: { ...shell.getState().settings, sidebarCollapsed: true } });
+    });
+    expect(q('layers-column')?.hasAttribute('inert')).toBe(true);
+    expect(document.activeElement).toBe(toggle);
+    toggle.remove();
+  });
+
   it('folded, it takes no focus; its tab lives on the rail', () => {
     render(null);
     expect(q('panel-handle-left')).toBeNull();

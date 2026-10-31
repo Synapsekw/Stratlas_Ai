@@ -164,6 +164,7 @@ export function TitleBar() {
   const manifest = useWorkspace((s) => s.project?.manifest);
   const dated = useWorkspace((s) => (s.project?.manifest.captures.length ?? 0) > 0);
   const scene = screen === 'scene';
+  const showDate = scene && dated;
   const customer = manifest ? (customerOf(manifest) ?? t('titlebar.noCustomer')) : null;
   return (
     <header className="titlebar" aria-label={t('titlebar.bar')} data-testid="titlebar">
@@ -182,25 +183,22 @@ export function TitleBar() {
         />
       )}
       <nav className="tb-crumbs" aria-label={t('titlebar.breadcrumb')}>
-        {customer !== null && (
-          <>
-            <span className="tb-crumb-customer" dir="auto" data-testid="crumb-customer">
+        {/* Customer / Project / (a Space goes here) / Date: the last crumb is where you are */}
+        <ol>
+          {customer !== null && (
+            <li className="tb-crumb-customer" dir="auto" data-testid="crumb-customer">
               {customer}
-            </span>
-            <span className="tb-crumb-sep" aria-hidden="true">
-              /
-            </span>
-          </>
-        )}
-        <ProjectSwitcher />
-        {scene && dated && (
-          <>
-            <span className="tb-crumb-sep" aria-hidden="true">
-              /
-            </span>
-            <DatePicker testId="crumb-date" />
-          </>
-        )}
+            </li>
+          )}
+          <li className="tb-crumb-project" aria-current={showDate ? undefined : 'location'}>
+            <ProjectSwitcher />
+          </li>
+          {showDate && (
+            <li className="tb-crumb-date" aria-current="location">
+              <DatePicker testId="crumb-date" />
+            </li>
+          )}
+        </ol>
       </nav>
       <span className="tb-fill" />
       <IconButton

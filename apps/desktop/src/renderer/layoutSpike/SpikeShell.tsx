@@ -212,7 +212,7 @@ function SpikeScene() {
           data-overlay={overlay ? '' : undefined}
         >
           <SidebarProcessing />
-          <Datasets collapsed={false} />
+          <Datasets />
         </aside>
       )}
       {layersOpen && overlay && (

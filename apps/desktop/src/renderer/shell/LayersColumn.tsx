@@ -1,11 +1,19 @@
 import { t, useT } from '@aio/ui';
-import { useEffect, type HTMLAttributes } from 'react';
+import { useEffect, useLayoutEffect, useRef, type HTMLAttributes } from 'react';
 import { shell, useShell } from '../shell';
 import { isSidebarFolded } from '../store';
 import { useMeasure } from '../survey/measureStore';
 import { PANEL_ID } from './PanelHandle';
 import { Datasets } from './Sidebar';
 import { SidebarProcessing } from './SidebarProcessing';
+
+/** Where focus goes when the Layers column folds with focus inside it. */
+function handFocusOut(): void {
+  const to =
+    document.querySelector<HTMLElement>('[data-testid="layers-toggle"]') ??
+    document.querySelector<HTMLElement>('[data-testid="panel-handle-left"]');
+  to?.focus();
+}
 
 export interface LayersColumnProps {
   /** The `shell.sidebar` split's separator (App.tsx): the drag handle on the inner edge. */
@@ -32,6 +40,15 @@ export function LayersColumn({ resize }: LayersColumnProps = {}) {
     const sh = shell.getState();
     if (isSidebarFolded(sh)) void sh.toggleSidebar();
   }, [revealSeq, revealOpens]);
+  // Folding, focus inside the column moves to the title bar's Layers toggle (else the tab on the
+  // column's edge) before the column goes inert, so it never drops to the page
+  const ref = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (collapsed && el.contains(document.activeElement)) handFocusOut();
+    el.toggleAttribute('inert', collapsed);
+  }, [collapsed, screen]);
   if (screen !== 'scene') return null;
 
   return (
@@ -40,13 +57,12 @@ export function LayersColumn({ resize }: LayersColumnProps = {}) {
       id={PANEL_ID.left}
       aria-label={t('nav.layers')}
       data-testid="layers-column"
-      // folded, it slides out of sight and takes no focus (the toggle and Ctrl+B bring it back)
-      inert={collapsed}
+      ref={ref}
     >
       {/* Create maps from photos in plain sight, under its own heading (founder, 31 Oct) */}
       <SidebarProcessing />
       <div className="sb-scroll">
-        <Datasets collapsed={false} />
+        <Datasets />
       </div>
       {resize && (
         <div

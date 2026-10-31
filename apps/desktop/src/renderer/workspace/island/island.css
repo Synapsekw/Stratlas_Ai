@@ -121,6 +121,15 @@
 .isl-body {
   animation: isl-in var(--d-3) var(--ease) 70ms both;
 }
+/* The open tools end above the stage's middle (the stage is a size container, styles.css), so
+   the top corners keep their overlays beside the island: the line, the paddings and the T notice
+   under the notch take about 70 px, and the corners want 48 px under it (Stage.tsx
+   TOP_SLOT_ROOM). On a short stage the rows scroll inside the notch. */
+.island-wrap[data-state='tools'] .isl-body {
+  max-block-size: max(96px, calc(50cqb - 120px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .isl-body > [role='dialog'] {
   border-block-start: 1px solid var(--line-soft);
 }

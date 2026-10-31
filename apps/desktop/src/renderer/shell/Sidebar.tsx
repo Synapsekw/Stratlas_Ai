@@ -70,7 +70,6 @@ import {
   knownTemplates,
   measureStore,
   renameMeasurement,
-  revealMeasurement,
   select,
   setFolder,
   setMeasureNote,
@@ -176,7 +175,7 @@ function selectMarked(marked: ReadonlySet<string>, ids: string[]): void {
   select(ids, focus);
 }
 
-export function Datasets({ collapsed }: { collapsed: boolean }) {
+export function Datasets() {
   const project = useWorkspace((s) => s.project);
   const issues = useWorkspace((s) => s.issues);
   const hidden = useWorkspace((s) => s.hidden);
@@ -262,20 +261,6 @@ export function Datasets({ collapsed }: { collapsed: boolean }) {
     () => Object.fromEntries(hiddenMeasurements.map((id) => [id, true] as const)),
     [hiddenMeasurements],
   );
-  // A reveal that opens the folded sidebar is asked again once the open tree is drawn: a tree
-  // drawn after a reveal takes it as already seen (survey dates on, opening swaps the rail for the
-  // date tree). Asked again without opening, so it is not asked a third time.
-  const revealWaits = useRef<number | null>(null);
-  useEffect(() => {
-    if (collapsed) {
-      if (reveal?.openSidebar === true) revealWaits.current = reveal.seq;
-      return;
-    }
-    const waited = revealWaits.current;
-    revealWaits.current = null;
-    if (waited !== null && waited === reveal?.seq)
-      revealMeasurement(reveal.id, { openSidebar: false });
-  }, [reveal, collapsed]);
   const groups = useMemo(
     () =>
       project
@@ -290,7 +275,7 @@ export function Datasets({ collapsed }: { collapsed: boolean }) {
   const t = useT();
   const index = useCaptureIndex();
   const focus = useTimeline((s) => s.focus);
-  const datesOn = !collapsed && index !== null && index.captures.length > 0;
+  const datesOn = index !== null && index.captures.length > 0;
   // each date a prepare job worked on since the project opened: "preparing 62 %", then "ready"
   const prepStatus = useSurfacePrepareStatus();
   const tags = useMemo(() => (index ? dateTags(index.captures) : {}), [index]);
@@ -1020,7 +1005,7 @@ export function Datasets({ collapsed }: { collapsed: boolean }) {
         }
       }}
     >
-      <div className="tree-h sb-hide">
+      <div className="tree-h">
         {/* the count sits with its label ("DATASETS 10"), the actions at the end */}
         <span className="tree-h-title">
           <span className="caps">Datasets</span>
@@ -1100,7 +1085,7 @@ export function Datasets({ collapsed }: { collapsed: boolean }) {
         </span>
       </div>
       <DateNotes
-        collapsed={collapsed}
+        collapsed={false}
         canEdit={canEdit}
         note={note}
         onPromptResult={(n) => {
@@ -1205,7 +1190,7 @@ export function Datasets({ collapsed }: { collapsed: boolean }) {
           hidden={hidden}
           selectedId={selectedId}
           activeClip={activeClip}
-          collapsed={collapsed}
+          collapsed={false}
           onToggleVisible={onToggleVisible}
           onSetVisible={setVisible}
           flightPath={flightPath}
@@ -1237,7 +1222,7 @@ export function Datasets({ collapsed }: { collapsed: boolean }) {
           }}
         />
       )}
-      {canEdit && !collapsed && trash !== null && trash.entries > 0 && (
+      {canEdit && trash !== null && trash.entries > 0 && (
         <div className="tree-foot sb-hide" data-testid="tree-trash">
           <Icon name="trash" size={12} />
           <span>{t('tree.trash', { size: formatBytes(trash.bytes) })}</span>
