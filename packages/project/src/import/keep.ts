@@ -11,12 +11,20 @@ const untouchedImport = (i: Issue) => i.source === 'import' && i.updatedAt === i
  * - an imported issue replaces the saved one only while the saved one is untouched;
  * - issues people or agents created, and imported issues someone edited, are always kept
  *   (after the imported ones, in their saved order);
- * - untouched imported issues the source no longer has are dropped.
- * Saved entries that are not valid issues are ignored.
+ * - untouched imported issues the source no longer has are dropped, unless `opts.keepMissing`
+ *   is set: then they stay too, so a re-import of a partial export loses nothing.
+ * Rules with `keepMissing` (the Python merge in the pipeline mirrors these exactly):
+ *   1. result = the imported issues in import order, each replaced by the saved issue with the
+ *      same id when that one is not untouched (source 'import' and updatedAt === createdAt);
+ *   2. then every saved issue whose id is not in the import, in saved order, whatever its
+ *      state (untouched or edited, imported or human); without `keepMissing` only the ones
+ *      that are not untouched imports;
+ *   3. saved entries that fail Issue validation are ignored; a repeated saved id keeps the last.
  */
 export function mergeImportedIssues(
   existing: readonly unknown[],
   imported: readonly Issue[],
+  opts: { keepMissing?: boolean } = {},
 ): Issue[] {
   const saved = new Map<string, Issue>();
   for (const raw of existing) {
@@ -28,7 +36,8 @@ export function mergeImportedIssues(
     return s && !untouchedImport(s) ? s : i;
   });
   const ids = new Set(imported.map((i) => i.id));
-  for (const s of saved.values()) if (!ids.has(s.id) && !untouchedImport(s)) out.push(s);
+  for (const s of saved.values())
+    if (!ids.has(s.id) && (opts.keepMissing || !untouchedImport(s))) out.push(s);
   return out;
 }
 

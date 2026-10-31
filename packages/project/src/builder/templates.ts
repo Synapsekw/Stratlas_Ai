@@ -64,9 +64,54 @@ export const ROAD_TEMPLATE: SeverityTemplate = {
 };
 
 /**
+ * Confined-space drone inspections (Flyability Inspector exports): four ratings from Low to
+ * Critical and one `finding` class. Its catalogue (`assetType: 'confined-space'`) opens the
+ * confined-space workspace.
+ */
+export const CONFINED_SPACE_TEMPLATE: SeverityTemplate = {
+  id: 'confined-space-4',
+  label: 'Confined-space inspection (Low to Critical)',
+  source: 'Built in',
+  model: {
+    id: 'confined-space-4',
+    name: 'Confined-space inspection (Low to Critical)',
+    levels: [
+      { value: 1, label: 'Low', color: '#78b3d6', criteria: 'Cosmetic or early stage. Monitor.' },
+      {
+        value: 2,
+        label: 'Medium',
+        color: '#ebc751',
+        criteria: 'Visible deterioration. Plan maintenance.',
+      },
+      {
+        value: 3,
+        label: 'High',
+        color: '#f0904f',
+        criteria: 'Significant damage. Repair at the next stop.',
+      },
+      {
+        value: 4,
+        label: 'Critical',
+        color: '#f05653',
+        criteria: 'Loss of function or safety risk. Act now.',
+      },
+    ],
+    uncertain: { label: 'Not rated', color: '#9aa3ad' },
+  },
+  catalogue: {
+    id: 'confined-space',
+    name: 'Confined-space findings',
+    assetType: 'confined-space',
+    classes: [
+      { id: 'finding', label: 'Finding', color: '#95a0ab', severityModel: 'confined-space-4' },
+    ],
+  },
+};
+
+/**
  * Severity models of the projects in the library as wizard templates, each once (by model id),
- * with the classes that use it; then the general template, and the road template unless a
- * project already offers it.
+ * with the classes that use it; then the general template, and the road and confined-space
+ * templates unless a project already offers them.
  */
 export function severityTemplates(manifests: readonly ProjectManifest[]): SeverityTemplate[] {
   const byId = new Map<string, SeverityTemplate>();
@@ -96,6 +141,9 @@ export function severityTemplates(manifests: readonly ProjectManifest[]): Severi
   }
   if (!byId.has(GENERAL_TEMPLATE.id)) byId.set(GENERAL_TEMPLATE.id, GENERAL_TEMPLATE);
   if (!byId.has(ROAD_TEMPLATE.id)) byId.set(ROAD_TEMPLATE.id, ROAD_TEMPLATE);
+  if (!byId.has(CONFINED_SPACE_TEMPLATE.id)) {
+    byId.set(CONFINED_SPACE_TEMPLATE.id, CONFINED_SPACE_TEMPLATE);
+  }
   return [...byId.values()];
 }
 

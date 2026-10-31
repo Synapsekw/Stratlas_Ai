@@ -1,6 +1,7 @@
 import { parseManifest, type NewProjectRequest, type ProjectManifest } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
+  CONFINED_SPACE_TEMPLATE,
   GENERAL_TEMPLATE,
   newProjectManifest,
   ROAD_TEMPLATE,
@@ -45,6 +46,7 @@ describe('severityTemplates', () => {
       'hcl-lining',
       GENERAL_TEMPLATE.id,
       ROAD_TEMPLATE.id,
+      CONFINED_SPACE_TEMPLATE.id,
     ]);
     expect(t[0]?.source).toBe('EBSM, EBSM copy');
     expect(t[0]?.catalogue?.classes.map((c) => c.id)).toEqual(['corrosion']);
@@ -57,6 +59,35 @@ describe('severityTemplates', () => {
     ring.severityModels = [ROAD_TEMPLATE.model];
     const t = severityTemplates([ring]);
     expect(t.filter((x) => x.id === ROAD_TEMPLATE.id)).toHaveLength(1);
+  });
+});
+
+describe('confined-space template', () => {
+  it('the confined-space template is offered', () => {
+    const t = severityTemplates([]);
+    const ids = t.map((x) => x.id);
+    expect(ids.indexOf('confined-space-4')).toBeGreaterThan(ids.indexOf(GENERAL_TEMPLATE.id));
+    expect(CONFINED_SPACE_TEMPLATE.model.levels.map((l) => [l.value, l.label, l.color])).toEqual([
+      [1, 'Low', '#78b3d6'],
+      [2, 'Medium', '#ebc751'],
+      [3, 'High', '#f0904f'],
+      [4, 'Critical', '#f05653'],
+    ]);
+    expect(CONFINED_SPACE_TEMPLATE.model.uncertain).toEqual({
+      label: 'Not rated',
+      color: '#9aa3ad',
+    });
+    expect(CONFINED_SPACE_TEMPLATE.catalogue).toMatchObject({
+      id: 'confined-space',
+      assetType: 'confined-space',
+      classes: [{ id: 'finding', label: 'Finding', severityModel: 'confined-space-4' }],
+    });
+    const m = newProjectManifest(
+      'p',
+      { name: 'P', type: 'inspection', epsg: 32640, origin: [1, 2, 3], severityTemplate: null },
+      CONFINED_SPACE_TEMPLATE,
+    );
+    expect(parseManifest(m).ok).toBe(true);
   });
 });
 

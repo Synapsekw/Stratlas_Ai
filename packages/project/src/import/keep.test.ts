@@ -55,6 +55,21 @@ describe('mergeImportedIssues', () => {
     expect(out.map((i) => i.id)).toEqual(['F01']);
   });
 
+  it('default still drops them', () => {
+    const out = mergeImportedIssues([issue('F01'), issue('F09')], [issue('F01')], {
+      keepMissing: false,
+    });
+    expect(out.map((i) => i.id)).toEqual(['F01']);
+  });
+
+  it('keepMissing keeps untouched imports the source no longer has', () => {
+    const edited = issue('F08', { note: 'checked', updatedAt: T1 });
+    const out = mergeImportedIssues([issue('F01'), issue('F09'), edited], [issue('F01')], {
+      keepMissing: true,
+    });
+    expect(out.map((i) => i.id)).toEqual(['F01', 'F09', 'F08']);
+  });
+
   it('keeps an edited imported issue the source no longer has', () => {
     const edited = issue('F09', { note: 'checked on site', updatedAt: T1 });
     const out = mergeImportedIssues([edited], [issue('F01')]);
