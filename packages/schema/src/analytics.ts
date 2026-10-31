@@ -165,6 +165,19 @@ export const DetectVlmParams = z
             where: DetectorWhere,
             detector: VlmDetector,
             threshold: z.number().min(0).max(1),
+            /**
+             * Few-shot example crops for the yes/no check, absolute files (pipeline pack 0.30.0).
+             * Main picks them when the run starts (`main/analytics/fewShot.ts`); at most 2 of
+             * each verdict.
+             */
+            examples: z
+              .array(
+                z
+                  .object({ file: z.string().min(1).max(1024), verdict: z.enum(['is', 'is-not']) })
+                  .strict(),
+              )
+              .max(4)
+              .optional(),
           })
           .strict(),
       )

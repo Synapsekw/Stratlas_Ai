@@ -12,6 +12,7 @@ import { useWorkspace } from '@aio/workspace';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAnalyticsPack } from '../../analyticsPack';
 import { ModelMismatchMark } from '../../detections/detectors/ModelMismatchMark';
+import { DetectorLearning } from './DetectorLearning';
 import type { Res } from '../../bridge';
 import { bridge } from '../../shell';
 import './detectorLibrary.css';
@@ -43,7 +44,7 @@ export function hitRate(s: Pick<Stats, 'accepted' | 'rejected'>): number | null 
 
 const hasReviews = (s: Stats) => s.accepted + s.rejected + s.misses > 0;
 
-/** "75% hit rate · 12 reviewed · 2 missed · suggested threshold 0.85", or "No reviews yet". */
+/** "75% hit rate · 12 reviewed · 2 missed", or "No reviews yet". */
 function statsText(s: Stats): string {
   if (!hasReviews(s)) return t('detect.preset.library.noReviews');
   const rate = hitRate(s);
@@ -52,9 +53,7 @@ function statsText(s: Stats): string {
     parts.push(t('detect.preset.library.hitRate', { pct: Math.round(rate * 100) }));
   parts.push(t('detect.preset.library.reviewed', { n: s.accepted + s.rejected }));
   if (s.misses > 0) parts.push(t('detect.preset.library.missed', { n: s.misses }));
-  if (s.suggestedThreshold !== null) {
-    parts.push(t('detect.preset.library.suggested', { value: s.suggestedThreshold.toFixed(2) }));
-  }
+  // the suggested threshold is in the learning status below (DetectorLearning)
   return parts.join(' · ');
 }
 
@@ -116,11 +115,21 @@ interface RowProps {
   projectId: string | null;
   onRemoved: () => Promise<void>;
   onCleared: (id: string) => Promise<void>;
+  onApplied: (threshold: number) => Promise<void>;
   onNote: (text: string) => void;
   onError: (text: string) => void;
 }
 
-function DetectorRow({ item, stats, projectId, onRemoved, onCleared, onNote, onError }: RowProps) {
+function DetectorRow({
+  item,
+  stats,
+  projectId,
+  onRemoved,
+  onCleared,
+  onApplied,
+  onNote,
+  onError,
+}: RowProps) {
   const { where, detector: d } = item;
   const [open, setOpen] = useState<'export' | 'remove' | 'clear' | null>(null);
   const [leaveOut, setLeaveOut] = useState(false);
@@ -199,8 +208,18 @@ function DetectorRow({ item, stats, projectId, onRemoved, onCleared, onNote, onE
             {item.modelMismatch && <ModelMismatchMark testId={`dl-mismatch-${d.id}`} />}
           </div>
         </td>
-        <td className="dl-stats" data-testid={`dl-stats-${d.id}`}>
-          {stats ? statsText(stats) : t('detect.preset.library.statsFailed')}
+        <td className="dl-stats">
+          <span data-testid={`dl-stats-${d.id}`}>
+            {stats ? statsText(stats) : t('detect.preset.library.statsFailed')}
+          </span>
+          {stats && (
+            <DetectorLearning
+              detectorId={d.id}
+              stats={stats}
+              threshold={d.threshold}
+              onApplied={onApplied}
+            />
+          )}
         </td>
         <td className="nowrap pack-acts">
           {open === 'remove' &&
@@ -349,6 +368,10 @@ export function DetectorLibrary() {
     setNote(null);
     setError(text);
   };
+  const applied = async (threshold: number) => {
+    await reload();
+    say(t('detect.learn.applied', { value: threshold.toFixed(2) }));
+  };
 
   const importFile = async (req: ImportRequest = { where: 'library' }) => {
     setImporting(true);
@@ -477,6 +500,7 @@ export function DetectorLibrary() {
                         projectId={projectId}
                         onRemoved={reload}
                         onCleared={cleared}
+                        onApplied={applied}
                         onNote={say}
                         onError={fail}
                       />

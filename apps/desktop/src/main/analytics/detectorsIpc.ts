@@ -13,6 +13,7 @@ import {
   type DetectorOptions,
 } from './detectors';
 import type { AnalyticsPack } from './pack';
+import { readApplied, withApplied } from './thresholds';
 
 export interface DetectorsIpcDeps {
   handle: <C extends IpcChannel>(channel: C, handler: Handler<C>) => void;
@@ -49,7 +50,8 @@ export function registerDetectorsIpc(d: DetectorsIpcDeps): void {
       pack: await d.pack(),
       userData: d.userData(),
     }));
-    return { items: await listDetectors(o) };
+    // a threshold applied from the review ledger stands in for the detector's own
+    return { items: withApplied(await listDetectors(o), await readApplied(d.userData())) };
   });
   d.handle('detectors:save', async ({ where, projectId, detector }) => {
     try {

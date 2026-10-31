@@ -374,7 +374,6 @@ export const enInspect = {
   'detect.preset.library.hitRate': '{pct}% hit rate',
   'detect.preset.library.reviewed': '{n} reviewed',
   'detect.preset.library.missed': '{n} missed',
-  'detect.preset.library.suggested': 'suggested threshold {value}',
   'detect.preset.library.import': 'Import',
   'detect.preset.library.importHint': 'Add a detector file (.aiodet) to My library.',
   'detect.preset.library.conflict':
@@ -394,6 +393,14 @@ export const enInspect = {
   'detect.preset.library.clearConfirm': 'Clear history',
   'detect.preset.library.keep': 'Keep',
   'detect.preset.library.cancel': 'Cancel',
+  'detect.learn.counting': '{n} of {need} reviews before a threshold is suggested',
+  'detect.learn.noSuggestion': 'No suggested threshold yet',
+  'detect.learn.suggested': 'Suggested threshold {value}, in use {current}',
+  'detect.learn.inUse': 'Suggested threshold {value} is in use',
+  'detect.learn.apply': 'Apply suggested threshold',
+  'detect.learn.applied': 'Threshold {value} applied. The next run uses it.',
+  'detect.learn.tip':
+    'Learning from your reviews: accepted and rejected crops are shown to the model as examples on the next run. After {need} reviews a threshold is suggested; it is used only once you apply it.',
   'detect.preset.hiddenByBar_one': '· {count} hidden by the bar',
   'detect.preset.hiddenByBar_other': '· {count} hidden by the bar',
 

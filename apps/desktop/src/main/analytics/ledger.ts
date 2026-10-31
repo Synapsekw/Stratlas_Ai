@@ -74,7 +74,7 @@ export async function readLedger(dir: string, detectorId: string): Promise<Ledge
  * A candidate reviewed twice (accepted, then reopened and rejected) has two lines: only the latest
  * counts. Lines without a `detectionId` all count. Order is the file's.
  */
-function latestPerDetection(entries: readonly LedgerEntry[]): LedgerEntry[] {
+export function latestPerDetection(entries: readonly LedgerEntry[]): LedgerEntry[] {
   const last = new Map<string, number>();
   entries.forEach((e, i) => {
     if (e.detectionId !== undefined) last.set(e.detectionId, i);

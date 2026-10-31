@@ -181,14 +181,63 @@ describe('Settings, detector library', () => {
     expect(q('dl-mismatch-flue')).toBeNull();
   });
 
-  it('shows the hit rate, misses and suggested threshold', async () => {
+  it('shows the hit rate and misses, and the suggested threshold in the learning status', async () => {
     await show([item('library', det('chimney'))], {
       chimney: { accepted: 9, rejected: 3, misses: 2, suggestedThreshold: 0.85 },
     });
     expect(callsOf('ledger:stats')[0]?.req).toEqual({ detectorId: 'chimney' });
-    expect(q('dl-stats-chimney')?.textContent).toBe(
-      '75% hit rate · 12 reviewed · 2 missed · suggested threshold 0.85',
+    expect(q('dl-stats-chimney')?.textContent).toBe('75% hit rate · 12 reviewed · 2 missed');
+    expect(q('dl-learn-status-chimney')?.textContent).toBe('Suggested threshold 0.85, in use 0.80');
+  });
+
+  it('counts reviews toward a suggestion, with no apply button', async () => {
+    await show([item('library', det('chimney'))], {
+      chimney: { accepted: 5, rejected: 2, misses: 0, suggestedThreshold: null },
+    });
+    expect(q('dl-learn-status-chimney')?.textContent).toBe(
+      '7 of 20 reviews before a threshold is suggested',
     );
+    expect(q('dl-learn-apply-chimney')).toBeNull();
+  });
+
+  it('no learning status without reviews', async () => {
+    await show([item('library', det('chimney'))]);
+    expect(q('dl-learn-chimney')).toBeNull();
+  });
+
+  it('a suggestion already in use has no apply button', async () => {
+    installPack();
+    await show([item('shipped', det('rust', { threshold: 0.85 }))], {
+      rust: { accepted: 20, rejected: 4, misses: 0, suggestedThreshold: 0.85 },
+    });
+    expect(q('dl-learn-status-rust')?.textContent).toBe('Suggested threshold 0.85 is in use');
+    expect(q('dl-learn-apply-rust')).toBeNull();
+  });
+
+  it('apply calls ledger:applyThreshold, reads the library again and says so', async () => {
+    installPack();
+    const stats = { accepted: 20, rejected: 4, misses: 0, suggestedThreshold: 0.85 };
+    await show([item('shipped', det('rust'))], { rust: stats });
+    expect(callsOf('ledger:applyThreshold')).toHaveLength(0);
+    h.answers.set('ledger:applyThreshold', () => ({ ok: true, threshold: 0.85 }));
+    h.answers.set('detectors:list', () => ({
+      items: [item('shipped', det('rust', { threshold: 0.85 }))],
+    }));
+    await click(q('dl-learn-apply-rust'));
+    expect(callsOf('ledger:applyThreshold')[0]?.req).toEqual({ detectorId: 'rust' });
+    expect(q('dl-note')?.textContent).toBe('Threshold 0.85 applied. The next run uses it.');
+    expect(q('dl-learn-status-rust')?.textContent).toBe('Suggested threshold 0.85 is in use');
+    expect(q('dl-learn-apply-rust')).toBeNull();
+  });
+
+  it('a failed apply shows why and keeps the button', async () => {
+    await show([item('library', det('chimney'))], {
+      chimney: { accepted: 20, rejected: 4, misses: 0, suggestedThreshold: 0.6 },
+    });
+    h.answers.set('ledger:applyThreshold', () => ({ ok: false, error: 'Disk full.' }));
+    await click(q('dl-learn-apply-chimney'));
+    expect(q('dl-learn-chimney')?.textContent).toContain('Disk full.');
+    expect(q('dl-learn-apply-chimney')).not.toBeNull();
   });
 
   it('no reviews shows "No reviews yet"', async () => {

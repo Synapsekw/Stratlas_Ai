@@ -139,4 +139,47 @@ describe('ledger ipc', () => {
     expect(existsSync(join(ledgerDir(userData), 'crops', 'chimney'))).toBe(false);
     expect((await call('ledger:stats', { detectorId: 'flue' })).accepted).toBe(1);
   });
+
+  it('ledger:applyThreshold needs a suggestion, then lists the detector with it', async () => {
+    const crop = Buffer.from([1, 2]).toString('base64');
+    await call('detectors:save', { where: 'library', detector: det('chimney') });
+    expect(await call('ledger:applyThreshold', { detectorId: 'chimney' })).toMatchObject({
+      ok: false,
+    });
+    expect(await call('ledger:applyThreshold', { detectorId: '../x' })).toMatchObject({
+      ok: false,
+    });
+    // 12 right at 0.9 and 8 wrong at 0.6: the suggestion is above 0.6
+    for (let i = 0; i < 20; i++) {
+      const wrong = i < 8;
+      await call('ledger:append', {
+        entry: {
+          ...entry,
+          detectionId: `d${String(i)}`,
+          score: wrong ? 0.6 : 0.9,
+          verdict: wrong ? 'rejected' : 'accepted',
+        },
+        cropJpegBase64: crop,
+      });
+    }
+    const suggested = (await call('ledger:stats', { detectorId: 'chimney' })).suggestedThreshold;
+    expect(suggested).not.toBeNull();
+    const before = await call('detectors:list', {});
+    expect(before.items.find((i) => i.detector.id === 'chimney')?.detector.threshold).toBe(0.8);
+
+    expect(await call('ledger:applyThreshold', { detectorId: 'chimney' })).toEqual({
+      ok: true,
+      threshold: suggested,
+    });
+    const after = await call('detectors:list', {});
+    expect(after.items.find((i) => i.detector.id === 'chimney')?.detector.threshold).toBe(
+      suggested,
+    );
+    // clearing the review history keeps the applied threshold
+    await call('ledger:clear', { detectorId: 'chimney' });
+    const cleared = await call('detectors:list', {});
+    expect(cleared.items.find((i) => i.detector.id === 'chimney')?.detector.threshold).toBe(
+      suggested,
+    );
+  });
 });

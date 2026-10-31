@@ -80,7 +80,8 @@ function needRoot(o: DetectorOptions, where: DetectorSource): string {
   return root;
 }
 
-async function findFolder(
+/** The folder of a stored detector, or null when there is none (or it is not valid). */
+export async function detectorFolder(
   o: DetectorOptions,
   where: DetectorWhere,
   id: string,
@@ -159,7 +160,7 @@ export async function resolveDetectors(
 ): Promise<VlmDetector[]> {
   const out: VlmDetector[] = [];
   for (const ref of refs) {
-    const dir = await findFolder(o, ref.where, ref.id);
+    const dir = await detectorFolder(o, ref.where, ref.id);
     const d = dir ? await readOne(dir) : null;
     if (d === null) {
       throw new Error(`The detector "${ref.id}" (${ref.where}) is not there any more.`);
@@ -182,7 +183,7 @@ export async function exportDetector(
   dest: string,
   includeSamples: boolean,
 ): Promise<void> {
-  const dir = await findFolder(o, where, id);
+  const dir = await detectorFolder(o, where, id);
   const d = dir ? await readOne(dir) : null;
   if (dir === null || d === null) throw new Error(`There is no detector "${id}" to export.`);
   const stage = join(dirname(dest), `.aiodet-${randomBytes(6).toString('hex')}`);

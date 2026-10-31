@@ -44,6 +44,14 @@ describe('ProjectRegistry', () => {
     expect(reg.register(join(base, 'a', 'hcl'))).toBe('hcl');
     expect(reg.register(join(base, 'b', 'hcl'))).toBe('hcl-2');
   });
+
+  it('idOf finds a registered root and adds nothing for an unknown one', () => {
+    const reg = new ProjectRegistry();
+    reg.register(join(base, 'site-a'));
+    expect(reg.idOf(join(base, 'site-a'))).toBe('site-a');
+    expect(reg.idOf(join(base, 'site-b'))).toBeUndefined();
+    expect(reg.root('site-b')).toBeUndefined();
+  });
 });
 
 describe('withWalkLayers, trash', () => {

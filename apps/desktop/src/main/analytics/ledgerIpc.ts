@@ -14,6 +14,7 @@ import {
   readLedger,
   suggestThreshold,
 } from './ledger';
+import { applyThreshold } from './thresholds';
 
 /** 2 MB of bytes is about 2.8 M base64 characters; refuse before decoding. */
 const MAX_CROP_BASE64 = 2_800_000;
@@ -45,6 +46,18 @@ export function registerLedgerIpc(d: LedgerIpcDeps): void {
       return { accepted: 0, rejected: 0, misses: 0, suggestedThreshold: null };
     const entries = await readLedger(dir, detectorId);
     return { ...ledgerStats(entries), suggestedThreshold: suggestThreshold(entries) };
+  });
+  d.handle('ledger:applyThreshold', async ({ detectorId }) => {
+    if (!isLedgerId(detectorId)) return { ok: false, error: 'That detector id is not valid.' };
+    try {
+      const threshold = suggestThreshold(await readLedger(dir, detectorId));
+      if (threshold === null)
+        return { ok: false, error: 'There is no suggested threshold yet: it needs 20 reviews.' };
+      await applyThreshold(d.userData, detectorId, threshold);
+      return { ok: true, threshold };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
   });
   d.handle('ledger:clear', async ({ detectorId }) => {
     if (!isLedgerId(detectorId)) return { ok: false, error: 'That detector id is not valid.' };

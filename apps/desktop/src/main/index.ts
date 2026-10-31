@@ -225,7 +225,8 @@ import { registerDetectorsIpc } from './analytics/detectorsIpc';
 import { createLocalAsk } from './analytics/ask';
 import { detectJobGate, detectLane } from './analytics/gate';
 import { checkHardware, execNvidiaSmi } from './analytics/hardware';
-import { registerLedgerIpc } from './analytics/ledgerIpc';
+import { ledgerDir, registerLedgerIpc } from './analytics/ledgerIpc';
+import { runExamples } from './analytics/fewShot';
 import { DETECT_PACK_FEATURE, detectPackRefusal } from './analytics/detectPack';
 import { localVlmModel } from './analytics/models';
 import { findAnalyticsPack, unusablePacks } from './analytics/pack';
@@ -1069,6 +1070,14 @@ const detectQueue = detectLane({
         const j = jobStore.get(id);
         if (j) jobStore.put({ ...j, params: { ...j.params, ...model } }, true);
       },
+      examples: (o, refs, stored) =>
+        runExamples(
+          o,
+          refs,
+          stored,
+          ledgerDir(app.getPath('userData')),
+          o.projectDir ? (registry.idOf(o.projectDir) ?? null) : null,
+        ),
     }),
   start: (req) => jobs.start(req),
   jobs: () => jobStore.all(),

@@ -9,7 +9,7 @@ uv run --project python python tools/detectors/bench.py \
   --project <dir> [--project <dir>...] --detector <detector.json> --server <url> \
   --split tune|bench [--truth-class <id>...] [--threshold 0.8] [--iou 0.3] [--limit 50] \
   [--model <id>] [--api-key <key>] [--compare <ref.json>] [--tolerance 0.05] \
-  [--write-reference <ref.json>] --out <dir>
+  [--write-reference <ref.json>] [--example is=<crop> --example is-not=<crop>...] --out <dir>
 ```
 
 - `--server` is a running `llama-server` (loopback). `--api-key` defaults to the `LLAMA_API_KEY`
@@ -18,6 +18,10 @@ uv run --project python python tools/detectors/bench.py \
   answers `bbox_2d` in 0 to 1000 of the sent image, anything else (Qwen2.5-VL) in sent pixels. Without it
   the bench asks `GET /v1/models` of `--server` and falls back to pixels. The model id goes into the
   report and the reference.
+- `--example is=<crop>` / `--example is-not=<crop>` (at most 2 of each) puts few-shot example crops
+  into every yes/no check, as a `detect.vlm` run does with the crops the app picks from the detector's
+  `examples` and the review ledger. The report's `examples` says how many were used. Bench with and
+  without them on the same split to see what they change.
 - `--project` may repeat. `--limit` caps the photos per project, read in id order. With several
   projects a photo key is `<project folder>/<photo id>`, so two projects with the same folder name are
   refused.

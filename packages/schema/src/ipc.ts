@@ -4592,6 +4592,14 @@ export const ipc = {
       suggestedThreshold: z.number().nullable(),
     }),
   },
+  /**
+   * Apply the ledger's suggested threshold to a detector on this computer (the user's click; main
+   * works the suggestion out again). `detectors:list` then reports the detector with it.
+   */
+  'ledger:applyThreshold': {
+    request: z.object({ detectorId: z.string().min(1) }).strict(),
+    response: z.union([z.object({ ok: z.literal(true), threshold: z.number() }), DetectorFailure]),
+  },
   /** Forget a detector's review history: its ledger lines and crops. */
   'ledger:clear': {
     request: z.object({ detectorId: z.string().min(1) }).strict(),

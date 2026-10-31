@@ -22,6 +22,7 @@ import {
   type GateDeps,
   type StartRequest,
 } from './gate';
+import type { FewShotExample } from './fewShot';
 import type { AnalyticsPack } from './pack';
 
 const SHA = 'd'.repeat(64);
@@ -221,6 +222,54 @@ describe('detectJobGate', () => {
       'stored shipped crack',
     ]);
     expect(items.map((i) => i.threshold)).toEqual([0.7, 0.9]);
+  });
+
+  it('adds each detector its example crops, and drops examples the window sent', async () => {
+    const examples = vi.fn((): Promise<FewShotExample[][]> =>
+      Promise.resolve([
+        [{ file: 'C:/user/detector-ledger/crops/rust/3.jpg', verdict: 'is-not' }],
+        [],
+      ]),
+    );
+    const { d } = deps({ examples });
+    const req = newRequest();
+    if (!('params' in req)) throw new Error('expected a new request');
+    const sent = req.params.detectors as Record<string, unknown>[];
+    sent[1] = { ...sent[1], examples: [{ file: 'C:/evil.jpg', verdict: 'is' }] };
+    const r = await detectJobGate(req, d);
+    if (!('req' in r) || !('params' in r.req)) throw new Error('expected a request');
+    expect(examples).toHaveBeenCalledWith(
+      { pack: PACK, userData: 'C:/user', projectDir: 'D:/projects/site' },
+      [
+        { where: 'library', id: 'rust' },
+        { where: 'shipped', id: 'crack' },
+      ],
+      expect.any(Array),
+    );
+    const items = r.req.params.detectors as Record<string, unknown>[];
+    expect(items[0]?.examples).toEqual([
+      { file: 'C:/user/detector-ledger/crops/rust/3.jpg', verdict: 'is-not' },
+    ]);
+    expect(items[1] && 'examples' in items[1]).toBe(false);
+  });
+
+  it('a failing example picker never stops the run', async () => {
+    const { d } = deps({ examples: () => Promise.reject(new Error('disk')) });
+    const r = await detectJobGate(newRequest(), d);
+    if (!('req' in r) || !('params' in r.req)) throw new Error('expected a request');
+    const items = r.req.params.detectors as Record<string, unknown>[];
+    expect(items.every((i) => !('examples' in i))).toBe(true);
+  });
+
+  it('the e2e seam adds examples too', async () => {
+    const { d } = deps({
+      env: { QUADRION_VLM_SERVER_URL: 'http://127.0.0.1:40000' },
+      examples: () => Promise.resolve([[{ file: 'C:/x/1.jpg', verdict: 'is' }], []]),
+    });
+    const r = await detectJobGate(newRequest(), d);
+    if (!('req' in r) || !('params' in r.req)) throw new Error('expected a request');
+    const items = r.req.params.detectors as Record<string, unknown>[];
+    expect(items[0]?.examples).toEqual([{ file: 'C:/x/1.jpg', verdict: 'is' }]);
   });
 
   it('a detector that is gone refuses', async () => {
