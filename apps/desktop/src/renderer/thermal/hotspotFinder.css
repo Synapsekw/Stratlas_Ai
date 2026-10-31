@@ -1,0 +1,7 @@
+/* The Find hot spots row of the thermal bench: the button, then the progress or result line. */
+.th-find {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-4);
+}

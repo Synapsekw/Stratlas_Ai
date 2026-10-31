@@ -6,6 +6,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { jobs, shell } from '../../../shell';
+import { hotspotFinder } from '../../../thermal/findHotspots';
 import type * as RasterModule from '../../../thermal/raster';
 import type { ThermalRaster } from '../../../thermal/raster';
 import { useThermal } from '../../../thermal/thermalStore';
@@ -443,5 +444,76 @@ describe('ThermalBench', () => {
     render();
     expect(byId('thermal-status')?.textContent).toBe('No thermal photos in this dataset.');
     expect(byId('thermal-filmstrip')).toBeNull();
+    expect(byId('thermal-find')).toBeNull();
+  });
+});
+
+describe('Find hot spots', () => {
+  beforeEach(() => {
+    hotspotFinder.setState({ find: null });
+  });
+
+  it('starts thermal.hotspots on the dataset with the delta rule at 4 °C', async () => {
+    const startQuiet = vi.fn(() => Promise.resolve({ error: 'Not now.' }));
+    jobs.setState({ startQuiet } as never);
+    render();
+    const button = byId('thermal-find');
+    expect(button?.textContent).toBe('Find hot spots');
+    click(button);
+    await vi.waitFor(() => {
+      expect(startQuiet).toHaveBeenCalledWith({
+        pipeline: 'thermal.hotspots',
+        project: 'C:/p',
+        params: { layerId: 'th', rule: 'delta', thresholdC: 4 },
+      });
+    });
+    // a refused start says why, in the error style
+    await vi.waitFor(() => {
+      expect(byId('thermal-find-result')?.textContent).toBe('Not now.');
+    });
+    expect(byId('thermal-find-result')?.classList.contains('th-error')).toBe(true);
+  });
+
+  it('says it is looking, then how many it found', () => {
+    hotspotFinder.setState({ find: { layerId: 'th', phase: 'running', count: null, error: null } });
+    render();
+    expect(byId('thermal-find-progress')?.textContent).toBe('Looking for hot spots');
+    expect((byId('thermal-find') as HTMLButtonElement).disabled).toBe(true);
+    act(() => {
+      hotspotFinder.setState({ find: { layerId: 'th', phase: 'done', count: 3, error: null } });
+    });
+    expect(byId('thermal-find-result')?.textContent).toBe(
+      '3 possible hot spots. Review them in Inspect.',
+    );
+    act(() => {
+      hotspotFinder.setState({ find: { layerId: 'th', phase: 'done', count: 1, error: null } });
+    });
+    expect(byId('thermal-find-result')?.textContent).toBe(
+      '1 possible hot spot. Review it in Inspect.',
+    );
+    act(() => {
+      hotspotFinder.setState({ find: { layerId: 'th', phase: 'done', count: 0, error: null } });
+    });
+    expect(byId('thermal-find-result')?.textContent).toBe(
+      'No spot is 4 °C or more above its surroundings.',
+    );
+    act(() => {
+      hotspotFinder.setState({ find: { layerId: 'th', phase: 'done', count: null, error: null } });
+    });
+    expect(byId('thermal-find-result')?.textContent).toBe('Done. Review hot spots in Inspect.');
+  });
+
+  it('waits while a decode of the dataset runs', () => {
+    jobs.setState({
+      jobs: [{ id: 'j', pipeline: 'thermal.decode', status: 'running', params: { layerId: 'th' } }],
+    } as never);
+    render();
+    expect((byId('thermal-find') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('is not offered read-only', () => {
+    useThermal.setState({ readOnly: true });
+    render();
+    expect(byId('thermal-find')).toBeNull();
   });
 });

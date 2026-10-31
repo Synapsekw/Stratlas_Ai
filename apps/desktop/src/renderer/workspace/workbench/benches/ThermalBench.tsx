@@ -7,7 +7,7 @@
  * settings line with Edit, and the filmstrip of the dataset's thermal photos.
  *
  * Room is kept for the M2 tool rail (above the photo) and the M3 hot-spot list (above the
- * filmstrip). Opening it in a project folder decodes the thermal photos that have no raster yet; a
+ * filmstrip, where Find hot spots sits for now). Opening it in a project folder decodes the thermal photos that have no raster yet; a
  * read-only bench never decodes and shows only the rasters that exist.
  */
 import { useAnnotateReadOnly } from '@aio/annotate';
@@ -17,6 +17,7 @@ import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useState } from 'react';
 import { useJobs, useShell } from '../../../shell';
 import { Filmstrip, type StripPhoto } from '../../../thermal/Filmstrip';
+import { HotspotFinder } from '../../../thermal/HotspotFinder';
 import { PaletteBar } from '../../../thermal/PaletteBar';
 import { effectiveSettings, settingsDiffer } from '../../../thermal/settings';
 import type { SettingsScope } from '../../../thermal/SettingsEditor';
@@ -200,6 +201,9 @@ export function ThermalBench() {
         </>
       )}
       {/* M3: the hot-spot list sits here */}
+      {photos.length > 0 && (
+        <HotspotFinder projectId={project.id} layerId={th.layerId} readOnly={readOnly} />
+      )}
       {photos.length > 0 && (
         <Filmstrip
           projectId={project.id}
