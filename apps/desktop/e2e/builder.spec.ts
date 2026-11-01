@@ -211,7 +211,10 @@ test('a new project from the wizard, raw photos and a model, georeferenced by ty
     const lz = 2 * (-Math.sin(a) * x + Math.cos(a) * z) - 3;
     return [o[0] + lx, o[1] - lz, 30 + 2 * y + 1];
   };
-  for (const h of spread(await layerHits(win, 'mesh-pad'))) {
+  const padHits = await layerHits(win, 'mesh-pad');
+  // points the user can click, none under an overlay: enough to spread three
+  expect(padHits.length).toBeGreaterThanOrEqual(3);
+  for (const h of spread(padHits)) {
     await align.getByTestId('pick-model').click();
     await win.mouse.click(h.x, h.y);
     const text = (await align.getByTestId('align-pending').textContent()) ?? '';
@@ -328,7 +331,10 @@ test('a Pix4D export stands up with its texture, and a far one offers to re-cent
     ];
   };
   const [ne = 0, nn = 0, nh = 0] = after.origin;
-  for (const h of spread(await layerHits(win, meshId))) {
+  const meshHits = await layerHits(win, meshId);
+  // points the user can click, none under an overlay: enough to spread three
+  expect(meshHits.length).toBeGreaterThanOrEqual(3);
+  for (const h of spread(meshHits)) {
     await align.getByTestId('pick-model').click();
     await win.mouse.click(h.x, h.y);
     const text = (await align.getByTestId('align-pending').textContent()) ?? '';
