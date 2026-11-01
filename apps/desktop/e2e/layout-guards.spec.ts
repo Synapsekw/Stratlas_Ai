@@ -255,8 +255,9 @@ test.describe('a clicked pile in Selection', () => {
   }) => {
     test.setTimeout(10 * 60_000);
     await openDemo(win, quarryProject.name, quarryProject.id);
-    const view = await volumesView(win);
-    await expect(view.getByTestId('volumes-pile')).toHaveCount(4, { timeout: 120_000 });
+    await expect((await volumesView(win)).getByTestId('volumes-pile')).toHaveCount(4, {
+      timeout: 120_000,
+    });
     // every survey prepared, so the figures are the real ones (pile-panel.spec.ts)
     const strip = win.getByRole('region', { name: 'Survey dates chart' });
     await expect(strip.locator('[data-survey][data-state="ready"]')).toHaveCount(3, {
@@ -291,6 +292,8 @@ test.describe('a clicked pile in Selection', () => {
       [1440, 900],
     ] as const) {
       await resize(app, win, w, h);
+      // a picked pile brings Selection forward: back to Project > Volumes each time
+      const view = await volumesView(win);
       await expect(view.getByTestId('volumes-kpi')).toBeVisible();
       await expectNoClippedText(win, ['[data-testid="volumes-kpi"] b'], 'Volumes figures cut');
       await view.getByTestId('volumes-pile').filter({ hasText: 'Stockpile SP1' }).click();
