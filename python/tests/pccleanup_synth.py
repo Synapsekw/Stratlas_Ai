@@ -10,8 +10,8 @@ from pathlib import Path
 
 import numpy as np
 
+from aio_pipelines import pointcloud as pc  # read at call time: a test may patch it meanwhile
 from aio_pipelines.change.las import write_las
-from aio_pipelines.pointcloud import find_pdal, pdal_env
 
 E0, N0 = 500000.0, 3200000.0
 EPSG = 32639
@@ -39,11 +39,11 @@ def write_las14(path: Path, xyz: np.ndarray, cls: np.ndarray) -> Path:
 
 
 def _pdal(stages: list, where: Path) -> None:
-    pdal = find_pdal()
+    pdal = pc.find_pdal()
     assert pdal, "PDAL not found (set AIO_PDAL)"
     pipe = where.with_suffix(".pipeline.json")
     pipe.write_text(json.dumps({"pipeline": stages}))
-    subprocess.run([pdal, "pipeline", str(pipe)], check=True, capture_output=True, env=pdal_env(pdal))
+    subprocess.run([pdal, "pipeline", str(pipe)], check=True, capture_output=True, env=pc.pdal_env(pdal))
     pipe.unlink()
 
 

@@ -21,6 +21,7 @@ from typing import Any
 
 import numpy as np
 
+from .. import pointcloud as pc
 from ..change.sources import height_offset_m
 from ..params import known_keys, number, text
 from ..pointcloud import (
@@ -30,7 +31,6 @@ from ..pointcloud import (
     UNTWINE_TEMP_BYTES_PER_POINT,
     _run,
     check_space,
-    find_pdal,
     las_record_length,
     read_summary,
 )
@@ -108,7 +108,8 @@ def _cloud_layer(project: Path, layer_id: str, src: str) -> dict[str, Any]:
 
 
 def _pdal() -> str:
-    pdal = find_pdal()
+    # read through the module at call time: a name bound at import keeps whatever was there then
+    pdal = pc.find_pdal()
     if not pdal:
         raise JobError(PDAL_MISSING)
     return pdal
