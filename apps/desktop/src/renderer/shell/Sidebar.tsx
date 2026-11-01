@@ -289,7 +289,7 @@ export function Datasets() {
     () =>
       project && index && datesOn
         ? buildDateTree(
-            project.manifest,
+            scopedManifest(project.manifest, spaceId),
             issues,
             durations,
             index,
@@ -321,6 +321,7 @@ export function Datasets() {
         : [],
     [
       project,
+      spaceId,
       index,
       datesOn,
       issues,
@@ -1015,7 +1016,10 @@ export function Datasets() {
           {/* a retired viewer of an older project has no row, so it is not counted */}
           {!marking && (
             <span className="mono faint">
-              {project.manifest.layers.filter((l) => l.kind !== 'legacy').length}
+              {
+                scopedManifest(project.manifest, spaceId).layers.filter((l) => l.kind !== 'legacy')
+                  .length
+              }
             </span>
           )}
         </span>
