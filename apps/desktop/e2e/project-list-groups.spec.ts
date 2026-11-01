@@ -1,8 +1,9 @@
 /**
  * The groups of the right panel's Project > In this project list in the real app, and the order a
  * project's category gives them: a telecom project lists Antennas, Sectors, Coverage plan,
- * Measurements, Issues; a survey project Measurements then Issues, with no tower group or
- * Telecom tool even with an antenna inventory and an RF plan on disk. A measurement picked in the
+ * Measurements, Issues; a survey project Measurements then Issues, with no tower group even with
+ * an antenna inventory and an RF plan on disk, its Telecom tools still reachable (folded, below
+ * Polygon: a project type sets defaults, never gates a tool). A measurement picked in the
  * left tree opens its card in Selection and is the selected row in Measurements, an issue row
  * opens the issue's card in Selection, a saved sector shows its bearing and opens in Coverage, and
  * the new project wizard offers Telecom towers. The inventory is the synthetic RF fixture; nothing
@@ -150,7 +151,7 @@ test.describe('project list: groups and category order', () => {
     await evidence(win, 'a-telecom-order', true);
   });
 
-  test('a survey project lists Measurements then Issues and offers no Telecom tools, antennas on disk or not', async ({
+  test('a survey project lists Measurements then Issues and keeps the Telecom tools reachable, folded below Polygon', async ({
     win,
     dataRoot,
   }) => {
@@ -160,10 +161,22 @@ test.describe('project list: groups and category order', () => {
     const { order, open } = await groups(win);
     expect(order).toEqual(['Measurements', 'Issues']);
     expect(open).toEqual(['Measurements']);
-    // the catalogue is there (Polygon, Tools > Measure), only its Telecom family is not
-    await measureBench(win);
+    // the catalogue is whole (Tools > Measure): the project type never gates a tool (founder,
+    // 30 Oct 2026), so the Telecom family is there, folded by default and below Polygon
+    const bench = await measureBench(win);
     await expect(win.getByTestId('wb-section-polygon')).toHaveCount(1);
-    await expect(win.getByTestId('wb-section-telecom')).toHaveCount(0);
+    const telecom = win.getByTestId('wb-section-telecom');
+    await expect(telecom).toHaveCount(1);
+    await expect(telecom.locator('.wb-section-head').first()).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    const families = await bench
+      .locator('[data-testid^="wb-section-"]')
+      .evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')));
+    expect(families.indexOf('wb-section-telecom')).toBeGreaterThan(
+      families.indexOf('wb-section-polygon'),
+    );
     await evidence(win, 'b-survey-order', true);
   });
 
