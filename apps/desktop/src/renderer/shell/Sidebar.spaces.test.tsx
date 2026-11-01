@@ -106,4 +106,25 @@ describe('the Layers column in a project with several spaces', () => {
     expect(rows()).toEqual(expect.arrayContaining(['lb', 'lb2']));
     expect(count()).toBe('2');
   });
+
+  it('counts only the active space issues', () => {
+    setActiveSpace('p', 's-b');
+    const issue = (id: string, layer: string) =>
+      ({ id, status: 'open', sightings: [{ layer }] }) as never;
+    render(undated);
+    act(() => {
+      workspace.setState({ issues: [issue('i1', 'la'), issue('i2', 'la'), issue('i3', 'lb')] });
+    });
+    for (const t of document.body.querySelectorAll<HTMLElement>(
+      '[data-testid^="tree-group-toggle-"][aria-expanded="false"]',
+    ))
+      act(() => {
+        t.click();
+      });
+    // two issues are seen in the other space: the Annotations group and its Issues row say 1
+    const text = document.body.textContent;
+    expect(text).toContain('Annotations · 1');
+    expect(text).toContain('Issues1');
+    expect(text).not.toContain('Annotations · 3');
+  });
 });

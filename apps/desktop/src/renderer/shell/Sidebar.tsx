@@ -85,7 +85,7 @@ import { walkFilesMissing, walkRecordKey } from '../walks/walkStore';
 import { useCaptureIndex } from '../workspace/compare';
 import { flightPathShown, toggleFlightPath } from '../workspace/flightPaths';
 import { useActiveSpace } from '../spaces/activeSpace';
-import { scopedManifest } from '../spaces/spaceModel';
+import { issuesInSpace, scopedManifest, switcherShown } from '../spaces/spaceModel';
 import { updateFlightPaths, useFlightPathModel } from '../workspace/pathModel';
 import { selectClip } from '../workspace/pickClip';
 import { timeline, useTimeline } from '../workspace/timeline';
@@ -264,16 +264,24 @@ export function Datasets() {
     [hiddenMeasurements],
   );
   const { spaceId } = useActiveSpace();
+  // with more than one space the tree counts the active space's issues (as the Issues screen does)
+  const spaceIssues = useMemo(
+    () =>
+      project && switcherShown(project.manifest)
+        ? issuesInSpace(project.manifest, issues, spaceId)
+        : issues,
+    [project, issues, spaceId],
+  );
   const groups = useMemo(
     () =>
       project
-        ? buildDatasetTree(scopedManifest(project.manifest, spaceId), issues, durations, {
+        ? buildDatasetTree(scopedManifest(project.manifest, spaceId), spaceIssues, durations, {
             unplaced,
             measurements: measureItems,
             measurementIds: measureIds,
           })
         : [],
-    [project, spaceId, issues, durations, unplaced, measureItems, measureIds],
+    [project, spaceId, spaceIssues, durations, unplaced, measureItems, measureIds],
   );
   const t = useT();
   const index = useCaptureIndex();
@@ -290,7 +298,7 @@ export function Datasets() {
       project && index && datesOn
         ? buildDateTree(
             scopedManifest(project.manifest, spaceId),
-            issues,
+            spaceIssues,
             durations,
             index,
             {
@@ -324,7 +332,7 @@ export function Datasets() {
       spaceId,
       index,
       datesOn,
-      issues,
+      spaceIssues,
       durations,
       t,
       unplaced,
