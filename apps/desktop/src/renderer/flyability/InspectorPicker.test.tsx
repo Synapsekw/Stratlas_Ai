@@ -109,6 +109,8 @@ describe('inspector picker', () => {
     });
     expect((byId('inspector-flight-g0') as HTMLInputElement).disabled).toBe(true);
     expect(byId('inspector-note-g0')?.textContent).toBe('No point cloud or path');
+    // the reason is tied to its checkbox for screen readers
+    expect(byId('inspector-flight-g0')?.getAttribute('aria-describedby')).toBe('inspector-note-g0');
     expect(byId('inspector-tick-b')?.getAttribute('aria-describedby')).toBe('inspector-merge-b');
     expect(document.getElementById('inspector-merge-b')?.textContent).toBe(
       'Already imported, will merge',

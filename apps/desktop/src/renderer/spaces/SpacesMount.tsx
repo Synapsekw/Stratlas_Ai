@@ -49,7 +49,13 @@ export function SpacesMount({ stage }: { stage: EngineStage | null }): null {
   const manifest = project?.manifest;
 
   // (1) scope the layers to the space once per switch (and once per project opened)
-  const last = useRef<{ key: string; space: string; memory: SpaceMemory } | null>(null);
+  const last = useRef<{
+    key: string;
+    space: string;
+    memory: SpaceMemory;
+    /** The layers already seen, so a later import is told apart from what was there at open. */
+    known: Set<string>;
+  } | null>(null);
   useEffect(() => {
     const m = workspace.getState().project?.manifest;
     if (!m || projectId === null) {
@@ -69,12 +75,36 @@ export function SpacesMount({ stage }: { stage: EngineStage | null }): null {
           .filter((l) => cur[l.id])
           .map((l) => l.id);
     const r = scopeChange(m, prev?.space ?? null, spaceId, cur, memory);
-    last.current = { key, space: spaceId, memory: r.memory };
+    last.current = {
+      key,
+      space: spaceId,
+      memory: r.memory,
+      known: prev?.known ?? new Set(m.layers.map((l) => l.id)),
+    };
     // only the changes: an intent that already holds must not re-render everyone
     const show = r.show.filter((id) => cur[id]);
     const hide = r.hide.filter((id) => !cur[id]);
     if (show.length > 0 || hide.length > 0) workspace.getState().applyVisibility(show, hide);
   }, [projectId, openSeq, spaceId]);
+
+  // (1b) a layer that arrives after the project opened (an import, a new space) and is already
+  // hidden (saved `visible: false`) goes into its space's memory before the invariant below hides
+  // it with everything else, so entering that space later keeps it hidden. Runs ahead of the
+  // invariant so it still sees the hidden set as the import left it.
+  useEffect(() => {
+    const cur = last.current;
+    const m = workspace.getState().project?.manifest;
+    if (!cur || !m || cur.key !== `${projectId ?? ''}:${String(openSeq)}`) return;
+    const hiddenNow = workspace.getState().hidden;
+    for (const l of m.layers) {
+      if (cur.known.has(l.id)) continue;
+      cur.known.add(l.id);
+      const sp = l.space ?? 'main';
+      if (sp === cur.space) continue;
+      // an empty list still counts: a new space with nothing saved hidden shows all on entry
+      cur.memory[sp] = [...(cur.memory[sp] ?? []), ...(hiddenNow[l.id] ? [l.id] : [])];
+    }
+  }, [manifest, projectId, openSeq]);
 
   // The invariant behind (1): layers of another space never stay visible, whatever shows them
   // (an import finishing, a timeline date jump). Only the differences go out, so it settles after

@@ -91,6 +91,7 @@ export function InspectorPickerHost() {
                           <input
                             type="checkbox"
                             disabled={!importable(f)}
+                            aria-describedby={`inspector-note-${f.id}`}
                             checked={c.flights.includes(f.id)}
                             onChange={() => {
                               toggleFlightTick(i.id, f.id);
@@ -99,7 +100,11 @@ export function InspectorPickerHost() {
                           />
                           <span>{f.name}</span>
                         </label>
-                        <span className="fly-flight-note" data-testid={`inspector-note-${f.id}`}>
+                        <span
+                          className="fly-flight-note"
+                          id={`inspector-note-${f.id}`}
+                          data-testid={`inspector-note-${f.id}`}
+                        >
                           {importable(f) ? t(ALIGNED[f.aligned]) : t('fly.picker.noData')}
                         </span>
                       </li>

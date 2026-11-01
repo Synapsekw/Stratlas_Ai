@@ -314,6 +314,76 @@ describe('SpacesMount', () => {
     expect(workspace.getState().hidden).toEqual({ lm: true, lb: true });
   });
 
+  it('a layer imported later into another space and saved hidden stays hidden on entry', () => {
+    open(withSpaces([photos('lm'), photos('la', 's-a')]));
+    setActiveSpace('p1', 'main');
+    mount(null);
+    act(() => {
+      workspace
+        .getState()
+        .replaceManifest(
+          withSpaces([
+            photos('lm'),
+            photos('la', 's-a'),
+            { ...photos('lb', 's-a'), visible: false },
+          ]),
+        );
+    });
+    act(() => {
+      setActiveSpace('p1', 's-a');
+    });
+    expect(workspace.getState().hidden).toEqual({ lm: true, lb: true });
+  });
+
+  it('a space that appears later remembers its saved-hidden layers too', () => {
+    open(withSpaces([photos('lm'), photos('la', 's-a')]));
+    setActiveSpace('p1', 'main');
+    mount(null);
+    act(() => {
+      workspace.getState().replaceManifest(
+        ProjectManifest.parse({
+          ...base,
+          layers: [
+            photos('lm'),
+            photos('la', 's-a'),
+            photos('lc', 's-b'),
+            { ...photos('ld', 's-b'), visible: false },
+          ],
+          spaces: [
+            { id: 's-a', name: 'Inside', crs: { local: 'flyability' }, origin: [0, 0, 0] },
+            { id: 's-b', name: 'Other', crs: { local: 'flyability' }, origin: [0, 0, 0] },
+          ],
+        }),
+      );
+    });
+    act(() => {
+      setActiveSpace('p1', 's-b');
+    });
+    expect(workspace.getState().hidden).toEqual({ lm: true, la: true, ld: true });
+  });
+
+  it('a space that appears later with nothing hidden shows everything on entry', () => {
+    open(withSpaces([photos('lm'), photos('la', 's-a')]));
+    setActiveSpace('p1', 'main');
+    mount(null);
+    act(() => {
+      workspace.getState().replaceManifest(
+        ProjectManifest.parse({
+          ...base,
+          layers: [photos('lm'), photos('la', 's-a'), photos('lc', 's-b')],
+          spaces: [
+            { id: 's-a', name: 'Inside', crs: { local: 'flyability' }, origin: [0, 0, 0] },
+            { id: 's-b', name: 'Other', crs: { local: 'flyability' }, origin: [0, 0, 0] },
+          ],
+        }),
+      );
+    });
+    act(() => {
+      setActiveSpace('p1', 's-b');
+    });
+    expect(workspace.getState().hidden).toEqual({ lm: true, la: true });
+  });
+
   it('the issue register shows only the active space', () => {
     h.issues = [
       { id: 'i-main', sightings: [{ layer: 'lm' }] },
