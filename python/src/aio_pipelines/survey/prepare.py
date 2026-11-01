@@ -255,12 +255,15 @@ def read_cloud(
     from scipy import ndimage as ndi
 
     from ..change.surface import Surface
+    from ..spaces import require_project_frame
 
     s = Surface(ctx.project, manifest, {"layer": source["layer"], "kind": "cloud"})
+    # a survey surface is in the project CRS: a space of that CRS (another origin) is fine
+    require_project_frame(manifest, [s.layer], "so it cannot be made a survey surface", origin=False)
     pts = s.points(ctx)
     if len(pts) == 0:
         raise JobError(f'The point cloud "{s.name}" has no points.')
-    o = manifest.get("origin") or [0, 0, 0]
+    o = s.origin  # its space's origin, the one its points were read against
     e = pts[:, 0] + o[0]
     n = o[1] - pts[:, 2]
     z = pts[:, 1] + o[2]

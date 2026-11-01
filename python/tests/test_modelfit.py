@@ -392,3 +392,35 @@ def test_fit_points_carry_the_shift(tmp_path, monkeypatch, fmt):
     assert np.allclose(np.sort(moved[:, 0]), np.sort(plain[:, 0]) + 2.0, atol=2e-3)
     assert np.allclose(np.sort(moved[:, 1]), np.sort(plain[:, 1]), atol=2e-3)
     assert np.allclose(np.sort(moved[:, 2]), np.sort(plain[:, 2]) + 1.0, atol=2e-3)
+
+
+def test_fit_points_of_a_copc_in_a_space_are_read_against_the_space_origin(tmp_path, monkeypatch):
+    # a COPC holds its space's coordinates; kit- and png-packed clouds are already local to it
+    from types import SimpleNamespace
+
+    import aio_pipelines.pointcloud as pc
+    from aio_pipelines.modelfit.segment import load_layer_points
+    from synth_assets import write_las
+
+    pts = scene(np.random.default_rng(1))
+    project(tmp_path, pts, layer_format="copc")
+    monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+    monkeypatch.setattr(
+        pc, "_run", lambda ctx, cmd, label: write_las(pts, Path(cmd[-1]), offset=(500000, 3200000, 0))
+    )
+    manifest = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
+    out = {}
+    for name in ("plain", "spaced"):
+        job_dir = tmp_path / f"job-{name}"
+        job_dir.mkdir()
+        ctx = SimpleNamespace(project=tmp_path, check=lambda: None, job=SimpleNamespace(dir=job_dir))
+        if name == "spaced":
+            manifest["spaces"] = [
+                {"id": "tank", "name": "Tank", "crs": manifest["crs"], "origin": [500010, 3200020, 3]}
+            ]
+            manifest["layers"][0]["space"] = "tank"
+        out[name] = load_layer_points(ctx, manifest, "scan", 0.0)
+    plain, spaced = out["plain"], out["spaced"]
+    assert np.allclose(np.sort(spaced[:, 0]), np.sort(plain[:, 0]) - 10.0, atol=2e-3)
+    assert np.allclose(np.sort(spaced[:, 1]), np.sort(plain[:, 1]) - 3.0, atol=2e-3)
+    assert np.allclose(np.sort(spaced[:, 2]), np.sort(plain[:, 2]) + 20.0, atol=2e-3)

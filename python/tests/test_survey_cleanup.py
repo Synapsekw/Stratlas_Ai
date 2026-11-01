@@ -534,3 +534,34 @@ def test_dtm_filter_follows_a_turned_line_up(tmp_path, monkeypatch):
     run_job(pipeline(), tmp_path, {"surface": "dtm", "edits": [], "out": "dtm-clean"}, job_id="j2")
     clean = json.loads((tmp_path / "survey" / "surfaces" / "dtm-clean" / "tiles.json").read_text("utf-8"))
     assert clean["dateTurn"] == turn and clean["dateShiftM"] == meta["dateShiftM"]
+
+
+def test_a_kit_packed_cloud_in_a_space_is_handed_to_pdal_at_its_space_origin(tmp_path):
+    # kit-packed points are local: PDAL gets them in the space's coordinates, not the project's
+    from types import SimpleNamespace
+
+    import aio_pipelines.survey.cleanup as cl
+    from imagery_synth import ORIGIN, surface_project
+
+    surface_project(tmp_path, kinds=("cloud", "cloud"))
+    ctx = SimpleNamespace(
+        project=tmp_path,
+        check=lambda: None,
+        log=lambda *a, **k: None,
+        stage=lambda rel: (
+            (tmp_path / "stage" / rel).parent.mkdir(parents=True, exist_ok=True) or tmp_path / "stage" / rel
+        ),
+    )
+    m = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
+
+    def text_points(manifest):
+        reader = cl._cloud_reader(ctx, manifest, "surf-a")
+        assert reader["type"] == "readers.text"
+        return np.loadtxt(reader["filename"], delimiter=",", skiprows=1)
+
+    plain = text_points(m)
+    gap = np.array([-40.0, 25.0, 3.0])
+    m["spaces"] = [{"id": "tank", "name": "Tank", "crs": m["crs"], "origin": list(np.array(ORIGIN) + gap)}]
+    next(x for x in m["layers"] if x["id"] == "surf-a")["space"] = "tank"
+    spaced = text_points(m)
+    assert np.allclose(spaced - plain, gap, atol=1e-3)

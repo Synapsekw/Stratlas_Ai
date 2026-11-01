@@ -276,14 +276,17 @@ def grid_ground(e: np.ndarray, n: np.ndarray, z: np.ndarray, cell: float | None 
 def _cloud_reader(ctx: StepContext, manifest: dict[str, Any], lid: str) -> dict[str, Any]:
     """A PDAL reader stage for a cloud layer: its COPC or LAS file, or its points as text."""
     from ..change.surface import Surface
+    from ..spaces import require_project_frame
 
     s = Surface(ctx.project, manifest, {"layer": lid, "kind": "cloud"})
+    # the filtered ground is a survey surface in the project CRS (another origin is fine)
+    require_project_frame(manifest, [s.layer], "so it cannot be made a survey surface", origin=False)
     if s.layer.get("kind") != "pointcloud":
         raise JobError(f'The layer "{s.name}" is not a point cloud.')
     if s.layer.get("format") != "kit-packed":
         return {"filename": str(s.path)}
     pts = s.points(ctx)
-    o = manifest.get("origin") or [0, 0, 0]
+    o = s.origin  # its space's origin, the one its points were read against
     txt = ctx.stage(f"work/{lid}.xyz")
     xyz = np.stack([pts[:, 0] + o[0], o[1] - pts[:, 2], pts[:, 1] + o[2]], axis=1)
     np.savetxt(txt, xyz, fmt="%.4f", delimiter=",", header="X,Y,Z", comments="")

@@ -467,3 +467,42 @@ def test_prepared_dsm_follows_a_turned_line_up(tmp_path, kind):
     # the same turn again is the same fingerprint, so nothing runs
     result, _ = run_job(pipeline(), tmp_path, S2, job_id="j4")
     assert result["outputs"]["surface-1"].get("skipped") is True
+
+
+def test_a_cloud_in_a_space_is_gridded_in_its_space_coordinates(tmp_path):
+    # a plain LAS holds its space's coordinates: the grid lands on them whatever the space's
+    # origin, never shifted by the gap between that origin and the project's
+    from types import SimpleNamespace
+
+    from aio_pipelines.survey.prepare import read_cloud
+
+    surface_project(tmp_path, kinds=("las", "las"))
+
+    def stage(rel):
+        p = tmp_path / "stage" / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+
+    ctx = SimpleNamespace(project=tmp_path, check=lambda: None, stage=stage, log=lambda *a, **k: None)
+    path = tmp_path / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    plain = read_cloud(ctx, m, {"kind": "cloud", "layer": "surf-a"}, 0.5)
+    m["spaces"] = [
+        {"id": "tank", "name": "Tank", "crs": m["crs"], "origin": [ORIGIN[0] - 40.0, ORIGIN[1] + 25.0, 0.0]}
+    ]
+    next(x for x in m["layers"] if x["id"] == "surf-a")["space"] = "tank"
+    spaced = read_cloud(ctx, m, {"kind": "cloud", "layer": "surf-a"}, 0.5)
+    assert (spaced.oe, spaced.on) == pytest.approx((plain.oe, plain.on))
+    assert np.allclose(spaced.h, plain.h, equal_nan=True)
+
+
+def test_a_cloud_of_a_local_space_is_refused_as_a_survey_surface(tmp_path):
+    surface_project(tmp_path, kinds=("las", "las"))
+    path = tmp_path / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    m["spaces"] = [{"id": "tank", "name": "Tank", "crs": {"local": "flyability"}, "origin": [0, 0, 0]}]
+    next(x for x in m["layers"] if x["id"] == "surf-b")["space"] = "tank"
+    path.write_text(json.dumps(m), "utf-8")
+    params = {"surfaces": [{"id": "s2", "name": "Later", "source": {"kind": "cloud", "layer": "surf-b"}}]}
+    with pytest.raises(JobError, match="cannot be made a survey surface"):
+        run_job(pipeline(), tmp_path, params)

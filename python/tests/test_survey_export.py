@@ -498,6 +498,47 @@ def test_export_cloud_carries_the_offset(tmp_path, monkeypatch, fmt):
     assert np.allclose(z["lifted"] - z["plain"], 5.0, atol=0.01)
 
 
+def put_cloud_in_space(root, origin, crs=None):
+    path = root / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    m["spaces"] = [{"id": "tank", "name": "Tank", "crs": crs or m["crs"], "origin": origin}]
+    m["layers"][0]["space"] = "tank"
+    path.write_text(json.dumps(m), "utf-8")
+
+
+def test_export_cloud_places_a_kit_packed_cloud_at_its_space_origin(tmp_path, monkeypatch):
+    import shutil
+
+    import aio_pipelines.export.las as el
+    import aio_pipelines.pointcloud as pc
+    from aio_pipelines.change.las import read_las
+
+    monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+    monkeypatch.setattr(pc, "pdal_env", lambda p: {})
+    monkeypatch.setattr(el, "compress_laz", lambda pdal, las, laz, env: shutil.copy(las, laz))
+    xyz = {}
+    for name in ("plain", "spaced"):
+        root = cloud_project(tmp_path, name, "kit-packed", 0.0)
+        if name == "spaced":
+            put_cloud_in_space(root, [520050.0, 2750030.0, 110.0])
+        out_dir = tmp_path / f"out-{name}"
+        out_dir.mkdir()
+        res = run(root, out_dir / "cloud.laz", what="cloud", format="laz", layer="c")
+        xyz[name] = read_las(Path(res["files"][0])).xyz
+    assert np.allclose(xyz["spaced"] - xyz["plain"], [40.0, 20.0, 10.0], atol=0.01)
+
+
+@pytest.mark.parametrize("fmt", ["png-packed", "kit-packed"])
+def test_export_cloud_of_a_local_space_is_refused(tmp_path, monkeypatch, fmt):
+    import aio_pipelines.pointcloud as pc
+
+    monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+    root = cloud_project(tmp_path, "local", fmt, 0.0)
+    put_cloud_in_space(root, [0.0, 0.0, 0.0], {"local": "flyability"})
+    with pytest.raises(JobError, match="own local coordinates"):
+        run(root, tmp_path / "cloud.laz", what="cloud", format="laz", layer="c")
+
+
 # ------------------------------------------------------------------------------ lined-up dates
 
 
@@ -540,6 +581,31 @@ def test_export_carries_the_shift_ortho(tmp_path):
     assert b.right - a.right == pytest.approx(2.0, abs=0.51)
     assert b.top - a.top == pytest.approx(-1.0, abs=0.51)
     assert b.bottom - a.bottom == pytest.approx(-1.0, abs=0.51)
+
+
+def test_export_ortho_of_a_space_with_its_own_origin_is_refused(tmp_path):
+    from PIL import Image
+
+    layer = {
+        "id": "ortho",
+        "name": "Ortho",
+        "kind": "raster",
+        "role": "ortho",
+        "format": "image",
+        "capture": "d1",
+        "space": "tank",
+        "src": {"path": "rasters/ortho.png"},
+        "corners": {"tl": [-10.0, 0.0, -20.0], "tr": [15.0, 0.0, -20.0], "bl": [-10.0, 0.0, 0.0]},
+    }
+    root = project(tmp_path, "spaced", layers=[layer])
+    (root / "rasters").mkdir()
+    Image.fromarray(np.full((40, 50, 3), 90, np.uint8)).save(root / "rasters" / "ortho.png")
+    path = root / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    m["spaces"] = [{"id": "tank", "name": "Tank", "crs": m["crs"], "origin": [1.0, 2.0, 3.0]}]
+    path.write_text(json.dumps(m), "utf-8")
+    with pytest.raises(JobError, match="own local coordinates"):
+        run(root, tmp_path / "o.tif", what="ortho", format="geotiff", layer="ortho")
 
 
 def test_export_carries_the_shift_dsm(tmp_path):

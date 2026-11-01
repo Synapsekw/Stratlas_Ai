@@ -342,10 +342,21 @@ class ModelEvidence:
                 return {"points": 0}
             from ..captures import date_shift, date_similarity, similarity_transform
             from ..inspection.frame import asset_path, read_manifest
+            from ..spaces import require_project_frame
 
             manifest = read_manifest(ctx.project)
             origin = tuple(manifest.get("origin") or [0, 0, 0])
             clouds, meshes = params["clouds"], params["meshes"]
+            # the pack is placed in the project's frame: refuse a layer of a space with its own
+            require_project_frame(
+                manifest,
+                [
+                    x
+                    for x in manifest.get("layers", [])
+                    if x.get("id") in {r["layer"] for r in clouds + meshes}
+                ],
+                "so it cannot be measured here",
+            )
             sources = len(clouds) + len(meshes)
             cap = max(1, lim["maxPoints"] // sources)
             parts, colours, read = [], [], 0

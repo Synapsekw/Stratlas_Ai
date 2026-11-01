@@ -117,6 +117,7 @@ def load_layer_points(ctx: StepContext, manifest: dict[str, Any], layer_id: str,
         return voxel_thin(read_png_packed(ctx.project, path, ctx.check) + lift, voxel)
     # COPC: PDAL writes a plain LAS into the job folder, read here in chunks
     from ..pointcloud import PDAL_MISSING, _run, find_pdal
+    from ..spaces import layer_frame_origin
     from ..volumetric.cloud import read_las_chunks
 
     pdal = find_pdal()
@@ -125,7 +126,8 @@ def load_layer_points(ctx: StepContext, manifest: dict[str, Any], layer_id: str,
     las = ctx.job.dir / "cloud.las"
     if not las.is_file():
         _run(ctx, [pdal, "translate", str(path), str(las)], "Read the point cloud")
-    origin = manifest.get("origin") or [0, 0, 0]
+    # its space's origin: kit- and png-packed points are already local to that space
+    origin = layer_frame_origin(manifest, layer)
     parts = []
     for x, y, z, _rgb in read_las_chunks(las, ctx.check):
         local = np.column_stack([x - origin[0] + lift[0], z - origin[2] + lift[1], origin[1] - y + lift[2]])

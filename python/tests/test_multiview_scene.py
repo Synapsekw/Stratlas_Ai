@@ -96,6 +96,36 @@ def test_a_cloud_surface_places_like_the_mesh():
     assert seen.tolist() == [True, False, True]
 
 
+def test_the_vote_surface_leaves_out_clouds_of_a_space_with_its_own_coordinates(monkeypatch, tmp_path):
+    # the photos are placed in the project's frame: a cloud of a local space would sit 0 m from
+    # the project origin, so it is left out (logged), never mixed in
+    from types import SimpleNamespace
+
+    import aio_pipelines.change.derived as D
+    import aio_pipelines.tiles.cloud as TC
+
+    site = np.array([[500005.0, 3200000.0, 10.0]] * 4) + np.arange(4)[:, None] * 0.1
+    inside = np.array([[1.0, 2.0, 3.0]] * 4)
+    files = {"site": site, "inside": inside}
+    monkeypatch.setattr(D, "layer_file", lambda project, layer: layer["id"])
+    monkeypatch.setattr(TC, "read_points", lambda ctx, path, off, shift: (files[path], None, None))
+    logs = []
+    ctx = SimpleNamespace(project=tmp_path, log=lambda msg, level="info": logs.append(msg))
+    manifest = {
+        "crs": {"epsg": 32639},
+        "origin": [500000.0, 3200000.0, 0.0],
+        "spaces": [{"id": "tank", "name": "Tank", "crs": {"local": "flyability"}, "origin": [0, 0, 0]}],
+        "layers": [
+            {"id": "site", "name": "Site", "kind": "pointcloud"},
+            {"id": "inside", "name": "Inside", "kind": "pointcloud", "space": "tank"},
+        ],
+    }
+    surf = S.cloud_surface(ctx, manifest)
+    assert surf is not None and len(surf.points) == 4
+    assert surf.points[:, 0].min() == pytest.approx(5.0)
+    assert any('"Inside"' in m for m in logs)
+
+
 def test_a_long_ray_through_a_wide_cloud_does_not_step_over_the_surface():
     # a wall at x = 5.2 and a far point cluster stretch the cloud 2 km: the ray takes long steps
     ys, zs = np.meshgrid(np.linspace(-3, 3, 121), np.linspace(-3, 3, 121))

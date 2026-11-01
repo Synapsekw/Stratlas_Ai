@@ -195,12 +195,22 @@ def cloud_surface(ctx, manifest: dict[str, Any]) -> CloudSurface | None:
     from ..captures import date_shift
     from ..change.derived import layer_file
     from ..change.sources import height_offset_m
+    from ..spaces import in_project_frame
     from ..tiles.cloud import crs_to_local, read_points
 
     origin = np.asarray(manifest.get("origin") or [0, 0, 0], float)
     chunks = []
     for layer in manifest.get("layers") or []:
         if not isinstance(layer, dict) or layer.get("kind") != "pointcloud":
+            continue
+        if not in_project_frame(manifest, layer):
+            # the photos are placed in the project's frame: a cloud of a space with its own
+            # coordinates would sit somewhere else, so it is left out rather than mixed in
+            ctx.log(
+                f'The point cloud "{layer.get("name") or layer.get("id")}" is in a space with its own '
+                "coordinates; the vote leaves it out.",
+                "info",
+            )
             continue
         try:
             path = layer_file(ctx.project, layer)

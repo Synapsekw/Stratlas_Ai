@@ -35,6 +35,7 @@ import numpy as np
 from ..captures import capture_similarity, date_shift, date_similarity
 from ..params import known_keys, number, text
 from ..runtime import JobError, Step, StepContext, input_fingerprint
+from ..spaces import layer_frame_origin, one_frame, require_project_frame
 from ..survey.compare import ring_weights
 from .changeset import change_set, change_set_id, check_scope
 from .derived import area_layer_id, area_layer_name, place_area_layer
@@ -136,7 +137,8 @@ class Surface:
         self.layer = find_layer(manifest, spec["layer"])
         self.kind = spec["kind"]
         self.name = str(self.layer.get("name") or self.layer.get("id"))
-        self.origin = manifest.get("origin") or [0, 0, 0]
+        # its space's origin: a cloud in a local space is read against that, not the project's
+        self.origin = layer_frame_origin(manifest, self.layer)
         self.shift = date_shift(manifest, str(self.layer.get("id")))
         self.sim = date_similarity(manifest, str(self.layer.get("id")))
         self.grid: GridSource | None = None
@@ -469,6 +471,9 @@ class ChangeSurface:
         def surfaces(ctx: StepContext):
             m = read_manifest(ctx.project)
             pair = (Surface(ctx.project, m, params["from"]), Surface(ctx.project, m, params["to"]))
+            one_frame(m, [s.layer for s in pair], "compare these surfaces")
+            # the change set (regions, outlines, lon/lat) is in the project's frame
+            require_project_frame(m, [s.layer for s in pair], "so it cannot be compared yet")
             return m, pair
 
         def ids(m: dict[str, Any]) -> tuple[str, str, str]:

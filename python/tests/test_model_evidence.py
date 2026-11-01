@@ -730,3 +730,15 @@ def test_engineer_mesh_follows_a_turned_line_up(tmp_path):
     a, b = read_pack(plain), read_pack(moved)
     assert b["axis"]["point"][0] - a["axis"]["point"][0] == pytest.approx(x, abs=0.1)
     assert b["axis"]["point"][2] - a["axis"]["point"][2] == pytest.approx(z, abs=0.1)
+
+
+def test_a_scan_of_a_space_with_its_own_coordinates_is_refused_not_mixed(tmp_path):
+    # the pack is placed in the project's frame: a cloud of another space would land elsewhere
+    make_project(tmp_path, compound_pole_cloud())
+    path = tmp_path / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    m["spaces"] = [{"id": "tank", "name": "Tank", "crs": {"local": "flyability"}, "origin": [0, 0, 0]}]
+    m["layers"][0]["space"] = "tank"
+    path.write_text(json.dumps(m), "utf-8")
+    with pytest.raises(JobError, match='"Scan" is in a space with its own local coordinates'):
+        run_job(ModelEvidence(), tmp_path, params())

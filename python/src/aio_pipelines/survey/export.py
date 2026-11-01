@@ -232,6 +232,15 @@ def _manifest_layer(manifest: dict[str, Any], lid: str) -> dict[str, Any] | None
     return next((x for x in manifest.get("layers") or [] if isinstance(x, dict) and x.get("id") == lid), None)
 
 
+def _in_project_crs(manifest: dict[str, Any], layer: dict[str, Any], same_origin: bool = False) -> None:
+    """Refuse a layer whose space has a crs of its own: every export starts from the project CRS.
+    ``same_origin`` also refuses a space of that CRS with another origin (for a reader that only
+    knows the project's origin)."""
+    from ..spaces import require_project_frame
+
+    require_project_frame(manifest, [layer], "so it cannot be exported", origin=same_origin)
+
+
 def _overlay(project: Path, oid: str) -> dict[str, Any]:
     from .overlay import read_overlays
 
@@ -743,6 +752,7 @@ def export_ortho(ctx: StepContext, params: dict[str, Any], frame: Frame, out: Ou
     layer = _manifest_layer(manifest, str(params["layer"]))
     if layer is None or layer.get("kind") != "raster" or layer.get("role") == "dsm":
         raise JobError(f'"{params["layer"]}" is not an ortho layer of the project.')
+    _in_project_crs(manifest, layer, same_origin=True)  # Ortho reads against the project origin
     ortho = Ortho(ctx.project, manifest, layer)
     o = manifest.get("origin") or [0, 0, 0]
     x0, z0, x1, z1 = ortho.box
@@ -814,6 +824,7 @@ def export_cloud(ctx: StepContext, params: dict[str, Any], frame: Frame, out: Ou
     layer = _manifest_layer(manifest, lid)
     if layer is None or layer.get("kind") != "pointcloud":
         raise JobError(f'"{lid}" is not a point cloud layer of the project.')
+    _in_project_crs(manifest, layer)
     cleanup = params.get("cleanup")
     if cleanup and layer.get("format") != "copc":
         raise JobError("A cleanup applies to COPC clouds only.")
@@ -868,7 +879,7 @@ def export_cloud(ctx: StepContext, params: dict[str, Any], frame: Frame, out: Ou
             xyz[:, 0], xyz[:, 1] = cs.sim.apply_en(xyz[:, 0], xyz[:, 1])
     else:
         pts = cs.points(ctx)
-        o = manifest.get("origin") or [0, 0, 0]
+        o = cs.origin  # its space's origin, the one its points were read against
         xyz = np.stack([pts[:, 0] + o[0], o[1] - pts[:, 2], pts[:, 1] + o[2]], axis=1)
         las = las_from_xyz(xyz)
     dec = params.get("decimate")

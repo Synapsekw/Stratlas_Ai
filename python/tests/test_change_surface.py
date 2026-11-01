@@ -633,3 +633,49 @@ def test_surface_follows_a_turned_line_up(tmp_path, kind):
 
     prints = {surface_fingerprint(tmp_path, [s, s])["hash"] for s in (plain, shifted, turned)}
     assert len(prints) == 3
+
+
+# ------------------------------------------------------------------------------------- spaces
+
+
+def put_in_space(project, lid, origin, crs=None):
+    """List a space (the project's crs unless given) and move one layer into it."""
+    path = project / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    m["spaces"] = [{"id": "tank", "name": "Tank", "crs": crs or m["crs"], "origin": origin}]
+    for layer in m["layers"]:
+        if layer["id"] == lid:
+            layer["space"] = "tank"
+    path.write_text(json.dumps(m), "utf-8")
+
+
+def test_a_cloud_in_a_space_is_read_against_the_space_origin(tmp_path):
+    # a plain LAS holds file coordinates: local points are those less the space's origin
+    surface_project(tmp_path, kinds=("las", "las"))
+    ctx = points_ctx(tmp_path)
+    plain = surface_points(tmp_path, "surf-a", ctx)
+    put_in_space(tmp_path, "surf-a", [ORIGIN[0] - 10.0, ORIGIN[1] + 20.0, ORIGIN[2] - 3.0])
+    spaced = surface_points(tmp_path, "surf-a", ctx)
+    assert plain.shape == spaced.shape
+    assert np.allclose(spaced[:, 0] - plain[:, 0], 10.0)
+    assert np.allclose(spaced[:, 1] - plain[:, 1], 3.0)
+    assert np.allclose(spaced[:, 2] - plain[:, 2], 20.0)
+
+
+def test_surfaces_of_two_spaces_are_refused_not_mixed(tmp_path):
+    surface_project(tmp_path, kinds=("las", "las"))
+    put_in_space(tmp_path, "surf-b", [0.0, 0.0, 0.0], {"local": "flyability"})
+    with pytest.raises(JobError, match="different spaces"):
+        run_job(pipeline(), tmp_path, surface_params(("las", "las")))
+
+
+def test_surfaces_of_one_local_space_are_refused_while_change_sets_are_project_frame(tmp_path):
+    surface_project(tmp_path, kinds=("las", "las"))
+    path = tmp_path / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    m["spaces"] = [{"id": "tank", "name": "Tank", "crs": {"local": "flyability"}, "origin": [0, 0, 0]}]
+    for layer in m["layers"]:
+        layer["space"] = "tank"
+    path.write_text(json.dumps(m), "utf-8")
+    with pytest.raises(JobError, match="own local coordinates"):
+        run_job(pipeline(), tmp_path, surface_params(("las", "las")))
