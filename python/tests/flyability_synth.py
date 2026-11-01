@@ -10,7 +10,7 @@ site, person or flight. In the '2024' generation every snapshot `criticality` is
 real 2024 samples. An Asset-parent decoy map, an asset and an empty `orgs/` folder are included
 as in real exports; readers must ignore them.
 
-Runs as a script too (`python flyability_synth.py <root> [--generation 2024|2025]`) and prints a
+Runs as a script too (`python flyability_synth.py <root> [--generation 2024|2025] [--points N]`) and prints a
 small JSON summary of the ids; it imports only the standard library and numpy.
 """
 
@@ -551,8 +551,10 @@ def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("root", type=Path)
     ap.add_argument("--generation", choices=["2024", "2025"], default="2025")
+    # 400 keeps the export tiny; a camera ray needs about 100 000 to meet the walls
+    ap.add_argument("--points", type=int, default=400)
     args = ap.parse_args(argv)
-    syn = make_export(args.root, generation=args.generation)
+    syn = make_export(args.root, generation=args.generation, points=args.points)
     print(
         json.dumps(
             {

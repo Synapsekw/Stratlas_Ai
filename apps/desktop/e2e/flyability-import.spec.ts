@@ -82,7 +82,8 @@ test.describe('Flyability Inspector import', () => {
   test.beforeAll(async () => {
     scratch = await mkdtemp(join(tmpdir(), 'aio-fly-'));
     first = JSON.parse(
-      execFileSync(VENV_PYTHON, ['-I', SYNTH, join(scratch, 'one')], {
+      // as dense as the pipeline tests' cloud: sparser, no camera ray meets a wall (all "no-hit")
+      execFileSync(VENV_PYTHON, ['-I', SYNTH, join(scratch, 'one'), '--points', '100000'], {
         cwd: REPO,
         encoding: 'utf8',
       }).trim(),
@@ -164,6 +165,14 @@ test.describe('Flyability Inspector import', () => {
     await jobsSettled(win);
   }
 
+  /** Unfold the Point clouds group (kind groups start folded) so the cloud rows are drawn. */
+  async function openCloudGroup(win: Page): Promise<void> {
+    const group = win.getByTestId('tree-group-toggle-pointclouds');
+    await expect(group).toBeVisible({ timeout: 30_000 });
+    if ((await group.getAttribute('aria-expanded')) === 'false') await group.click();
+    await expect(group).toHaveAttribute('aria-expanded', 'true');
+  }
+
   /** The Issues screen's register filtered to one code; its row. */
   async function issueRow(win: Page, code: string) {
     await win.locator('.sb-nav .nav-item', { hasText: 'Issues' }).first().click();
@@ -220,6 +229,7 @@ test.describe('Flyability Inspector import', () => {
     // one space: no crumb; the Layers column holds the Flight lines group and the clouds
     await expect(win.getByTestId('crumb-space')).toHaveCount(0);
     await expect(win.getByTestId('tree-group-flightlines')).toBeVisible({ timeout: 30_000 });
+    await openCloudGroup(win);
     for (const c of clouds) await expect(win.getByTestId(`tree-row-${c.id}`)).toBeVisible();
 
     // three findings, one flagged by the location check
@@ -313,6 +323,11 @@ test.describe('Flyability Inspector import', () => {
     await answerFolder(app, first.root);
     await openPicker(win);
     await expect(win.getByTestId(`inspector-imported-${first.inspection_id}`)).toBeVisible();
+    // an imported inspection starts unticked (pickerModel initialChoice): tick it to merge again
+    const tick = win.getByTestId(`inspector-tick-${first.inspection_id}`);
+    await expect(tick).not.toBeChecked();
+    await expect(win.getByTestId('inspector-import')).toBeDisabled();
+    await tick.check();
     await win.getByTestId('inspector-import').click();
     await expect(win.getByTestId('inspector-list')).toBeHidden();
     await jobsSettled(win);
@@ -350,6 +365,7 @@ test.describe('Flyability Inspector import', () => {
       const other = spaces[1 - i];
       await win.getByTestId('crumb-space').click();
       await win.getByTestId(`crumb-space-${s.id}`).click();
+      await openCloudGroup(win);
       for (const id of cloudsOf(s.id))
         await expect(win.getByTestId(`tree-row-${id}`)).toBeVisible();
       for (const id of cloudsOf(other?.id ?? '')) {

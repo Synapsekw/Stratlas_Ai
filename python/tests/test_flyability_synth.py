@@ -185,6 +185,21 @@ def test_main_entry_runs_standalone(tmp_path: Path) -> None:
     assert len(info["snapshot_ids"]) == 4
 
 
+def test_main_entry_takes_the_point_count(tmp_path: Path) -> None:
+    """The e2e spec asks for a cloud dense enough that the camera rays meet it (as POINTS)."""
+    script = Path(__file__).with_name("flyability_synth.py")
+    out = subprocess.run(
+        [sys.executable, "-I", str(script), str(tmp_path / "e"), "--points", "1234"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    info = json.loads(out.stdout)
+    maps = [_json(p) | {"dir": p.parent} for p in (tmp_path / "e" / "maps").glob("*/map.json")]
+    (insp,) = [m for m in maps if m["parent_id"] == info["inspection_id"]]
+    assert _las(insp["dir"] / insp["point_clouds"][0]["file_path"])[2] == 1234
+
+
 def test_asset_decoy_and_orgs(tmp_path: Path) -> None:
     syn = make_export(tmp_path / "exp")
     assert (syn.root / "orgs").is_dir()
