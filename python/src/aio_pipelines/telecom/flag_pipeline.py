@@ -25,6 +25,7 @@ from typing import Any
 import numpy as np
 
 from ..runtime import JobError, Step, StepContext, atomic_write_json, commit_files, now_iso
+from ..spaces import require_project_frame
 from .pipeline import (
     ANTENNAS_FILE,
     CROPS_DIR,
@@ -200,6 +201,8 @@ class TelecomFlag:
             )
             if layer is None:
                 raise JobError(f'The point cloud layer "{layer_id}" is not in the project.')
+            # the flagged unit is stored in the inventory, in the project's frame
+            require_project_frame(manifest, [layer], "so the telecom tools cannot measure it")
             path = asset_path(ctx.project, layer.get("src"))
             if path is None or not path.exists():
                 raise JobError(f'The point cloud "{layer.get("name", layer_id)}" has no file to read.')

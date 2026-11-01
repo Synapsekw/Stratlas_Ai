@@ -477,6 +477,17 @@ def test_tiles_cloud_needs_a_point_cloud_layer(cloud_project):
         run_job(TilesCloud(), project, {"layer": "m"})
 
 
+def test_tiles_cloud_refuses_a_cloud_of_a_local_space(cloud_project):
+    # a tileset is georeferenced through the project's frame
+    project, _ = cloud_project
+    m = json.loads((project / "manifest.json").read_text("utf-8"))
+    m["spaces"] = [{"id": "tank", "name": "Tank", "crs": {"local": "flyability"}, "origin": [0, 0, 0]}]
+    m["layers"][0]["space"] = "tank"
+    (project / "manifest.json").write_text(json.dumps(m), "utf-8")
+    with pytest.raises(JobError, match="own local coordinates"):
+        run_job(TilesCloud(), project, {"layer": "cloud-1"})
+
+
 def test_a_cancelled_tiling_resumes_to_a_valid_tileset(mesh_project):
     from aio_pipelines.runtime import Job
     from conftest import Recorder

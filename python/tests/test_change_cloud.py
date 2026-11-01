@@ -346,6 +346,29 @@ def test_a_layer_that_is_not_a_copc_cloud_is_refused(tmp_path):
         _run(root, {"layerFrom": "a", "layerTo": "b", "captures": {"from": "c1", "to": "c2"}})
 
 
+@pytest.mark.parametrize(
+    ("in_space", "message"), [(("b",), "different spaces"), (("a", "b"), "own local coordinates")]
+)
+def test_clouds_of_a_local_space_are_refused_not_mixed(tmp_path, in_space, message):
+    # the change set and its result cloud are in the project's frame
+    root = _project(
+        tmp_path,
+        [
+            {"kind": "pointcloud", "id": "a", "name": "A", "src": {"path": "a.copc.laz"}, "format": "copc"},
+            {"kind": "pointcloud", "id": "b", "name": "B", "src": {"path": "b.copc.laz"}, "format": "copc"},
+        ],
+    )
+    path = root / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    m["spaces"] = [{"id": "tank", "name": "Tank", "crs": {"local": "flyability"}, "origin": [0, 0, 0]}]
+    for layer in m["layers"]:
+        if layer["id"] in in_space:
+            layer["space"] = "tank"
+    path.write_text(json.dumps(m), "utf-8")
+    with pytest.raises(JobError, match=message):
+        _run(root, {"layerFrom": "a", "layerTo": "b", "captures": {"from": "c1", "to": "c2"}})
+
+
 def test_without_dates_the_job_says_what_is_missing(tmp_path):
     root = _project(
         tmp_path,

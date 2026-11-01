@@ -37,6 +37,7 @@ from ..engineer.axis import Axis, estimate_axis
 from ..engineer.cloud import read_region
 from ..inspection.frame import asset_path
 from ..runtime import JobError
+from ..spaces import require_project_frame
 
 TOWER_HINT_NEEDED = (
     "Could not tell which structure is the tower. Click the tower once in the 3D view and run again."
@@ -391,6 +392,8 @@ def locate_crown(ctx: Any, project: Path, manifest: dict, params: dict) -> Crown
     TOWER_HINT_NEEDED, NO_TOWER, SPARSE_CROWN, EMPTY_BAND or NO_CLOUD."""
     requested = (params.get("cloud") or {}).get("layer") if isinstance(params.get("cloud"), dict) else None
     layer, evidence = pick_cloud_layer(project, manifest, requested)
+    # the crown and the antennas are placed in the project's frame
+    require_project_frame(manifest, [layer], "so the telecom tools cannot measure it")
     layer_path = asset_path(project, layer.get("src"))
     if layer_path is None or not layer_path.exists():
         raise JobError(f'The point cloud "{layer.get("name", layer.get("id"))}" has no file to read.')

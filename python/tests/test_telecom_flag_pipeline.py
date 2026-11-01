@@ -207,6 +207,26 @@ def test_redraw_keeps_review_and_user_values(project):
     assert "notFoundInLatest" not in u
 
 
+def test_a_cloud_of_a_local_space_is_refused(project):
+    # the flagged unit is stored in the inventory, in the project's frame
+    root, truth = project
+    path = root / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    m["spaces"] = [{"id": "tank", "name": "Tank", "crs": {"local": "flyability"}, "origin": [0, 0, 0]}]
+    for layer in m["layers"]:
+        layer["space"] = "tank"
+    path.write_text(json.dumps(m), "utf-8")
+    with pytest.raises(JobError, match="own local coordinates"):
+        Job(
+            "jf",
+            flag(),
+            root,
+            params("ant-f-1", selection(truth_unit(truth, "radio-180"))),
+            Recorder(),
+            threading.Event(),
+        ).run()
+
+
 def test_redraw_of_a_unit_gone_is_an_error(project):
     root, truth = project
     with pytest.raises(JobError, match="no longer in the inventory"):

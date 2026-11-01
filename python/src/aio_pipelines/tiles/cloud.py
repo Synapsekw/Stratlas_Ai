@@ -27,6 +27,7 @@ import numpy as np
 
 from ..params import known_keys, number, text
 from ..runtime import JobError, Step, StepContext, atomic_write_bytes, atomic_write_json
+from ..spaces import require_project_frame
 from .gltf import Part, write_glb
 from .tileset import Tile, is_tileset_id, replace_folder, safe_tileset_id, tileset_json, upsert_tileset
 from .transform import SiteFrame, box_of, enu_to_gltf
@@ -270,6 +271,8 @@ class TilesCloud:
 
             m = read_manifest(ctx.project)
             layer = find_layer(m, params["layer"], "pointcloud", "point cloud layer")
+            # the tileset is georeferenced through the project's frame
+            require_project_frame(m, [layer], "so it cannot be made a georeferenced tileset")
             path = layer_file(ctx.project, layer)
             return {
                 "path": str(path),

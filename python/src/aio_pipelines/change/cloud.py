@@ -40,6 +40,7 @@ from ..captures import Shift, capture_shift, date_shift, date_similarity
 from ..params import known_keys, number, text
 from ..pointcloud import PDAL_MISSING, find_pdal, pdal_env
 from ..runtime import JobError, Step, StepContext, atomic_write_bytes, commit_files, replace_over
+from ..spaces import one_frame, require_project_frame
 from .changeset import change_set, change_set_id, dump_change_set, write_change_set
 from .derived import (
     capture_label,
@@ -886,6 +887,9 @@ class ChangeCloud:
             a = find_layer(manifest, params["layerFrom"], "pointcloud", "point cloud")
             b = find_layer(manifest, params["layerTo"], "pointcloud", "point cloud")
             frm, to = capture_pair(params, a, b)
+            # the change set and its result cloud are in the project's frame: never two frames
+            one_frame(manifest, [a, b], "compare these clouds")
+            require_project_frame(manifest, [a, b], "so it cannot be compared yet")
             # stage 1 moves point clouds by a line-up's shift only: a turned pair would be wrong
             if any(date_similarity(manifest, str(layer.get("id"))).has_turn() for layer in (a, b)):
                 raise JobError(TURNED)

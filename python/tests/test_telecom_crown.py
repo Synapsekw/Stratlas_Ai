@@ -76,6 +76,19 @@ def test_auto_finds_monopole_axis(tmp_path):
     assert float(c.xyz[:, 1].min()) >= c.floor_y - 1e-6
 
 
+def test_a_cloud_of_a_local_space_is_refused(tmp_path):
+    # the crown and the antennas are placed in the project's frame
+    xyz, _ = tower_cloud("monopole", seed=1)
+    root = make_tower_project(tmp_path / "proj", xyz)
+    m = read_manifest(root)
+    m["spaces"] = [{"id": "tank", "name": "Tank", "crs": {"local": "flyability"}, "origin": [0, 0, 0]}]
+    for layer in m["layers"]:
+        layer["space"] = "tank"
+    ctx = SimpleNamespace(check=lambda: None, job=SimpleNamespace(dir=tmp_path), project=root)
+    with pytest.raises(JobError, match="own local coordinates"):
+        locate_crown(ctx, root, m, {"run": "run-t"})
+
+
 def test_evidence_axis_is_used(tmp_path):
     xyz, truth = tower_cloud(seed=1)
     c = crown_for(tmp_path, xyz, evidence=(TRUE_AXIS, truth["height"]))
