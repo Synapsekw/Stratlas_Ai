@@ -34,6 +34,17 @@ export function spaceOfIssue(m: ProjectManifest, issue: Issue): string {
   return layer ? spaceOfLayer(layer) : DEFAULT_SPACE_ID;
 }
 
+/**
+ * The frame a layer's files are written in: its space's crs and origin, else the project's (a
+ * layer of a space the project does not list). A cloud's coordinates are read against this origin.
+ */
+export function layerFrame(
+  m: ProjectManifest,
+  l: Pick<Layer, 'space'>,
+): { crs: Crs; origin: Vec3 } {
+  return spaceFrame(m, spaceOfLayer(l)) ?? { crs: m.crs, origin: m.origin };
+}
+
 /** The frame (crs and origin) of a space, or null when the project has no such space. */
 export function spaceFrame(m: ProjectManifest, spaceId: string): { crs: Crs; origin: Vec3 } | null {
   const s = spacesOf(m).find((x) => x.id === spaceId);

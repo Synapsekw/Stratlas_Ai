@@ -336,6 +336,27 @@ describe('the stage tools on the active layer', () => {
     }
   });
 
+  it("converts the clip box of a cloud in a local space with that space's origin", async () => {
+    h.boxes.length = 0;
+    const before = h.manifest;
+    h.manifest = {
+      ...before,
+      layers: [{ ...cloud, space: 's-a' }],
+      spaces: [{ id: 's-a', name: 'Tank', crs: { local: 'flyability' }, origin: [0, 0, 0] }],
+    } as typeof before;
+    try {
+      const c = await store();
+      await c.commit('a', { ...emptyCleanup('a'), clipBox });
+      const stage = fakeStage('clipbox');
+      const off = mountCleanupScene(stage as unknown as EngineStage, c);
+      // the cloud is read against the space's 0, not the project origin
+      expect(h.boxes[0]?.opts.box).toEqual(boxToLocal(clipBox, [0, 0, 0]));
+      off();
+    } finally {
+      h.manifest = before;
+    }
+  });
+
   it('converts the clip box of a lined-up cloud back to file coordinates', async () => {
     h.boxes.length = 0;
     // a fresh manifest object: the shift resolver memoises per manifest

@@ -20,6 +20,7 @@ import {
   MAX_REGIONS,
   cloudFrameOrigin,
   emptyCleanup,
+  layerFrame,
   type PointcloudCleanup,
   type RegionAction,
 } from '@aio/schema';
@@ -114,7 +115,8 @@ const frameOf = (layerId: string): V3 | null => {
   if (!m) return null;
   const layer = m.layers.find((l) => l.id === layerId);
   return cloudFrameOrigin(
-    m.origin,
+    // a cloud of a local space is in metres from that space's origin, not the project's
+    layerFrame(m, layer ?? {}).origin,
     layer?.kind === 'pointcloud' ? layer : {},
     dateShiftOf(m, layerId),
   );

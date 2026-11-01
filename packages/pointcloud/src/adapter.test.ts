@@ -1,11 +1,13 @@
 import type { AdapterContext, SceneHandle } from '@aio/engine';
 import { clearAdapters, getAdapter } from '@aio/engine';
-import { emptyCleanup, type Layer } from '@aio/schema';
+import { emptyCleanup, ProjectManifest, type Layer } from '@aio/schema';
+import { workspace } from '@aio/workspace';
 import type { BufferGeometry, Vector2, Box3 } from 'three';
 import { PerspectiveCamera, Plane, Points, Scene, Vector3 } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   cloudLowHeight,
+  cloudOrigin,
   createPointcloudAdapter,
   getCloudManager,
   registerPointcloudAdapters,
@@ -985,5 +987,46 @@ describe('png-packed date shift', () => {
     expect(bounds[0]?.get()?.max.z).toBe(49);
     frame();
     expect(d.jobs[0]).toMatchObject({ kind: 'png', quant: { offset: [2, 0, -1] } });
+  });
+});
+
+describe('COPC frame of a space', () => {
+  const tank = {
+    id: 's-a',
+    name: 'Tank',
+    crs: { local: 'flyability' },
+    origin: [0, 0, 0],
+    source: { kind: 'flyability' as const, inspectionId: 'i' },
+  };
+  const cloud = (space?: string): CloudLayer => ({
+    kind: 'pointcloud',
+    id: space ?? 'site',
+    name: 'c',
+    visible: true,
+    src: { path: 'c.copc.laz' },
+    format: 'copc',
+    ...(space ? { space } : {}),
+  });
+
+  afterEach(() => {
+    workspace.setState({ project: null } as never);
+  });
+
+  it("reads a cloud against its space's origin, a loose one against the project's", () => {
+    const manifest = ProjectManifest.parse({
+      schema: 'aio.project/1',
+      id: 'p',
+      name: 'P',
+      crs: { epsg: 32639 },
+      origin: [500000, 3200000, 20],
+      captures: [],
+      layers: [cloud('s-a'), cloud()],
+      spaces: [tank],
+      severityModels: [],
+      classCatalogues: [],
+    });
+    workspace.setState({ project: { id: 'p', root: 'x', manifest } } as never);
+    expect(cloudOrigin(cloud('s-a'))).toEqual([0, 0, 0]);
+    expect(cloudOrigin(cloud())).toEqual([500000, 3200000, 20]);
   });
 });

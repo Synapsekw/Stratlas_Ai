@@ -126,6 +126,35 @@ it('gives each placed layer its local extent', async () => {
   ]);
 });
 
+it("reads a COPC of a local space against that space's origin, not the project's", async () => {
+  const root = await project();
+  // a confined-space cloud: east, north, up metres of a space whose origin is 0
+  await writeFile(join(root, 'clouds', 'c.copc.laz'), lasHead([0, 0, 0], [10, 6, 4]));
+  const m = {
+    ...(await readManifestFile(root)),
+    spaces: [
+      {
+        id: 's-a',
+        name: 'Tank',
+        crs: { local: 'flyability' },
+        origin: [0, 0, 0] as Vec3,
+        source: { kind: 'flyability' as const, inspectionId: 'i' },
+      },
+    ],
+  };
+  const cloud: Layer = {
+    kind: 'pointcloud',
+    id: 'c',
+    name: 'c',
+    visible: true,
+    src: { path: 'clouds/c.copc.laz' },
+    format: 'copc',
+    space: 's-a',
+  };
+  // local frame: x = E, y = H, z = -N
+  expect(await layerExtent(root, m, cloud)).toEqual({ min: [0, 0, -6], max: [10, 4, 0] });
+});
+
 it('lifts a COPC extent by its height offset', async () => {
   const root = await project();
   await writeFile(

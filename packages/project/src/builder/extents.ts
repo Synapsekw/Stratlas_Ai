@@ -1,5 +1,5 @@
 import { correctPos, fromWgs84, photoCorrection, projectToLocal } from '@aio/geo';
-import { cloudFrameOrigin, shiftCorners, shiftedBox } from '@aio/schema';
+import { cloudFrameOrigin, layerFrame, shiftCorners, shiftedBox } from '@aio/schema';
 import type { DateShift, Layer, OrientationFile, ProjectManifest, Vec3 } from '@aio/schema';
 import { open, readFile } from 'node:fs/promises';
 import { readTiffGeo, tiffCorners } from './tiff';
@@ -103,14 +103,15 @@ export async function layerExtent(
     }
     if (l.kind === 'pointcloud' && 'path' in l.src) {
       if (l.format === 'copc') {
-        // COPC is in the project CRS (data-conventions section 4)
+        // COPC is in the CRS of the layer's space (data-conventions sections 4 and 40)
         const b = lasBounds(await readHead(await requireInside(root, l.src.path), 227));
+        const origin = layerFrame(m, l).origin;
         return b
           ? boxOf(
               corners(b).map((p) =>
                 projectToLocal(
                   p,
-                  cloudFrameOrigin(m.origin, { heightOffsetM: l.heightOffsetM ?? 0 }, shift),
+                  cloudFrameOrigin(origin, { heightOffsetM: l.heightOffsetM ?? 0 }, shift),
                 ),
               ),
             )

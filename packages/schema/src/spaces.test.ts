@@ -5,6 +5,7 @@ import {
   Issue,
   Layer,
   ProjectManifest,
+  layerFrame,
   layersOfSpace,
   spaceFrame,
   spaceOfIssue,
@@ -135,5 +136,19 @@ describe('spaces', () => {
     expect(spaceFrame(m, 'nope')).toBeNull();
     // main is not listed when every layer names a space
     expect(spaceFrame(ProjectManifest.parse(withSpaces), 'main')).toBeNull();
+  });
+
+  test("layerFrame is the frame of the layer's space, else the project's", () => {
+    const m = ProjectManifest.parse(withSpacesAndOneLooseLayer);
+    const layer = (id: string): Layer => {
+      const l = m.layers.find((x) => x.id === id);
+      if (!l) throw new Error(`no layer ${id}`);
+      return l;
+    };
+    expect(layerFrame(m, layer('lb'))).toEqual({ crs: { local: 'flyability' }, origin: [0, 0, 0] });
+    expect(layerFrame(m, layer('lm'))).toEqual({ crs: m.crs, origin: m.origin });
+    // every layer in a listed space: there is no main, yet a stray layer still has a frame
+    const all = ProjectManifest.parse(withSpaces);
+    expect(layerFrame(all, { ...layer('lm') })).toEqual({ crs: all.crs, origin: all.origin });
   });
 });

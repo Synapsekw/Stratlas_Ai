@@ -5,7 +5,7 @@ import {
   type LayerHandle,
   type SceneHandle,
 } from '@aio/engine';
-import { cloudFrameOrigin, type Layer, type PointcloudScalar } from '@aio/schema';
+import { cloudFrameOrigin, layerFrame, type Layer, type PointcloudScalar } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { Box3, Vector3 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
@@ -29,10 +29,10 @@ export interface PointcloudAdapterOptions {
   settings?: StoreApi<PointcloudSettings>;
   fetchJson?: (url: string) => Promise<unknown>;
   /**
-   * The project origin [E, N, H] that COPC coordinates are relative to; default: the open
-   * project's manifest `origin`.
+   * The origin [E, N, H] that a COPC layer's coordinates are relative to; default: the origin of
+   * the layer's space in the open project (`cloudOrigin`).
    */
-  origin?: () => V3 | null;
+  origin?: (layer: CloudLayer) => V3 | null;
   /** The live cleanup recipes; default the app's (cleanup/store.ts). */
   cleanup?: StoreApi<CleanupRecipes>;
 }
@@ -64,12 +64,19 @@ async function defaultFetchJson(url: string): Promise<unknown> {
   return r.json();
 }
 
-function projectOrigin(): V3 | null {
-  return workspace.getState().project?.manifest.origin ?? null;
+/**
+ * The origin a cloud's file coordinates are read against: its space's (a confined-space cloud
+ * is in metres from its own 0), else the project's. Null with no project open.
+ */
+export function cloudOrigin(layer: CloudLayer): V3 | null {
+  const m = workspace.getState().project?.manifest;
+  return m ? layerFrame(m, layer).origin : null;
 }
 
-function projectEpsg(): number | null {
-  const crs = workspace.getState().project?.manifest.crs;
+/** The EPSG code of the layer's space, null in a local frame or with no project open. */
+function cloudEpsg(layer: CloudLayer): number | null {
+  const m = workspace.getState().project?.manifest;
+  const crs = m ? layerFrame(m, layer).crs : null;
   return crs && 'epsg' in crs ? crs.epsg : null;
 }
 
@@ -125,7 +132,7 @@ async function loadCopc(
   }
   const source = sc.source;
   if (source.layout.scalar) scalar = layer.scalar ?? { ...DEFAULT_SCALAR, dim };
-  const epsg = projectEpsg();
+  const epsg = cloudEpsg(layer);
   if (source.epsg !== undefined && epsg !== null && source.epsg !== epsg) {
     const msg = `${layer.name}: the cloud is in EPSG ${source.epsg}, the project in EPSG ${epsg}`;
     console.warn(msg);
@@ -155,7 +162,7 @@ export function createPointcloudAdapter(
   const makeDecoder = opts.decoder ?? (() => createWorkerPool());
   const settings = opts.settings ?? pointcloudSettings;
   const fetchJson = opts.fetchJson ?? defaultFetchJson;
-  const originOf = opts.origin ?? projectOrigin;
+  const originOf = opts.origin ?? cloudOrigin;
   const cleanup = opts.cleanup ?? pointcloudCleanup;
   // The newest create of each layer in a scene. The stage re-creates a layer whose definition
   // changed (a new height offset), so two creates of one id can be in flight: a stale one that
@@ -254,7 +261,7 @@ export function createPointcloudAdapter(
         baseSize = pngBaseSize(idx);
         box = new Box3(new Vector3(...lift(idx.bounds.min)), new Vector3(...lift(idx.bounds.max)));
       } else if (layer.format === 'copc') {
-        const project = originOf();
+        const project = originOf(layer);
         if (!project) throw new Error('A COPC layer needs the project origin');
         // the layer's height offset: decoded against [E, N, H - heightOffsetM]
         const origin = cloudFrameOrigin([...project], layer, shift);
@@ -304,7 +311,7 @@ export function createPointcloudAdapter(
         if (want === noisePath) return;
         noisePath = want;
         const mine = ++swap;
-        const project = originOf();
+        const project = originOf(layer);
         if (!project) return;
         const origin = cloudFrameOrigin([...project], layer, shift);
         const streams = (u: string) => m.layers.get(layer.id)?.copc?.url === u;
