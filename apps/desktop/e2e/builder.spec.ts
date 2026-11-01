@@ -52,12 +52,12 @@ async function layerHits(win: Page, layerId: string) {
           lid = o.userData.layerId ?? null;
           o = o.parent as typeof o;
         }
-        if (lid === id)
-          out.push({
-            x: r.left + ((nx + 1) / 2) * r.width,
-            y: r.top + ((1 - ny) / 2) * r.height,
-            p: [hit.point.x, hit.point.y, hit.point.z],
-          });
+        if (lid !== id) continue;
+        const x = r.left + ((nx + 1) / 2) * r.width;
+        const y = r.top + ((1 - ny) / 2) * r.height;
+        // only the model a user can click: a point under an overlay (the Align panel) is not
+        if (!document.elementFromPoint(x, y)?.closest('.pane-3d')) continue;
+        out.push({ x, y, p: [hit.point.x, hit.point.y, hit.point.z] });
       }
     return out;
   }, layerId);
