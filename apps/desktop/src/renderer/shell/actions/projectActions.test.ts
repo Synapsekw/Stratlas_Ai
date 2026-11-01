@@ -9,7 +9,7 @@ import { addDateMenu } from '../AddSurveyDate';
 import { registerProjectActions } from './projectActions';
 
 vi.mock('../../flyability/pickerStore', () => ({
-  isInspectorUiOn: vi.fn(() => false),
+  isInspectorUiOn: vi.fn(() => true),
   openInspectorPicker: vi.fn(() => Promise.resolve()),
 }));
 
@@ -23,6 +23,7 @@ const manifest = {
 } as unknown as ProjectManifest;
 let off: () => void;
 beforeEach(() => {
+  vi.mocked(isInspectorUiOn).mockReturnValue(true);
   off = registerProjectActions();
 });
 afterEach(() => {
@@ -39,6 +40,7 @@ describe('project actions', () => {
       'project.hideAll',
       'project.checkPlacement',
       'project.addData',
+      'project.addInspector',
       'project.addPanos',
       'project.addDrawing',
       'project.addSurveyDate',
@@ -52,11 +54,13 @@ describe('project actions', () => {
     ]);
   });
 
-  it('the Inspector item shows only with the flag on', () => {
-    expect(idsOf()).not.toContain('project.addInspector');
-    vi.mocked(isInspectorUiOn).mockReturnValue(true);
-    const ids = idsOf();
+  it('the Inspector item hides with the flag off', () => {
     vi.mocked(isInspectorUiOn).mockReturnValue(false);
+    expect(idsOf()).not.toContain('project.addInspector');
+  });
+
+  it('the Inspector item shows by default', () => {
+    const ids = idsOf();
     expect(ids.indexOf('project.addInspector')).toBe(ids.indexOf('project.addData') + 1);
   });
 

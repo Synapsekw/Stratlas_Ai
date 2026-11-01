@@ -266,12 +266,28 @@ describe('library store and addToLibrary', () => {
     const exp = join(base, 'export');
     await writeInspectorFixture(exp);
     const before = await readdir(join(dataRoot, 'projects')).catch(() => [] as string[]);
-    const r = await addToLibrary(exp, store, new ProjectRegistry(), dataRoot, () =>
-      Promise.resolve('0.31.0'),
+    const r = await addToLibrary(
+      exp,
+      store,
+      new ProjectRegistry(),
+      dataRoot,
+      () => Promise.resolve('0.31.0'),
+      false,
     );
     expect(r.ok).toBe(false);
     expect(await readdir(join(dataRoot, 'projects')).catch(() => [] as string[])).toEqual(before);
     expect(await store.paths()).toEqual([]);
+  });
+
+  it('with the flag on an export makes its project', async () => {
+    const store = createLibraryStore(join(base, 'library.json'));
+    const exp = join(base, 'export');
+    await writeInspectorFixture(exp);
+    const r = await addToLibrary(exp, store, new ProjectRegistry(), dataRoot, () =>
+      Promise.resolve('0.31.0'),
+    );
+    expect(r.ok).toBe(true);
+    expect(await readdir(join(dataRoot, 'projects'))).toHaveLength(1);
   });
 
   it('recognises a kit export by its files', async () => {
