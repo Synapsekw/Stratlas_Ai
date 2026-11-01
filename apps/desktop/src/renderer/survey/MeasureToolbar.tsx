@@ -26,7 +26,8 @@ import { PendingNote, usePending } from './PendingNote';
 import { attachPileAxis3d, attachPileAxisMap } from './pile/pileAxisScene';
 import { attachPileLook3d } from './pile/pileLookScene';
 import { createMapHeights, type EnBox } from './mapHeights';
-import { attach3d, attachMap, frameOf, stageClamp } from './measureScene';
+import { useMeasureFrame } from './measureFrame';
+import { attach3d, attachMap, stageClamp } from './measureScene';
 import { useFocusCapture } from './qaHelpers';
 import { surfaceOfCapture, useQa } from './qaStore';
 import { loadMeasurements, setSurface, stopTool, stopEditing, useMeasure } from './measureStore';
@@ -66,9 +67,9 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
   const stageMode = useShell((s) => s.stageMode);
   const annotating = useShell((s) => s.annotating);
   const pkg = useShell((s) => s.pkg);
-  const manifest = project?.manifest ?? null;
   const map = useActiveMap();
-  const frame = useMemo(() => (manifest ? frameOf(manifest) : null), [manifest]);
+  // the active space's frame: a local space measures and reads out in its own metres
+  const frame = useMeasureFrame();
   const focusTool = useMeasure((s) => s.file.measurements.find((m) => m.id === s.focus)?.tool);
   const activeTool = useMeasure((s) => s.tool?.tool);
   const dialog = useMeasure((s) => s.dialog);
@@ -116,9 +117,10 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
   // however many views show the line
   useEffect(() => {
     if (!frame) return;
-    const z = manifest?.origin[2] ?? 0;
+    // the frame's origin height (the active space's)
+    const z = frame.toSite([0, 0, 0])[2];
     return attachHoverFly(frame, () => z);
-  }, [frame, manifest]);
+  }, [frame]);
 
   // where the stage has nothing under a map pick, the focused date's prepared surface gives the
   // height (tiles around the map's view, loaded ahead), so a map point never falls to 0

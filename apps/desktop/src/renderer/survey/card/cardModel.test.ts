@@ -75,6 +75,15 @@ describe('cardModel', () => {
     }
   });
 
+  it('a point in a local space reads plain X, Y and Z, never an easting and northing', () => {
+    const point = measurement({ family: 'point', tool: 'elevation', points: [[1, 2, 3]] });
+    const local = cardModel(point, { ...ctx(), localAxes: true });
+    expect(local.more.map((r) => r.label)).toEqual(['Y', 'X', 'Z']);
+    expect(local.secondary).toMatch(/^Y .* · X /);
+    const grid = cardModel(point, ctx());
+    expect(grid.more.map((r) => r.label)).toEqual(['Northing', 'Easting', 'Elevation']);
+  });
+
   it('distance model has primary slope and secondary horizontal, height, grade', () => {
     const c = cardModel(measurement({}), ctx());
     expect(c.icon).toBe('ruler');

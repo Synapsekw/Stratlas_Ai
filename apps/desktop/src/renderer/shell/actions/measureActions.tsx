@@ -17,7 +17,8 @@ import { shell } from '../../shell';
 import { DEFAULT_MEASURE_COLOUR, MEASURE_COLOURS } from '../../survey/measureColours';
 import { measureFoldersOf, needsDate } from '../../survey/measureRows';
 import { moveMeasurementsToDate } from '../../survey/measureMoveRun';
-import { focusPoint, frameOf } from '../../survey/measureScene';
+import { measureFrameNow } from '../../survey/measureFrame';
+import { focusPoint } from '../../survey/measureScene';
 import {
   askNewFolder,
   deleteMeasurements,
@@ -59,7 +60,9 @@ export function flyToMeasurement(id: string): boolean {
   if (!m || !manifest) return false;
   const sh = shell.getState();
   if (sh.screen !== 'scene') sh.go('scene');
-  const f = focusPoint(m, frameOf(manifest));
+  const frame = measureFrameNow();
+  if (!frame) return false;
+  const f = focusPoint(m, frame, manifest);
   workspace.getState().flyTo({ kind: 'point', p: f.p, distance: f.distance });
   getActiveScene()?.requestRender();
   return true;

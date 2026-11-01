@@ -205,6 +205,56 @@ describe('LayerProperties', () => {
     expect(dt?.nextElementSibling?.textContent).toBe(formatDate('2026-03-02'));
   });
 
+  it('a layer in a local space shows its centre in local metres only, never a WGS84 place', async () => {
+    const project = workspace.getState().project;
+    if (!project) throw new Error('no project');
+    const manifest = project.manifest;
+    workspace.setState({
+      project: {
+        ...project,
+        manifest: {
+          ...manifest,
+          spaces: [{ id: 'tank', name: 'Tank', crs: { local: 'flyability' }, origin: [0, 0, 0] }],
+          layers: manifest.layers.map((l) => ({ ...l, space: 'tank' })),
+        },
+      },
+    } as never);
+    await openM();
+    expect(text()).toContain('3, 1, -2 m (local)');
+    expect(text()).not.toContain('WGS84');
+    expect(text()).toContain('flyability');
+    expect(text()).not.toContain('EPSG:32639');
+  });
+
+  it('a layer in a space of the project CRS gives its WGS84 place from the space origin', async () => {
+    const project = workspace.getState().project;
+    if (!project) throw new Error('no project');
+    const manifest = project.manifest;
+    const at = (origin: [number, number, number]) => {
+      workspace.setState({
+        project: {
+          ...project,
+          manifest: {
+            ...manifest,
+            spaces: [{ id: 'near', name: 'Near', crs: { epsg: 32639 }, origin }],
+            layers: manifest.layers.map((l) => ({ ...l, space: 'near' })),
+          },
+        },
+      } as never);
+    };
+    at([500000, 3200000, 0]);
+    await openM();
+    const here = /([\d.]+), ([\d.]+) \(WGS84\)/.exec(text());
+    act(() => root?.unmount());
+    layerProps.getState().close();
+    at([600000, 3300000, 0]);
+    await openM();
+    const there = /([\d.]+), ([\d.]+) \(WGS84\)/.exec(text());
+    expect(here && there).toBeTruthy();
+    // 100 km further north and east: a different place, read against the space's origin
+    expect(Number(there?.[1]) - Number(here?.[1])).toBeGreaterThan(0.5);
+  });
+
   it('hides Extent and Centre when the extent is null', async () => {
     call.mockResolvedValue({
       ok: true,

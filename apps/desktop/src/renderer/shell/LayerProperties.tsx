@@ -1,6 +1,6 @@
 import { useAnnotateReadOnly } from '@aio/annotate';
 import { localToProject, toWgs84 } from '@aio/geo';
-import type { LayerInfo } from '@aio/schema';
+import { layerFrame, type LayerInfo } from '@aio/schema';
 import { Icon, formatBytes, formatCount, formatDate, useFocusTrap, useT } from '@aio/ui';
 import { volumetric } from '@aio/volumetric';
 import { captureIndex, useWorkspace } from '@aio/workspace';
@@ -199,6 +199,9 @@ function PropsDialog({ open }: { open: NonNullable<Open> }) {
         : info?.countKind === 'features'
           ? t('layerProps.features')
           : t('layerProps.items');
+    // the layer's space's frame: a local space's layer reads in its own metres, with no map place
+    const frame = layerFrame(manifest, layer);
+    const crs = info && !('local' in frame.crs) ? info.crs : frame.crs;
     let centre: ReactNode = null;
     if (info?.extent) {
       const { min, max } = info.extent;
@@ -209,8 +212,8 @@ function PropsDialog({ open }: { open: NonNullable<Open> }) {
       ];
       let wgs: string | null = null;
       try {
-        if ('epsg' in info.crs) {
-          const [lon, lat] = toWgs84(localToProject(c, manifest.origin), info.crs.epsg);
+        if ('epsg' in crs) {
+          const [lon, lat] = toWgs84(localToProject(c, frame.origin), crs.epsg);
           wgs = t('layerProps.wgs84', { lat: lat.toFixed(7), lon: lon.toFixed(7) });
         }
       } catch {
@@ -262,7 +265,7 @@ function PropsDialog({ open }: { open: NonNullable<Open> }) {
               </Row>
             )}
             {centre}
-            <Row label={t('layerProps.crs')}>{crsText(info.crs)}</Row>
+            <Row label={t('layerProps.crs')}>{crsText(crs)}</Row>
             {info.importedAt && (
               <Row label={t('layerProps.imported')}>{formatDate(info.importedAt)}</Row>
             )}

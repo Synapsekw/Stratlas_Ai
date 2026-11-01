@@ -41,6 +41,7 @@ import { useStore } from 'zustand';
 import { useShell } from '../../../shell';
 import { cardModel, MeasureCard, TOOL_ICON } from '../../../survey/card';
 import { useCardTerrain } from '../../../survey/card/slots';
+import { useMeasureFrame } from '../../../survey/measureFrame';
 import { openCompareDialog } from '../../../survey/compareStore';
 import { DesignsTool } from '../../../survey/Designs';
 import { ExportTool } from '../../../survey/ExportDialog';
@@ -269,6 +270,8 @@ function LiveCard() {
     tool?.template?.items,
     { delayMs: LIVE_TERRAIN_DELAY_MS },
   );
+  // a local space reads its coordinates as X, Y and Z
+  const localAxes = useMeasureFrame()?.local === true;
   const model = useMemo(() => {
     if (!live) return null;
     const card = cardModel(live, {
@@ -278,11 +281,12 @@ function LiveCard() {
       ...(surface ? { surface } : {}),
       ...(terrainPending ? { terrainPending } : {}),
       ...(terrainError ? { terrainError } : {}),
+      ...(localAxes ? { localAxes } : {}),
     });
     return live.points.length < MIN_POINTS[live.family]
       ? { ...card, primary: null, secondary: '' }
       : card;
-  }, [live, tool, settings, surface, terrainPending, terrainError, captures]);
+  }, [live, tool, settings, surface, terrainPending, terrainError, captures, localAxes]);
   if (!tool || !draw) return null;
   // the telecom tools keep their own card: what to pick, the picks so far and the reading
   if (isTelecomTool(tool.tool)) {

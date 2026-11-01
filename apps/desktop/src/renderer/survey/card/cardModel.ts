@@ -85,6 +85,8 @@ export interface CardContext {
   terrainError?: boolean;
   /** The survey date a volume reads its figure on (the date in focus); none: the stored one. */
   capture?: string | undefined;
+  /** The measurement is in a local space: its coordinate rows read X, Y and Z (`localAxes`). */
+  localAxes?: boolean | undefined;
 }
 
 /**
@@ -155,6 +157,7 @@ export function cardModel(m: SurveyMeasurement, ctx: CardContext): CardModel {
   const readout: ReadoutContext = {
     ...(ctx.surface ? { surface: ctx.surface } : {}),
     ...(ctx.capture !== undefined ? { capture: ctx.capture } : {}),
+    ...(ctx.localAxes ? { localAxes: true } : {}),
   };
   const items = templateItems(m, ctx.templates);
   const primary = primaryRow(m, readout, items);

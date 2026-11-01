@@ -13,6 +13,7 @@ import { Icon, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect } from 'react';
 import { useCompare } from './compareStore';
+import { useMeasureFrame } from './measureFrame';
 import { measureStore } from './measureStore';
 import { SectionBody } from './SectionBody';
 import {
@@ -65,17 +66,19 @@ function useFollowMeasurement(): void {
 function useCutaway(stage: EngineStage | null): void {
   const on = useSection((s) => s.cutaway && !isDismissed(s));
   const line = useSection((s) => s.line);
-  const origin = useWorkspace((s) => s.project?.manifest.origin ?? null);
+  // the line is in the measuring frame: the active space's (a local space's own metres)
+  const frame = useMeasureFrame();
   useEffect(() => {
-    if (!stage || !on || !line || !origin) return;
+    if (!stage || !on || !line || !frame) return;
     const c = stage.sectionOrigin();
+    const origin = frame.toSite([0, 0, 0]);
     const plane = cutawayPlane(line, [origin[0], origin[1]], { x: c.x, z: c.z });
     if (!plane) return;
     stage.setSection({ enabled: true, mode: 'vertical', ...plane, flip: false });
     return () => {
       stage.setSection({ enabled: false });
     };
-  }, [stage, on, line, origin]);
+  }, [stage, on, line, frame]);
 }
 
 /** The dock under the view, mounted with the measurements (`MeasureLayer`). */

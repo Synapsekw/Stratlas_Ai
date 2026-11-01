@@ -153,7 +153,15 @@ export interface ReadoutContext {
    * date's, else the per-date row. Without it, the stored result whatever its date.
    */
   capture?: string | undefined;
+  /**
+   * The points are in a local space (`{ local }` crs, plain metres from its origin): the coordinate
+   * rows name the axes X, Y and Z, not an easting and northing of a CRS the space does not have.
+   */
+  localAxes?: boolean | undefined;
 }
+
+/** The coordinate rows' labels in a local space (`ReadoutContext.localAxes`). */
+const LOCAL_AXIS_LABELS: Readonly<Record<string, string>> = { e: 'X', n: 'Y', z: 'Z' };
 
 /**
  * The one row the card, tree, labels and island show for each tool. Points show elevation,
@@ -234,8 +242,11 @@ export function allRows(m: Geometry, ctx: ReadoutContext = {}): ReadoutRow[] {
     return out;
   }
   if (family === 'point' && first) {
-    out.push(row('e', first[0], 'coordinate'), row('n', first[1], 'coordinate'));
-    out.push(row('z', first[2], 'coordinate'));
+    const axis = (key: string, value: number): ReadoutRow => {
+      const r = row(key, value, 'coordinate');
+      return ctx.localAxes ? { ...r, label: LOCAL_AXIS_LABELS[key] ?? r.label } : r;
+    };
+    out.push(axis('e', first[0]), axis('n', first[1]), axis('z', first[2]));
     if (ctx.surface) {
       const d = elevationDifference(first, ctx.surface);
       out.push(

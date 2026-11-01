@@ -7,14 +7,15 @@
 import type { EngineStage } from '@aio/engine';
 import { fromWgs84, localToProject, projectToLocal, toWgs84 } from '@aio/geo';
 import type { MapController } from '@aio/maps';
-import type {
-  ProjectManifest,
-  SiteMaterial,
-  SitePoint,
-  SurveyMeasurement,
-  SurveySettings,
-  SurveyTemplate,
-  Vec3,
+import {
+  spaceFrame,
+  type ProjectManifest,
+  type SiteMaterial,
+  type SitePoint,
+  type SurveyMeasurement,
+  type SurveySettings,
+  type SurveyTemplate,
+  type Vec3,
 } from '@aio/schema';
 import {
   figureOn,
@@ -88,15 +89,28 @@ export interface Frame {
   toLocal(p: SitePoint): Vec3;
   toSite(local: Vec3): SitePoint;
   epsg: number | null;
+  /** A local space's frame (`{ local }` crs): plain metres from its origin, no map, X/Y/Z axes. */
+  local: boolean;
 }
 
+/** The frame of a crs and origin: the project's, or a space's (`spaceFrameOf`). */
 export function frameOf(manifest: Pick<ProjectManifest, 'crs' | 'origin'>): Frame {
   const o = manifest.origin;
   return {
     toLocal: (p) => projectToLocal(p, o),
     toSite: (l) => localToProject(l, o),
     epsg: 'epsg' in manifest.crs ? manifest.crs.epsg : null,
+    local: 'local' in manifest.crs,
   };
+}
+
+/**
+ * The frame points are measured and read out in while a space is on screen: its own crs and
+ * origin (a confined-space drone's local space reads plain metres from its origin), else the
+ * project's (`spaceFrame`, `layerFrame`). The main space of a georeferenced project is unchanged.
+ */
+export function spaceFrameOf(manifest: ProjectManifest, spaceId: string): Frame {
+  return frameOf(spaceFrame(manifest, spaceId) ?? manifest);
 }
 
 /** The shapes a view draws, with the measurements' own colours. */

@@ -36,6 +36,7 @@ import {
   DEFAULT_MEASURE_COLOUR,
   MEASURE_COLOURS,
 } from './measureColours';
+import { useMeasureFrame } from './measureFrame';
 import { copyMeasurementToDate } from './measureMoveRun';
 import { HoldNote } from './Qa';
 import { useFocusCapture } from './qaHelpers';
@@ -71,6 +72,8 @@ function PanelCard({ m }: { m: SurveyMeasurement }) {
   const all = useMemo(() => knownTemplates({ templates, settings }), [templates, settings]);
   // the terrain under it, read off the render (the Volumes view's card reads it the same way)
   const { surface, terrainPending, terrainError } = useCardTerrain(shown, templateItems(m, all));
+  // a local space reads its coordinates as X, Y and Z
+  const localAxes = useMeasureFrame()?.local === true;
   const model = useMemo(
     () =>
       cardModel(shown, {
@@ -80,8 +83,9 @@ function PanelCard({ m }: { m: SurveyMeasurement }) {
         ...(surface ? { surface } : {}),
         ...(terrainPending ? { terrainPending } : {}),
         ...(terrainError ? { terrainError } : {}),
+        ...(localAxes ? { localAxes } : {}),
       }),
-    [shown, settings, all, captures, surface, terrainPending, terrainError],
+    [shown, settings, all, captures, surface, terrainPending, terrainError, localAxes],
   );
   const slots = useMemo(() => slotsFor(m, 'detail'), [m]);
   // a point compared with a design or a date: its difference joins the secondary line

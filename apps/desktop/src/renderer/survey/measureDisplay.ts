@@ -7,16 +7,17 @@
  */
 import type { EngineStage } from '@aio/engine';
 import type { MapController } from '@aio/maps';
-import { useWorkspace, type Workspace } from '@aio/workspace';
-import { useEffect, useMemo } from 'react';
+import type { Workspace } from '@aio/workspace';
+import { useEffect } from 'react';
 import type { StoreApi } from 'zustand/vanilla';
 import { attachHover3d, attachHoverMap } from './hoverScene';
-import { attach3d, attachMap, frameOf } from './measureScene';
+import { useMeasureFrame } from './measureFrame';
+import { attach3d, attachMap } from './measureScene';
 
 /** Draw the measurements in a 3D view that takes no measuring input (`store`: how it sees the workspace). */
 export function useMeasureDisplay3d(stage: EngineStage | null, store: StoreApi<Workspace>): void {
-  const manifest = useWorkspace((s) => s.project?.manifest ?? null);
-  const frame = useMemo(() => (manifest ? frameOf(manifest) : null), [manifest]);
+  // the active space's frame: a local space measures and reads out in its own metres
+  const frame = useMeasureFrame();
   useEffect(() => {
     if (!stage || !frame) return;
     const detach = attach3d(stage, frame, { display: true, dates: store });
@@ -31,8 +32,8 @@ export function useMeasureDisplay3d(stage: EngineStage | null, store: StoreApi<W
 
 /** Draw the measurements on a map that takes no measuring input. */
 export function useMeasureDisplayMap(map: MapController | null, store: StoreApi<Workspace>): void {
-  const manifest = useWorkspace((s) => s.project?.manifest ?? null);
-  const frame = useMemo(() => (manifest ? frameOf(manifest) : null), [manifest]);
+  // the active space's frame: a local space measures and reads out in its own metres
+  const frame = useMeasureFrame();
   useEffect(() => {
     if (!map || !frame) return;
     // nothing is drawn from this map, so no terrain height is asked of it

@@ -46,6 +46,7 @@ const run = vi.hoisted(() => ({
 vi.mock('./measureMoveRun', () => ({ copyMeasurementToDate: run.copy }));
 
 import type { HeightTiles } from '@aio/schema';
+import { setActiveSpace } from '../spaces/activeSpace';
 import { MeasurementPanel } from './MeasurementPanel';
 import { measureStore } from './measureStore';
 import { qaStore } from './qaStore';
@@ -185,6 +186,30 @@ describe('the measurement panel on a lined-up date', () => {
     });
     expect(cell('Easting')).toContain('102');
     expect(cell('Northing')).toContain('199');
+  });
+
+  it('reads a point in a local space as X, Y and Z, with no easting or northing', () => {
+    workspace.getState().closeProject();
+    workspace.getState().openProject({
+      id: 'two-dates',
+      root: 'E:/p',
+      manifest: {
+        ...manifest,
+        spaces: [{ id: 'tank', name: 'Tank', crs: { local: 'flyability' }, origin: [0, 0, 0] }],
+      },
+    });
+    setActiveSpace('two-dates', 'tank');
+    measureStore.setState({
+      file: { schema: 'aio.measurements/1', measurements: [{ ...spot, tool: 'elevation' }] },
+    });
+    act(() => {
+      root = createRoot(host);
+      root.render(<MeasurementPanel />);
+    });
+    expect(cell('X')).toContain('102');
+    expect(cell('Y')).toContain('199');
+    expect(cell('Easting')).toBe('');
+    setActiveSpace('two-dates', 'main');
   });
 });
 

@@ -28,6 +28,20 @@ const fixture = (tool: MeasurementTool) => ({ tool, points: pts });
 
 const units = { distance: 'm', area: 'm2', volume: 'm3', grade: 'percent' } as never;
 
+describe('a point in a local space', () => {
+  it('names its axes X, Y and Z, not easting and northing of a CRS it has none of', () => {
+    const local = allRows({ tool: 'elevation', points: [[1.5, -2, 3]] }, { localAxes: true });
+    const label = (k: string) => local.find((r) => r.key === k)?.label;
+    expect([label('e'), label('n'), label('z')]).toEqual(['X', 'Y', 'Z']);
+    expect(local.find((r) => r.key === 'e')?.value).toBe(1.5);
+    const grid = allRows({ tool: 'elevation', points: [[E0, N0, 3]] });
+    expect(grid.find((r) => r.key === 'e')?.label).toBe('Easting');
+    expect(primaryRow({ tool: 'elevation', points: [[1, 2, 3]] }, { localAxes: true })?.label).toBe(
+      'Z',
+    );
+  });
+});
+
 describe('primary readout', () => {
   it('every tool has a primary key that allRows produces', () => {
     for (const tool of MeasurementTool.options) {

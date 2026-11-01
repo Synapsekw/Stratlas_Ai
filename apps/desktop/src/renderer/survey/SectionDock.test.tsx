@@ -120,6 +120,40 @@ describe('the section dock', () => {
     expect(dock()).not.toBeNull();
   });
 
+  it('cuts a local space along its own metres, not against the project origin', async () => {
+    const { cutawayPlane } = await import('@aio/survey');
+    const { setActiveSpace } = await import('../spaces/activeSpace');
+    act(() => root?.unmount());
+    workspace.getState().closeProject();
+    workspace.getState().openProject({
+      id: 'p',
+      root: 'E:/p',
+      manifest: {
+        ...manifest,
+        origin: [500_000, 3_000_000, 50],
+        spaces: [{ id: 'tank', name: 'Tank', crs: { local: 'flyability' }, origin: [0, 0, 0] }],
+      },
+    });
+    setActiveSpace('p', 'tank');
+    const setSection = vi.fn();
+    const stage = { sectionOrigin: () => ({ x: 0, z: 0 }), setSection };
+    root = createRoot(host);
+    act(() => root?.render(<SectionDock stage={stage as never} />));
+    act(() => {
+      sectionStore.setState({ cutaway: true });
+    });
+    const want = cutawayPlane(
+      [
+        [0, 0],
+        [10, 0],
+      ],
+      [0, 0],
+      { x: 0, z: 0 },
+    );
+    expect(setSection).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, ...want }));
+    setActiveSpace('p', 'main');
+  });
+
   it('another change to the file leaves the focused section open', () => {
     act(() => {
       measureStore.setState({
