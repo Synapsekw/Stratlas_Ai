@@ -21,8 +21,6 @@ export const enFlyability = {
   'fly.picker.scanning': 'Reading the export...',
   'fly.picker.scanFailed': 'Could not open this folder as a Flyability Inspector export.',
   'fly.picker.none': 'This export has no inspections to import.',
-  'fly.queued_one': 'Importing the Inspector export. It carries on in the background.',
-  'fly.queued_other': 'Importing {count} Inspector exports. They carry on in the background.',
   'fly.picker.more_one': 'Choose from this export first. Drop the other export again afterwards.',
   'fly.picker.more_other':
     'Choose from this export first. Drop the other {count} exports again afterwards.',
@@ -31,6 +29,8 @@ export const enFlyability = {
   'fly.addData': 'Flyability Inspector export...',
   'fly.library.tip': 'Add a project folder, or a Flyability Inspector export to import.',
   'fly.space.all': 'All spaces',
+  'fly.space.crumb': 'Space: {name}. Choose a space.',
+  'fly.space.menu': 'Space',
   'fly.map.local': 'No map: this space has its own frame',
   'fly.move.action': 'Move point',
   'fly.move.prompt': 'Click the point cloud where the finding is. Esc cancels.',

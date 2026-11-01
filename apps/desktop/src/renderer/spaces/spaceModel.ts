@@ -79,3 +79,12 @@ export function scopeChange(
   hide.push(...offSpaceLayers(m, to));
   return { show, hide, memory: next };
 }
+
+/**
+ * The manifest as the Layers column shows it: only the active space's layers once the project has
+ * several spaces. The same object when it has one, so memoised readers see no change.
+ */
+export function scopedManifest(m: ProjectManifest, spaceId: string): ProjectManifest {
+  if (!switcherShown(m)) return m;
+  return { ...m, layers: layersOfSpace(m, spaceId) };
+}

@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { openAuditTrail } from '../audit/auditView';
 import { shell, useShell } from '../shell';
 import { isSidebarFolded } from '../store';
+import { SpaceSegment } from '../spaces/SpaceSegment';
+import { switcherShown } from '../spaces/spaceModel';
 import { DatePicker } from '../workspace/DatePicker';
 import { PANEL_ID, panelHandleLabel } from './PanelHandle';
 import { SidebarStatus } from './SidebarStatus';
@@ -165,6 +167,7 @@ export function TitleBar() {
   const dated = useWorkspace((s) => (s.project?.manifest.captures.length ?? 0) > 0);
   const scene = screen === 'scene';
   const showDate = scene && dated;
+  const showSpace = manifest !== undefined && switcherShown(manifest);
   const customer = manifest ? (customerOf(manifest) ?? t('titlebar.noCustomer')) : null;
   return (
     <header className="titlebar" aria-label={t('titlebar.bar')} data-testid="titlebar">
@@ -190,9 +193,17 @@ export function TitleBar() {
               {customer}
             </li>
           )}
-          <li className="tb-crumb-project" aria-current={showDate ? undefined : 'location'}>
+          <li
+            className="tb-crumb-project"
+            aria-current={showDate || showSpace ? undefined : 'location'}
+          >
             <ProjectSwitcher />
           </li>
+          {showSpace && (
+            <li className="tb-crumb-space" aria-current={showDate ? undefined : 'location'}>
+              <SpaceSegment />
+            </li>
+          )}
           {showDate && (
             <li className="tb-crumb-date" aria-current="location">
               <DatePicker testId="crumb-date" />

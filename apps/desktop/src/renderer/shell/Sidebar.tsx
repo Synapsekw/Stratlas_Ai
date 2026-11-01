@@ -84,6 +84,8 @@ import { WalkRowProcess } from '../walks/WalkProcessLine';
 import { walkFilesMissing, walkRecordKey } from '../walks/walkStore';
 import { useCaptureIndex } from '../workspace/compare';
 import { flightPathShown, toggleFlightPath } from '../workspace/flightPaths';
+import { useActiveSpace } from '../spaces/activeSpace';
+import { scopedManifest } from '../spaces/spaceModel';
 import { updateFlightPaths, useFlightPathModel } from '../workspace/pathModel';
 import { selectClip } from '../workspace/pickClip';
 import { timeline, useTimeline } from '../workspace/timeline';
@@ -261,16 +263,17 @@ export function Datasets() {
     () => Object.fromEntries(hiddenMeasurements.map((id) => [id, true] as const)),
     [hiddenMeasurements],
   );
+  const { spaceId } = useActiveSpace();
   const groups = useMemo(
     () =>
       project
-        ? buildDatasetTree(project.manifest, issues, durations, {
+        ? buildDatasetTree(scopedManifest(project.manifest, spaceId), issues, durations, {
             unplaced,
             measurements: measureItems,
             measurementIds: measureIds,
           })
         : [],
-    [project, issues, durations, unplaced, measureItems, measureIds],
+    [project, spaceId, issues, durations, unplaced, measureItems, measureIds],
   );
   const t = useT();
   const index = useCaptureIndex();
