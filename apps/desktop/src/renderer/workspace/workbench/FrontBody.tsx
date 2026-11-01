@@ -36,7 +36,7 @@ import { sectionStore, useSections } from './sectionState';
 import type { TabId } from './tabsModel';
 
 /** A bench's header row: Collapse all or Expand all, one icon button (D16). */
-export function BenchHead({ bench }: { bench: TabId }) {
+function BenchHead({ bench }: { bench: TabId }) {
   const t = useT();
   const sections = useSections(bench);
   const folded = useStore(sectionStore, (s) => s.byBench[bench]?.all === false);

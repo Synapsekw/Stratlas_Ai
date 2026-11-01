@@ -21,8 +21,7 @@ export function useCanCreateMaps(): boolean {
  * in plain sight without opening anything (founder, 31 Oct 2026). It opens the same wizard as the
  * Processing drawer's primary, a photo project's library card, the offer over the scene and the
  * rail's Processing group (Rail.tsx), which keeps it in sight on every screen and with the column
- * folded. Not shown without a project, in a package, or to a reviewer who may only look. The
- * layout spike shows the same section at the top of its Layers column.
+ * folded. Not shown without a project, in a package, or to a reviewer who may only look.
  */
 export function SidebarProcessing() {
   useT();

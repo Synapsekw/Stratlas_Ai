@@ -84,8 +84,6 @@ import { connectPileFigures } from './workspace/pileFigures';
 import { connectKitPilePick, connectKitPilesShown } from './survey/pile/kitPileLink';
 import { connectVolumeChange } from './workspace/VolumeTools';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
-import { layoutSpikeOn, useLayoutSpike } from './layoutSpike/flag';
-import { SpikeShell } from './layoutSpike/SpikeShell';
 import { BuilderLayer } from './builder/BuilderLayer';
 import { DrawingsLayer } from './drawings/DrawingsLayer';
 import { ModellerLayer } from './modeller/ModellerLayer';
@@ -134,9 +132,8 @@ function onKeyDown(e: KeyboardEvent) {
     if (isDockScreen(s.screen) && workspace.getState().project) s.toggleAgentDock();
     else s.toggleRight();
   } else if (id === 'global.sidebar') {
-    // Ctrl+B and Ctrl+L fold the Layers column, on the Scene only (it shows nowhere else); the
-    // layout spike folds its own (SpikeShell.tsx)
-    if (layoutSpikeOn() || s.screen !== 'scene' || isTypingTarget(e.target)) return;
+    // Ctrl+B and Ctrl+L fold the Layers column, on the Scene only (it shows nowhere else)
+    if (s.screen !== 'scene' || isTypingTarget(e.target)) return;
     e.preventDefault();
     void s.toggleSidebar();
   } else if (id === 'global.agent') {
@@ -344,8 +341,6 @@ export function App() {
   const motion = useShell((s) => s.settings.motion);
   const screen = useShell((s) => s.screen);
   const agentDockOpen = useAgentDockOpen();
-  // the Wave 2 layout spike, behind Ctrl+Alt+L (UI revision W4; removed in W12)
-  const layoutSpike = useLayoutSpike();
   // the date bar follows the open project whichever screen shows
   useTimelineSync();
   // a picture of the 3D view as a project's scene is left, for Change thumbnail
@@ -750,32 +745,25 @@ export function App() {
     <div
       ref={sidebarSplitRef}
       className="app"
-      // the Layers column (Scene only): folded or shown; the spike has its own column
-      data-sb={sidebar.folded && !layoutSpike ? 'collapsed' : 'expanded'}
+      // the Layers column (Scene only): folded or shown
+      data-sb={sidebar.folded ? 'collapsed' : 'expanded'}
       data-fold={sidebar.phase ?? undefined}
       onTransitionEnd={sidebar.onTransitionEnd}
       data-screen={screen}
       data-agent-dock={agentDockOpen ? 'open' : undefined}
       data-platform={PLATFORM}
-      data-layout={layoutSpike ? 'spike' : undefined}
       style={CAPTION_VARS}
     >
       <AnnotateStyles />
       <VolumetricStyles />
-      {layoutSpike ? (
-        <SpikeShell screen={<Screen />} dock={<AgentDock />} />
-      ) : (
-        <>
-          <Rail />
-          <TitleBar />
-          <LayersColumn resize={sidebarResize} />
-          <main className="main">
-            <LayersHandle />
-            <Screen />
-            <AgentDock />
-          </main>
-        </>
-      )}
+      <Rail />
+      <TitleBar />
+      <LayersColumn resize={sidebarResize} />
+      <main className="main">
+        <LayersHandle />
+        <Screen />
+        <AgentDock />
+      </main>
       <Palette />
       <ProcessingDrawer />
       <PipelineDialog />

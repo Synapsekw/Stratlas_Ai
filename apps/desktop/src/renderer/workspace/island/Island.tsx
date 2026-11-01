@@ -23,7 +23,6 @@ import {
   type ReactNode,
 } from 'react';
 import { isTyping } from '../../keys';
-import { layoutSpikeOn } from '../../layoutSpike/flag';
 import { useShell } from '../../shell';
 import type { StageMode } from '../../store';
 import { CompareButton, useCompareDates } from '../CompareControls';
@@ -331,8 +330,6 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
       if (annotateUi.getState().pending) return;
       if (e.target instanceof Element && e.target.closest('.vwin')) return;
       if (matchShortcut('scene', e) !== 'scene.tools') return;
-      // the layout spike hides this notch: its own island takes T (SpikeStageUi.tsx)
-      if (layoutSpikeOn()) return;
       e.preventDefault();
       const now = state.current;
       const opening = now.open !== 'tools';

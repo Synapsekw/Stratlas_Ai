@@ -284,7 +284,7 @@ Defects 2 Globe cluster dot, 6 map labels and first fit, plus the "No map pack" 
 
 - [ ] Tests `layoutBands.test.ts`: the D1 table row by row; "a hand-set width survives a band change back and forth".
 - [ ] e2e `responsive-bands.spec.ts` (new): at 1100 x 720 the stage is at least 60 % of the window with Layers closed, Layers opens as an overlay and Escape closes it; at 1440 x 900 Layers is open.
-- [ ] Delete `R/layoutSpike/` and its spec.
+- [x] Delete `R/layoutSpike/` and its spec (retired 1 Nov; its Selection guard moved to `layout-guards.spec.ts`).
 
 ## W13: layout presets per project type
 

@@ -32,7 +32,6 @@ import { enAskPanel } from './en/askAiPanel';
 import { enAskFields } from './en/askAiFields';
 import { enAskSettings } from './en/askAiSettings';
 import { enAskReport } from './en/askAiReport';
-import { enLayoutSpike } from './en/layoutSpike';
 import { enInsights } from './en/insights';
 import { enFlyability } from './en/flyability';
 import { enToolReg } from './en/toolReg';
@@ -76,7 +75,6 @@ import { enToolReg } from './en/toolReg';
  *   en/road.ts: road, roadBench
  *   en/team.ts: team, teamServer
  *   en/common.ts: dialog
- *   en/layoutSpike.ts: layoutSpike
  *   en/insights.ts: insights
  *   en/flyability.ts: fly
  *   en/toolReg.ts: toolReg
@@ -118,7 +116,6 @@ export const en = {
   ...enAskFields,
   ...enAskSettings,
   ...enAskReport,
-  ...enLayoutSpike,
   ...enInsights,
   ...enFlyability,
   ...enToolReg,

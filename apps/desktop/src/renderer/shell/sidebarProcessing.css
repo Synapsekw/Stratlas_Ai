@@ -25,7 +25,3 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* in the spike's Layers column: the same section above the dataset tree */
-.spk-layers > .sb-proc {
-  padding-block-end: var(--sp-2);
-}

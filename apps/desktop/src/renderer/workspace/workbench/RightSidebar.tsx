@@ -47,8 +47,8 @@ import './workbench.css';
 // a width dragged before the bands is carried into the wide band, once
 migrateOldRightWidth();
 
-// the bodies moved to FrontBody.tsx; re-exported for the layout spike and the drawer
-export { BenchHead, FrontBody } from './FrontBody';
+// the bodies moved to FrontBody.tsx; re-exported for the drawer
+export { FrontBody } from './FrontBody';
 
 /** The strip the right panel folds to: its border and the 12 px tab (`--ph-w`), as before. */
 const RIGHT_STRIP = 13;

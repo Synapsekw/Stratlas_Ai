@@ -5,17 +5,29 @@
  * that no listed text is cut (`scrollWidth > clientWidth + 1`) and that the island lies inside the
  * stage. Boxes only, no pixel snapshots (WARP renders differ).
  *
+ * A clicked pile in Selection (founder condition: Selection text never clips) is read at 1100, 1280
+ * and 1440 px wide on the synthetic quarry, with the pipeline Python; it skips without it.
+ *
  * The footage and switcher tests use the bundled demos (`pnpm demo:build --quick`) and skip
  * without them. Screenshots go to QUADRION_E2E_SHOTS when it names a folder. Zero network.
  */
-import type { Page } from '@playwright/test';
+import type { ElectronApplication, Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { DEMO_FOLDER, expect, test } from './fixtures';
-import { closeIslandTools, island, islandSettled, toggleCompareDates } from './island';
+import {
+  DEMO_FOLDER,
+  expect,
+  hasPipelinePython,
+  PIPELINE_ENV,
+  test,
+  VENV_PYTHON,
+} from './fixtures';
+import { closeIslandTools, island, islandSettled, toggleCompareDates, volumesView } from './island';
 import { expectNoClippedText, islandProblems, overlaps, spillsDown } from './layoutGuards';
+import { panelTab, selectedPile } from './panel';
 import { headerProblems } from './split';
+import { openDemo } from './surveyJobs';
 
 const SIZES = ['1100x720', '1366x768'] as const;
 const VIEW_READY = { timeout: 60_000 };
@@ -211,3 +223,90 @@ for (const size of SIZES) {
     });
   });
 }
+
+/** Resize the window until the page is `w` x `h` (a display may add a frame to the outer size). */
+async function resize(app: ElectronApplication, win: Page, w: number, h: number): Promise<void> {
+  let ask: [number, number] = [w, h];
+  for (let i = 0; i < 4; i++) {
+    await app.evaluate(({ BrowserWindow }, [cw, ch]) => {
+      const bw = BrowserWindow.getAllWindows()[0];
+      // the minimum (1100 x 700) holds the outer frame, which some displays draw 16 px wide
+      bw?.setMinimumSize(800, 600);
+      bw?.setSize(cw, ch);
+    }, ask);
+    await win.waitForTimeout(400);
+    const [pw, ph] = await win.evaluate(() => [innerWidth, innerHeight] as const);
+    if (pw === w && ph === h) break;
+    ask = [ask[0] + w - pw, ask[1] + h - ph];
+  }
+  expect(await win.evaluate(() => [innerWidth, innerHeight])).toEqual([w, h]);
+  // the layout and the views settle
+  await win.waitForTimeout(800);
+}
+
+test.describe('a clicked pile in Selection', () => {
+  test.use({ appEnv: PIPELINE_ENV });
+  test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
+
+  test('reads whole inside the right panel at 1100, 1280 and 1440 px, and so do the Volumes figures', async ({
+    quarryProject,
+    app,
+    win,
+  }) => {
+    test.setTimeout(10 * 60_000);
+    await openDemo(win, quarryProject.name, quarryProject.id);
+    const view = await volumesView(win);
+    await expect(view.getByTestId('volumes-pile')).toHaveCount(4, { timeout: 120_000 });
+    // every survey prepared, so the figures are the real ones (pile-panel.spec.ts)
+    const strip = win.getByRole('region', { name: 'Survey dates chart' });
+    await expect(strip.locator('[data-survey][data-state="ready"]')).toHaveCount(3, {
+      timeout: 360_000,
+    });
+    const right = win.locator('.ws > .right');
+
+    /** Every box `sel` finds lies inside the right panel, `pad` px clear of its left edge. */
+    const inside = async (sel: string, pad: number) => {
+      const box = await right.boundingBox();
+      if (!box) throw new Error('no right panel');
+      const boxes = await win.evaluate(
+        (q) =>
+          [...document.querySelectorAll(q)]
+            .filter((el) => el.getClientRects().length > 0)
+            .map((el) => {
+              const r = el.getBoundingClientRect();
+              return { left: r.left, right: r.right, text: el.textContent.slice(0, 40) };
+            }),
+        sel,
+      );
+      expect(boxes.length, sel).toBeGreaterThan(0);
+      for (const b of boxes) {
+        expect(b.left, `${sel} "${b.text}" left`).toBeGreaterThanOrEqual(box.x + pad);
+        expect(b.right, `${sel} "${b.text}" right`).toBeLessThanOrEqual(box.x + box.width + 0.5);
+      }
+    };
+
+    for (const [w, h] of [
+      [1100, 720],
+      [1280, 800],
+      [1440, 900],
+    ] as const) {
+      await resize(app, win, w, h);
+      await expect(view.getByTestId('volumes-kpi')).toBeVisible();
+      await expectNoClippedText(win, ['[data-testid="volumes-kpi"] b'], 'Volumes figures cut');
+      await view.getByTestId('volumes-pile').filter({ hasText: 'Stockpile SP1' }).click();
+      await expect(panelTab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
+      const pile = selectedPile(win);
+      await expect(pile).toBeVisible();
+      await expect(pile.getByTestId('pile-name')).toHaveText('Stockpile SP1');
+      // no text meets the panel's left edge (its drag handle lies over the first 4 px)
+      await inside(
+        '.ws > .right #wb-panel-selection [data-testid="pile-panel"] :is(h2, h3, p, button, b)',
+        8,
+      );
+      await expectNoClippedText(win, ['[data-testid="pile-kpi"] b'], 'pile figures cut');
+      await shot(win, `${String(w)}x${String(h)}`, 'selection-pile');
+      await pile.getByRole('button', { name: /Inventory/ }).click();
+      await expect(pile).toHaveCount(0);
+    }
+  });
+});
