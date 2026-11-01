@@ -80,7 +80,8 @@ function expectEnforced(probe: Probe, page: string): void {
 }
 
 test('the main window enforces the app policy: no eval, no inline script', async ({ app, win }) => {
-  await expect(win.locator('.wordmark')).toBeVisible();
+  // the shell is up: the rail shows on every screen
+  await expect(win.getByTestId('rail')).toBeVisible();
   const probe = await app.evaluate(async ({ BrowserWindow }, script) => {
     const main = BrowserWindow.getAllWindows().find((w) =>
       w.webContents.getURL().endsWith('/renderer/index.html'),
