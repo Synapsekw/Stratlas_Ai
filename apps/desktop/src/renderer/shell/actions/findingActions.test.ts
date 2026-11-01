@@ -111,6 +111,16 @@ describe('finding actions', () => {
     expect(items('imp').some((i) => i.id === 'finding.movePoint')).toBe(true);
   });
 
+  it('Move point on an ordinary finding with a cloud point follows the import flag', () => {
+    expect(imported.external).toBeDefined();
+    expect(cloud.external).toBeUndefined();
+    flag.on = true;
+    expect(items('pc').some((i) => i.id === 'finding.movePoint')).toBe(true);
+    flag.on = false;
+    expect(items('pc').some((i) => i.id === 'finding.movePoint')).toBe(false);
+    expect(items('imp').some((i) => i.id === 'finding.movePoint')).toBe(true);
+  });
+
   it('Move point from the map view switches the stage to 3D', () => {
     stageMode.mode = 'map';
     items('pc')
