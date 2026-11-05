@@ -18,15 +18,38 @@ export function windowMode(env: Record<string, string | undefined>): WindowMode 
  * Never under the minimum, 1100 x 700. Windows then cuts the window to the screen it is on: no
  * taller than the screen's work area. That is how the CI runners' 1024 x 768 screens, where no
  * size is asked for, end with a window 1100 wide and about 720 high (CONTRIBUTING.md, "End to end
- * the way CI runs it").
+ * the way CI runs it"). `asked` says the size was set: main then grows the window back to it
+ * (`outerSizeFor`), so a spec that asks for 1366 x 768 gets it on that screen too.
  */
 export function windowSize(env: Record<string, string | undefined>): {
   width: number;
   height: number;
+  asked: boolean;
 } {
   const m = /^(\d+)x(\d+)$/.exec(env.QUADRION_WINDOW_SIZE?.trim() ?? '');
-  if (!m) return { width: 1440, height: 900 };
-  return { width: Math.max(1100, Number(m[1])), height: Math.max(700, Number(m[2])) };
+  if (!m) return { width: 1440, height: 900, asked: false };
+  return {
+    width: Math.max(1100, Number(m[1])),
+    height: Math.max(700, Number(m[2])),
+    asked: true,
+  };
+}
+
+/**
+ * The window size that gives the page (`content`) the size asked for, from the window's size now
+ * (`outer`), or null when the page has it already. Windows cuts a new window to its screen, but
+ * a window resized after it is made keeps the size; one wider than its screen then gains its
+ * borders inside the page (16 x 8 px at scale 1), which this takes off again.
+ */
+export function outerSizeFor(
+  asked: { width: number; height: number },
+  content: readonly [number, number],
+  outer: readonly [number, number],
+): [number, number] | null {
+  const dw = asked.width - content[0];
+  const dh = asked.height - content[1];
+  if (dw === 0 && dh === 0) return null;
+  return [outer[0] + dw, outer[1] + dh];
 }
 
 export interface Rect {

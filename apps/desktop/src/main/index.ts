@@ -277,7 +277,13 @@ import { createWebsiteStorage } from './update/websiteStorage';
 import { createWebsiteUpdater } from './update/websiteUpdater';
 import { managedKitRecovery, rollbackManagedKit } from './update/managedKits';
 import { createWebsiteUpdateFixture } from './update/websiteFixture';
-import { OFFSCREEN_SWITCHES, offscreenOrigin, windowMode, windowSize } from './windowMode';
+import {
+  OFFSCREEN_SWITCHES,
+  offscreenOrigin,
+  outerSizeFor,
+  windowMode,
+  windowSize,
+} from './windowMode';
 import { installMenu } from './menu';
 import { appUserModelId } from './appUserModel';
 import { linkOpenPrompt, linkPathFromArgv, parseAppLink } from './appLink';
@@ -2729,7 +2735,8 @@ app.on('open-url', (e, url) => {
 function createWindow(): BrowserWindow {
   const size = windowSize(process.env);
   const win = new BrowserWindow({
-    ...size,
+    width: size.width,
+    height: size.height,
     minWidth: 1100,
     minHeight: 700,
     title: brand.productName,
@@ -2762,6 +2769,18 @@ function createWindow(): BrowserWindow {
       ],
     },
   });
+  // a size asked for wins over the screen's cut (CI's 1024 x 768 screen gives 1100 x 720)
+  if (size.asked) {
+    for (let i = 0; i < 3; i++) {
+      const next = outerSizeFor(
+        size,
+        win.getContentSize() as [number, number],
+        win.getSize() as [number, number],
+      );
+      if (!next) break;
+      win.setSize(next[0], next[1]);
+    }
+  }
   win.once('ready-to-show', () => {
     reveal(win);
   });

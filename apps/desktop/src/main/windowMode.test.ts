@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { offscreenOrigin, windowMode, windowSize } from './windowMode';
+import { offscreenOrigin, outerSizeFor, windowMode, windowSize } from './windowMode';
 
 describe('windowMode', () => {
   it('keeps a normal install on screen', () => {
@@ -35,9 +35,38 @@ describe('offscreenOrigin', () => {
 
 describe('windowSize', () => {
   it('is 1440 x 900 unless set, and never under the 1100 x 700 minimum', () => {
-    expect(windowSize({})).toEqual({ width: 1440, height: 900 });
-    expect(windowSize({ QUADRION_WINDOW_SIZE: '1100x700' })).toEqual({ width: 1100, height: 700 });
-    expect(windowSize({ QUADRION_WINDOW_SIZE: '800x600' })).toEqual({ width: 1100, height: 700 });
-    expect(windowSize({ QUADRION_WINDOW_SIZE: 'big' })).toEqual({ width: 1440, height: 900 });
+    expect(windowSize({})).toEqual({ width: 1440, height: 900, asked: false });
+    expect(windowSize({ QUADRION_WINDOW_SIZE: '1100x700' })).toEqual({
+      width: 1100,
+      height: 700,
+      asked: true,
+    });
+    expect(windowSize({ QUADRION_WINDOW_SIZE: '800x600' })).toEqual({
+      width: 1100,
+      height: 700,
+      asked: true,
+    });
+    expect(windowSize({ QUADRION_WINDOW_SIZE: 'big' })).toEqual({
+      width: 1440,
+      height: 900,
+      asked: false,
+    });
+  });
+});
+
+describe('outerSizeFor', () => {
+  const asked = { width: 1366, height: 768 };
+
+  it('leaves a window whose page is the size asked for alone', () => {
+    expect(outerSizeFor(asked, [1366, 768], [1366, 768])).toBeNull();
+  });
+
+  it('grows a window that the screen cut down at creation (CI: 1366 asked, 1100 given)', () => {
+    expect(outerSizeFor(asked, [1100, 720], [1100, 720])).toEqual([1366, 768]);
+  });
+
+  it('takes off the borders a window wider than its screen adds to the page', () => {
+    // measured: grown past the screen, the page is 16 x 8 px larger than the window's bounds
+    expect(outerSizeFor(asked, [1382, 776], [1366, 768])).toEqual([1350, 760]);
   });
 });

@@ -68,6 +68,7 @@ Write specs so they hold at that size:
 - Wait for the scene canvas before looking for a tool that only the 3D view has.
 - A new floating control must not cover the view: assert with `document.elementFromPoint` that clicks on the view reach it, in the smallest window, 1100 x 700, as well.
 - A spec about the smallest window asks for it itself, whatever the run's size: `test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x700' } })` (`small-window.spec.ts`).
+- A spec that asks for a larger window (1366 x 768, 1440 x 900) gets it on CI too: main grows the window back to the size asked for after the runner's screen cut it down (`outerSizeFor` in `src/main/windowMode.ts`). Only a size left unset follows the screen.
 - `scrollIntoViewIfNeeded` moves an element that is partly in view by whole pixels and can leave a fraction of a pixel of it clipped. Before a "fully in view" check or a drag, scroll the list yourself (`showTogether` in `timeline.spec.ts`).
 
 ### End to end on real client data
