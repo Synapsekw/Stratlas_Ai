@@ -70,6 +70,30 @@ async function apart(score: ReturnType<Page['getByTestId']>) {
   return m ? { m: Number(m[1]), deg: Number(m[2]) } : null;
 }
 
+/**
+ * A point a quarter of the way across the frame stack that a click reaches, top to bottom from
+ * the middle. A stage corner card can lie over part of the small Frames pane: the "Preparing
+ * survey surfaces" card shows a few seconds after the project opens, which a slow runner reaches
+ * before this step (its top edge was 1 px above the stack's middle at 1100 x 720).
+ */
+async function swipePoint(win: Page): Promise<{ x: number; y: number }> {
+  const point = await win.evaluate(() => {
+    const stack = document.querySelector(
+      '[data-testid="frames-pane"] [data-testid="frames-stack"]',
+    );
+    if (!stack) return null;
+    const r = stack.getBoundingClientRect();
+    const x = r.left + r.width * 0.25;
+    for (const f of [0.5, 0.35, 0.65, 0.2, 0.8, 0.1, 0.9]) {
+      const y = r.top + r.height * f;
+      if (stack.contains(document.elementFromPoint(x, y))) return { x, y };
+    }
+    return null;
+  });
+  if (!point) throw new Error('nothing of the frame stack a quarter across can be clicked');
+  return point;
+}
+
 /** Draft detections of the frames runs (pass files `change-frames-<run>.json`). */
 async function frameDrafts(win: Page) {
   return win.evaluate(async () => {
@@ -133,15 +157,14 @@ test('the Frames pane shows the same view of the other date and follows the cloc
   await handle.focus();
   await win.keyboard.press('ArrowRight');
   await expect(handle).toHaveAttribute('aria-valuenow', '55');
-  const box = await pane.getByTestId('frames-stack').boundingBox();
-  if (!box) throw new Error('no frame stack');
-  await win.mouse.click(box.x + box.width * 0.25, box.y + box.height / 2);
-  await expect
-    .poll(async () => Number(await handle.getAttribute('aria-valuenow')))
-    .toBeLessThanOrEqual(27);
-  await expect
-    .poll(async () => Number(await handle.getAttribute('aria-valuenow')))
-    .toBeGreaterThanOrEqual(23);
+  // the card can also turn up between finding the point and the click: click again then
+  await expect(async () => {
+    const point = await swipePoint(win);
+    await win.mouse.click(point.x, point.y);
+    const now = Number(await handle.getAttribute('aria-valuenow'));
+    expect(now).toBeGreaterThanOrEqual(23);
+    expect(now).toBeLessThanOrEqual(27);
+  }).toPass({ timeout: 10_000 });
   // lined up by the ground: the later frame is drawn through the homography
   await pane.getByTestId('frames-warp').click();
   await expect(pane.getByTestId('frames-stack')).toHaveAttribute('data-warped', '');

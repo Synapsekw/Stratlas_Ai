@@ -520,7 +520,9 @@ pkgTest(
     const c = await launchApp(customer, {}, [file]);
     await network.attach(c);
     try {
-      const cw = await c.firstWindow();
+      // a busy hosted runner once took 26 s to this test's first app's window, and the second
+      // app starts beside it: Playwright's 30 s is too short (fixtures.ts, identity profiles)
+      const cw = await c.firstWindow({ timeout: 90_000 });
       await cw.waitForLoadState('domcontentloaded');
       await expect(cw.getByTestId('readonly-chip')).toBeVisible({ timeout: 60_000 });
       await expect
