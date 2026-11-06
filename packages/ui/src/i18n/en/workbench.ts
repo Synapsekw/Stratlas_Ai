@@ -322,6 +322,7 @@ export const enWorkbench = {
   'wb.sec.coverage': 'Coverage',
   'wb.sec.thermal': 'Thermal',
   'wb.sec.environment': 'Environment',
+  'wb.sec.show': 'Surface and piles',
   'wb.sec.display': 'Display',
   // the foot of Layers & display and the palette (layout presets, D7)
   'wb.layout.reset': 'Reset layout to project defaults',

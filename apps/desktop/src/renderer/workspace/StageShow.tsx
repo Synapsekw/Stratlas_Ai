@@ -1,10 +1,12 @@
 /**
- * The one Show control (volumetrics redesign, board 1): top-left of the stage while the Volumes tab
- * is open, a caption "Show", the surface (Photo | Elevation | Cut & fill) and the pile overlays
- * (Outlines | Labels, each on its own). It replaces the surface colours that the Volumes bench and
- * the notch's Volumes row used to carry. On the Materials pane it reads "Colour piles by" Material
- * | Change | None in place of the surface, with the overlays under it. The overlays and the
- * colouring apply only while the control is up (`active`), and a project change puts them back.
+ * The one Show control (volumetrics redesign, board 1): in the right panel's Layers & display tab,
+ * its "Surface and piles" section (UI revision W10/W13: it left the stage, so nothing stands at the
+ * stage's top left at open), a caption "Show", the surface (Photo | Elevation | Cut & fill) and the
+ * pile overlays (Outlines | Labels, each on its own). It replaces the surface colours that the
+ * Volumes bench and the notch's Volumes row used to carry. On the Materials pane it reads "Colour
+ * piles by" Material | Change | None in place of the surface, with the overlays under it. The
+ * overlays and the colouring apply while the project has piles (`active`: the section is there to
+ * bring them back), and a project change puts them back.
  *
  * The surface writes the stockpile kit's `surface` in a kit project. Elsewhere (a survey project's
  * piles) Photo and Elevation swap each shown survey date's ortho for its surface raster and back,
@@ -25,9 +27,8 @@ import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { compareStore, setHeat, useCompare } from '../survey/compareStore';
 import { volumesPane, type VolumesPane } from '../survey/volumes/volumesPane';
-import { useShell } from '../shell';
 import { useCaptureIndex } from './compare';
-import { useKitVolumes, useWorkbenchView } from './workbench/view';
+import { useHasVolumeMeasurements, useKitVolumes } from './workbench/view';
 import './stageShow.css';
 
 /** How piles are coloured on the Materials pane. */
@@ -45,9 +46,9 @@ export interface StageShowState {
   /** The surface of a project without the kit (the kit keeps its own in `volumetric`). */
   surface: SurfaceMode;
   /**
-   * The control is up (the Volumes tab in front of an open right panel): only then do Outlines,
-   * Labels and "Colour piles by" apply to the pile drawing, so nothing stays hidden or recoloured
-   * without a control on screen to bring it back.
+   * The control is reachable (the project has piles, so Layers & display holds it): only then do
+   * Outlines, Labels and "Colour piles by" apply to the pile drawing, so nothing stays hidden or
+   * recoloured without a control to bring it back.
    */
   active: boolean;
   setActive(on: boolean): void;
@@ -110,19 +111,14 @@ export function useStageShow<T>(selector: (s: StageShowState) => T): T {
 }
 
 /**
- * The corner box the control keeps to, so it never covers the view (the 1100 x 700 check): the
- * caption and two segmented rows.
+ * The Show control is reachable: the project has piles (the stockpile kit's or volume
+ * measurements), so Layers & display shows its section. Published as `stageShow.active` for the
+ * pile drawing (the stage calls this once).
  */
-export const SHOW_BOX = { width: 260, height: 80 } as const;
-
-/**
- * The Show control is up: the Volumes tab is in front of an open right panel. Published as
- * `stageShow.active` for the pile drawing (the stage calls this once).
- */
-export function useStageShowShown(): boolean {
-  const { front } = useWorkbenchView();
-  const collapsed = useShell((s) => s.rightCollapsed);
-  const shown = front.id === 'volumes' && !collapsed;
+export function useStageShowActive(): boolean {
+  const kit = useKitVolumes();
+  const piles = useHasVolumeMeasurements();
+  const shown = kit || piles;
   useEffect(() => {
     stageShow.getState().setActive(shown);
   }, [shown]);
@@ -307,17 +303,10 @@ export function StageShow() {
   const t = useT();
   const pane = useStageShow((s) => s.pane);
   const colourBy = useStageShow((s) => s.colourBy);
-  const box = { maxInlineSize: SHOW_BOX.width, maxBlockSize: SHOW_BOX.height };
   if (pane === 'materials') {
     const caption = t('materials.colourBy');
     return (
-      <div
-        className="stage-show"
-        style={box}
-        role="group"
-        aria-label={caption}
-        data-testid="stage-show"
-      >
+      <div className="stage-show" role="group" aria-label={caption} data-testid="stage-show">
         <span className="stage-show-cap" aria-hidden="true">
           {caption}
         </span>
@@ -336,7 +325,6 @@ export function StageShow() {
   return (
     <div
       className="stage-show"
-      style={box}
       role="group"
       aria-label={t('show.caption')}
       data-testid="stage-show"

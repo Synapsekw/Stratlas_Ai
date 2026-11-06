@@ -149,22 +149,14 @@ describe('the stage corners', () => {
     expect(host.querySelector('[data-testid="preparing-card"]')).toBeNull();
   });
 
-  it('keeps the Show control top left only while the Volumes tab is open (board 1)', () => {
+  it('keeps the Show control off the stage (Layers & display holds it, W13)', () => {
     volumetric.setState({ status: 'ready' });
     shell.setState({ rightCollapsed: false } as never);
-    workbench.getState().show('selection');
+    workbench.getState().show('volumes');
     render();
     expect(slotOf('stage-show')).toBeUndefined();
-    act(() => {
-      workbench.getState().show('volumes');
-    });
-    expect(slotOf('stage-show')).toBe('tl');
+    expect(host.querySelector('.stage-slot[data-slot="tl"]')).toBeNull();
     expect(slotOf('dates-on-screen')).toBe('tr');
-    act(() => {
-      shell.setState({ rightCollapsed: true } as never);
-    });
-    expect(slotOf('stage-show')).toBeUndefined();
-    shell.setState({ rightCollapsed: false } as never);
     workbench.getState().show('selection');
   });
 
@@ -238,7 +230,7 @@ describe('the stage corners', () => {
     expect(slotOf('compare-notice')).toBeUndefined();
   });
 
-  it('stacks the Map menu chip of a start-side map pane and the Show control in one box', () => {
+  it('puts the Map menu chip of a start-side map pane in the top-left box, and no Show control', () => {
     volumetric.setState({ status: 'ready' });
     shell.setState({ rightCollapsed: false } as never);
     workbench.getState().show('volumes');
@@ -246,7 +238,7 @@ describe('the stage corners', () => {
     const boxes = host.querySelectorAll('.stage-slot[data-slot="tl"]');
     expect(boxes).toHaveLength(1);
     expect(boxes[0]?.querySelector('[data-testid="basemap-button"]')).not.toBeNull();
-    expect(boxes[0]?.querySelector('[data-testid="stage-show"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="stage-show"]')).toBeNull();
     workbench.getState().show('selection');
   });
 

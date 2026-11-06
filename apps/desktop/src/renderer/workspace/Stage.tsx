@@ -85,7 +85,7 @@ import { telemetryLabels, useTelemetryOn } from './telemetryPref';
 import { useFlightPathModel } from './pathModel';
 import { useEngineStage } from './StageTools';
 import { StageHint, useStageHintShown } from './StageHint';
-import { StageShow, useStageShowShown } from './StageShow';
+import { useStageShowActive } from './StageShow';
 import { StageCutFillLegend, useSiteCutFill } from './stageCutFill';
 import { timelapseStore, useTimelapsePlaying } from './dates/timelapse';
 import { TimelapseBlend, TimelapseTotals } from './dates/TimelapseFloats';
@@ -389,7 +389,7 @@ function useStageToast(): { key: string; first: boolean } | null {
 
 /**
  * The name of each corner a slot box stands in. `tl` is no D5 slot: it holds the tool and status
- * bars, the Show control and, in a Split, the map style of a start-side map pane, stacked.
+ * bars and, in a Split, the map style of a start-side map pane, stacked.
  */
 const SLOT_NAME: Readonly<Record<Corner, string>> = {
   tl: 'top-left',
@@ -418,8 +418,8 @@ export function useStageCorners(o: StageCornersInput): {
   const volHint = useVolumeHint() && o.show3d;
   // what the pointer and Esc do now (the linked hover, an open pile)
   const stageHint = useStageHintShown();
-  // the one Show control, while the Volumes tab is open (board 1)
-  const show = useStageShowShown();
+  // the one Show control lives in Layers & display; its overlays apply while the project has piles
+  useStageShowActive();
   // Show, Cut & fill in a survey project: the whole site's heat map and its legend (board 4)
   const cutFill = useSiteCutFill();
   const cfLegend = cutFill !== null && (o.show3d || o.showMap);
@@ -501,16 +501,14 @@ export function useStageCorners(o: StageCornersInput): {
   };
   put('basemap', basemap && <StageBasemapChip view={basemap} />);
   put('dates', <DatesOnScreen kinds={DATE_KINDS} />);
-  // the top left: the Show control (until it moves into Layers & display, W13) and the tool and
-  // status bars, which are no messages and so never wait behind a toast; stacked with the map
-  // style of a start-side map pane in a Split. The floating video or the open island there
-  // hides them while it does
+  // the top left: the tool and status bars, which are no messages and so never wait behind a
+  // toast; stacked with the map style of a start-side map pane in a Split. The floating video or
+  // the open island there hides them while it does (the Show control is in Layers & display)
   const tlFree = !o.video.includes('tl') && !topTaken.includes('tl');
   const tl = (on: boolean, id: string, node: ReactNode) => {
     if (!on || !tlFree) return;
     groups.set('tl', [...(groups.get('tl') ?? []), <Fragment key={id}>{node}</Fragment>]);
   };
-  tl(show, 'show', <StageShow />);
   tl(playing, 'tlBlend', <TimelapseBlend />);
   tl(
     status,

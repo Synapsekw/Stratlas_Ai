@@ -9,7 +9,7 @@ import { compareStore } from '../survey/compareStore';
 import { shell } from '../shell';
 import { workbench } from './workbench/workbenchStore';
 import { threeDates } from './__fixtures__/threeDates';
-import { rasterSwap, SHOW_BOX, StageShow, stageShow, useStageShowShown } from './StageShow';
+import { rasterSwap, StageShow, stageShow, useStageShowActive } from './StageShow';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -201,59 +201,31 @@ describe('the Show control (board 1)', () => {
       surface: 'photo',
     });
   });
-
-  it('does not cover the view: it keeps to a corner box at most 260 x 80 px', () => {
-    render();
-    expect(SHOW_BOX.width).toBeLessThanOrEqual(260);
-    expect(SHOW_BOX.height).toBeLessThanOrEqual(80);
-    const box = host.querySelector<HTMLElement>('.stage-show');
-    expect(box?.style.maxInlineSize).toBe(`${String(SHOW_BOX.width)}px`);
-    expect(box?.style.maxBlockSize).toBe(`${String(SHOW_BOX.height)}px`);
-  });
 });
 
-describe('when the Show control shows', () => {
+describe('when the Show control applies', () => {
   function Probe() {
-    return <span data-shown={String(useStageShowShown())} />;
+    return <span data-shown={String(useStageShowActive())} />;
   }
   const shown = () => host.querySelector('span')?.getAttribute('data-shown');
 
-  it('only while the Volumes tab is open in front', () => {
+  it('while the project has piles, whichever tab is in front or the panel folded', () => {
     workspace.getState().openProject({ id: 'p', root: '/p', manifest: surveyManifest });
-    volumetric.setState({ status: 'ready' });
-    shell.setState({ rightCollapsed: false });
-    workbench.getState().show('selection');
+    volumetric.setState({ status: 'none' });
     render(<Probe />);
     expect(shown()).toBe('false');
-    act(() => {
-      workbench.getState().show('volumes');
-    });
-    expect(shown()).toBe('true');
-    act(() => {
-      shell.setState({ rightCollapsed: true });
-    });
-    expect(shown()).toBe('false');
-    shell.setState({ rightCollapsed: false });
-  });
-
-  it('publishes whether it shows, so the pile drawing applies the overlays only then', () => {
-    workspace.getState().openProject({ id: 'p', root: '/p', manifest: surveyManifest });
-    volumetric.setState({ status: 'ready' });
-    shell.setState({ rightCollapsed: false });
-    workbench.getState().show('selection');
-    render(<Probe />);
     expect(stageShow.getState().active).toBe(false);
     act(() => {
-      workbench.getState().show('volumes');
+      volumetric.setState({ status: 'ready' });
     });
+    expect(shown()).toBe('true');
     expect(stageShow.getState().active).toBe(true);
     act(() => {
       workbench.getState().show('selection');
+      shell.setState({ rightCollapsed: true });
     });
-    expect(stageShow.getState().active).toBe(false);
-    act(() => {
-      workbench.getState().show('volumes');
-    });
+    expect(stageShow.getState().active).toBe(true);
+    shell.setState({ rightCollapsed: false });
     act(() => root?.unmount());
     root = undefined;
     expect(stageShow.getState().active).toBe(false);

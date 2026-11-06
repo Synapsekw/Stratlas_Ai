@@ -231,14 +231,15 @@ test('nothing in the top-left at open: the fixed slots only (D5)', async ({ win 
   const stage = win.locator('.ws > .stage');
   await expect(stage.getByTestId('dates-on-screen')).toBeVisible(VIEW_READY);
   await islandSettled(win);
-  // nothing at the top left but the Show control, which the tank farm's Volumes tab brings up
-  // (it moves into Layers & display with W13); every other box is one of the D5 slots
+  // nothing at the top left (the Show control lives in Layers & display since W13); every other
+  // box is one of the D5 slots
   const topLeft = await stage
     .locator('.stage-slot[data-slot="tl"] [data-testid]')
     .evaluateAll((els) =>
       els.filter((e) => !e.parentElement?.closest('[data-testid]')).map((e) => e.dataset.testid),
     );
-  expect(topLeft.filter((id) => id !== 'stage-show')).toEqual([]);
+  expect(topLeft).toEqual([]);
+  await expect(stage.getByTestId('stage-show')).toHaveCount(0);
   const names = await stage
     .locator('.stage-slot:not([data-slot="tl"])')
     .evaluateAll((els) => els.map((e) => e.getAttribute('data-stage-slot')));

@@ -11,9 +11,8 @@
  * Corners are named by the reading direction: `tl` is the top of the start edge (the top right
  * in a right-to-left UI), as the slots are placed with logical insets. `tl` is no D5 slot: Stage.tsx
  * stacks there the tool and status bars (the road's measuring bar, the cut-away state, Compare's
- * warning, the timelapse blend), which are no messages and never wait behind a toast; the Show
- * control while the Volumes tab is open, until it moves into Layers & display (W13); and, in a
- * Split, the map style of a start-side map pane. The floating video or the open island there
+ * warning, the timelapse blend), which are no messages and never wait behind a toast; and, in a
+ * Split, the map style of a start-side map pane (the Show control lives in Layers & display). The floating video or the open island there
  * hides them while it does.
  */
 

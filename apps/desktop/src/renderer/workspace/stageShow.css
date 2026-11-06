@@ -1,11 +1,12 @@
-/* The Show control (StageShow.tsx, board 1): a caption over two segmented rows on the stage scrim,
-   placed by its corner slot. */
+/* The Show control (StageShow.tsx, board 1): a caption over two segmented rows, in Layers &
+   display's "Surface and piles" section. */
 .stage-show {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--sp-2);
-  overflow: hidden;
+  padding: var(--sp-2) var(--sp-4) var(--sp-4);
+  min-inline-size: 0;
 }
 .stage-show-cap {
   font: 600 var(--t-11) var(--f-cond);
@@ -14,8 +15,7 @@
   color: var(--fg-2);
 }
 .stage-show .stage-show-seg {
-  background: var(--scrim);
-  border-color: var(--line-soft);
+  max-inline-size: 100%;
 }
 .stage-show-seg button:disabled {
   opacity: 0.45;

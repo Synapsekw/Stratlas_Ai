@@ -4,7 +4,7 @@
  */
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import type { TabId } from '../src/renderer/workspace/workbench/tabsModel';
-import { benchBody, openBench as openPanelBench } from './panel';
+import { benchBody, openBench as openPanelBench, openSection } from './panel';
 
 /**
  * The island's labelled modes (UI revision W8), by the short names it shows (`island.group.*`):
@@ -173,13 +173,13 @@ export async function volumesView(win: Page): Promise<Locator> {
 }
 
 /**
- * The stage's Show control (volumetrics redesign, board 1): top-left of the stage while the
- * Volumes tab is in front, the surface (Photo | Elevation | Cut & fill) and the pile overlays
- * (Outlines | Labels). The Volumes tab is brought to the front first when the control is not up.
+ * The Show control (volumetrics redesign, board 1): Layers & display, its "Surface and piles"
+ * section (off the stage since W13), the surface (Photo | Elevation | Cut & fill) and the pile
+ * overlays (Outlines | Labels). The tab and the section are opened first when it is not in view.
  */
 export async function stageShow(win: Page): Promise<Locator> {
-  const show = win.getByTestId('stage-show');
-  if (!(await show.isVisible())) await islandGroup(win, 'volumes');
+  const show = win.locator('.ws > .right').getByTestId('stage-show');
+  if (!(await show.isVisible())) await openSection(win, 'layers', 'layers.show');
   await expect(show).toBeVisible();
   return show;
 }

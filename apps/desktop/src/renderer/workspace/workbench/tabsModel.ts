@@ -194,6 +194,7 @@ export type SectionId =
   | 'tools.coverage'
   | 'tools.thermal'
   | 'tools.environment'
+  | 'layers.show'
   | 'layers.display'
   | 'layers.clouds'
   | 'layers.overlays'
@@ -291,6 +292,8 @@ export const SECTIONS: readonly SectionDef[] = [
     wide: true,
   },
   { id: 'tools.environment', label: 'wb.sec.environment', body: 'environment' },
+  // the one Show control (the surface and the pile overlays), off the stage since W13: with piles
+  { id: 'layers.show', label: 'wb.sec.show', body: null, needs: (d) => d.volumes },
   { id: 'layers.display', label: 'wb.sec.display', body: 'display' },
   { id: 'layers.clouds', label: 'wb.sec.clouds', body: 'clouds', needs: (d) => d.pointcloud },
   { id: 'layers.overlays', label: 'wb.sec.overlays', body: 'overlays', needs: (d) => d.surface },
@@ -405,6 +408,7 @@ export const TAB_FRONT: Readonly<Record<PanelTab, TabId>> = {
 /** The sections open before the person chose (W13's presets decide this per project type). */
 export const DEFAULT_OPEN: readonly SectionId[] = [
   'tools.measure',
+  'layers.show',
   'layers.display',
   'project.digest',
   'project.inThisProject',

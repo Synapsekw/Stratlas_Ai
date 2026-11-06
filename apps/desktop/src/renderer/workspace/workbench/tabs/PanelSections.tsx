@@ -14,6 +14,7 @@ import { FrontBody } from '../FrontBody';
 import { usePanelData } from '../panelData';
 import { ProjectList } from '../project/ProjectList';
 import { useLayout } from '../../../layout/useApplyPreset';
+import { StageShow } from '../../StageShow';
 import { leadWith, sectionsOf, type PanelTab, type SectionDef } from '../tabsModel';
 import { useWorkbench, workbench } from '../workbenchStore';
 import { revealSection } from './revealSection';
@@ -40,6 +41,7 @@ function SectionBody({ def, lead }: { def: SectionDef; lead?: ReactNode }) {
     );
   if (def.id === 'project.digest') return <SiteDigest />;
   if (def.id === 'layers.flightlines') return <FlightlineSection />;
+  if (def.id === 'layers.show') return <StageShow />;
   if (def.id === 'project.inThisProject') return <ProjectList />;
   if (def.body === null) return null;
   return <FrontBody front={def.body} road={road} />;

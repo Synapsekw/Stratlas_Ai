@@ -527,8 +527,8 @@ test.describe('in the window CI runs, 1100 x 720', () => {
 
     // the Volumes group's full set is the Volumes workbench (I-R19): it lies in the right panel,
     // inside the window, its segments and Export in view, no Survey date switch of its own (the
-    // notch and the dates strip carry the date), and the centre still the view's; the stage's
-    // Show control stands top-left on the stage (volumetrics redesign, board 1)
+    // notch and the dates strip carry the date), and the centre still the view's; the Show
+    // control is not on the stage (it lives in Layers & display since W13)
     const bench = await islandGroup(win, 'volumes');
     await expect(bench.getByTestId('volumes-bench')).toBeVisible();
     // under the controls, the volumes view (volumetric parity W3): every volume measurement, or
@@ -555,7 +555,7 @@ test.describe('in the window CI runs, 1100 x 720', () => {
         stage: box(document.querySelector('.ws > .stage')),
         panel: box(panel),
         dates: panel?.querySelectorAll('[role="group"][aria-label="Survey date"]').length ?? 0,
-        show: box(document.querySelector('[data-testid="stage-show"]')),
+        show: box(document.querySelector('.ws > .stage [data-testid="stage-show"]')),
         island: box(document.querySelector('.island')),
         notice: box(document.querySelector('[data-testid="t-notice"]')),
         controls: [
@@ -571,29 +571,7 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     expect(set.panel, 'the Volumes workbench is open').not.toBeNull();
     expect(set.dates, 'Survey date switches in the Volumes tab').toBe(0);
     expect(set.controls.length, 'the segments and Export above the inventory').toBe(4);
-    expect(set.show, 'the Show control on the stage').not.toBeNull();
-    if (set.show && set.stage) {
-      expect(set.show.left).toBeGreaterThanOrEqual(set.stage.left);
-      // its names keep to one line ("Cut & fill", W1b), so at 1100 px it may reach past the
-      // middle along the top: it stays on the stage, in its upper half, clear of the island and
-      // the one-time notice
-      expect(set.show.right, 'the Show control stays on the stage').toBeLessThanOrEqual(
-        set.stage.right,
-      );
-      expect(set.show.top).toBeGreaterThanOrEqual(set.stage.top);
-      expect(set.show.bottom, 'the Show control keeps to the upper half').toBeLessThan(
-        (set.stage.top + set.stage.bottom) / 2,
-      );
-      const show = set.show;
-      const meets = (b: typeof show | null) =>
-        b !== null &&
-        b.left < show.right &&
-        show.left < b.right &&
-        b.top < show.bottom &&
-        show.top < b.bottom;
-      expect(meets(set.island), 'the Show control clear of the island').toBe(false);
-      expect(meets(set.notice), 'the Show control clear of the notice').toBe(false);
-    }
+    expect(set.show, 'no Show control on the stage').toBeNull();
     if (set.panel && set.stage) {
       const p = set.panel;
       expect(p.left, 'the workbench starts right of the stage').toBeGreaterThanOrEqual(

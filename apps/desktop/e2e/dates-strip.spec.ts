@@ -410,7 +410,7 @@ test.describe('the smallest window, 1100 x 700', () => {
         strip: box(document.querySelector('[role="region"][aria-label="Survey dates chart"]')),
         blend: box(document.querySelector('[data-testid="timelapse-blend"]')),
         totals: box(document.querySelector('[data-testid="timelapse-totals"]')),
-        show: box(document.querySelector('[data-testid="stage-show"]')),
+        show: box(document.querySelector('.ws > .stage [data-testid="stage-show"]')),
         centre: { x: cx, y: cy },
         centreHit: hit?.tagName ?? null,
         centreInView: hit?.closest('[data-scene-view]') !== null,
