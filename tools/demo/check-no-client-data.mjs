@@ -231,6 +231,20 @@ function crsEpsg(crs) {
   return crs && typeof crs.epsg === 'number' ? crs.epsg : null;
 }
 
+/** Generic words a local project may be named; they are not client names, so the scan skips them. */
+export const GENERIC_NAMES = new Set([
+  'test',
+  'testing',
+  'demo',
+  'sample',
+  'example',
+  'project',
+  'untitled',
+  'new project',
+  'site',
+  'survey',
+]);
+
 /** Reference sites: the built-in list plus the origin of every manifest under `projectsDir`. */
 export function referenceSites(projectsDir) {
   const sites = KNOWN_SITES.map((s) => ({ name: s.name, ll: utmToLonLat(s.epsg, s.e, s.n) }));
@@ -257,8 +271,13 @@ export function referenceSites(projectsDir) {
         epsg && Array.isArray(m.origin) ? utmToLonLat(epsg, m.origin[0], m.origin[1]) : null;
       if (ll) sites.push({ name: `project ${d}`, ll });
       for (const v of [m.name, m.customer, m.site, m.brand])
-        if (typeof v === 'string' && v.trim().length >= 3) names.push(v.trim());
-      if (d.length >= 3) names.push(d);
+        if (
+          typeof v === 'string' &&
+          v.trim().length >= 3 &&
+          !GENERIC_NAMES.has(v.trim().toLowerCase())
+        )
+          names.push(v.trim());
+      if (d.length >= 3 && !GENERIC_NAMES.has(d.toLowerCase())) names.push(d);
     }
   }
   return { sites, names };

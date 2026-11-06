@@ -8,6 +8,7 @@ import {
   ALLOWED_FIXTURES,
   checkFolder,
   distanceKm,
+  referenceSites,
   textSha256,
   utmToLonLat,
 } from './check-no-client-data.mjs';
@@ -427,5 +428,25 @@ describe('check-no-client-data', () => {
     const r = checkFolder(join(dir, 'demo'), { maxMb: 0.000001 });
     expect(r.findings.join('\n')).toContain('path of the build machine');
     expect(r.findings.join('\n')).toContain('total size');
+  });
+});
+
+describe('referenceSites names', () => {
+  async function local(folder, manifest) {
+    const root = join(dir, 'projects', folder);
+    await mkdir(root, { recursive: true });
+    await writeFile(join(root, 'manifest.json'), JSON.stringify(manifest));
+  }
+
+  it('ignores a generic project name such as Test', async () => {
+    await local('test', { id: 'p1', name: 'Test', customer: 'test' });
+    expect(referenceSites(join(dir, 'projects')).names).toEqual([]);
+  });
+
+  it('still adds a real multi-word name', async () => {
+    await local('p2', { id: 'p2', name: 'Construction Progress Monitoring (line-up test)' });
+    expect(referenceSites(join(dir, 'projects')).names).toContain(
+      'Construction Progress Monitoring (line-up test)',
+    );
   });
 });
