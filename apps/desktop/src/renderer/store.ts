@@ -431,12 +431,9 @@ export function createShellStore(
     toggleSidebar: async () => {
       const s = get();
       if (isLayersOverlay(s)) {
-        // below 1280 px: the overlay opens and closes for this session; opening by hand also
-        // drops a fold the person had chosen, so a wider window shows the column again
-        const open = !s.layersOverlayOpen;
-        set({ layersOverlayOpen: open });
-        if (open && s.settings.sidebarCollapsed)
-          await s.updateSettings({ sidebarCollapsed: false });
+        // below 1280 px: the overlay opens and closes for this session only, on the Scene (the
+        // only screen with the column); the fold chosen for the wider bands stays as it was
+        if (s.screen === 'scene') set({ layersOverlayOpen: !s.layersOverlayOpen });
         return;
       }
       if (!isSidebarFolded(s)) {
@@ -716,6 +713,12 @@ export function createShellStore(
       set({ openError: null });
     },
   }));
+
+  // any screen change closes the narrow band's Layers overlay: it never waits open for the Scene
+  store.subscribe((s, prev) => {
+    if (s.screen !== prev.screen && s.layersOverlayOpen)
+      store.setState({ layersOverlayOpen: false });
+  });
 
   /** Before the scene of the open project goes: let the caller take a picture of its 3D view. */
   function leaveScene(next: Screen | null): void {

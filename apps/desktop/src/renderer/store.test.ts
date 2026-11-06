@@ -269,6 +269,43 @@ describe('shell store', () => {
     expect(isSidebarFolded(s.getState())).toBe(true);
   });
 
+  it('keeps the fold chosen for the wider bands when the overlay opens', async () => {
+    const { bridge, calls } = fakeBridge({
+      'settings:set': (req) => ({ ...DEFAULT_SETTINGS, ...(req as Partial<Settings>) }),
+    });
+    const s = createShellStore(bridge, createWorkspace(), { storage: null, autoFold: true });
+    s.setState({ settings: { ...DEFAULT_SETTINGS, sidebarCollapsed: true }, screen: 'scene' });
+    s.getState().setWindowWidth(1100);
+    await s.getState().toggleSidebar();
+    expect(isSidebarFolded(s.getState())).toBe(false);
+    expect(s.getState().settings.sidebarCollapsed).toBe(true);
+    expect(calls.some((c) => c.channel === 'settings:set')).toBe(false);
+    // back in the wide band the person's fold holds
+    s.getState().setWindowWidth(1500);
+    expect(isSidebarFolded(s.getState())).toBe(true);
+  });
+
+  it('never leaves the overlay open off the Scene, nor for the Scene to come', async () => {
+    const s = createShellStore(fakeBridge({}).bridge, createWorkspace(), {
+      storage: null,
+      autoFold: true,
+    });
+    s.getState().setWindowWidth(1100);
+    s.setState({ screen: 'issues' });
+    // the toggle does nothing off the Scene
+    await s.getState().toggleSidebar();
+    expect(s.getState().layersOverlayOpen).toBe(false);
+    s.setState({ screen: 'scene' });
+    expect(isSidebarFolded(s.getState())).toBe(true);
+    // open on the Scene, then any screen change closes it
+    await s.getState().toggleSidebar();
+    expect(isSidebarFolded(s.getState())).toBe(false);
+    s.setState({ screen: 'reports' });
+    expect(s.getState().layersOverlayOpen).toBe(false);
+    s.setState({ screen: 'scene' });
+    expect(isSidebarFolded(s.getState())).toBe(true);
+  });
+
   it('folds the sidebar on its own only with the flag, in a narrow window, on a data screen', () => {
     const s = createShellStore(fakeBridge({}).bridge, createWorkspace(), { autoFold: false });
     s.getState().setWindowWidth(1100);

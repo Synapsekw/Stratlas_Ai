@@ -58,6 +58,13 @@ async function settledStage(win: Page) {
 
 const layers = (win: Page) => win.getByTestId('layers-column');
 
+const focusInColumn = (win: Page) =>
+  win.evaluate(
+    () =>
+      document.querySelector('[data-testid="layers-column"]')?.contains(document.activeElement) ??
+      false,
+  );
+
 /** The element at the middle of the column is the column's own, not the stage's. */
 const columnOnTop = (win: Page) =>
   win.evaluate(() => {
@@ -104,6 +111,10 @@ test.describe('below 1280 px', () => {
     await expect(app).toHaveAttribute('data-sb', 'expanded');
     await expect(layers(win)).toBeVisible();
     await expect.poll(() => columnOnTop(win)).toBe(true);
+    // a non-modal dialog over the stage, with the focus inside it
+    await expect(layers(win)).toHaveAttribute('role', 'dialog');
+    await expect(layers(win)).toHaveAttribute('aria-modal', 'false');
+    await expect.poll(() => focusInColumn(win)).toBe(true);
     const box = await layers(win).boundingBox();
     expect(Math.round(box?.x ?? -1)).toBe(RAIL);
     const open = await settledStage(win);
@@ -116,10 +127,26 @@ test.describe('below 1280 px', () => {
     await expect(app).toHaveAttribute('data-sb', 'collapsed');
     await expect(layers(win)).toBeHidden();
 
-    // the title bar's toggle opens it again, and a press on the stage closes it
-    await win.getByTestId('layers-toggle').click();
+    // the title bar's toggle opens it again; Escape closes it and the focus goes back to the toggle
+    const toggle = win.getByTestId('layers-toggle');
+    await toggle.click();
+    await expect(app).toHaveAttribute('data-sb', 'expanded');
+    await expect.poll(() => focusInColumn(win)).toBe(true);
+    await win.keyboard.press('Escape');
+    await expect(app).toHaveAttribute('data-sb', 'collapsed');
+    await expect(toggle).toBeFocused();
+
+    // a press on the stage closes it and goes no further (nothing on the stage hears it)
+    await toggle.click();
     await expect(app).toHaveAttribute('data-sb', 'expanded');
     await expect.poll(() => columnOnTop(win)).toBe(true);
+    await win.evaluate(() => {
+      const w = window as unknown as { stageHeard: string[] };
+      w.stageHeard = [];
+      const stage = document.querySelector('.stage');
+      for (const k of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'])
+        stage?.addEventListener(k, (e) => w.stageHeard.push(e.type), true);
+    });
     const stage = await win.locator('.stage').boundingBox();
     if (!stage) throw new Error('no stage');
     // a free spot of the stage: its middle, a little above the island
@@ -133,6 +160,14 @@ test.describe('below 1280 px', () => {
     ).toBe(true);
     await win.mouse.click(x, y);
     await expect(app).toHaveAttribute('data-sb', 'collapsed');
+    expect(
+      await win.evaluate(() => (window as unknown as { stageHeard: string[] }).stageHeard),
+    ).toEqual([]);
+    // the next press reaches the stage as ever
+    await win.mouse.click(x, y);
+    await expect
+      .poll(() => win.evaluate(() => (window as unknown as { stageHeard: string[] }).stageHeard))
+      .toContain('click');
 
     // no setting changed: the person's own fold is untouched
     expect(

@@ -9,7 +9,7 @@
  * one lets it fold with QUADRION_E2E_AUTOFOLD=1.
  */
 import type { ElectronApplication, Page } from '@playwright/test';
-import { expect, launchApp, NetworkGuard, reportWindow, test, type DataRoot } from './fixtures';
+import { expect, launchApp, NetworkGuard, test, type DataRoot } from './fixtures';
 
 /** The mid band: 1280 to 1440 px, where the column folds on its own and opens docked. */
 const SIZE: [number, number] = [1300, 720];
@@ -27,14 +27,14 @@ interface Run {
   network: NetworkGuard;
 }
 
-async function start(dataRoot: DataRoot, report = false): Promise<Run> {
+async function start(dataRoot: DataRoot): Promise<Run> {
   const app = await launchApp(dataRoot, ENV);
   const network = new NetworkGuard();
   await network.attach(app);
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
-  // the run's window, as the fixtures report it ("[e2e] window 1300 x 720 px ...")
-  if (report) await reportWindow(win);
+  // no window report: this spec asks for its size, so the run's line keeps the CI window's (as the
+  // win fixture does)
   await expect.poll(() => win.evaluate(() => window.innerWidth)).toBe(SIZE[0]);
   return { app, win, network };
 }
@@ -61,7 +61,7 @@ async function openScene(win: Page): Promise<void> {
 
 test('Layers folds away in the mid band, and stays open once reopened', async ({ dataRoot }) => {
   test.setTimeout(120_000);
-  const first = await start(dataRoot, true);
+  const first = await start(dataRoot);
   try {
     const { win } = first;
     // the window is in the mid band
