@@ -95,12 +95,40 @@ const chipStates = (win: Page) =>
     () => (window as unknown as { __chipStates?: Record<string, string[]> }).__chipStates ?? {},
   );
 
+/**
+ * Watch, from now on, whether the Jobs chip ever carried the preparing meter and whether a
+ * preparing card ever stood on the stage (D5: job progress is the chip's).
+ */
+async function watchPreparing(win: Page): Promise<void> {
+  await win.evaluate(() => {
+    const seen = { meter: false, stageCard: false };
+    (window as unknown as { __prepSeen: typeof seen }).__prepSeen = seen;
+    const look = () => {
+      if (document.querySelector('[data-testid="processing-chip"][data-preparing]'))
+        seen.meter = true;
+      if (document.querySelector('.stage [data-testid="preparing-card"]')) seen.stageCard = true;
+    };
+    new MutationObserver(look).observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['data-preparing'],
+    });
+    look();
+  });
+}
+const shownWhilePreparing = (win: Page) =>
+  win.evaluate(
+    () => (window as unknown as { __prepSeen: { meter: boolean; stageCard: boolean } }).__prepSeen,
+  );
+
 test('opening a project with unprepared dates starts one quiet prepare job; the distance card lists both dates, preparing then ready', async ({
   earthworksProject: p,
   win,
 }) => {
   test.setTimeout(360_000);
   await seedLine(p);
+  await watchPreparing(win);
   await openDemo(win, p.name, p.id);
   await measureTree(win, 'd2');
   const card = await focusMeasure(win, LINE);
@@ -116,15 +144,14 @@ test('opening a project with unprepared dates starts one quiet prepare job; the 
     .poll(async () => (await prepareJobs(win, p.dir)).length, { timeout: 60_000 })
     .toBe(1);
   expect((await prepareJobs(win, p.dir))[0]?.captures).toEqual(DATES);
+  // (a quick job can end before a look: what the shell showed is watched from the start)
+  await expect
+    .poll(() => shownWhilePreparing(win), { timeout: 30_000 })
+    .toEqual({
+      meter: true,
+      stageCard: false,
+    });
   const chipBtn = win.getByTestId('processing-chip');
-  await expect(chipBtn).toHaveAttribute('data-preparing', '');
-  await expect(win.locator('.stage [data-testid="preparing-card"]')).toHaveCount(0);
-  await chipBtn.click();
-  const prep = win.getByTestId('processing-drawer').getByTestId('preparing-card');
-  await expect(prep).toBeVisible();
-  await expect(prep).toContainText('Preparing survey surfaces');
-  await expect(prep).toContainText('Started on its own when the project opened');
-  await win.getByTestId('proc-close').click();
   const jobs = await settled(win, p.dir);
   expect(jobs.map((j) => j.status)).toEqual(['done']);
 
@@ -242,8 +269,14 @@ test.describe('in the smallest window', () => {
     test.setTimeout(360_000);
     await openDemo(win, p.name, p.id);
     const chip = win.getByTestId('processing-chip');
-    await expect(chip).toHaveAttribute('data-preparing', '', { timeout: 60_000 });
+    // the drawer open from the chip before the job starts: it lists each date while they prepare
+    await chip.click();
+    const prep = win.getByTestId('processing-drawer').getByTestId('preparing-card');
+    await expect(prep).toBeVisible({ timeout: 60_000 });
+    await expect(prep).toContainText('Preparing survey surfaces');
+    await expect(prep).toContainText('Started on its own when the project opened');
     await expect(win.locator('.stage [data-testid="preparing-card"]')).toHaveCount(0);
+    await win.getByTestId('proc-close').click();
     // clicks at the view's centre and at its bottom quarters reach the 3D view
     const hits = await win.evaluate(() => {
       const canvas = document.querySelector('[data-scene-view] canvas');
@@ -251,9 +284,14 @@ test.describe('in the smallest window', () => {
       const v = canvas.getBoundingClientRect();
       const reaches = (fx: number, fy: number) =>
         document.elementFromPoint(v.left + v.width * fx, v.top + v.height * fy) === canvas;
-      return { centre: reaches(0.5, 0.5), lowStart: reaches(0.3, 0.7), lowEnd: reaches(0.7, 0.7) };
+      return {
+        centre: reaches(0.5, 0.5),
+        lowStart: reaches(0.3, 0.7),
+        lowEnd: reaches(0.7, 0.7),
+        stageCard: document.querySelector('.stage [data-testid="preparing-card"]') !== null,
+      };
     });
-    expect(hits).toEqual({ centre: true, lowStart: true, lowEnd: true });
+    expect(hits).toEqual({ centre: true, lowStart: true, lowEnd: true, stageCard: false });
     await settled(win, p.dir);
   });
 });

@@ -385,7 +385,8 @@ test.describe('a wider stage', () => {
     if (capsule && after.dates && after.chip && before.dates && before.chip) {
       expect(Math.round(after.dates.y)).toBe(Math.round(before.dates.y));
       expect(Math.round(after.chip.y)).toBe(Math.round(before.chip.y));
-      expect(after.dates.y).toBeLessThan(capsule.y + capsule.height);
+      // the top-right stack starts beside the capsule, not under it
+      expect(after.chip.y).toBeLessThan(capsule.y + capsule.height);
       for (const b of [after.dates, after.chip])
         expect(b.x + b.width <= capsule.x || capsule.x + capsule.width <= b.x).toBe(true);
     }

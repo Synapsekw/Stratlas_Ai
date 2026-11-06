@@ -177,13 +177,20 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     demoProject,
   }) => {
     test.setTimeout(120_000);
-    const { win } = demoProject;
+    const { win, truth } = demoProject;
+    const first = pairs(truth, 'video').find((p) => p.a.t === 4.5);
+    if (!first) throw new Error('truth.json has no video pair at 4.5 s');
+    await clock(win, first.a.layer, 4.5);
     await win.keyboard.press('3');
     const right = win.getByTestId('pane-chooser-right').locator('select').first();
     await expect(right.locator('option[value="frames"]')).toHaveCount(1);
     await right.selectOption('frames');
-    await expect(win.getByTestId('frames-pane')).toBeVisible();
-    await expect(win.getByTestId('frames-stack')).toBeVisible();
+    const pane = win.getByTestId('frames-pane');
+    await expect(pane).toBeVisible();
+    // the swipe draws the two frames as one stack (side by side has none)
+    await expect(win.getByTestId('frames-score')).toHaveAttribute('data-layer', first.b.layer);
+    await pane.getByTestId('frames-mode-swipe').click();
+    await expect(pane.getByTestId('frames-stack')).toBeVisible();
 
     // the survey surfaces prepare on their own a few seconds after the project opens: their
     // progress is the Jobs chip's meter in the title bar, never a card on the stage
@@ -197,18 +204,13 @@ test.describe('in the window CI runs, 1100 x 720', () => {
       );
       if (!stack) return 'no frames stack';
       const r = stack.getBoundingClientRect();
+      // the middle: the frames or the swipe's own handle there, nothing of the stage over them
+      const pane = document.querySelector('[data-testid="frames-pane"]');
       const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-      return stack.contains(hit)
-        ? 'reached'
-        : `covered by ${hit?.className.toString() ?? 'nothing'}`;
+      if (pane?.contains(hit) && !hit?.closest('.stage-slot')) return 'reached';
+      return `covered by ${hit?.getAttribute('data-testid') ?? hit?.tagName ?? 'nothing'}`;
     });
     expect(reach).toBe('reached');
-
-    // the drawer, opened from the chip, lists each date's progress
-    await chip.click();
-    const drawer = win.getByTestId('processing-drawer');
-    await expect(drawer).toBeVisible();
-    await expect(drawer.getByTestId('preparing-card')).toContainText('Preparing survey surfaces');
   });
 });
 
