@@ -44,21 +44,45 @@ export function escapeClosesOverlay(e: {
   );
 }
 
-/** The press that closed the overlay goes no further: its mouse events and click are dropped. */
-function swallowRestOfPress(): void {
-  const kinds = ['pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu'] as const;
-  function stop(): void {
-    for (const k of kinds) document.removeEventListener(k, drop, true);
-    clearTimeout(timer);
-  }
+/** A press on the 3D view or the map itself (not the island, a slot or a panel on the stage). */
+export function onStageSurface(at: Element): boolean {
+  if (!at.closest('.stage')) return false;
+  return at.tagName === 'CANVAS' || at.hasAttribute('data-scene-view');
+}
+
+/**
+ * The rest of one gesture goes no further: from its pointerdown to its own pointerup, and the
+ * click, context menu or middle click that follows it. The listeners go on the next tick after
+ * the pointerup (or a cancel), with no time window.
+ */
+export function swallowRestOfGesture(pointerId: number, doc: Document = document): void {
+  const kinds = [
+    'pointermove',
+    'mousedown',
+    'mouseup',
+    'click',
+    'dblclick',
+    'contextmenu',
+    'auxclick',
+  ] as const;
   function drop(e: Event): void {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === 'click') stop();
   }
-  for (const k of kinds) document.addEventListener(k, drop, true);
-  // a press that never ends in a click (dragged off) frees the events again
-  const timer = setTimeout(stop, 1000);
+  function end(e: PointerEvent): void {
+    if (e.pointerId !== pointerId) return;
+    drop(e);
+    doc.removeEventListener('pointerup', end, true);
+    doc.removeEventListener('pointercancel', end, true);
+    // the click, context menu or middle click of this gesture follow its pointerup in the same
+    // task: they are dropped too, and nothing after them
+    setTimeout(() => {
+      for (const k of kinds) doc.removeEventListener(k, drop, true);
+    }, 0);
+  }
+  for (const k of kinds) doc.addEventListener(k, drop, true);
+  doc.addEventListener('pointerup', end, true);
+  doc.addEventListener('pointercancel', end, true);
 }
 
 export interface LayersColumnProps {
@@ -88,8 +112,10 @@ export function LayersColumn({ resize }: LayersColumnProps = {}) {
     const sh = shell.getState();
     if (isSidebarFolded(sh)) void sh.toggleSidebar();
   }, [revealSeq, revealOpens]);
-  // the overlay below 1280 px: a press on the stage closes it and goes no further (a popover's
-  // rule, so it never drops a point or picks anything); the screen change closes it in the store
+  // the overlay below 1280 px: a press in the main area closes it. On the 3D view or the map
+  // itself the press goes no further (a popover's rule, so it never drops a point or picks
+  // anything); on the island, a panel or the dock it does what it always does. The screen change
+  // closes it in the store.
   const overlay = useShell(isLayersOverlay);
   const overlayOpen = overlay && !collapsed;
   useEffect(() => {
@@ -97,9 +123,11 @@ export function LayersColumn({ resize }: LayersColumnProps = {}) {
     const onPress = (e: PointerEvent) => {
       const at = e.target instanceof Element ? e.target : null;
       if (!at?.closest('.app > .main') || at.closest('.ph[data-side="left"]')) return;
-      e.preventDefault();
-      e.stopPropagation();
-      swallowRestOfPress();
+      if (onStageSurface(at)) {
+        e.preventDefault();
+        e.stopPropagation();
+        swallowRestOfGesture(e.pointerId);
+      }
       shell.getState().closeLayersOverlay();
     };
     document.addEventListener('pointerdown', onPress, true);
@@ -113,6 +141,8 @@ export function LayersColumn({ resize }: LayersColumnProps = {}) {
   const ref = useRef<HTMLElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
+    // leaving the Scene with the overlay open forgets the opener: the focus never jumps back to it
+    if (screen !== 'scene') opener.current = null;
     const el = ref.current;
     if (!el) return;
     if (overlayOpen) {

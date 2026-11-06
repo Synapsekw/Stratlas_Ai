@@ -153,10 +153,13 @@ test.describe('below 1280 px', () => {
     const x = stage.x + stage.width * 0.75;
     const y = stage.y + stage.height * 0.4;
     expect(
-      await win.evaluate(([px, py]) => !!document.elementFromPoint(px, py)?.closest('.stage'), [
-        x,
-        y,
-      ] as const),
+      await win.evaluate(
+        ([px, py]) => {
+          const at = document.elementFromPoint(px, py);
+          return !!at?.closest('.stage') && at.tagName === 'CANVAS';
+        },
+        [x, y] as const,
+      ),
     ).toBe(true);
     await win.mouse.click(x, y);
     await expect(app).toHaveAttribute('data-sb', 'collapsed');
@@ -168,6 +171,36 @@ test.describe('below 1280 px', () => {
     await expect
       .poll(() => win.evaluate(() => (window as unknown as { stageHeard: string[] }).stageHeard))
       .toContain('click');
+
+    // a right-click on the stage closes it just the same, and the next left click reaches the stage
+    const heard = () =>
+      win.evaluate(() => (window as unknown as { stageHeard: string[] }).stageHeard);
+    await toggle.click();
+    await expect(app).toHaveAttribute('data-sb', 'expanded');
+    await win.evaluate(() => {
+      (window as unknown as { stageHeard: string[] }).stageHeard = [];
+    });
+    await win.mouse.click(x, y, { button: 'right' });
+    await expect(app).toHaveAttribute('data-sb', 'collapsed');
+    expect(await heard()).toEqual([]);
+    await win.mouse.click(x, y);
+    await expect.poll(heard).toContain('click');
+
+    // a press on the right panel closes it and does what it always does: the tab switches
+    await toggle.click();
+    await expect(app).toHaveAttribute('data-sb', 'expanded');
+    const tools = win.locator('#wb-tab-tools');
+    const tb = await tools.boundingBox();
+    if (!tb) throw new Error('no Tools tab');
+    expect(
+      await win.evaluate(
+        ([px, py]) => !!document.elementFromPoint(px, py)?.closest('#wb-tab-tools'),
+        [tb.x + tb.width / 2, tb.y + tb.height / 2] as const,
+      ),
+    ).toBe(true);
+    await tools.click();
+    await expect(app).toHaveAttribute('data-sb', 'collapsed');
+    await expect(win.locator('.wb-panel-body')).toHaveAttribute('data-front', 'tools');
 
     // no setting changed: the person's own fold is untouched
     expect(
