@@ -2,6 +2,7 @@
  * The stage's single-key shortcuts. Each tool's action lives with its group (`tools/*.tsx`), so a
  * tool can change without editing this handler. T (the island's tools) is the island's own key.
  */
+import { chooseStage } from '../layout/useApplyPreset';
 import { annotateUi, pinDisplay } from '@aio/annotate';
 import type { EngineStage } from '@aio/engine';
 import { matchShortcut } from '@aio/ui';
@@ -30,11 +31,14 @@ export function useStageKeys(engine: EngineStage | null): void {
       const ws = workspace.getState();
       const k = matchShortcut('scene', e);
       const three = sh.stageMode !== 'map' ? engine : null;
-      if (k === 'scene.mode3d') sh.setStageMode('3d');
-      else if (k === 'scene.modeMap' || k === 'scene.modeSplit') {
+      if (k === 'scene.mode3d') {
+        sh.setStageMode('3d');
+        chooseStage('3d');
+      } else if (k === 'scene.modeMap' || k === 'scene.modeSplit') {
         // greyed out in a space without a map (the island says why)
         if (!mapAvailableNow() && (k === 'scene.modeMap' || splitShowsMapNow())) return;
         sh.setStageMode(k === 'scene.modeMap' ? 'map' : 'split');
+        chooseStage(k === 'scene.modeMap' ? 'map' : 'split');
       } else if (k === 'scene.home') ws.flyTo({ kind: 'home' });
       else if (k === 'scene.site') ws.flyTo({ kind: 'site' });
       else if (k === 'scene.flySelection' && ws.selection)

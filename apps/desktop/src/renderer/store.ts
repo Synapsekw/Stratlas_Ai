@@ -125,6 +125,11 @@ export interface ShellState {
    */
   sidebarReopened: boolean;
   /**
+   * The open project's layout preset folds the Layers column in the wide band too (a road
+   * project, layout/presets.ts); opening it by hand clears this for the project.
+   */
+  layersFoldWide: boolean;
+  /**
    * Below 1280 px the Layers column is an overlay over the stage: opened by hand, closed again by
    * Escape, a click on the stage or the window crossing into another band (shell/layoutBands.ts).
    */
@@ -265,7 +270,13 @@ function autoFoldFlag(): boolean {
 
 type LayersInputs = Pick<
   ShellState,
-  'settings' | 'windowWidth' | 'screen' | 'autoFold' | 'sidebarReopened' | 'layersOverlayOpen'
+  | 'settings'
+  | 'windowWidth'
+  | 'screen'
+  | 'autoFold'
+  | 'sidebarReopened'
+  | 'layersOverlayOpen'
+  | 'layersFoldWide'
 >;
 
 function layersOf(s: LayersInputs) {
@@ -276,6 +287,7 @@ function layersOf(s: LayersInputs) {
     autoFold: s.autoFold,
     reopened: s.sidebarReopened,
     overlayOpen: s.layersOverlayOpen,
+    foldWide: s.layersFoldWide,
   });
 }
 
@@ -341,6 +353,7 @@ export function createShellStore(
     rightCollapsed: panels.rightCollapsed,
     agentDockCollapsed: panels.agentDockCollapsed,
     sidebarReopened: panels.sidebarReopened,
+    layersFoldWide: false,
     layersOverlayOpen: false,
     windowWidth: typeof window === 'undefined' ? Infinity : window.innerWidth,
     autoFold: options.autoFold ?? autoFoldFlag(),
@@ -440,10 +453,16 @@ export function createShellStore(
         await s.updateSettings({ sidebarCollapsed: true });
         return;
       }
+      // Opening a column the project's preset folded (a road in a wide window): for this project
+      // only, the person's choice (layout/layoutStore.ts remembers it)
+      if (s.layersFoldWide && !s.settings.sidebarCollapsed) {
+        set({ layersFoldWide: false });
+        if (!isSidebarFolded(get())) return;
+      }
       // Opening. Where the window's band folds it (the mid band), the reopen is remembered (not
       // a setting), so it stays open in that band from now on.
       const open = { ...s.settings, sidebarCollapsed: false };
-      if (isSidebarFolded({ ...s, settings: open })) {
+      if (isSidebarFolded({ ...s, settings: open, layersFoldWide: false })) {
         set({ sidebarReopened: true });
         savePanels(get());
       }

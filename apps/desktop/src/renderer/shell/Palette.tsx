@@ -31,6 +31,7 @@ import { shell, useShell } from '../shell';
 import { isSidebarFolded, type Screen, type SettingsPage, type StageMode } from '../store';
 import { favouritesAndRecent, useFavourites } from '../survey/measureCatalogue';
 import { islandModes, measureToolId, openMode, stageModeAvailable } from '../tools/registry';
+import { chooseStage, resetLayout } from '../layout/useApplyPreset';
 import { useToolCtx } from '../tools/useToolCtx';
 import { GROUP_TAB } from '../workspace/island/islandBench';
 import { showBench } from '../workspace/workbench/followTool';
@@ -287,6 +288,7 @@ export function Palette() {
           ? () => {
               s.go('scene');
               s.setStageMode(mode);
+              chooseStage(mode);
             }
           : () => undefined,
         modeKey(mode),
@@ -350,6 +352,8 @@ export function Palette() {
         fn();
       };
       action('model-builder', 'Open the model builder', 'plant', openModelBuilder);
+      // the project type's layout again (D7): its tab, strip, island mode, view and Layers column
+      action('reset-layout', t('wb.layout.reset'), 'undo', scene(resetLayout));
       modeAction('3d', 'Show 3D view', 'scene');
       modeAction('map', 'Show map', 'map');
       modeAction('split', 'Show 3D and map side by side', 'split');

@@ -35,6 +35,8 @@ import type { GroupCtx } from './groups';
 import { drawerStore } from '../workbench/drawerStore';
 import { liveTab } from '../workbench/view';
 import { islandModes, openMode } from '../../tools/registry';
+import { useLayoutPrefs } from '../../layout/layoutStore';
+import { chooseIslandMode } from '../../layout/useApplyPreset';
 import { usePublishCompare, useToolCtx } from '../../tools/useToolCtx';
 import { GROUP_TAB, openBenchFromIsland } from './islandBench';
 import { IslandCalendar, IslandDate, islandDates } from './IslandDate';
@@ -143,6 +145,11 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   const toolCtx = useToolCtx({ compare: compareDates, tools, stage });
   usePublishCompare(compareDates);
   const groups = islandModes(toolCtx);
+  // the mode the project's layout opens on (D7): picked as it is, shown once the project lists it
+  const ask = useLayoutPrefs((x) => x.islandAsk);
+  useEffect(() => {
+    if (ask) dispatch({ type: 'pickGroup', group: ask.mode });
+  }, [ask]);
   const group = groups.some((m) => m.id === s.group) ? s.group : 'view';
   const left = splitting ? paneCapture(split, 'left') : undefined;
   const right = splitting ? paneCapture(split, 'right') : undefined;
@@ -211,6 +218,8 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   const pickGroup = useCallback(
     (g: GroupId) => {
       dispatch({ type: 'pickGroup', group: g });
+      // the person's mode for this project from now on (layout/layoutStore.ts)
+      chooseIslandMode(g);
       openMode(g, toolCtx);
       if (GROUP_TAB[g] && g !== 'compare') done();
     },

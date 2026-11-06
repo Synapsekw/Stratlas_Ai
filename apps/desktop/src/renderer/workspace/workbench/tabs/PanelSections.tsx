@@ -13,7 +13,8 @@ import { useIsRoad } from '../../../road/useRoadMap';
 import { FrontBody } from '../FrontBody';
 import { usePanelData } from '../panelData';
 import { ProjectList } from '../project/ProjectList';
-import { sectionsOf, type PanelTab, type SectionDef } from '../tabsModel';
+import { useLayout } from '../../../layout/useApplyPreset';
+import { leadWith, sectionsOf, type PanelTab, type SectionDef } from '../tabsModel';
 import { useWorkbench, workbench } from '../workbenchStore';
 import { revealSection } from './revealSection';
 
@@ -113,17 +114,30 @@ export function PanelSection({ def, lead }: { def: SectionDef; lead?: ReactNode 
 }
 
 /** Every section a tab shows for this project, in the tab's order. */
-export function PanelSections({ tab }: { tab: Exclude<PanelTab, 'selection'> }) {
+export function PanelSections({
+  tab,
+  foot,
+}: {
+  tab: Exclude<PanelTab, 'selection'>;
+  /** Below the last section (Layers & display's Reset layout). */
+  foot?: ReactNode;
+}) {
   const data = usePanelData();
   const tabs = useWorkbench((s) => s.tabs);
   // a tool's body opened (not the fixed bodies, always in the store: Volumes, Changes)
   const opened = useMemo(() => new Set(tabs.filter((x) => !x.fixed).map((x) => x.id)), [tabs]);
-  const defs = useMemo(() => sectionsOf(tab, data, opened), [tab, data, opened]);
+  // Project's sections: the project type's lead, the rest in the tab's order (D7)
+  const lead = useLayout()?.layout.projectSections;
+  const defs = useMemo(
+    () => leadWith(sectionsOf(tab, data, opened), tab === 'project' ? lead : undefined),
+    [tab, data, opened, lead],
+  );
   return (
     <div className="wb-sections" data-testid={`panel-sections-${tab}`}>
       {defs.map((def) => (
         <PanelSection key={def.id} def={def} />
       ))}
+      {foot}
     </div>
   );
 }

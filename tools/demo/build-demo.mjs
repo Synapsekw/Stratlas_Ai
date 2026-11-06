@@ -128,7 +128,9 @@ async function main() {
       name: 'Demo tank farm',
       customer: 'Demo customer (fictional)',
       site: 'Fictional site in open desert (synthetic demo data)',
-      type: 'fusion',
+      // a survey project (D7): it opens on Project > Volumes with the volume strip
+      purpose: 'survey',
+      type: 'volumetric',
       epsg: LOCATION.epsg,
       origin,
       severityTemplate: builder.GENERAL_TEMPLATE.id,

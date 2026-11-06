@@ -10,6 +10,7 @@ import { Button, focusables, Icon, Tip, useT, type ShortcutId } from '@aio/ui';
 import { useId, useRef, type Dispatch, type KeyboardEvent, type ReactNode } from 'react';
 import { shell } from '../../shell';
 import type { StageMode } from '../../store';
+import { chooseStage } from '../../layout/useApplyPreset';
 import { stageModeAvailable, type IslandModeDef, type ToolCtx } from '../../tools/registry';
 import { ModeRow, MODES, type GroupCtx } from './groups';
 import type { GroupId, IslandEvent } from './islandModel';
@@ -44,7 +45,9 @@ export function IslandModes({ mode, ctx }: { mode: StageMode; ctx: ToolCtx }) {
               aria-disabled={reason ? true : undefined}
               aria-describedby={reason ? `${id}-${m.mode}` : undefined}
               onClick={() => {
-                if (!reason) shell.getState().setStageMode(m.mode);
+                if (reason) return;
+                shell.getState().setStageMode(m.mode);
+                chooseStage(m.mode);
               }}
             >
               <Icon name={m.icon} size={14} />

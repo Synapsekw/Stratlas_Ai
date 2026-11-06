@@ -323,6 +323,10 @@ export const enWorkbench = {
   'wb.sec.thermal': 'Thermal',
   'wb.sec.environment': 'Environment',
   'wb.sec.display': 'Display',
+  // the foot of Layers & display and the palette (layout presets, D7)
+  'wb.layout.reset': 'Reset layout to project defaults',
+  'wb.layout.resetTip':
+    'Back to the tab, strip, island mode, view and Layers column this project type opens on',
   'wb.sec.clouds': 'Point cloud',
   'wb.sec.overlays': 'Terrain overlays',
   'wb.sec.cutaway': 'Section planes',

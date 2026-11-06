@@ -316,16 +316,17 @@ describe('RightSidebar', () => {
   it('shows Volumes with piles, the digest and Changes with two dates, none where the project has neither', () => {
     render();
     clickTab('project');
-    expect(sectionIds()).toEqual(['project.inThisProject', 'project.issues', 'project.jobs']);
+    // a project without a type: the inspection preset leads with Issues, then In this project (D7)
+    expect(sectionIds()).toEqual(['project.issues', 'project.inThisProject', 'project.jobs']);
     withVolumesAndDates();
     render();
-    // with two dates the site digest leads the tab
+    // with two dates the site digest follows the preset's lead; every section stays
     expect(sectionIds()).toEqual([
-      'project.digest',
+      'project.issues',
       'project.inThisProject',
+      'project.digest',
       'project.volumes',
       'project.changes',
-      'project.issues',
       'project.jobs',
     ]);
   });
@@ -452,15 +453,14 @@ describe('RightSidebar', () => {
     expect(splitPrefs.getState().byId[rightSplitId(bandId)]?.size).toBeUndefined();
   });
 
-  it('opens a volumetric project on Project > Volumes', () => {
+  it('leaves the tab where it is when the piles are read: the layout preset decides (D7)', () => {
     render();
     expect(workbench.getState().front).toBe('selection');
     act(() => {
       volumetric.setState({ status: 'ready' });
     });
-    expect(workbench.getState().front).toBe('volumes');
-    expect(workbench.getState().panel).toBe('project');
-    expect(sectionEl('project.volumes')?.getAttribute('data-open')).toBe('true');
+    expect(workbench.getState().front).toBe('selection');
+    expect(workbench.getState().panel).toBe('selection');
   });
 
   it('keeps a fresh project on Selection while its piles are read, and when it has none', () => {
@@ -473,20 +473,6 @@ describe('RightSidebar', () => {
       volumetric.setState({ status: 'none' });
     });
     expect(workbench.getState().panel).toBe('selection');
-  });
-
-  it('opens the next volumetric project on Volumes too, straight from another', () => {
-    act(() => {
-      volumetric.setState({ status: 'ready' });
-    });
-    render();
-    expect(workbench.getState().front).toBe('volumes');
-    // another project opens; its volumes are ready without passing through idle
-    act(() => {
-      workspace.getState().openProject({ id: 'p4', root: '/p4', manifest: threeDates });
-      workbench.getState().reset();
-    });
-    expect(workbench.getState().front).toBe('volumes');
   });
 
   it("links the island while the live tool's section is in front", () => {

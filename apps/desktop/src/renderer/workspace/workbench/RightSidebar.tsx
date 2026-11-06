@@ -6,7 +6,6 @@
  * panel" on a wide tool does while it is pressed.
  */
 import { Button, useResizableSplit, useT } from '@aio/ui';
-import { useVolumetric } from '@aio/volumetric';
 import { useWorkspace } from '@aio/workspace';
 import {
   useEffect,
@@ -29,6 +28,7 @@ import { agentWindow } from '../agentWindow';
 import { useBenchFollow } from './benchFollow';
 import { useAnnotateFollow } from './benches/AnnotateBench';
 import { useDrawer } from './drawerStore';
+import { chooseTab } from '../../layout/useApplyPreset';
 import { useSelectionShows } from './FrontBody';
 import { migrateOldRightWidth, rightSplit, usePanelBand } from './panelWidth';
 import { TabBar } from './TabBar';
@@ -134,10 +134,10 @@ export function useSidebarSplit(collapsed: boolean, hasProject: boolean) {
 
 /**
  * The panel follows what the person does, as the context tabs did: a picked issue shows its card
- * in Selection, Show changes brings Project > Changes, and a volumetric project opens on Project >
- * Volumes (W13's presets take this over).
+ * in Selection and Show changes brings Project > Changes. What a project opens on is its layout
+ * preset's (layout/useApplyPreset.ts).
  */
-function useFollow(panel: PanelTab) {
+function useFollow() {
   const focusSeq = useCardFocusSeq();
   const seenFocus = useRef(focusSeq);
   useEffect(() => {
@@ -152,22 +152,6 @@ function useFollow(panel: PanelTab) {
     seenChanges.current = changesSeq;
     workbench.getState().show('changes');
   }, [changesSeq]);
-  // a volumetric project once its piles are read: not while any project's read is still going
-  // (every project passes through `loading`, and Selection is the fresh project's tab)
-  const volumes = useVolumetric((s) => s.status === 'ready');
-  // once per project: another volumetric project opened straight after this one opens on its own
-  const projectId = useWorkspace((s) => s.project?.id ?? null);
-  const seenVolumes = useRef<string | null>(null);
-  useEffect(() => {
-    if (!volumes || !projectId) {
-      seenVolumes.current = null;
-      return;
-    }
-    if (seenVolumes.current === projectId) return;
-    seenVolumes.current = projectId;
-    // from Selection, or within Project: a person who stayed on Tools or Layers is left there
-    if (panel === 'selection' || panel === 'project') workbench.getState().follow('volumes');
-  }, [volumes, projectId, panel]);
 }
 
 /**
@@ -243,7 +227,7 @@ export function RightSidebar() {
   const road = useIsRoad();
   const { front } = useWorkbenchView();
   const tab = useWorkbench((s) => s.panel);
-  useFollow(tab);
+  useFollow();
   useBenchFollow();
   // Video, Annotate and Jobs benches: Annotate opens its section when the tools start
   useAnnotateFollow();
@@ -278,6 +262,8 @@ export function RightSidebar() {
         live={live}
         onShow={(next) => {
           workbench.getState().show(next);
+          // the person's tab for this project from now on (layout/layoutStore.ts)
+          chooseTab(next);
           // a tab clicked over the maximised agent brings the panel back (D22)
           if (agentPane.getState().mode === 'max') agentPane.getState().setMode('normal');
         }}

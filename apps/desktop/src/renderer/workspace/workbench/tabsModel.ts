@@ -387,6 +387,13 @@ export function sectionsOf(
   );
 }
 
+/** `defs` with the ones `lead` names first, in its order; nothing added or removed (pure). */
+export function leadWith(defs: readonly SectionDef[], lead?: readonly SectionId[]): SectionDef[] {
+  if (!lead || lead.length === 0) return [...defs];
+  const first = lead.flatMap((id) => defs.filter((d) => d.id === id));
+  return [...first, ...defs.filter((d) => !lead.includes(d.id))];
+}
+
 /** The body a tab brings forward when it is picked and none of its own is in front. */
 export const TAB_FRONT: Readonly<Record<PanelTab, TabId>> = {
   selection: 'selection',

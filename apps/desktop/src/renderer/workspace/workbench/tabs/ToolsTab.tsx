@@ -5,6 +5,7 @@
  * Thermal, Environment). While a measuring tool is armed the list gives way to the tool's card
  * with "Back to tools"; Escape (the tool's Stop) returns to the list too.
  */
+import { useLayout } from '../../../layout/useApplyPreset';
 import { Button, Icon, useT } from '@aio/ui';
 import { useEffect, useMemo, useRef } from 'react';
 import { stopTool, useMeasure } from '../../../survey/measureStore';
@@ -102,5 +103,7 @@ function ToolList({ order }: { order?: readonly ToolGroup[] }) {
 
 export function ToolsTab() {
   const armed = useMeasure((s) => s.tool !== null && s.draw !== null);
-  return armed ? <ArmedTool /> : <ToolList />;
+  // the project type's groups lead (D7); every group whose data the project holds stays listed
+  const order = useLayout()?.layout.toolOrder;
+  return armed ? <ArmedTool /> : <ToolList {...(order && { order })} />;
 }

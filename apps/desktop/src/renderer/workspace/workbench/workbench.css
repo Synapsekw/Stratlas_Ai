@@ -98,6 +98,11 @@
 .wb-psec {
   border-block-end: 1px solid var(--line-soft);
 }
+/* Layers & display's foot: Reset layout to project defaults (layout presets, D7) */
+.wb-layout-foot {
+  padding-block: var(--sp-4) 0;
+  padding-inline: var(--sp-4);
+}
 .wb-psec > .wb-section-head {
   padding-block: var(--sp-3);
   padding-inline: var(--sp-5);

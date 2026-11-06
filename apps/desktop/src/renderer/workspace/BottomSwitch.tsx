@@ -6,9 +6,9 @@
  * (styles.css, `@container tl-wrap`). The accessible name is the word either way.
  */
 import { Icon, Tip, useT, type IconName, type MessageKey } from '@aio/ui';
-import { workspace } from '@aio/workspace';
 import type { ReactElement } from 'react';
-import { bottomPref, type BottomPref, type BottomSlot } from './timelinePref';
+import { chooseStrip } from '../layout/useApplyPreset';
+import type { BottomPref, BottomSlot } from './timelinePref';
 
 const SIDES: readonly { k: BottomPref; icon: IconName; label: MessageKey; tip: MessageKey }[] = [
   { k: 'dates', icon: 'calendar', label: 'strip.switch.dates', tip: 'strip.switch.datesTip' },
@@ -17,9 +17,9 @@ const SIDES: readonly { k: BottomPref; icon: IconName; label: MessageKey; tip: M
 
 export function BottomSwitch({ slot }: { slot: BottomSlot }): ReactElement {
   const t = useT();
+  // the person's strip for this project (layout/layoutStore.ts; the old choice follows)
   const choose = (pref: BottomPref) => {
-    const id = workspace.getState().project?.id;
-    if (id) bottomPref.getState().set(id, pref);
+    chooseStrip(pref);
   };
   return (
     <div className="seg tl-switch" role="group" aria-label={t('strip.switch.aria')}>

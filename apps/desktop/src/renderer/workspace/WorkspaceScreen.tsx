@@ -1,7 +1,6 @@
 import { formatDate, neighbourClip, Timeline, type TimelineModel, useT } from '@aio/ui';
 import { clock, useWorkspace, workspace } from '@aio/workspace';
 import { useCallback } from 'react';
-import { useStore } from 'zustand';
 import { useMeasure } from '../survey/measureStore';
 import { PANEL_ID, PanelHandle } from '../shell/PanelHandle';
 import { CaptionBacking } from '../shell/RightHeader';
@@ -9,6 +8,7 @@ import { shell, useShell } from '../shell';
 import { ChainageRuler } from '../road/ChainageRuler';
 import { useIsRoad } from '../road/useRoadMap';
 import { NoProject } from '../screens/NoProject';
+import { useApplyPreset, useLayout } from '../layout/useApplyPreset';
 import { usesLanes } from './lanes';
 import { LayerPlaceholder } from './LayerPlaceholder';
 import { pickClip, selectClip } from './pickClip';
@@ -18,11 +18,11 @@ import { timelineActions, useTimelineBinding } from './timelineBinding';
 import { DatesStrip } from './dates/DatesStrip';
 import { BottomSwitch } from './BottomSwitch';
 import {
-  bottomPref,
   bottomSlot,
   datedCount,
   offersSwitch,
   useTimelineShown,
+  type BottomPref,
   type BottomSlot,
 } from './timelinePref';
 import { LaneFocusFollow, WorkspaceLanes } from './WorkspaceLanes';
@@ -90,13 +90,15 @@ const hasPiles = (ms: readonly { tool: string; family: string }[]) =>
 
 /**
  * What the bottom slot shows for the open project (spec section 5): the dates strip, the footage
- * timeline or nothing, and whether the "Dates | Footage" switch is offered.
+ * timeline or nothing, and whether the "Dates | Footage" switch is offered. With both to show, the
+ * project's layout picks (its preset, else the person's choice: layout/applyPreset.ts).
  */
 function useBottomSlot(): { slot: BottomSlot; switchable: boolean } {
   const project = useWorkspace((s) => s.project);
   const shown = useTimelineShown(project);
   const hasVolumes = useMeasure((s) => hasPiles(s.file.measurements));
-  const pref = useStore(bottomPref, (s) => (project ? (s.byProject[project.id] ?? null) : null));
+  const strip = useLayout()?.layout.strip ?? null;
+  const pref: BottomPref | null = strip === null ? null : strip === 'footage' ? 'footage' : 'dates';
   if (!project) return { slot: 'none', switchable: false };
   const x = {
     hasVideo: project.manifest.layers.some((l) => l.kind === 'video'),
@@ -110,6 +112,8 @@ function useBottomSlot(): { slot: BottomSlot; switchable: boolean } {
 
 export function WorkspaceScreen() {
   const t = useT();
+  // the project type's layout on open (D7): defaults only, every tool stays reachable
+  useApplyPreset();
   const hasProject = useWorkspace((s) => s.project !== null);
   const rightCollapsed = useShell((s) => s.rightCollapsed);
   const road = useIsRoad();

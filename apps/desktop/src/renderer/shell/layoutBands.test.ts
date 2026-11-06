@@ -97,6 +97,17 @@ describe('the Layers column per band', () => {
     });
   });
 
+  it("wide: a road project's preset folds it (D7)", () => {
+    expect(layersState({ ...SCENE, windowWidth: 1440, foldWide: true })).toEqual({
+      shown: false,
+      overlay: false,
+    });
+    // the narrow band's overlay is the person's alone
+    expect(layersState({ ...SCENE, windowWidth: 1100, foldWide: true, overlayOpen: true })).toEqual(
+      { shown: true, overlay: true },
+    );
+  });
+
   it('mid: folded until the person opens it, then docked open', () => {
     expect(layersState({ ...SCENE, windowWidth: 1300 })).toEqual({
       shown: false,

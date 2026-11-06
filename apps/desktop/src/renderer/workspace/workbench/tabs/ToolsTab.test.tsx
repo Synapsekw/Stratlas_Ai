@@ -57,10 +57,12 @@ afterEach(() => {
 });
 
 describe('the Tools tab (W8)', () => {
-  it("lists the registry's groups in its order, View first", () => {
+  it("lists the preset's groups first, then the registry's order", () => {
     render();
     const ids = sections();
-    expect(ids.slice(0, 3)).toEqual(['tools.view', 'tools.measure', 'tools.annotate']);
+    // a project without a type: the inspection preset leads with Measure and Annotate (D7)
+    expect(ids.slice(0, 3)).toEqual(['tools.measure', 'tools.annotate', 'tools.engineering']);
+    expect(ids).toContain('tools.view');
     // the project has video: its group is there, after the measuring groups
     expect(ids.indexOf('tools.video')).toBeGreaterThan(ids.indexOf('tools.annotate'));
   });

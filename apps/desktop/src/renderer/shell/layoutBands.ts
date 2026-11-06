@@ -108,10 +108,11 @@ export function layersState(i: {
   autoFold: boolean; // window.aio.flags.autoFold
   reopened: boolean; // panelPrefs.sidebarReopened (opened by hand in the mid band)
   overlayOpen: boolean; // the narrow band's overlay, opened by hand this session
+  foldWide?: boolean; // the open project's preset folds it in the wide band too (a road)
 }): LayersState {
   if (!i.autoFold || !DATA_SCREENS.has(i.screen)) return { shown: !i.setting, overlay: false };
   const d = BANDS[bandOf(i.windowWidth)];
   if (d.layersOverlay) return { shown: i.overlayOpen, overlay: true };
   if (i.setting) return { shown: false, overlay: false };
-  return { shown: d.layersOpen || i.reopened, overlay: false };
+  return { shown: (d.layersOpen && i.foldWide !== true) || i.reopened, overlay: false };
 }
