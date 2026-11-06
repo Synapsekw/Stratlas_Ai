@@ -2,7 +2,16 @@ import { registerAppHooks } from '@aio/ai';
 import { SightingPicker, useIssueOverlay, useMapDraw, usePinDisplay } from '@aio/annotate';
 import { getActiveScene, SceneView, type EngineStage } from '@aio/engine';
 import { MapView, type MapController, type MapDrawSeam, type MapIssueDisplay } from '@aio/maps';
-import { Button, Icon, subscribeToasts, toastStamp, ToastHost, useT, visibleToast } from '@aio/ui';
+import {
+  Button,
+  Icon,
+  subscribeToasts,
+  toastBeatsHints,
+  toastStamp,
+  ToastHost,
+  useT,
+  visibleToast,
+} from '@aio/ui';
 import { cameraModeOf, setDroneTelemetry, setFlightPaths } from '@aio/video';
 import { useVolumeHint, VolumeHint, VolumetricStage } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
@@ -371,15 +380,19 @@ function useArrivals(shown: readonly string[]): ReadonlyMap<string, number> {
 }
 
 /** The toast the stage's host would show now, as a key that changes when another arrives. */
-function useStageToastKey(): string | null {
+function useStageToast(): { key: string; first: boolean } | null {
   useSyncExternalStore(subscribeToasts, toastStamp, toastStamp);
   const x = visibleToast('stage');
-  return x ? `toast:${x.id}#${String(x.version)}` : null;
+  // an error or a toast to act on (an undo, an offer) goes in front of any hint
+  return x ? { key: `toast:${x.id}#${String(x.version)}`, first: toastBeatsHints(x) } : null;
 }
 
-/** The D5 name of each corner a slot box stands in (`tl`: the map style of a Split's start pane). */
+/**
+ * The name of each corner a slot box stands in. `tl` is no D5 slot: it holds the tool and status
+ * bars, the Show control and, in a Split, the map style of a start-side map pane, stacked.
+ */
 const SLOT_NAME: Readonly<Record<Corner, string>> = {
-  tl: 'top-right',
+  tl: 'top-left',
   tr: 'top-right',
   bl: 'bottom-left',
   br: 'bottom-right',
@@ -413,18 +426,19 @@ export function useStageCorners(o: StageCornersInput): {
   // playing through the dates (board 6): the blend at the foot, the site totals with the legends
   const playing = useTimelapsePlaying() && !o.splitting;
   const status = o.roadMeasure || cutaway || notice !== null;
-  const toastKey = useStageToastKey();
+  // in a Split no toast stands on the stage, over a pane: toasts show in the window corner
+  const toastHere = !o.splitting && !o.video.includes('bl');
+  const stageToast = useStageToast();
+  const toastKey = toastHere ? (stageToast?.key ?? null) : null;
   const basemapAt = (o.basemapAt ?? END)[0] ?? 'tr';
   const topTaken = o.topTaken ?? NO_CORNERS;
-  // the bottom left's candidates, by when each came
-  const footIds = [
-    playing && 'tlBlend',
-    status && 'status',
-    stageHint && 'stageHint',
-    volHint && 'volHint',
-    toastKey,
-  ].filter((x): x is string => typeof x === 'string');
+  // the bottom left's candidates, by when each came; in a Split each hint stands at the foot of
+  // the 3D pane it is about, never over the other pane
+  const footIds = [stageHint && 'stageHint', volHint && 'volHint', toastKey].filter(
+    (x): x is string => typeof x === 'string',
+  );
   const since = useArrivals(footIds);
+  const toastFirst = toastKey !== null && stageToast?.first === true;
   const slots = useMemo(() => {
     const on: Record<string, boolean> = {
       basemap: basemap !== null,
@@ -443,10 +457,31 @@ export function useStageCorners(o: StageCornersInput): {
       // --- end RF coverage legend ---
     ];
     const shown = items.filter((x) => on[x.id] === true);
-    for (const [id, at] of since)
-      shown.push({ id, overlay: id.startsWith('toast:') ? 'toast' : 'hint', since: at });
+    const hintAt = o.splitting ? (o.cursor ?? 'bl') : undefined;
+    for (const [id, at] of since) {
+      const isToast = id.startsWith('toast:');
+      shown.push({
+        id,
+        overlay: isToast ? 'toast' : 'hint',
+        since: isToast && toastFirst ? Number.MAX_SAFE_INTEGER : at,
+        ...(!isToast && hintAt && { at: hintAt }),
+      });
+    }
     return placeOverlays(shown, new Set<Corner>([...o.video, ...topTaken]));
-  }, [basemap, basemapAt, dates, cfLegend, playing, o.rfLegend, o.video, topTaken, since]);
+  }, [
+    basemap,
+    basemapAt,
+    dates,
+    cfLegend,
+    playing,
+    o.rfLegend,
+    o.video,
+    o.splitting,
+    o.cursor,
+    topTaken,
+    since,
+    toastFirst,
+  ]);
   // the callouts keep out of the overlays: placed again as the overlays move (they read their
   // keep-out on a rendered frame)
   const engine = o.engine;
@@ -466,8 +501,19 @@ export function useStageCorners(o: StageCornersInput): {
   };
   put('basemap', basemap && <StageBasemapChip view={basemap} />);
   put('dates', <DatesOnScreen kinds={DATE_KINDS} />);
-  put('tlBlend', <TimelapseBlend />);
-  put(
+  // the top left: the Show control (until it moves into Layers & display, W13) and the tool and
+  // status bars, which are no messages and so never wait behind a toast; stacked with the map
+  // style of a start-side map pane in a Split. The floating video or the open island there
+  // hides them while it does
+  const tlFree = !o.video.includes('tl') && !topTaken.includes('tl');
+  const tl = (on: boolean, id: string, node: ReactNode) => {
+    if (!on || !tlFree) return;
+    groups.set('tl', [...(groups.get('tl') ?? []), <Fragment key={id}>{node}</Fragment>]);
+  };
+  tl(show, 'show', <StageShow />);
+  tl(playing, 'tlBlend', <TimelapseBlend />);
+  tl(
+    status,
     'status',
     <div className="stage-under">
       {o.roadMeasure && <MeasureBar />}
@@ -489,17 +535,15 @@ export function useStageCorners(o: StageCornersInput): {
   // --- RF coverage legend (rf-ui) ---
   put('rfLegend', <StageCoverageLegend />);
   // --- end RF coverage legend ---
-  // the stage's toast host stands in the bottom left while the floating video leaves that corner
-  // free; it holds its toast back while a newer hint shows there (the toast waits). With the
-  // corner taken it is not mounted, so toasts show in the window corner meanwhile
-  const footFree = !o.video.includes('bl');
+  // the stage's toast host stands in the bottom left of a single view while the floating video
+  // leaves that corner free; it holds a plain toast back while a newer hint shows there (the
+  // toast waits). In a Split, or with the corner taken, it is not mounted: toasts show in the
+  // window corner meanwhile
+  const footFree = toastHere;
   const toastShown = toastKey !== null && cornerOf(toastKey) === 'bl';
   const occupied = new Set<Corner>([...groups.keys(), ...o.video]);
   if (toastShown) occupied.add('bl');
   const foot = footFree && <ToastHost placement="stage" held={!toastShown} />;
-  // the Show control (board 1) keeps the top left while the Volumes tab is open, until it moves
-  // into Layers & display; the floating video or the open island there hides it
-  const showAt = show && !o.video.includes('tl') && !topTaken.includes('tl');
   // the slot in the readout's corner stacks above it (stageSlots.css), so only the floating video
   // resting there hides the readout
   const overReadout = (corner: Corner) => (corner === o.cursor ? '' : undefined);
@@ -522,17 +566,6 @@ export function useStageCorners(o: StageCornersInput): {
             {corner === 'bl' && foot}
           </div>
         ))}
-        {showAt && (
-          <div
-            key="show"
-            className="stage-slot"
-            data-slot="tl"
-            data-stage-slot="show"
-            data-surface="dark"
-          >
-            <StageShow />
-          </div>
-        )}
         {foot && !groups.has('bl') && (
           <div
             key="bl"

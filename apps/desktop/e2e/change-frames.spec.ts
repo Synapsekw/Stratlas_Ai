@@ -189,9 +189,16 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     await expect(pane).toBeVisible();
     // the swipe draws the two frames as one stack (side by side has none)
     await expect(win.getByTestId('frames-score')).toHaveAttribute('data-layer', first.b.layer);
-    // (dispatched: a pointer click scrolls the narrow pane sideways to bring the button, the
-    // pane's bar being wider than the pane at this size, and the stack with it)
-    await pane.getByTestId('frames-mode-swipe').dispatchEvent('click');
+    // the bar wraps in the narrow pane: Swipe is in reach, nothing over it
+    const swipe = pane.getByTestId('frames-mode-swipe');
+    await expect(swipe).toBeVisible();
+    expect(
+      await swipe.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+      }),
+    ).toBe(true);
+    await swipe.click();
     await expect(pane.getByTestId('frames-stack')).toBeVisible();
 
     // the survey surfaces prepare on their own a few seconds after the project opens: their
@@ -225,6 +232,34 @@ test.describe('in the window CI runs, 1100 x 720', () => {
         { timeout: 10_000 },
       )
       .toBe('reached while preparing');
+
+    // in a Split a toast shows in the window corner, never over a pane: the stack stays reachable
+    await win.evaluate(() => {
+      (
+        window as unknown as {
+          __stratlas: { graphics(): { getState(): { relieve(reason: 'memory'): boolean } } };
+        }
+      ).__stratlas
+        .graphics()
+        .getState()
+        .relieve('memory');
+    });
+    await expect(win.getByTestId('toast-host-window').getByTestId('graphics-notice')).toBeVisible();
+    await expect(win.getByTestId('toast-host-stage')).toHaveCount(0);
+    const underToast = await win.evaluate(() => {
+      const stack = document.querySelector('[data-testid="frames-stack"]');
+      const card = document.querySelector('[data-testid="graphics-notice"]');
+      if (!stack || !card) return 'missing';
+      const a = stack.getBoundingClientRect();
+      const b = card.getBoundingClientRect();
+      const x = a.left + a.width / 2;
+      const y = a.top + a.height / 2;
+      const hit = document.elementFromPoint(x, y);
+      const apart =
+        a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+      return stack.parentElement?.contains(hit) && apart ? 'clear' : 'covered';
+    });
+    expect(underToast).toBe('clear');
   });
 });
 

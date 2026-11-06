@@ -143,6 +143,24 @@ export function toastQueue(): readonly Toast[] {
 }
 
 const isMounted = (p: ToastPlacement) => (mounted.get(p) ?? 0) > 0;
+/** Hosts that hold their toast back for now (the stage's slot shows a newer hint). */
+const held = new Set<ToastPlacement>();
+
+/**
+ * A host holds its toast back, or lets it go: a held toast waits in the queue and is not on
+ * screen (isToastVisible), so its keys do not act.
+ */
+export function setToastHostHeld(placement: ToastPlacement, on: boolean): void {
+  if (held.has(placement) === on) return;
+  if (on) held.add(placement);
+  else held.delete(placement);
+  emit();
+}
+
+/** Whether `x` goes in front of a stage hint: an error or a toast to act on (an undo, an offer). */
+export function toastBeatsHints(x: Pick<Toast, 'tone' | 'actionable'>): boolean {
+  return tierOf(x) > 0;
+}
 
 /**
  * The host a toast goes to: its placement while that host is on screen, else the other one (a
@@ -178,7 +196,7 @@ export function visibleToast(placement: ToastPlacement): Toast | undefined {
  */
 export function isToastVisible(id: string): boolean {
   for (const p of ['stage', 'window'] as const)
-    if (isMounted(p) && visibleToast(p)?.id === id) return true;
+    if (isMounted(p) && !held.has(p) && visibleToast(p)?.id === id) return true;
   return false;
 }
 

@@ -340,6 +340,15 @@ describe('toast', () => {
     expect(isToastVisible('nope')).toBe(false);
   });
 
+  it('a held host shows nothing and its toast is not visible, so its keys do not act', () => {
+    say('undo', { id: 'u', ttlMs: 0 });
+    mount(<ToastHost placement="stage" held />);
+    expect(isToastVisible('u')).toBe(false);
+    expect(document.querySelector('.q-toast')).toBeNull();
+    act(() => root?.render(<ToastHost placement="stage" />));
+    expect(isToastVisible('u')).toBe(true);
+  });
+
   it('focus on a toast moves to the newer one that takes its place', () => {
     mount(<ToastHost placement="window" />);
     say('first', { ttlMs: 0, testId: 'one' });

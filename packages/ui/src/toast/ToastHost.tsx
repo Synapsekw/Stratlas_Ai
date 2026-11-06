@@ -13,6 +13,7 @@ import { Icon, type IconName } from '../icons/Icon';
 import {
   dismissToast,
   registerHost,
+  setToastHostHeld,
   subscribeToasts,
   toastStamp,
   visibleToast,
@@ -94,6 +95,12 @@ function useDocumentHidden(): boolean {
 export function ToastHost({ placement, held = false }: ToastHostProps): ReactElement {
   const t = useT();
   useEffect(() => registerHost(placement), [placement]);
+  useEffect(() => {
+    setToastHostHeld(placement, held);
+    return () => {
+      setToastHostHeld(placement, false);
+    };
+  }, [placement, held]);
   useSyncExternalStore(subscribeToasts, toastStamp, toastStamp);
   const shown = held ? undefined : visibleToast(placement);
   const waiting = held ? 0 : waitingCount(placement);

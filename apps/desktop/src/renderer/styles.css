@@ -2017,6 +2017,14 @@ button.chip-status:hover {
   padding-block: 6px 4px;
   row-gap: 2px;
 }
+/* the Frames bar wraps in a narrow pane (a Split at 1100 px), so its modes stay in reach */
+.pane-bar.frames-bar {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: 36px;
+  padding-block: var(--sp-2);
+  row-gap: var(--sp-2);
+}
 .walk-bar input[type='range'] {
   order: -1;
   flex: 1 0 100%;

@@ -532,6 +532,36 @@ test.describe('with Volumes in front', () => {
   );
   test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x700', QUADRION_DEMO: DEMO_FOLDER } });
 
+  test('no two stage slots overlap at 1100 x 700, in one view and in a Split', async ({ win }) => {
+    test.setTimeout(120_000);
+    await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
+    await openBench(win, 'volumes');
+    const clashes = () =>
+      win.evaluate(() => {
+        const boxes = [...document.querySelectorAll<HTMLElement>('.ws > .stage .stage-slot')]
+          .map((el) => ({ name: el.dataset.slot ?? '', r: el.getBoundingClientRect() }))
+          .filter((b) => b.r.width > 0 && b.r.height > 0);
+        const out: string[] = [];
+        boxes.forEach((a, i) => {
+          for (const b of boxes.slice(i + 1))
+            if (
+              a.r.left < b.r.right &&
+              b.r.left < a.r.right &&
+              a.r.top < b.r.bottom &&
+              b.r.top < a.r.bottom
+            )
+              out.push(`${a.name} / ${b.name}`);
+        });
+        return { count: boxes.length, out };
+      });
+    // the Show control, the Map menu and the dates, the volumes hint: several slots at once
+    await expect.poll(async () => (await clashes()).count).toBeGreaterThanOrEqual(2);
+    expect((await clashes()).out).toEqual([]);
+    await stageMode(win, 'Split');
+    await expect(win.locator('.pane-head')).toHaveCount(2);
+    await expect.poll(async () => (await clashes()).out).toEqual([]);
+  });
+
   test('the stage centre takes a click, the four tabs fit one row and the island fits', async ({
     app,
     win,

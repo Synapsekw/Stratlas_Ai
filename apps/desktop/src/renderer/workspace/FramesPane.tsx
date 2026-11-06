@@ -296,7 +296,7 @@ export function FramesPane() {
 
   return (
     <div className="pane-col" data-testid="frames-pane">
-      <div className="pane-bar">
+      <div className="pane-bar frames-bar">
         {aSet && (
           <button
             type="button"

@@ -1,17 +1,20 @@
 /**
  * The stage's overlay slots (UI revision D5), the one source of where an overlay stands. Only five
  * slots exist: the island at the top centre; the map style (with Streets) and the dates on screen
- * at the top right; one hint or one toast at a time at the bottom left
- * (newest wins, the rest wait); the legends at the bottom right, above the compass, the scale bar
- * and the coordinates readout; and, floating, only the popped-out video and a tool's on-stage
- * handles. Job progress has no slot: it is the Jobs chip's (the title bar), so a job card never
- * covers a view.
+ * at the top right; one hint or one toast at a time at the bottom left (an error or a toast to act
+ * on first, else the newest; the rest wait); the legends at the bottom right, above the compass,
+ * the scale bar and the coordinates readout; and, floating, only the popped-out video and a tool's
+ * on-stage handles. Job progress has no slot: it is the Jobs chip's (the title bar), so a job card
+ * never covers a view. In a Split no toast stands on the stage (the window corner shows them) and
+ * a hint stands at the foot of its 3D pane.
  *
  * Corners are named by the reading direction: `tl` is the top of the start edge (the top right
- * in a right-to-left UI), as the slots are placed with logical insets. Nothing takes `tl` but
- * the floating video, the open island reaching across it, in a Split the map style at the
- * top of a map pane on the start side, and, until it moves into Layers & display, the Show control
- * while the Volumes tab is open (Stage.tsx places it; it is no slot of its own).
+ * in a right-to-left UI), as the slots are placed with logical insets. `tl` is no D5 slot: Stage.tsx
+ * stacks there the tool and status bars (the road's measuring bar, the cut-away state, Compare's
+ * warning, the timelapse blend), which are no messages and never wait behind a toast; the Show
+ * control while the Volumes tab is open, until it moves into Layers & display (W13); and, in a
+ * Split, the map style of a start-side map pane. The floating video or the open island there
+ * hides them while it does.
  */
 
 export type Corner = 'tl' | 'tr' | 'bl' | 'br';

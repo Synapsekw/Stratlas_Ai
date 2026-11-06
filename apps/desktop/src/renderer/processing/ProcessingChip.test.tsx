@@ -102,15 +102,20 @@ describe('the chip', () => {
           state={{ kind: 'one', pct: 40 }}
           open={false}
           onToggle={() => undefined}
-          preparing={{ share: 0.25, label: 'Preparing survey surfaces: Preparing 0 of 2' }}
+          preparing={{ share: 0.25, label: 'survey surfaces 0 of 2 ready' }}
         />,
       );
     });
     expect(chip()?.textContent).toBe('1 job');
     expect(chip()?.hasAttribute('data-preparing')).toBe(true);
-    expect(chip()?.getAttribute('aria-label')).toContain('Preparing survey surfaces');
+    expect(chip()?.getAttribute('aria-label')).toBe('Processing 40%, survey surfaces 0 of 2 ready');
     const meter = chip()?.querySelector<HTMLElement>('[data-testid="processing-chip-meter"]');
     expect(meter?.style.getPropertyValue('--p')).toBe('0.25');
+    expect(meter?.getAttribute('role')).toBe('progressbar');
+    expect(meter?.getAttribute('aria-valuenow')).toBe('25');
+    expect(meter?.getAttribute('aria-valuemin')).toBe('0');
+    expect(meter?.getAttribute('aria-valuemax')).toBe('100');
+    expect(meter?.getAttribute('aria-label')).toBe('Survey surfaces');
   });
 
   it('carries a warning mark when something needs attention', () => {

@@ -95,7 +95,11 @@ export function ChipView({
         <span
           className="proc-meter"
           data-testid="processing-chip-meter"
-          aria-hidden="true"
+          role="progressbar"
+          aria-label={t('processing.chip.meter')}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(preparing.share * 100)}
           style={{ '--p': String(preparing.share) } as CSSProperties}
         />
       )}
@@ -128,10 +132,7 @@ export function ProcessingChip() {
       prep && root !== null
         ? {
             share: preparedShare(prep),
-            label: `${t('surface.preparing.title')}: ${t('surface.preparing.count', {
-              done: prep.done,
-              total: prep.rows.length,
-            })}`,
+            label: t('processing.chip.surfaces', { done: prep.done, total: prep.rows.length }),
           }
         : null,
     [prep, root],

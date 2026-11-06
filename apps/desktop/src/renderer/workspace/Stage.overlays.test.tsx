@@ -2,7 +2,7 @@
 import type { Layer } from '@aio/schema';
 import { volumetric } from '@aio/volumetric';
 import { captureIndex, workspace } from '@aio/workspace';
-import { dismissToast, toast } from '@aio/ui';
+import { dismissToast, isToastVisible, toast } from '@aio/ui';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -15,6 +15,7 @@ import { useCoverageLegendShown } from '../rf/StageCoverageLegend';
 import { antennasFile, unit } from '../rf/__fixtures__/rfData';
 import { shell } from '../shell';
 import { antennaStore } from '../telecom/antennaStore';
+import { linkedHover } from '../survey/linkedHover';
 import { compareNotice } from './compare';
 import { basemapCorners, readoutCorner, useStageCorners, type StageCornersInput } from './Stage';
 import { stagePrefs } from './stagePrefs';
@@ -132,11 +133,9 @@ describe('the stage corners', () => {
   });
 
   it('uses only the fixed slots: nothing at the top left, the Map menu and the dates top right', () => {
-    compareNotice.getState().show('Comparing two dates');
     render({ video: [] });
     expect(slotOf('scene-map-button')).toBe('tr');
     expect(slotOf('dates-on-screen')).toBe('tr');
-    expect(slotOf('compare-notice')).toBe('bl');
     expect(slots().map((s) => s.corner)).not.toContain('tl');
     // one box per corner, its overlays stacked in it
     const corners = slots().map((s) => s.corner);
@@ -179,13 +178,13 @@ describe('the stage corners', () => {
   });
 
   it('hides what stands in a corner a floating video takes, and nothing moves elsewhere', () => {
-    compareNotice.getState().show('Comparing two dates');
+    volumetric.setState({ status: 'ready', surface: 'photo', selected: null, shown: [] });
     render({ video: ['bl'] });
-    expect(slotOf('compare-notice')).toBeUndefined();
+    expect(slotOf('vol-hint')).toBeUndefined();
     expect(slotOf('dates-on-screen')).toBe('tr');
     render({ video: ['tr'] });
     expect(slotOf('dates-on-screen')).toBeUndefined();
-    expect(slotOf('compare-notice')).toBe('bl');
+    expect(slotOf('vol-hint')).toBe('bl');
     // a 280 px window on a narrow stage takes both bottom corners
     render({ video: ['bl', 'br'] });
     expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(true);
@@ -222,19 +221,102 @@ describe('the stage corners', () => {
     expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(false);
   });
 
-  it('shows one hint or notice at a time at the bottom left, the newest', () => {
-    volumetric.setState({ status: 'ready', surface: 'photo', selected: null, shown: [] });
+  it('keeps the tool and status bars at the top left, never behind a toast', () => {
+    compareNotice.getState().show('Comparing two dates');
     render({ video: [] });
-    expect(slotOf('vol-hint')).toBe('bl');
+    expect(slotOf('compare-notice')).toBe('tl');
     act(() => {
-      compareNotice.getState().show('Comparing two dates');
+      toast('Saved', { id: 'w10-saved', testId: 'w10-saved' });
     });
-    // the notice came later: it shows, the hint waits
-    expect(slotOf('compare-notice')).toBe('bl');
+    expect(slotOf('compare-notice')).toBe('tl');
+    expect(slotOf('w10-saved')).toBe('bl');
+    act(() => {
+      dismissToast('w10-saved');
+    });
+    // the floating video at the top left hides them while it rests there
+    render({ video: ['tl'] });
+    expect(slotOf('compare-notice')).toBeUndefined();
+  });
+
+  it('stacks the Map menu chip of a start-side map pane and the Show control in one box', () => {
+    volumetric.setState({ status: 'ready' });
+    shell.setState({ rightCollapsed: false } as never);
+    workbench.getState().show('volumes');
+    render({ show3d: true, showMap: true, splitting: true, basemapAt: ['tl', 'bl'] });
+    const boxes = host.querySelectorAll('.stage-slot[data-slot="tl"]');
+    expect(boxes).toHaveLength(1);
+    expect(boxes[0]?.querySelector('[data-testid="basemap-button"]')).not.toBeNull();
+    expect(boxes[0]?.querySelector('[data-testid="stage-show"]')).not.toBeNull();
+    workbench.getState().show('selection');
+  });
+
+  it('keeps an undo toast up when the volumes hint arrives', () => {
+    render({ video: [] });
+    act(() => {
+      toast('Measurement removed', {
+        id: 'w10-undo',
+        testId: 'w10-undo',
+        ttlMs: 0,
+        action: { label: 'Undo', run: () => undefined },
+      });
+    });
+    expect(slotOf('w10-undo')).toBe('bl');
+    act(() => {
+      volumetric.setState({ status: 'ready', surface: 'photo', selected: null, shown: [] });
+    });
+    // the hint came later, but the undo is to act on: it stays, and its keys still act
+    expect(slotOf('w10-undo')).toBe('bl');
     expect(slotOf('vol-hint')).toBeUndefined();
+    expect(isToastVisible('w10-undo')).toBe(true);
     act(() => {
-      compareNotice.getState().clear();
+      dismissToast('w10-undo');
     });
+    expect(slotOf('vol-hint')).toBe('bl');
+  });
+
+  it('keeps an error up while a linked-view hint shows', () => {
+    render({ video: [] });
+    act(() => {
+      toast('The volumes could not be read', { id: 'w10-err', testId: 'w10-err', tone: 'error' });
+    });
+    act(() => {
+      linkedHover.setState({
+        lines: new Map([['measure:l1', { key: 'measure:l1', polyline: [], series: [] }]]),
+        pin: { key: 'measure:l1', chainageM: 4, source: 'chart' },
+      });
+    });
+    expect(slotOf('w10-err')).toBe('bl');
+    expect(slotOf('stage-hint')).toBeUndefined();
+    act(() => {
+      dismissToast('w10-err');
+    });
+    expect(slotOf('stage-hint')).toBe('bl');
+    act(() => {
+      linkedHover.setState({ lines: new Map(), pin: null });
+    });
+  });
+
+  it('holds a plain toast back while a newer hint shows: it is not on screen', () => {
+    render({ video: [] });
+    act(() => {
+      toast('Saved', { id: 'w10-plain', testId: 'w10-plain', ttlMs: 0 });
+    });
+    act(() => {
+      volumetric.setState({ status: 'ready', surface: 'photo', selected: null, shown: [] });
+    });
+    expect(slotOf('vol-hint')).toBe('bl');
+    expect(isToastVisible('w10-plain')).toBe(false);
+    act(() => {
+      dismissToast('w10-plain');
+    });
+  });
+
+  it('in a Split, sends toasts to the window corner and keeps a hint at its 3D pane', () => {
+    volumetric.setState({ status: 'ready', surface: 'photo', selected: null, shown: [] });
+    render({ video: [], splitting: true, showMap: true, cursor: 'br' });
+    expect(host.querySelector('[data-testid="toast-host-stage"]')).toBeNull();
+    expect(slotOf('vol-hint')).toBe('br');
+    render({ video: [], splitting: true, showMap: true, cursor: 'bl' });
     expect(slotOf('vol-hint')).toBe('bl');
   });
 

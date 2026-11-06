@@ -162,6 +162,8 @@ export const enProcessing = {
   'processing.chip.elsewhere': 'Processing · {count} running elsewhere',
   'processing.chip.label': 'Processing: {state}',
   'processing.chip.tip': 'What is processing, and what finished',
+  'processing.chip.surfaces': 'survey surfaces {done} of {total} ready',
+  'processing.chip.meter': 'Survey surfaces',
   'processing.close': 'Close',
   'processing.createMaps': 'Create maps from photos',
   // a project with photos and no maps: the offer over the scene
