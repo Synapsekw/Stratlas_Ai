@@ -93,6 +93,20 @@ describe('useApplyPreset', () => {
     expect(workbench.getState().panel).toBe('layers');
   });
 
+  it('A, then B before its data is read, then A again applies A once more', () => {
+    open('a');
+    stores('a', true);
+    render();
+    expect(workbench.getState().panel).toBe('project');
+    // B opens while the stores still hold A's piles: B's layout waits
+    open('b');
+    expect(probe.seen).toBeNull();
+    // back to A before B's stores settle: the stores hold A's data, so A's layout applies again
+    open('a');
+    expect(probe.seen).toBe('project');
+    expect(workbench.getState().panel).toBe('project');
+  });
+
   it('a reload of the piles mid-session does not change the preset', () => {
     open('c');
     stores('c', true);

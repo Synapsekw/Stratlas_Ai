@@ -175,6 +175,12 @@ export function useApplyPreset(): void {
       return;
     }
     const key = `${projectId}#${String(resetSeq)}`;
+    // another project is open now (A, then B before its data was read, then A again): the last
+    // open's key no longer holds, so the layout applies again for this one
+    if (opened.current !== null && !opened.current.startsWith(`${projectId}#`)) {
+      opened.current = null;
+      last.current = null;
+    }
     if (opened.current !== key) {
       // only once the project's own measurements and volumes are read: a store still on the last
       // project would hand it that project's piles
