@@ -13,8 +13,8 @@ export interface PanelPrefs {
   /** The agent column of Issues, Media, Detections and Reports is folded away. */
   agentDockCollapsed: boolean;
   /**
-   * The person reopened the left sidebar the window had folded on its own (shell/autoFold.ts):
-   * it stays open in a narrow window from then on.
+   * The person reopened the Layers column the mid band had folded (shell/layoutBands.ts):
+   * it stays open in that band from then on.
    */
   sidebarReopened: boolean;
 }

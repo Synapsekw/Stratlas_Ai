@@ -2,14 +2,15 @@
  * The right panel's one width per window band (UI revision D1): a default and a drag range for
  * each band, remembered per band in the split prefs (`scene.right.<band>`), and never changed by
  * opening a tab or a section. Only "Expand panel" (a wide tool, Coverage or Thermal) asks for
- * more, and only while it is pressed. W12 folds this into the shell's bands (`layoutBands.ts`).
+ * more, and only while it is pressed. The table itself is the shell's bands (shell/layoutBands.ts).
  */
 import { splitPrefs, type SplitPrefsState } from '@aio/ui';
 import { useEffect, useState } from 'react';
 import { useStore } from 'zustand';
 import type { StoreApi } from 'zustand/vanilla';
+import { bandDefaults, bandOf, restingPx, type Band } from '../../shell/layoutBands';
 
-export type PanelBand = 'wide' | 'mid' | 'narrow';
+export type PanelBand = Band;
 
 export interface RightBand {
   /** The width the panel opens at before the person drags it. */
@@ -18,20 +19,20 @@ export interface RightBand {
   max: number;
 }
 
+const rightBand = (band: PanelBand): RightBand => {
+  const d = bandDefaults(band);
+  return { px: d.rightPx, min: d.rightMin, max: d.rightMax };
+};
+
 /** The D1 table: below 1280 px the panel stays docked at 300 px and pushes the stage. */
 export const RIGHT_BANDS: Readonly<Record<PanelBand, RightBand>> = {
-  wide: { px: 360, min: 320, max: 520 },
-  mid: { px: 320, min: 300, max: 480 },
-  // below 1280 the panel stays docked at 300 px (founder, 30 Oct): no narrower by a drag
-  narrow: { px: 300, min: 300, max: 400 },
+  wide: rightBand('wide'),
+  mid: rightBand('mid'),
+  narrow: rightBand('narrow'),
 };
 
 /** The band of a window width: 1440 px and up wide, 1280 to 1440 mid, below 1280 narrow. */
-export function panelBandOf(width: number): PanelBand {
-  if (width >= 1440) return 'wide';
-  if (width >= 1280) return 'mid';
-  return 'narrow';
-}
+export const panelBandOf: (width: number) => PanelBand = bandOf;
 
 /** The split prefs id that remembers the dragged width in this band. */
 export const rightSplitId = (band: PanelBand): string => `scene.right.${band}`;
@@ -76,9 +77,7 @@ export function restingRightPx(
   saved: number | undefined,
   expanded: boolean,
 ): number {
-  const s = rightSplit(band, expanded);
-  const px = saved !== undefined && saved > 0 ? saved : s.defaultSize;
-  return Math.round(Math.min(s.max, Math.max(s.min, px)));
+  return restingPx(band, saved, expanded);
 }
 
 const windowWidth = (): number => (typeof window === 'undefined' ? 1440 : window.innerWidth);

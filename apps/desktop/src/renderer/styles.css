@@ -76,6 +76,13 @@
 .app:not([data-screen='scene']) {
   --lc-col: 0px;
 }
+/* Below 1280 px (shell/layoutBands.ts) the Layers column lies over the stage: the grid keeps no
+   room for it, so the stage keeps its share of the window, and the column takes the width it
+   would have had docked (--lc-ov). */
+.app[data-sb-overlay] {
+  --lc-ov: clamp(var(--split-min, 0px), var(--split-size, var(--sb-w)), var(--split-max, 100%));
+  --lc-col: 0px;
+}
 [dir='rtl'] .app {
   --sb-fold-x: 1;
   --caption-inline-end: var(--caption-left, 0px);
@@ -812,6 +819,22 @@ button.chip-status:hover {
 }
 .app[data-sb='collapsed'] .sidebar {
   transform: translateX(calc(var(--sb-fold-x) * 100%));
+}
+/* the overlay below 1280 px: over the stage, beside the rail and under the title bar; Escape or a
+   click on the stage closes it (LayersColumn.tsx) */
+.app[data-sb-overlay] .sidebar {
+  position: fixed;
+  inset-block: var(--head-h) 0;
+  inset-inline-start: var(--rail-w);
+  inline-size: var(--lc-ov);
+  box-shadow: var(--el-2);
+}
+.app[data-sb-overlay][data-sb='collapsed'] .sidebar {
+  box-shadow: none;
+}
+/* its tab rides the overlay's inner edge while it shows */
+.app[data-sb-overlay][data-sb='expanded'] .main > .ph[data-side='left'] {
+  inset-inline-start: calc(var(--lc-ov) - var(--ph-w) - 1px);
 }
 /* once the slide has ended the folded column is out of the drawing altogether */
 .app[data-sb='collapsed']:not([data-fold]) .sidebar {

@@ -1,8 +1,9 @@
 /**
- * In a narrow window the Layers column folds away on its own while the Scene is open (founder,
- * 16 Oct 2026; the column since UI revision W11); the 52 px rail stays on every screen. Ctrl+B
- * opens it, and that is remembered on this machine (not a setting): after a restart it is still
- * open.
+ * In a window of 1280 to 1440 px the Layers column folds away on its own while the Scene is open
+ * (founder, 16 Oct 2026; the column since UI revision W11, the bands since W12); the 52 px rail
+ * stays on every screen. Ctrl+B opens it beside the stage, and that is remembered on this machine
+ * (not a setting): after a restart it is still open. Below 1280 px it opens over the stage
+ * instead (`responsive-bands.spec.ts`).
  *
  * Every other spec pins the column open (main passes `--quadrion-autofold=0` to an e2e run); this
  * one lets it fold with QUADRION_E2E_AUTOFOLD=1.
@@ -10,9 +11,12 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, launchApp, NetworkGuard, reportWindow, test, type DataRoot } from './fixtures';
 
-const ENV = { QUADRION_E2E_AUTOFOLD: '1' };
-/** The CI window: narrower than 1280 px, where the column folds on its own. */
-const SIZE: [number, number] = [1100, 720];
+/** The mid band: 1280 to 1440 px, where the column folds on its own and opens docked. */
+const SIZE: [number, number] = [1300, 720];
+const ENV = {
+  QUADRION_E2E_AUTOFOLD: '1',
+  QUADRION_WINDOW_SIZE: `${String(SIZE[0])}x${String(SIZE[1])}`,
+};
 /** tokens.css: the Layers column's default width and the rail's. */
 const LAYERS = 252;
 const RAIL = 52;
@@ -29,12 +33,8 @@ async function start(dataRoot: DataRoot, report = false): Promise<Run> {
   await network.attach(app);
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
-  // the run's window, as the fixtures report it ("[e2e] window 1100 x 720 px ..."), then the
-  // CI window whatever the run's size
+  // the run's window, as the fixtures report it ("[e2e] window 1300 x 720 px ...")
   if (report) await reportWindow(win);
-  await app.evaluate(({ BrowserWindow }, [w, h]) => {
-    BrowserWindow.getAllWindows()[0]?.setContentSize(w, h);
-  }, SIZE);
   await expect.poll(() => win.evaluate(() => window.innerWidth)).toBe(SIZE[0]);
   return { app, win, network };
 }
@@ -59,13 +59,14 @@ async function openScene(win: Page): Promise<void> {
   await expect(win.locator('.nav-item[aria-current="page"] .lbl')).toHaveText('Scene');
 }
 
-test('Layers folds away in a narrow window, and stays open once reopened', async ({ dataRoot }) => {
+test('Layers folds away in the mid band, and stays open once reopened', async ({ dataRoot }) => {
   test.setTimeout(120_000);
   const first = await start(dataRoot, true);
   try {
     const { win } = first;
-    // the window is narrower than 1280 px (the CI window, 1100 x 720)
-    expect(await win.evaluate(() => window.innerWidth)).toBeLessThan(1280);
+    // the window is in the mid band
+    expect(await win.evaluate(() => window.innerWidth)).toBeGreaterThanOrEqual(1280);
+    expect(await win.evaluate(() => window.innerWidth)).toBeLessThan(1440);
     // the projects have no Layers column: the rail alone
     await expect(win.getByTestId('layers-column')).toHaveCount(0);
     await expectMainAt(win, RAIL);

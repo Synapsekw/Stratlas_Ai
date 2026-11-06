@@ -23,7 +23,7 @@ import {
   type PanelStorage,
 } from './panelPrefs';
 import { isPlayer } from './player';
-import { sidebarFolded } from './shell/autoFold';
+import { bandOf, layersState } from './shell/layoutBands';
 import { samePathText } from './screens/projectMenuModel';
 import { resolveSettingsTarget } from './screens/settings/settingsPages';
 import { videoFirst } from './stageDefault';
@@ -121,10 +121,15 @@ export interface ShellState {
   agentDockCollapsed: boolean;
   /**
    * The person reopened the left sidebar the window had folded on its own (remembered on this
-   * machine, panelPrefs.ts): it stays open in a narrow window from then on (shell/autoFold.ts).
+   * machine, panelPrefs.ts): it stays open in the mid band from then on (shell/layoutBands.ts).
    */
   sidebarReopened: boolean;
-  /** The window's width in CSS px, which folds the left sidebar on its own (shell/autoFold.ts). */
+  /**
+   * Below 1280 px the Layers column is an overlay over the stage: opened by hand, closed again by
+   * Escape, a click on the stage or the window crossing into another band (shell/layoutBands.ts).
+   */
+  layersOverlayOpen: boolean;
+  /** The window's width in CSS px, whose band places the Layers column (shell/layoutBands.ts). */
   windowWidth: number;
   /** The left sidebar may fold on its own; false where e2e pins it open (`aio.flags.autoFold`). */
   autoFold: boolean;
@@ -179,6 +184,8 @@ export interface ShellActions {
    * window folded on its own opens and stays open (`sidebarReopened`) without a setting change.
    */
   toggleSidebar: () => Promise<void>;
+  /** Escape or a click on the stage: the narrow band's Layers overlay closes. */
+  closeLayersOverlay: () => void;
   setWindowWidth: (width: number) => void;
   openProject: (path: string, passphrase?: string) => Promise<void>;
   cancelUnlock: () => void;
@@ -256,17 +263,33 @@ function autoFoldFlag(): boolean {
   return aio?.flags?.autoFold === true;
 }
 
-/** Whether the left sidebar shows as its rail: the person's choice, or folded by the window. */
-export function isSidebarFolded(
-  s: Pick<ShellState, 'settings' | 'windowWidth' | 'screen' | 'autoFold' | 'sidebarReopened'>,
-): boolean {
-  return sidebarFolded({
+type LayersInputs = Pick<
+  ShellState,
+  'settings' | 'windowWidth' | 'screen' | 'autoFold' | 'sidebarReopened' | 'layersOverlayOpen'
+>;
+
+function layersOf(s: LayersInputs) {
+  return layersState({
     setting: s.settings.sidebarCollapsed,
     windowWidth: s.windowWidth,
     screen: s.screen,
     autoFold: s.autoFold,
     reopened: s.sidebarReopened,
+    overlayOpen: s.layersOverlayOpen,
   });
+}
+
+/**
+ * Whether the Layers column is out of sight (the rail alone shows): the person's choice, or the
+ * window's band (shell/layoutBands.ts).
+ */
+export function isSidebarFolded(s: LayersInputs): boolean {
+  return !layersOf(s).shown;
+}
+
+/** Whether the Layers column opens over the stage (below 1280 px, shell/layoutBands.ts). */
+export function isLayersOverlay(s: LayersInputs): boolean {
+  return layersOf(s).overlay;
 }
 
 /** The answer of a library change: null when it worked, else the sentence to show. */
@@ -318,6 +341,7 @@ export function createShellStore(
     rightCollapsed: panels.rightCollapsed,
     agentDockCollapsed: panels.agentDockCollapsed,
     sidebarReopened: panels.sidebarReopened,
+    layersOverlayOpen: false,
     windowWidth: typeof window === 'undefined' ? Infinity : window.innerWidth,
     autoFold: options.autoFold ?? autoFoldFlag(),
     videoDocked: false,
@@ -406,12 +430,21 @@ export function createShellStore(
 
     toggleSidebar: async () => {
       const s = get();
+      if (isLayersOverlay(s)) {
+        // below 1280 px: the overlay opens and closes for this session; opening by hand also
+        // drops a fold the person had chosen, so a wider window shows the column again
+        const open = !s.layersOverlayOpen;
+        set({ layersOverlayOpen: open });
+        if (open && s.settings.sidebarCollapsed)
+          await s.updateSettings({ sidebarCollapsed: false });
+        return;
+      }
       if (!isSidebarFolded(s)) {
         await s.updateSettings({ sidebarCollapsed: true });
         return;
       }
-      // Opening. Where the window folds it on its own, the reopen is remembered (not a setting),
-      // so it stays open in a narrow window from now on.
+      // Opening. Where the window's band folds it (the mid band), the reopen is remembered (not
+      // a setting), so it stays open in that band from now on.
       const open = { ...s.settings, sidebarCollapsed: false };
       if (isSidebarFolded({ ...s, settings: open })) {
         set({ sidebarReopened: true });
@@ -419,8 +452,15 @@ export function createShellStore(
       }
       if (s.settings.sidebarCollapsed) await s.updateSettings({ sidebarCollapsed: false });
     },
+    closeLayersOverlay: () => {
+      if (get().layersOverlayOpen) set({ layersOverlayOpen: false });
+    },
     setWindowWidth: (windowWidth) => {
-      if (get().windowWidth !== windowWidth) set({ windowWidth });
+      const s = get();
+      if (s.windowWidth === windowWidth) return;
+      // a band crossed: the overlay closes, so the narrow band always starts with the stage clear
+      const crossed = bandOf(s.windowWidth) !== bandOf(windowWidth);
+      set(crossed ? { windowWidth, layersOverlayOpen: false } : { windowWidth });
     },
 
     openProject: async (path, passphrase) => {

@@ -10,7 +10,7 @@ vi.mock('@aio/project/flags', () => ({
 }));
 vi.mock('./flyability/pickerStore', () => ({ openInspectorPicker: fly.open }));
 import type { Bridge, Res } from './bridge';
-import { createShellStore, DEFAULT_SETTINGS, isSidebarFolded } from './store';
+import { createShellStore, DEFAULT_SETTINGS, isLayersOverlay, isSidebarFolded } from './store';
 
 type Handlers = Partial<Record<IpcChannel, (req: unknown) => unknown>>;
 
@@ -213,7 +213,7 @@ describe('shell store', () => {
     expect(s.getState().settings.sidebarCollapsed).toBe(true);
   });
 
-  it('reopens a sidebar the window folded without touching the setting, and remembers it', async () => {
+  it('reopens a sidebar the mid band folded without touching the setting, and remembers it', async () => {
     const { bridge, calls } = fakeBridge({
       'settings:set': (req) => ({ ...DEFAULT_SETTINGS, ...(req as Partial<Settings>) }),
     });
@@ -225,7 +225,7 @@ describe('shell store', () => {
       },
     };
     const s = createShellStore(bridge, createWorkspace(), { storage, autoFold: true });
-    s.getState().setWindowWidth(1100);
+    s.getState().setWindowWidth(1300);
     s.setState({ screen: 'scene' });
     expect(isSidebarFolded(s.getState())).toBe(true);
     // Ctrl+B on the folded rail opens it, as a remembered choice of this machine
@@ -241,6 +241,32 @@ describe('shell store', () => {
     await s.getState().toggleSidebar();
     expect(s.getState().settings.sidebarCollapsed).toBe(true);
     expect(calls).toContainEqual({ channel: 'settings:set', req: { sidebarCollapsed: true } });
+  });
+
+  it('opens the Layers overlay below 1280 px for the session, and closes it', async () => {
+    const { bridge, calls } = fakeBridge({
+      'settings:set': (req) => ({ ...DEFAULT_SETTINGS, ...(req as Partial<Settings>) }),
+    });
+    const s = createShellStore(bridge, createWorkspace(), { storage: null, autoFold: true });
+    s.getState().setWindowWidth(1100);
+    s.setState({ screen: 'scene' });
+    expect(isSidebarFolded(s.getState())).toBe(true);
+    expect(isLayersOverlay(s.getState())).toBe(true);
+    // Ctrl+B opens it over the stage, as no setting and no remembered reopen
+    await s.getState().toggleSidebar();
+    expect(isSidebarFolded(s.getState())).toBe(false);
+    expect(s.getState().sidebarReopened).toBe(false);
+    expect(calls.some((c) => c.channel === 'settings:set')).toBe(false);
+    // Escape (or a click on the stage) closes it
+    s.getState().closeLayersOverlay();
+    expect(isSidebarFolded(s.getState())).toBe(true);
+    // and a band crossed closes it too
+    await s.getState().toggleSidebar();
+    s.getState().setWindowWidth(1200);
+    expect(isSidebarFolded(s.getState())).toBe(false);
+    s.getState().setWindowWidth(1500);
+    s.getState().setWindowWidth(1100);
+    expect(isSidebarFolded(s.getState())).toBe(true);
   });
 
   it('folds the sidebar on its own only with the flag, in a narrow window, on a data screen', () => {

@@ -71,7 +71,8 @@ import { LayersHandle, Rail } from './shell/Rail';
 import { TitleBar } from './shell/TitleBar';
 import { websiteUpdates } from './updates/session';
 import { useFold } from './shell/useFold';
-import { isSidebarFolded } from './store';
+import { isLayersOverlay, isSidebarFolded } from './store';
+import { bandOf } from './shell/layoutBands';
 import { openAgent } from './shell/RightHeader';
 import { captionVars, rendererPlatform } from './shell/caption';
 import { SyncHost } from './team/SyncStatus';
@@ -280,11 +281,15 @@ const CAPTION_VARS = captionVars(PLATFORM) as CSSProperties;
  * The Layers column on the `shell.sidebar` split (UI revision W11): its width is the `.app`
  * grid's second column, beside the rail, dragged on its inner edge and remembered; folded, the
  * column is gone and the rail stays. The fold is the person's (`sidebarCollapsed`, Ctrl+B,
- * Ctrl+L, the title bar's toggle) or the window's (shell/autoFold.ts). The column slides out with
- * a transform and the grid snaps once at the end; opening, the grid snaps first (useFold.ts).
+ * Ctrl+L, the title bar's toggle) or the window's band (shell/layoutBands.ts). The column slides
+ * out with a transform and the grid snaps once at the end; opening, the grid snaps first
+ * (useFold.ts). Below 1280 px the column lies over the stage instead: the grid keeps no room for
+ * it and the split keeps its width for the overlay.
  */
 function useSidebarSplit() {
   const folded = useShell(isSidebarFolded);
+  const overlay = useShell(isLayersOverlay);
+  const band = useShell((s) => bandOf(s.windowWidth));
   const fold = useFold(folded);
   const { snap } = fold;
   const split = useResizableSplit({
@@ -297,7 +302,8 @@ function useSidebarSplit() {
     max: 320,
     otherMin: 600,
     collapsedSize: 0,
-    collapsed: fold.layoutFolded,
+    // the overlay takes no grid column (styles.css), so the split keeps the width it opens at
+    collapsed: overlay ? false : fold.layoutFolded,
     // dragged shut or out of it: the column is there already, so it does not slide
     onCollapsedChange: (next) => {
       snap(next);
@@ -305,7 +311,7 @@ function useSidebarSplit() {
       if (next !== isSidebarFolded(s)) void s.toggleSidebar();
     },
   });
-  // the window's width folds the column on its own (shell/autoFold.ts)
+  // the window's band places the column (shell/layoutBands.ts)
   useEffect(() => {
     const follow = () => {
       shell.getState().setWindowWidth(window.innerWidth);
@@ -324,6 +330,8 @@ function useSidebarSplit() {
   };
   return {
     folded,
+    overlay,
+    band,
     phase,
     containerRef,
     separatorProps: split.separatorProps,
@@ -747,6 +755,9 @@ export function App() {
       className="app"
       // the Layers column (Scene only): folded or shown
       data-sb={sidebar.folded ? 'collapsed' : 'expanded'}
+      // below 1280 px the column lies over the stage (shell/layoutBands.ts)
+      data-sb-overlay={sidebar.overlay ? '' : undefined}
+      data-band={sidebar.band}
       data-fold={sidebar.phase ?? undefined}
       onTransitionEnd={sidebar.onTransitionEnd}
       data-screen={screen}

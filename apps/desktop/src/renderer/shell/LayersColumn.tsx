@@ -1,7 +1,7 @@
 import { t, useT } from '@aio/ui';
 import { useEffect, useLayoutEffect, useRef, type HTMLAttributes } from 'react';
 import { shell, useShell } from '../shell';
-import { isSidebarFolded } from '../store';
+import { isLayersOverlay, isSidebarFolded } from '../store';
 import { useMeasure } from '../survey/measureStore';
 import { PANEL_ID } from './PanelHandle';
 import { Datasets } from './Sidebar';
@@ -25,7 +25,9 @@ export interface LayersColumnProps {
  * section with "Create maps from photos" in plain sight (founder, 31 Oct 2026), then the dataset
  * tree at full height with its date folders, eyes and import tools. It folds away whole (Ctrl+B,
  * Ctrl+L, the title bar's Layers toggle, the tab on its edge) and is dragged wider or narrower on
- * its inner edge; below 1280 px the Scene folds it on its own (shell/autoFold.ts).
+ * its inner edge. The window's band places it (shell/layoutBands.ts): open from 1440 px, folded
+ * by default from 1280 px, and below that an overlay over the stage that Escape or a click on the
+ * stage closes.
  */
 export function LayersColumn({ resize }: LayersColumnProps = {}) {
   useT();
@@ -40,6 +42,34 @@ export function LayersColumn({ resize }: LayersColumnProps = {}) {
     const sh = shell.getState();
     if (isSidebarFolded(sh)) void sh.toggleSidebar();
   }, [revealSeq, revealOpens]);
+  // the overlay below 1280 px: Escape or a press on the stage (not on the column's own tab) closes
+  // it, and so does leaving the Scene
+  const overlayOpen = useShell((s) => isLayersOverlay(s) && !isSidebarFolded(s));
+  useEffect(() => {
+    if (!overlayOpen) return;
+    const close = () => {
+      shell.getState().closeLayersOverlay();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      e.preventDefault();
+      close();
+    };
+    const onPress = (e: PointerEvent) => {
+      const at = e.target instanceof Element ? e.target : null;
+      if (!at?.closest('.app > .main') || at.closest('.ph[data-side="left"]')) return;
+      close();
+    };
+    window.addEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onPress, true);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onPress, true);
+    };
+  }, [overlayOpen]);
+  useEffect(() => {
+    if (screen !== 'scene') shell.getState().closeLayersOverlay();
+  }, [screen]);
   // Folding, focus inside the column moves to the title bar's Layers toggle (else the tab on the
   // column's edge) before the column goes inert, so it never drops to the page
   const ref = useRef<HTMLElement>(null);

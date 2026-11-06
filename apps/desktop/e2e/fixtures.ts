@@ -361,7 +361,8 @@ export async function quietStreetMapOffer(
  *
  * The left sidebar stays open at any window width: main pins it for an e2e run (the preload's
  * `aio.flags.autoFold` is false), so a spec at the CI width (1100) finds it as it expects. Pass
- * `QUADRION_E2E_AUTOFOLD: '1'` in `env` to let it fold to its rail (`sidebar-autofold.spec.ts`).
+ * `QUADRION_E2E_AUTOFOLD: '1'` in `env` to let the window's bands place it (shell/layoutBands.ts;
+ * `responsive-bands.spec.ts`, `sidebar-autofold.spec.ts`).
  */
 export async function launchApp(
   dataRoot: DataRoot,
