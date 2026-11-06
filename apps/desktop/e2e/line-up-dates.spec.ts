@@ -955,6 +955,8 @@ test.describe('at the window size CI uses', () => {
     });
     await expect(win.getByTestId('video-tile')).toHaveCount(0);
     await expect(win.getByTestId('video-window')).toHaveCount(0);
+    // the strip this was tuned on: the change demo now opens on the taller dates strip (D7)
+    await win.getByTestId('bottom-switch-footage').click();
     // zoom in at the building (the two panes follow each other) to 24 px a metre or more
     const picture = win.locator('.pane-raster[data-side="left"] .raster-plane img').first();
     for (let k = 0; k < 40; k++) {

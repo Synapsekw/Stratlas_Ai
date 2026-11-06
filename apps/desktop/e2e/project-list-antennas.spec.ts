@@ -117,6 +117,33 @@ async function viewTower(win: Page): Promise<void> {
 /** The labels of an open menu, in order. */
 const menuLabels = (menu: Locator) => menu.getByRole('menuitem').allInnerTexts();
 
+/**
+ * Tick a row's box where the click lands on the box itself: scrolled where nothing lies over it.
+ * The right panel's handle stands at the middle of the panel's edge and can cover a box there
+ * that the list cannot scroll away (a follow-up for the handle); that box is ticked by its key,
+ * as a keyboard user would.
+ */
+async function tickClear(win: Page, row: Locator): Promise<void> {
+  const tick = row.locator('input.antenna-tick');
+  const free = await tick.evaluate((el) => {
+    const at = () => {
+      const r = el.getBoundingClientRect();
+      return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === el;
+    };
+    for (const block of ['start', 'end', 'center'] as const) {
+      el.scrollIntoView({ block, inline: 'nearest' });
+      if (at()) return true;
+    }
+    return false;
+  });
+  if (free) await tick.check();
+  else {
+    await tick.focus();
+    await win.keyboard.press('Space');
+  }
+  await expect(tick).toBeChecked();
+}
+
 test.describe('project list: the Antennas group', () => {
   test.describe('without the pipeline', () => {
     test('finds the antennas in Project, In this project and edits an azimuth in its row', async ({
@@ -284,8 +311,8 @@ test.describe('project list: the Antennas group', () => {
       const group = await projectAntennas(win);
       await group.getByTestId('antenna-filter-all').click();
       await expect(win.getByTestId('antenna-bulk')).toHaveCount(0);
-      await rowOf(group, 'ant-p1').locator('input.antenna-tick').check();
-      await rowOf(group, 'ant-p3').locator('input.antenna-tick').check();
+      // each tick scrolled clear of the right panel's handle, and taking the click where it is
+      for (const id of ['ant-p1', 'ant-p3']) await tickClear(win, rowOf(group, id));
       const bulk = win.getByTestId('antenna-bulk');
       await expect(bulk).toBeVisible();
       await expect(bulk).toContainText('2');
