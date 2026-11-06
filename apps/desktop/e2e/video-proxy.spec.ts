@@ -55,7 +55,10 @@ interface Inspect {
   };
 }
 
-const test = realDataTest([]);
+// 1600 x 900: at the CI-sized 1100 px a whole flight's bar in the dates strip is about 13 px wide,
+// too short to click a point within 5 % of its length, and the docked video tile gives way to its
+// compact Pop out button beside the open Layers column, so no picture is on screen
+const test = realDataTest([], { size: [1600, 900] });
 
 test.setTimeout(180_000);
 
@@ -135,7 +138,16 @@ async function frameAt(
       fy: ch / h,
     };
   });
+  // the picture alone: the app's telemetry chips and the tile's buttons stand over the frame, and
+  // in the docked tile (about 270 x 150 px) they cover a good part of the compared band
+  const bare = await win.addStyleTag({
+    content: `.vtile-bar, [data-video-window] *:not(video) { visibility: hidden !important; }
+      [data-video-window] video { visibility: visible !important; }`,
+  });
   const png = await win.screenshot({ clip: view.clip });
+  await bare.evaluate((el: Node) => {
+    el.parentNode?.removeChild(el);
+  });
   await writeFile(info.outputPath(`${clip}-${atS.toFixed(1)}s.png`), png);
   return { pix: await grey(png), fx: view.fx, fy: view.fy };
 }
