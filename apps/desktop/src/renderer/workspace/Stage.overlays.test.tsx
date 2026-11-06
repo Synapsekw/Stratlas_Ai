@@ -150,7 +150,7 @@ describe('the stage corners', () => {
     expect(host.querySelector('[data-testid="preparing-card"]')).toBeNull();
   });
 
-  it('puts the Show control top right only while the Volumes tab is open (board 1)', () => {
+  it('keeps the Show control top left only while the Volumes tab is open (board 1)', () => {
     volumetric.setState({ status: 'ready' });
     shell.setState({ rightCollapsed: false } as never);
     workbench.getState().show('selection');
@@ -159,7 +159,7 @@ describe('the stage corners', () => {
     act(() => {
       workbench.getState().show('volumes');
     });
-    expect(slotOf('stage-show')).toBe('tr');
+    expect(slotOf('stage-show')).toBe('tl');
     expect(slotOf('dates-on-screen')).toBe('tr');
     act(() => {
       shell.setState({ rightCollapsed: true } as never);

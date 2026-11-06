@@ -231,12 +231,15 @@ test('nothing in the top-left at open: the fixed slots only (D5)', async ({ win 
   const stage = win.locator('.ws > .stage');
   await expect(stage.getByTestId('dates-on-screen')).toBeVisible(VIEW_READY);
   await islandSettled(win);
-  // no slot box at the top left; every box is one of the D5 slots
-  await expect(stage.locator('.stage-slot[data-slot="tl"]')).toHaveCount(0);
+  // no slot box at the top left but the Show control, which the tank farm's Volumes tab brings
+  // up (it leaves the stage for Layers & display); every other box is one of the D5 slots
+  await expect(
+    stage.locator('.stage-slot[data-slot="tl"]:not([data-stage-slot="show"])'),
+  ).toHaveCount(0);
   const names = await stage
     .locator('.stage-slot')
     .evaluateAll((els) => els.map((e) => e.getAttribute('data-stage-slot')));
-  for (const n of names) expect(['top-right', 'bottom-left', 'bottom-right']).toContain(n);
+  for (const n of names) expect(['top-right', 'bottom-left', 'bottom-right', 'show']).toContain(n);
   // the dates and the Map menu chip share the top right
   await expect(
     stage.locator('.stage-slot[data-slot="tr"]').getByTestId('dates-on-screen'),
@@ -247,7 +250,7 @@ test('nothing in the top-left at open: the fixed slots only (D5)', async ({ win 
     if (!views) return ['no views'];
     const out: string[] = [];
     for (const el of document.querySelectorAll<HTMLElement>(
-      '.ws > .stage .stage-slot, .ws > .stage .vwin',
+      '.ws > .stage .stage-slot:not([data-stage-slot="show"]), .ws > .stage .vwin',
     )) {
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue;

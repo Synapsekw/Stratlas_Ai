@@ -189,7 +189,9 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     await expect(pane).toBeVisible();
     // the swipe draws the two frames as one stack (side by side has none)
     await expect(win.getByTestId('frames-score')).toHaveAttribute('data-layer', first.b.layer);
-    await pane.getByTestId('frames-mode-swipe').click();
+    // (dispatched: a pointer click scrolls the narrow pane sideways to bring the button, the
+    // pane's bar being wider than the pane at this size, and the stack with it)
+    await pane.getByTestId('frames-mode-swipe').dispatchEvent('click');
     await expect(pane.getByTestId('frames-stack')).toBeVisible();
 
     // the survey surfaces prepare on their own a few seconds after the project opens: their
@@ -198,19 +200,31 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     await expect(chip).toHaveAttribute('data-preparing', '', { timeout: 60_000 });
     await expect(chip.getByTestId('processing-chip-meter')).toBeAttached();
     await expect(win.locator('.stage [data-testid="preparing-card"]')).toHaveCount(0);
-    const reach = await win.evaluate(() => {
-      const stack = document.querySelector(
-        '[data-testid="frames-pane"] [data-testid="frames-stack"]',
-      );
-      if (!stack) return 'no frames stack';
-      const r = stack.getBoundingClientRect();
-      // the middle: the frames or the swipe's own handle there, nothing of the stage over them
-      const pane = document.querySelector('[data-testid="frames-pane"]');
-      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-      if (pane?.contains(hit) && !hit?.closest('.stage-slot')) return 'reached';
-      return `covered by ${hit?.getAttribute('data-testid') ?? hit?.tagName ?? 'nothing'}`;
-    });
-    expect(reach).toBe('reached');
+    // (polled: the split can still be settling as the job starts)
+    await expect
+      .poll(
+        () =>
+          win.evaluate(() => {
+            const stack = document.querySelector(
+              '[data-testid="frames-pane"] [data-testid="frames-stack"]',
+            );
+            if (!stack) return 'no frames stack';
+            const r = stack.getBoundingClientRect();
+            const x = r.left + r.width / 2;
+            const y = r.top + r.height / 2;
+            // the middle: the frames or the swipe's own handle there, nothing of the stage on them
+            const pane = stack.closest('[data-testid="frames-pane"]');
+            const hit = document.elementFromPoint(x, y);
+            const preparing =
+              document.querySelector('[data-testid="processing-chip"][data-preparing]') !== null;
+            if (pane?.contains(hit) && !hit?.closest('.stage-slot'))
+              return preparing ? 'reached while preparing' : 'reached after the job';
+            const where = hit?.closest('[data-testid], .stage-slot, .pane')?.className.toString();
+            return `covered by ${hit?.tagName ?? 'nothing'} in ${where ?? ''} at ${String(Math.round(x))},${String(Math.round(y))}`;
+          }),
+        { timeout: 10_000 },
+      )
+      .toBe('reached while preparing');
   });
 });
 

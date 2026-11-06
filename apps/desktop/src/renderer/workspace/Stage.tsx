@@ -386,8 +386,8 @@ const SLOT_NAME: Readonly<Record<Corner, string>> = {
 };
 
 /**
- * The stage's overlays in the fixed slots of D5 (overlaySlots.ts): the Map menu chip, the survey
- * dates and the Show control stacked at the top right; one hint, notice or toast at a time at the
+ * The stage's overlays in the fixed slots of D5 (overlaySlots.ts): the Map menu chip and the
+ * survey dates stacked at the top right; one hint, notice or toast at a time at the
  * bottom left, the newest first; the legends stacked at the bottom right, where the coordinates
  * readout gives way to them. A slot whose corner the floating video or the open island takes is
  * hidden while it does; a toast then shows in the window corner. Job progress is the Jobs chip's,
@@ -429,7 +429,6 @@ export function useStageCorners(o: StageCornersInput): {
     const on: Record<string, boolean> = {
       basemap: basemap !== null,
       dates,
-      show,
       cfLegend,
       tlTotals: playing,
       rfLegend: o.rfLegend,
@@ -437,7 +436,6 @@ export function useStageCorners(o: StageCornersInput): {
     const items: OverlayRequest[] = [
       { id: 'basemap', overlay: 'mapStyle', ...(basemapAt !== 'tr' && { at: basemapAt }) },
       { id: 'dates', overlay: 'dates' },
-      { id: 'show', overlay: 'show' },
       { id: 'cfLegend', overlay: 'legend' },
       { id: 'tlTotals', overlay: 'legend' },
       // --- RF coverage legend (rf-ui) ---
@@ -448,7 +446,7 @@ export function useStageCorners(o: StageCornersInput): {
     for (const [id, at] of since)
       shown.push({ id, overlay: id.startsWith('toast:') ? 'toast' : 'hint', since: at });
     return placeOverlays(shown, new Set<Corner>([...o.video, ...topTaken]));
-  }, [basemap, basemapAt, dates, show, cfLegend, playing, o.rfLegend, o.video, topTaken, since]);
+  }, [basemap, basemapAt, dates, cfLegend, playing, o.rfLegend, o.video, topTaken, since]);
   // the callouts keep out of the overlays: placed again as the overlays move (they read their
   // keep-out on a rendered frame)
   const engine = o.engine;
@@ -468,7 +466,6 @@ export function useStageCorners(o: StageCornersInput): {
   };
   put('basemap', basemap && <StageBasemapChip view={basemap} />);
   put('dates', <DatesOnScreen kinds={DATE_KINDS} />);
-  put('show', <StageShow />);
   put('tlBlend', <TimelapseBlend />);
   put(
     'status',
@@ -500,6 +497,9 @@ export function useStageCorners(o: StageCornersInput): {
   const occupied = new Set<Corner>([...groups.keys(), ...o.video]);
   if (toastShown) occupied.add('bl');
   const foot = footFree && <ToastHost placement="stage" held={!toastShown} />;
+  // the Show control (board 1) keeps the top left while the Volumes tab is open, until it moves
+  // into Layers & display; the floating video or the open island there hides it
+  const showAt = show && !o.video.includes('tl') && !topTaken.includes('tl');
   // the slot in the readout's corner stacks above it (stageSlots.css), so only the floating video
   // resting there hides the readout
   const overReadout = (corner: Corner) => (corner === o.cursor ? '' : undefined);
@@ -522,6 +522,17 @@ export function useStageCorners(o: StageCornersInput): {
             {corner === 'bl' && foot}
           </div>
         ))}
+        {showAt && (
+          <div
+            key="show"
+            className="stage-slot"
+            data-slot="tl"
+            data-stage-slot="show"
+            data-surface="dark"
+          >
+            <StageShow />
+          </div>
+        )}
         {foot && !groups.has('bl') && (
           <div
             key="bl"

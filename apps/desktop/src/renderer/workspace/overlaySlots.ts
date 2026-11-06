@@ -1,7 +1,7 @@
 /**
  * The stage's overlay slots (UI revision D5), the one source of where an overlay stands. Only five
- * slots exist: the island at the top centre; the map style (with Streets), the dates on screen
- * and the Show control at the top right; one hint or one toast at a time at the bottom left
+ * slots exist: the island at the top centre; the map style (with Streets) and the dates on screen
+ * at the top right; one hint or one toast at a time at the bottom left
  * (newest wins, the rest wait); the legends at the bottom right, above the compass, the scale bar
  * and the coordinates readout; and, floating, only the popped-out video and a tool's on-stage
  * handles. Job progress has no slot: it is the Jobs chip's (the title bar), so a job card never
@@ -9,8 +9,9 @@
  *
  * Corners are named by the reading direction: `tl` is the top of the start edge (the top right
  * in a right-to-left UI), as the slots are placed with logical insets. Nothing takes `tl` but
- * the floating video, the open island reaching across it, and, in a Split, the map style at the
- * top of a map pane on the start side.
+ * the floating video, the open island reaching across it, in a Split the map style at the
+ * top of a map pane on the start side, and, until it moves into Layers & display, the Show control
+ * while the Volumes tab is open (Stage.tsx places it; it is no slot of its own).
  */
 
 export type Corner = 'tl' | 'tr' | 'bl' | 'br';
@@ -84,14 +85,13 @@ export const STAGE_SLOTS: readonly StageSlot[] = [
 
 /** What stands on the stage. */
 export type StageOverlay =
-  'island' | 'mapStyle' | 'dates' | 'show' | 'hint' | 'toast' | 'legend' | 'video' | 'handles';
+  'island' | 'mapStyle' | 'dates' | 'hint' | 'toast' | 'legend' | 'video' | 'handles';
 
 /** The one slot of each overlay. */
 export const SLOT_OF: Readonly<Record<StageOverlay, StageSlot>> = {
   island: 'top-centre',
   mapStyle: 'top-right',
   dates: 'top-right',
-  show: 'top-right',
   hint: 'bottom-left',
   toast: 'bottom-left',
   legend: 'bottom-right',
