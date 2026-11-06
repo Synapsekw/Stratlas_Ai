@@ -164,6 +164,21 @@ describe('the D5 slots', () => {
     expect(Object.fromEntries(slots)).toEqual({ map: 'hidden', hint: 'hidden', cf: 'br' });
   });
 
+  it('shows one hint at a time in each corner a split gives them (the newest)', () => {
+    const slots = placeOverlays([
+      { id: 'stageHint', overlay: 'hint', since: 1, at: 'br' },
+      { id: 'volHint', overlay: 'hint', since: 2, at: 'br' },
+    ]);
+    expect(slots.get('volHint')).toBe('br');
+    expect(slots.get('stageHint')).toBe('hidden');
+    // one in another corner is another pane's: both show
+    const two = placeOverlays([
+      { id: 'a', overlay: 'hint', since: 1, at: 'bl' },
+      { id: 'b', overlay: 'hint', since: 2, at: 'br' },
+    ]);
+    expect([two.get('a'), two.get('b')]).toEqual(['bl', 'br']);
+  });
+
   it('takes the corner given for one view of a split (the map style at the map pane)', () => {
     expect(placeOverlays([{ id: 'map', overlay: 'mapStyle', at: 'tl' }]).get('map')).toBe('tl');
   });

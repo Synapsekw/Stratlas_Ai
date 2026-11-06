@@ -13,3 +13,13 @@
     calc(anchor(--aio-map-note top, 0px) + var(--sp-2))
   );
 }
+
+/* the top left's stack (the tool and status bars) keeps to the upper half of the views: a tall
+   stack scrolls in its box and never reaches the bottom slots, the readout or the strip. Not while
+   it holds Split's start-side Map menu, whose panel opens below its chip */
+.stage-views > .stage-slot[data-slot='tl']:not(:has(.mm-anchor)) {
+  max-block-size: calc(50% - 54px - var(--sp-4));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}

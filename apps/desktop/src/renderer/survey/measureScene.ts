@@ -79,7 +79,7 @@ import { fallbackZ, type MapHeights } from './mapHeights';
 import { mapPickLayer, type VertexPick } from './measureSource';
 import { pileLookOwns, pileLookState } from './pile/pileLookState';
 import { materialOf, materialsDraft } from './volumes/materialsDraft';
-import { clampLabel, declutter, type LabelBox } from './labelDeclutter';
+import { clampLabel, declutter, edgeDot, type LabelBox } from './labelDeclutter';
 
 const DRAFT_COLOR = '#4cc9f0';
 const SNAP_COLOR = '#ff5ccd';
@@ -808,6 +808,8 @@ export function attach3d(
             weight: sh.weight,
             pile: sh.pile,
             at: inView ? { x: Math.round(p.x - hr.left), y: Math.round(p.y - hr.top) } : null,
+            off:
+              p && !inView ? { x: Math.round(p.x - hr.left), y: Math.round(p.y - hr.top) } : null,
           },
         ];
       }),
@@ -1033,6 +1035,8 @@ interface LabelItem {
   /** A stockpile's label: the only kind `declutter` may hide. */
   pile: boolean;
   at: { x: number; y: number } | null;
+  /** Its anchor when that lies off the view (null: in view, or behind the camera): an edge dot. */
+  off?: { x: number; y: number } | null;
 }
 
 /** A label chip's margins in measure.css (`.sv-label`): above and right of its anchor. */
@@ -1064,9 +1068,32 @@ function labelChips(host: HTMLElement): {
   layer.className = 'sv-labels';
   layer.setAttribute('aria-hidden', 'true');
   host.appendChild(layer);
+  // the edge dots of labels whose anchor lies off the view, in a layer of their own
+  const dots = document.createElement('div');
+  dots.className = 'sv-labels sv-edge-dots';
+  dots.setAttribute('aria-hidden', 'true');
+  // dark in the light theme too, as the label chips are
+  dots.dataset.surface = 'dark';
+  host.appendChild(dots);
   const sizes = new WeakMap<HTMLElement, { key: string; w: number; h: number }>();
   return {
     place(items, view, pointer) {
+      const off = items.flatMap((it) => {
+        const at = !it.at && it.off && view.w >= MIN_VIEW_W ? edgeDot(view, it.off) : null;
+        return at ? [{ id: it.id, at, selected: it.selected }] : [];
+      });
+      while (dots.children.length > off.length) dots.lastChild?.remove();
+      while (dots.children.length < off.length) {
+        const el = document.createElement('span');
+        el.className = 'sv-edge-dot';
+        dots.appendChild(el);
+      }
+      off.forEach((d, i) => {
+        const el = dots.children[i] as HTMLElement;
+        el.dataset.id = d.id;
+        el.classList.toggle('sel', d.selected);
+        el.style.transform = `translate(${String(d.at.x)}px, ${String(d.at.y)}px)`;
+      });
       while (layer.children.length > items.length) layer.lastChild?.remove();
       while (layer.children.length < items.length) {
         const el = document.createElement('span');
@@ -1133,6 +1160,7 @@ function labelChips(host: HTMLElement): {
     },
     remove() {
       layer.remove();
+      dots.remove();
     },
   };
 }
@@ -1244,6 +1272,7 @@ export function attachMap(
           weight: sh.weight,
           pile: sh.pile,
           at: inView ? { x: Math.round(p.x), y: Math.round(p.y) } : null,
+          off: inView ? null : { x: Math.round(p.x), y: Math.round(p.y) },
         };
       }),
       { x: 0, y: 0, w, h },

@@ -111,6 +111,16 @@
   /* the host's overlays at the foot of the map can stand above it (the app's coverage legend) */
   anchor-name: --aio-map-note;
 }
+/* in the host's slot (the stage's bottom left): a line of the slot, not laid out on the map */
+.aio-map-note.in-slot {
+  position: static;
+  inset: auto;
+  width: auto;
+  max-width: 100%;
+  text-align: start;
+  position-try-fallbacks: none;
+  anchor-name: none;
+}
 /* hides the note for the rest of the session (noPackNotice.ts) */
 .aio-map-note-close {
   display: inline-grid;

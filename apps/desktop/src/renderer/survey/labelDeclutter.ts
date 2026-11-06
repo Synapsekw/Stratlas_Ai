@@ -99,3 +99,21 @@ export function clampLabel(rect: Rect, at: Point, size: Size): { at: Point; edge
   const y = Math.max(rect.y, Math.min(at.y, rect.y + rect.h - size.h));
   return { at: { x, y }, edge: x !== at.x || y !== at.y };
 }
+
+/** How far inside its view's edge an off-view label's dot stands, in pixels. */
+export const EDGE_DOT_INSET = 6;
+
+/**
+ * Where the edge dot of a label whose anchor `p` lies outside its view stands: the nearest point
+ * of the view, `inset` inside its edge (UI revision D5: a label never leaves its stage, or its
+ * pane in Split; off it, it collapses to a dot at the edge towards its place). Null for an anchor
+ * inside the view, or a view too small to hold a dot.
+ */
+export function edgeDot(rect: Rect, p: Point, inset = EDGE_DOT_INSET): Point | null {
+  if (rect.w < 2 * inset || rect.h < 2 * inset) return null;
+  if (contains(rect, p)) return null;
+  return {
+    x: Math.max(rect.x + inset, Math.min(p.x, rect.x + rect.w - inset)),
+    y: Math.max(rect.y + inset, Math.min(p.y, rect.y + rect.h - inset)),
+  };
+}

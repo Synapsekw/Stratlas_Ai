@@ -95,7 +95,9 @@ function useDocumentHidden(): boolean {
 export function ToastHost({ placement, held = false }: ToastHostProps): ReactElement {
   const t = useT();
   useEffect(() => registerHost(placement), [placement]);
-  useEffect(() => {
+  // held takes effect as the commit lands (a layout effect, before any paint or key): there is
+  // no frame where a held toast counts as on screen and its keys act
+  useLayoutEffect(() => {
     setToastHostHeld(placement, held);
     return () => {
       setToastHostHeld(placement, false);

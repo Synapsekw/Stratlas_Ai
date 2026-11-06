@@ -4,12 +4,8 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { StoreApi } from 'zustand/vanilla';
 import { setActiveMap } from './capture';
 import { MAP_SURFACE } from './ink';
-import {
-  claimNoPackNotice,
-  dismissNoPackNotice,
-  showsNoPackNotice,
-  subscribeNoPackNotice,
-} from './noPackNotice';
+import { NoPackNote } from './NoPackNote';
+import { claimNoPackNotice, showsNoPackNotice, subscribeNoPackNotice } from './noPackNotice';
 import type { IssueColorBy, MapController, MapPointerSession } from './controller';
 import type { MapDrawSeam } from './draw';
 import { ALL_ISSUES, type MapIssueDisplay } from './overlays';
@@ -38,6 +34,11 @@ export interface MapViewProps {
   store?: StoreApi<Workspace>;
   /** The map frame capture and the agent use this map (default true); a second map passes false. */
   primary?: boolean;
+  /**
+   * The host shows the "No map pack installed" note in its own place (the stage's hint slot,
+   * `NoPackNote` with `useNoPackNoticeWanted`): this map still asks for it, but draws none.
+   */
+  noteInSlot?: boolean;
   /** Called with the controller once the map runs and with null when it goes (linked views). */
   onController?: (controller: MapController | null) => void;
   /**
@@ -91,6 +92,7 @@ export function MapView({
   cameraWedge = false,
   store,
   primary = true,
+  noteInSlot = false,
   onController,
   pick = null,
   pointer = null,
@@ -246,22 +248,7 @@ export function MapView({
           {MESSAGES[status]}
         </div>
       )}
-      {wantsNote && showsNote && (
-        // laid out with the scale bar and the credits at the foot of the map (map.css)
-        <div role="note" data-testid="map-no-packs" className="aio-map-note">
-          No map pack installed: project layers only. Add a pack in Settings, Offline maps.
-          <button
-            type="button"
-            className="aio-map-note-close"
-            aria-label="Hide this note"
-            onClick={dismissNoPackNotice}
-          >
-            <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
-              <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" strokeWidth="1.5" />
-            </svg>
-          </button>
-        </div>
-      )}
+      {wantsNote && showsNote && !noteInSlot && <NoPackNote />}
     </div>
   );
 }

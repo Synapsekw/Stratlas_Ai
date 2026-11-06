@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   claimNoPackNotice,
   dismissNoPackNotice,
+  noPackNoticeWanted,
   resetNoPackNotice,
   showsNoPackNotice,
   subscribeNoPackNotice,
@@ -48,5 +49,16 @@ describe('the no map pack note', () => {
     const b = Symbol('b');
     claimNoPackNotice(b);
     expect(showsNoPackNotice(b)).toBe(false);
+  });
+
+  it('is wanted in the host slot while a map asks and until it is hidden, once per session', () => {
+    expect(noPackNoticeWanted()).toBe(false);
+    const leave = claimNoPackNotice(Symbol('a'));
+    expect(noPackNoticeWanted()).toBe(true);
+    leave();
+    expect(noPackNoticeWanted()).toBe(false);
+    claimNoPackNotice(Symbol('b'));
+    dismissNoPackNotice();
+    expect(noPackNoticeWanted()).toBe(false);
   });
 });

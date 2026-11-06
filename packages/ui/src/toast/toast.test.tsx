@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { act, type ReactNode } from 'react';
+import { act, useLayoutEffect, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -347,6 +347,30 @@ describe('toast', () => {
     expect(document.querySelector('.q-toast')).toBeNull();
     act(() => root?.render(<ToastHost placement="stage" />));
     expect(isToastVisible('u')).toBe(true);
+  });
+
+  it('a host held again holds its toast in the same commit: no frame counts it as visible', () => {
+    say('undo', { id: 'u', ttlMs: 0 });
+    // a sibling after the host reads the store as the commit lands, before anything is painted
+    const seen: boolean[] = [];
+    function Reader({ held }: { held: boolean }) {
+      useLayoutEffect(() => {
+        seen.push(isToastVisible('u'));
+      }, [held]);
+      return null;
+    }
+    const tree = (held: boolean) => (
+      <>
+        <ToastHost placement="stage" held={held} />
+        <Reader held={held} />
+      </>
+    );
+    mount(tree(false));
+    expect(isToastVisible('u')).toBe(true);
+    seen.length = 0;
+    act(() => root?.render(tree(true)));
+    expect(seen).toEqual([false]);
+    expect(isToastVisible('u')).toBe(false);
   });
 
   it('focus on a toast moves to the newer one that takes its place', () => {

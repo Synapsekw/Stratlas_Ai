@@ -36,6 +36,14 @@ export function showsNoPackNotice(id: symbol): boolean {
   return !dismissed && shown?.id === id;
 }
 
+/**
+ * Some map asks for the note and the person has not hidden it: a host that shows the note in its
+ * own place (the stage's hint slot) shows it now.
+ */
+export function noPackNoticeWanted(): boolean {
+  return !dismissed && claims.length > 0;
+}
+
 /** The person hid the note: no map shows it again this session. */
 export function dismissNoPackNotice(): void {
   if (dismissed) return;

@@ -54,6 +54,22 @@
 .sv-label.sel {
   outline: 1px solid #fff;
 }
+/* a label whose place is off the view (the stage, or its pane in Split) collapses to a dot at the
+   view's edge towards it (labelDeclutter.ts edgeDot), centred on its point */
+.sv-edge-dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  inline-size: 8px;
+  block-size: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--scrim);
+  outline: 1.5px solid var(--fg-0);
+}
+.sv-edge-dot.sel {
+  background: var(--fg-0);
+}
 
 /* the linked hover's tag and pin over the 3D view and the map (hoverScene.ts): above the
    measurement labels (the same layer, added after them), never catching the pointer; kept dark

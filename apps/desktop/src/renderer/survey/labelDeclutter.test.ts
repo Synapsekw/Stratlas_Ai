@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clampLabel, declutter, LABEL_GAP, type LabelBox } from './labelDeclutter';
+import { clampLabel, declutter, edgeDot, LABEL_GAP, type LabelBox } from './labelDeclutter';
 
 const box = (id: string, x: number, y: number, more: Partial<LabelBox> = {}): LabelBox => ({
   id,
@@ -129,5 +129,26 @@ describe('clampLabel', () => {
       x: 10,
       y: 5,
     });
+  });
+});
+
+describe('edgeDot', () => {
+  const view = { x: 10, y: 20, w: 400, h: 300 };
+
+  it('an anchor in view has no dot', () => {
+    expect(edgeDot(view, { x: 100, y: 100 })).toBeNull();
+  });
+
+  it('an anchor off the view collapses to a dot inside the edge towards it', () => {
+    // past the right edge (under the right panel, or the next pane in Split)
+    expect(edgeDot(view, { x: 900, y: 100 })).toEqual({ x: 404, y: 100 });
+    // above and left of the view: the corner
+    expect(edgeDot(view, { x: -50, y: -50 })).toEqual({ x: 16, y: 26 });
+    // below
+    expect(edgeDot(view, { x: 200, y: 999 })).toEqual({ x: 200, y: 314 });
+  });
+
+  it('a view too small for a dot has none', () => {
+    expect(edgeDot({ x: 0, y: 0, w: 8, h: 300 }, { x: 50, y: 50 })).toBeNull();
   });
 });

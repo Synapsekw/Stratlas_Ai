@@ -5,6 +5,7 @@ import type { MapPack } from './packs';
 import type { StreetTileOptions, StreetTiles } from './streetTiles';
 
 export { MapView, type MapViewProps } from './MapView';
+export { NoPackNote, useNoPackNoticeWanted } from './NoPackNote';
 export { captureMap, getActiveMap, onActiveMap } from './capture';
 export { PackCoverage, type PackCoverageProps } from './PackCoverage';
 export { bboxPolygon, coverageFeatures, dragBbox } from './coverageData';

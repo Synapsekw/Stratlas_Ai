@@ -1,7 +1,14 @@
 import { registerAppHooks } from '@aio/ai';
 import { SightingPicker, useIssueOverlay, useMapDraw, usePinDisplay } from '@aio/annotate';
 import { getActiveScene, SceneView, type EngineStage } from '@aio/engine';
-import { MapView, type MapController, type MapDrawSeam, type MapIssueDisplay } from '@aio/maps';
+import {
+  MapView,
+  NoPackNote,
+  useNoPackNoticeWanted,
+  type MapController,
+  type MapDrawSeam,
+  type MapIssueDisplay,
+} from '@aio/maps';
 import {
   Button,
   Icon,
@@ -432,11 +439,20 @@ export function useStageCorners(o: StageCornersInput): {
   const toastKey = toastHere ? (stageToast?.key ?? null) : null;
   const basemapAt = (o.basemapAt ?? END)[0] ?? 'tr';
   const topTaken = o.topTaken ?? NO_CORNERS;
-  // the bottom left's candidates, by when each came; in a Split each hint stands at the foot of
-  // the 3D pane it is about, never over the other pane
-  const footIds = [stageHint && 'stageHint', volHint && 'volHint', toastKey].filter(
-    (x): x is string => typeof x === 'string',
-  );
+  // the "No map pack" notice of a single map view, once per session (D5): a line of the bottom
+  // left, one at a time with the hints and toasts; in a Split the map shows it at its own foot
+  const mapNote = useNoPackNoticeWanted() && o.showMap && !o.splitting;
+  // in a Split a hint stands at the foot of the 3D pane it is about; with no 3D pane, none (it
+  // would stand over a map or another view)
+  const hintsHere = !o.splitting || o.cursor !== null;
+  // the bottom left's candidates, by when each came; in a Split one hint at a time per pane,
+  // never over the other pane
+  const footIds = [
+    stageHint && hintsHere && 'stageHint',
+    volHint && hintsHere && 'volHint',
+    mapNote && 'mapNote',
+    toastKey,
+  ].filter((x): x is string => typeof x === 'string');
   const since = useArrivals(footIds);
   const toastFirst = toastKey !== null && stageToast?.first === true;
   const slots = useMemo(() => {
@@ -527,6 +543,7 @@ export function useStageCorners(o: StageCornersInput): {
     </div>,
   );
   put('stageHint', <StageHint />);
+  put('mapNote', <NoPackNote slot />);
   put('volHint', <VolumeHint />);
   put('cfLegend', cutFill && <StageCutFillLegend {...cutFill} />);
   put('tlTotals', <TimelapseTotals />);
@@ -1042,6 +1059,7 @@ export function Stage() {
                     draw={seam}
                     issues={mapIssues}
                     store={primaryMap}
+                    noteInSlot={!splitting}
                     onController={onMainMap}
                     pointer={walkPointer}
                     {...(mapOverlays ? { overlays: mapOverlays } : {})}

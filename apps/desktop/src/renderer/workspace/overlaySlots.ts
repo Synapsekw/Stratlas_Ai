@@ -129,7 +129,8 @@ export function newest(items: readonly { id: string; since: number }[]): string 
 
 /**
  * The corner each overlay stands in, or `hidden`: its slot's corner, unless the floating video or
- * the open island takes that corner (`blocked`); in a one-at-a-time slot only the newest shows.
+ * the open island takes that corner (`blocked`); in a one-at-a-time slot only the newest shows in
+ * each corner it stands in (in a Split, each pane's foot shows one hint).
  * The island and the floating overlays are not placed here (`hidden` from the corners' view).
  */
 export function placeOverlays(
@@ -137,21 +138,22 @@ export function placeOverlays(
   blocked: ReadonlySet<Corner> = new Set(),
 ): Map<string, Corner | 'hidden'> {
   const cornerOf = (x: OverlayRequest) => x.at ?? CORNER_OF[SLOT_OF[x.overlay]];
-  const winners = new Map<StageSlot, string | null>();
-  for (const slot of ONE_AT_A_TIME)
+  const group = (x: OverlayRequest) => `${SLOT_OF[x.overlay]}@${cornerOf(x) ?? ''}`;
+  const winners = new Map<string, string | null>();
+  for (const x of items) {
+    if (!ONE_AT_A_TIME.has(SLOT_OF[x.overlay])) continue;
+    const key = group(x);
+    if (winners.has(key)) continue;
     winners.set(
-      slot,
-      newest(
-        items
-          .filter((x) => SLOT_OF[x.overlay] === slot && x.at === undefined)
-          .map((x) => ({ id: x.id, since: x.since ?? 0 })),
-      ),
+      key,
+      newest(items.filter((y) => group(y) === key).map((y) => ({ id: y.id, since: y.since ?? 0 }))),
     );
+  }
   const out = new Map<string, Corner | 'hidden'>();
   for (const x of items) {
     const corner = cornerOf(x);
-    const slot = SLOT_OF[x.overlay];
-    const waits = winners.has(slot) && x.at === undefined && winners.get(slot) !== x.id;
+    const key = group(x);
+    const waits = winners.has(key) && winners.get(key) !== x.id;
     out.set(x.id, !corner || blocked.has(corner) || waits ? 'hidden' : corner);
   }
   return out;

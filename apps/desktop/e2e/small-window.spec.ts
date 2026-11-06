@@ -296,8 +296,9 @@ async function footProblems(win: Page, maps: 1 | 2 = 1): Promise<string[]> {
       const note = map.querySelector('[data-testid="map-no-packs"]');
       const parts = {
         scale: map.querySelector('.maplibregl-ctrl-scale'),
-        // the main map always has the note here; a compared map is checked with what it shows
-        ...(count === 1 || note ? { note } : {}),
+        // the note of a single map stands in the stage's bottom-left slot (D5); a compared
+        // map is checked with what it shows at its foot
+        ...(note ? { note } : {}),
         credits: map.querySelector('.maplibregl-ctrl-attrib'),
       };
       const boxes: [string, DOMRect][] = [];
@@ -362,6 +363,25 @@ test('the scale bar, the no pack note and the credits keep apart at the foot of 
   await openMapWithoutPacks(win);
   await expect(credits(win)).toContainText('OpenStreetMap');
   await expectFootApart(win, 'no map pack');
+  // a single map's note is a line of the stage's bottom-left slot (D5), clear of the map's foot
+  await expect(
+    win.locator('.stage-slot[data-slot="bl"] [data-testid="map-no-packs"]'),
+  ).toBeVisible();
+  const clear = await win.evaluate(() => {
+    const note = document.querySelector('[data-testid="map-no-packs"]')?.getBoundingClientRect();
+    return ['.maplibregl-ctrl-scale', '.maplibregl-ctrl-attrib'].filter((sel) => {
+      const r = document.querySelector(sel)?.getBoundingClientRect();
+      return (
+        note &&
+        r &&
+        note.left < r.right &&
+        r.left < note.right &&
+        note.top < r.bottom &&
+        r.top < note.bottom
+      );
+    });
+  });
+  expect(clear, 'the note over the scale bar or the credits').toEqual([]);
   await shot(win, info, 'map-foot-no-pack.png');
 });
 
@@ -532,30 +552,41 @@ test.describe('with Volumes in front', () => {
   );
   test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x700', QUADRION_DEMO: DEMO_FOLDER } });
 
-  test('no two stage slots overlap at 1100 x 700, in one view and in a Split', async ({ win }) => {
+  test('no two stage slots overlap at 1100 x 700, nor the island or Selection, in one view and in a Split', async ({
+    win,
+  }) => {
     test.setTimeout(120_000);
     await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
     await openBench(win, 'volumes');
+    // each slot box, and what no slot may reach: the island, and the right panel's Selection
+    // (its tab bar and body)
     const clashes = () =>
       win.evaluate(() => {
         const boxes = [...document.querySelectorAll<HTMLElement>('.ws > .stage .stage-slot')]
           .map((el) => ({ name: el.dataset.slot ?? '', r: el.getBoundingClientRect() }))
           .filter((b) => b.r.width > 0 && b.r.height > 0);
+        const others = [
+          ['island', document.querySelector('.ws > .stage .island')],
+          ['the panel tabs', document.querySelector('.ws > .right [role="tablist"]')],
+          ['the panel body', document.querySelector('.ws > .right .wb-panel-body')],
+        ] as const;
+        const meets = (a: DOMRect, b: DOMRect) =>
+          a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
         const out: string[] = [];
         boxes.forEach((a, i) => {
           for (const b of boxes.slice(i + 1))
-            if (
-              a.r.left < b.r.right &&
-              b.r.left < a.r.right &&
-              a.r.top < b.r.bottom &&
-              b.r.top < a.r.bottom
-            )
-              out.push(`${a.name} / ${b.name}`);
+            if (meets(a.r, b.r)) out.push(`${a.name} / ${b.name}`);
+          for (const [name, el] of others) {
+            const r = el?.getBoundingClientRect();
+            if (r && r.width > 0 && r.height > 0 && meets(a.r, r)) out.push(`${a.name} / ${name}`);
+          }
         });
-        return { count: boxes.length, out };
+        return { slots: boxes.map((b) => b.name).sort(), out };
       });
-    // the Show control, the Map menu and the dates, the volumes hint: several slots at once
-    await expect.poll(async () => (await clashes()).count).toBeGreaterThanOrEqual(2);
+    // the Map menu and the dates at the top right are up (the Show control is in Layers &
+    // display): what is measured is there
+    await expect(win.locator('.ws > .stage .stage-slot[data-slot="tr"]')).toBeVisible();
+    await expect(win.locator('.ws > .stage .island')).toBeVisible();
     expect((await clashes()).out).toEqual([]);
     await stageMode(win, 'Split');
     await expect(win.locator('.pane-head')).toHaveCount(2);
