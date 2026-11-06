@@ -298,30 +298,35 @@ function Overlays() {
   );
 }
 
-/** The Show control: on the Materials pane, "Colour piles by". */
+/** "Colour piles by", on the Materials pane: its caption over Material | Change | None. */
+function ColourBy() {
+  const t = useT();
+  const colourBy = useStageShow((s) => s.colourBy);
+  const caption = t('materials.colourBy');
+  return (
+    <>
+      <span className="stage-show-cap" aria-hidden="true">
+        {caption}
+      </span>
+      <Seg
+        label={caption}
+        options={COLOUR_BY.map((o) => ({ value: o.value, label: t(o.label) }))}
+        value={colourBy}
+        onPick={(by) => {
+          stageShow.getState().setColourBy(by);
+        }}
+      />
+    </>
+  );
+}
+
+/**
+ * The Show control: the surface and the pile overlays, and on the Materials pane "Colour piles by"
+ * between them (the whole section stays reachable from Layers & display on every pane).
+ */
 export function StageShow() {
   const t = useT();
   const pane = useStageShow((s) => s.pane);
-  const colourBy = useStageShow((s) => s.colourBy);
-  if (pane === 'materials') {
-    const caption = t('materials.colourBy');
-    return (
-      <div className="stage-show" role="group" aria-label={caption} data-testid="stage-show">
-        <span className="stage-show-cap" aria-hidden="true">
-          {caption}
-        </span>
-        <Seg
-          options={COLOUR_BY.map((o) => ({ value: o.value, label: t(o.label) }))}
-          value={colourBy}
-          onPick={(by) => {
-            stageShow.getState().setColourBy(by);
-          }}
-        />
-        {/* Outlines and Labels stay reachable on every pane, so a pile is never left hidden */}
-        <Overlays />
-      </div>
-    );
-  }
   return (
     <div
       className="stage-show"
@@ -333,6 +338,8 @@ export function StageShow() {
         {t('show.caption')}
       </span>
       <Surfaces />
+      {pane === 'materials' && <ColourBy />}
+      {/* Outlines and Labels stay reachable on every pane, so a pile is never left hidden */}
       <Overlays />
     </div>
   );

@@ -159,14 +159,16 @@ describe('the Show control (board 1)', () => {
     expect(button('Labels')?.getAttribute('aria-pressed')).toBe('false');
   });
 
-  it('on the Materials pane reads "Colour piles by" Material, Change, None', () => {
+  it('on the Materials pane adds "Colour piles by" Material, Change, None to the surface', () => {
     act(() => {
       stageShow.getState().setPane('materials');
     });
     render();
-    expect(group('Show')).toBeNull();
+    // the surface stays reachable from Layers & display on this pane too
+    expect(group('Show')?.contains(button('Photo') ?? null)).toBe(true);
     const g = group('Colour piles by');
-    expect(g?.textContent).toContain('Colour piles by');
+    expect(g).not.toBeNull();
+    expect(group('Show')?.textContent).toContain('Colour piles by');
     expect(button('Material')?.getAttribute('aria-pressed')).toBe('true');
     click(button('Change'));
     expect(stageShow.getState().colourBy).toBe('change');
