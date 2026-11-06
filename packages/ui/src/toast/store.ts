@@ -173,7 +173,8 @@ function hostOf(x: Toast): ToastPlacement {
 }
 
 /** Which toast shows first: an error, then one with buttons to act on, then the rest. */
-const tierOf = (x: Toast): number => (x.tone === 'error' ? 2 : x.actionable ? 1 : 0);
+const tierOf = (x: Pick<Toast, 'tone' | 'actionable'>): number =>
+  x.tone === 'error' ? 2 : x.actionable ? 1 : 0;
 
 /**
  * The toast a host shows now: the newest error routed to it, else the newest toast that needs
