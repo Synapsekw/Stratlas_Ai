@@ -2937,6 +2937,11 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
   flex: 1;
   min-height: 0;
 }
+/* the panel's handle (.ph-tab) stands on the panel's inner edge at mid-height, over the body: the
+   body keeps that edge clear, so no row, tick or button lies under the tab and takes no click */
+.right > .rp-split {
+  padding-inline-start: var(--ph-w);
+}
 .rp-split > .split-pane {
   display: flex;
   flex-direction: column;

@@ -118,29 +118,32 @@ async function viewTower(win: Page): Promise<void> {
 const menuLabels = (menu: Locator) => menu.getByRole('menuitem').allInnerTexts();
 
 /**
- * Tick a row's box where the click lands on the box itself: scrolled where nothing lies over it.
- * The right panel's handle stands at the middle of the panel's edge and can cover a box there
- * that the list cannot scroll away (a follow-up for the handle); that box is ticked by its key,
- * as a keyboard user would.
+ * Tick a row's box with the mouse, where it is drawn: the right panel's handle keeps to the
+ * panel's edge gutter, so no box lies under it (nor under anything else) and the click lands on
+ * the box itself.
  */
-async function tickClear(win: Page, row: Locator): Promise<void> {
+async function tickClear(row: Locator): Promise<void> {
   const tick = row.locator('input.antenna-tick');
-  const free = await tick.evaluate((el) => {
-    const at = () => {
-      const r = el.getBoundingClientRect();
-      return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === el;
+  await tick.scrollIntoViewIfNeeded();
+  const hit = await tick.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const tab = document.querySelector('.ph[data-side="right"] .ph-tab')?.getBoundingClientRect();
+    const under =
+      tab !== undefined &&
+      r.left < tab.right &&
+      tab.left < r.right &&
+      r.top < tab.bottom &&
+      tab.top < r.bottom;
+    return {
+      free: document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === el,
+      under,
     };
-    for (const block of ['start', 'end', 'center'] as const) {
-      el.scrollIntoView({ block, inline: 'nearest' });
-      if (at()) return true;
-    }
-    return false;
   });
-  if (free) await tick.check();
-  else {
-    await tick.focus();
-    await win.keyboard.press('Space');
-  }
+  expect(hit, 'the tick takes the click where it is drawn, clear of the panel handle').toEqual({
+    free: true,
+    under: false,
+  });
+  await tick.click();
   await expect(tick).toBeChecked();
 }
 
@@ -311,8 +314,8 @@ test.describe('project list: the Antennas group', () => {
       const group = await projectAntennas(win);
       await group.getByTestId('antenna-filter-all').click();
       await expect(win.getByTestId('antenna-bulk')).toHaveCount(0);
-      // each tick scrolled clear of the right panel's handle, and taking the click where it is
-      for (const id of ['ant-p1', 'ant-p3']) await tickClear(win, rowOf(group, id));
+      // each tick takes a mouse click where it is drawn (the panel handle keeps to its gutter)
+      for (const id of ['ant-p1', 'ant-p3']) await tickClear(rowOf(group, id));
       const bulk = win.getByTestId('antenna-bulk');
       await expect(bulk).toBeVisible();
       await expect(bulk).toContainText('2');
