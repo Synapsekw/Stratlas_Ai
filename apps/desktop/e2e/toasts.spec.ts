@@ -1,6 +1,6 @@
 /**
- * The one toast host (@aio/ui ToastHost, mounted by exports/Toasts.tsx): every notice shows
- * through it, one at a time. The newest shows; an older one waits and comes back when the newer
+ * The one toast queue (@aio/ui ToastHost): on the Scene every notice shows in the stage's
+ * bottom-left slot (UI revision D5, the window corner host off the stage), one at a time. The newest shows; an older one waits and comes back when the newer
  * goes. Both are read out politely (role status), and each keeps its close button.
  *
  * Two real notices: the graphics step-down after memory pressure (the graphics store, as the
@@ -47,8 +47,12 @@ test('two notices show one at a time with role status', async ({ app, win }) => 
   );
   expect(projectId).not.toBe('');
 
-  const host = win.getByTestId('toast-host-window');
+  const host = win.getByTestId('toast-host-stage');
   const cards = host.locator('.q-toast');
+  // the stage's bottom-left slot holds it
+  await expect(
+    win.locator('.stage-slot[data-slot="bl"] [data-testid="toast-host-stage"]'),
+  ).toHaveCount(1);
   const graphicsNotice = win.getByTestId('graphics-notice');
   const syncNotice = win.getByTestId('sync-notice');
 
@@ -68,7 +72,7 @@ test('two notices show one at a time with role status', async ({ app, win }) => 
   await expect(win.locator('[role="status"]').getByTestId('sync-notice')).toHaveCount(1);
   await expect(graphicsNotice).toHaveCount(0);
   await expect(cards).toHaveCount(1);
-  await expect(win.getByTestId('toast-waiting-window')).toHaveText('1 more');
+  await expect(win.getByTestId('toast-waiting-stage')).toHaveText('1 more');
   await shot(win, 'toasts-one-at-a-time');
 
   // closing the newer one brings the waiting one back
@@ -96,10 +100,10 @@ test('two notices show one at a time with role status', async ({ app, win }) => 
   await recode(app, projectId, 'F08');
   await expect(error).toBeVisible();
   await expect(syncNotice).toHaveCount(0);
-  await expect(win.getByTestId('toast-waiting-window')).toHaveText('1 more');
+  await expect(win.getByTestId('toast-waiting-stage')).toHaveText('1 more');
   await shot(win, 'toasts-error-stays');
   await error.getByRole('button', { name: 'Close' }).click();
   await expect(error).toHaveCount(0);
   await expect(syncNotice).toContainText('F08');
-  await expect(win.getByTestId('toast-waiting-window')).toHaveCount(0);
+  await expect(win.getByTestId('toast-waiting-stage')).toHaveCount(0);
 });

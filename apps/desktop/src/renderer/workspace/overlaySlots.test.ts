@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { assignSlots, CORNERS, cornersOf, type Corner } from './overlaySlots';
+import {
+  assignSlots,
+  CORNER_OF,
+  CORNERS,
+  cornersOf,
+  newest,
+  placeOverlays,
+  SLOT_OF,
+  STAGE_SLOTS,
+  type Corner,
+} from './overlaySlots';
 
 describe('assignSlots', () => {
   it('gives each overlay the first free corner it wants, in the order given', () => {
@@ -80,5 +90,100 @@ describe('cornersOf', () => {
   it('names the corners by the reading direction: right to left, the left edge is the end', () => {
     expect(cornersOf({ left: 12, top: 380, width: 300, height: 200 }, stage, true)).toEqual(['br']);
     expect(cornersOf({ left: 680, top: 60, width: 300, height: 200 }, stage, true)).toEqual(['tl']);
+  });
+});
+
+describe('the D5 slots', () => {
+  it('only five slots', () => {
+    expect(STAGE_SLOTS).toEqual([
+      'top-centre',
+      'top-right',
+      'bottom-left',
+      'bottom-right',
+      'floating',
+    ]);
+    expect(new Set(Object.values(SLOT_OF)).size).toBeLessThanOrEqual(5);
+    for (const slot of Object.values(SLOT_OF)) expect(STAGE_SLOTS).toContain(slot);
+  });
+
+  it('puts each overlay in the slot the design gives it, and nothing at the top left', () => {
+    expect(SLOT_OF.island).toBe('top-centre');
+    expect(SLOT_OF.mapStyle).toBe('top-right');
+    expect(SLOT_OF.hint).toBe('bottom-left');
+    expect(SLOT_OF.toast).toBe('bottom-left');
+    expect(SLOT_OF.legend).toBe('bottom-right');
+    expect(SLOT_OF.video).toBe('floating');
+    expect(Object.values(CORNER_OF)).not.toContain('tl');
+  });
+
+  it('has no slot for job progress: that is the Jobs chip', () => {
+    expect(Object.keys(SLOT_OF)).not.toContain('jobs');
+  });
+
+  it('hint and toast share bottom-left, newest wins', () => {
+    const older = placeOverlays([
+      { id: 'hint', overlay: 'hint', since: 1 },
+      { id: 'toast', overlay: 'toast', since: 2 },
+    ]);
+    expect(older.get('toast')).toBe('bl');
+    expect(older.get('hint')).toBe('hidden');
+    const newer = placeOverlays([
+      { id: 'hint', overlay: 'hint', since: 3 },
+      { id: 'toast', overlay: 'toast', since: 2 },
+    ]);
+    expect(newer.get('hint')).toBe('bl');
+    expect(newer.get('toast')).toBe('hidden');
+    // a tie goes to the later one in the list
+    expect(
+      placeOverlays([
+        { id: 'a', overlay: 'hint', since: 5 },
+        { id: 'b', overlay: 'hint', since: 5 },
+      ]).get('b'),
+    ).toBe('bl');
+  });
+
+  it('stacks the other slots: the top right and the bottom right hold several', () => {
+    const slots = placeOverlays([
+      { id: 'map', overlay: 'mapStyle' },
+      { id: 'dates', overlay: 'dates' },
+      { id: 'cf', overlay: 'legend' },
+      { id: 'rf', overlay: 'legend' },
+    ]);
+    expect(Object.fromEntries(slots)).toEqual({ map: 'tr', dates: 'tr', cf: 'br', rf: 'br' });
+  });
+
+  it('hides what stands in a corner the floating video or the island takes', () => {
+    const slots = placeOverlays(
+      [
+        { id: 'map', overlay: 'mapStyle' },
+        { id: 'hint', overlay: 'hint', since: 1 },
+        { id: 'cf', overlay: 'legend' },
+      ],
+      new Set<Corner>(['bl', 'tr']),
+    );
+    expect(Object.fromEntries(slots)).toEqual({ map: 'hidden', hint: 'hidden', cf: 'br' });
+  });
+
+  it('takes the corner given for one view of a split (the map style at the map pane)', () => {
+    expect(placeOverlays([{ id: 'map', overlay: 'mapStyle', at: 'tl' }]).get('map')).toBe('tl');
+  });
+
+  it('places nothing on the stage for the island and the floating video', () => {
+    const slots = placeOverlays([
+      { id: 'island', overlay: 'island' },
+      { id: 'video', overlay: 'video' },
+    ]);
+    expect([...slots.values()]).toEqual(['hidden', 'hidden']);
+  });
+
+  it('newest: the latest arrival, or none', () => {
+    expect(newest([])).toBeNull();
+    expect(
+      newest([
+        { id: 'a', since: 1 },
+        { id: 'b', since: 4 },
+        { id: 'c', since: 2 },
+      ]),
+    ).toBe('b');
   });
 });

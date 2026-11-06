@@ -1,6 +1,7 @@
 /**
- * Survey surfaces preparing (volumetrics redesign, spec section 2, board 7): a card at the foot of
- * the stage while a `survey.prepare` job is at work, one row per date that job (or one before it
+ * Survey surfaces preparing (volumetrics redesign, spec section 2, board 7): a card at the top of
+ * the processing drawer while a `survey.prepare` job is at work (the Jobs chip carries its meter;
+ * no job card stands on the stage, UI revision D5), one row per date that job (or one before it
  * in the same run) prepares, "ready" or its percentage with a thin bar. It closes 2 s after the
  * last date stops preparing; Cancel is in Jobs. The sidebar's survey date rows read the same
  * per-date status (`useSurfacePrepareStatus`): only the dates a job prepared since the project
@@ -110,6 +111,17 @@ export function usePreparingCard(): PreparingModel | null {
     const done = rows.filter((r) => r.state?.kind === 'ready').length;
     return { rows, done, onOpen: run.onOpen || quietNow };
   }, [project, run, preparing, seen, states, quietNow]);
+}
+
+/** How much of the run is done, 0 to 1: each date's share, a ready one in full. */
+export function preparedShare(model: PreparingModel): number {
+  if (model.rows.length === 0) return 0;
+  const sum = model.rows.reduce(
+    (n, r) =>
+      n + (r.state?.kind === 'ready' ? 100 : r.state?.kind === 'preparing' ? r.state.pct : 0),
+    0,
+  );
+  return Math.round((sum / model.rows.length / 100) * 1000) / 1000;
 }
 
 /** The card itself, given its content. */

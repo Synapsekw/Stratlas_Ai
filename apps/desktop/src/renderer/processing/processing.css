@@ -49,6 +49,37 @@
   border-color: var(--warn);
   color: var(--warn-ink);
 }
+/* survey surfaces preparing: a thin meter along the chip's foot fills as they do (job progress
+   lives here, never as a card on the stage, D5) */
+.proc-chip[data-preparing] {
+  position: relative;
+  overflow: hidden;
+}
+.proc-meter {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  block-size: 2px;
+  background: var(--acc);
+  transform: scaleX(var(--p, 0));
+  transform-origin: left center;
+  transition: transform var(--d-2) var(--ease);
+}
+[dir='rtl'] .proc-meter {
+  transform-origin: right center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .proc-meter {
+    transition: none;
+  }
+}
+/* the preparing card heads the drawer's list, in the drawer's own surface */
+.proc-b > .prep-card {
+  inline-size: auto;
+  margin-block-end: var(--sp-5);
+  background: var(--bg-2);
+  box-shadow: none;
+}
 
 /* ---------- processing: the drawer's list ---------- */
 .proc-list {

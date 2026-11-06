@@ -9,6 +9,7 @@ import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef } from 'react';
 import { useStore } from 'zustand';
 import { PhotoRuns } from '../photogrammetry/PhotoRuns';
+import { PreparingCard } from '../survey/PreparingCard';
 import { photoUi } from '../photogrammetry/store';
 import { openProcessingTools } from '../processingTools';
 import { jobs, useJobs, useShell } from '../shell';
@@ -127,40 +128,44 @@ export function ProcessingDrawer() {
         {job ? (
           <JobDetail job={job} now={now} folded />
         ) : (
-          <DrawerList
-            projectName={own ? project.manifest.name : null}
-            readOnlyPackage={pkg}
-            running={mine.running}
-            finished={mine.finished}
-            elsewhere={elsewhere}
-            toolsMissing={runtime?.found === false}
-            error={error}
-            now={now}
-            onPick={(id) => {
-              processing.getState().pick(id);
-              void jobs.getState().select(id);
-            }}
-            onCreateMaps={() => {
-              // the drawer closes as the wizard opens (the effect above)
-              photoUi.getState().openWizard();
-            }}
-            onUpdateTools={() => {
-              close();
-              openProcessingTools();
-            }}
-            onRemove={(ids) => {
-              // only the list entries go; a refusal shows where a list error shows (the next
-              // successful read clears it)
-              void jobs
-                .getState()
-                .remove(ids)
-                .then((e) => {
-                  if (e) jobs.setState({ error: e });
-                });
-            }}
-          >
-            <PhotoRuns />
-          </DrawerList>
+          <>
+            {/* survey surfaces preparing: each date's progress (the Jobs chip carries its meter) */}
+            {own && <PreparingCard />}
+            <DrawerList
+              projectName={own ? project.manifest.name : null}
+              readOnlyPackage={pkg}
+              running={mine.running}
+              finished={mine.finished}
+              elsewhere={elsewhere}
+              toolsMissing={runtime?.found === false}
+              error={error}
+              now={now}
+              onPick={(id) => {
+                processing.getState().pick(id);
+                void jobs.getState().select(id);
+              }}
+              onCreateMaps={() => {
+                // the drawer closes as the wizard opens (the effect above)
+                photoUi.getState().openWizard();
+              }}
+              onUpdateTools={() => {
+                close();
+                openProcessingTools();
+              }}
+              onRemove={(ids) => {
+                // only the list entries go; a refusal shows where a list error shows (the next
+                // successful read clears it)
+                void jobs
+                  .getState()
+                  .remove(ids)
+                  .then((e) => {
+                    if (e) jobs.setState({ error: e });
+                  });
+              }}
+            >
+              <PhotoRuns />
+            </DrawerList>
+          </>
         )}
       </div>
     </aside>

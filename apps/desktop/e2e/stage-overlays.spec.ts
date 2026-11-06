@@ -226,6 +226,68 @@ test('every overlay takes a corner of its own: the T notice, the dates, the clip
   await shot(win, info, 'overlays-float-1100.png');
 });
 
+test('nothing in the top-left at open: the fixed slots only (D5)', async ({ win }, info) => {
+  await openTankFarm(win);
+  const stage = win.locator('.ws > .stage');
+  await expect(stage.getByTestId('dates-on-screen')).toBeVisible(VIEW_READY);
+  await islandSettled(win);
+  // no slot box at the top left; every box is one of the D5 slots
+  await expect(stage.locator('.stage-slot[data-slot="tl"]')).toHaveCount(0);
+  const names = await stage
+    .locator('.stage-slot')
+    .evaluateAll((els) => els.map((e) => e.getAttribute('data-stage-slot')));
+  for (const n of names) expect(['top-right', 'bottom-left', 'bottom-right']).toContain(n);
+  // the dates and the Map menu chip share the top right
+  await expect(
+    stage.locator('.stage-slot[data-slot="tr"]').getByTestId('dates-on-screen'),
+  ).toBeVisible();
+  // and nothing of the stage's own stands in the views' top-left quarter but the island's row
+  const tl = await win.evaluate(() => {
+    const views = document.querySelector('.ws > .stage .stage-views')?.getBoundingClientRect();
+    if (!views) return ['no views'];
+    const out: string[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>(
+      '.ws > .stage .stage-slot, .ws > .stage .vwin',
+    )) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (r.left < views.left + views.width / 2 && r.top < views.top + views.height / 2)
+        out.push(el.className);
+    }
+    return out;
+  });
+  expect(tl).toEqual([]);
+  await shot(win, info, 'slots-open-1100.png');
+});
+
+test('the island slot holds only the island', async ({ win }) => {
+  await openTankFarm(win);
+  await islandSettled(win);
+  const wrap = win.locator('.ws > .stage > .island-wrap');
+  await expect(wrap).toHaveCount(1);
+  // no corner overlay inside the island's slot, and none over the capsule
+  await expect(wrap.locator('.stage-slot, [data-testid="dates-on-screen"], .q-toasts')).toHaveCount(
+    0,
+  );
+  const covered = await win.evaluate(() => {
+    const cap = document.querySelector('.island')?.getBoundingClientRect();
+    if (!cap) return ['no island'];
+    return [...document.querySelectorAll<HTMLElement>('.ws > .stage .stage-slot')]
+      .map((el) => ({ el, r: el.getBoundingClientRect() }))
+      .filter(
+        ({ r }) =>
+          r.width > 0 &&
+          r.height > 0 &&
+          r.left < cap.right &&
+          cap.left < r.right &&
+          r.top < cap.bottom &&
+          cap.top < r.bottom,
+      )
+      .map(({ el }) => el.dataset.stageSlot ?? el.className);
+  });
+  expect(covered).toEqual([]);
+});
+
 test('docked, the video is a tile in the bottom strip and the views take the whole stage', async ({
   win,
 }, info) => {
@@ -366,9 +428,15 @@ test.describe('a wider stage', () => {
     expect(ro && hb).toBeTruthy();
     if (ro && hb) expect(ro.x).toBeGreaterThan(hb.x + hb.width);
     await shot(win, info, 'split-readout-beside-hint-1400.png');
-    // narrowed again, the readout gives way to the hint
+    // narrowed again, the hint stacks above the readout (D5): both stay, apart
     for (let i = 0; i < 30 && (await width()) >= 600; i++) await win.keyboard.press('ArrowLeft');
-    await expect(readout).toHaveCount(0);
+    await expect(hint).toBeVisible();
+    await expect
+      .poll(async () => {
+        const now = await layout(win);
+        return overlaps([...now.slots, ...now.others]);
+      })
+      .toEqual([]);
   });
 });
 

@@ -110,15 +110,21 @@ test('opening a project with unprepared dates starts one quiet prepare job; the 
   await watchChipStates(win);
   const shown = await chipKeys(chips);
 
-  // one job, for every date, started on its own; the stage says so while it works
+  // one job, for every date, started on its own; the Jobs chip says so while it works, and its
+  // drawer lists the dates (no job card on the stage, D5)
   await expect
     .poll(async () => (await prepareJobs(win, p.dir)).length, { timeout: 60_000 })
     .toBe(1);
   expect((await prepareJobs(win, p.dir))[0]?.captures).toEqual(DATES);
-  const prep = win.getByTestId('preparing-card');
+  const chipBtn = win.getByTestId('processing-chip');
+  await expect(chipBtn).toHaveAttribute('data-preparing', '');
+  await expect(win.locator('.stage [data-testid="preparing-card"]')).toHaveCount(0);
+  await chipBtn.click();
+  const prep = win.getByTestId('processing-drawer').getByTestId('preparing-card');
   await expect(prep).toBeVisible();
   await expect(prep).toContainText('Preparing survey surfaces');
   await expect(prep).toContainText('Started on its own when the project opened');
+  await win.getByTestId('proc-close').click();
   const jobs = await settled(win, p.dir);
   expect(jobs.map((j) => j.status)).toEqual(['done']);
 
@@ -137,8 +143,8 @@ test('opening a project with unprepared dates starts one quiet prepare job; the 
       card.getByTestId('line-profile').locator(`polyline[data-series="${d}"]`).first(),
     ).toBeAttached({ timeout: 30_000 });
   await expect(card).not.toContainText('No survey data');
-  // the card closes once the job is over
-  await expect(prep).toHaveCount(0, { timeout: 10_000 });
+  // the chip's meter goes once the job is over
+  await expect(chipBtn).not.toHaveAttribute('data-preparing', '', { timeout: 10_000 });
   // nothing more to do: no second job
   expect(await prepareJobs(win, p.dir)).toHaveLength(1);
 });
@@ -229,31 +235,25 @@ test('a cancelled prepare is not restarted until the project reopens', async ({
 test.describe('in the smallest window', () => {
   test.use({ appEnv: { ...PIPELINE_ENV, QUADRION_WINDOW_SIZE: '1100x700' } });
 
-  test('the preparing card does not cover the view at 1100 x 700', async ({
+  test('job progress stands in the Jobs chip, never over the view, at 1100 x 700', async ({
     earthworksProject: p,
     win,
   }) => {
     test.setTimeout(360_000);
     await openDemo(win, p.name, p.id);
-    const prep = win.getByTestId('preparing-card');
-    await expect(prep).toBeVisible({ timeout: 60_000 });
-    // clicks at the view's centre and just above the card reach the 3D view
+    const chip = win.getByTestId('processing-chip');
+    await expect(chip).toHaveAttribute('data-preparing', '', { timeout: 60_000 });
+    await expect(win.locator('.stage [data-testid="preparing-card"]')).toHaveCount(0);
+    // clicks at the view's centre and at its bottom quarters reach the 3D view
     const hits = await win.evaluate(() => {
-      const card = document.querySelector('[data-testid="preparing-card"]');
       const canvas = document.querySelector('[data-scene-view] canvas');
-      if (!card || !canvas) return null;
-      const c = card.getBoundingClientRect();
+      if (!canvas) return null;
       const v = canvas.getBoundingClientRect();
-      const reaches = (x: number, y: number) => document.elementFromPoint(x, y) === canvas;
-      return {
-        centre: reaches(v.left + v.width / 2, v.top + v.height / 2),
-        aboveCard: reaches(c.left + c.width / 2, c.top - 40),
-        cardInView: c.left >= v.left && c.right <= v.right && c.bottom <= v.bottom + 1,
-        // 330 px where the corner has room; the corner keeps to its half of the view
-        fits: c.width > 0 && c.width <= 330,
-      };
+      const reaches = (fx: number, fy: number) =>
+        document.elementFromPoint(v.left + v.width * fx, v.top + v.height * fy) === canvas;
+      return { centre: reaches(0.5, 0.5), lowStart: reaches(0.3, 0.7), lowEnd: reaches(0.7, 0.7) };
     });
-    expect(hits).toEqual({ centre: true, aboveCard: true, cardInView: true, fits: true });
+    expect(hits).toEqual({ centre: true, lowStart: true, lowEnd: true });
     await settled(win, p.dir);
   });
 });

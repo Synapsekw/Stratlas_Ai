@@ -12,6 +12,11 @@ vi.mock('../shell', () => ({
   useShell: (selector: (s: { pkg: object | null }) => unknown) =>
     selector({ pkg: app.pkg ? {} : null }),
 }));
+// the survey surfaces preparing (its own tests: survey/PreparingCard.test.tsx)
+vi.mock('../survey/PreparingCard', () => ({
+  usePreparingCard: () => null,
+  preparedShare: () => 0,
+}));
 vi.mock('@aio/workspace', () => {
   const state = () => ({ project: app.root === null ? null : { root: app.root } });
   return {
@@ -87,6 +92,25 @@ describe('the chip', () => {
     expect(chip()?.dataset.state).toBe('one');
     act(() => chip()?.click());
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('carries the survey surfaces preparing as a meter, the job card off the stage', () => {
+    act(() => {
+      root = createRoot(host);
+      root.render(
+        <ChipView
+          state={{ kind: 'one', pct: 40 }}
+          open={false}
+          onToggle={() => undefined}
+          preparing={{ share: 0.25, label: 'Preparing survey surfaces: Preparing 0 of 2' }}
+        />,
+      );
+    });
+    expect(chip()?.textContent).toBe('1 job');
+    expect(chip()?.hasAttribute('data-preparing')).toBe(true);
+    expect(chip()?.getAttribute('aria-label')).toContain('Preparing survey surfaces');
+    const meter = chip()?.querySelector<HTMLElement>('[data-testid="processing-chip-meter"]');
+    expect(meter?.style.getPropertyValue('--p')).toBe('0.25');
   });
 
   it('carries a warning mark when something needs attention', () => {

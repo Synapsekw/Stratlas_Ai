@@ -72,9 +72,9 @@ async function apart(score: ReturnType<Page['getByTestId']>) {
 
 /**
  * A point a quarter of the way across the frame stack that a click reaches, top to bottom from
- * the middle. A stage corner card can lie over part of the small Frames pane: the "Preparing
- * survey surfaces" card shows a few seconds after the project opens, which a slow runner reaches
- * before this step (its top edge was 1 px above the stack's middle at 1100 x 720).
+ * the middle. A stage overlay (a hint or a toast at the bottom left, a legend at the bottom
+ * right) can lie over part of the small Frames pane; job progress no longer can (it is the Jobs
+ * chip's, the test in the CI window below).
  */
 async function swipePoint(win: Page): Promise<{ x: number; y: number }> {
   const point = await win.evaluate(() => {
@@ -168,6 +168,48 @@ test('the Frames pane shows the same view of the other date and follows the cloc
   // lined up by the ground: the later frame is drawn through the homography
   await pane.getByTestId('frames-warp').click();
   await expect(pane.getByTestId('frames-stack')).toHaveAttribute('data-warped', '');
+});
+
+test.describe('in the window CI runs, 1100 x 720', () => {
+  test.use({ appEnv: { ...PIPELINE_ENV, QUADRION_WINDOW_SIZE: '1100x720' } });
+
+  test('job progress never covers the Frames pane: its stack is reachable at its middle while surfaces prepare', async ({
+    demoProject,
+  }) => {
+    test.setTimeout(120_000);
+    const { win } = demoProject;
+    await win.keyboard.press('3');
+    const right = win.getByTestId('pane-chooser-right').locator('select').first();
+    await expect(right.locator('option[value="frames"]')).toHaveCount(1);
+    await right.selectOption('frames');
+    await expect(win.getByTestId('frames-pane')).toBeVisible();
+    await expect(win.getByTestId('frames-stack')).toBeVisible();
+
+    // the survey surfaces prepare on their own a few seconds after the project opens: their
+    // progress is the Jobs chip's meter in the title bar, never a card on the stage
+    const chip = win.getByTestId('processing-chip');
+    await expect(chip).toHaveAttribute('data-preparing', '', { timeout: 60_000 });
+    await expect(chip.getByTestId('processing-chip-meter')).toBeAttached();
+    await expect(win.locator('.stage [data-testid="preparing-card"]')).toHaveCount(0);
+    const reach = await win.evaluate(() => {
+      const stack = document.querySelector(
+        '[data-testid="frames-pane"] [data-testid="frames-stack"]',
+      );
+      if (!stack) return 'no frames stack';
+      const r = stack.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return stack.contains(hit)
+        ? 'reached'
+        : `covered by ${hit?.className.toString() ?? 'nothing'}`;
+    });
+    expect(reach).toBe('reached');
+
+    // the drawer, opened from the chip, lists each date's progress
+    await chip.click();
+    const drawer = win.getByTestId('processing-drawer');
+    await expect(drawer).toBeVisible();
+    await expect(drawer.getByTestId('preparing-card')).toContainText('Preparing survey surfaces');
+  });
 });
 
 test('a photo opens the same view of the other date, and blends', async ({ demoProject }) => {

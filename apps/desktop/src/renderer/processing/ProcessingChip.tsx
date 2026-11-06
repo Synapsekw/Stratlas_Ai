@@ -1,13 +1,16 @@
 /**
- * The jobs chip of the sidebar's status row (shell/SidebarStatus.tsx): how many jobs the open
- * project runs ("1 job"), and the button that opens the processing drawer. With no project of its
+ * The Jobs chip of the title bar's status group (shell/SidebarStatus.tsx): how many jobs the open
+ * project runs ("1 job"), and the button that opens the processing drawer. Job progress shows
+ * here, never as a card on the stage (UI revision D5): while survey surfaces prepare, a thin
+ * meter under the words fills as they do, and the drawer lists each date. With no project of its
  * own (none open, or a read-only package) it shows only while another project runs something.
  */
 import { Icon, t, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useMemo } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 import { useJobs, useShell } from '../shell';
 import { chipState, needsAttention, projectJobs, runningElsewhere, type ChipState } from './model';
+import { preparedShare, usePreparingCard } from '../survey/PreparingCard';
 import { processing, seenAtOf, useProcessing } from './store';
 import './processing.css';
 
@@ -54,16 +57,25 @@ export function chipLabel(state: ChipState): string {
     : t('processing.chip.label', { state: text });
 }
 
+/** Survey surfaces preparing: how much is done (0 to 1) and what it is, in words. */
+export interface ChipPreparing {
+  share: number;
+  label: string;
+}
+
 export function ChipView({
   state,
   open,
   onToggle,
+  preparing = null,
 }: {
   state: ChipState;
   open: boolean;
   onToggle: () => void;
+  preparing?: ChipPreparing | null;
 }) {
   if (state.kind === 'hidden') return null;
+  const label = chipLabel(state);
   return (
     <button
       type="button"
@@ -71,13 +83,22 @@ export function ChipView({
       data-testid="processing-chip"
       data-state={state.kind}
       title={t('processing.chip.tip')}
-      aria-label={chipLabel(state)}
+      data-preparing={preparing ? '' : undefined}
+      aria-label={preparing ? `${label}, ${preparing.label}` : label}
       aria-expanded={open}
       aria-controls="processing-drawer"
       onClick={onToggle}
     >
       <Icon name={state.kind === 'attention' ? 'warn' : 'clock'} size={14} />
       <span className="proc-words">{chipWords(state)}</span>
+      {preparing && (
+        <span
+          className="proc-meter"
+          data-testid="processing-chip-meter"
+          aria-hidden="true"
+          style={{ '--p': String(preparing.share) } as CSSProperties}
+        />
+      )}
     </button>
   );
 }
@@ -101,9 +122,24 @@ export function ProcessingChip() {
       attention: open ? 0 : needsAttention(mine.finished, { start, seenAt }).length,
     });
   }, [all, root, open, start, seenAt]);
+  const prep = usePreparingCard();
+  const preparing = useMemo(
+    () =>
+      prep && root !== null
+        ? {
+            share: preparedShare(prep),
+            label: `${t('surface.preparing.title')}: ${t('surface.preparing.count', {
+              done: prep.done,
+              total: prep.rows.length,
+            })}`,
+          }
+        : null,
+    [prep, root],
+  );
   return (
     <ChipView
       state={state}
+      preparing={preparing}
       open={open}
       onToggle={() => {
         const p = processing.getState();

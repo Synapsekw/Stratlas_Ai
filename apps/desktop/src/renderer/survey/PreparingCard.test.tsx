@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { jobs } from '../shell';
 import type { JobEntry } from '../jobs';
-import { PreparingCard } from './PreparingCard';
+import { PreparingCard, preparedShare } from './PreparingCard';
 import { preparedSurfaces } from './surfaceStates';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -171,5 +171,22 @@ describe('PreparingCard', () => {
     });
     expect(rows()).toEqual([{ id: 'c3', status: '20 %' }]);
     expect(card()?.textContent).toContain('Preparing 0 of 1');
+  });
+});
+
+describe('preparedShare', () => {
+  it('is the mean of the dates, a ready one in full, none at nought', () => {
+    expect(preparedShare({ rows: [], done: 0, onOpen: false })).toBe(0);
+    expect(
+      preparedShare({
+        rows: [
+          { capture: 'a', label: 'a', state: { kind: 'ready' } as never },
+          { capture: 'b', label: 'b', state: { kind: 'preparing', pct: 50 } as never },
+          { capture: 'c', label: 'c', state: undefined },
+        ],
+        done: 1,
+        onOpen: false,
+      }),
+    ).toBe(0.5);
   });
 });

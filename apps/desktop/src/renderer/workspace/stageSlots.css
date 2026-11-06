@@ -1,0 +1,15 @@
+/* The stage's fixed slots (UI revision D5, overlaySlots.ts) on top of the corner boxes of
+   styles.css (.stage-slot): what they add. */
+
+/* the slot in the corner of the 3D view's coordinates readout stacks above it, as the legends
+   stand above the compass and the scale bar: never over it, and the readout stays */
+.pane-3d:not(.is-hidden) .cursor-ro {
+  anchor-name: --aio-readout;
+}
+.stage-views > .stage-slot[data-over-readout] {
+  inset-block-end: max(
+    40px,
+    calc(anchor(--aio-readout top, 0px) + var(--sp-3)),
+    calc(anchor(--aio-map-note top, 0px) + var(--sp-2))
+  );
+}

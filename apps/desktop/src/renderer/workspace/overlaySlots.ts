@@ -1,8 +1,16 @@
 /**
- * The stage's overlay layout (D30): four corner slots around the top-centre island. An overlay
- * takes a free corner and never stacks on another; one whose corners are all taken is hidden.
+ * The stage's overlay slots (UI revision D5), the one source of where an overlay stands. Only five
+ * slots exist: the island at the top centre; the map style (with Streets), the dates on screen
+ * and the Show control at the top right; one hint or one toast at a time at the bottom left
+ * (newest wins, the rest wait); the legends at the bottom right, above the compass, the scale bar
+ * and the coordinates readout; and, floating, only the popped-out video and a tool's on-stage
+ * handles. Job progress has no slot: it is the Jobs chip's (the title bar), so a job card never
+ * covers a view.
+ *
  * Corners are named by the reading direction: `tl` is the top of the start edge (the top right
- * in a right-to-left UI), as the slots are placed with logical insets.
+ * in a right-to-left UI), as the slots are placed with logical insets. Nothing takes `tl` but
+ * the floating video, the open island reaching across it, and, in a Split, the map style at the
+ * top of a map pane on the start side.
  */
 
 export type Corner = 'tl' | 'tr' | 'bl' | 'br';
@@ -58,5 +66,91 @@ export function cornersOf(
       const start = rtl ? !left : left;
       out.push(top ? (start ? 'tl' : 'tr') : start ? 'bl' : 'br');
     }
+  return out;
+}
+
+/* ------------------------------------------------------------------------- D5 */
+
+export type StageSlot = 'top-centre' | 'top-right' | 'bottom-left' | 'bottom-right' | 'floating';
+
+/** The only slots there are (D5). */
+export const STAGE_SLOTS: readonly StageSlot[] = [
+  'top-centre',
+  'top-right',
+  'bottom-left',
+  'bottom-right',
+  'floating',
+];
+
+/** What stands on the stage. */
+export type StageOverlay =
+  'island' | 'mapStyle' | 'dates' | 'show' | 'hint' | 'toast' | 'legend' | 'video' | 'handles';
+
+/** The one slot of each overlay. */
+export const SLOT_OF: Readonly<Record<StageOverlay, StageSlot>> = {
+  island: 'top-centre',
+  mapStyle: 'top-right',
+  dates: 'top-right',
+  show: 'top-right',
+  hint: 'bottom-left',
+  toast: 'bottom-left',
+  legend: 'bottom-right',
+  video: 'floating',
+  handles: 'floating',
+};
+
+/** The stage corner of each corner slot; the island and the floating ones place themselves. */
+export const CORNER_OF: Readonly<Partial<Record<StageSlot, Corner>>> = {
+  'top-right': 'tr',
+  'bottom-left': 'bl',
+  'bottom-right': 'br',
+};
+
+/** The slots that show one overlay at a time; the others stack theirs. */
+const ONE_AT_A_TIME: ReadonlySet<StageSlot> = new Set(['bottom-left']);
+
+export interface OverlayRequest {
+  id: string;
+  overlay: StageOverlay;
+  /** When it came (a one-at-a-time slot shows the newest). */
+  since?: number;
+  /** Another corner for its slot: the top right of one view of a Split. */
+  at?: Corner;
+}
+
+/** The latest arrival; a tie goes to the later one in the list. */
+export function newest(items: readonly { id: string; since: number }[]): string | null {
+  let best: { id: string; since: number } | null = null;
+  for (const x of items) if (!best || x.since >= best.since) best = x;
+  return best?.id ?? null;
+}
+
+/**
+ * The corner each overlay stands in, or `hidden`: its slot's corner, unless the floating video or
+ * the open island takes that corner (`blocked`); in a one-at-a-time slot only the newest shows.
+ * The island and the floating overlays are not placed here (`hidden` from the corners' view).
+ */
+export function placeOverlays(
+  items: readonly OverlayRequest[],
+  blocked: ReadonlySet<Corner> = new Set(),
+): Map<string, Corner | 'hidden'> {
+  const cornerOf = (x: OverlayRequest) => x.at ?? CORNER_OF[SLOT_OF[x.overlay]];
+  const winners = new Map<StageSlot, string | null>();
+  for (const slot of ONE_AT_A_TIME)
+    winners.set(
+      slot,
+      newest(
+        items
+          .filter((x) => SLOT_OF[x.overlay] === slot && x.at === undefined)
+          .map((x) => ({ id: x.id, since: x.since ?? 0 })),
+      ),
+    );
+  const out = new Map<string, Corner | 'hidden'>();
+  for (const x of items) {
+    const corner = cornerOf(x);
+    const slot = SLOT_OF[x.overlay];
+    const waits = winners.has(slot) && x.at === undefined && winners.get(slot) !== x.id;
+    out.set(x.id, !corner || blocked.has(corner) || waits ? 'hidden' : corner);
+  }
   return out;
 }

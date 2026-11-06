@@ -2,16 +2,18 @@ import { registerAppHooks } from '@aio/ai';
 import { SightingPicker, useIssueOverlay, useMapDraw, usePinDisplay } from '@aio/annotate';
 import { getActiveScene, SceneView, type EngineStage } from '@aio/engine';
 import { MapView, type MapController, type MapDrawSeam, type MapIssueDisplay } from '@aio/maps';
-import { Button, Icon, useT } from '@aio/ui';
+import { Button, Icon, subscribeToasts, toastStamp, ToastHost, useT, visibleToast } from '@aio/ui';
 import { cameraModeOf, setDroneTelemetry, setFlightPaths } from '@aio/video';
 import { useVolumeHint, VolumeHint, VolumetricStage } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
   type RefObject,
 } from 'react';
@@ -46,7 +48,6 @@ import { StageClassLegend, StageElevationLegend } from './StageLegends';
 import { VolumeSection } from './VolumeSection';
 import { CleanupHost } from '../pointcloud/CleanupHost';
 import { DesignsMount } from '../survey/Designs';
-import { PreparingCardView, usePreparingCard } from '../survey/PreparingCard';
 import { HaulRoadMount } from '../survey/HaulRoad';
 import { HydroMount } from '../survey/Hydro';
 import './m8Mounts';
@@ -98,8 +99,9 @@ import { AntennaRunner } from '../telecom/AntennaRunner';
 import { useGroundFollowsLayers, useSiteBasemapLayer } from './siteBasemap';
 import { useStreetMap3d } from './streetMap3d';
 import { StageBasemapChip, useStageBasemap } from './MapMenus';
-import { assignSlots, type Corner, type SlotRequest } from './overlaySlots';
+import { placeOverlays, type Corner, type OverlayRequest } from './overlaySlots';
 import { useSiteTiles } from './siteTiles';
+import './stageSlots.css';
 // --- RF coverage legend (rf-ui) ---
 import { StageCoverageLegend, useCoverageLegendShown } from '../rf/StageCoverageLegend';
 // --- end RF coverage legend ---
@@ -299,12 +301,6 @@ export interface StageCornersInput {
   video: readonly Corner[];
   /** The stage corner the 3D view's coordinates readout stands in (null: not at a corner). */
   cursor: Corner | null;
-  /**
-   * The readout stands clear of that corner's volumes hint: the 3D view on the left of a split,
-   * in a pane wide enough, has it at the pane's end beside the divider, so the hint at the pane's
-   * foot does not hide it (anything else in the corner still does).
-   */
-  readoutClear?: boolean;
   /** The corners the Map menu chip wants: at the map's side of a split (default: the end). */
   basemapAt?: readonly Corner[];
   /**
@@ -337,12 +333,6 @@ export function basemapCorners(
   return side !== undefined && (side === 'left') !== rtl ? START : END;
 }
 
-/** The corners the volumes hint wants, given the readout's corner. */
-function hintCorners(cursor: Corner | null, splitting: boolean): Corner[] {
-  if (splitting && cursor) return [cursor];
-  return cursor === 'bl' ? ['br', 'bl'] : ['bl', 'br'];
-}
-
 /**
  * The stage corner the 3D view's coordinates readout stands in: the foot of the stage's end, or
  * in a split the quarter of the stage its side's pane takes (the panes keep left to right, so
@@ -359,11 +349,49 @@ export function readoutCorner(
   return rtl ? 'bl' : 'br';
 }
 
+/** A counter of arrivals on the stage: a one-at-a-time slot shows the latest. */
+let arrivals = 0;
+
 /**
- * The stage's corner overlays (D30), each in a corner of its own around the top-centre island:
- * the floating video where it rests, the status chips, the one Map menu chip, the survey dates and
- * the coordinates readout, served in that order; one left without a free corner is hidden. The
- * telemetry is the island's live line and the Video workbench, never a box on the model.
+ * When each of `shown` came: kept while it stays shown, a new arrival when it comes again. A key
+ * holds an overlay's identity (a toast's id and version: a replaced toast arrives again).
+ */
+function useArrivals(shown: readonly string[]): ReadonlyMap<string, number> {
+  const key = shown.join('|');
+  const [seen, setSeen] = useState<{ key: string; at: ReadonlyMap<string, number> }>({
+    key: '',
+    at: new Map(),
+  });
+  if (seen.key === key) return seen.at;
+  // a new set: keep the arrivals of what stays, number what came (React redoes this render)
+  const at = new Map<string, number>();
+  for (const id of key === '' ? [] : key.split('|')) at.set(id, seen.at.get(id) ?? ++arrivals);
+  setSeen({ key, at });
+  return at;
+}
+
+/** The toast the stage's host would show now, as a key that changes when another arrives. */
+function useStageToastKey(): string | null {
+  useSyncExternalStore(subscribeToasts, toastStamp, toastStamp);
+  const x = visibleToast('stage');
+  return x ? `toast:${x.id}#${String(x.version)}` : null;
+}
+
+/** The D5 name of each corner a slot box stands in (`tl`: the map style of a Split's start pane). */
+const SLOT_NAME: Readonly<Record<Corner, string>> = {
+  tl: 'top-right',
+  tr: 'top-right',
+  bl: 'bottom-left',
+  br: 'bottom-right',
+};
+
+/**
+ * The stage's overlays in the fixed slots of D5 (overlaySlots.ts): the Map menu chip, the survey
+ * dates and the Show control stacked at the top right; one hint, notice or toast at a time at the
+ * bottom left, the newest first; the legends stacked at the bottom right, where the coordinates
+ * readout gives way to them. A slot whose corner the floating video or the open island takes is
+ * hidden while it does; a toast then shows in the window corner. Job progress is the Jobs chip's,
+ * never a card on the stage. The telemetry is the island's live line and the Video workbench.
  */
 export function useStageCorners(o: StageCornersInput): {
   cursorHidden: boolean;
@@ -375,122 +403,137 @@ export function useStageCorners(o: StageCornersInput): {
   const basemap = useStageBasemap(o.show3d, o.showMap);
   const dates = useDatesShown() && !o.splitting;
   const volHint = useVolumeHint() && o.show3d;
-  // what the pointer and Esc do now (the linked hover, an open pile): the foot of the stage
+  // what the pointer and Esc do now (the linked hover, an open pile)
   const stageHint = useStageHintShown();
-  // survey surfaces preparing (board 7): the foot of the stage, the corner away from the readout
-  const preparing = usePreparingCard();
-  const prepShown = preparing !== null;
-  // the one Show control, top-left while the Volumes tab is open (board 1)
+  // the one Show control, while the Volumes tab is open (board 1)
   const show = useStageShowShown();
-  // Show, Cut & fill in a survey project: the whole site's heat map, its legend bottom-left (board 4)
+  // Show, Cut & fill in a survey project: the whole site's heat map and its legend (board 4)
   const cutFill = useSiteCutFill();
   const cfLegend = cutFill !== null && (o.show3d || o.showMap);
-  // playing through the dates (board 6): the blend bottom-left, the site totals bottom-right
+  // playing through the dates (board 6): the blend at the foot, the site totals with the legends
   const playing = useTimelapsePlaying() && !o.splitting;
   const status = o.roadMeasure || cutaway || notice !== null;
-  const basemapAt = o.basemapAt ?? END;
+  const toastKey = useStageToastKey();
+  const basemapAt = (o.basemapAt ?? END)[0] ?? 'tr';
   const topTaken = o.topTaken ?? NO_CORNERS;
+  // the bottom left's candidates, by when each came
+  const footIds = [
+    playing && 'tlBlend',
+    status && 'status',
+    stageHint && 'stageHint',
+    volHint && 'volHint',
+    toastKey,
+  ].filter((x): x is string => typeof x === 'string');
+  const since = useArrivals(footIds);
   const slots = useMemo(() => {
-    const items: SlotRequest[] = [
-      ...o.video.map((c) => ({ id: `video-${c}`, want: [c] })),
-      // the top corners the open island reaches across and past the middle
-      ...topTaken.map((c) => ({ id: `island-${c}`, want: [c] })),
-      { id: 'tlBlend', want: playing ? ['bl', 'tl'] : [] },
-      { id: 'tlTotals', want: playing ? ['br', 'tr'] : [] },
-      { id: 'show', want: show ? ['tl'] : [] },
-      { id: 'status', want: status ? ['tl', 'bl'] : [] },
-      { id: 'cfLegend', want: cfLegend ? ['bl', 'br'] : [] },
-      { id: 'basemap', want: basemap ? basemapAt : [] },
-      {
-        id: 'preparing',
-        want: prepShown ? (o.cursor === 'bl' ? ['br', 'bl'] : ['bl', 'br']) : [],
-      },
-      { id: 'stageHint', want: stageHint ? hintCorners(o.cursor, o.splitting) : [] },
-      // the volumes hint at the foot, the corner away from the readout first (I-R51); in a split
-      // the 3D pane's own foot, the readout giving way while it shows (the other pane's foot is
-      // another view's: the map's scale and credits)
-      { id: 'volHint', want: volHint ? hintCorners(o.cursor, o.splitting) : [] },
+    const on: Record<string, boolean> = {
+      basemap: basemap !== null,
+      dates,
+      show,
+      cfLegend,
+      tlTotals: playing,
+      rfLegend: o.rfLegend,
+    };
+    const items: OverlayRequest[] = [
+      { id: 'basemap', overlay: 'mapStyle', ...(basemapAt !== 'tr' && { at: basemapAt }) },
+      { id: 'dates', overlay: 'dates' },
+      { id: 'show', overlay: 'show' },
+      { id: 'cfLegend', overlay: 'legend' },
+      { id: 'tlTotals', overlay: 'legend' },
       // --- RF coverage legend (rf-ui) ---
-      { id: 'rfLegend', want: o.rfLegend ? (o.cursor === 'bl' ? ['br', 'bl'] : ['bl', 'br']) : [] },
+      { id: 'rfLegend', overlay: 'legend' },
       // --- end RF coverage legend ---
-      { id: 'dates', want: dates ? ['tl', 'bl', 'tr'] : [] },
-      { id: 'cursor', want: o.cursor ? [o.cursor] : [] },
     ];
-    return assignSlots(items);
-  }, [
-    o.video,
-    o.cursor,
-    o.splitting,
-    playing,
-    show,
-    status,
-    cfLegend,
-    basemap,
-    basemapAt,
-    prepShown,
-    volHint,
-    stageHint,
-    dates,
-    topTaken,
-    // --- RF coverage legend (rf-ui) ---
-    o.rfLegend,
-    // --- end RF coverage legend ---
-  ]);
+    const shown = items.filter((x) => on[x.id] === true);
+    for (const [id, at] of since)
+      shown.push({ id, overlay: id.startsWith('toast:') ? 'toast' : 'hint', since: at });
+    return placeOverlays(shown, new Set<Corner>([...o.video, ...topTaken]));
+  }, [basemap, basemapAt, dates, show, cfLegend, playing, o.rfLegend, o.video, topTaken, since]);
   // the callouts keep out of the overlays: placed again as the overlays move (they read their
   // keep-out on a rendered frame)
   const engine = o.engine;
   useEffect(() => {
     engine?.requestRender();
   }, [engine, slots]);
-  const at = (id: string, node: ReactNode) => {
-    const corner = slots.get(id);
-    if (!corner || corner === 'hidden') return null;
-    return (
-      <div className="stage-slot" data-slot={corner} data-surface="dark">
-        {node}
-      </div>
-    );
+  const cornerOf = (id: string): Corner | null => {
+    const c = slots.get(id);
+    return c && c !== 'hidden' ? c : null;
   };
+  // one box per corner, its overlays stacked in it
+  const groups = new Map<Corner, ReactNode[]>();
+  const put = (id: string, node: ReactNode) => {
+    const c = cornerOf(id);
+    if (!c) return;
+    groups.set(c, [...(groups.get(c) ?? []), <Fragment key={id}>{node}</Fragment>]);
+  };
+  put('basemap', basemap && <StageBasemapChip view={basemap} />);
+  put('dates', <DatesOnScreen kinds={DATE_KINDS} />);
+  put('show', <StageShow />);
+  put('tlBlend', <TimelapseBlend />);
+  put(
+    'status',
+    <div className="stage-under">
+      {o.roadMeasure && <MeasureBar />}
+      {cutaway && <StageStatus stage={o.engine} />}
+      {notice && (
+        <div className="stage-status" role="status">
+          <span className="ss-chip compare-notice" data-testid="compare-notice">
+            <Icon name="warn" size={14} />
+            <span>{notice}</span>
+          </span>
+        </div>
+      )}
+    </div>,
+  );
+  put('stageHint', <StageHint />);
+  put('volHint', <VolumeHint />);
+  put('cfLegend', cutFill && <StageCutFillLegend {...cutFill} />);
+  put('tlTotals', <TimelapseTotals />);
+  // --- RF coverage legend (rf-ui) ---
+  put('rfLegend', <StageCoverageLegend />);
+  // --- end RF coverage legend ---
+  // the stage's toast host stands in the bottom left while the floating video leaves that corner
+  // free; it holds its toast back while a newer hint shows there (the toast waits). With the
+  // corner taken it is not mounted, so toasts show in the window corner meanwhile
+  const footFree = !o.video.includes('bl');
+  const toastShown = toastKey !== null && cornerOf(toastKey) === 'bl';
+  const occupied = new Set<Corner>([...groups.keys(), ...o.video]);
+  if (toastShown) occupied.add('bl');
+  const foot = footFree && <ToastHost placement="stage" held={!toastShown} />;
+  // the slot in the readout's corner stacks above it (stageSlots.css), so only the floating video
+  // resting there hides the readout
+  const overReadout = (corner: Corner) => (corner === o.cursor ? '' : undefined);
   return {
-    // (the volumes hint in its corner leaves a readout that stands clear of it shown)
-    cursorHidden:
-      o.cursor !== null &&
-      slots.get('cursor') === 'hidden' &&
-      !(o.readoutClear && slots.get('volHint') === o.cursor),
-    // nothing in the other bottom corner: the readout need not keep to its half (beside the
-    // hint in its own corner it does)
-    cursorWide:
-      !(o.readoutClear && slots.get('volHint') === o.cursor) &&
-      ![...slots.values()].includes(o.cursor === 'bl' ? 'br' : 'bl'),
+    cursorHidden: o.cursor !== null && o.video.includes(o.cursor),
+    // nothing in the other bottom corner: the readout need not keep to its half
+    cursorWide: !occupied.has(o.cursor === 'bl' ? 'br' : 'bl'),
     corners: (
       <>
-        {at('tlBlend', <TimelapseBlend />)}
-        {at('tlTotals', <TimelapseTotals />)}
-        {at('show', <StageShow />)}
-        {cutFill && at('cfLegend', <StageCutFillLegend {...cutFill} />)}
-        {at(
-          'status',
-          <div className="stage-under">
-            {o.roadMeasure && <MeasureBar />}
-            {cutaway && <StageStatus stage={o.engine} />}
-            {notice && (
-              <div className="stage-status" role="status">
-                <span className="ss-chip compare-notice" data-testid="compare-notice">
-                  <Icon name="warn" size={14} />
-                  <span>{notice}</span>
-                </span>
-              </div>
-            )}
-          </div>,
+        {[...groups].map(([corner, nodes]) => (
+          <div
+            key={corner}
+            className="stage-slot"
+            data-slot={corner}
+            data-stage-slot={SLOT_NAME[corner]}
+            data-over-readout={overReadout(corner)}
+            data-surface="dark"
+          >
+            {nodes}
+            {corner === 'bl' && foot}
+          </div>
+        ))}
+        {foot && !groups.has('bl') && (
+          <div
+            key="bl"
+            className="stage-slot"
+            data-slot="bl"
+            data-stage-slot="bottom-left"
+            data-over-readout={overReadout('bl')}
+            data-surface="dark"
+          >
+            {foot}
+          </div>
         )}
-        {basemap && at('basemap', <StageBasemapChip view={basemap} />)}
-        {preparing && at('preparing', <PreparingCardView model={preparing} />)}
-        {at('stageHint', <StageHint />)}
-        {at('volHint', <VolumeHint />)}
-        {/* // --- RF coverage legend (rf-ui) --- */}
-        {at('rfLegend', <StageCoverageLegend />)}
-        {/* // --- end RF coverage legend --- */}
-        {at('dates', <DatesOnScreen kinds={DATE_KINDS} />)}
       </>
     ),
   };
@@ -500,32 +543,6 @@ export function useStageCorners(o: StageCornersInput): {
 
 /** A right-to-left UI (the corners are named by the reading direction). */
 const rtlUi = () => typeof document !== 'undefined' && document.documentElement.dir === 'rtl';
-
-/**
- * A 3D pane on the left of a split at least this wide keeps its readout clear of the volumes hint
- * at its foot: the hint takes up to 300 px from the corner (12 px in, @aio/volumetric), the
- * readout at most the pane's end half (styles.css .cursor-ro), with a gap between.
- */
-const READOUT_PANE_MIN = 2 * (12 + 300 + 8);
-
-/** Whether the 3D pane is at least READOUT_PANE_MIN wide; measured while `on`. */
-function usePaneWide(panes: RefObject<HTMLDivElement | null>, on: boolean): boolean {
-  const [wide, setWide] = useState(true);
-  useEffect(() => {
-    const pane = on ? panes.current?.querySelector('.pane-3d:not(.pane-compare)') : null;
-    if (!pane || typeof ResizeObserver === 'undefined') return;
-    const read = () => {
-      setWide(pane.getBoundingClientRect().width >= READOUT_PANE_MIN);
-    };
-    read();
-    const ro = new ResizeObserver(read);
-    ro.observe(pane);
-    return () => {
-      ro.disconnect();
-    };
-  }, [panes, on]);
-  return wide;
-}
 
 /** Room kept below the open island for a top overlay: a chip and its gap. */
 const TOP_SLOT_ROOM = 48;
@@ -779,9 +796,6 @@ export function Stage() {
   const { containerRef: panesRef, handle: splitHandle } = useSplitDivider(divided);
   const roadMeasuring = useRoad((s) => Boolean(s.measure.mode));
   const islandReach = useIslandReach(stageRef, engine);
-  // the 3D view on the left of a split has its readout beside the divider, clear of the hint
-  // at the corner, unless its pane is narrow
-  const pane3dWide = usePaneWide(panesRef, splitting && side3d === 'left');
   // the 3D view's readout is at the views' bottom end (the panes keep left-to-right geometry),
   // a stage corner unless the split shows the 3D view on the left
   const rtl = rtlUi();
@@ -798,7 +812,6 @@ export function Stage() {
     roadMeasure: roadMap !== null && showMap && roadMeasuring,
     video: floatClip ? videoCorners : NO_CORNERS,
     cursor: readoutCorner(show3d, splitting ? side3d : undefined, rtl),
-    readoutClear: splitting && side3d === 'left' && pane3dWide,
     basemapAt,
     topTaken: islandReach.taken,
     // --- RF coverage legend (rf-ui) ---

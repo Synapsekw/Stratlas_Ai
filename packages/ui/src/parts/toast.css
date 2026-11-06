@@ -179,3 +179,17 @@
   transform: none;
   transition: opacity var(--d-1) linear;
 }
+
+/* the stage's host stands in the bottom-left slot of the stage (overlaySlots.ts, D5), which
+   places it: one hint or one toast there at a time. Empty or holding its toast back, it takes no
+   room and no clicks. */
+.q-toasts[data-placement='stage'] {
+  position: relative;
+  inset: auto;
+  inline-size: 360px;
+  max-inline-size: 100%;
+  pointer-events: none;
+}
+.q-toasts[data-placement='stage']:not(:has(.q-toast)) {
+  display: none;
+}

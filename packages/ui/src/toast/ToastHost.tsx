@@ -32,6 +32,12 @@ const TONE_ICON: Readonly<Record<ToastTone, IconName>> = {
 export interface ToastHostProps {
   /** 'stage': the bottom-left slot of the 3D view; 'window': the window corner, off the stage. */
   placement: ToastPlacement;
+  /**
+   * Hold the toast back for now (the stage's bottom-left slot shows a newer hint): it waits in
+   * the queue, its clock stopped, and shows in full when the host lets it go. The host stays
+   * mounted, so toasts keep coming to it.
+   */
+  held?: boolean;
 }
 
 /**
@@ -85,12 +91,12 @@ function useDocumentHidden(): boolean {
  * it). A count says how many wait behind it. When a newer toast takes the place of the one that
  * had focus, focus moves to the newer card instead of falling to the page.
  */
-export function ToastHost({ placement }: ToastHostProps): ReactElement {
+export function ToastHost({ placement, held = false }: ToastHostProps): ReactElement {
   const t = useT();
   useEffect(() => registerHost(placement), [placement]);
   useSyncExternalStore(subscribeToasts, toastStamp, toastStamp);
-  const shown = visibleToast(placement);
-  const waiting = waitingCount(placement);
+  const shown = held ? undefined : visibleToast(placement);
+  const waiting = held ? 0 : waitingCount(placement);
   const root = useRef<HTMLDivElement>(null);
   // focus was in a card that then left the screen (not moved away by the person)
   const hadFocus = useRef(false);
@@ -129,6 +135,7 @@ export function ToastHost({ placement }: ToastHostProps): ReactElement {
       className="q-toasts"
       data-placement={placement}
       data-testid={`toast-host-${placement}`}
+      data-held={held ? '' : undefined}
       onFocus={onFocus}
       onBlur={onBlur}
     >
