@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { layoutPrefs } from '../../../layout/layoutStore';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -44,6 +45,8 @@ beforeEach(() => {
   host = document.createElement('div');
   document.body.append(host);
   workspace.getState().openProject({ id: 'p3', root: '/p3', manifest: threeDates });
+  // the layout applied for this open (useApplyPreset in the workspace): no type, the inspection row
+  layoutPrefs.setState({ chosen: { projectId: 'p3', purpose: 'vertical-asset' } });
   measureStore.setState({ readOnly: false });
 });
 afterEach(() => {

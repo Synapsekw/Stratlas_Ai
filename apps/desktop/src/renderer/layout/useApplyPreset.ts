@@ -5,7 +5,7 @@
  * the tile and Project's leading sections follow the data as it changes. Every part keeps its own
  * state and controls: the layout only says where each one starts.
  */
-import { useVolumetric } from '@aio/volumetric';
+import { useVolumetric, volumetric } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo } from 'react';
 import { useStore } from 'zustand';
@@ -22,7 +22,7 @@ import { useHasVolumeMeasurements } from '../workspace/workbench/view';
 import { workbench } from '../workspace/workbench/workbenchStore';
 import { applyPreset, gainedChanges, type LayoutOverrides, type LayoutState } from './applyPreset';
 import { layoutPrefs, useLayoutPrefs } from './layoutStore';
-import { presetFor, type Preset, type StageKind, type StripKind } from './presets';
+import { PRESETS, purposeOf, type Preset, type StageKind, type StripKind } from './presets';
 import { projectData, readDone, storesSettled, type ProjectData } from './projectData';
 
 const NO_OVERRIDES: LayoutOverrides = {};
@@ -92,19 +92,21 @@ export function useLayoutOverrides(projectId: string | null): LayoutOverrides {
 }
 
 /** The open project's layout, or null without a project. */
-export function useLayout(): { preset: Preset; layout: LayoutState; settled: boolean } | null {
+/**
+ * The open project's layout, or null until it has been applied for this open (no project, or its
+ * stores not read yet): its preset is the purpose chosen when it opened, never one that follows a
+ * reload of its data.
+ */
+export function useLayout(): { preset: Preset; layout: LayoutState } | null {
   const project = useWorkspace((s) => s.project);
   const read = useProjectData();
   const overrides = useLayoutOverrides(project?.id ?? null);
+  const chosen = useLayoutPrefs((s) => s.chosen);
   return useMemo(() => {
-    if (!project || !read) return null;
-    const preset = presetFor(project.manifest, read.data);
-    return {
-      preset,
-      layout: applyPreset(preset, read.data, overrides),
-      settled: read.settled,
-    };
-  }, [project, read, overrides]);
+    if (!project || !read || chosen?.projectId !== project.id) return null;
+    const preset = PRESETS[chosen.purpose];
+    return { preset, layout: applyPreset(preset, read.data, overrides) };
+  }, [project, read, overrides, chosen]);
 }
 
 /** Project's first section with its data, brought forward with the Project tab. */
@@ -150,28 +152,47 @@ const last: { current: LayoutState | null } = { current: null };
  * data-led parts as the data comes.
  */
 export function useApplyPreset(): void {
-  const projectId = useWorkspace((s) => s.project?.id ?? null);
+  const project = useWorkspace((s) => s.project);
+  const projectId = project?.id ?? null;
+  const read = useProjectData();
   const current = useLayout();
   const overrides = useLayoutOverrides(projectId);
   const resetSeq = useLayoutPrefs((s) => s.resetSeq);
+  // a project already open when the workspace mounts (App's project subscription saw no change):
+  // its volumes are read now, so the layout can settle
   useEffect(() => {
-    if (!projectId || !current) {
+    if (!projectId) return;
+    const v = volumetric.getState();
+    if (v.projectId !== projectId && v.status !== 'loading') void v.load();
+  }, [projectId]);
+  useEffect(() => {
+    const prefs = layoutPrefs.getState();
+    if (!project || !projectId || !read) {
       opened.current = null;
       last.current = null;
+      prefs.choosePurpose(null);
       setFoldWide(false);
       return;
     }
-    const { preset, layout, settled } = current;
     const key = `${projectId}#${String(resetSeq)}`;
     if (opened.current !== key) {
       // only once the project's own measurements and volumes are read: a store still on the last
       // project would hand it that project's piles
-      if (!settled) return;
+      if (!read.settled) return;
+      // the purpose is chosen once per open (a Reset keeps it): the layout never moves under the
+      // person because the data reloaded
+      const chosen = prefs.chosen?.projectId === projectId ? prefs.chosen : null;
+      const purpose = chosen?.purpose ?? purposeOf(project.manifest, read.data);
+      prefs.choosePurpose({ projectId, purpose });
+      const preset = PRESETS[purpose];
+      const layout = applyPreset(preset, read.data, overrides);
       opened.current = key;
       last.current = layout;
       applyOnOpen(preset, layout, overrides);
       return;
     }
+    if (!current) return;
+    const { preset, layout } = current;
     const before = last.current;
     last.current = layout;
     if (!before) return;
@@ -182,7 +203,7 @@ export function useApplyPreset(): void {
       const wb = workbench.getState();
       if (wb.followed === 'project' && wb.panel === 'project') showTab(preset, layout);
     }
-  }, [projectId, current, overrides, resetSeq]);
+  }, [project, projectId, read, current, overrides, resetSeq]);
 }
 
 // ---------------------------------------------------------------- the person's choices

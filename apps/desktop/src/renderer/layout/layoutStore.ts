@@ -7,6 +7,7 @@
  */
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import type { ProjectPurpose } from '@aio/schema';
 import { ISLAND_MODES, type IslandMode } from '../tools/registry';
 import { isPanelTab } from '../workspace/workbench/tabsModel';
 import type { LayoutOverrides } from './applyPreset';
@@ -66,6 +67,12 @@ export interface LayoutPrefsState {
   reset(projectId: string): void;
   /** Moves on every reset: the workspace applies the preset again. */
   resetSeq: number;
+  /**
+   * The purpose the open project's layout follows, chosen once when it opened (its stores read):
+   * every reader uses it, so a reload of its piles mid-session never moves the layout.
+   */
+  chosen: { projectId: string; purpose: ProjectPurpose } | null;
+  choosePurpose(chosen: { projectId: string; purpose: ProjectPurpose } | null): void;
   /** The island's mode the workspace asks for on open (taken by the island). */
   islandAsk: { mode: IslandMode; seq: number } | null;
   askIsland(mode: IslandMode): void;
@@ -93,6 +100,12 @@ export function createLayoutPrefs(
     byProject: {},
     resetSeq: 0,
     islandAsk: null,
+    chosen: null,
+    choosePurpose: (chosen) => {
+      const now = get().chosen;
+      if (now?.projectId === chosen?.projectId && now?.purpose === chosen?.purpose) return;
+      set({ chosen });
+    },
     get: (id) => {
       const known = get().byProject[id];
       if (known) return known;

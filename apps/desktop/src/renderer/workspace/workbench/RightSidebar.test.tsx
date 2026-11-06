@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { layoutPrefs } from '../../layout/layoutStore';
 import { matchShortcut, splitPrefs } from '@aio/ui';
 import { volumetric } from '@aio/volumetric';
 import { workspace } from '@aio/workspace';
@@ -158,6 +159,8 @@ beforeEach(() => {
   splitPrefs.setState({ byId: {} });
   shell.getState().setRight(false);
   workspace.getState().openProject({ id: 'p3', root: '/p3', manifest: threeDates });
+  // the layout applied for this open (useApplyPreset in the workspace): no type, the inspection row
+  layoutPrefs.setState({ chosen: { projectId: 'p3', purpose: 'vertical-asset' } });
   workbench.getState().reset();
   // the tab and its open sections outlive a project: each test starts where a new computer does
   const place = readPanelPlace(null, null);

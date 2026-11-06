@@ -1,3 +1,5 @@
+import { layoutPrefs } from './layout/layoutStore';
+import { mapAvailableNow } from './spaces/activeSpace';
 import {
   AnnotateStyles,
   issueSaver,
@@ -683,9 +685,13 @@ export function App() {
       stopProject();
     };
     const stopRoad = startRoadSync();
-    // A road survey opens map first.
+    // A road survey opens map first (a road added mid-session too), where the space has a map and
+    // the person has not chosen 3D or Map for the project (layout/layoutStore.ts)
     const stopRoadMode = roadStore.subscribe((s, prev) => {
-      if (s.status === 'ready' && prev.status !== 'ready') shell.getState().setStageMode('map');
+      if (s.status !== 'ready' || prev.status === 'ready') return;
+      const id = workspace.getState().project?.id;
+      const saved = id ? layoutPrefs.getState().peek(id).stage : undefined;
+      if (saved === undefined && mapAvailableNow()) shell.getState().setStageMode('map');
     });
     // a volumetric project opens its volumes (volumes.json beside the manifest): the kit piles'
     // outlines and 3D bodies only; their figures are their volume measurements' (survey engine)
