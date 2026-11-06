@@ -11,6 +11,9 @@ import { useEffect, useMemo } from 'react';
 import { useStore } from 'zustand';
 import { useIsRoad } from '../road/useRoadMap';
 import { shell } from '../shell';
+import { bandOf } from '../shell/layoutBands';
+import { useActiveSpace } from '../spaces/activeSpace';
+import { useMeasure } from '../survey/measureStore';
 import type { IslandMode } from '../tools/registry';
 import { bottomPref, isBottomPref } from '../workspace/timelinePref';
 import { videoDock } from '../workspace/video/videoDockStore';
@@ -20,7 +23,7 @@ import { workbench } from '../workspace/workbench/workbenchStore';
 import { applyPreset, gainedChanges, type LayoutOverrides, type LayoutState } from './applyPreset';
 import { layoutPrefs, useLayoutPrefs } from './layoutStore';
 import { presetFor, type Preset, type StageKind, type StripKind } from './presets';
-import { projectData, type ProjectData } from './projectData';
+import { projectData, readDone, storesSettled, type ProjectData } from './projectData';
 
 const NO_OVERRIDES: LayoutOverrides = {};
 
@@ -36,19 +39,37 @@ function setFoldWide(on: boolean): void {
   }
 }
 
-/** What the open project holds, for its layout. */
-export function useProjectData(): ProjectData | null {
+/**
+ * What the open project holds, for its layout, and whether its stores have read it yet. A store
+ * still on another project counts as holding nothing: one project's piles never reach another.
+ */
+export function useProjectData(): { data: ProjectData; settled: boolean } | null {
   const project = useWorkspace((s) => s.project);
-  const kit = useVolumetric((s) => s.status === 'ready' && s.piles.length > 0);
-  const piles = useHasVolumeMeasurements() || kit;
+  const id = project?.id ?? null;
+  const volId = useVolumetric((s) => s.projectId);
+  const volStatus = useVolumetric((s) => s.status);
+  const kitPiles = useVolumetric((s) => s.status === 'ready' && s.piles.length > 0);
+  const measId = useMeasure((s) => s.projectId);
+  const measStatus = useMeasure((s) => s.status);
+  const measPiles = useHasVolumeMeasurements();
   const road = useIsRoad();
-  return useMemo(
-    () =>
-      project
-        ? projectData(project.manifest, { piles, road, antennas: false, thermal: false })
-        : null,
-    [project, piles, road],
-  );
+  const { mapAvailable } = useActiveSpace();
+  return useMemo(() => {
+    if (!project || id === null) return null;
+    const vol = { projectId: volId, status: volStatus };
+    const meas = { projectId: measId, status: measStatus };
+    const piles = (readDone(id, meas) && measPiles) || (readDone(id, vol) && kitPiles);
+    return {
+      data: projectData(project.manifest, {
+        map: mapAvailable,
+        piles,
+        road,
+        antennas: false,
+        thermal: false,
+      }),
+      settled: storesSettled(id, [vol, meas]),
+    };
+  }, [project, id, volId, volStatus, kitPiles, measId, measStatus, measPiles, road, mapAvailable]);
 }
 
 /**
@@ -71,15 +92,19 @@ export function useLayoutOverrides(projectId: string | null): LayoutOverrides {
 }
 
 /** The open project's layout, or null without a project. */
-export function useLayout(): { preset: Preset; layout: LayoutState } | null {
+export function useLayout(): { preset: Preset; layout: LayoutState; settled: boolean } | null {
   const project = useWorkspace((s) => s.project);
-  const data = useProjectData();
+  const read = useProjectData();
   const overrides = useLayoutOverrides(project?.id ?? null);
   return useMemo(() => {
-    if (!project || !data) return null;
-    const preset = presetFor(project.manifest);
-    return { preset, layout: applyPreset(preset, data, overrides) };
-  }, [project, data, overrides]);
+    if (!project || !read) return null;
+    const preset = presetFor(project.manifest, read.data);
+    return {
+      preset,
+      layout: applyPreset(preset, read.data, overrides),
+      settled: read.settled,
+    };
+  }, [project, read, overrides]);
 }
 
 /** Project's first section with its data, brought forward with the Project tab. */
@@ -136,9 +161,12 @@ export function useApplyPreset(): void {
       setFoldWide(false);
       return;
     }
-    const { preset, layout } = current;
+    const { preset, layout, settled } = current;
     const key = `${projectId}#${String(resetSeq)}`;
     if (opened.current !== key) {
+      // only once the project's own measurements and volumes are read: a store still on the last
+      // project would hand it that project's piles
+      if (!settled) return;
       opened.current = key;
       last.current = layout;
       applyOnOpen(preset, layout, overrides);
@@ -208,9 +236,15 @@ export function resetLayout(): void {
   layoutPrefs.getState().reset(id);
 }
 
-// the Layers column opened by hand where the project's preset folds it: the person's choice
+// the Layers column opened by hand where the project's preset folds it, in a wide window: the
+// person's choice (a toggle in a narrower band never changes the wide default)
 shell.subscribe((s, prev) => {
-  if (prev.layersFoldWide && !s.layersFoldWide && !foldingByPreset) {
+  if (
+    prev.layersFoldWide &&
+    !s.layersFoldWide &&
+    !foldingByPreset &&
+    bandOf(s.windowWidth) === 'wide'
+  ) {
     const id = openId();
     if (id && s.screen === 'scene') layoutPrefs.getState().choose(id, { layersOpenWide: true });
   }

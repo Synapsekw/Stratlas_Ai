@@ -72,6 +72,15 @@ export function islandModeHonoured(mode: IslandMode, d: ProjectData): boolean {
   }
 }
 
+/**
+ * Map or 3D: the saved choice, else the preset's; the map only where the space can show it (else
+ * 3D, the choice kept for later); a project with no layer yet opens on 3D, where its import hint is.
+ */
+function stageOf(preset: Preset, data: ProjectData, overrides: LayoutOverrides): StageKind {
+  const want = overrides.stage ?? (data.empty ? '3d' : preset.stage);
+  return want === 'map' && !data.map ? '3d' : want;
+}
+
 export function applyPreset(
   preset: Preset,
   data: ProjectData,
@@ -94,8 +103,7 @@ export function applyPreset(
     projectSections: preset.projectSections.filter((s) => SECTION_NEEDS[s]?.(data) ?? true),
     strip,
     islandMode,
-    // a project with no layer yet opens on 3D, where its import hint is
-    stage: overrides.stage ?? (data.empty ? '3d' : preset.stage),
+    stage: stageOf(preset, data, overrides),
     layersOpenWide: overrides.layersOpenWide ?? preset.layersOpenWide,
     toolOrder: preset.toolOrder,
     videoTile: data.video ? (overrides.video ?? 'docked') : 'none',

@@ -114,13 +114,31 @@ export const TYPE_PURPOSE: Readonly<Record<ProjectType, ProjectPurpose>> = {
  */
 export const FALLBACK_PURPOSE: ProjectPurpose = 'vertical-asset';
 
-/** The purpose a project's layout follows: its own, else its type's, else the fallback. */
-export function purposeOf(manifest: Pick<ProjectManifest, 'purpose' | 'type'>): ProjectPurpose {
-  return (
-    projectPurpose(manifest) ?? (manifest.type ? TYPE_PURPOSE[manifest.type] : FALLBACK_PURPOSE)
-  );
+/** Without a purpose, these types open as a survey when the project holds piles. */
+const PILES_MAKE_A_SURVEY: ReadonlySet<ProjectType | undefined> = new Set([
+  'fusion',
+  'twin',
+  undefined,
+]);
+
+/**
+ * The purpose a project's layout follows: its own; else, with piles or volume measurements and a
+ * fusion, twin or no type, survey (an imported kit project, an older tank farm copy: they opened on
+ * Project > Volumes before the presets); else its type's; else the fallback.
+ */
+export function purposeOf(
+  manifest: Pick<ProjectManifest, 'purpose' | 'type'>,
+  data?: { piles: boolean },
+): ProjectPurpose {
+  const own = projectPurpose(manifest);
+  if (own) return own;
+  if (data?.piles === true && PILES_MAKE_A_SURVEY.has(manifest.type)) return 'survey';
+  return manifest.type ? TYPE_PURPOSE[manifest.type] : FALLBACK_PURPOSE;
 }
 
-export function presetFor(manifest: Pick<ProjectManifest, 'purpose' | 'type'>): Preset {
-  return PRESETS[purposeOf(manifest)];
+export function presetFor(
+  manifest: Pick<ProjectManifest, 'purpose' | 'type'>,
+  data?: { piles: boolean },
+): Preset {
+  return PRESETS[purposeOf(manifest, data)];
 }

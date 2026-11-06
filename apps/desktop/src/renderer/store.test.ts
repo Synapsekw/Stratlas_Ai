@@ -243,6 +243,27 @@ describe('shell store', () => {
     expect(calls).toContainEqual({ channel: 'settings:set', req: { sidebarCollapsed: true } });
   });
 
+  it('opens a column the road preset folded only in the wide band; elsewhere the fold stays', async () => {
+    const { bridge } = fakeBridge({
+      'settings:set': (req) => ({ ...DEFAULT_SETTINGS, ...(req as Partial<Settings>) }),
+    });
+    const s = createShellStore(bridge, createWorkspace(), { storage: null, autoFold: true });
+    s.setState({ screen: 'scene', layersFoldWide: true });
+    // the mid band: Ctrl+B opens it as the band's own reopen, the wide default untouched
+    s.getState().setWindowWidth(1300);
+    await s.getState().toggleSidebar();
+    expect(isSidebarFolded(s.getState())).toBe(false);
+    expect(s.getState().layersFoldWide).toBe(true);
+    // the wide band: the preset's fold goes (layout/useApplyPreset.ts saves it as the choice)
+    const w = createShellStore(bridge, createWorkspace(), { storage: null, autoFold: true });
+    w.setState({ screen: 'scene', layersFoldWide: true });
+    w.getState().setWindowWidth(1500);
+    expect(isSidebarFolded(w.getState())).toBe(true);
+    await w.getState().toggleSidebar();
+    expect(w.getState().layersFoldWide).toBe(false);
+    expect(isSidebarFolded(w.getState())).toBe(false);
+  });
+
   it('opens the Layers overlay below 1280 px for the session, and closes it', async () => {
     const { bridge, calls } = fakeBridge({
       'settings:set': (req) => ({ ...DEFAULT_SETTINGS, ...(req as Partial<Settings>) }),

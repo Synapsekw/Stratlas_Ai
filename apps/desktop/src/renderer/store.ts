@@ -455,7 +455,7 @@ export function createShellStore(
       }
       // Opening a column the project's preset folded (a road in a wide window): for this project
       // only, the person's choice (layout/layoutStore.ts remembers it)
-      if (s.layersFoldWide && !s.settings.sidebarCollapsed) {
+      if (s.layersFoldWide && !s.settings.sidebarCollapsed && bandOf(s.windowWidth) === 'wide') {
         set({ layersFoldWide: false });
         if (!isSidebarFolded(get())) return;
       }

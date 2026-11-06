@@ -4,7 +4,14 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_CTX, islandModes, toolsFor, TOOLS, type ToolCtx } from '../tools/registry';
 import { applyPreset, gainedChanges, type LayoutOverrides } from './applyPreset';
 import { PRESETS, presetFor } from './presets';
-import { NO_PROJECT_DATA, panelDataOf, projectData, type ProjectData } from './projectData';
+import {
+  NO_PROJECT_DATA,
+  panelDataOf,
+  projectData,
+  readDone,
+  storesSettled,
+  type ProjectData,
+} from './projectData';
 
 type Kinds = Pick<ProjectManifest, 'layers' | 'captures' | 'type' | 'purpose'>;
 
@@ -91,6 +98,21 @@ describe('presets', () => {
     expect(presetFor(manifest())).toBe(PRESETS['vertical-asset']);
   });
 
+  it('a project without purpose with piles opens as a survey, whatever its fusion, twin or no type', () => {
+    const piles = { piles: true };
+    expect(presetFor(manifest({ type: 'fusion' }), piles)).toBe(PRESETS.survey);
+    expect(presetFor(manifest({ type: 'twin' }), piles)).toBe(PRESETS.survey);
+    expect(presetFor(manifest(), piles)).toBe(PRESETS.survey);
+    // without piles, its type's
+    expect(presetFor(manifest({ type: 'fusion' }), { piles: false })).toBe(PRESETS['data-fusion']);
+    // an inspection or a road keeps its own; a named purpose always wins
+    expect(presetFor(manifest({ type: 'inspection' }), piles)).toBe(PRESETS['vertical-asset']);
+    expect(presetFor(manifest({ type: 'road' }), piles)).toBe(PRESETS.road);
+    expect(presetFor(manifest({ type: 'fusion', purpose: 'telecom' }), piles)).toBe(
+      PRESETS.telecom,
+    );
+  });
+
   it('reachable tools are the same for every preset', () => {
     for (const [name, d] of Object.entries(DATA_SETS)) {
       const ctx = ctxOf(d);
@@ -122,6 +144,22 @@ describe('presets', () => {
   });
 });
 
+describe('storesSettled', () => {
+  const read = (projectId: string | null, status: string) => ({ projectId, status });
+
+  it("waits until the stores hold the new project's data, never the last project's", () => {
+    // project A's piles still in the stores while B opens: not yet
+    expect(storesSettled('b', [read('a', 'ready'), read('a', 'ready')])).toBe(false);
+    // B being read
+    expect(storesSettled('b', [read('b', 'loading'), read('b', 'ready')])).toBe(false);
+    expect(storesSettled('b', [read('b', 'ready'), read(null, 'idle')])).toBe(false);
+    // both B's, done (no volumes and an error are done too)
+    expect(storesSettled('b', [read('b', 'none'), read('b', 'ready')])).toBe(true);
+    expect(storesSettled('b', [read('b', 'error'), read('b', 'ready')])).toBe(true);
+    expect(readDone('b', read('a', 'ready'))).toBe(false);
+  });
+});
+
 describe('projectData', () => {
   it('reads the layer kinds, the dated surveys and what the stores hold', () => {
     const d = projectData(
@@ -135,7 +173,7 @@ describe('projectData', () => {
           { id: 'b', date: '2026-02-01' },
         ] as unknown as Kinds['captures'],
       }),
-      { piles: true, road: false, antennas: false, thermal: false },
+      { map: true, piles: true, road: false, antennas: false, thermal: false },
     );
     expect(d).toMatchObject({ video: true, ortho: true, dsm: false, dated: true, piles: true });
     expect(d.road).toBe(false);
@@ -183,6 +221,15 @@ describe('applyPreset', () => {
     // a project with no layer yet opens on 3D, where its import hint is
     expect(applyPreset(PRESETS.road, data({ empty: true }), {}).stage).toBe('3d');
     expect(applyPreset(PRESETS.road, data({ empty: true }), { stage: 'map' }).stage).toBe('map');
+  });
+
+  it('Map without a map in the space opens on 3D, and the choice waits', () => {
+    expect(applyPreset(PRESETS.road, data({ road: true, map: false }), {}).stage).toBe('3d');
+    const over: LayoutOverrides = { stage: 'map' };
+    expect(applyPreset(PRESETS.survey, data({ map: false }), over).stage).toBe('3d');
+    expect(over).toEqual({ stage: 'map' });
+    // the map back: the saved choice holds again
+    expect(applyPreset(PRESETS.survey, data({ map: true }), over).stage).toBe('map');
   });
 
   it('the video tile follows the data, whatever the preset', () => {

@@ -11,6 +11,8 @@ import type { PanelData } from '../workspace/workbench/tabsModel';
 export interface ProjectData {
   /** No layer at all yet (a project just made): its 3D view holds the import hint. */
   empty: boolean;
+  /** The active space can show the map (false only for a space with its own local frame). */
+  map: boolean;
   video: boolean;
   walks: boolean;
   panoramas: boolean;
@@ -29,6 +31,8 @@ export interface ProjectData {
 
 export const NO_PROJECT_DATA: ProjectData = {
   empty: false,
+  // a map is there unless a space has its own frame
+  map: true,
   video: false,
   walks: false,
   panoramas: false,
@@ -46,6 +50,7 @@ export const NO_PROJECT_DATA: ProjectData = {
 
 /** What the stores beside the manifest have read. */
 export interface StoreData {
+  map: boolean;
   piles: boolean;
   road: boolean;
   antennas: boolean;
@@ -71,6 +76,25 @@ export function projectData(manifest: Manifest, stores: StoreData): ProjectData 
     dated: datedCount(manifest.captures) >= 2,
     ...stores,
   };
+}
+
+/** A store's read: the project it is for, and how far it got. */
+export interface StoreRead {
+  projectId: string | null;
+  status: string;
+}
+
+/** The read is this project's and done (an error is done too: nothing more will come). */
+export function readDone(projectId: string, read: StoreRead): boolean {
+  return read.projectId === projectId && read.status !== 'idle' && read.status !== 'loading';
+}
+
+/**
+ * Whether the stores beside the manifest hold this project's data yet (its measurements and its
+ * volumes): the layout applies only then, so one project's piles never decide another's opening.
+ */
+export function storesSettled(projectId: string, reads: readonly StoreRead[]): boolean {
+  return reads.every((r) => readDone(projectId, r));
 }
 
 /** The same data as the right panel's sections and the tool registry read it. */
