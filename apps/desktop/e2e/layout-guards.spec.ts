@@ -118,7 +118,8 @@ for (const size of SIZES) {
       for (const date of await win.locator('.pane-date-t').all()) await expect(date).toBeVisible();
       await expect(win.getByTestId('compare-notice')).toBeVisible();
       await expect(win.getByTestId('map-no-packs').first()).toBeVisible(VIEW_READY);
-      await expect(win.locator('.stage-slot[data-slot="bl"] > *').first()).toBeVisible();
+      // Compare's warning is a status bar: it stands in the tool stack at the top left (W10)
+      await expect(win.locator('.stage-slot:has(.compare-notice) > *').first()).toBeVisible();
       await expectIslandFits(win);
       await expect.poll(() => headerProblems(win)).toEqual([]);
       await expectNoClippedText(win, [...SHELL_TEXT, '.pane-date-t'], 'compare text cut');
@@ -129,7 +130,7 @@ for (const size of SIZES) {
             '[data-testid^="pane-chooser-"] > *',
             '.compare-notice',
             '[data-testid="map-no-packs"]',
-            '.stage-slot[data-slot="bl"] > *',
+            '.stage-slot > *',
             '.maplibregl-ctrl-scale',
             '.maplibregl-ctrl-attrib',
           ]),
