@@ -12,6 +12,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, launchApp, NetworkGuard } from './fixtures';
+import { panelTab } from './panel';
 
 const DEMO = process.env.QUADRION_E2E_DEMO ?? join(import.meta.dirname, '..', 'demo');
 /** Optional folder for screenshots of the welcome and both demo projects (user guide, Store). */
@@ -152,6 +153,8 @@ test('a clean first start explains what is missing and opens the demo project', 
   await shot(win, 'library-setup-strip');
   await win.getByTestId('project-card').filter({ hasText: 'Demo access road' }).click();
   await expect.poll(async () => (await inspect()).id, { timeout: 60_000 }).toBe('demo-access-road');
+  // a road opens on Project > Road (its layout preset, D7); the defects list is Selection's
+  await panelTab(win, 'selection').click();
   await expect(win.getByTestId('defect-count')).toHaveText('14 of 14 defects', { timeout: 60_000 });
   // no map pack: the map still runs with the project's own ortho and overlays
   await expect(win.getByTestId('map-no-packs').first()).toBeVisible();

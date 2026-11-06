@@ -14,7 +14,7 @@ test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x720', QUADRION_DEMO: DEMO_FOLDE
 
 const SHOTS = process.env.QUADRION_E2E_SHOTS;
 
-test('the groups in registry order; Escape returns from the tool card to the list', async ({
+test("the preset's groups first, then registry order; Escape returns from the tool card to the list", async ({
   win,
 }, info) => {
   await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
@@ -23,10 +23,17 @@ test('the groups in registry order; Escape returns from the tool card to the lis
     tools
       .locator('[data-section]')
       .evaluateAll((all) => all.map((s) => s.getAttribute('data-section')));
-  // View, Measure, Annotate and Volumes lead, in that order (the demo has piles)
+  // a survey project (D7): Volumes, Measure, Terrain and Checks lead, then the registry's order
   await expect
-    .poll(async () => (await sections()).slice(0, 4))
-    .toEqual(['tools.view', 'tools.measure', 'tools.annotate', 'tools.volumes']);
+    .poll(async () => (await sections()).slice(0, 6))
+    .toEqual([
+      'tools.volumes',
+      'tools.measure',
+      'tools.terrain',
+      'tools.checks',
+      'tools.view',
+      'tools.annotate',
+    ]);
   // a group opened lists its tools as rows
   const view = await openSection(win, 'tools', 'tools.view');
   await expect(view.getByTestId('tool-view.wholeSite')).toBeVisible();

@@ -94,7 +94,8 @@ export function applyPreset(
     projectSections: preset.projectSections.filter((s) => SECTION_NEEDS[s]?.(data) ?? true),
     strip,
     islandMode,
-    stage: overrides.stage ?? preset.stage,
+    // a project with no layer yet opens on 3D, where its import hint is
+    stage: overrides.stage ?? (data.empty ? '3d' : preset.stage),
     layersOpenWide: overrides.layersOpenWide ?? preset.layersOpenWide,
     toolOrder: preset.toolOrder,
     videoTile: data.video ? (overrides.video ?? 'docked') : 'none',

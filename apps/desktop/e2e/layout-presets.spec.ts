@@ -29,6 +29,18 @@ async function open(win: Page, name: string, id: string): Promise<void> {
   await expect.poll(async () => (await openProject(win)).id, READY).toBe(id);
 }
 
+/** What this computer remembers of the open project's layout (`quadrion.layout.<projectId>`). */
+const savedLayout = (win: Page): Promise<unknown> =>
+  win.evaluate(() => {
+    const id = (
+      window as unknown as {
+        __stratlas: { workspace: { getState(): { project: { id: string } | null } } };
+      }
+    ).__stratlas.workspace.getState().project?.id;
+    const raw = id ? localStorage.getItem(`quadrion.layout.${id}`) : null;
+    return raw === null ? null : (JSON.parse(raw) as unknown);
+  });
+
 const strip = (win: Page) => win.locator('[data-testid="bottom-strip"] .tl-wrap');
 const docked = (win: Page) => win.locator('[data-testid="video-dock"][data-mode="docked"]');
 
@@ -67,11 +79,15 @@ test('a survey project with video docks the tile, and Reset layout restores the 
 
   // the person moves away from every default
   await panelTab(win, 'tools').click();
-  await stageMode(win, 'Map');
-  await win.getByTestId('video-tile').getByRole('button', { name: 'Close the video' }).click();
+  // the tile pops out (the strip's one button where it is too narrow for the tile)
+  await win
+    .locator('[data-testid="video-popout"]:visible, [data-testid="video-popout-compact"]:visible')
+    .first()
+    .click();
+  await expect(win.getByTestId('video-window')).toBeVisible(READY);
   await expect(docked(win)).toHaveCount(0);
-  const saved = await win.evaluate(() => localStorage.getItem('quadrion.layout.demo-tank-farm'));
-  expect(JSON.parse(saved ?? '{}')).toMatchObject({ rightTab: 'tools', stage: 'map' });
+  await stageMode(win, 'Map');
+  await expect.poll(() => savedLayout(win)).toMatchObject({ rightTab: 'tools', stage: 'map' });
 
   // Reset, at the foot of Layers & display
   await panelTab(win, 'layers').click();
@@ -80,9 +96,7 @@ test('a survey project with video docks the tile, and Reset layout restores the 
   await expect(reset).toHaveText('Reset layout to project defaults');
   await reset.click();
   await expectSurveyDefaults(win);
-  expect(
-    await win.evaluate(() => localStorage.getItem('quadrion.layout.demo-tank-farm')),
-  ).toBeNull();
+  expect(await savedLayout(win)).toBeNull();
 
   // and from the palette
   await panelTab(win, 'selection').click();

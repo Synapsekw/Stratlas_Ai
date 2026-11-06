@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { pmtilesFile } from '../src/main/testing';
 import { expectAccessible } from './a11y';
 import { closeProcessing, expect, launchApp, test } from './fixtures';
+import { panelTab } from './panel';
 import { copyRealData, hasRealData } from './realData';
 
 /**
@@ -277,6 +278,8 @@ test('a road survey from raw inputs: wizard, drawn centreline, road builder job,
     await win.locator('.sb-nav .nav-item', { hasText: 'Scene' }).click();
     await expect(win.getByLabel('Chainage', { exact: true })).toBeVisible({ timeout: 30_000 });
     await expect(win.getByTestId('road-setup')).toHaveCount(0);
+    // a road opens on Project > Road (its layout preset, D7); the defects list is Selection's
+    await panelTab(win, 'selection').click();
     await expect(win.getByTestId('defect-count')).toHaveText('3 of 3 defects');
     await win.keyboard.press('p');
     await expect(win.getByLabel('PCI legend')).toBeVisible();

@@ -177,8 +177,12 @@ describe('applyPreset', () => {
     expect(layout.strip).toBe('dates');
     expect(layout.projectSections).not.toContain('project.road');
     expect(layout.islandMode).toBe('view');
-    // the map and the folded Layers column stay: they need no data
+    // the map and the folded Layers column stay
     expect(layout.stage).toBe('map');
+    expect(layout.layersOpenWide).toBe(false);
+    // a project with no layer yet opens on 3D, where its import hint is
+    expect(applyPreset(PRESETS.road, data({ empty: true }), {}).stage).toBe('3d');
+    expect(applyPreset(PRESETS.road, data({ empty: true }), { stage: 'map' }).stage).toBe('map');
   });
 
   it('the video tile follows the data, whatever the preset', () => {

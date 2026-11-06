@@ -9,6 +9,8 @@ import { datedCount } from '../workspace/timelinePref';
 import type { PanelData } from '../workspace/workbench/tabsModel';
 
 export interface ProjectData {
+  /** No layer at all yet (a project just made): its 3D view holds the import hint. */
+  empty: boolean;
   video: boolean;
   walks: boolean;
   panoramas: boolean;
@@ -26,6 +28,7 @@ export interface ProjectData {
 }
 
 export const NO_PROJECT_DATA: ProjectData = {
+  empty: false,
   video: false,
   walks: false,
   panoramas: false,
@@ -56,6 +59,7 @@ export function projectData(manifest: Manifest, stores: StoreData): ProjectData 
   const raster = (role: string) =>
     manifest.layers.some((l) => l.kind === 'raster' && l.role === role);
   return {
+    empty: manifest.layers.length === 0,
     video: has('video'),
     walks: has('walk'),
     panoramas: has('panoramas'),
