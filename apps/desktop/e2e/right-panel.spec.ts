@@ -11,7 +11,9 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DEMO_FOLDER, expect, test } from './fixtures';
-import { openSection, panelSection, panelTab } from './panel';
+import { expectNoClippedText } from './layoutGuards';
+import { openBench, openSection, panelSection, panelTab } from './panel';
+import { openDemo } from './surveyJobs';
 
 const VIEW_READY = { timeout: 60_000 };
 
@@ -117,6 +119,45 @@ async function resize(app: ElectronApplication, win: Page, w: number, h: number)
   expect(await win.evaluate(() => [innerWidth, innerHeight])).toEqual([w, h]);
   await win.waitForTimeout(800);
 }
+
+test.describe('beside the handle', () => {
+  test.use({ appEnv: { QUADRION_DEMO: DEMO_FOLDER } });
+
+  test('Selection and Surface and piles keep their text whole at 1100 x 720 beside the handle gutter', async ({
+    win,
+  }) => {
+    test.setTimeout(120_000);
+    await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
+    // the panel body keeps the handle's gutter at its start edge
+    const gutter = await win.evaluate(() => {
+      const body = document.querySelector('.ws > .right > .rp-split');
+      return body ? getComputedStyle(body).paddingInlineStart : '';
+    });
+    expect(gutter).toBe('12px');
+    // Layers & display: the Show control's section
+    const show = await openSection(win, 'layers', 'layers.show');
+    await expect(show.getByTestId('stage-show')).toBeVisible();
+    await expectNoClippedText(
+      win,
+      ['.ws > .right [data-section="layers.show"] :is(button, .stage-show-cap, .wb-section-title)'],
+      'Surface and piles text cut',
+    );
+    // a pile from the Volumes list opens in Selection
+    const volumes = await openBench(win, 'volumes');
+    await volumes.getByTestId('volumes-pile').first().click();
+    await expect(panelTab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
+    const panel = win.getByTestId('pile-panel');
+    await expect(panel).toBeVisible();
+    await expectNoClippedText(
+      win,
+      [
+        '.ws > .right #wb-panel-selection :is(button, label, h2, h3, h4, dt, dd, th, td)',
+        '.ws > .right [data-testid="pile-name"]',
+      ],
+      'Selection text cut',
+    );
+  });
+});
 
 test.describe('review set', () => {
   test.skip(!SHOTS, 'QUADRION_PANEL_SHOTS names the folder for the screenshots');

@@ -26,6 +26,7 @@ import { captionArea } from './caption';
 import { expectBench } from './panel';
 import { headerProblems } from './split';
 import { openDemo } from './surveyJobs';
+import { NO_PACK_TEXT, noPackNote } from './mapNote';
 
 test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x700' } });
 
@@ -351,10 +352,9 @@ async function openMapWithoutPacks(win: Page): Promise<void> {
   await openProject(win);
   await showView(win, 'Map');
   await expect(win.locator('.maplibregl-canvas')).toBeVisible(VIEW_READY);
-  // the tiny project's data root has no map pack: the map says so
-  await expect(win.getByTestId('map-no-packs')).toHaveText(
-    'No map pack installed: project layers only. Add a pack in Settings, Offline maps.',
-  );
+  // the tiny project's data root has no map pack: the map says so, in the stage's bottom-left
+  // slot once the toasts and hints there have had their turn
+  await expect(await noPackNote(win)).toHaveText(NO_PACK_TEXT);
 }
 
 test('the scale bar, the no pack note and the credits keep apart at the foot of the map', async ({

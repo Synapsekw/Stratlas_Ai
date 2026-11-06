@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, launchApp, NetworkGuard } from './fixtures';
 import { panelTab } from './panel';
+import { noPackNote } from './mapNote';
 
 const DEMO = process.env.QUADRION_E2E_DEMO ?? join(import.meta.dirname, '..', 'demo');
 /** Optional folder for screenshots of the welcome and both demo projects (user guide, Store). */
@@ -156,7 +157,8 @@ test('a clean first start explains what is missing and opens the demo project', 
   // a road opens on Project > Road (its layout preset, D7); the defects list is Selection's
   await panelTab(win, 'selection').click();
   await expect(win.getByTestId('defect-count')).toHaveText('14 of 14 defects', { timeout: 60_000 });
-  // no map pack: the map still runs with the project's own ortho and overlays
-  await expect(win.getByTestId('map-no-packs').first()).toBeVisible();
+  // no map pack: the map still runs with the project's own ortho and overlays, and says so in the
+  // stage's bottom-left slot once the toasts and hints there have had their turn
+  await expect((await noPackNote(win)).first()).toBeVisible();
   await shot(win, 'demo-access-road');
 });

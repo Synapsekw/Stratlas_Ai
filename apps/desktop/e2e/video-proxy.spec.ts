@@ -55,10 +55,10 @@ interface Inspect {
   };
 }
 
-// 1600 x 900: at the CI-sized 1100 px a whole flight's bar in the dates strip is about 13 px wide,
-// too short to click a point within 5 % of its length, and the docked video tile gives way to its
-// compact Pop out button beside the open Layers column, so no picture is on screen
-const test = realDataTest([], { size: [1600, 900] });
+// The CI-sized window (1100 x 720), with the window's bands placing the Layers column as the
+// installed app does (QUADRION_E2E_AUTOFOLD: below 1280 px it folds to an overlay), so the dates
+// strip and its docked video tile have their real size
+const test = realDataTest([], { env: { QUADRION_E2E_AUTOFOLD: '1' } });
 
 test.setTimeout(180_000);
 
@@ -89,6 +89,62 @@ const video = (win: Page, clip: string) =>
     seeking: v.seeking,
     ready: v.readyState,
   }));
+
+/**
+ * The docked tile shows its picture: the video has a box, nothing drawn stands over the middle of
+ * it (a chip, a button), and the telemetry chips and the tile's buttons cover less than half of
+ * the picture's middle band. Returns that covered share. A chip is an element that draws: a
+ * background, or text of its own (the full-frame layers that only hold the chips do not count).
+ */
+async function expectTilePicture(win: Page, clip: string): Promise<number> {
+  const seen = await win.locator(`[data-video-window="${clip}"] video`).evaluate((v) => {
+    const r = v.getBoundingClientRect();
+    const band = {
+      left: r.left,
+      right: r.right,
+      top: r.top + r.height / 4,
+      bottom: r.bottom - r.height / 4,
+    };
+    const draws = (el: Element): boolean => {
+      const cs = getComputedStyle(el);
+      if (cs.visibility === 'hidden' || cs.display === 'none') return false;
+      const bg = cs.backgroundColor;
+      const filled = bg !== 'transparent' && !/rgba\(.*,\s*0\)$/.test(bg);
+      const text = [...el.childNodes].some(
+        (n) => n.nodeType === 3 && (n.textContent ?? '').trim() !== '',
+      );
+      return filled || text || el.tagName === 'svg' || el.tagName === 'BUTTON';
+    };
+    const chips = [
+      ...(v.closest('[data-video-window]')?.querySelectorAll('*') ?? []),
+      ...(v.closest('.vtile')?.querySelectorAll('.vtile-bar *') ?? []),
+    ].filter((el) => el !== v && !el.contains(v) && draws(el));
+    const boxes = chips.map((el) => el.getBoundingClientRect()).filter((b) => b.width > 0);
+    // the share of the band under any chip, sampled on a grid
+    let hit = 0;
+    let all = 0;
+    for (let x = band.left + 2; x < band.right; x += 4)
+      for (let y = band.top + 2; y < band.bottom; y += 4) {
+        all++;
+        if (boxes.some((b) => x >= b.left && x <= b.right && y >= b.top && y <= b.bottom)) hit++;
+      }
+    // above the video at its middle: only layers that draw nothing
+    const stack = document.elementsFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    const above = stack.slice(0, Math.max(0, stack.indexOf(v)));
+    return {
+      width: r.width,
+      height: r.height,
+      reached: stack.includes(v),
+      over: above.filter(draws).map((el) => el.className || el.tagName),
+      covered: all ? hit / all : 1,
+    };
+  });
+  expect(seen.width, 'the docked tile has a picture').toBeGreaterThan(160);
+  expect(seen.reached, 'the middle of the tile is the picture').toBe(true);
+  expect(seen.over, 'chips over the middle of the tile').toEqual([]);
+  expect(seen.covered, 'the chips cover the tile picture').toBeLessThan(0.5);
+  return seen.covered;
+}
 
 /** What a clip's video shows: grey pixels of its element and the part of the picture in view. */
 interface Shown {
@@ -285,10 +341,13 @@ test.describe('@realdata HCl joined flight clips', () => {
     // At the photo time the clip shows the evidence frame; 20 s earlier it does not.
     const ref = join(HCL, shot.src.path);
     const right = await likeness(ref, await frameAt(win, testInfo, 'video-104', t, 304.0));
+    const covered104 = await expectTilePicture(win, 'video-104');
     const wrong = await likeness(ref, await frameAt(win, testInfo, 'video-104', t - 20_000, 284.0));
     expect(right).toBeGreaterThan(0.8);
     expect(right - wrong).toBeGreaterThan(0.1);
-    process.stdout.write(`  F10 likeness ${right.toFixed(3)}, 20 s earlier ${wrong.toFixed(3)}\n`);
+    process.stdout.write(
+      `  F10 likeness ${right.toFixed(3)}, 20 s earlier ${wrong.toFixed(3)}, chips over ${covered104.toFixed(2)}\n`,
+    );
     expect(errors).toEqual([]);
   });
 });
@@ -310,6 +369,7 @@ test.describe('@realdata Al-Zour 1920 px clips', () => {
     // At 1 s it shows what the old 960 px clip showed there (its poster); at 21 s it does not.
     const ref = join(ALZOUR, 'posters.before-1080', 'DJI_0666.jpg');
     const right = await likeness(ref, await frameAt(win, testInfo, id, start + 1_000, 1.0));
+    const covered = await expectTilePicture(win, id);
     const v = await video(win, id);
     expect(v.src).toMatch(/\/video\/DJI_0666\.mp4$/);
     expect([v.width, v.height]).toEqual([1920, 1012]);
@@ -317,7 +377,7 @@ test.describe('@realdata Al-Zour 1920 px clips', () => {
     expect(right).toBeGreaterThan(0.8);
     expect(right - wrong).toBeGreaterThan(0.1);
     process.stdout.write(
-      `  DJI_0666 likeness ${right.toFixed(3)}, 20 s later ${wrong.toFixed(3)}\n`,
+      `  DJI_0666 likeness ${right.toFixed(3)}, 20 s later ${wrong.toFixed(3)}, chips over ${covered.toFixed(2)}\n`,
     );
 
     // Seek deep into the clip and play on.

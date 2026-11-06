@@ -7,6 +7,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, hasChangeDemo, test } from './fixtures';
 import { stageMode } from './island';
+import { NO_PACK_TEXT, noPackNote } from './mapNote';
 
 test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x700' } });
 
@@ -60,11 +61,10 @@ test('the no map pack note hides for the session, and one map shows it', async (
   await expect(win.locator('[data-scene-view] canvas')).toBeVisible(VIEW_READY);
   await showView(win, 'Map');
   await expect(win.locator('.maplibregl-canvas')).toBeVisible(VIEW_READY);
-  const note = win.getByTestId('map-no-packs');
+  // one note, in the stage's bottom-left slot once the toasts and hints there have had their turn
+  const note = await noPackNote(win);
   await expect(note).toHaveCount(1);
-  await expect(note).toHaveText(
-    'No map pack installed: project layers only. Add a pack in Settings, Offline maps.',
-  );
+  await expect(note).toHaveText(NO_PACK_TEXT);
   const hide = note.getByRole('button', { name: 'Hide this note' });
   // the button takes the click where it is drawn (nothing of the map's foot lies over it)
   const box = await hide.boundingBox();
