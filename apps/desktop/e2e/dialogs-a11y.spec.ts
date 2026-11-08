@@ -4,12 +4,19 @@
  * Shift+Tab stay inside), and Escape stops the run after the current shot: the card closes, the
  * person's view comes back and the report says the pictures were not taken. On the synthetic
  * quarry demo; off-screen, zero network, pipeline Python needed.
+ *
+ * The shell's confirm and the library's Delete project (W15a) are on the same Dialog: an
+ * alertdialog with Cancel focused first, Tab kept inside, Escape cancels and focus goes back to
+ * what opened it.
  */
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
+import { existsSync } from 'node:fs';
 import { expect, hasPipelinePython, PIPELINE_ENV, test } from './fixtures';
 import { measureTree } from './island';
 import { focusMeasure, volumeSettled } from './measureCard';
+import { writeRfProject } from './rfFixtures';
 import { openDemo, setAutoPrepare } from './surveyJobs';
+import { projectAntennas } from './telecomFixtures';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.skip(!hasPipelinePython(), 'needs the development pipeline Python (uv sync in python/)');
@@ -21,6 +28,26 @@ const focusInside = (win: Page, testId: string) =>
       document.querySelector(`[data-testid="${id}"]`)?.contains(document.activeElement) === true,
     testId,
   );
+
+/**
+ * The open alertdialog `testId`: modal, Cancel (`cancel`) focused first, Tab and Shift+Tab stay
+ * inside, Escape closes it with nothing done and focus goes back to `opener`.
+ */
+async function trapsAndCancels(win: Page, testId: string, cancel: string, opener: Locator) {
+  const dialog = win.getByTestId(testId);
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute('role', 'alertdialog');
+  await expect(dialog).toHaveAttribute('aria-modal', 'true');
+  await expect(win.getByTestId(cancel)).toBeFocused();
+  for (const key of ['Tab', 'Tab', 'Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab']) {
+    await win.keyboard.press(key);
+    expect(await focusInside(win, testId), `focus after ${key}`).toBe(true);
+  }
+  await win.screenshot({ path: test.info().outputPath(`${testId}.png`) });
+  await win.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+}
 
 test('the picture progress card traps focus and closes on Escape', async ({
   quarryProject,
@@ -105,4 +132,35 @@ test('Report a problem and the new project wizard are modal Dialogs that Escape 
   await win.keyboard.press('Escape');
   await expect(wizard).toHaveCount(0);
   await expect(opener).toBeFocused();
+});
+
+test('the shell confirm (delete an antenna) traps focus and Escape cancels it', async ({
+  win,
+  dataRoot,
+}) => {
+  await writeRfProject(dataRoot.projectDir, { cloud: true });
+  await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
+  await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible();
+  const group = await projectAntennas(win);
+  await group.getByTestId('antenna-filter-all').click();
+  const del = group
+    .locator('[data-row-id="ant-p2"] [data-testid="antenna-row"]')
+    .getByTestId('antenna-row-delete');
+  await del.click();
+  await trapsAndCancels(win, 'antenna-delete-confirm', 'antenna-delete-confirm-cancel', del);
+  // cancelled: the unit is still listed
+  await expect(group.locator('[data-row-id="ant-p2"]')).toHaveCount(1);
+});
+
+test('Delete project traps focus and Escape cancels it', async ({ win, dataRoot }) => {
+  const name = 'E2E tiny project';
+  const dots = win.getByRole('button', { name: `Actions for ${name}` });
+  await expect(dots).toBeVisible({ timeout: 30_000 });
+  await dots.click();
+  await win.getByTestId('project-menu-delete').click();
+  await expect(win.getByRole('alertdialog', { name: `Delete ${name}?` })).toBeVisible();
+  await trapsAndCancels(win, 'project-delete', 'project-delete-cancel', dots);
+  // nothing was deleted
+  await expect(win.getByTestId('project-card').filter({ hasText: name })).toHaveCount(1);
+  expect(existsSync(dataRoot.projectDir)).toBe(true);
 });
