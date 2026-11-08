@@ -195,23 +195,28 @@ test.describe('with the bundled demos', () => {
     const footage = win.getByTestId('bottom-switch-footage');
     await expect(footage).toBeVisible({ timeout: 60_000 });
     await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible({ timeout: 60_000 });
-    // the strip may still settle on its remembered side as the project opens: pick Footage and
-    // read the clock until both hold
+    // pick Footage (the tank farm, a survey, opens on its dates side) and read the clock until
+    // both hold; every wait inside is bounded, so a clock that went away is retried, not awaited
     await expect(async () => {
-      if ((await footage.getAttribute('aria-pressed')) !== 'true') await footage.click();
+      if ((await footage.getAttribute('aria-pressed', { timeout: 2_000 })) !== 'true')
+        await footage.click({ timeout: 2_000 });
       await expect(clock).toHaveText(/^\d\d:\d\d:\d\d\.\d\d$/, { timeout: 2_000 });
-      const fit = await clock.evaluate((el) => {
-        const bar = el.parentElement?.getBoundingClientRect();
-        const r = el.getBoundingClientRect();
-        return {
-          whole: el.scrollWidth <= el.clientWidth + 1,
-          inBar: bar !== undefined && r.left >= bar.left - 0.5 && r.right <= bar.right + 0.5,
-          // nothing of the bar spills out of it either
-          spill: [...(el.parentElement?.children ?? [])]
-            .filter((c) => c.getBoundingClientRect().right > (bar?.right ?? 0) + 0.5)
-            .map((c) => c.className),
-        };
-      });
+      const fit = await clock.evaluate(
+        (el) => {
+          const bar = el.parentElement?.getBoundingClientRect();
+          const r = el.getBoundingClientRect();
+          return {
+            whole: el.scrollWidth <= el.clientWidth + 1,
+            inBar: bar !== undefined && r.left >= bar.left - 0.5 && r.right <= bar.right + 0.5,
+            // nothing of the bar spills out of it either
+            spill: [...(el.parentElement?.children ?? [])]
+              .filter((c) => c.getBoundingClientRect().right > (bar?.right ?? 0) + 0.5)
+              .map((c) => c.className),
+          };
+        },
+        undefined,
+        { timeout: 2_000 },
+      );
       expect(fit).toEqual({ whole: true, inBar: true, spill: [] });
     }).toPass({ timeout: 30_000 });
     // a narrow bar drops zoom in and out (Ctrl + wheel zooms), never Fit
