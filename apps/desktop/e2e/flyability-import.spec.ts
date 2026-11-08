@@ -178,7 +178,7 @@ test.describe('Flyability Inspector import', () => {
     await win.locator('.sb-nav .nav-item', { hasText: 'Issues' }).first().click();
     const register = win.getByTestId('issue-register');
     await register.getByRole('searchbox', { name: 'Search issues' }).fill(code);
-    return register.getByRole('option', { name: new RegExp(`^${code} `) });
+    return register.getByRole('row', { name: new RegExp(`^(Select ${code} )?${code} `) });
   }
 
   test('imports a synthetic export as a space with clouds, paths and findings', async ({
@@ -244,7 +244,9 @@ test.describe('Flyability Inspector import', () => {
         .getByRole('searchbox', { name: 'Search issues' })
         .fill(i.code);
       await expect(
-        win.getByTestId('issue-register').getByRole('option', { name: new RegExp(`^${i.code} `) }),
+        win
+          .getByTestId('issue-register')
+          .getByRole('row', { name: new RegExp(`^(Select ${i.code} )?${i.code} `) }),
       ).toBeVisible();
     }
     await win

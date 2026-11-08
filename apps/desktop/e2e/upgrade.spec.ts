@@ -123,7 +123,7 @@ test('a project written by 0.8 is edited here and still opens in 0.8', async ({ 
 
   // Edit the first issue's title through the issue card.
   await nav(win, 'Issues');
-  await win.getByRole('listbox', { name: 'Issues' }).getByRole('option').first().click();
+  await win.getByRole('grid', { name: 'Issues' }).locator('.ann-row').first().click();
   const card = win.getByTestId('issue-card').first();
   await card.getByText('Edit issue', { exact: true }).click();
   const title = card.getByTestId('issue-edit').getByLabel('Title');
@@ -202,7 +202,7 @@ test('the first edit in this build starts the journal, signed by this device', a
     .toEqual(['P01', 'P02']);
 
   await nav(win, 'Issues');
-  await win.getByRole('listbox', { name: 'Issues' }).getByRole('option').first().click();
+  await win.getByRole('grid', { name: 'Issues' }).locator('.ann-row').first().click();
   const card = win.getByTestId('issue-card').first();
   await card.getByText('Edit issue', { exact: true }).click();
   const title = card.getByTestId('issue-edit').getByLabel('Title');

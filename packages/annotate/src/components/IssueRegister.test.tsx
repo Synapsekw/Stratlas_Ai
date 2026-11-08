@@ -196,6 +196,43 @@ describe('IssueRegister at scale', () => {
     second.unmount();
   });
 
+  it('select toggle works with Space', () => {
+    workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(5));
+    const ui = mount();
+    const tick = ui.q('[data-tick="D0001"]');
+    if (!(tick instanceof HTMLButtonElement)) throw new Error('the tick is not a button');
+    // a real checkbox control in a grid row (a listbox option may hold no control)
+    expect(tick.getAttribute('role')).toBe('checkbox');
+    expect(tick.getAttribute('aria-label')).toBe('Select D0001');
+    expect(tick.getAttribute('aria-checked')).toBe('false');
+    expect(tick.closest('[role="gridcell"]')?.parentElement?.getAttribute('role')).toBe('row');
+    expect(ui.q('[data-issue-list]')?.getAttribute('role')).toBe('grid');
+    // select the row first: the list's own Space ticks the selected row, so a key that reached
+    // the list as well would tick it twice (back off)
+    const row = tick.closest('.ann-row');
+    act(() => {
+      row?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(row?.getAttribute('aria-selected')).toBe('true');
+    expect(tick.tabIndex).toBe(0);
+    const space = () => {
+      const ev = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+      act(() => {
+        tick.focus();
+        tick.dispatchEvent(ev);
+      });
+      return ev;
+    };
+    const ev = space();
+    expect(ev.defaultPrevented).toBe(true);
+    expect(tick.getAttribute('aria-checked')).toBe('true');
+    expect(ui.el.textContent).toContain('1 selected');
+    space();
+    expect(tick.getAttribute('aria-checked')).toBe('false');
+    expect(ui.el.textContent).not.toContain('1 selected');
+    ui.unmount();
+  });
+
   it('only browses in a read-only package: no checkboxes, bulk actions or undo', () => {
     workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(30));
     setAnnotateReadOnly(true);

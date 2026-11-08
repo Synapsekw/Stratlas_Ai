@@ -339,28 +339,32 @@ export function IssueRegister({
   const renderRow = (r: RegisterRow) => {
     if (r.kind === 'group') {
       const open = !collapsed.has(r.key);
+      // a grid row of its own, one cell wide, so the grid holds only rows
       return (
-        <button
-          key={`g:${r.key}`}
-          type="button"
-          className="ann-group"
-          aria-expanded={open}
-          onClick={() => {
-            setCollapsedIn((cur) => {
-              const next = new Set(cur.by === groupBy ? cur.keys : NONE_COLLAPSED);
-              if (next.has(r.key)) next.delete(r.key);
-              else next.add(r.key);
-              return { by: groupBy, keys: next };
-            });
-          }}
-        >
-          <span className="car" aria-hidden>
-            {open ? '▾' : '▸'}
+        <div key={`g:${r.key}`} role="row" className="ann-grow">
+          <span role="gridcell" className="ann-cell">
+            <button
+              type="button"
+              className="ann-group"
+              aria-expanded={open}
+              onClick={() => {
+                setCollapsedIn((cur) => {
+                  const next = new Set(cur.by === groupBy ? cur.keys : NONE_COLLAPSED);
+                  if (next.has(r.key)) next.delete(r.key);
+                  else next.add(r.key);
+                  return { by: groupBy, keys: next };
+                });
+              }}
+            >
+              <span className="car" aria-hidden>
+                {open ? '▾' : '▸'}
+              </span>
+              <span className="ann-dot" style={sevStyle(severityColor(firstModel, r.top))} />
+              <span className="gl">{r.label}</span>
+              <span className="gc">{r.count}</span>
+            </button>
           </span>
-          <span className="ann-dot" style={sevStyle(severityColor(firstModel, r.top))} />
-          <span className="gl">{r.label}</span>
-          <span className="gc">{r.count}</span>
-        </button>
+        </div>
       );
     }
     const i = r.issue;
@@ -369,9 +373,8 @@ export function IssueRegister({
       <div
         key={i.id}
         data-id={i.id}
-        role="option"
+        role="row"
         aria-selected={i.id === selectedId}
-        aria-checked={readOnly ? undefined : on}
         className={`ann-row${i.status === 'draft' ? ' draft' : ''}${on ? ' checked' : ''}${readOnly ? ' ro' : ''}`}
         onContextMenu={(e) => {
           if (readOnly || !(listActions.issueMenu || listActions.placeOnModel)) return;
@@ -389,29 +392,49 @@ export function IssueRegister({
           focusIssue(i);
         }}
       >
-        {/* a drawn tick, not a control: an option may not hold one. Screen readers hear the
-            row's aria-checked, and Space ticks the selected row. */}
+        {/* The tick is a checkbox in a cell of its own (a grid row may hold controls, a listbox
+            option may not). Only the selected row's tick is in the Tab order; a click keeps the
+            focus on the list, so the arrows still step through it. Space on the list ticks the
+            selected row as before. */}
         {!readOnly && (
-          <span
-            className="ann-tick"
-            data-tick={i.code}
-            data-on={on}
-            aria-hidden="true"
-            title={`Select ${i.code}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              toggle(i.id, e);
-            }}
-          />
+          <span role="gridcell" className="ann-cell">
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={on}
+              aria-label={`Select ${i.code}`}
+              className="ann-tick"
+              data-tick={i.code}
+              data-on={on}
+              title={`Select ${i.code}`}
+              tabIndex={i.id === selectedId ? 0 : -1}
+              onMouseDown={(e) => {
+                e.preventDefault();
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggle(i.id, e);
+              }}
+              onKeyDown={(e) => {
+                // Space ticks it (Enter too, as on any button) and the list does not see the key
+                if (e.key !== ' ' && e.key !== 'Enter') return;
+                e.preventDefault();
+                e.stopPropagation();
+                toggle(i.id, e);
+              }}
+            />
+          </span>
         )}
-        <span className="iid">{i.code}</span>
-        <span className="it">{i.title}</span>
-        <SeverityBadge model={modelById.get(i.severityModelId)} severity={i.severity} />
-        <span className="im">
-          {label(i.classId)} · {issueDatasets(i).map(kindLabel).join(', ')} ·{' '}
-          <span className="st">{i.status}</span> ·{' '}
-          <span className="ann-ini" title={i.author} data-testid="issue-initials">
-            {initialsOf(i.author)}
+        <span role="gridcell" className="ann-cell">
+          <span className="iid">{i.code}</span>
+          <span className="it">{i.title}</span>
+          <SeverityBadge model={modelById.get(i.severityModelId)} severity={i.severity} />
+          <span className="im">
+            {label(i.classId)} · {issueDatasets(i).map(kindLabel).join(', ')} ·{' '}
+            <span className="st">{i.status}</span> ·{' '}
+            <span className="ann-ini" title={i.author} data-testid="issue-initials">
+              {initialsOf(i.author)}
+            </span>
           </span>
         </span>
       </div>
@@ -729,7 +752,7 @@ export function IssueRegister({
         ref={listRef}
         className="ann-list"
         data-issue-list
-        role="listbox"
+        role="grid"
         aria-label="Issues"
         aria-multiselectable={!readOnly}
         tabIndex={0}

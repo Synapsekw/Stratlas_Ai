@@ -106,7 +106,7 @@ async function placeFromList(win: Page, code: string, layer: string): Promise<vo
   // the list is virtual (only rows in view exist): search for the code to bring its row up
   const register = win.getByTestId('issue-register');
   await register.getByRole('searchbox', { name: 'Search issues' }).fill(code);
-  const row = register.getByRole('option', { name: new RegExp(`^${code} `) });
+  const row = register.getByRole('row', { name: new RegExp(`^(Select ${code} )?${code} `) });
   await row.click({ button: 'right' });
   await win.getByTestId('issue-place-on-model').click();
   await expect(win.getByTestId('place-offer')).toBeVisible();
