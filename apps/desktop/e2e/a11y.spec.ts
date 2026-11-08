@@ -38,6 +38,7 @@ import {
   stageMode,
   stageModeButton,
   openBench,
+  volumesView,
 } from './island';
 
 /**
@@ -555,6 +556,38 @@ test.describe('a synthetic project', () => {
     await win.getByTestId('inspect-review').click();
     await expect(win.getByTestId('inspect-queue')).toBeVisible();
     await roves(win.getByTestId('queue-reject-reason'), 'Why is it rejected?');
+  });
+
+  test('scene, the Volumes view and the issue register by keyboard (W19)', async ({ win }) => {
+    await openProject(win, 'E2E accessibility');
+    await expectAccessible(win, 'Scene');
+
+    // Volumes: any project reaches it (presets never gate a tool); this one has no piles yet,
+    // so it is the empty view with Draw and Detect. The inventory table with its rows is audited
+    // by volumes-tab.spec on the quarry demo.
+    const view = await volumesView(win);
+    await expect(view.getByTestId('volumes-draw')).toBeVisible();
+    await expectAccessible(win, 'Scene, Volumes');
+    await closeIslandTools(win);
+
+    // Issues: the register is a grid, and each row's tick is a real checkbox that Space ticks
+    await nav(win, 'Issues');
+    const grid = win.locator('.issues-screen').getByRole('grid', { name: 'Issues' });
+    const row = grid.getByRole('row').filter({ hasText: 'F01' });
+    await row.click();
+    await expect(row).toHaveAttribute('aria-selected', 'true');
+    const tick = row.getByRole('checkbox', { name: 'Select F01' });
+    await expect(tick).toHaveAttribute('aria-checked', 'false');
+    await tick.focus();
+    await win.keyboard.press('Space');
+    // once: neither the button's own click on key up nor the list's Space ticks it back
+    await expect(tick).toHaveAttribute('aria-checked', 'true');
+    await expect(win.locator('.issues-screen')).toContainText('1 selected');
+    await expectFocusMeaningful(win, 'ticking an issue by Space');
+    await expectAccessible(win, 'Issues, an issue ticked');
+    await win.keyboard.press('Space');
+    await expect(tick).toHaveAttribute('aria-checked', 'false');
+    await expectAccessible(win, 'Issues');
   });
 });
 
