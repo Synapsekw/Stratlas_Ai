@@ -10,22 +10,26 @@ import { measureStore } from '../survey/measureStore';
 import { threeDates } from '../workspace/__fixtures__/threeDates';
 import { workbench } from '../workspace/workbench/workbenchStore';
 import { layoutPrefs } from './layoutStore';
-import { useApplyPreset, useLayout } from './useApplyPreset';
+import { chooseStrip, useApplyPreset, useLayout, useStrip } from './useApplyPreset';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /** A fusion project with no purpose: data fusion, or a survey once it holds piles. */
 const fusion = { ...threeDates, type: 'fusion' } as unknown as ProjectManifest;
+/** A survey with a video and three dates: Volume over time leads, Footage is the switch's other side. */
+const survey = { ...threeDates, purpose: 'survey' } as unknown as ProjectManifest;
 const PILE = [{ id: 'pile-1' }] as unknown as Volumetric['piles'];
 
 /** The tab of the preset the readers see (null: no layout yet for this open). */
-const probe: { seen: string | null } = { seen: null };
+const probe: { seen: string | null; strip: string | null } = { seen: null, strip: null };
 function Probe() {
   useApplyPreset();
   const layout = useLayout();
   const tab = layout ? layout.preset.rightTab : null;
+  const strip = useStrip();
   useEffect(() => {
     probe.seen = tab;
+    probe.strip = strip;
   });
   return null;
 }
@@ -42,15 +46,16 @@ function stores(projectId: string, piles: boolean, status: Volumetric['status'] 
   });
 }
 
-function open(id: string) {
+function open(id: string, manifest: ProjectManifest = fusion) {
   act(() => {
-    workspace.getState().openProject({ id, root: `/${id}`, manifest: fusion });
+    workspace.getState().openProject({ id, root: `/${id}`, manifest });
     workbench.getState().reset();
   });
 }
 
 beforeEach(() => {
   probe.seen = null;
+  probe.strip = null;
   load.mockClear();
   volumetric.setState({ load });
   layoutPrefs.setState({ byProject: {}, chosen: null });
@@ -117,6 +122,37 @@ describe('useApplyPreset', () => {
     stores('c', false);
     expect(layoutPrefs.getState().chosen?.purpose).toBe('survey');
     expect(probe.seen).toBe('project');
+  });
+
+  it('the strip a survey shows before its stores are read is the one it settles on', () => {
+    // another project's stores, still loading: the survey's layout waits for its own
+    stores('other', false, 'loading');
+    open('s', survey);
+    render();
+    expect(probe.seen).toBeNull();
+    // Volume over time waits for the piles: the dates side, as after the settle
+    expect(probe.strip).toBe('dates');
+    stores('s', true);
+    expect(probe.seen).toBe('project');
+    expect(probe.strip).toBe('volume');
+  });
+
+  it('Footage picked before a slow settle holds through it', () => {
+    stores('other', false, 'loading');
+    open('t', survey);
+    render();
+    act(() => {
+      chooseStrip('footage');
+    });
+    // the pick shows at once, not only once the stores are read
+    expect(probe.strip).toBe('footage');
+    stores('t', true);
+    expect(layoutPrefs.getState().chosen?.purpose).toBe('survey');
+    expect(probe.strip).toBe('footage');
+    // and a reload of the piles later does not move it either
+    stores('t', false, 'loading');
+    stores('t', true);
+    expect(probe.strip).toBe('footage');
   });
 
   it('reads the volumes of a project already open when it mounts', () => {

@@ -8,7 +8,7 @@ import { shell, useShell } from '../shell';
 import { ChainageRuler } from '../road/ChainageRuler';
 import { useIsRoad } from '../road/useRoadMap';
 import { NoProject } from '../screens/NoProject';
-import { useApplyPreset, useLayout } from '../layout/useApplyPreset';
+import { useApplyPreset, useStrip } from '../layout/useApplyPreset';
 import { usesLanes } from './lanes';
 import { LayerPlaceholder } from './LayerPlaceholder';
 import { pickClip, selectClip } from './pickClip';
@@ -97,7 +97,8 @@ function useBottomSlot(): { slot: BottomSlot; switchable: boolean } {
   const project = useWorkspace((s) => s.project);
   const shown = useTimelineShown(project);
   const hasVolumes = useMeasure((s) => hasPiles(s.file.measurements));
-  const strip = useLayout()?.layout.strip ?? null;
+  // from the open on, before the layout settles too: the strip never jumps sides under the person
+  const strip = useStrip();
   const pref: BottomPref | null = strip === null ? null : strip === 'footage' ? 'footage' : 'dates';
   if (!project) return { slot: 'none', switchable: false };
   const x = {

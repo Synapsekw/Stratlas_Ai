@@ -109,6 +109,25 @@ export function useLayout(): { preset: Preset; layout: LayoutState } | null {
   }, [project, read, overrides, chosen]);
 }
 
+/**
+ * The open project's strip, from the moment it opens (null without a project). Until its layout
+ * applies (its stores still reading, a slow computer) the strip is the one its own purpose and the
+ * person's pick give with the data read so far, so it never shows one side and then jumps to the
+ * other at the settle, and a side picked before the settle shows at once and holds through it.
+ */
+export function useStrip(): StripKind | null {
+  const project = useWorkspace((s) => s.project);
+  const read = useProjectData();
+  const overrides = useLayoutOverrides(project?.id ?? null);
+  const applied = useLayout();
+  return useMemo(() => {
+    if (applied) return applied.layout.strip;
+    if (!project || !read) return null;
+    const preset = PRESETS[purposeOf(project.manifest, read.data)];
+    return applyPreset(preset, read.data, overrides).strip;
+  }, [applied, project, read, overrides]);
+}
+
 /** Project's first section with its data, brought forward with the Project tab. */
 function projectSection(preset: Preset, layout: LayoutState) {
   return layout.projectSections[0] ?? preset.projectSections.at(-1);
