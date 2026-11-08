@@ -126,7 +126,7 @@ describe('Re-read photo positions', () => {
       expect(document.querySelector('[data-testid="reread-confirm"]')).not.toBeNull();
     });
     expect(document.querySelector('#reread-text')?.textContent).toBe(t('position.reread.confirm'));
-    document.querySelector<HTMLButtonElement>('[data-testid="reread-yes"]')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="reread-confirm-yes"]')?.click();
     await run;
     expect(call).toHaveBeenCalledTimes(2);
     expect(document.querySelector('[data-testid="reread-confirm"]')).toBeNull();

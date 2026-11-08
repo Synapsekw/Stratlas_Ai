@@ -102,19 +102,23 @@ describe('PackageExport imagery and terrain', () => {
   it('lists a customer pack unticked with the licence reminder, and a refused pack without a checkbox', async () => {
     app.rasterPacks = [IMAGERY, TERRAIN];
     await open();
-    const section = host.querySelector('[data-testid="pkg-raster"]');
+    const section = document.querySelector('[data-testid="pkg-raster"]');
     expect(section?.textContent).toContain('Imagery and terrain');
-    const box = host.querySelector<HTMLInputElement>('[data-testid="pkg-raster-imagery-ortho-a"]');
+    const box = document.querySelector<HTMLInputElement>(
+      '[data-testid="pkg-raster-imagery-ortho-a"]',
+    );
     expect(box?.checked).toBe(false);
     expect(section?.textContent).toContain('Provider terms 2026');
     expect(section?.textContent).toContain('Does not cover this site.');
-    expect(host.querySelector('[data-testid="pkg-raster-terrain-dem-a"]')).toBeNull();
+    expect(document.querySelector('[data-testid="pkg-raster-terrain-dem-a"]')).toBeNull();
   });
 
   it('asks for a new plan and exports with the ticked pack', async () => {
     app.rasterPacks = [IMAGERY, TERRAIN];
     await open();
-    const box = host.querySelector<HTMLInputElement>('[data-testid="pkg-raster-imagery-ortho-a"]');
+    const box = document.querySelector<HTMLInputElement>(
+      '[data-testid="pkg-raster-imagery-ortho-a"]',
+    );
     await act(() => {
       box?.click();
       return Promise.resolve();
@@ -124,7 +128,7 @@ describe('PackageExport imagery and terrain', () => {
       rasterPacks: [{ kind: 'imagery', id: 'ortho-a' }],
     });
     await act(() => {
-      host.querySelector<HTMLButtonElement>('[data-testid="pkg-export"]')?.click();
+      document.querySelector<HTMLButtonElement>('[data-testid="pkg-export"]')?.click();
       return Promise.resolve();
     });
     const exp = app.sent.find((s) => s.channel === 'package:export');
@@ -136,7 +140,7 @@ describe('PackageExport imagery and terrain', () => {
   it('says so when no pack covers the site', async () => {
     app.rasterPacks = [];
     await open();
-    expect(host.querySelector('[data-testid="pkg-raster"]')?.textContent).toContain(
+    expect(document.querySelector('[data-testid="pkg-raster"]')?.textContent).toContain(
       'No installed imagery or terrain pack covers this site.',
     );
   });

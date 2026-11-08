@@ -1,11 +1,10 @@
 /**
- * A yes-or-cancel question in the app's dialog look (`dlg`, as the empty-trash question): focus
- * starts on Cancel, Escape and a click outside cancel. Used where one action changes many things
- * at once (recomputing every earlier-version pile, clearing the report template).
+ * A yes-or-cancel question on the shared `Dialog`: focus starts on Cancel, Escape and a click
+ * outside cancel. Used where one action changes many things at once (recomputing every
+ * earlier-version pile, clearing the report template).
  */
-import { Icon, useFocusTrap, useT } from '@aio/ui';
+import { Dialog, Icon, useT } from '@aio/ui';
 import { useId, useRef, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
 
 export interface ConfirmDialogProps {
   title: string;
@@ -28,41 +27,24 @@ export interface ConfirmDialogProps {
 export function ConfirmDialog(p: ConfirmDialogProps) {
   const t = useT();
   const id = useId();
-  const dlg = useRef<HTMLDivElement>(null);
   const keep = useRef<HTMLButtonElement>(null);
   const cancel = () => {
     if (!p.busy) p.onCancel();
   };
-  useFocusTrap(dlg, true, {
-    onEscape: cancel,
-    initial: () => keep.current,
-    ...(p.returnTo ? { returnTo: p.returnTo } : {}),
-  });
   const test = p.testId ?? 'confirm';
-  return createPortal(
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) cancel();
-      }}
-    >
-      <div
-        ref={dlg}
-        className="dlg"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby={`${id}-title`}
-        aria-describedby={`${id}-text`}
-        data-testid={test}
-      >
-        <div className="dlg-h">
-          <h2 id={`${id}-title`}>{p.title}</h2>
-        </div>
-        <div className="dlg-b" id={`${id}-text`}>
-          {p.children}
-        </div>
-        <div className="dlg-f">
-          <span className="grow" />
+  return (
+    <Dialog
+      open
+      role="alertdialog"
+      title={p.title}
+      describedBy={`${id}-text`}
+      testId={test}
+      hideClose
+      initialFocus={keep}
+      {...(p.returnTo ? { returnFocus: p.returnTo } : {})}
+      onClose={cancel}
+      footer={
+        <>
           <button
             ref={keep}
             type="button"
@@ -85,9 +67,10 @@ export function ConfirmDialog(p: ConfirmDialogProps) {
             {p.danger && <Icon name="trash" size={14} />}
             {p.yes}
           </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
+        </>
+      }
+    >
+      <div id={`${id}-text`}>{p.children}</div>
+    </Dialog>
   );
 }

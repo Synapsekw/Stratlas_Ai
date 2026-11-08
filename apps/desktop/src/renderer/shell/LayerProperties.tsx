@@ -1,11 +1,10 @@
 import { useAnnotateReadOnly } from '@aio/annotate';
 import { localToProject, toWgs84 } from '@aio/geo';
 import { layerFrame, type LayerInfo } from '@aio/schema';
-import { Icon, formatBytes, formatCount, formatDate, useFocusTrap, useT } from '@aio/ui';
+import { Dialog, Icon, formatBytes, formatCount, formatDate, useT } from '@aio/ui';
 import { volumetric } from '@aio/volumetric';
 import { captureIndex, useWorkspace } from '@aio/workspace';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { dropToGround } from '../builder/dropSession';
@@ -140,11 +139,9 @@ function PropsDialog({ open }: { open: NonNullable<Open> }) {
   const project = useWorkspace((s) => s.project);
   const pkg = useShell((s) => s.pkg);
   const readOnly = useAnnotateReadOnly();
-  const dlg = useRef<HTMLDivElement>(null);
   const close = () => {
     layerProps.getState().close();
   };
-  useFocusTrap(dlg, true, { onEscape: close });
   const layerId = open.kind === 'layer' ? open.layerId : null;
   const [info, setInfo] = useState<LayerInfo | null>(null);
   const [reading, setReading] = useState(layerId !== null);
@@ -288,37 +285,15 @@ function PropsDialog({ open }: { open: NonNullable<Open> }) {
     );
   }
 
-  return createPortal(
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
-    >
-      <div
-        ref={dlg}
-        className="dlg"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="layer-props-title"
-        data-testid="layer-props"
-      >
-        <div className="dlg-h">
-          <Icon name="layers" size={16} />
-          <h2 id="layer-props-title">{title}</h2>
-        </div>
-        <div className="dlg-b">
-          <dl className="kv" style={{ gridTemplateColumns: '120px 1fr' }}>
-            {rows}
-          </dl>
-          {error && (
-            <p className="notice danger" role="alert" style={{ margin: 0 }}>
-              <Icon name="warn" size={14} />
-              <span>{error}</span>
-            </p>
-          )}
-        </div>
-        <div className="dlg-f">
+  return (
+    <Dialog
+      open
+      title={title}
+      testId="layer-props"
+      hideClose
+      onClose={close}
+      footer={
+        <>
           {layerId && !pkg && !readOnly && (
             <button
               type="button"
@@ -351,9 +326,18 @@ function PropsDialog({ open }: { open: NonNullable<Open> }) {
           <button type="button" className="btn" onClick={close} data-testid="layer-props-close">
             {t('layerProps.close')}
           </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
+        </>
+      }
+    >
+      <dl className="kv" style={{ gridTemplateColumns: '120px 1fr' }}>
+        {rows}
+      </dl>
+      {error && (
+        <p className="notice danger" role="alert" style={{ margin: 0 }}>
+          <Icon name="warn" size={14} />
+          <span>{error}</span>
+        </p>
+      )}
+    </Dialog>
   );
 }

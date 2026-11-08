@@ -25,7 +25,10 @@ const update = (p: Partial<RemoveDialogProps>) => {
 };
 const escape = () => {
   act(() => {
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    // from what has focus, as a key press is (the page itself when focus was dropped)
+    (document.activeElement ?? document.body).dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
   });
 };
 const refusedPlan = {

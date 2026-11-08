@@ -1,7 +1,6 @@
-import { Icon, RemoveDialog, formatBytes, formatDate, useFocusTrap, useT } from '@aio/ui';
+import { Dialog, Icon, RemoveDialog, formatBytes, formatDate, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { removal, useRemoval } from './removal';
 import './removal.css';
 
@@ -17,7 +16,7 @@ export function RemoveHost() {
     const c = captures?.find((x) => x.id === id);
     return c ? formatDate(c.date) : id;
   };
-  return createPortal(
+  return (
     <RemoveDialog
       targets={targets}
       plan={plan}
@@ -28,8 +27,7 @@ export function RemoveHost() {
         removal.getState().cancel();
       }}
       onConfirm={() => void removal.getState().confirm()}
-    />,
-    document.body,
+    />
   );
 }
 
@@ -48,18 +46,12 @@ export function EmptyTrashDialog({
   const [trash, setTrash] = useState<{ bytes: number; entries: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dlg = useRef<HTMLDivElement>(null);
   const keep = useRef<HTMLButtonElement>(null);
   /** The library menu can open it on a project whose trash is empty: then it only says so. */
   const nothing = trash !== null && trash.entries === 0;
   const cancel = () => {
     if (!busy) onClose();
   };
-  useFocusTrap(dlg, true, {
-    onEscape: cancel,
-    initial: () => keep.current,
-    ...(returnTo ? { returnTo } : {}),
-  });
   useEffect(() => {
     let live = true;
     void removal
@@ -87,44 +79,19 @@ export function EmptyTrashDialog({
         else setError(failed);
       });
   };
-  return createPortal(
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) cancel();
-      }}
-    >
-      <div
-        ref={dlg}
-        className="dlg"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="trash-empty-title"
-        aria-describedby="trash-empty-text"
-        data-testid="trash-empty"
-      >
-        <div className="dlg-h">
-          <Icon name="trash" size={16} />
-          <h2 id="trash-empty-title">{t('trash.confirm.title')}</h2>
-        </div>
-        <div className="dlg-b">
-          <p id="trash-empty-text" style={{ margin: 0 }}>
-            {nothing
-              ? t('trash.none')
-              : t('trash.confirm.text', {
-                  size: formatBytes(trash?.bytes ?? 0),
-                  count: trash?.entries ?? 0,
-                })}
-          </p>
-          {error && (
-            <p className="notice danger" role="alert" style={{ margin: 0 }}>
-              <Icon name="warn" size={14} />
-              <span>{error}</span>
-            </p>
-          )}
-        </div>
-        <div className="dlg-f">
-          <span className="grow" />
+  return (
+    <Dialog
+      open
+      role="alertdialog"
+      title={t('trash.confirm.title')}
+      describedBy="trash-empty-text"
+      testId="trash-empty"
+      hideClose
+      initialFocus={keep}
+      {...(returnTo ? { returnFocus: returnTo } : {})}
+      onClose={cancel}
+      footer={
+        <>
           <button
             ref={keep}
             type="button"
@@ -147,9 +114,23 @@ export function EmptyTrashDialog({
               {busy ? t('trash.confirm.busy') : t('trash.confirm.yes')}
             </button>
           )}
-        </div>
-      </div>
-    </div>,
-    document.body,
+        </>
+      }
+    >
+      <p id="trash-empty-text" style={{ margin: 0 }}>
+        {nothing
+          ? t('trash.none')
+          : t('trash.confirm.text', {
+              size: formatBytes(trash?.bytes ?? 0),
+              count: trash?.entries ?? 0,
+            })}
+      </p>
+      {error && (
+        <p className="notice danger" role="alert" style={{ margin: 0 }}>
+          <Icon name="warn" size={14} />
+          <span>{error}</span>
+        </p>
+      )}
+    </Dialog>
   );
 }

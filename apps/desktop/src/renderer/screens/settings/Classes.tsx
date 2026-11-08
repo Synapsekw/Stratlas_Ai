@@ -1,6 +1,6 @@
 import { CLASS_PALETTE, NewClassRow, useAnnotateReadOnly, type ClassPatch } from '@aio/annotate';
 import type { IssueClass, SeverityModel } from '@aio/schema';
-import { Icon, useFocusTrap, useT } from '@aio/ui';
+import { Dialog, Icon, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -425,11 +425,8 @@ function DeleteDialog({
   onCancel: () => void;
 }) {
   const t = useT();
-  const ref = useRef<HTMLDivElement>(null);
   const keep = useRef<HTMLButtonElement>(null);
   const [picked, setPicked] = useState<string | null>(null);
-  // the safe choice has focus first: Enter on a dialog that just opened deletes nothing
-  useFocusTrap(ref, true, { onEscape: onCancel, returnTo, initial: () => keep.current });
   const label = row.cls.label;
   const title = t('classes.delete.title', { label });
   const used = row.issues + row.detections > 0;
@@ -446,67 +443,20 @@ function DeleteDialog({
   else if (targets.length === 0) text = t('classes.delete.usedOnly', counts);
   else text = t('classes.delete.used', counts);
   return (
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onCancel();
-      }}
-    >
-      <div
-        ref={ref}
-        className="dlg cls-dlg"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="classes-delete-title"
-        aria-describedby="classes-delete-text"
-        data-testid="classes-delete-dialog"
-      >
-        <div className="dlg-h">
-          <Icon name="trash" size={16} />
-          <h2 id="classes-delete-title" dir="auto">
-            {title}
-          </h2>
-        </div>
-        <div className="dlg-b">
-          <p id="classes-delete-text" style={{ margin: 0 }} aria-live="polite">
-            {text}
-          </p>
-          {known && used && targets.length > 0 && (
-            <select
-              className="input"
-              data-testid="classes-move-to"
-              aria-label={t('classes.delete.pickTarget')}
-              value={to ?? ''}
-              onChange={(e) => {
-                setPicked(e.target.value);
-              }}
-            >
-              {targets.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          )}
-          {known && used && targets.length === 0 && (
-            <>
-              <p className="help" style={{ margin: 0 }}>
-                {t('classes.delete.only', { label })}
-              </p>
-              <div className="cls-new">
-                <NewClassRow
-                  onCreate={(name) => createClass(name)}
-                  onCreated={(cls) => {
-                    setPicked(cls.id);
-                  }}
-                  testId="classes-delete-new"
-                />
-              </div>
-            </>
-          )}
-        </div>
-        <div className="dlg-f">
-          <span className="grow" />
+    <Dialog
+      open
+      role="alertdialog"
+      className="cls-dlg"
+      title={<span dir="auto">{title}</span>}
+      describedBy="classes-delete-text"
+      testId="classes-delete-dialog"
+      hideClose
+      // the safe choice has focus first: Enter on a dialog that just opened deletes nothing
+      initialFocus={keep}
+      returnFocus={returnTo}
+      onClose={onCancel}
+      footer={
+        <>
           <button ref={keep} type="button" className="btn ghost" onClick={onCancel}>
             {t('classes.delete.cancel')}
           </button>
@@ -522,8 +472,45 @@ function DeleteDialog({
             <Icon name="trash" size={14} />
             {used || !known ? t('classes.delete.move') : t('classes.delete.confirm')}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <p id="classes-delete-text" style={{ margin: 0 }} aria-live="polite">
+        {text}
+      </p>
+      {known && used && targets.length > 0 && (
+        <select
+          className="input"
+          data-testid="classes-move-to"
+          aria-label={t('classes.delete.pickTarget')}
+          value={to ?? ''}
+          onChange={(e) => {
+            setPicked(e.target.value);
+          }}
+        >
+          {targets.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      )}
+      {known && used && targets.length === 0 && (
+        <>
+          <p className="help" style={{ margin: 0 }}>
+            {t('classes.delete.only', { label })}
+          </p>
+          <div className="cls-new">
+            <NewClassRow
+              onCreate={(name) => createClass(name)}
+              onCreated={(cls) => {
+                setPicked(cls.id);
+              }}
+              testId="classes-delete-new"
+            />
+          </div>
+        </>
+      )}
+    </Dialog>
   );
 }

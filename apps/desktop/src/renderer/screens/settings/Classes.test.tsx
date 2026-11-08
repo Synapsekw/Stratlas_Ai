@@ -126,10 +126,10 @@ beforeEach(() => {
 });
 afterEach(unmount);
 
-const q = (s: string) => host?.querySelector(s) ?? null;
-const inp = (s: string) => host?.querySelector<HTMLInputElement>(s) ?? null;
-const sel = (s: string) => host?.querySelector<HTMLSelectElement>(s) ?? null;
-const btn = (s: string) => host?.querySelector<HTMLButtonElement>(s) ?? null;
+const q = (s: string) => document.querySelector(s) ?? null;
+const inp = (s: string) => document.querySelector<HTMLInputElement>(s) ?? null;
+const sel = (s: string) => document.querySelector<HTMLSelectElement>(s) ?? null;
+const btn = (s: string) => document.querySelector<HTMLButtonElement>(s) ?? null;
 function type(input: HTMLInputElement, value: string) {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value);
   input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -290,9 +290,7 @@ describe('Classes panel', () => {
       'The detections could not be read, so this class cannot be deleted safely.',
     );
     expect(btn('[data-testid="classes-move-delete"]')?.disabled).toBe(true);
-    const cancel = [...(host?.querySelectorAll('button') ?? [])].find(
-      (b) => b.textContent === 'Cancel',
-    );
+    const cancel = [...document.querySelectorAll('button')].find((b) => b.textContent === 'Cancel');
     act(() => {
       cancel?.click();
     });

@@ -1,5 +1,5 @@
-import { Icon, useFocusTrap, useT } from '@aio/ui';
-import { useMemo, useRef, useState, type SyntheticEvent } from 'react';
+import { Dialog, Icon, useT } from '@aio/ui';
+import { useId, useMemo, useState, type RefObject, type SyntheticEvent } from 'react';
 import { shell, useShell } from '../shell';
 import { folderCounts } from './libraryFolderModel';
 import type { EntryDialogProps } from './projectMenuModel';
@@ -17,7 +17,8 @@ export function MoveToFolderDialog({ entry, onClose, returnTo }: EntryDialogProp
   const folders = useShell((s) => s.folders);
   const library = useShell((s) => s.library);
   const counts = useMemo(() => folderCounts(library ?? []), [library]);
-  const dlg = useRef<HTMLDivElement>(null);
+  const form = useId();
+  const titleId = useId();
   const known = entry.folderId !== undefined && folders.some((f) => f.id === entry.folderId);
   const now = known ? (entry.folderId ?? LOOSE) : LOOSE;
   const [pick, setPick] = useState(now);
@@ -26,7 +27,17 @@ export function MoveToFolderDialog({ entry, onClose, returnTo }: EntryDialogProp
   const cancel = () => {
     if (!busy) onClose();
   };
-  useFocusTrap(dlg, true, { onEscape: cancel, returnTo });
+  // the checked option has focus first, as in any group of radios
+  const checked = useMemo<RefObject<HTMLElement | null>>(
+    () => ({
+      get current() {
+        return document.querySelector<HTMLElement>(
+          '[data-testid="move-folder-dialog"] input[name="move-folder"]:checked',
+        );
+      },
+    }),
+    [],
+  );
 
   const submit = (e: SyntheticEvent) => {
     e.preventDefault();
@@ -55,68 +66,57 @@ export function MoveToFolderDialog({ entry, onClose, returnTo }: EntryDialogProp
   ];
 
   return (
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) cancel();
-      }}
+    <Dialog
+      open
+      title={<span id={titleId}>{t('library.move.title', { project: entry.name })}</span>}
+      testId="move-folder-dialog"
+      hideClose
+      initialFocus={checked}
+      returnFocus={returnTo}
+      onClose={cancel}
+      footer={
+        <>
+          <button type="button" className="btn ghost" onClick={cancel} disabled={busy}>
+            {t('library.cancel')}
+          </button>
+          <button
+            type="submit"
+            form={form}
+            className="btn primary"
+            disabled={busy}
+            data-testid="move-folder-confirm"
+          >
+            {t('library.move.confirm')}
+          </button>
+        </>
+      }
     >
-      <div
-        ref={dlg}
-        className="dlg"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="move-folder-title"
-        data-testid="move-folder-dialog"
-      >
-        <form className="dlg-form" onSubmit={submit}>
-          <div className="dlg-h">
-            <Icon name="folder" size={16} />
-            <h2 id="move-folder-title">{t('library.move.title', { project: entry.name })}</h2>
-          </div>
-          <div className="dlg-b">
-            <fieldset className="mf-list" aria-labelledby="move-folder-title">
-              {options.map((o) => (
-                <label key={o.id || 'loose'} className="mf-opt" data-testid="move-folder-option">
-                  <input
-                    type="radio"
-                    name="move-folder"
-                    value={o.id}
-                    checked={pick === o.id}
-                    autoFocus={pick === o.id}
-                    onChange={() => {
-                      setPick(o.id);
-                    }}
-                  />
-                  <Icon name={o.id === LOOSE ? 'projects' : 'folder'} size={14} />
-                  <span dir="auto">{o.name}</span>
-                  {o.count !== null && <span className="ftile-count mono">{o.count}</span>}
-                </label>
-              ))}
-            </fieldset>
-            {error && (
-              <p className="notice danger" role="alert" style={{ margin: 0 }}>
-                <Icon name="warn" size={14} />
-                <span>{error}</span>
-              </p>
-            )}
-          </div>
-          <div className="dlg-f">
-            <span className="grow" />
-            <button type="button" className="btn ghost" onClick={cancel} disabled={busy}>
-              {t('library.cancel')}
-            </button>
-            <button
-              type="submit"
-              className="btn primary"
-              disabled={busy}
-              data-testid="move-folder-confirm"
-            >
-              {t('library.move.confirm')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      <form id={form} style={{ display: 'contents' }} onSubmit={submit}>
+        <fieldset className="mf-list" aria-labelledby={titleId}>
+          {options.map((o) => (
+            <label key={o.id || 'loose'} className="mf-opt" data-testid="move-folder-option">
+              <input
+                type="radio"
+                name="move-folder"
+                value={o.id}
+                checked={pick === o.id}
+                onChange={() => {
+                  setPick(o.id);
+                }}
+              />
+              <Icon name={o.id === LOOSE ? 'projects' : 'folder'} size={14} />
+              <span dir="auto">{o.name}</span>
+              {o.count !== null && <span className="ftile-count mono">{o.count}</span>}
+            </label>
+          ))}
+        </fieldset>
+        {error && (
+          <p className="notice danger" role="alert" style={{ margin: 0 }}>
+            <Icon name="warn" size={14} />
+            <span>{error}</span>
+          </p>
+        )}
+      </form>
+    </Dialog>
   );
 }

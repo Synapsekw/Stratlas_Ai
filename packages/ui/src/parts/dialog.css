@@ -98,6 +98,11 @@
   padding: var(--sp-5) var(--sp-6);
   border-top: 1px solid var(--line-soft);
 }
+/* a spacer in the footer: the buttons before it sit at the start (Rename, Reveal), the rest at the end */
+.q-dialog-foot > .grow {
+  flex: 1;
+  min-width: 0;
+}
 /* reduced motion: no scale, a short fade only (the sheet-wide rule also shortens it) */
 @media (prefers-reduced-motion: reduce) {
   .q-dialog {

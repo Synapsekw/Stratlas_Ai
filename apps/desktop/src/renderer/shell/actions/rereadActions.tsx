@@ -1,11 +1,11 @@
 import type { IpcResponse } from '@aio/schema';
-import { defineAction, everyLayer, Icon, registerActions, t, useFocusTrap, useT } from '@aio/ui';
+import { defineAction, everyLayer, registerActions, t, useT } from '@aio/ui';
 import { workspace } from '@aio/workspace';
-import { useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { loadOrientation } from '../../builder/orientationFile';
 import { toasts } from '../../exports/exports';
 import { bridge } from '../../shell';
+import { ConfirmDialog } from '../ConfirmDialog';
 import { editBlocked } from './reasons';
 
 /*
@@ -36,67 +36,24 @@ export interface RereadAsk {
   pickFolder(title: string): Promise<string | null>;
 }
 
-function ConfirmDialog({ text, done }: { text: string; done: (yes: boolean) => void }) {
+function RereadConfirm({ text, done }: { text: string; done: (yes: boolean) => void }) {
   const tr = useT();
-  const dlg = useRef<HTMLDivElement>(null);
-  const keep = useRef<HTMLButtonElement>(null);
-  useFocusTrap(dlg, true, {
-    onEscape: () => {
-      done(false);
-    },
-    initial: () => keep.current,
-  });
   return (
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) done(false);
+    <ConfirmDialog
+      title={tr('position.reread')}
+      yes={tr('position.reread')}
+      testId="reread-confirm"
+      onConfirm={() => {
+        done(true);
+      }}
+      onCancel={() => {
+        done(false);
       }}
     >
-      <div
-        ref={dlg}
-        className="dlg"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="reread-title"
-        aria-describedby="reread-text"
-        data-testid="reread-confirm"
-      >
-        <div className="dlg-h">
-          <Icon name="refresh" size={16} />
-          <h2 id="reread-title">{tr('position.reread')}</h2>
-        </div>
-        <div className="dlg-b">
-          <p id="reread-text" style={{ margin: 0 }}>
-            {text}
-          </p>
-        </div>
-        <div className="dlg-f">
-          <span className="grow" />
-          <button
-            ref={keep}
-            type="button"
-            className="btn ghost"
-            onClick={() => {
-              done(false);
-            }}
-            data-testid="reread-cancel"
-          >
-            {tr('position.cancel')}
-          </button>
-          <button
-            type="button"
-            className="btn primary"
-            onClick={() => {
-              done(true);
-            }}
-            data-testid="reread-yes"
-          >
-            {tr('position.reread')}
-          </button>
-        </div>
-      </div>
-    </div>
+      <p id="reread-text" style={{ margin: 0 }}>
+        {text}
+      </p>
+    </ConfirmDialog>
   );
 }
 
@@ -111,7 +68,7 @@ function askConfirm(text: string): Promise<boolean> {
       host.remove();
       resolve(yes);
     };
-    root.render(<ConfirmDialog text={text} done={done} />);
+    root.render(<RereadConfirm text={text} done={done} />);
   });
 }
 

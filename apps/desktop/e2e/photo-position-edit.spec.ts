@@ -370,7 +370,7 @@ test('re-read photo positions: heights and directions from the files, hand moves
   await row.click({ button: 'right' });
   await win.getByTestId('ctx-item-layers.rereadPhotos').click();
   await expect(win.getByTestId('reread-confirm')).toBeVisible({ timeout: 30_000 });
-  await win.getByTestId('reread-yes').click();
+  await win.getByTestId('reread-confirm-yes').click();
   const toast = win.getByTestId('export-toast-message');
   await expect(toast).toContainText('Re-read 2 photos.', { timeout: 30_000 });
   await expect(toast).toContainText('1 moved by hand kept its place.');

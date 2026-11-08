@@ -5,9 +5,9 @@ import {
   type PackagePlan,
   type RasterPackRef,
 } from '@aio/schema';
-import { formatBytes, Icon, Switch, t, useFocusTrap } from '@aio/ui';
+import { Dialog, formatBytes, Icon, Switch, t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { EXPORT_CHOICES, groupLayers, toggleGroup, validatePassphrase } from '../packageModel';
 import { bridge, shell, useShell } from '../shell';
 
@@ -31,8 +31,6 @@ export function PackageExportDialog() {
 }
 
 function ExportForm({ projectId, name }: { projectId: string; name: string }) {
-  const dlg = useRef<HTMLDivElement>(null);
-  useFocusTrap(dlg, true);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [plan, setPlan] = useState<PackagePlan | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
@@ -130,349 +128,15 @@ function ExportForm({ projectId, name }: { projectId: string; name: string }) {
   const pct = progress && progress.bytesTotal > 0 ? progress.bytesDone / progress.bytesTotal : 0;
 
   return (
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
-    >
-      <div
-        ref={dlg}
-        className="dlg wide"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="pkg-title"
-        data-testid="package-export"
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') close();
-        }}
-      >
-        <div className="dlg-h">
-          <Icon name="download" size={16} />
-          <h2 id="pkg-title">Export package</h2>
-          <span className="sub">{name}</span>
-          <button
-            type="button"
-            className="btn ghost icon sm"
-            aria-label="Close"
-            disabled={phase.kind === 'running'}
-            onClick={close}
-          >
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-
-        <div className="dlg-b">
-          <section className="dlg-sec">
-            <h3 className="caps">Layers</h3>
-            <p>
-              One <code>.aio</code> file, uncompressed so clips and clouds stream straight from it.
-              Leave out what the customer does not need.
-            </p>
-            {planError && (
-              <p className="notice danger" role="alert">
-                <Icon name="warn" size={14} />
-                {planError}
-              </p>
-            )}
-            <div className="pkg-layers" aria-busy={plan === null}>
-              {groups.map((g) => (
-                <label key={g.kind} className={`pkg-layer${g.state === 'none' ? ' off' : ''}`}>
-                  <input
-                    type="checkbox"
-                    checked={g.state !== 'none'}
-                    ref={(el) => {
-                      if (el) el.indeterminate = g.state === 'some';
-                    }}
-                    disabled={phase.kind === 'running'}
-                    onChange={() => {
-                      setExcluded((ex) => toggleGroup(ex, plan?.layers ?? [], g.kind));
-                    }}
-                    data-testid={`pkg-group-${g.kind}`}
-                  />
-                  <Icon name={groupIcon(g.kind)} size={14} />
-                  <span>{g.label}</span>
-                  <span className="n">
-                    {g.count} {g.count === 1 ? 'layer' : 'layers'}
-                  </span>
-                  <span className="mono">{formatBytes(g.bytes)}</span>
-                </label>
-              ))}
-              {plan && (
-                <div className="pkg-layer">
-                  <span />
-                  <Icon name="issues" size={14} />
-                  <span>Issues, report, thumbnail</span>
-                  <span className="n">always</span>
-                  <span className="mono">{formatBytes(plan.baseBytes)}</span>
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="dlg-sec" data-testid="pkg-map">
-            <div className="pkg-row">
-              <span>{t('package.export.mapPack')}</span>
-              <Switch checked={withMap} label={t('package.export.mapPack')} onChange={setWithMap} />
-            </div>
-            <p>{t('package.export.mapHelp')}</p>
-            {withMap && (
-              <div className="pkg-map">
-                <label>
-                  <span>{t('package.export.mapZoom')}</span>
-                  <select
-                    className="input"
-                    value={mapZoom}
-                    aria-label={t('package.export.mapZoom')}
-                    onChange={(e) => {
-                      setMapZoom(Number(e.target.value));
-                    }}
-                  >
-                    {MAP_ZOOMS.map((z) => (
-                      <option key={z} value={z}>
-                        {z}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>{t('package.export.mapMargin')}</span>
-                  <select
-                    className="input"
-                    value={mapMargin}
-                    aria-label={t('package.export.mapMargin')}
-                    onChange={(e) => {
-                      setMapMargin(Number(e.target.value));
-                    }}
-                  >
-                    {MAP_MARGINS.map((km) => (
-                      <option key={km} value={km}>
-                        {t('package.export.mapMarginKm', { km })}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {region?.ok ? (
-                  <span className="mono" data-testid="pkg-map-size">
-                    {t('package.export.mapFrom', {
-                      pack: region.sourceLabel,
-                      tiles: region.tiles,
-                      size: formatBytes(region.bytes),
-                    })}
-                  </span>
-                ) : region ? (
-                  <p className="notice danger" role="alert" data-testid="pkg-map-size">
-                    <Icon name="warn" size={14} />
-                    {region.reason}
-                  </p>
-                ) : (
-                  <span className="faint">...</span>
-                )}
-              </div>
-            )}
-          </section>
-
-          <section className="dlg-sec" data-testid="pkg-raster">
-            <h3 className="caps">{t('package.export.rasterTitle')}</h3>
-            <p>{t('package.export.rasterHelp')}</p>
-            {plan?.rasterPacks?.length === 0 && (
-              <p className="faint">{t('package.export.rasterNone')}</p>
-            )}
-            {plan?.rasterPacks && plan.rasterPacks.length > 0 && (
-              <div className="pkg-layers">
-                {plan.rasterPacks.map((r) => {
-                  const key = `${r.kind}/${r.id}`;
-                  const on = rasters.has(key);
-                  return (
-                    <div key={key}>
-                      <label className={`pkg-layer${r.ok && on ? '' : ' off'}`}>
-                        {r.ok ? (
-                          <input
-                            type="checkbox"
-                            checked={on}
-                            disabled={phase.kind === 'running'}
-                            onChange={() => {
-                              setRasters((cur) => {
-                                const next = new Set(cur);
-                                if (next.has(key)) next.delete(key);
-                                else next.add(key);
-                                return next;
-                              });
-                            }}
-                            data-testid={`pkg-raster-${r.kind}-${r.id}`}
-                          />
-                        ) : (
-                          <span />
-                        )}
-                        <Icon name="raster" size={14} />
-                        <span>{r.label}</span>
-                        <span className="n">{t(`package.export.rasterKind.${r.kind}`)}</span>
-                        <span className="mono">
-                          {r.ok
-                            ? t('package.export.rasterSize', {
-                                size: formatBytes(r.bytes),
-                                zoom: r.maxZoom,
-                              })
-                            : ''}
-                        </span>
-                      </label>
-                      {r.ok ? (
-                        r.customerLicence && (
-                          <p className="faint small" style={{ padding: '0 10px 8px' }}>
-                            {t('package.export.rasterCustomer', { licence: r.licence })}
-                          </p>
-                        )
-                      ) : (
-                        <p className="notice danger" role="alert">
-                          <Icon name="warn" size={14} />
-                          {r.reason}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
-          <section className="pkg-size" aria-label="Size report" data-testid="pkg-size">
-            <div>
-              <b>{plan ? formatBytes(plan.totalBytes) : '...'}</b>
-              <span>Package size</span>
-            </div>
-            <div>
-              <b>{plan ? String(plan.totalFiles) : '...'}</b>
-              <span>Files</span>
-            </div>
-            <div className={tooBig ? 'warn' : ''}>
-              <b>{plan?.freeBytes !== undefined ? formatBytes(plan.freeBytes) : 'Unknown'}</b>
-              <span>{tooBig ? 'Free: not enough on this drive' : 'Free on this drive'}</span>
-            </div>
-          </section>
-
-          <section className="dlg-sec">
-            <h3 className="caps">Customer policy</h3>
-            <div className="pkg-row">
-              <span>Read-only player: no annotation, no issue edits</span>
-              <Switch checked={readOnly} label="Read-only player" onChange={setReadOnly} />
-            </div>
-            <div className="pkg-row">
-              <span>Allow cloud AI with this package (off: never sent to any provider)</span>
-              <Switch checked={allowAi} label="Allow cloud AI" onChange={setAllowAi} />
-            </div>
-            <div className="pkg-row">
-              <span>{t('package.export.allowEdit')}</span>
-              <Switch
-                checked={allowEdit}
-                label={t('package.export.allowEdit')}
-                onChange={setAllowEdit}
-              />
-            </div>
-            <p style={{ marginTop: 8 }}>The customer may save:</p>
-            <div className="pkg-opts">
-              {EXPORT_CHOICES.map((c) => (
-                <label key={c.kind} className="pkg-check">
-                  <input
-                    type="checkbox"
-                    checked={exportsAllowed.has(c.kind)}
-                    onChange={() => {
-                      setExportsAllowed((cur) => {
-                        const next = new Set(cur);
-                        if (next.has(c.kind)) next.delete(c.kind);
-                        else next.add(c.kind);
-                        return next;
-                      });
-                    }}
-                  />
-                  {c.label}
-                </label>
-              ))}
-            </div>
-          </section>
-
-          <section className="dlg-sec">
-            <div className="pkg-row">
-              <span>Encrypt with a passphrase (AES-256)</span>
-              <Switch checked={encrypt} label="Encrypt" onChange={setEncrypt} />
-            </div>
-            {encrypt && (
-              <>
-                <div className="pkg-pass">
-                  <input
-                    className="input"
-                    type="password"
-                    placeholder="Passphrase"
-                    aria-label="Passphrase"
-                    value={pass}
-                    onChange={(e) => {
-                      setPass(e.target.value);
-                    }}
-                  />
-                  <input
-                    className="input"
-                    type="password"
-                    placeholder="Type it again"
-                    aria-label="Repeat passphrase"
-                    value={again}
-                    onChange={(e) => {
-                      setAgain(e.target.value);
-                    }}
-                  />
-                </div>
-                <p style={{ marginTop: 6 }}>
-                  {passError ??
-                    'Send the passphrase separately. It cannot be recovered from the package.'}
-                </p>
-              </>
-            )}
-          </section>
-
-          <section className="dlg-sec">
-            <h3 className="caps">Welcome note</h3>
-            <textarea
-              className="input"
-              placeholder="Optional message on the customer's welcome screen"
-              maxLength={2000}
-              value={message}
-              onChange={(e) => {
-                setMessage(e.target.value);
-              }}
-            />
-          </section>
-
-          {phase.kind === 'running' && (
-            <section className="pkg-progress" aria-live="polite" data-testid="pkg-progress">
-              <div className="track">
-                <i style={{ width: `${String(Math.round(pct * 100))}%` }} />
-              </div>
-              <div className="meta">
-                <span className="mono">
-                  {progress
-                    ? `${formatBytes(progress.bytesDone)} of ${formatBytes(progress.bytesTotal)} · ${String(progress.filesDone)} of ${String(progress.filesTotal)} files`
-                    : 'Starting'}
-                </span>
-                <span className="cur">{progress?.current ?? ''}</span>
-              </div>
-            </section>
-          )}
-          {phase.kind === 'done' && (
-            <p className="notice" role="status" data-testid="pkg-done">
-              <Icon name="check" size={14} />
-              <span>
-                <b>Package written.</b> {phase.path}
-                {phase.bytes !== undefined ? ` (${formatBytes(phase.bytes)})` : ''}
-              </span>
-            </p>
-          )}
-          {phase.kind === 'error' && (
-            <p className="notice danger" role="alert">
-              <Icon name="warn" size={14} />
-              {phase.message}
-            </p>
-          )}
-        </div>
-
-        <div className="dlg-f">
+    <Dialog
+      open
+      size="lg"
+      title="Export package"
+      description={name}
+      testId="package-export"
+      onClose={close}
+      footer={
+        <>
           <span className="grow faint small">
             {readOnly ? 'Customer package' : 'Working package'} ·{' '}
             {allowAi ? 'cloud AI allowed' : 'cloud AI forbidden'}
@@ -504,9 +168,317 @@ function ExportForm({ projectId, name }: { projectId: string; name: string }) {
               </button>
             </>
           )}
+        </>
+      }
+    >
+      <section className="dlg-sec">
+        <h3 className="caps">Layers</h3>
+        <p>
+          One <code>.aio</code> file, uncompressed so clips and clouds stream straight from it.
+          Leave out what the customer does not need.
+        </p>
+        {planError && (
+          <p className="notice danger" role="alert">
+            <Icon name="warn" size={14} />
+            {planError}
+          </p>
+        )}
+        <div className="pkg-layers" aria-busy={plan === null}>
+          {groups.map((g) => (
+            <label key={g.kind} className={`pkg-layer${g.state === 'none' ? ' off' : ''}`}>
+              <input
+                type="checkbox"
+                checked={g.state !== 'none'}
+                ref={(el) => {
+                  if (el) el.indeterminate = g.state === 'some';
+                }}
+                disabled={phase.kind === 'running'}
+                onChange={() => {
+                  setExcluded((ex) => toggleGroup(ex, plan?.layers ?? [], g.kind));
+                }}
+                data-testid={`pkg-group-${g.kind}`}
+              />
+              <Icon name={groupIcon(g.kind)} size={14} />
+              <span>{g.label}</span>
+              <span className="n">
+                {g.count} {g.count === 1 ? 'layer' : 'layers'}
+              </span>
+              <span className="mono">{formatBytes(g.bytes)}</span>
+            </label>
+          ))}
+          {plan && (
+            <div className="pkg-layer">
+              <span />
+              <Icon name="issues" size={14} />
+              <span>Issues, report, thumbnail</span>
+              <span className="n">always</span>
+              <span className="mono">{formatBytes(plan.baseBytes)}</span>
+            </div>
+          )}
         </div>
-      </div>
-    </div>
+      </section>
+
+      <section className="dlg-sec" data-testid="pkg-map">
+        <div className="pkg-row">
+          <span>{t('package.export.mapPack')}</span>
+          <Switch checked={withMap} label={t('package.export.mapPack')} onChange={setWithMap} />
+        </div>
+        <p>{t('package.export.mapHelp')}</p>
+        {withMap && (
+          <div className="pkg-map">
+            <label>
+              <span>{t('package.export.mapZoom')}</span>
+              <select
+                className="input"
+                value={mapZoom}
+                aria-label={t('package.export.mapZoom')}
+                onChange={(e) => {
+                  setMapZoom(Number(e.target.value));
+                }}
+              >
+                {MAP_ZOOMS.map((z) => (
+                  <option key={z} value={z}>
+                    {z}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>{t('package.export.mapMargin')}</span>
+              <select
+                className="input"
+                value={mapMargin}
+                aria-label={t('package.export.mapMargin')}
+                onChange={(e) => {
+                  setMapMargin(Number(e.target.value));
+                }}
+              >
+                {MAP_MARGINS.map((km) => (
+                  <option key={km} value={km}>
+                    {t('package.export.mapMarginKm', { km })}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {region?.ok ? (
+              <span className="mono" data-testid="pkg-map-size">
+                {t('package.export.mapFrom', {
+                  pack: region.sourceLabel,
+                  tiles: region.tiles,
+                  size: formatBytes(region.bytes),
+                })}
+              </span>
+            ) : region ? (
+              <p className="notice danger" role="alert" data-testid="pkg-map-size">
+                <Icon name="warn" size={14} />
+                {region.reason}
+              </p>
+            ) : (
+              <span className="faint">...</span>
+            )}
+          </div>
+        )}
+      </section>
+
+      <section className="dlg-sec" data-testid="pkg-raster">
+        <h3 className="caps">{t('package.export.rasterTitle')}</h3>
+        <p>{t('package.export.rasterHelp')}</p>
+        {plan?.rasterPacks?.length === 0 && (
+          <p className="faint">{t('package.export.rasterNone')}</p>
+        )}
+        {plan?.rasterPacks && plan.rasterPacks.length > 0 && (
+          <div className="pkg-layers">
+            {plan.rasterPacks.map((r) => {
+              const key = `${r.kind}/${r.id}`;
+              const on = rasters.has(key);
+              return (
+                <div key={key}>
+                  <label className={`pkg-layer${r.ok && on ? '' : ' off'}`}>
+                    {r.ok ? (
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        disabled={phase.kind === 'running'}
+                        onChange={() => {
+                          setRasters((cur) => {
+                            const next = new Set(cur);
+                            if (next.has(key)) next.delete(key);
+                            else next.add(key);
+                            return next;
+                          });
+                        }}
+                        data-testid={`pkg-raster-${r.kind}-${r.id}`}
+                      />
+                    ) : (
+                      <span />
+                    )}
+                    <Icon name="raster" size={14} />
+                    <span>{r.label}</span>
+                    <span className="n">{t(`package.export.rasterKind.${r.kind}`)}</span>
+                    <span className="mono">
+                      {r.ok
+                        ? t('package.export.rasterSize', {
+                            size: formatBytes(r.bytes),
+                            zoom: r.maxZoom,
+                          })
+                        : ''}
+                    </span>
+                  </label>
+                  {r.ok ? (
+                    r.customerLicence && (
+                      <p className="faint small" style={{ padding: '0 10px 8px' }}>
+                        {t('package.export.rasterCustomer', { licence: r.licence })}
+                      </p>
+                    )
+                  ) : (
+                    <p className="notice danger" role="alert">
+                      <Icon name="warn" size={14} />
+                      {r.reason}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="pkg-size" aria-label="Size report" data-testid="pkg-size">
+        <div>
+          <b>{plan ? formatBytes(plan.totalBytes) : '...'}</b>
+          <span>Package size</span>
+        </div>
+        <div>
+          <b>{plan ? String(plan.totalFiles) : '...'}</b>
+          <span>Files</span>
+        </div>
+        <div className={tooBig ? 'warn' : ''}>
+          <b>{plan?.freeBytes !== undefined ? formatBytes(plan.freeBytes) : 'Unknown'}</b>
+          <span>{tooBig ? 'Free: not enough on this drive' : 'Free on this drive'}</span>
+        </div>
+      </section>
+
+      <section className="dlg-sec">
+        <h3 className="caps">Customer policy</h3>
+        <div className="pkg-row">
+          <span>Read-only player: no annotation, no issue edits</span>
+          <Switch checked={readOnly} label="Read-only player" onChange={setReadOnly} />
+        </div>
+        <div className="pkg-row">
+          <span>Allow cloud AI with this package (off: never sent to any provider)</span>
+          <Switch checked={allowAi} label="Allow cloud AI" onChange={setAllowAi} />
+        </div>
+        <div className="pkg-row">
+          <span>{t('package.export.allowEdit')}</span>
+          <Switch
+            checked={allowEdit}
+            label={t('package.export.allowEdit')}
+            onChange={setAllowEdit}
+          />
+        </div>
+        <p style={{ marginTop: 8 }}>The customer may save:</p>
+        <div className="pkg-opts">
+          {EXPORT_CHOICES.map((c) => (
+            <label key={c.kind} className="pkg-check">
+              <input
+                type="checkbox"
+                checked={exportsAllowed.has(c.kind)}
+                onChange={() => {
+                  setExportsAllowed((cur) => {
+                    const next = new Set(cur);
+                    if (next.has(c.kind)) next.delete(c.kind);
+                    else next.add(c.kind);
+                    return next;
+                  });
+                }}
+              />
+              {c.label}
+            </label>
+          ))}
+        </div>
+      </section>
+
+      <section className="dlg-sec">
+        <div className="pkg-row">
+          <span>Encrypt with a passphrase (AES-256)</span>
+          <Switch checked={encrypt} label="Encrypt" onChange={setEncrypt} />
+        </div>
+        {encrypt && (
+          <>
+            <div className="pkg-pass">
+              <input
+                className="input"
+                type="password"
+                placeholder="Passphrase"
+                aria-label="Passphrase"
+                value={pass}
+                onChange={(e) => {
+                  setPass(e.target.value);
+                }}
+              />
+              <input
+                className="input"
+                type="password"
+                placeholder="Type it again"
+                aria-label="Repeat passphrase"
+                value={again}
+                onChange={(e) => {
+                  setAgain(e.target.value);
+                }}
+              />
+            </div>
+            <p style={{ marginTop: 6 }}>
+              {passError ??
+                'Send the passphrase separately. It cannot be recovered from the package.'}
+            </p>
+          </>
+        )}
+      </section>
+
+      <section className="dlg-sec">
+        <h3 className="caps">Welcome note</h3>
+        <textarea
+          className="input"
+          placeholder="Optional message on the customer's welcome screen"
+          maxLength={2000}
+          value={message}
+          onChange={(e) => {
+            setMessage(e.target.value);
+          }}
+        />
+      </section>
+
+      {phase.kind === 'running' && (
+        <section className="pkg-progress" aria-live="polite" data-testid="pkg-progress">
+          <div className="track">
+            <i style={{ width: `${String(Math.round(pct * 100))}%` }} />
+          </div>
+          <div className="meta">
+            <span className="mono">
+              {progress
+                ? `${formatBytes(progress.bytesDone)} of ${formatBytes(progress.bytesTotal)} · ${String(progress.filesDone)} of ${String(progress.filesTotal)} files`
+                : 'Starting'}
+            </span>
+            <span className="cur">{progress?.current ?? ''}</span>
+          </div>
+        </section>
+      )}
+      {phase.kind === 'done' && (
+        <p className="notice" role="status" data-testid="pkg-done">
+          <Icon name="check" size={14} />
+          <span>
+            <b>Package written.</b> {phase.path}
+            {phase.bytes !== undefined ? ` (${formatBytes(phase.bytes)})` : ''}
+          </span>
+        </p>
+      )}
+      {phase.kind === 'error' && (
+        <p className="notice danger" role="alert">
+          <Icon name="warn" size={14} />
+          {phase.message}
+        </p>
+      )}
+    </Dialog>
   );
 }
 

@@ -1,5 +1,5 @@
-import { Icon, useFocusTrap, useT } from '@aio/ui';
-import { useMemo, useRef, useState } from 'react';
+import { Dialog, Icon, useT } from '@aio/ui';
+import { useMemo, useState } from 'react';
 import { coverBytes, coverPalette, type CoverChoice } from '../library/cover';
 import { CoverPicker } from '../library/CoverPicker';
 import { shell, useShell } from '../shell';
@@ -10,7 +10,6 @@ export function CoverDialog({ entry, onClose, returnTo }: EntryDialogProps) {
   const t = useT();
   // taken as the project's scene was last left (library/lastView.ts)
   const lastView = useShell((s) => s.lastViews[entry.id]);
-  const dlg = useRef<HTMLDivElement>(null);
   const palette = useMemo(
     () => coverPalette(entry.purpose, entry.kind),
     [entry.purpose, entry.kind],
@@ -22,7 +21,6 @@ export function CoverDialog({ entry, onClose, returnTo }: EntryDialogProps) {
   const cancel = () => {
     if (!busy) onClose();
   };
-  useFocusTrap(dlg, true, { onEscape: cancel, returnTo });
 
   const save = () => {
     if (busy || choice === null) return;
@@ -46,49 +44,16 @@ export function CoverDialog({ entry, onClose, returnTo }: EntryDialogProps) {
   };
 
   return (
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) cancel();
-      }}
-    >
-      <div
-        ref={dlg}
-        className="dlg"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="project-cover-title"
-        data-testid="cover-dialog"
-      >
-        <div className="dlg-h">
-          <Icon name="photo" size={16} />
-          <h2 id="project-cover-title">{t('library.cover.title')}</h2>
-          <span className="sub" dir="auto">
-            {entry.name}
-          </span>
-        </div>
-        <div className="dlg-b">
-          <CoverPicker
-            palette={palette}
-            value={choice}
-            onChange={(c) => {
-              setError(null);
-              setChoice(c);
-            }}
-            allowReset={entry.customCover === true}
-            lastView={lastView ?? null}
-          />
-          {error && (
-            <p className="notice danger" role="alert" style={{ margin: 0 }}>
-              <Icon name="warn" size={14} />
-              <span>
-                <b>{t('library.cover.failed')}</b> {error}
-              </span>
-            </p>
-          )}
-        </div>
-        <div className="dlg-f">
-          <span className="grow" />
+    <Dialog
+      open
+      title={t('library.cover.title')}
+      description={<span dir="auto">{entry.name}</span>}
+      testId="cover-dialog"
+      hideClose
+      returnFocus={returnTo}
+      onClose={cancel}
+      footer={
+        <>
           <button
             type="button"
             className="btn ghost"
@@ -108,8 +73,27 @@ export function CoverDialog({ entry, onClose, returnTo }: EntryDialogProps) {
             <Icon name="check" size={14} />
             {t('library.cover.save')}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <CoverPicker
+        palette={palette}
+        value={choice}
+        onChange={(c) => {
+          setError(null);
+          setChoice(c);
+        }}
+        allowReset={entry.customCover === true}
+        lastView={lastView ?? null}
+      />
+      {error && (
+        <p className="notice danger" role="alert" style={{ margin: 0 }}>
+          <Icon name="warn" size={14} />
+          <span>
+            <b>{t('library.cover.failed')}</b> {error}
+          </span>
+        </p>
+      )}
+    </Dialog>
   );
 }
