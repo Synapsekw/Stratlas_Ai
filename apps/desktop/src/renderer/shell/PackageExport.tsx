@@ -134,6 +134,8 @@ function ExportForm({ projectId, name }: { projectId: string; name: string }) {
       title="Export package"
       description={name}
       testId="package-export"
+      // while it runs, Cancel export in the footer is the way out
+      hideClose={phase.kind === 'running'}
       onClose={close}
       footer={
         <>

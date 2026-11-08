@@ -10,7 +10,7 @@ import {
   type MessageKey,
 } from '@aio/ui';
 import { workspace } from '@aio/workspace';
-import { useId, useRef, useState, type SyntheticEvent } from 'react';
+import { useEffect, useId, useRef, useState, type SyntheticEvent } from 'react';
 import { isActive } from '../jobs';
 import { shell, useJobs, useShell } from '../shell';
 import { removal } from '../shell/removal';
@@ -212,6 +212,29 @@ export function ProjectMenu({
     setFromDots(null);
     onAt(null);
   };
+  // A menu at the pointer has no anchor to follow: a scroll that moves the card closes it (the
+  // dots menu follows its button instead). A scroll event is reported a frame after the scroll
+  // itself, so one that brought the card into view just before the right-click arrives when the
+  // menu is already open: the card has not moved since, and the menu stays.
+  const atPointer = open && !onDots;
+  useEffect(() => {
+    if (!atPointer) return;
+    const anchor = more.current?.getBoundingClientRect();
+    const scrolled = (e: Event) => {
+      if (e.target instanceof Element && e.target.closest('.menu-pop')) return;
+      const now = more.current?.getBoundingClientRect();
+      const still =
+        anchor !== undefined &&
+        now !== undefined &&
+        Math.abs(now.left - anchor.left) < 1 &&
+        Math.abs(now.top - anchor.top) < 1;
+      if (!still) onAt(null);
+    };
+    window.addEventListener('scroll', scrolled, true);
+    return () => {
+      window.removeEventListener('scroll', scrolled, true);
+    };
+  }, [atPointer, onAt]);
 
   const run = (id: ProjectActionId) => {
     const s = shell.getState();

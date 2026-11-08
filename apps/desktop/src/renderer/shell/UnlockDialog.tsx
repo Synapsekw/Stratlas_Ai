@@ -18,6 +18,7 @@ export function UnlockDialog() {
     void shell.getState().openProject(unlock.path, pass);
   };
   const cancel = () => {
+    if (busy) return;
     setPass('');
     shell.getState().cancelUnlock();
   };
@@ -29,10 +30,11 @@ export function UnlockDialog() {
       description={<span dir="auto">{name}</span>}
       testId="unlock-dialog"
       hideClose
+      dismissable={!busy}
       onClose={cancel}
       footer={
         <>
-          <button type="button" className="btn ghost" onClick={cancel}>
+          <button type="button" className="btn ghost" onClick={cancel} disabled={busy}>
             Cancel
           </button>
           <button type="submit" form={form} className="btn primary" disabled={!pass || busy}>

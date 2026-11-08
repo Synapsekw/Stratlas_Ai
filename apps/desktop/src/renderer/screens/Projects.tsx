@@ -152,7 +152,10 @@ function ProjectCard({
         // not a right-click inside a dialog of the menu (portals bubble here through React)
         if (!e.currentTarget.contains(e.target as Node)) return;
         e.preventDefault();
-        setMenu({ x: e.clientX, y: e.clientY });
+        // the menu key and Shift+F10 report no pointer: open under the card instead
+        const r = e.currentTarget.getBoundingClientRect();
+        const keyboard = e.clientX === 0 && e.clientY === 0;
+        setMenu(keyboard ? { x: r.left, y: r.bottom + 4 } : { x: e.clientX, y: e.clientY });
       }}
     >
       <button

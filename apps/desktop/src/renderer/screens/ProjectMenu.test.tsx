@@ -41,8 +41,14 @@ const cardClicks = vi.fn();
 function Card({ entry, current = false }: { entry: LibraryEntry; current?: boolean }) {
   const [at, setAt] = useState<MenuAt | null>(null);
   return (
-    // a parent that listens for clicks, as the card itself does
-    <div onClick={cardClicks}>
+    // a parent that listens for clicks and right-clicks, as the card itself does
+    <div
+      onClick={cardClicks}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setAt({ x: e.clientX, y: e.clientY });
+      }}
+    >
       <ProjectMenu entry={entry} current={current} opening={false} at={at} onAt={setAt} />
     </div>
   );
@@ -194,6 +200,28 @@ describe('the three dots of a project card', () => {
     scroll();
     const pop = q('project-menu')?.closest<HTMLElement>('.menu-pop');
     expect(pop?.style.top).toBe('90px');
+  });
+
+  it('closes the menu at the pointer when the list scrolls and the card moves away', () => {
+    render();
+    dotsAt(180);
+    act(() => {
+      dots()?.parentElement?.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 300,
+          clientY: 200,
+        }),
+      );
+    });
+    expect(q('project-menu')).not.toBeNull();
+    // a scroll that has not moved the card keeps it
+    scroll();
+    expect(q('project-menu')).not.toBeNull();
+    dotsAt(60);
+    scroll();
+    expect(q('project-menu')).toBeNull();
   });
 
   it('opens the project and shows its folder', () => {
