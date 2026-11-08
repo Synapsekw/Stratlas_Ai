@@ -11,6 +11,7 @@
  */
 import { ProjectManifest, type ProjectManifestInput } from '@aio/schema';
 import type { Locator, Page } from '@playwright/test';
+import { existsSync } from 'node:fs';
 import { copyFile, mkdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
@@ -19,6 +20,7 @@ import { captionArea } from './caption';
 import { openFindings, openPhotoInInspect } from './inspect';
 import {
   closeProcessing,
+  DEMO_FOLDER,
   expect,
   launchApp,
   NetworkGuard,
@@ -38,8 +40,8 @@ import {
   stageMode,
   stageModeButton,
   openBench,
-  volumesView,
 } from './island';
+import { openDemo } from './surveyJobs';
 
 /**
  * Open a group's full set from the island and check it: its workbench in the right sidebar, or
@@ -558,17 +560,9 @@ test.describe('a synthetic project', () => {
     await roves(win.getByTestId('queue-reject-reason'), 'Why is it rejected?');
   });
 
-  test('scene, the Volumes view and the issue register by keyboard (W19)', async ({ win }) => {
+  test('scene and the issue register by keyboard (W19)', async ({ win }) => {
     await openProject(win, 'E2E accessibility');
     await expectAccessible(win, 'Scene');
-
-    // Volumes: any project reaches it (presets never gate a tool); this one has no piles yet,
-    // so it is the empty view with Draw and Detect. The inventory table with its rows is audited
-    // by volumes-tab.spec on the quarry demo.
-    const view = await volumesView(win);
-    await expect(view.getByTestId('volumes-draw')).toBeVisible();
-    await expectAccessible(win, 'Scene, Volumes');
-    await closeIslandTools(win);
 
     // Issues: the register is a grid, and each row's tick is a real checkbox that Space ticks
     await nav(win, 'Issues');
@@ -588,6 +582,28 @@ test.describe('a synthetic project', () => {
     await win.keyboard.press('Space');
     await expect(tick).toHaveAttribute('aria-checked', 'false');
     await expectAccessible(win, 'Issues');
+  });
+});
+
+test.describe('the Volumes view (W19)', () => {
+  test.skip(
+    !existsSync(join(DEMO_FOLDER, 'demo-tank-farm', 'manifest.json')),
+    `no demos in ${DEMO_FOLDER}: run pnpm demo:build --quick`,
+  );
+  test.use({ appEnv: { QUADRION_DEMO: DEMO_FOLDER } });
+
+  test('the tank farm Volumes view, and a pile row opens by Space', async ({ win }) => {
+    await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
+    const body = await openBench(win, 'volumes');
+    await expect(body.getByTestId('volumes-view')).toBeVisible();
+    const pile = body.getByTestId('volumes-pile').first();
+    await expect(pile).toBeVisible({ timeout: 120_000 });
+    await expectAccessible(win, 'Volumes');
+    await pile.focus();
+    await win.keyboard.press('Space');
+    // a clicked (or Space-pressed) pile opens in Selection
+    await expect(win.locator('.ws > .right').getByTestId('pile-panel')).toBeVisible();
+    await expectAccessible(win, 'Volumes, a pile open');
   });
 });
 
