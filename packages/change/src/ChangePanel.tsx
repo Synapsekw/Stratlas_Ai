@@ -595,7 +595,12 @@ export function ChangePanel({
           {t('change.problems', { count: s.problems.length })}
         </p>
       )}
-      <div className="chg-list" role="listbox" aria-label={t('change.title')}>
+      {/* a listbox only while it holds options: an empty one with a note in it is not one */}
+      <div
+        className="chg-list"
+        role={rows.length > 0 ? 'listbox' : undefined}
+        aria-label={rows.length > 0 ? t('change.title') : undefined}
+      >
         {all.length === 0 && <p className="chg-msg">{t('change.none')}</p>}
         {all.length > 0 && rows.length === 0 && <p className="chg-msg">{t('change.noMatch')}</p>}
         {rows.map((row) => {
