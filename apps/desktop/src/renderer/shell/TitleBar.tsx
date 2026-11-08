@@ -1,6 +1,6 @@
-import { arrowFocus, Button, Icon, IconButton, t, useFocusTrap, useT } from '@aio/ui';
+import { Button, Icon, IconButton, Menu, t, useT, type MenuEntry } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { openAuditTrail } from '../audit/auditView';
 import { shell, useShell } from '../shell';
 import { isSidebarFolded } from '../store';
@@ -26,41 +26,74 @@ function ProjectSwitcher() {
   const root = useWorkspace((s) => s.project?.root);
   const library = useShell((s) => s.library);
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: PointerEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener('pointerdown', close);
-    return () => {
-      window.removeEventListener('pointerdown', close);
-    };
-  }, [open]);
-  const menu = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
-  // focus into the menu, Esc closes it and focus returns to the switcher
-  useFocusTrap(menu, open, {
-    onEscape: () => {
-      setOpen(false);
-    },
-    returnTo: () => button.current,
-  });
-  const run = (fn: () => void) => () => {
-    setOpen(false);
-    fn();
-  };
   const name = manifest?.name ?? t('nav.noProject');
+  const projects = library ?? [];
+  const items: MenuEntry[] = [
+    // each project with its customer under its full name, so a long customer never cuts the name
+    ...projects.map((e): MenuEntry => ({
+      id: `project-${e.id}`,
+      label: e.name,
+      icon: 'layers',
+      radio: true,
+      checked: e.path === root,
+      ...(e.customer ? { note: e.customer } : {}),
+      onSelect: () => void shell.getState().openProject(e.path),
+    })),
+    ...(projects.length === 0
+      ? [
+          {
+            id: 'library-empty',
+            label: t('titlebar.libraryEmpty'),
+            disabledReason: t('titlebar.libraryEmpty'),
+          },
+        ]
+      : []),
+    'separator',
+    {
+      id: 'all-projects',
+      label: t('titlebar.allProjects'),
+      icon: 'projects',
+      onSelect: () => {
+        shell.getState().go('projects');
+      },
+    },
+    ...(manifest
+      ? ([
+          {
+            id: 'project-settings',
+            label: t('titlebar.projectSettings'),
+            icon: 'settings',
+            testId: 'menu-project-settings',
+            onSelect: () => {
+              shell.getState().openSettingsPage('project');
+            },
+          },
+          {
+            id: 'audit-trail',
+            label: t('audit.title'),
+            icon: 'history',
+            testId: 'menu-audit-trail',
+            onSelect: openAuditTrail,
+          },
+          {
+            id: 'close-project',
+            label: t('titlebar.closeProject'),
+            icon: 'x',
+            onSelect: () => {
+              shell.getState().closeProject();
+            },
+          },
+        ] satisfies MenuEntry[])
+      : []),
+  ];
 
   return (
-    <div className="proj-wrap" ref={ref}>
+    <div className="proj-wrap">
       <button
         ref={button}
         type="button"
         className="proj-switch"
-        aria-expanded={open}
-        aria-haspopup="menu"
         aria-label={t('titlebar.projectMenu', { name })}
         data-testid="crumb-project"
         onClick={() => {
@@ -70,83 +103,17 @@ function ProjectSwitcher() {
         <b dir="auto">{name}</b>
         <Icon name="chevdown" size={12} className="faint" />
       </button>
-      {open && (
-        <div
-          ref={menu}
-          className="proj-menu"
-          role="menu"
-          aria-label={t('titlebar.project')}
-          onKeyDown={(e) => {
-            if (menu.current && arrowFocus(menu.current, e.key)) e.preventDefault();
-          }}
-        >
-          {(library ?? []).map((e) => (
-            <button
-              key={e.id}
-              type="button"
-              role="menuitem"
-              aria-current={e.path === root ? 'true' : undefined}
-              onClick={run(() => void shell.getState().openProject(e.path))}
-            >
-              <Icon name={e.path === root ? 'check' : 'layers'} size={14} />
-              <span className="pm-t">
-                <span className="pm-n">{e.name}</span>
-                {e.customer && <span className="pm-c mono">{e.customer}</span>}
-              </span>
-            </button>
-          ))}
-          {(library ?? []).length === 0 && (
-            <div className="pm-empty">{t('titlebar.libraryEmpty')}</div>
-          )}
-          <div className="pm-sep" role="separator" />
-          <button
-            type="button"
-            role="menuitem"
-            onClick={run(() => {
-              shell.getState().go('projects');
-            })}
-          >
-            <Icon name="projects" size={14} />
-            <span className="pm-n">{t('titlebar.allProjects')}</span>
-          </button>
-          {manifest && (
-            <button
-              type="button"
-              role="menuitem"
-              data-testid="menu-project-settings"
-              onClick={run(() => {
-                shell.getState().openSettingsPage('project');
-              })}
-            >
-              <Icon name="settings" size={14} />
-              <span className="pm-n">{t('titlebar.projectSettings')}</span>
-            </button>
-          )}
-          {manifest && (
-            <button
-              type="button"
-              role="menuitem"
-              data-testid="menu-audit-trail"
-              onClick={run(openAuditTrail)}
-            >
-              <Icon name="history" size={14} />
-              <span className="pm-n">{t('audit.title')}</span>
-            </button>
-          )}
-          {manifest && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={run(() => {
-                shell.getState().closeProject();
-              })}
-            >
-              <Icon name="x" size={14} />
-              <span className="pm-n">{t('titlebar.closeProject')}</span>
-            </button>
-          )}
-        </div>
-      )}
+      <Menu
+        open={open}
+        onClose={() => {
+          setOpen(false);
+        }}
+        opener={button}
+        label={t('titlebar.project')}
+        items={items}
+        anchor="below"
+        testId="project-switcher"
+      />
     </div>
   );
 }

@@ -357,7 +357,10 @@ test.describe('with the runtime', () => {
       await closeProcessing(win);
       await win.locator('.proj-switch').focus();
       await win.keyboard.press('Enter');
-      await win.locator('.proj-menu').getByRole('menuitem', { name: 'Close project' }).click();
+      await win
+        .getByTestId('project-switcher')
+        .getByRole('menuitem', { name: 'Close project' })
+        .click();
       await expect(chip).toHaveText('1 job');
 
       drawer = await openProcessing(win);

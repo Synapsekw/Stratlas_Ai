@@ -653,7 +653,7 @@ test('focus never falls into the page when the control that had it goes away', a
   // closing the project from the switcher removes the menu item that had focus
   await win.locator('.proj-switch').focus();
   await win.keyboard.press('Enter');
-  const menu = win.locator('.proj-menu');
+  const menu = win.getByTestId('project-switcher');
   await expect(menu).toBeVisible();
   await expect.poll(() => menu.evaluate((el) => el.contains(document.activeElement))).toBe(true);
   await menu.getByRole('menuitem', { name: 'Close project' }).focus();

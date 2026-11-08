@@ -1,8 +1,16 @@
 import type { LibraryEntry } from '@aio/schema';
-import { arrowFocus, Icon, useFocusTrap, useT, type IconName, type MessageKey } from '@aio/ui';
+import {
+  Dialog,
+  Icon,
+  Menu,
+  MenuAt as MenuAtPoint,
+  useT,
+  type IconName,
+  type MenuItem,
+  type MessageKey,
+} from '@aio/ui';
 import { workspace } from '@aio/workspace';
-import { useEffect, useRef, useState, type KeyboardEvent, type SyntheticEvent } from 'react';
-import { createPortal } from 'react-dom';
+import { useId, useRef, useState, type SyntheticEvent } from 'react';
 import { isActive } from '../jobs';
 import { shell, useJobs, useShell } from '../shell';
 import { removal } from '../shell/removal';
@@ -21,8 +29,6 @@ export interface MenuAt {
   x: number;
   y: number;
 }
-
-const MENU_W = 232;
 
 const ICON: Record<ProjectActionId, IconName> = {
   open: 'chev-r',
@@ -72,14 +78,13 @@ function RenameDialog({
   returnTo: () => HTMLElement | null;
 }) {
   const t = useT();
-  const dlg = useRef<HTMLDivElement>(null);
+  const form = useId();
   const [name, setName] = useState(entry.name);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cancel = () => {
     if (!busy) onClose();
   };
-  useFocusTrap(dlg, true, { onEscape: cancel, returnTo });
   const next = name.trim();
 
   const submit = (e: SyntheticEvent) => {
@@ -104,71 +109,59 @@ function RenameDialog({
   };
 
   return (
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) cancel();
-      }}
+    <Dialog
+      open
+      title={t('library.rename.title')}
+      testId="project-rename"
+      hideClose
+      returnFocus={returnTo}
+      onClose={cancel}
+      footer={
+        <>
+          <button type="button" className="btn ghost" onClick={cancel} disabled={busy}>
+            {t('library.cancel')}
+          </button>
+          <button
+            type="submit"
+            form={form}
+            className="btn primary"
+            disabled={!next || busy}
+            data-testid="project-rename-confirm"
+          >
+            {busy ? t('library.rename.busy') : t('library.rename.confirm')}
+          </button>
+        </>
+      }
     >
-      <div
-        ref={dlg}
-        className="dlg"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="project-rename-title"
-        data-testid="project-rename"
-      >
-        {/* Enter in the field renames; the form adds no box of its own (display: contents) */}
-        <form className="dlg-form" onSubmit={submit}>
-          <div className="dlg-h">
-            <Icon name="anno" size={16} />
-            <h2 id="project-rename-title">{t('library.rename.title')}</h2>
-          </div>
-          <div className="dlg-b">
-            <input
-              className="input"
-              type="text"
-              autoFocus
-              maxLength={120}
-              aria-label={t('library.rename.field')}
-              data-testid="project-rename-name"
-              value={name}
-              onFocus={(e) => {
-                e.currentTarget.select();
-              }}
-              onChange={(e) => {
-                setName(e.target.value);
-              }}
-            />
-            <p className="help" style={{ margin: 0 }}>
-              {t('library.rename.help', { folder: folderName(entry.path) })}
-            </p>
-            {error && (
-              <p className="notice danger" role="alert" style={{ margin: 0 }}>
-                <Icon name="warn" size={14} />
-                <span>
-                  <b>{t('library.rename.failed')}</b> {error}
-                </span>
-              </p>
-            )}
-          </div>
-          <div className="dlg-f">
-            <span className="grow" />
-            <button type="button" className="btn ghost" onClick={cancel} disabled={busy}>
-              {t('library.cancel')}
-            </button>
-            <button
-              type="submit"
-              className="btn primary"
-              disabled={!next || busy}
-              data-testid="project-rename-confirm"
-            >
-              {busy ? t('library.rename.busy') : t('library.rename.confirm')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      {/* Enter in the field renames; the form adds no box of its own (display: contents) */}
+      <form id={form} style={{ display: 'contents' }} onSubmit={submit}>
+        <input
+          className="input"
+          type="text"
+          maxLength={120}
+          aria-label={t('library.rename.field')}
+          data-testid="project-rename-name"
+          value={name}
+          onFocus={(e) => {
+            e.currentTarget.select();
+          }}
+          onChange={(e) => {
+            setName(e.target.value);
+          }}
+        />
+        <p className="help" style={{ margin: 0 }}>
+          {t('library.rename.help', { folder: folderName(entry.path) })}
+        </p>
+        {error && (
+          <p className="notice danger" role="alert" style={{ margin: 0 }}>
+            <Icon name="warn" size={14} />
+            <span>
+              <b>{t('library.rename.failed')}</b> {error}
+            </span>
+          </p>
+        )}
+      </form>
+    </Dialog>
   );
 }
 
@@ -197,7 +190,8 @@ export function ProjectMenu({
   const t = useT();
   const dataRoot = useShell((s) => s.settings.dataRoot);
   const more = useRef<HTMLButtonElement>(null);
-  const list = useRef<HTMLDivElement>(null);
+  // the place the dots asked for: the menu hangs from the button; any other place is a right-click
+  const [fromDots, setFromDots] = useState<MenuAt | null>(null);
   const [dialog, setDialog] = useState<
     'rename' | 'delete' | 'emptyTrash' | 'thumbnail' | 'move' | null
   >(null);
@@ -205,52 +199,18 @@ export function ProjectMenu({
     s.jobs.some((j) => isActive(j) && samePathText(j.project, entry.path)),
   );
   const open = at !== null;
-
-  // a click elsewhere, a resize, or a scroll that moves the card closes the menu
-  useEffect(() => {
-    if (!open) return;
-    const outside = (e: Event) => {
-      const target = e.target as Node | null;
-      // the dots button closes it itself on its click
-      if (list.current?.contains(target) || more.current?.contains(target)) return;
-      onAt(null);
-    };
-    // Where the card was when the menu opened. A scroll event is reported a frame after the
-    // scroll itself, so one that brought the card into view just before a right-click arrives
-    // when the menu is already open: the card has not moved since, and the menu stays.
-    const anchor = more.current?.getBoundingClientRect();
-    const scrolled = (e: Event) => {
-      if (list.current?.contains(e.target as Node | null)) return;
-      const now = more.current?.getBoundingClientRect();
-      const still =
-        anchor !== undefined &&
-        now !== undefined &&
-        Math.abs(now.left - anchor.left) < 1 &&
-        Math.abs(now.top - anchor.top) < 1;
-      if (!still) onAt(null);
-    };
-    const away = () => {
-      onAt(null);
-    };
-    window.addEventListener('pointerdown', outside, true);
-    window.addEventListener('scroll', scrolled, true);
-    window.addEventListener('resize', away);
-    return () => {
-      window.removeEventListener('pointerdown', outside, true);
-      window.removeEventListener('scroll', scrolled, true);
-      window.removeEventListener('resize', away);
-    };
-  }, [open, onAt]);
-  useFocusTrap(list, open, {
-    onEscape: () => {
-      onAt(null);
-    },
-    returnTo: () => more.current,
-  });
+  const onDots = open && at === fromDots;
 
   const openBelowButton = () => {
     const r = more.current?.getBoundingClientRect();
-    if (r) onAt({ x: r.right - MENU_W, y: r.bottom + 4 });
+    if (!r) return;
+    const place = { x: r.left, y: r.bottom };
+    setFromDots(place);
+    onAt(place);
+  };
+  const close = () => {
+    setFromDots(null);
+    onAt(null);
   };
 
   const run = (id: ProjectActionId) => {
@@ -273,14 +233,28 @@ export function ProjectMenu({
   };
 
   const actions = projectActions(entry, { dataRoot, current, jobRunning });
-  const height = 40 + actions.length * 34 + actions.filter((a) => a.why).length * 14;
-  const style = at
-    ? {
-        left: Math.max(8, Math.min(at.x, window.innerWidth - MENU_W - 8)),
-        top: Math.max(8, Math.min(at.y, window.innerHeight - height - 8)),
-        width: MENU_W,
-      }
-    : undefined;
+  const items: MenuItem[] = actions.map((a) => {
+    const why = a.why ? t(WHY[a.why]) : undefined;
+    return {
+      id: a.id,
+      label: t(LABEL[a.id]),
+      icon: ICON[a.id],
+      testId: `project-menu-${a.id}`,
+      ...(a.id === 'delete' ? { danger: true } : {}),
+      // greyed with its reason on a second line
+      ...(why !== undefined ? { note: why, disabledReason: why } : {}),
+      onSelect: () => {
+        run(a.id);
+      },
+    };
+  });
+  const menu = {
+    label: t('library.menu.label', { project: entry.name }),
+    title: entry.name,
+    items,
+    testId: 'project-menu',
+    onClose: close,
+  };
 
   return (
     <>
@@ -290,76 +264,35 @@ export function ProjectMenu({
         className="pc-more"
         aria-label={t('library.menu.button', { project: entry.name })}
         aria-haspopup="menu"
-        aria-expanded={open}
+        aria-expanded={onDots}
         data-testid="project-menu-button"
         onClick={(e) => {
           e.stopPropagation();
-          if (open) onAt(null);
+          if (onDots) close();
           else openBelowButton();
         }}
         onKeyDown={(e) => {
-          if (e.key !== 'ArrowDown' || open) return;
+          if (e.key !== 'ArrowDown' || onDots) return;
           e.preventDefault();
           openBelowButton();
         }}
       >
         <Icon name="more" size={16} />
       </button>
-      {/* beside the card, inside the Projects region (not a portal): the menu is page content */}
-      {at && (
-        <div
-          ref={list}
-          className="dmenu"
-          role="menu"
-          aria-label={t('library.menu.label', { project: entry.name })}
-          style={style}
-          data-testid="project-menu"
-          onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
-            if (list.current && arrowFocus(list.current, e.key)) e.preventDefault();
-          }}
-          onContextMenu={(e) => {
-            // a right-click inside the menu neither opens the browser's menu nor moves this one
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-        >
-          <div className="dmenu-h faint" dir="auto">
-            {entry.name}
-          </div>
-          {actions.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              role="menuitem"
-              className={`dmenu-item${a.id === 'open' ? ' primary' : ''}${a.id === 'delete' ? ' danger' : ''}`}
-              aria-disabled={a.why ? true : undefined}
-              data-testid={`project-menu-${a.id}`}
-              onClick={() => {
-                if (a.why) return;
-                onAt(null);
-                run(a.id);
-              }}
-            >
-              <Icon name={ICON[a.id]} size={14} />
-              <span>
-                {t(LABEL[a.id])}
-                {a.why && <small className="dmenu-why">{t(WHY[a.why])}</small>}
-              </span>
-            </button>
-          ))}
-        </div>
+      <Menu {...menu} open={onDots} opener={more} anchor="below" />
+      {/* a right-click on the card: the same menu at the pointer */}
+      {at && !onDots && (
+        <MenuAtPoint key={`${String(at.x)},${String(at.y)}`} {...menu} x={at.x} y={at.y} />
       )}
-      {dialog === 'rename' &&
-        createPortal(
-          <RenameDialog
-            entry={entry}
-            onClose={() => {
-              setDialog(null);
-            }}
-            returnTo={() => more.current}
-          />,
-          document.body,
-        )}
+      {dialog === 'rename' && (
+        <RenameDialog
+          entry={entry}
+          onClose={() => {
+            setDialog(null);
+          }}
+          returnTo={() => more.current}
+        />
+      )}
       {dialog === 'emptyTrash' && (
         <EmptyTrashDialog
           projectId={entry.id}
@@ -369,42 +302,36 @@ export function ProjectMenu({
           returnTo={() => more.current}
         />
       )}
-      {dialog === 'delete' &&
-        createPortal(
-          <DeleteDialog
-            entry={entry}
-            current={current}
-            onClose={() => {
-              setDialog(null);
-            }}
-            returnTo={() => more.current}
-          />,
-          document.body,
-        )}
-      {dialog === 'thumbnail' &&
-        createPortal(
-          <CoverDialog
-            entry={entry}
-            current={current}
-            onClose={() => {
-              setDialog(null);
-            }}
-            returnTo={() => more.current}
-          />,
-          document.body,
-        )}
-      {dialog === 'move' &&
-        createPortal(
-          <MoveToFolderDialog
-            entry={entry}
-            current={current}
-            onClose={() => {
-              setDialog(null);
-            }}
-            returnTo={() => more.current}
-          />,
-          document.body,
-        )}
+      {dialog === 'delete' && (
+        <DeleteDialog
+          entry={entry}
+          current={current}
+          onClose={() => {
+            setDialog(null);
+          }}
+          returnTo={() => more.current}
+        />
+      )}
+      {dialog === 'thumbnail' && (
+        <CoverDialog
+          entry={entry}
+          current={current}
+          onClose={() => {
+            setDialog(null);
+          }}
+          returnTo={() => more.current}
+        />
+      )}
+      {dialog === 'move' && (
+        <MoveToFolderDialog
+          entry={entry}
+          current={current}
+          onClose={() => {
+            setDialog(null);
+          }}
+          returnTo={() => more.current}
+        />
+      )}
     </>
   );
 }

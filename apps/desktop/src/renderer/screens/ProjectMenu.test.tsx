@@ -186,13 +186,14 @@ describe('the three dots of a project card', () => {
     expect(q('project-menu')).not.toBeNull();
   });
 
-  it('closes when the list scrolls and the card moves away', () => {
+  it('follows the card when the list scrolls it away (the shared menu stays by its button)', () => {
     render();
     dotsAt(180);
     click(dots());
     dotsAt(60);
     scroll();
-    expect(q('project-menu')).toBeNull();
+    const pop = q('project-menu')?.closest<HTMLElement>('.menu-pop');
+    expect(pop?.style.top).toBe('90px');
   });
 
   it('opens the project and shows its folder', () => {

@@ -238,7 +238,10 @@ test('edits show in the preview and the HTML, persist across a reopen, and reset
   // closed and opened again: the editor shows the edits
   await win.locator('.proj-switch').focus();
   await win.keyboard.press('Enter');
-  await win.locator('.proj-menu').getByRole('menuitem', { name: 'Close project' }).click();
+  await win
+    .getByTestId('project-switcher')
+    .getByRole('menuitem', { name: 'Close project' })
+    .click();
   await expect(win.getByTestId('project-card').first()).toBeVisible({ timeout: 60_000 });
   await openDemo(win, p.name, p.id);
   editor = await openEditor(win);

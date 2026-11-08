@@ -177,9 +177,9 @@ test.describe('with the bundled demos', () => {
     await win.getByTestId('project-card').filter({ hasText: TINY }).click();
     await expect(win.locator('.proj-switch')).toContainText(TINY);
     await win.locator('.proj-switch').click();
-    const menu = win.locator('.proj-menu');
+    const menu = win.getByTestId('project-switcher');
     await expect(menu).toBeVisible();
-    const names = menu.locator('.pm-n');
+    const names = menu.locator(':is(.menu-name, .row-label)');
     await expect.poll(() => names.count()).toBeGreaterThan(3);
     const cut = await names.evaluateAll((els) =>
       els.filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent),

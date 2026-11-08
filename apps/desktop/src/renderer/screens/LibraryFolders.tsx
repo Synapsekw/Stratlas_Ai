@@ -1,22 +1,19 @@
 import type { LibraryFolder } from '@aio/schema';
-import { arrowFocus, Icon, useFocusTrap, useT } from '@aio/ui';
+import { Dialog, Icon, MenuAt as MenuAtPoint, useT, type MenuItem } from '@aio/ui';
 import {
-  useEffect,
+  useId,
   useRef,
   useState,
   type DragEvent,
-  type KeyboardEvent,
   type MouseEvent,
   type SyntheticEvent,
 } from 'react';
-import { createPortal } from 'react-dom';
 import { shell } from '../shell';
 import { DRAG_TYPE } from './libraryFolderModel';
 import './libraryFolders.css';
 
 /** Main's limit on a folder name. */
 const NAME_MAX = 60;
-const MENU_W = 200;
 
 /** True while the drag carries a project card (another drag, a file say, is not ours). */
 const carriesCard = (e: DragEvent) => Array.from(e.dataTransfer.types).includes(DRAG_TYPE);
@@ -79,14 +76,13 @@ function FolderNameDialog({
   returnTo: () => HTMLElement | null;
 }) {
   const t = useT();
-  const dlg = useRef<HTMLDivElement>(null);
+  const form = useId();
   const [name, setName] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cancel = () => {
     if (!busy) onClose();
   };
-  useFocusTrap(dlg, true, { onEscape: cancel, returnTo });
   const next = name.trim();
 
   const submit = (e: SyntheticEvent) => {
@@ -108,66 +104,54 @@ function FolderNameDialog({
   };
 
   return (
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) cancel();
-      }}
+    <Dialog
+      open
+      title={title}
+      testId={testId}
+      hideClose
+      returnFocus={returnTo}
+      onClose={cancel}
+      footer={
+        <>
+          <button type="button" className="btn ghost" onClick={cancel} disabled={busy}>
+            {t('library.cancel')}
+          </button>
+          <button
+            type="submit"
+            form={form}
+            className="btn primary"
+            disabled={!next || busy}
+            data-testid="folder-name-confirm"
+          >
+            {confirm}
+          </button>
+        </>
+      }
     >
-      <div
-        ref={dlg}
-        className="dlg"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={`${testId}-title`}
-        data-testid={testId}
-      >
-        <form className="dlg-form" onSubmit={submit}>
-          <div className="dlg-h">
-            <Icon name="folder" size={16} />
-            <h2 id={`${testId}-title`}>{title}</h2>
-          </div>
-          <div className="dlg-b">
-            <input
-              className="input"
-              type="text"
-              autoFocus
-              maxLength={NAME_MAX}
-              aria-label={t('library.folders.name')}
-              placeholder={t('library.folders.name')}
-              data-testid="folder-name"
-              value={name}
-              onFocus={(e) => {
-                e.currentTarget.select();
-              }}
-              onChange={(e) => {
-                setName(e.target.value);
-              }}
-            />
-            {error && (
-              <p className="notice danger" role="alert" style={{ margin: 0 }}>
-                <Icon name="warn" size={14} />
-                <span>{error}</span>
-              </p>
-            )}
-          </div>
-          <div className="dlg-f">
-            <span className="grow" />
-            <button type="button" className="btn ghost" onClick={cancel} disabled={busy}>
-              {t('library.cancel')}
-            </button>
-            <button
-              type="submit"
-              className="btn primary"
-              disabled={!next || busy}
-              data-testid="folder-name-confirm"
-            >
-              {confirm}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      <form id={form} style={{ display: 'contents' }} onSubmit={submit}>
+        <input
+          className="input"
+          type="text"
+          maxLength={NAME_MAX}
+          aria-label={t('library.folders.name')}
+          placeholder={t('library.folders.name')}
+          data-testid="folder-name"
+          value={name}
+          onFocus={(e) => {
+            e.currentTarget.select();
+          }}
+          onChange={(e) => {
+            setName(e.target.value);
+          }}
+        />
+        {error && (
+          <p className="notice danger" role="alert" style={{ margin: 0 }}>
+            <Icon name="warn" size={14} />
+            <span>{error}</span>
+          </p>
+        )}
+      </form>
+    </Dialog>
   );
 }
 
@@ -182,13 +166,11 @@ function DeleteFolderDialog({
   returnTo: () => HTMLElement | null;
 }) {
   const t = useT();
-  const dlg = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cancel = () => {
     if (!busy) onClose();
   };
-  useFocusTrap(dlg, true, { onEscape: cancel, returnTo });
   const run = () => {
     setBusy(true);
     setError(null);
@@ -204,38 +186,17 @@ function DeleteFolderDialog({
       });
   };
   return (
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) cancel();
-      }}
-    >
-      <div
-        ref={dlg}
-        className="dlg"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="folder-delete-title"
-        aria-describedby="folder-delete-text"
-        data-testid="folder-delete-dialog"
-      >
-        <div className="dlg-h">
-          <Icon name="trash" size={16} />
-          <h2 id="folder-delete-title">{t('library.folders.delete')}</h2>
-        </div>
-        <div className="dlg-b">
-          <p id="folder-delete-text" style={{ margin: 0 }}>
-            {t('library.folders.delete.text', { folder: folder.name })}
-          </p>
-          {error && (
-            <p className="notice danger" role="alert" style={{ margin: 0 }}>
-              <Icon name="warn" size={14} />
-              <span>{error}</span>
-            </p>
-          )}
-        </div>
-        <div className="dlg-f">
-          <span className="grow" />
+    <Dialog
+      open
+      role="alertdialog"
+      title={t('library.folders.delete')}
+      describedBy="folder-delete-text"
+      testId="folder-delete-dialog"
+      hideClose
+      returnFocus={returnTo}
+      onClose={cancel}
+      footer={
+        <>
           <button type="button" className="btn ghost" onClick={cancel} disabled={busy}>
             {t('library.cancel')}
           </button>
@@ -248,9 +209,19 @@ function DeleteFolderDialog({
           >
             {t('library.folders.delete')}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <p id="folder-delete-text" style={{ margin: 0 }}>
+        {t('library.folders.delete.text', { folder: folder.name })}
+      </p>
+      {error && (
+        <p className="notice danger" role="alert" style={{ margin: 0 }}>
+          <Icon name="warn" size={14} />
+          <span>{error}</span>
+        </p>
+      )}
+    </Dialog>
   );
 }
 
@@ -275,25 +246,23 @@ export function NewFolderButton({ onCreated }: { onCreated?: () => void }) {
       >
         <Icon name="folder" size={14} />
       </button>
-      {open &&
-        createPortal(
-          <FolderNameDialog
-            title={t('library.folders.new')}
-            initial=""
-            confirm={t('library.folders.create')}
-            testId="folder-new-dialog"
-            save={async (name) => {
-              const failed = await shell.getState().createFolder(name);
-              if (failed === null) onCreated?.();
-              return failed;
-            }}
-            onClose={() => {
-              setOpen(false);
-            }}
-            returnTo={() => btn.current}
-          />,
-          document.body,
-        )}
+      {open && (
+        <FolderNameDialog
+          title={t('library.folders.new')}
+          initial=""
+          confirm={t('library.folders.create')}
+          testId="folder-new-dialog"
+          save={async (name) => {
+            const failed = await shell.getState().createFolder(name);
+            if (failed === null) onCreated?.();
+            return failed;
+          }}
+          onClose={() => {
+            setOpen(false);
+          }}
+          returnTo={() => btn.current}
+        />
+      )}
     </>
   );
 }
@@ -317,34 +286,9 @@ function FolderTile({
 }) {
   const t = useT();
   const tile = useRef<HTMLDivElement>(null);
-  const list = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<MenuAt | null>(null);
   const [dialog, setDialog] = useState<'rename' | 'delete' | null>(null);
   const drop = useCardDrop(onCard);
-  const menuOpen = menu !== null;
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const outside = (e: Event) => {
-      if (list.current?.contains(e.target as Node | null)) return;
-      setMenu(null);
-    };
-    const away = () => {
-      setMenu(null);
-    };
-    window.addEventListener('pointerdown', outside, true);
-    window.addEventListener('resize', away);
-    return () => {
-      window.removeEventListener('pointerdown', outside, true);
-      window.removeEventListener('resize', away);
-    };
-  }, [menuOpen]);
-  useFocusTrap(list, menuOpen, {
-    onEscape: () => {
-      setMenu(null);
-    },
-    returnTo: () => tile.current,
-  });
 
   const openMenu = (e: MouseEvent) => {
     if (!e.currentTarget.contains(e.target as Node)) return;
@@ -355,22 +299,34 @@ function FolderTile({
     setMenu(keyboard && r ? { x: r.left, y: r.bottom + 4 } : { x: e.clientX, y: e.clientY });
   };
 
-  const items: {
-    id: 'open' | 'rename' | 'delete';
-    label: string;
-    icon: 'chev-r' | 'anno' | 'trash';
-  }[] = [
-    { id: 'open', label: t('library.menu.open'), icon: 'chev-r' },
-    { id: 'rename', label: t('library.folders.rename'), icon: 'anno' },
-    { id: 'delete', label: t('library.folders.delete'), icon: 'trash' },
+  const pick = (id: 'open' | 'rename' | 'delete') => () => {
+    if (id === 'open') onOpen();
+    else setDialog(id);
+  };
+  const items: MenuItem[] = [
+    {
+      id: 'open',
+      label: t('library.menu.open'),
+      icon: 'chev-r',
+      testId: 'folder-menu-open',
+      onSelect: pick('open'),
+    },
+    {
+      id: 'rename',
+      label: t('library.folders.rename'),
+      icon: 'anno',
+      testId: 'folder-menu-rename',
+      onSelect: pick('rename'),
+    },
+    {
+      id: 'delete',
+      label: t('library.folders.delete'),
+      icon: 'trash',
+      danger: true,
+      testId: 'folder-menu-delete',
+      onSelect: pick('delete'),
+    },
   ];
-  const style = menu
-    ? {
-        left: Math.max(8, Math.min(menu.x, window.innerWidth - MENU_W - 8)),
-        top: Math.max(8, Math.min(menu.y, window.innerHeight - 150 - 8)),
-        width: MENU_W,
-      }
-    : undefined;
 
   return (
     <div
@@ -383,8 +339,8 @@ function FolderTile({
       data-testid="folder-tile"
       data-folder-id={folder.id}
       onClick={(e) => {
-        if (!e.currentTarget.contains(e.target as Node) || list.current?.contains(e.target as Node))
-          return;
+        // not a press in the menu or a dialog (portals bubble here through React)
+        if (!e.currentTarget.contains(e.target as Node)) return;
         onOpen();
       }}
       onKeyDown={(e) => {
@@ -404,77 +360,44 @@ function FolderTile({
         {folder.name}
       </span>
       <span className="ftile-count mono">{count}</span>
-      {/* on document.body: menu items inside the role=button tile would read as part of it */}
-      {menu &&
-        createPortal(
-          <div
-            ref={list}
-            className="dmenu"
-            role="menu"
-            aria-label={folder.name}
-            style={style}
-            data-testid="folder-menu"
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
-            onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
-              e.stopPropagation();
-              if (list.current && arrowFocus(list.current, e.key)) e.preventDefault();
-            }}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-          >
-            <div className="dmenu-h faint" dir="auto">
-              {folder.name}
-            </div>
-            {items.map((a) => (
-              <button
-                key={a.id}
-                type="button"
-                role="menuitem"
-                className={`dmenu-item${a.id === 'open' ? ' primary' : ''}${a.id === 'delete' ? ' danger' : ''}`}
-                data-testid={`folder-menu-${a.id}`}
-                onClick={() => {
-                  setMenu(null);
-                  if (a.id === 'open') onOpen();
-                  else setDialog(a.id);
-                }}
-              >
-                <Icon name={a.icon} size={14} />
-                <span>{a.label}</span>
-              </button>
-            ))}
-          </div>,
-          document.body,
-        )}
-      {dialog === 'rename' &&
-        createPortal(
-          <FolderNameDialog
-            title={t('library.folders.rename')}
-            initial={folder.name}
-            confirm={t('library.folders.rename')}
-            testId="folder-rename-dialog"
-            save={(name) => shell.getState().renameFolder(folder.id, name)}
-            onClose={() => {
-              setDialog(null);
-            }}
-            returnTo={() => tile.current}
-          />,
-          document.body,
-        )}
-      {dialog === 'delete' &&
-        createPortal(
-          <DeleteFolderDialog
-            folder={folder}
-            onClose={() => {
-              setDialog(null);
-            }}
-            returnTo={() => tile.current}
-          />,
-          document.body,
-        )}
+      {/* on the top layer, not in the tile: menu items inside the role=button tile would read as
+          part of it */}
+      {menu && (
+        <MenuAtPoint
+          key={`${String(menu.x)},${String(menu.y)}`}
+          x={menu.x}
+          y={menu.y}
+          label={folder.name}
+          title={folder.name}
+          items={items}
+          testId="folder-menu"
+          onClose={() => {
+            setMenu(null);
+          }}
+        />
+      )}
+      {dialog === 'rename' && (
+        <FolderNameDialog
+          title={t('library.folders.rename')}
+          initial={folder.name}
+          confirm={t('library.folders.rename')}
+          testId="folder-rename-dialog"
+          save={(name) => shell.getState().renameFolder(folder.id, name)}
+          onClose={() => {
+            setDialog(null);
+          }}
+          returnTo={() => tile.current}
+        />
+      )}
+      {dialog === 'delete' && (
+        <DeleteFolderDialog
+          folder={folder}
+          onClose={() => {
+            setDialog(null);
+          }}
+          returnTo={() => tile.current}
+        />
+      )}
     </div>
   );
 }

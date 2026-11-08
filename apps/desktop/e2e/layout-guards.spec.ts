@@ -177,10 +177,16 @@ for (const size of SIZES) {
         await expectSize(win, size);
         await openProject(win, 'E2E tiny project');
         await win.locator('.proj-switch').click();
-        const menu = win.locator('.proj-menu');
+        const menu = win.getByTestId('project-switcher');
         await expect(menu).toBeVisible();
-        await expect.poll(() => menu.locator('.pm-n').count()).toBeGreaterThan(3);
-        await expectNoClippedText(win, ['.proj-menu .pm-n'], 'project names cut');
+        await expect
+          .poll(() => menu.locator(':is(.menu-name, .row-label)').count())
+          .toBeGreaterThan(3);
+        await expectNoClippedText(
+          win,
+          ['[data-testid="project-switcher"] :is(.menu-name, .row-label)'],
+          'project names cut',
+        );
         // the menu itself lies inside the window
         const box = await menu.boundingBox();
         expect(box).not.toBeNull();
