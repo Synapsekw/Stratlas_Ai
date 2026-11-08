@@ -108,7 +108,11 @@ function useBottomSlot(): { slot: BottomSlot; switchable: boolean } {
     pref,
     shown,
   };
-  return { slot: bottomSlot(x), switchable: shown && offersSwitch(x) };
+  const switchable = shown && offersSwitch(x);
+  // the strip not decided yet (its purpose waits on the piles): the switch with no side pressed,
+  // nothing under it, until the layout settles; never a side it might leave
+  if (switchable && strip === null) return { slot: 'none', switchable };
+  return { slot: bottomSlot(x), switchable };
 }
 
 export function WorkspaceScreen() {

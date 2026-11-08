@@ -109,11 +109,16 @@ export function useLayout(): { preset: Preset; layout: LayoutState } | null {
   }, [project, read, overrides, chosen]);
 }
 
+/** The switch's side a strip shows on: the dates chart, or the footage. */
+const sideOf = (s: StripKind): 'dates' | 'footage' => (s === 'footage' ? 'footage' : 'dates');
+
 /**
- * The open project's strip, from the moment it opens (null without a project). Until its layout
- * applies (its stores still reading, a slow computer) the strip is the one its own purpose and the
- * person's pick give with the data read so far, so it never shows one side and then jumps to the
- * other at the settle, and a side picked before the settle shows at once and holds through it.
+ * The open project's strip, from the moment it opens. Until its layout applies (its stores still
+ * reading, a slow computer) it is the strip its purpose and the person's pick give whether or not
+ * the piles turn up, so it never shows one side and then jumps to the other at the settle, and a
+ * side picked before the settle shows at once and holds through it. Null without a project, and
+ * while the two outcomes would differ (an untyped project is a survey only with piles): the switch
+ * then waits with no side pressed rather than guess one it might leave.
  */
 export function useStrip(): StripKind | null {
   const project = useWorkspace((s) => s.project);
@@ -123,8 +128,12 @@ export function useStrip(): StripKind | null {
   return useMemo(() => {
     if (applied) return applied.layout.strip;
     if (!project || !read) return null;
-    const preset = PRESETS[purposeOf(project.manifest, read.data)];
-    return applyPreset(preset, read.data, overrides).strip;
+    const stripWith = (data: ProjectData) =>
+      applyPreset(PRESETS[purposeOf(project.manifest, data)], data, overrides).strip;
+    const now = stripWith(read.data);
+    // piles already read for this project stay: only their absence may still change
+    if (read.data.piles) return now;
+    return sideOf(now) === sideOf(stripWith({ ...read.data, piles: true })) ? now : null;
   }, [applied, project, read, overrides]);
 }
 

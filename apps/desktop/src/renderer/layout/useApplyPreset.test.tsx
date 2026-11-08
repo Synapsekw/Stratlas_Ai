@@ -18,6 +18,12 @@ import { chooseStrip, useApplyPreset, useLayout, useStrip } from './useApplyPres
 const fusion = { ...threeDates, type: 'fusion' } as unknown as ProjectManifest;
 /** A survey with a video and three dates: Volume over time leads, Footage is the switch's other side. */
 const survey = { ...threeDates, purpose: 'survey' } as unknown as ProjectManifest;
+/** No type and no purpose (an imported kit project): a survey once it holds piles, else inspection. */
+const untyped = {
+  ...threeDates,
+  type: undefined,
+  purpose: undefined,
+} as unknown as ProjectManifest;
 const PILE = [{ id: 'pile-1' }] as unknown as Volumetric['piles'];
 
 /** The tab of the preset the readers see (null: no layout yet for this open). */
@@ -153,6 +159,28 @@ describe('useApplyPreset', () => {
     stores('t', false, 'loading');
     stores('t', true);
     expect(probe.strip).toBe('footage');
+  });
+
+  it('an untyped project with video and piles keeps one strip across the settle', () => {
+    stores('other', false, 'loading');
+    open('u', untyped);
+    render();
+    // its purpose waits on the piles: no side is guessed (Footage, then Dates, would be a jump)
+    const before = probe.strip;
+    stores('u', true);
+    expect(layoutPrefs.getState().chosen?.purpose).toBe('survey');
+    expect(probe.strip).toBe('volume');
+    expect(before === null || before === 'volume' || before === 'dates').toBe(true);
+  });
+
+  it('an untyped project without piles keeps one strip across the settle', () => {
+    stores('other', false, 'loading');
+    open('w', untyped);
+    render();
+    const before = probe.strip;
+    stores('w', false);
+    expect(probe.strip).toBe('footage');
+    expect(before === null || before === 'footage').toBe(true);
   });
 
   it('reads the volumes of a project already open when it mounts', () => {
