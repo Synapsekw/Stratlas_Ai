@@ -175,6 +175,11 @@
 .proc-t h2:focus {
   outline: none;
 }
+.proc-t h2:focus-visible {
+  outline: 1.5px solid var(--acc);
+  outline-offset: 2px;
+  border-radius: var(--r-2);
+}
 .proc-t p {
   margin: 2px 0 0;
   overflow: hidden;

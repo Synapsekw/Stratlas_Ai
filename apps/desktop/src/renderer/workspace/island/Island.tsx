@@ -564,7 +564,9 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
             // with the sidebar folded the drawer took this click (Drawer.tsx, in the capture
             // phase): one gesture opens one surface, so the tools stay shut (I-R64)
             if (drawerStore.getState().opened !== null) return;
-            // a click on the notch itself (not one of its buttons) opens the tools
+            // a click on the notch itself (not one of its buttons) opens the tools. Its keyboard
+            // twins: Enter and Space on the focused island (the toolbar's onKeyDown above) and
+            // the chevron button; the notch takes no focus of its own, so it is one Tab stop
             dispatch({ type: 'toggleTools' });
           }}
         >

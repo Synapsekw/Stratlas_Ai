@@ -1417,6 +1417,10 @@ select.input option {
   color: var(--fg-0);
   min-width: 0;
 }
+/* the input is the palette's whole point and drops its ring: the field's rule lights instead */
+.cmdk-in:focus-within {
+  border-bottom-color: var(--acc);
+}
 .cmdk-in input::placeholder {
   color: var(--fg-3);
 }

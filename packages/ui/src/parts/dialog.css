@@ -42,6 +42,10 @@
     opacity var(--d-2) var(--ease-x),
     transform var(--d-2) var(--ease-x);
 }
+/* the box takes focus when it holds no control to start on: its edge shows it */
+.q-dialog:focus-visible {
+  border-color: var(--acc);
+}
 .q-dialog[data-size='sm'] {
   width: min(400px, 100%);
 }

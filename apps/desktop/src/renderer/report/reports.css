@@ -133,6 +133,9 @@
   font-size: var(--t-12);
   outline: none;
 }
+.pdfv-search:focus-within {
+  border-color: var(--acc);
+}
 .pdfv-hits {
   font-size: var(--t-11);
   white-space: nowrap;
@@ -197,6 +200,10 @@
   padding: 16px 24px;
   background: var(--bg-0);
   outline: none;
+}
+.pdfv-main:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
 }
 .pdfv-page {
   position: relative;

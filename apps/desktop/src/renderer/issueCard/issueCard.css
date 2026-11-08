@@ -333,6 +333,9 @@
   overflow: hidden;
   outline: none;
 }
+.lb:focus-visible {
+  border-color: var(--acc);
+}
 .lb-h {
   flex: none;
   display: flex;

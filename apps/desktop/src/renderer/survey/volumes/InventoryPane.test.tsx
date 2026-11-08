@@ -532,6 +532,20 @@ describe('Inventory', () => {
     expect(calls.openPile).toHaveBeenCalledWith('a');
   });
 
+  it('Space on a row opens it, and the row is in the Tab order', () => {
+    s.measure.file.measurements = [pile('a', { results: [result(5, 'c2')] })];
+    render();
+    const row = q('[data-testid="volumes-pile"]');
+    expect(row?.getAttribute('tabindex')).toBe('0');
+    const ev = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+    act(() => {
+      row?.dispatchEvent(ev);
+    });
+    expect(calls.openPile).toHaveBeenCalledWith('a');
+    // Space does not scroll the pane as well
+    expect(ev.defaultPrevented).toBe(true);
+  });
+
   it('a focus on something other than a pile keeps the list', () => {
     s.measure.file.measurements = [pile('a')];
     s.measure.focus = 'not-a-pile';
