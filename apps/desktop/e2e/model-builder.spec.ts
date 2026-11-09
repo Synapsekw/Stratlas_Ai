@@ -252,7 +252,7 @@ test('the demo plot plan: units, a broken file, placed by control points, parts 
 
   // the agent drafts T-202 from the drawing; it waits for approval and sends no drawing content
   // (cloud AI is on for a new install: the scripted test provider stands in for the cloud)
-  const agent = win.getByRole('region', { name: 'Agent' });
+  const agent = win.getByRole('region', { name: 'Ask AI chat' });
   const message = agent.getByRole('textbox', { name: 'Message the agent' });
   // the open panel is ready without a Check again
   await expect(message).toBeEnabled({ timeout: 15_000 });

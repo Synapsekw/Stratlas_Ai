@@ -207,7 +207,7 @@ export const enChange = {
   // M8 integration: the change producers' actions in the Changes panel
   'change.run.imagery': 'Run imagery change',
   'change.run.surface': 'Run surface change',
-  'change.run.cloud': 'Run cloud change',
+  'change.run.cloud': 'Run point cloud change',
   'change.run.model': 'Run model change',
   'change.menu.imagery': 'Imagery',
   'change.menu.surface': 'Surface',

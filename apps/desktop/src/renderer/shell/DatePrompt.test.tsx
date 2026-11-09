@@ -191,7 +191,7 @@ describe('DatePrompt', () => {
     };
     open([mixed, photos('ph', '2024-11-06T08:00:00')]);
     mount();
-    expect(host.textContent).toContain('1 dataset in Every date was recorded on a survey day.');
+    expect(host.textContent).toContain('1 dataset with no date was recorded on a survey day.');
     expect(host.textContent).toContain(
       '1 dataset holds photos from several days. Move it by hand.',
     );

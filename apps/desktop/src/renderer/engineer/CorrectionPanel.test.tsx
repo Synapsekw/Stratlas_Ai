@@ -221,14 +221,14 @@ it('keeps the source cloud visibility switch available while the composer is fol
     onSourceVisibleChange,
   });
   render(p);
-  const show = button('Show source cloud');
+  const show = button('Show source point cloud');
   expect(show.closest('details')).toBeNull();
   expect(show.getAttribute('aria-pressed')).toBe('false');
-  await click('Show source cloud');
+  await click('Show source point cloud');
   expect(onSourceVisibleChange).toHaveBeenLastCalledWith(true);
   render({ ...p, sourceVisible: true });
-  expect(button('Hide source cloud').getAttribute('aria-pressed')).toBe('true');
-  await click('Hide source cloud');
+  expect(button('Hide source point cloud').getAttribute('aria-pressed')).toBe('true');
+  await click('Hide source point cloud');
   expect(onSourceVisibleChange).toHaveBeenLastCalledWith(false);
   expect(p.onViewChange).not.toHaveBeenCalled();
 });

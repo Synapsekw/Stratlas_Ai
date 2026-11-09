@@ -413,7 +413,7 @@ interface Probe {
   };
 }
 
-const agent = (win: Page) => win.getByRole('region', { name: 'Agent' });
+const agent = (win: Page) => win.getByRole('region', { name: 'Ask AI chat' });
 
 const onScreen = (win: Page, screen: string) =>
   expect(win.locator(`.app[data-screen="${screen}"]`)).toBeVisible({ timeout: SCREEN_MS });

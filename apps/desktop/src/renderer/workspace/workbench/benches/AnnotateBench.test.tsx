@@ -289,7 +289,7 @@ describe('AnnotateBench', () => {
   it('offers to start annotating while the tools are off', () => {
     render();
     expect(host.querySelector('[role="group"][aria-label="Annotation tools"]')).toBeNull();
-    act(() => button('Annotate: pins, lines, areas, cloud regions')?.click());
+    act(() => button('Annotate: pins, lines, areas, point cloud regions')?.click());
     expect(shell.getState().annotating).toBe(true);
   });
 

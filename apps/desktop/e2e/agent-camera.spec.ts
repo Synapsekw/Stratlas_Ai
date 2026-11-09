@@ -72,7 +72,7 @@ async function close(run: Run) {
   await run.close();
 }
 
-const agent = (win: Page) => win.getByRole('region', { name: 'Agent' });
+const agent = (win: Page) => win.getByRole('region', { name: 'Ask AI chat' });
 
 let previewed = false;
 let lastPreview = '';

@@ -74,7 +74,7 @@ describe('StageClassLegend', () => {
 
   it('with the panel closed edits the global setting and notes that clouds keep their own', () => {
     mount();
-    expect(host.textContent).toContain('Clouds with cleanup keep their own classes.');
+    expect(host.textContent).toContain('Point clouds with cleanup keep their own classes.');
     press(0);
     expect(toggle).toHaveBeenCalledWith(2);
     expect(commit).not.toHaveBeenCalled();

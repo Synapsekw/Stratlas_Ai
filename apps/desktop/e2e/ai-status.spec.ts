@@ -67,7 +67,7 @@ test('the AI status chip says what Ask AI can do, and opens what fixes it', asyn
     await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
     await expect(win.locator('.proj-switch')).toContainText('E2E tiny project');
     await chip(win).click();
-    const agent = win.getByRole('region', { name: 'Agent' });
+    const agent = win.getByRole('region', { name: 'Ask AI chat' });
     await expect(agent.getByRole('textbox', { name: 'Message the agent' })).toBeFocused();
     await expect(agent.getByTestId('agent-ai-chip')).toHaveText('AI ready');
 

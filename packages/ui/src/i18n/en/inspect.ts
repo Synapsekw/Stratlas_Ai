@@ -108,7 +108,7 @@ export const enInspect = {
   'reports.text.cancel': 'Cancel',
   'reports.text.previewTitle': 'Send the project statistics to {provider}?',
   'reports.text.previewText':
-    'This is the first request to a cloud provider in {project}. This is exactly what leaves this workstation: the instructions and the statistics below, no photos, positions or notes.',
+    'This is the first request to a cloud AI provider in {project}. This is exactly what leaves this workstation: the instructions and the statistics below, no photos, positions or notes.',
   'reports.text.previewModel': 'Provider and model',
   'reports.text.previewSystem': 'Instructions',
   'reports.text.previewPrompt': 'Request with the statistics',
@@ -330,7 +330,7 @@ export const enInspect = {
   'detect.preset.reject.notePlaceholder': 'What is it? For example, a painted band',
   'detect.preset.settings.title': 'Analytics pack',
   'detect.preset.settings.help':
-    'Runs detectors on this computer, with no internet. It needs an NVIDIA graphics card with 8 GB of memory and takes about 7 GB of disk.',
+    'Runs detectors on this computer, offline. It needs an NVIDIA graphics card with 8 GB of memory and takes about 7 GB of disk.',
   'detect.preset.settings.licence':
     'Includes llama.cpp (MIT) and Qwen2.5-VL-7B-Instruct (Apache-2.0).',
   'detect.preset.settings.card': 'Graphics card',

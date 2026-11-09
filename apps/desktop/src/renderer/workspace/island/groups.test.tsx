@@ -113,7 +113,7 @@ describe('the Annotate mode row', () => {
       'Pin on the model',
       'Line on the model',
       'Area on the model',
-      'Point on the cloud',
+      'Point on the point cloud',
     ])
       expect(button(name), name).not.toBeNull();
     expect(button('Point on the map')).toBeNull();
@@ -151,7 +151,7 @@ describe('the Annotate mode row', () => {
 
   it('keeps the Annotate tile that opens and closes the tools', () => {
     render('annotate');
-    expect(button('Annotate: pins, lines, areas, cloud regions')).not.toBeNull();
+    expect(button('Annotate: pins, lines, areas, point cloud regions')).not.toBeNull();
   });
 });
 

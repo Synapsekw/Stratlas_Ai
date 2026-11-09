@@ -81,7 +81,7 @@ export const enSettings = {
 
   // Page introductions
   'settings.usage.text':
-    'Tokens the agent used and their estimated cost, per project and provider, on this workstation.',
+    'Tokens Ask AI used and their estimated cost, per project and provider, on this workstation.',
   'settings.ai.text':
     'Keys go to the system credential vault. They never enter project files or logs, and the app never shows a stored key.',
   'settings.ai.workspaceInvalid':
@@ -410,11 +410,11 @@ export const enSettings = {
   'settings.treatAsVision': 'Treat as vision model',
   'settings.treatAsVisionHint':
     'You vouch that this model reads images and returns structured answers. Used with careful limits.',
-  'settings.agentThinking': 'Agent thinking',
+  'settings.agentThinking': 'Think before answering',
   'settings.agentThinkingOn':
-    'On: the cloud agent thinks before it acts. Replies take a little longer and use more tokens, and multi-step work is more reliable.',
+    'On: Ask AI thinks before it acts on cloud AI models. Replies take a little longer and use more tokens, and multi-step work is more reliable.',
   'settings.agentThinkingOff':
-    'Off: the cloud agent answers without thinking first: faster and cheaper, for simple requests.',
+    'Off: Ask AI answers without thinking first: faster and cheaper, for simple requests.',
   'settings.task.engineer': 'Engineering models',
   'settings.task.engineerSends': 'Measurements, photos, scan views',
   'settings.autoPrepare.label': 'Prepare survey surfaces when a project opens',

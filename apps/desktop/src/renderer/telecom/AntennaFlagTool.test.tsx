@@ -173,7 +173,9 @@ describe('AntennaFlagTool', () => {
       expect.closeTo(0.1 / 3, 5),
       expect.closeTo(-0.1 / 3, 5),
     );
-    expect(q('antenna-flag-bar')?.textContent).toContain('No cloud points inside the outline.');
+    expect(q('antenna-flag-bar')?.textContent).toContain(
+      'No point cloud points inside the outline.',
+    );
     click(q('antenna-flag-confirm')!);
     expect(vi.mocked(startFlag).mock.calls[0]![0].anchor).toEqual([1, 2, 3]);
   });
@@ -184,7 +186,7 @@ describe('AntennaFlagTool', () => {
     expect(b.getAttribute('aria-disabled')).toBe('true');
     const id = b.getAttribute('aria-describedby');
     expect(host.querySelector(`[id="${id ?? ''}"]`)?.textContent).toBe(
-      'Draw the outline over the cloud.',
+      'Draw the outline over the point cloud.',
     );
     click(b);
     expect(startFlag).not.toHaveBeenCalled();

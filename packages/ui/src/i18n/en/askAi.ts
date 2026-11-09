@@ -35,7 +35,7 @@ export const enAskAi = {
   'localAi.yes': 'yes',
   'localAi.no': 'no',
   'localAi.tested': 'Tools {tools}, vision {vision}. First answer in {seconds} s.',
-  'localAi.answerOnly': 'This model cannot call tools: the agent will answer in text only.',
+  'localAi.answerOnly': 'This model cannot call tools: Ask AI will answer in text only.',
   'localAi.profile': 'Tool list',
   'localAi.profileHint': 'Compact offers fewer tools with short descriptions, for small models.',
   'localAi.profile.full': 'Full',
@@ -54,9 +54,9 @@ export const enAskAi = {
   'localAi.keyReplace': 'Replace key',
   'localAi.keyShort': 'That key is too short. Paste the whole key.',
   'localAi.keyFailed': 'The system vault did not accept the key.',
-  'localAi.offline': 'Offline agent',
+  'localAi.offline': 'Offline AI',
   'localAi.offlineHint':
-    'Routes agent chat, vision, report writing, extraction and building from drawings to the local model in one step. Turn it off to go back to the routes before.',
+    'Routes Ask AI chat, vision, report writing, extraction and building from drawings to the local model in one step. Turn it off to go back to the routes before.',
   'localAi.offlineOn': 'Every task runs on {model}. Nothing leaves this machine.',
   'localAi.offlineRemote': 'Every task runs on {model}, on another machine: data leaves this one.',
   'localAi.guide.title': 'Set up a local model',
@@ -69,9 +69,9 @@ export const enAskAi = {
   'localAi.guide.llamacpp':
     'llama.cpp server: start llama-server with a GGUF model and the --jinja option, which tool calling needs. It listens on port 8080.',
   'localAi.guide.then':
-    'Then press Find models, choose the model and press Test. Turn on Offline agent to run every task on it.',
+    'Then press Find models, choose the model and press Test. Turn on Offline AI to run every task on it.',
   'localAi.guide.hardware':
-    'Small models answer more slowly and make more mistakes than cloud models. Without a graphics card an answer can take tens of seconds. Choose Compact for a model with a small context window.',
+    'Small models answer more slowly and make more mistakes than cloud AI models. Without a graphics card an answer can take tens of seconds. Choose Compact for a model with a small context window.',
   'localAi.guide.licence':
     'You install the model, so its licence terms apply to you. Check them before you use it for work.',
 
@@ -144,7 +144,7 @@ export const enAskAi = {
   'askAi.settings.auto':
     'Automatic: a local detector, then the local model, then cloud AI if the project allows it',
   'askAi.settings.local': 'Local only',
-  'askAi.settings.cloud': 'Cloud',
+  'askAi.settings.cloud': 'Cloud AI',
   'askAi.settings.model': 'Local model',
   'askAi.settings.minConfidence': 'Lowest confidence the local model keeps',
   'askAi.settings.tile': 'Look at large photos in tiles',
@@ -152,6 +152,6 @@ export const enAskAi = {
   'askAi.settings.overlap': 'Tile overlap (px)',
   'askAi.settings.classMap': 'Local model classes in {project}',
   'askAi.settings.classMapNone': "Open a project to map the model's classes to its classes.",
-  'askAi.settings.batch': 'Photos per cloud request',
+  'askAi.settings.batch': 'Photos per cloud AI request',
   'askAi.settings.queueThreshold': 'Review queue: lowest confidence shown at first',
 } as const satisfies Record<string, string>;

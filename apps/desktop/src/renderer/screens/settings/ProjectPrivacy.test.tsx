@@ -77,7 +77,7 @@ describe('ProjectPrivacy', () => {
   it('is off by default and says cloud runs still ask', () => {
     mount();
     expect(sw()?.getAttribute('aria-checked')).toBe('false');
-    expect(host?.textContent).toContain('Cloud runs still ask before anything is sent.');
+    expect(host?.textContent).toContain('Cloud AI runs still ask before anything is sent.');
   });
 
   it('toggling calls the bridge and reads the manifest again', async () => {

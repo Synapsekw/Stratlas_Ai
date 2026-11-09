@@ -112,10 +112,10 @@ describe('the English catalogue', () => {
       expect(v, k).not.toMatch(/—/);
     }
     expect(t('tree.datePrompt.title', { count: 1 })).toBe(
-      '1 dataset in Every date was recorded on a survey day.',
+      '1 dataset with no date was recorded on a survey day.',
     );
     expect(t('tree.datePrompt.title', { count: 3 })).toBe(
-      '3 datasets in Every date were recorded on survey days.',
+      '3 datasets with no date were recorded on survey days.',
     );
     expect(t('tree.datePrompt.done', { count: 1 })).toBe('Filed 1 dataset.');
     expect(t('tree.datePrompt.done', { count: 4 })).toBe('Filed 4 datasets.');
@@ -595,7 +595,7 @@ describe('pile panel and linked hover strings', () => {
       expect(v, k).not.toMatch(/[–—]/);
       expect([...placeholders(v)].sort(), k).toEqual(p);
     }
-    expect(en['base.kitTin']).toBe('Triangulated toe');
+    expect(en['base.kitTin']).toBe('Surface through the toe');
     expect(t('timelapse.playing', { date: '5 Jan 2021' })).toBe('Playing · 5 Jan 2021');
     expect(t('volumes.more', { count: 2 })).toBe('+ 2 more');
   });

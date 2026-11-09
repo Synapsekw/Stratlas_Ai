@@ -137,7 +137,7 @@ describe('drop store for walks', () => {
     await store.getState().drop(['walk-w1']);
     expect(save).not.toHaveBeenCalled();
     expect(store.getState().notice?.text).toBe(
-      'Nothing is drawn in 3D under Walk 1. Show a model, a cloud or a DSM under it, then try again.',
+      'Nothing is drawn in 3D under Walk 1. Show a model, a point cloud or a DSM under it, then try again.',
     );
   });
 
@@ -243,7 +243,7 @@ describe('drop store', () => {
     const { store, save } = setup([cloud('c', 'Cloud', { format: 'kit-packed' })]);
     await store.getState().drop(['c']);
     expect(save).not.toHaveBeenCalled();
-    expect(store.getState().notice?.text).toBe('This cloud format cannot be moved.');
+    expect(store.getState().notice?.text).toBe('This point cloud format cannot be moved.');
   });
 
   it('stops at a failed write and keeps undo for the ones done', async () => {

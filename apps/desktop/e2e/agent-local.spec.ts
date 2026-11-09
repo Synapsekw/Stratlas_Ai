@@ -74,7 +74,7 @@ async function stop(run: Run) {
 }
 
 const card = (win: Page) => win.getByTestId('local-model');
-const agent = (win: Page) => win.getByRole('region', { name: 'Agent' });
+const agent = (win: Page) => win.getByRole('region', { name: 'Ask AI chat' });
 
 async function openSettings(win: Page) {
   await win.getByRole('button', { name: 'Settings' }).first().click();
@@ -101,8 +101,8 @@ async function setUp(run: Run, model: string) {
 }
 
 async function offlineAgent(win: Page) {
-  await card(win).getByRole('switch', { name: 'Offline agent' }).click();
-  await expect(card(win).getByRole('switch', { name: 'Offline agent' })).toHaveAttribute(
+  await card(win).getByRole('switch', { name: 'Offline AI' }).click();
+  await expect(card(win).getByRole('switch', { name: 'Offline AI' })).toHaveAttribute(
     'aria-checked',
     'true',
   );
@@ -228,7 +228,7 @@ test('local agent: a model without tool calling answers in text, and cancel stop
     const { win, fake } = run;
     await setUp(run, 'fake-text');
     await expect(card(win).getByTestId('local-probe')).toContainText('Tools no, vision no.');
-    await expect(card(win)).toContainText('the agent will answer in text only');
+    await expect(card(win)).toContainText('Ask AI will answer in text only');
     await offlineAgent(win);
 
     await openChangeDemo(win);

@@ -216,7 +216,7 @@ test.describe('recorded datasets in Every date', () => {
     const id = recordedProject.id;
     await open(win, id);
     const prompt = win.getByTestId('date-prompt');
-    await expect(prompt).toContainText('2 datasets in Every date were recorded on survey days.');
+    await expect(prompt).toContainText('2 datasets with no date were recorded on survey days.');
     await expect(prompt).toContainText('2 under 1 Jan 2026');
     await prompt.getByTestId('date-prompt-file').click();
     await expect(prompt).toHaveCount(0);

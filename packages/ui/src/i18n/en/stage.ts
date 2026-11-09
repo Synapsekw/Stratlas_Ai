@@ -71,9 +71,9 @@ export const enStage = {
   'stage.cutaway.insideViewTip': 'Fly behind the drone and look where it looks',
   'stage.cutaway.droneOutside': 'Inside view needs the drone inside the asset',
   'stage.cutaway.droneInside': 'Drone inside the asset',
-  'stage.cutaway.cutAtDrone': 'Cut open at the drone, clouds hidden',
-  'stage.cutaway.cutOpen': 'Cut open, clouds hidden',
-  'stage.cutaway.seeThrough': 'Asset transparent, clouds hidden',
+  'stage.cutaway.cutAtDrone': 'Cut open at the drone, point clouds hidden',
+  'stage.cutaway.cutOpen': 'Cut open, point clouds hidden',
+  'stage.cutaway.seeThrough': 'Asset transparent, point clouds hidden',
   'stage.cutaway.solid': 'Solid',
   'stage.cutaway.solidTip': 'Draw the asset solid again',
 

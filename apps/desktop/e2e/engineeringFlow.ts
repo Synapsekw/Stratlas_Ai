@@ -214,7 +214,7 @@ export async function readRun(dir: string): Promise<RunFile> {
   return JSON.parse(await readFile(join(dir, 'engineering', last, 'run.json'), 'utf8')) as RunFile;
 }
 
-export const agent = (win: Page) => win.getByRole('region', { name: 'Agent' });
+export const agent = (win: Page) => win.getByRole('region', { name: 'Ask AI chat' });
 
 export async function ask(win: Page, text: string) {
   const box = agent(win).getByRole('textbox', { name: 'Message the agent' });

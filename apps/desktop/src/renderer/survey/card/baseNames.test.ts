@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { kitBaseName } from './baseNames';
 
 describe('kit base names', () => {
-  it('the kit tin base reads "Triangulated toe", as the engine\'s smart base does', () => {
-    expect(kitBaseName('tin', t)).toBe('Triangulated toe');
+  it('the kit tin base reads "Surface through the toe", as the engine\'s smart base does', () => {
+    expect(kitBaseName('tin', t)).toBe('Surface through the toe');
     expect(kitBaseName('tin', t)).toBe(t('base.smart'));
   });
 

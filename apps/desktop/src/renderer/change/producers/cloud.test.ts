@@ -147,7 +147,7 @@ describe('the cloud change producer', () => {
   it('is offered when both dates have a COPC cloud, and starts change.cloud', async () => {
     const d = deps();
     const p = cloudChangeProducer(d);
-    expect(p).toMatchObject({ id: 'cloud', label: 'Run cloud change', kinds: ['region'] });
+    expect(p).toMatchObject({ id: 'cloud', label: 'Run point cloud change', kinds: ['region'] });
     const c = ctx([cloud('a', 'A')], [cloud('b', 'B')]);
     expect(p.available(c)).toBe(true);
     expect(p.available(ctx([], []))).toMatch(/point cloud/);

@@ -215,7 +215,7 @@ describe('CleanupPanel', () => {
     project([copc('a', 'png-packed')]);
     render();
     expect(q('cleanup-hint')?.textContent).toBe(
-      'Cleanup works on COPC clouds. Convert this cloud to COPC to clean it up.',
+      'Cleanup works on COPC point clouds. Convert this point cloud to COPC to clean it up.',
     );
     expect((q('cleanup-noise-run') as HTMLButtonElement).disabled).toBe(true);
     expect((q('cleanup-select-box') as HTMLButtonElement).disabled).toBe(true);

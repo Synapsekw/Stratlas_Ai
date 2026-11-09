@@ -33,7 +33,7 @@ interface Probe {
   };
 }
 
-const agent = (win: Page) => win.getByRole('region', { name: 'Agent' });
+const agent = (win: Page) => win.getByRole('region', { name: 'Ask AI chat' });
 const steps = (win: Page) => agent(win).locator('.step');
 const replies = (win: Page) => agent(win).getByText(/^Tool \w+ returned/);
 

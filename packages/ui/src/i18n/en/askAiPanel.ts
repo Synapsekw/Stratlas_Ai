@@ -85,15 +85,15 @@ export const enAskPanel = {
   'askPanel.model.off': '{label} ({why})',
   'askPanel.model.why.local': 'not ready',
   'askPanel.model.why.keepLocal': 'project stays on this PC',
-  'askPanel.model.why.cloud': 'cloud off',
+  'askPanel.model.why.cloud': 'cloud AI off',
   'askPanel.model.why.key': 'no {provider} key',
 
   'askPanel.note.weak':
-    'Comparing dates and written answers are weaker on this PC than in the cloud.',
+    'Comparing dates and written answers are weaker on this PC than with cloud AI.',
   'askPanel.note.keepLocal': 'This project keeps its images on this PC.',
   'askPanel.note.nothing':
     'Nothing can run this request. Turn on cloud AI or set up the model on this PC.',
-  'askPanel.note.cloud': 'That cloud model cannot be used here.',
+  'askPanel.note.cloud': 'That cloud AI model cannot be used here.',
   'askPanel.note.local': "This PC's model is not ready.",
   'askPanel.note.settings': 'Open AI settings',
   'askPanel.note.noPhoto': 'Open a photo first, or look at Selected or All photos.',

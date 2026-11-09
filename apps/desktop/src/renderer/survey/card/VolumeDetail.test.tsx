@@ -182,9 +182,9 @@ const buttonNamed = (name: string) =>
   [...host.querySelectorAll('button')].find((b) => b.textContent.trim() === name);
 
 describe('VolumeDetail', () => {
-  it('new volume defaults to Triangulated toe', () => {
+  it('new volume defaults to Surface through the toe', () => {
     show(pile({ items: [], results: [] }));
-    expect(byTestId('survey-from')[0]?.textContent).toContain('Base: Triangulated toe');
+    expect(byTestId('survey-from')[0]?.textContent).toContain('Base: Surface through the toe');
     click(byTestId('survey-recompute')[0]);
     expect(calls.updateMeasurement).toHaveBeenCalledTimes(1);
     const fn = calls.updateMeasurement.mock.calls[0]?.[1] as (
@@ -207,7 +207,7 @@ describe('VolumeDetail', () => {
     const m = pile({ results: [carried] });
     show(m);
     expect(byTestId('survey-cmp-status')[0]?.textContent).toBe(
-      'From an earlier version (kit, Triangulated toe)',
+      'From an earlier version (kit, Surface through the toe)',
     );
     expect(buttonNamed('Recompute with the standard base')).toBeDefined();
     // no cut/fill area split and no method line for a carried figure
@@ -221,7 +221,7 @@ describe('VolumeDetail', () => {
     s.compare.surfaces = [];
     show(m);
     expect(byTestId('survey-cmp-status')[0]?.textContent).toBe(
-      'From an earlier version (kit, Triangulated toe)',
+      'From an earlier version (kit, Surface through the toe)',
     );
     expect(buttonNamed('Recompute with the standard base')).toBeUndefined();
 
@@ -707,7 +707,7 @@ describe('VolumeDetail', () => {
     s.compare.status = 'ready';
     act(() => root?.render(<VolumeDetail m={m} />));
     expect(byTestId('survey-cmp-status')[0]?.textContent).toBe(
-      'From an earlier version (kit, Triangulated toe)',
+      'From an earlier version (kit, Surface through the toe)',
     );
 
     s.compare.error = 'The surfaces could not be prepared.';

@@ -62,9 +62,9 @@ export const enEng = {
     'DXF supplies equipment schedules and geometry. A BlocksExchange camera XML links the selected original photos to measured parts. Both are processed locally.',
   'eng.setup.runFlow':
     'We measure locally, ask once for the permitted AI evidence and spending limit, then open the built model for visual review. Select any part to inspect it before adding the model to your project.',
-  'eng.setup.sourceCount': '{clouds} clouds · {photos} photos · {drawings} drawings',
+  'eng.setup.sourceCount': '{clouds} point clouds · {photos} photos · {drawings} drawings',
   'eng.setup.frameLock':
-    'Position, heading and scale follow the source cloud, including its saved height offset. A reference height is a check on metric data.',
+    'Position, heading and scale follow the source point cloud, including its saved height offset. A reference height is a check on metric data.',
   'eng.setup.budget': 'AI spending limit (USD)',
   'eng.setup.budgetHint':
     'Applies to the whole run, including refinement. Local measurement and model building do not use this budget.',
@@ -135,8 +135,8 @@ export const enEng = {
     'The model preview has not loaded. Rebuild the preview to try again; parts cannot be accepted until they are visible.',
   'eng.review.retry': 'Rebuild preview',
   'eng.correction.label': 'Model corrections',
-  'eng.correction.source.show': 'Show source cloud',
-  'eng.correction.source.hide': 'Hide source cloud',
+  'eng.correction.source.show': 'Show source point cloud',
+  'eng.correction.source.hide': 'Hide source point cloud',
   'eng.correction.new': 'New correction request',
   'eng.correction.request': "Tell the AI what's wrong",
   'eng.correction.requestHint':

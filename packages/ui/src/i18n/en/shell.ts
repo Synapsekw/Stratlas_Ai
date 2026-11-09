@@ -80,7 +80,7 @@ export const enShell = {
   'announce.exportFailed': 'Export failed: {error}',
   'announce.jobDone': '{job} finished',
   'announce.jobFailed': '{job} failed',
-  'announce.agentReplied': 'The agent replied',
+  'announce.agentReplied': 'Ask AI replied',
 
   // Diagnostics and support (Settings, About and updates; Help, Report a problem; crash notice)
   'diag.title': 'Diagnostics and support',

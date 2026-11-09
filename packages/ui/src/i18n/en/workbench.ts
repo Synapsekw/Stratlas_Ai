@@ -108,7 +108,7 @@ export const enWorkbench = {
   'bench.display.eye': 'Show or hide {kind}',
   // Point cloud bench
   'bench.cloud.show': 'Show',
-  'bench.cloud.colour': 'Colour, size and EDL',
+  'bench.cloud.colour': 'Colour, size and depth shading',
   'bench.cloud.clouds': 'Point clouds',
   'bench.cloud.cleanup': 'Clean up',
   'bench.cloud.qa': 'Survey QA',
@@ -131,7 +131,7 @@ export const enWorkbench = {
   'bench.video.paths': 'Flight paths',
   'bench.video.telemetry': 'Telemetry',
   'bench.video.telemetryOn': 'Show drone telemetry',
-  'bench.annotate.start': 'Annotate: pins, lines, areas, cloud regions',
+  'bench.annotate.start': 'Annotate: pins, lines, areas, point cloud regions',
   'bench.annotate.startShort': 'Annotate',
   'bench.annotate.close': 'Close the annotation tools',
   'bench.annotate.model': 'On the model',
@@ -284,9 +284,9 @@ export const enWorkbench = {
   'bulk.recomputeCarried.title_one': 'Recompute {count} earlier-version pile?',
   'bulk.recomputeCarried.title_other': 'Recompute {count} earlier-version piles?',
   'bulk.recomputeCarried.text_one':
-    'Its figure from the earlier version is replaced by the standard base (triangulated toe) and kept as "was". Its earlier dates are worked out again from the surveys; a date with no prepared survey then shows no figure.',
+    'Its figure from the earlier version is replaced by the standard base (surface through the toe) and kept as "was". Its earlier dates are worked out again from the surveys; a date with no prepared survey then shows no figure.',
   'bulk.recomputeCarried.text_other':
-    'Their figures from the earlier version are replaced by the standard base (triangulated toe) and kept as "was". Their earlier dates are worked out again from the surveys; a date with no prepared survey then shows no figure.',
+    'Their figures from the earlier version are replaced by the standard base (surface through the toe) and kept as "was". Their earlier dates are worked out again from the surveys; a date with no prepared survey then shows no figure.',
   'bulk.recomputeCarried.yes': 'Recompute with the standard base',
   'bulk.recomputeCarried.done_one':
     'Recomputed {count} earlier-version pile with the standard base',
@@ -327,7 +327,7 @@ export const enWorkbench = {
   // the foot of Layers & display and the palette (layout presets, D7)
   'wb.layout.reset': 'Reset layout to project defaults',
   'wb.layout.resetTip':
-    'Back to the tab, strip, island mode, view and Layers column this project type opens on',
+    'Back to the tab, strip, stage tools mode, view and Layers column this project type opens on',
   'wb.sec.clouds': 'Point cloud',
   'wb.sec.overlays': 'Terrain overlays',
   'wb.sec.cutaway': 'Section planes',

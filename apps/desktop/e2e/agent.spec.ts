@@ -83,7 +83,7 @@ const issueCount = () =>
     }
   ).__stratlas.workspace.getState().issues.length;
 
-const agent = (win: Page) => win.getByRole('region', { name: 'Agent' });
+const agent = (win: Page) => win.getByRole('region', { name: 'Ask AI chat' });
 
 async function ask(win: Page, text: string) {
   const box = agent(win).getByRole('textbox', { name: 'Message the agent' });

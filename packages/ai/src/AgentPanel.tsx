@@ -198,7 +198,10 @@ export function AgentPanel({
   };
 
   return (
-    <section className={['aio-agent', className].filter(Boolean).join(' ')} aria-label="Agent">
+    <section
+      className={['aio-agent', className].filter(Boolean).join(' ')}
+      aria-label="Ask AI chat"
+    >
       <style href="aio-agent-panel" precedence="default">
         {PANEL_CSS}
       </style>
@@ -298,7 +301,7 @@ export function AgentPanel({
                 turn={t}
                 steps={state.steps}
                 who={
-                  route ? `${modelLabel(route.model)} · ${providerName(route.provider)}` : 'Agent'
+                  route ? `${modelLabel(route.model)} · ${providerName(route.provider)}` : 'Ask AI'
                 }
                 session={session}
               />

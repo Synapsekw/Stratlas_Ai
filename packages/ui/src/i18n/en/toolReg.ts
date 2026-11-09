@@ -21,7 +21,7 @@ export const enToolReg = {
   'toolReg.reason.streetMap': 'No street map for this site',
   'toolReg.reason.needsStage': 'Open the scene to compare dates',
   'toolReg.reason.road': 'A road shows its chainage instead',
-  'toolReg.reason.comparing': 'Leave the comparison beside the island',
+  'toolReg.reason.comparing': 'Leave the comparison beside the stage tools',
   // a Volumes tool: the full table, in Project > Volumes
   'toolReg.volumesTable': 'Table',
   'toolReg.volumesTableName': 'Open the volumes table',

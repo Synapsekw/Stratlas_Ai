@@ -3,7 +3,7 @@
  * two survey dates and a fictional stockpile kit result (`volumes.json`, two piles, and one toe
  * line corrected by hand in `edits/boundaries.json`), opens with each kit pile as a volume
  * measurement in the Stockpiles group showing exactly its old figure, labelled "From an earlier
- * version (kit, Triangulated toe)", with nothing marked unsaved; the conversion is written once and
+ * version (kit, Surface through the toe)", with nothing marked unsaved; the conversion is written once and
  * never again, so a pile deleted afterwards stays deleted; a package of it shows the same figures
  * and writes nothing. A picked pile opens in its pile panel in the Volumes tab (volumetrics
  * redesign B5); its full card stays the Measure tab's. No pipeline Python: nothing is computed.
@@ -257,7 +257,7 @@ async function expectNorthCarried(win: Page, readOnly = false): Promise<void> {
     await expect(card.getByRole('textbox', { name: 'Rename' })).toHaveCount(0);
   } else card = await focusMeasure(win, 'Pile North');
   await expect(card.getByTestId('survey-cmp-status').first()).toHaveText(
-    'From an earlier version (kit, Triangulated toe)',
+    'From an earlier version (kit, Surface through the toe)',
   );
   // the figure alone: the headline carries its status as a chip beside it
   await expect(card.getByTestId('card-status')).toHaveText('From an earlier version');

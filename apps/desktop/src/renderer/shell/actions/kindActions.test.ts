@@ -129,10 +129,10 @@ describe('actions per kind', () => {
     } as unknown as ProjectManifest;
     const c = makeActionCtx({ manifest: kit });
     expect(item(on('kit'), 'layer.dropToGround', c)?.disabled).toBe(
-      'This cloud format cannot be moved.',
+      'This point cloud format cannot be moved.',
     );
     expect(item(on('kit', 'mesh'), 'layer.dropToGround', c)?.disabled).toBe(
-      'This cloud format cannot be moved.',
+      'This point cloud format cannot be moved.',
     );
   });
 

@@ -83,7 +83,7 @@ describe('Settings, Analytics pack', () => {
     await show(NONE);
     expect(host.textContent).toContain('Analytics pack');
     expect(host.textContent).toContain(
-      'Runs detectors on this computer, with no internet. It needs an NVIDIA graphics card with 8 GB of memory and takes about 7 GB of disk.',
+      'Runs detectors on this computer, offline. It needs an NVIDIA graphics card with 8 GB of memory and takes about 7 GB of disk.',
     );
     expect(host.textContent).toContain(
       'Includes llama.cpp (MIT) and Qwen2.5-VL-7B-Instruct (Apache-2.0).',

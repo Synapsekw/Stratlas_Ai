@@ -209,7 +209,7 @@ async function waitForNodes(win: Page, names: string[]) {
     .toBe(0);
 }
 
-const agent = (win: Page) => win.getByRole('region', { name: 'Agent' });
+const agent = (win: Page) => win.getByRole('region', { name: 'Ask AI chat' });
 const dock = (win: Page) => win.locator('#agent-dock');
 const toggle = (win: Page) => win.getByTestId('agent-toggle');
 const replies = (win: Page) => agent(win).getByText(/^Tool \w+ returned/);

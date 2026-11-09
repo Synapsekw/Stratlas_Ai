@@ -273,7 +273,7 @@ describe('AskPanel', () => {
     expect(q('ask-note-weak')).toBeNull();
     await click('ask-kind-change');
     expect(text('ask-note-weak')).toBe(
-      'Comparing dates and written answers are weaker on this PC than in the cloud.',
+      'Comparing dates and written answers are weaker on this PC than with cloud AI.',
     );
   });
 

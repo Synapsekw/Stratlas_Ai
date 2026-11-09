@@ -8,7 +8,8 @@ export const enProcessing = {
   'cleanup.title': 'Clean up',
   'cleanup.layer': 'Point cloud',
   'cleanup.none': 'Select a COPC point cloud layer to clean up.',
-  'cleanup.copcOnly': 'Cleanup works on COPC clouds. Convert this cloud to COPC to clean it up.',
+  'cleanup.copcOnly':
+    'Cleanup works on COPC point clouds. Convert this point cloud to COPC to clean it up.',
   'cleanup.readOnly': 'This project is a read-only package: the cleanup is shown, not changed.',
   'cleanup.lookOnly':
     'You can look at this project but not change it: the cleanup is shown, not changed.',
@@ -39,7 +40,7 @@ export const enProcessing = {
   'cleanup.select.cancel': 'Cancel',
   'cleanup.select.near': 'Many selections ({count} of {max}): save a cleaned copy soon.',
   'cleanup.select.full':
-    'This cloud has {max} selections. Save a cleaned copy and go on cleaning that.',
+    'This point cloud has {max} selections. Save a cleaned copy and go on cleaning that.',
   'cleanup.noise.title': 'Remove noise',
   'cleanup.noise.run': 'Remove noise',
   'cleanup.noise.running': 'Finding noise…',
@@ -73,7 +74,7 @@ export const enProcessing = {
   'cleanup.menu.reset': 'Reset cleanup',
   'cleanup.legend.title': 'Classes: {name}',
   'cleanup.legend.note':
-    'Clouds with cleanup keep their own classes. Open Clean up to change them.',
+    'Point clouds with cleanup keep their own classes. Open Clean up to change them.',
   'cleanup.export.apply': 'Apply cleanup',
   'cleanup.export.removes': 'Removes {parts}.',
   'cleanup.export.nothing': 'Nothing is removed: the cleanup only hides points in the view.',
@@ -543,7 +544,7 @@ export const enProcessing = {
   'drop.onProject': 'to the project ground level',
   'drop.onFloor': 'onto the floor in 3D',
   'drop.noFloor':
-    'Nothing is drawn in 3D under {name}. Show a model, a cloud or a DSM under it, then try again.',
+    'Nothing is drawn in 3D under {name}. Show a model, a point cloud or a DSM under it, then try again.',
   'drop.inPlace': 'Already on the ground',
   'drop.notLoaded': '{name} has not loaded yet. Show it, let it load, then try again.',
   'drop.hidden_one': '{names} is hidden. Show it, then try again.',

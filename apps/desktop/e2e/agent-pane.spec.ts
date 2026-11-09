@@ -16,7 +16,7 @@ async function shot(win: Page, name: string) {
   });
 }
 
-const agent = (win: Page) => win.getByRole('region', { name: 'Agent' });
+const agent = (win: Page) => win.getByRole('region', { name: 'Ask AI chat' });
 const box = (win: Page) => agent(win).getByRole('textbox', { name: 'Message the agent' });
 const line = (win: Page) => win.locator('.right').getByRole('button', { name: /^Ask about/ });
 const offRow = (win: Page) =>

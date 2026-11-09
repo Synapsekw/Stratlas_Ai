@@ -92,8 +92,8 @@ export const enTelecom = {
     'Click around the unit to outline it. Enter or double-click closes the outline, Backspace removes the last point, Escape cancels.',
   'telecom.antennas.flag.kept': '{count} points kept, nearest the camera.',
   'telecom.antennas.flag.none':
-    "No cloud points inside the outline. The unit is placed where the outline's middle meets the cloud.",
-  'telecom.antennas.flag.offCloud': 'Draw the outline over the cloud.',
+    "No point cloud points inside the outline. The unit is placed where the outline's middle meets the point cloud.",
+  'telecom.antennas.flag.offCloud': 'Draw the outline over the point cloud.',
   'telecom.antennas.flag.measure': 'Measure',
   'telecom.antennas.flag.again': 'Draw again',
   'telecom.antennas.flag.cancel': 'Cancel',

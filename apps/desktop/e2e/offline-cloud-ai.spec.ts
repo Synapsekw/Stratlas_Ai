@@ -31,7 +31,7 @@ async function shot(win: Page, name: string) {
 const KEY = 'sk-ant-e2e-NOT-A-REAL-KEY-0123456789';
 const REMOTE = 'http://192.168.1.20:11434/v1';
 
-const agent = (win: Page) => win.getByRole('region', { name: 'Agent' });
+const agent = (win: Page) => win.getByRole('region', { name: 'Ask AI chat' });
 const box = (win: Page) => agent(win).getByRole('textbox', { name: 'Message the agent' });
 
 async function openTiny(win: Page) {

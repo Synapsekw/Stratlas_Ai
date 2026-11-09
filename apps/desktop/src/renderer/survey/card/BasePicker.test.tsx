@@ -97,17 +97,17 @@ const rows = () => [
 ];
 
 describe('BasePicker', () => {
-  it('base picker lists seven bases with their one-line hints, Triangulated toe first', () => {
+  it('base picker lists seven bases with their one-line hints, Surface through the toe first', () => {
     picker({ kind: 'smart' });
     expect(document.querySelector('[data-testid="survey-from"]')?.textContent).toContain(
-      'Base: Triangulated toe',
+      'Base: Surface through the toe',
     );
     open();
     const list = rows();
     expect(list).toHaveLength(7);
     expect(BASES).toHaveLength(7);
     expect(list.map((r) => r.querySelector('.menu-name')?.textContent)).toEqual([
-      'Triangulated toe',
+      'Surface through the toe',
       'Lowest point',
       'Best-fit plane',
       'Fixed level',

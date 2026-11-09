@@ -48,7 +48,7 @@ export const enAgentTools = {
   'agentTool.card.reopen_other': 'Reopen {count} detections',
   // what an action acts on, on the card
   'agentTool.target.project': 'the project',
-  'agentTool.target.everyDate': 'Every date',
+  'agentTool.target.everyDate': 'No date',
   'agentTool.target.layerOn': '{name} ({date})',
   'agentTool.target.more': '{names} and {count} more',
   'agentTool.target.photos_one': '{count} photo in {layer}',

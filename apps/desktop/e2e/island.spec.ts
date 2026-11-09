@@ -794,7 +794,7 @@ test.describe('the mode rows and the Tools tab (D5, W8)', () => {
       'Pin on the model',
       'Line on the model',
       'Area on the model',
-      'Point on the cloud',
+      'Point on the point cloud',
     ])
       await expect(row.getByRole('button', { name, exact: true })).toBeVisible();
     await expect(row.locator('.isl-tile')).toHaveCount(5);

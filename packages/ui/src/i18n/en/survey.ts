@@ -160,7 +160,7 @@ export const enSurvey = {
   'mcard.vt.horizontal': 'Horizontal',
   'mcard.vt.bearing': 'Bearing',
   'mcard.vt.span': '{a} to {b}',
-  'base.smart': 'Triangulated toe',
+  'base.smart': 'Surface through the toe',
   'base.smartHint': 'the surveying norm for piles on uneven ground',
   'base.lowest': 'Lowest point',
   'base.lowestHint': 'bins, bunkers, piles against walls',
@@ -176,7 +176,7 @@ export const enSurvey = {
   'base.mean': 'Average edge level',
   'base.meanHint': "a rough check against the toe's average height",
   // the old stockpile kit's triangulated base (carried figures only, never a live base)
-  'base.kitTin': 'Triangulated toe',
+  'base.kitTin': 'Surface through the toe',
   'vol.ignoreSmaller': 'Ignore changes smaller than',
   'vol.highPrecision': 'High precision',
   'vol.gridCell': 'Grid {cell}',
