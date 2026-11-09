@@ -35,6 +35,7 @@ from ..runtime import (
     StepContext,
     atomic_write_json,
     commit_files,
+    manifest_lock,
     now_iso,
     replace_over,
     safe_project_path,
@@ -303,21 +304,75 @@ def _commit(ctx: StepContext, plan: dict[str, Any], params: dict[str, Any]) -> d
         )
 
     mpath = safe_project_path(ctx.project, "manifest.json")
-    manifest = read_manifest(ctx.project)
-    layers = manifest.setdefault("layers", [])
-    # a commit that runs again replaces its own layer (the run's own id), never adds a second
-    layers[:] = [x for x in layers if not (isinstance(x, dict) and x.get("id") == layer_id)]
-    capture = capture_for_date(manifest, min(days)) if days else None
-    layer = {
-        "kind": "photos",
-        "id": layer_id,
-        "name": plan["name"],
-        "visible": True,
-        **({"capture": capture} if capture else {}),
-        "items": items,
-    }
     rejected = plan["rejected"] + failed
-    run_json = {
+    report = {
+        "run": run,
+        "src": Path(params["xml"]).name,
+        "createdAt": now_iso(),
+        "imported": {
+            "photos": len(items),
+            "missing": plan["summary"]["missing"],
+            "unaligned": plan["summary"]["unaligned"],
+            "layer": layer_id,
+        },
+        "skipped": rejected[:100_000],
+        "warnings": plan["warnings"],
+    }
+    atomic_write_json(ctx.stage("run/report/bentley-import.json"), report)
+    moves.append(("run/report/bentley-import.json", f"{run_dir}/report/bentley-import.json"))
+    commit_files(ctx, moves, announce=False)
+    # the run file, then the manifest, go last; the manifest is read, changed and written under
+    # the project's manifest lock, so a job committing at once (the block's cloud) keeps its layer,
+    # and the run file takes its survey date and CRS from that same read
+    with manifest_lock(ctx.project):
+        manifest = read_manifest(ctx.project)
+        layers = manifest.setdefault("layers", [])
+        # a commit that runs again replaces its own layer (the run's own id), never adds a second
+        layers[:] = [x for x in layers if not (isinstance(x, dict) and x.get("id") == layer_id)]
+        capture = capture_for_date(manifest, min(days)) if days else None
+        atomic_write_json(
+            ctx.stage("run/run.json"), _run_json(run, plan, params, items, rejected, manifest, capture)
+        )
+        commit_files(ctx, [("run/run.json", f"{run_dir}/run.json")])
+        layers.append(
+            {
+                "kind": "photos",
+                "id": layer_id,
+                "name": plan["name"],
+                "visible": True,
+                **({"capture": capture} if capture else {}),
+                "items": items,
+            }
+        )
+        shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
+        atomic_write_json(mpath, manifest, indent=2)
+    ctx.artifact("manifest.json")
+    ctx.log(f"Run {run}: {len(items)} photos placed in layer {layer_id}.")
+    return {
+        "run": run,
+        "photosLayer": layer_id,
+        "photos": len(items),
+        "missing": plan["summary"]["missing"],
+        "unaligned": plan["summary"]["unaligned"],
+        "capture": capture,
+        "runFile": f"{run_dir}/run.json",
+    }
+
+
+def _run_json(
+    run: str,
+    plan: dict[str, Any],
+    params: dict[str, Any],
+    items: list[dict[str, Any]],
+    rejected: list[dict[str, Any]],
+    manifest: dict[str, Any],
+    capture: str | None,
+) -> dict[str, Any]:
+    from ..opf.importer import SPARSE_FILES
+
+    run_dir = f"photogrammetry/{run}"
+    layer_id = f"photos-{run}"
+    return {
         "schema": "aio.photo-run/1",
         "id": run,
         "createdAt": now_iso(),
@@ -357,37 +412,4 @@ def _commit(ctx: StepContext, plan: dict[str, Any], params: dict[str, Any]) -> d
         },
         "versions": {"pack": __version__, "blocksExchange": plan["version"]},
         "warnings": [w[:500] for w in plan["warnings"]][:1000],
-    }
-    report = {
-        "run": run,
-        "src": Path(params["xml"]).name,
-        "createdAt": now_iso(),
-        "imported": {
-            "photos": len(items),
-            "missing": plan["summary"]["missing"],
-            "unaligned": plan["summary"]["unaligned"],
-            "layer": layer_id,
-        },
-        "skipped": rejected[:100_000],
-        "warnings": plan["warnings"],
-    }
-    atomic_write_json(ctx.stage("run/report/bentley-import.json"), report)
-    moves.append(("run/report/bentley-import.json", f"{run_dir}/report/bentley-import.json"))
-    commit_files(ctx, moves, announce=False)
-    # the run file, then the manifest, go last
-    atomic_write_json(ctx.stage("run/run.json"), run_json)
-    commit_files(ctx, [("run/run.json", f"{run_dir}/run.json")])
-    layers.append(layer)
-    shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
-    atomic_write_json(mpath, manifest, indent=2)
-    ctx.artifact("manifest.json")
-    ctx.log(f"Run {run}: {len(items)} photos placed in layer {layer_id}.")
-    return {
-        "run": run,
-        "photosLayer": layer_id,
-        "photos": len(items),
-        "missing": plan["summary"]["missing"],
-        "unaligned": plan["summary"]["unaligned"],
-        "capture": capture,
-        "runFile": f"{run_dir}/run.json",
     }

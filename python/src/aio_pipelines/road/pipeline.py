@@ -26,6 +26,7 @@ from ..runtime import (
     atomic_write_json,
     commit_files,
     commit_tree,
+    manifest_lock,
     now_iso,
     replace_over,
     safe_project_path,
@@ -720,77 +721,79 @@ def merge_issues(ctx: StepContext, built: list[dict[str, Any]]) -> int:
 
 def update_manifest(ctx: StepContext, data: dict[str, Any], params: dict[str, Any]) -> None:
     """Road severity model and classes, the ortho and close-up layers; written last."""
-    path = ctx.out("manifest.json")
-    m = json.loads(path.read_text("utf-8"))
-    models = m.setdefault("severityModels", [])
-    if not any(x.get("id") == cat.SEVERITY_MODEL_ID for x in models):
-        models.append(cat.SEVERITY_MODEL)
-    extra = []
-    seen = set()
-    for d in data["defects"]:
-        if d.cls.id not in seen:
-            seen.add(d.cls.id)
-            extra.append(d.cls)
-    cats = m.setdefault("classCatalogues", [])
-    road = next((c for c in cats if c.get("assetType") == "road"), None)
-    if road is None:
-        cats.append(cat.catalogue(extra))
-    else:
-        known = {c.get("id") for c in road.get("classes", [])}
-        for c in extra:
-            if c.id not in known:
-                road.setdefault("classes", []).append(cat.catalogue_entry(c))
-                known.add(c.id)
-    layers = m.setdefault("layers", [])
-    tiles = ctx.out("rasters/ortho/tiles.json")
-    if "ortho" in params and tiles.exists():
-        t = json.loads(tiles.read_text("utf-8"))
-        cm = t.get("metresPerPx", [0])[-1] * 100
-        layer = {
-            "kind": "raster",
-            "id": ORTHO_LAYER,
-            "name": f"Orthomosaic ({cm:.2f} cm)",
-            "visible": True,
-            "src": {"path": "rasters/ortho/tiles.json"},
-            "role": "ortho",
-            "format": "kit-pyramid",
-            "corners": t["corners"],
-        }
-        layers[:] = [lyr for lyr in layers if lyr.get("id") != ORTHO_LAYER] + [layer]
-        layers.sort(key=lambda lyr: 0 if lyr.get("id") == ORTHO_LAYER else 1)
-        # a downsampled preview of the same GeoTIFF imported earlier (raw import, one image):
-        # kept, but hidden under the full-resolution pyramid
-        stems = {Path(p).stem for p in params["ortho"]}
-        for lyr in layers:
-            if (
-                lyr.get("kind") == "raster"
-                and lyr.get("format") == "image"
-                and lyr.get("name") in stems
-                and lyr.get("visible", True)
-            ):
-                lyr["visible"] = False
-                ctx.log(f'The preview layer "{lyr["name"]}" is hidden under the tiled orthomosaic.')
-    ci = ctx.stage("work/closeups.json")
-    if ci.exists():
-        index = json.loads(ci.read_text("utf-8"))
-        items = [
-            {"id": pid, "src": {"path": f"photos/closeups/{pid}.webp"}}
-            for pid, v in sorted(index.items())
-            if v
-        ]
-        if items:
+    # read, changed and written under the project's manifest lock, so a job committing at once keeps its layers
+    with manifest_lock(ctx.project):
+        path = ctx.out("manifest.json")
+        m = json.loads(path.read_text("utf-8"))
+        models = m.setdefault("severityModels", [])
+        if not any(x.get("id") == cat.SEVERITY_MODEL_ID for x in models):
+            models.append(cat.SEVERITY_MODEL)
+        extra = []
+        seen = set()
+        for d in data["defects"]:
+            if d.cls.id not in seen:
+                seen.add(d.cls.id)
+                extra.append(d.cls)
+        cats = m.setdefault("classCatalogues", [])
+        road = next((c for c in cats if c.get("assetType") == "road"), None)
+        if road is None:
+            cats.append(cat.catalogue(extra))
+        else:
+            known = {c.get("id") for c in road.get("classes", [])}
+            for c in extra:
+                if c.id not in known:
+                    road.setdefault("classes", []).append(cat.catalogue_entry(c))
+                    known.add(c.id)
+        layers = m.setdefault("layers", [])
+        tiles = ctx.out("rasters/ortho/tiles.json")
+        if "ortho" in params and tiles.exists():
+            t = json.loads(tiles.read_text("utf-8"))
+            cm = t.get("metresPerPx", [0])[-1] * 100
             layer = {
-                "kind": "photos",
-                "id": CLOSEUPS_LAYER,
-                "name": "Defect close-ups",
+                "kind": "raster",
+                "id": ORTHO_LAYER,
+                "name": f"Orthomosaic ({cm:.2f} cm)",
                 "visible": True,
-                "items": items,
+                "src": {"path": "rasters/ortho/tiles.json"},
+                "role": "ortho",
+                "format": "kit-pyramid",
+                "corners": t["corners"],
             }
-            layers[:] = [lyr for lyr in layers if lyr.get("id") != CLOSEUPS_LAYER] + [layer]
-    m.setdefault("type", "road")
-    shutil.copyfile(path, path.with_name("manifest.json.bak"))
-    atomic_write_json(path, m, indent=2)
-    ctx.artifact("manifest.json")
+            layers[:] = [lyr for lyr in layers if lyr.get("id") != ORTHO_LAYER] + [layer]
+            layers.sort(key=lambda lyr: 0 if lyr.get("id") == ORTHO_LAYER else 1)
+            # a downsampled preview of the same GeoTIFF imported earlier (raw import, one image):
+            # kept, but hidden under the full-resolution pyramid
+            stems = {Path(p).stem for p in params["ortho"]}
+            for lyr in layers:
+                if (
+                    lyr.get("kind") == "raster"
+                    and lyr.get("format") == "image"
+                    and lyr.get("name") in stems
+                    and lyr.get("visible", True)
+                ):
+                    lyr["visible"] = False
+                    ctx.log(f'The preview layer "{lyr["name"]}" is hidden under the tiled orthomosaic.')
+        ci = ctx.stage("work/closeups.json")
+        if ci.exists():
+            index = json.loads(ci.read_text("utf-8"))
+            items = [
+                {"id": pid, "src": {"path": f"photos/closeups/{pid}.webp"}}
+                for pid, v in sorted(index.items())
+                if v
+            ]
+            if items:
+                layer = {
+                    "kind": "photos",
+                    "id": CLOSEUPS_LAYER,
+                    "name": "Defect close-ups",
+                    "visible": True,
+                    "items": items,
+                }
+                layers[:] = [lyr for lyr in layers if lyr.get("id") != CLOSEUPS_LAYER] + [layer]
+        m.setdefault("type", "road")
+        shutil.copyfile(path, path.with_name("manifest.json.bak"))
+        atomic_write_json(path, m, indent=2)
+        ctx.artifact("manifest.json")
 
 
 def write_thumbnail(ctx: StepContext) -> None:

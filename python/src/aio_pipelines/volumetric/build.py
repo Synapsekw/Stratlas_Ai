@@ -43,6 +43,7 @@ from ..runtime import (
     commit_files,
     commit_tree,
     input_fingerprint,
+    manifest_lock,
     safe_project_path,
 )
 
@@ -362,12 +363,14 @@ class VolumetricBuild:
                 commit_files(ctx, [("out/thumbnail.jpg", "thumbnail.jpg")])
             # the index files go last: volumes.json, then the manifest
             commit_files(ctx, [("out/volumes.json", "volumes.json")])
-            mpath = safe_project_path(ctx.project, "manifest.json")
-            manifest = json.loads(mpath.read_text("utf-8"))
-            _merge_manifest(manifest, pub["layers"], pub["captures"])
-            shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
-            atomic_write_json(mpath, manifest, indent=2)
-            ctx.artifact("manifest.json")
+            # read, changed and written under the project's manifest lock, so a job committing at once keeps its layers
+            with manifest_lock(ctx.project):
+                mpath = safe_project_path(ctx.project, "manifest.json")
+                manifest = json.loads(mpath.read_text("utf-8"))
+                _merge_manifest(manifest, pub["layers"], pub["captures"])
+                shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
+                atomic_write_json(mpath, manifest, indent=2)
+                ctx.artifact("manifest.json")
             ctx.log(f"Added {len(pub['layers'])} layers and {len(job['epochs'])} surveys to the project.")
             return {"files": n, "layers": [x["id"] for x in pub["layers"]]}
 

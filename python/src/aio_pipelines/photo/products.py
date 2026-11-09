@@ -56,6 +56,7 @@ from ..runtime import (
     atomic_write_bytes,
     atomic_write_json,
     commit_files,
+    manifest_lock,
     now_iso,
     safe_project_path,
 )
@@ -724,22 +725,27 @@ class PhotoProducts:
         commit_files(ctx, moves, announce=False)
         for lay in layers:
             ctx.artifact(lay["src"]["path"])
-        # manifest: replace this run's layers, keep what the person set on them
-        kept = []
-        for x in manifest.get("layers") or []:
-            if isinstance(x, dict) and any(x.get("id") == lay["id"] for lay in layers):
-                continue
-            kept.append(x)
-        for lay in layers:
-            old = existing.get(lay["id"])
-            if old is not None:
-                lay["visible"] = old.get("visible", True)
-                if "capture" in old and "capture" not in lay:
-                    lay["capture"] = old["capture"]
-            kept.append(lay)
-        manifest["layers"] = kept
-        shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
-        atomic_write_json(mpath, manifest, indent=2)
+        # manifest: replace this run's layers, keep what the person set on them; read again,
+        # changed and written under the project's manifest lock, so a job committing at once
+        # keeps its layers
+        with manifest_lock(ctx.project):
+            manifest = json.loads(mpath.read_text("utf-8-sig"))
+            existing = {x.get("id"): x for x in manifest.get("layers") or [] if isinstance(x, dict)}
+            kept = []
+            for x in manifest.get("layers") or []:
+                if isinstance(x, dict) and any(x.get("id") == lay["id"] for lay in layers):
+                    continue
+                kept.append(x)
+            for lay in layers:
+                old = existing.get(lay["id"])
+                if old is not None:
+                    lay["visible"] = old.get("visible", True)
+                    if "capture" in old and "capture" not in lay:
+                        lay["capture"] = old["capture"]
+                kept.append(lay)
+            manifest["layers"] = kept
+            shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
+            atomic_write_json(mpath, manifest, indent=2)
         # run.json: status, stages, outputs, versions, engine, warnings; then the products report
         report = self._report(ctx, layers)
         atomic_write_json(ctx.out(f"{rdir}/report/products.json"), report)

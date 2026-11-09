@@ -34,7 +34,15 @@ from ..pointcloud import (
     las_record_length,
     read_summary,
 )
-from ..runtime import JobError, Step, StepContext, atomic_write_json, commit_files, safe_project_path
+from ..runtime import (
+    JobError,
+    Step,
+    StepContext,
+    atomic_write_json,
+    commit_files,
+    manifest_lock,
+    safe_project_path,
+)
 from .evaluate import evaluate, kept_for_save
 from .lasstream import class_histogram, filter_las
 from .recipe import NOISE_CLASS, validate_recipe
@@ -443,32 +451,33 @@ class PointcloudClean:
                 raise JobError(f'The layer "{lid}" is not in the project any more.')
             new_id, rel = target(ctx, layers)
             commit_files(ctx, [("cloud.copc.laz", rel)])
-            # the files first, then the manifest read, changed and written at once (as
-            # PointcloudToCopc.register), so the window for a concurrent manifest write is minimal
-            mpath, manifest = _manifest(ctx.project)
-            layers = manifest.setdefault("layers", [])
-            source = next((x for x in layers if x.get("id") == lid), None)
-            if source is None:
-                raise JobError(f'The layer "{lid}" is not in the project any more.')
-            layers.append(
-                {
-                    "kind": "pointcloud",
-                    "id": new_id,
-                    "name": f"{params['name']} (cleaned)",
-                    "visible": True,
-                    **({"capture": source["capture"]} if source.get("capture") else {}),
-                    **({"heightOffsetM": source["heightOffsetM"]} if height_offset_m(source) else {}),
-                    "src": {"path": rel},
-                    "format": "copc",
-                    "pointCount": points,
-                    "derived": {"kind": "cleanup", "source": [lid], "runId": run_id},
-                }
-            )
-            source["visible"] = False  # the original stays, hidden; its file is untouched
-            # the manifest last, with the one before kept beside it (as PointcloudToCopc.register)
-            shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
-            atomic_write_json(mpath, manifest, indent=2)
-            ctx.log(f"Added layer {new_id} ({rel}).")
+            # the files first, then the manifest read, changed and written under the project's
+            # manifest lock (as PointcloudToCopc.register), so a job committing at once keeps its layers
+            with manifest_lock(ctx.project):
+                mpath, manifest = _manifest(ctx.project)
+                layers = manifest.setdefault("layers", [])
+                source = next((x for x in layers if x.get("id") == lid), None)
+                if source is None:
+                    raise JobError(f'The layer "{lid}" is not in the project any more.')
+                layers.append(
+                    {
+                        "kind": "pointcloud",
+                        "id": new_id,
+                        "name": f"{params['name']} (cleaned)",
+                        "visible": True,
+                        **({"capture": source["capture"]} if source.get("capture") else {}),
+                        **({"heightOffsetM": source["heightOffsetM"]} if height_offset_m(source) else {}),
+                        "src": {"path": rel},
+                        "format": "copc",
+                        "pointCount": points,
+                        "derived": {"kind": "cleanup", "source": [lid], "runId": run_id},
+                    }
+                )
+                source["visible"] = False  # the original stays, hidden; its file is untouched
+                # the manifest last, with the one before kept beside it (as PointcloudToCopc.register)
+                shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
+                atomic_write_json(mpath, manifest, indent=2)
+                ctx.log(f"Added layer {new_id} ({rel}).")
             return {"layer": new_id, "path": rel, "points": points}
 
         return [

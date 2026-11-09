@@ -41,7 +41,15 @@ from typing import Any
 
 from .captures import capture_for_date
 from .params import known_keys, number, numbers, text
-from .runtime import JobError, Step, StepContext, atomic_write_json, commit_files, safe_project_path
+from .runtime import (
+    JobError,
+    Step,
+    StepContext,
+    atomic_write_json,
+    commit_files,
+    manifest_lock,
+    safe_project_path,
+)
 
 PDAL_MISSING = (
     "PDAL is not available: the pipeline pack has no tools/pdal and none is on the PATH. "
@@ -752,70 +760,73 @@ class PointcloudToCopc:
         def register(ctx: StepContext) -> dict[str, Any]:
             out_rel = str(params["out"]).replace("\\", "/")
             commit_files(ctx, [("cloud.copc.laz", out_rel)])
-            mpath = safe_project_path(ctx.project, "manifest.json")
-            manifest = json.loads(mpath.read_text("utf-8"))
-            layers = manifest.setdefault("layers", [])
-            existing = next(
-                (
-                    layer
-                    for layer in layers
-                    if layer.get("kind") == "pointcloud" and (layer.get("src") or {}).get("path") == out_rel
-                ),
-                None,
-            )
-            done = ctx.outputs("convert")
-            points = int(done.get("points") or 0)
-            capture: str | None = None
-            if existing is None:
-                # Decision 7: a Bentley .zpc without a height datum was built from the drone photos'
-                # uncorrected altitudes, so it takes the project's photo altitude correction
-                # (verticalDatum.absAltOffsetM), as the photos do
-                raw_off = (manifest.get("verticalDatum") or {}).get("absAltOffsetM")
-                off = (
-                    round(float(raw_off), 3)
-                    if isinstance(raw_off, int | float)
-                    and not isinstance(raw_off, bool)
-                    and math.isfinite(raw_off)
-                    and raw_off
-                    else 0.0
+            # read, changed and written under the project's manifest lock, so a job committing at once keeps its layers
+            with manifest_lock(ctx.project):
+                mpath = safe_project_path(ctx.project, "manifest.json")
+                manifest = json.loads(mpath.read_text("utf-8"))
+                layers = manifest.setdefault("layers", [])
+                existing = next(
+                    (
+                        layer
+                        for layer in layers
+                        if layer.get("kind") == "pointcloud"
+                        and (layer.get("src") or {}).get("path") == out_rel
+                    ),
+                    None,
                 )
-                height_offset: float | None = None
-                if off and not done.get("vertical"):
-                    if done.get("source") == "zpc":
-                        height_offset = off
-                        ctx.log(
-                            "The tiles name no height datum; the cloud was built from the same "
-                            "uncorrected photo altitudes, so it is shifted by the project's photo "
-                            f"altitude correction, {off:+.2f} m. The points are unchanged; use "
-                            "Drop to ground if the cloud is off."
-                        )
-                    else:
-                        ctx.log(
-                            "The file names no height datum; its heights are used as they are. "
-                            "If the cloud floats or sinks, use Drop to ground."
-                        )
-                lid = _layer_id(out_rel, {str(layer.get("id")) for layer in layers})
-                if params.get("surveyDate"):
-                    capture = capture_for_date(manifest, params["surveyDate"])
-                layers.append(
-                    {
-                        "kind": "pointcloud",
-                        "id": lid,
-                        "name": Path(params["src"]).name,
-                        "visible": True,
-                        "src": {"path": out_rel},
-                        "format": "copc",
-                        **({"pointCount": points} if points else {}),
-                        **({"capture": capture} if capture else {}),
-                        **({"heightOffsetM": height_offset} if height_offset is not None else {}),
-                    }
-                )
-                # keep the previous manifest beside it, as the app's own saves do
-                shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
-                atomic_write_json(mpath, manifest, indent=2)
-                ctx.log(f"Added layer {lid} ({out_rel}).")
-            else:
-                lid = str(existing.get("id"))  # a re-run leaves the layer, and its date, as they are
+                done = ctx.outputs("convert")
+                points = int(done.get("points") or 0)
+                capture: str | None = None
+                if existing is None:
+                    # Decision 7: a Bentley .zpc without a height datum was built from the drone photos'
+                    # uncorrected altitudes, so it takes the project's photo altitude correction
+                    # (verticalDatum.absAltOffsetM), as the photos do
+                    raw_off = (manifest.get("verticalDatum") or {}).get("absAltOffsetM")
+                    off = (
+                        round(float(raw_off), 3)
+                        if isinstance(raw_off, int | float)
+                        and not isinstance(raw_off, bool)
+                        and math.isfinite(raw_off)
+                        and raw_off
+                        else 0.0
+                    )
+                    height_offset: float | None = None
+                    if off and not done.get("vertical"):
+                        if done.get("source") == "zpc":
+                            height_offset = off
+                            ctx.log(
+                                "The tiles name no height datum; the cloud was built from the same "
+                                "uncorrected photo altitudes, so it is shifted by the project's photo "
+                                f"altitude correction, {off:+.2f} m. The points are unchanged; use "
+                                "Drop to ground if the cloud is off."
+                            )
+                        else:
+                            ctx.log(
+                                "The file names no height datum; its heights are used as they are. "
+                                "If the cloud floats or sinks, use Drop to ground."
+                            )
+                    lid = _layer_id(out_rel, {str(layer.get("id")) for layer in layers})
+                    if params.get("surveyDate"):
+                        capture = capture_for_date(manifest, params["surveyDate"])
+                    layers.append(
+                        {
+                            "kind": "pointcloud",
+                            "id": lid,
+                            "name": Path(params["src"]).name,
+                            "visible": True,
+                            "src": {"path": out_rel},
+                            "format": "copc",
+                            **({"pointCount": points} if points else {}),
+                            **({"capture": capture} if capture else {}),
+                            **({"heightOffsetM": height_offset} if height_offset is not None else {}),
+                        }
+                    )
+                    # keep the previous manifest beside it, as the app's own saves do
+                    shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
+                    atomic_write_json(mpath, manifest, indent=2)
+                    ctx.log(f"Added layer {lid} ({out_rel}).")
+                else:
+                    lid = str(existing.get("id"))  # a re-run leaves the layer, and its date, as they are
             return {"layer": lid, "path": out_rel, "capture": capture}
 
         return [

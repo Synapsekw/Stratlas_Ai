@@ -19,7 +19,16 @@ from pathlib import Path
 from typing import Any
 
 from ..params import known_keys, text
-from ..runtime import JobError, Step, StepContext, atomic_write_json, commit_files, now_iso, safe_project_path
+from ..runtime import (
+    JobError,
+    Step,
+    StepContext,
+    atomic_write_json,
+    commit_files,
+    manifest_lock,
+    now_iso,
+    safe_project_path,
+)
 from .dxf import UNIT_M, read_dxf
 
 UNITS = ("mm", "cm", "m", "in", "ft", "us-ft")
@@ -257,46 +266,51 @@ class DrawingImport:
             ]
             moves += [(f"out/layers/{v['slug']}.geojson", f"{sub}/{v['slug']}.geojson") for v in w["vectors"]]
             commit_files(ctx, moves)
-            mpath = safe_project_path(ctx.project, "manifest.json")
-            manifest = json.loads(mpath.read_text("utf-8"))
-            layers = manifest.setdefault("layers", [])
-            plan_id = f"plan-{stem}"
-            new = [
-                {
-                    "kind": "raster",
-                    "id": plan_id,
-                    "name": f"{fname} plan",
-                    "visible": True,
-                    "role": "plan",
-                    "format": "image",
-                    "src": {"path": f"{sub}/plan.png"},
-                    "corners": w["corners"],
-                }
-            ]
-            vector_ids = []
-            for v in w["vectors"]:
-                lid = f"drawing-{stem}-{v['slug']}"
-                vector_ids.append(lid)
-                new.append(
+            # read, changed and written under the project's manifest lock, so a job committing at once keeps its layers
+            with manifest_lock(ctx.project):
+                mpath = safe_project_path(ctx.project, "manifest.json")
+                manifest = json.loads(mpath.read_text("utf-8"))
+                layers = manifest.setdefault("layers", [])
+                plan_id = f"plan-{stem}"
+                new = [
                     {
-                        "kind": "vector",
-                        "id": lid,
-                        "name": f"{fname} {v['layer']}",
+                        "kind": "raster",
+                        "id": plan_id,
+                        "name": f"{fname} plan",
                         "visible": True,
-                        "src": {"path": f"{sub}/{v['slug']}.geojson"},
-                        "format": "geojson",
-                        "style": {"line": {"color": v["color"], "width": 1.5}, "label": {"field": "text"}},
+                        "role": "plan",
+                        "format": "image",
+                        "src": {"path": f"{sub}/plan.png"},
+                        "corners": w["corners"],
                     }
-                )
-            for layer in new:
-                i = next((k for k, x in enumerate(layers) if x.get("id") == layer["id"]), None)
-                if i is None:
-                    layers.append(layer)
-                else:
-                    keep = {k: layers[i][k] for k in ("visible", "capture") if k in layers[i]}
-                    layers[i] = {**layer, **keep}
-            shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
-            atomic_write_json(mpath, manifest, indent=2)
+                ]
+                vector_ids = []
+                for v in w["vectors"]:
+                    lid = f"drawing-{stem}-{v['slug']}"
+                    vector_ids.append(lid)
+                    new.append(
+                        {
+                            "kind": "vector",
+                            "id": lid,
+                            "name": f"{fname} {v['layer']}",
+                            "visible": True,
+                            "src": {"path": f"{sub}/{v['slug']}.geojson"},
+                            "format": "geojson",
+                            "style": {
+                                "line": {"color": v["color"], "width": 1.5},
+                                "label": {"field": "text"},
+                            },
+                        }
+                    )
+                for layer in new:
+                    i = next((k for k, x in enumerate(layers) if x.get("id") == layer["id"]), None)
+                    if i is None:
+                        layers.append(layer)
+                    else:
+                        keep = {k: layers[i][k] for k in ("visible", "capture") if k in layers[i]}
+                        layers[i] = {**layer, **keep}
+                shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
+                atomic_write_json(mpath, manifest, indent=2)
             r = ctx.outputs("read")
             p = ctx.outputs("place")
             return {

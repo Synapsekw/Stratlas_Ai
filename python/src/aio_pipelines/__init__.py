@@ -34,7 +34,9 @@ PROTOCOL = "aio.pipelines/1"
 # (the multi-view vote folds drafts of one object into one, and adds thermal.hotspots; 0.29.0 and
 # 0.30.0 were reserved and stay unused) and pack 0.33.0 (a detect.vlm detector item may carry
 # few-shot example crops for the yes/no check) and pack 0.34.0 (flyability.import: the wall distance
-# check from behind the camera, stable cloud names for unnamed flights, flight clouds hidden first).
+# check from behind the camera, stable cloud names for unnamed flights, flight clouds hidden first;
+# and every job that adds layers writes manifest.json under the manifest lock, so two jobs finishing
+# together no longer lose a layer).
 # Each keeps the floor.
 # The app refuses a pack outside the range; the syntax is read by `appRangeAllows` in packages/schema/src/versions.ts
 # (space-separated >=, >, <=, <, =).

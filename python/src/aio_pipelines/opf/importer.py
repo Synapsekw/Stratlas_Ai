@@ -44,6 +44,7 @@ from ..runtime import (
     atomic_write_json,
     commit_files,
     commit_tree,
+    manifest_lock,
     now_iso,
     replace_over,
     safe_project_path,
@@ -468,9 +469,17 @@ def _commit(ctx: StepContext, plan: dict[str, Any], params: dict[str, Any]) -> d
     atomic_write_json(ctx.stage("run/run.json"), run_json)
     commit_files(ctx, [("run/run.json", f"{run_dir}/run.json")])
     if new_layers:
-        layers.extend(new_layers)
-        shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
-        atomic_write_json(mpath, manifest, indent=2)
+        # read again, changed and written under the project's manifest lock, so a job committing
+        # at once keeps its layers (the ids above carry this run's new id, so they stay free)
+        with manifest_lock(ctx.project):
+            manifest = read_manifest(ctx.project)
+            layers = manifest.setdefault("layers", [])
+            layers[:] = [
+                x for x in layers if not (isinstance(x, dict) and str(x.get("id", "")).startswith(ours))
+            ]
+            layers.extend(new_layers)
+            shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
+            atomic_write_json(mpath, manifest, indent=2)
         ctx.artifact("manifest.json")
     for s in skipped:
         ctx.log(f"Not imported: {s['what']} ({s['reason']}).", "warn")
