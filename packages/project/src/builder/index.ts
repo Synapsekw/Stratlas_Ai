@@ -246,4 +246,5 @@ export {
   SHALLOW_WALK,
   type ExportWalk,
 } from './flyability/mission';
+export { removeEmptyInspectorSpaces } from './flyability/emptySpaces';
 export { FLYABILITY_IMPORT_UI } from './flyability/flags';
