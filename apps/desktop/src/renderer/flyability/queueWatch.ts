@@ -1,4 +1,4 @@
-import type { AioBridge, ImportItem, IpcEvent } from '@aio/schema';
+import type { AioBridge, ImportItem, IpcEvent, JobRecord } from '@aio/schema';
 import { t, toast } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { builder } from '../builder/state';
@@ -88,8 +88,65 @@ export function onLaneNotice(n: LaneNotice): void {
   if (items) builder.setState({ importResult: { ...result, items } });
 }
 
-/** Listen for the chambers' notices while the import layer is mounted; returns the unsubscribe. */
+/** A chamber's row as its job goes: converting (with progress), then imported, failed, cancelled. */
+function rowFor(
+  row: ImportItem,
+  job: Pick<JobRecord, 'status' | 'progress' | 'error'>,
+): ImportItem {
+  switch (job.status) {
+    case 'starting':
+    case 'running':
+    case 'cancelling':
+      return {
+        ...row,
+        status: 'queued',
+        message:
+          job.progress > 0
+            ? t('fly.queue.progress', { pct: Math.round(job.progress * 100) })
+            : t('fly.queue.started'),
+      };
+    case 'done':
+      return { ...row, status: 'imported', message: t('fly.queue.done') };
+    case 'cancelled':
+      return { ...row, status: 'skipped', message: t('fly.queue.jobCancelled') };
+    case 'interrupted':
+      return { ...row, status: 'error', message: t('fly.queue.interrupted') };
+    case 'failed':
+      return { ...row, status: 'error', message: job.error ?? t('fly.queue.jobFailed') };
+  }
+}
+
+/**
+ * A job event: the import card row of that Inspector import follows it. Once every row of the
+ * card is imported the card closes; a failed or skipped row keeps it open to be read.
+ */
+export function onJobUpdate(
+  job: Pick<JobRecord, 'id' | 'pipeline' | 'status' | 'progress' | 'error'>,
+): void {
+  if (job.pipeline !== 'flyability.import') return;
+  const result = builder.getState().importResult;
+  if (!result) return;
+  const at = result.items.findIndex((i) => i.kind === 'flyability' && i.jobId === job.id);
+  const row = at < 0 ? undefined : result.items[at];
+  if (!row) return;
+  const next = rowFor(row, job);
+  if (next.status === row.status && next.message === row.message) return;
+  const items = result.items.map((it, i) => (i === at ? next : it));
+  if (items.every((i) => i.status === 'imported')) builder.setState({ importResult: null });
+  else builder.setState({ importResult: { ...result, items } });
+}
+
+/** Listen for the chambers' notices and jobs while the import layer is mounted. */
 export function watchInspectorQueue(): () => void {
   const aio = (window as { aio?: AioBridge }).aio;
-  return aio?.on('builder:inspectorQueue', onLaneNotice) ?? (() => undefined);
+  if (!aio) return () => undefined;
+  const offs = [
+    aio.on('builder:inspectorQueue', onLaneNotice),
+    aio.on('jobs:event', (e) => {
+      if (e.type === 'update') onJobUpdate(e.job);
+    }),
+  ];
+  return () => {
+    for (const off of offs) off();
+  };
 }

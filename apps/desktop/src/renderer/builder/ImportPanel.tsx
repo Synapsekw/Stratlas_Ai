@@ -490,7 +490,12 @@ function ImportStatus() {
             <li key={`${it.file}-${String(i)}`} className={it.status} data-testid="import-row">
               <Icon name={STATUS[it.status].icon} size={14} />
               <span>{it.file}</span>
-              <span className="st">{STATUS[it.status].label}</span>
+              <span className="st">
+                {/* a chamber whose Inspector import has its job is running, not waiting */}
+                {it.kind === 'flyability' && it.status === 'queued' && it.jobId
+                  ? t('fly.queue.runningLabel')
+                  : STATUS[it.status].label}
+              </span>
               <p data-testid="import-where">{importDestination(it, layers)}</p>
               {/* a skipped or failed row says why in its destination line already */}
               {it.message && it.status !== 'skipped' && it.status !== 'error' && (

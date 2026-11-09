@@ -16,7 +16,7 @@ vi.mock('@aio/workspace', () => ({
   workspace: { getState: () => ({ project: { id: 'p1', root: h.root } }) },
 }));
 
-import { applyLaneNotice, onLaneNotice, setSpacesReload } from './queueWatch';
+import { applyLaneNotice, onJobUpdate, onLaneNotice, setSpacesReload } from './queueWatch';
 
 const waiting = (file: string, inspection: string): ImportItem => ({
   file,
@@ -102,5 +102,59 @@ describe('lane notices on the import card', () => {
     expect(reload).not.toHaveBeenCalled();
     onLaneNotice({ project: 'E:/p', state: 'tidied', removed: ['fly-x'] });
     expect(reload).toHaveBeenCalledWith('p1');
+  });
+});
+
+describe('chamber rows follow their jobs', () => {
+  const job = (id: string, status: string, extra: Record<string, unknown> = {}) =>
+    ({ id, pipeline: 'flyability.import', status, progress: 0.4, ...extra }) as never;
+
+  it('a running chamber says so, then done, failed or cancelled; the card settles', () => {
+    h.state.importResult = {
+      items: [
+        { ...waiting('Chamber A', 'i-a'), jobId: 'j-a' },
+        { ...waiting('Chamber B', 'i-b'), jobId: 'j-b' },
+      ],
+      error: null,
+    };
+    onJobUpdate(job('j-a', 'running'));
+    expect(row(0)).toMatchObject({ status: 'queued', message: 'Converting, 40 %' });
+    onJobUpdate(job('j-a', 'done'));
+    expect(row(0)).toMatchObject({ status: 'imported', message: 'Imported into its space.' });
+    onJobUpdate(job('j-b', 'failed', { error: 'disk full' }));
+    expect(row(1)).toMatchObject({ status: 'error', message: 'disk full' });
+    // a failure keeps the card open, so it can be read
+    expect(h.state.importResult).not.toBeNull();
+    // another pipeline's job, or a job no row has, changes nothing
+    onJobUpdate({ id: 'j-a', pipeline: 'pano.stitch', status: 'failed' } as never);
+    expect(row(0)?.status).toBe('imported');
+  });
+
+  it('the card closes once every chamber is imported', () => {
+    h.state.importResult = {
+      items: [
+        { ...waiting('Chamber A', 'i-a'), jobId: 'j-a' },
+        { ...waiting('Chamber B', 'i-b'), jobId: 'j-b' },
+      ],
+      error: null,
+    };
+    onJobUpdate(job('j-a', 'done'));
+    expect(h.state.importResult).not.toBeNull();
+    onJobUpdate(job('j-b', 'done'));
+    expect(h.state.importResult).toBeNull();
+  });
+
+  it('a cancelled or interrupted chamber says so', () => {
+    h.state.importResult = {
+      items: [
+        { ...waiting('Chamber A', 'i-a'), jobId: 'j-a' },
+        { ...waiting('Chamber B', 'i-b'), jobId: 'j-b' },
+      ],
+      error: null,
+    };
+    onJobUpdate(job('j-a', 'cancelled'));
+    onJobUpdate(job('j-b', 'interrupted'));
+    expect(row(0)).toMatchObject({ status: 'skipped', message: 'Cancelled.' });
+    expect(row(1)?.status).toBe('error');
   });
 });
