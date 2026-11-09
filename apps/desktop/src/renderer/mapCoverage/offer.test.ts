@@ -1,10 +1,12 @@
 import type { PackRegion } from '@aio/schema';
+import { ProjectManifest } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_PREFS,
   handledProjects,
   markHandled,
   offerFor,
+  placedOnEarth,
   prefsOf,
   queueRegions,
   type OfferInput,
@@ -170,5 +172,45 @@ describe('the projects already offered', () => {
     expect(() => {
       markHandled('p', null);
     }).not.toThrow();
+  });
+});
+
+describe('placedOnEarth', () => {
+  const manifest = (layers: object[], spaces: object[] = []) =>
+    ProjectManifest.parse({
+      schema: 'aio.project/1',
+      id: 'p',
+      name: 'P',
+      crs: { epsg: 32640 },
+      origin: [500000, 2700000, 0],
+      captures: [],
+      layers,
+      spaces,
+      severityModels: [],
+      classCatalogues: [],
+    });
+  const room = {
+    id: 'room',
+    name: 'Room',
+    crs: { local: 'flyability' },
+    origin: [0, 0, 0],
+  };
+  const cloud = (space?: string) => ({
+    kind: 'pointcloud',
+    id: space ? 'c1' : 'c0',
+    name: 'c',
+    visible: true,
+    src: { path: 'c.copc.laz' },
+    format: 'copc',
+    ...(space ? { space } : {}),
+  });
+
+  it('is true for a project with no data yet, or with data in its own CRS', () => {
+    expect(placedOnEarth(manifest([]))).toBe(true);
+    expect(placedOnEarth(manifest([cloud()], [room]))).toBe(true);
+  });
+
+  it('is false when every layer is in a confined-space (local) space', () => {
+    expect(placedOnEarth(manifest([cloud('room')], [room]))).toBe(false);
   });
 });

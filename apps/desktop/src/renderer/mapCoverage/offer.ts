@@ -5,8 +5,16 @@
  * opt-in "download automatically" preference. An offline-only workstation downloads nothing.
  * Pure: the IPC call comes in as a function.
  */
-import type { PackRegion } from '@aio/schema';
+import { spacesOf, type PackRegion, type ProjectManifest } from '@aio/schema';
 import { toPackRegion, type PlannedRegion } from './plan';
+
+/**
+ * Whether any space of the project lies on the Earth. A project whose layers are all in local
+ * (confined-space) spaces has no site a street map could show, whatever its own crs says.
+ */
+export function placedOnEarth(manifest: ProjectManifest): boolean {
+  return spacesOf(manifest).some((s) => !('local' in s.crs));
+}
 
 /** `GlobeSettings.projectMaps` with its defaults filled in. */
 export interface ProjectMapPrefs {

@@ -11,7 +11,14 @@ import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { bridge, shell } from '../shell';
-import { handledProjects, markHandled, offerFor, prefsOf, type QueueResult } from './offer';
+import {
+  handledProjects,
+  markHandled,
+  offerFor,
+  placedOnEarth,
+  prefsOf,
+  type QueueResult,
+} from './offer';
 import { chosenRegions, coveragePlan, projectCoverage, type PlannedRegion } from './plan';
 import { mapCoverage } from './store';
 
@@ -71,6 +78,8 @@ async function placeOfProject(
 async function evaluate(projectId: string, manifest: ProjectManifest): Promise<void> {
   const offlineOnly = shell.getState().settings.offlineOnly === true;
   if (offlineOnly || handledProjects().includes(projectId)) return;
+  // every layer in a confined-space chamber: no site to put a street map on
+  if (!placedOnEarth(manifest)) return;
   const lonLat = await placeOfProject(projectId, manifest);
   if (!lonLat || !stillOpen(projectId)) return;
   const [packs, jobs, globe] = await Promise.all([
