@@ -146,6 +146,9 @@
 .mp-ed-name:hover:not(:read-only),
 .mp-ed-name:focus {
   border-color: var(--line-strong);
+}
+/* the field's own border lights on keyboard focus (below), so the outline goes */
+.mp-ed-name:focus {
   outline: none;
 }
 .mp-ed-name:focus-visible:not(:read-only) {

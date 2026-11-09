@@ -125,23 +125,37 @@ export function countRadiusOffScale(css: string): number {
   return n;
 }
 
+/** A declaration block that lights a focus: an outline, a border or a shadow that is not none. */
+function lightsFocus(body: string): boolean {
+  for (const m of body.matchAll(/(?<![\w-])([a-z-]+)\s*:\s*([^;]+)/g)) {
+    const prop = m[1] ?? '';
+    const value = (m[2] ?? '').trim();
+    if (!/^(?:outline|outline-color|outline-style|border(?:-[a-z]+)*|box-shadow)$/.test(prop))
+      continue;
+    if (/radius$|width$|^border-collapse|^border-spacing|^border-image/.test(prop)) continue;
+    if (/^(?:none|transparent)(?![\w-])|^0$/.test(value)) continue;
+    return true;
+  }
+  return false;
+}
+
 /**
- * `outline: none` (or 0) with no visible focus style beside it: neither the rule itself lights a
- * border or a shadow, nor does the file have a `:focus-visible` / `:focus-within` rule for the
- * same selector, or a `:focus-within` rule for an ancestor (a search field lit around its input).
+ * `outline: none` (or 0) with no visible focus style beside it. Covered: a `:focus` selector of the
+ * rule itself that lights an outline, a border or a shadow (not none); or, in the same file, a
+ * `:focus-visible` / `:focus-within` rule that lights one, for the same selector or, by
+ * `:focus-within`, for an ancestor (a search field lit around its input).
  */
 export function countBareOutlineNone(css: string): number {
   const rules = cssRules(css);
   const partners = rules
-    .filter(
-      (r) => /:focus-(?:visible|within)/.test(r.sel) && !/outline\s*:\s*(?:none|0)\b/.test(r.body),
-    )
+    .filter((r) => /:focus-(?:visible|within)/.test(r.sel) && lightsFocus(r.body))
     .flatMap((r) => r.sel.split(',').map((s) => s.trim()));
   let n = 0;
   for (const r of rules) {
     if (!/(?<![\w-])outline\s*:\s*(?:none|0)\s*(?:;|$)/.test(r.body)) continue;
-    if (/(?<![\w-])(?:border(?:-[a-z]+)*-color|box-shadow)\s*:/.test(r.body)) continue;
+    const selfLit = lightsFocus(r.body);
     for (const s of r.sel.split(',')) {
+      if (selfLit && /:focus(?:-visible|-within)?(?![\w-])/.test(s)) continue;
       const base = s.trim().replace(/:focus(?:-visible|-within)?(?![\w-])/g, '');
       const paired = partners.some(
         (p) =>
@@ -304,6 +318,12 @@ describe('css metrics', () => {
       0,
     );
     expect(countBareOutlineNone('.a:focus { outline: none; border-color: red }')).toBe(0);
+    expect(countBareOutlineNone('.a { outline: none; border-color: red }')).toBe(1);
+    expect(countBareOutlineNone('.a:focus { outline: none; box-shadow: none }')).toBe(1);
+    expect(countBareOutlineNone('.a { outline: none } .a:focus-visible { color: red }')).toBe(1);
+    expect(countBareOutlineNone('.a { outline: none } .a:focus-visible { box-shadow: none }')).toBe(
+      1,
+    );
     expect(
       countBareOutlineNone('.f input { outline: none } .f:focus-within { border-color: red }'),
     ).toBe(0);
