@@ -91,7 +91,7 @@ import {
 import { convertMedia } from './convertMedia';
 import { rotateProjectPhoto } from './rotatePhoto';
 import { builderPipelineJobs } from './builderJobs';
-import { inspectorLane } from './inspectorLane';
+import { INSPECTOR_QUEUED, inspectorLane, tidyInspectorSpacesOnStart } from './inspectorLane';
 import {
   listProjectWalks,
   packageWalkProcessing,
@@ -1059,6 +1059,19 @@ const inspectorQueue = inspectorLane({
   log: (line) => {
     appLog.write('warn', [line]);
   },
+  // the import card hears what became of each waiting chamber
+  notify: (n) => {
+    const parsed = ipcEvents['builder:inspectorQueue'].safeParse(n);
+    const win = mainWindow ?? BrowserWindow.getAllWindows()[0];
+    if (parsed.success && win && !win.isDestroyed())
+      win.webContents.send('builder:inspectorQueue', parsed.data);
+  },
+  // chamber spaces made ahead that stayed empty go
+  tidy: async (project, keep) => {
+    const { removeEmptyInspectorSpaces } = await import('@aio/project/builder');
+    await removeEmptyInspectorSpaces(project, keep);
+  },
+  record: (id) => jobs.get(id),
 });
 /** Drone panorama stitches run one at a time on this computer; the others wait in line. */
 const panoLane = stitchLane({
@@ -1350,7 +1363,11 @@ function registerIpc(): void {
       if (projectNames.has(projectId)) projectNames.set(projectId, name);
     },
     trash: (path) => shell.trashItem(path),
-    release: (root) => journal.close(root),
+    // a deleted project's waiting chambers leave the line first
+    release: async (root) => {
+      await inspectorQueue.cancelProject(root);
+      return journal.close(root);
+    },
     forget: (root) => journal.forget(root),
   });
   // Properties, Export and Reveal in folder of one dataset
@@ -1847,6 +1864,11 @@ function registerIpc(): void {
     // a detector run: the Analytics pack, the graphics card and the model server first, and it
     // waits while the card is taken (detect.preset.queued, as PANO_QUEUED)
     if (pipeline === 'detect.vlm') return detectQueue.start(req);
+    // an Inspector import (new or resumed) waits for the one running, as the chambers of a drop
+    if (pipeline === 'flyability.import') {
+      const r = await inspectorQueue.start(req);
+      return 'queued' in r ? { ok: false, error: INSPECTOR_QUEUED } : r;
+    }
     // a drone panorama stitch waits for the one running (one at a time on this computer)
     const sphere = laneSphere(req, (id) => jobs.get(id));
     if (sphere) {
@@ -2039,6 +2061,11 @@ function registerIpc(): void {
       }),
   );
   handle('builder:inspectorScan', (req) => builderInspectorScan(req, registry));
+  // a closed project's chambers that wait their turn are not imported
+  handle('builder:cancelInspectorQueue', async ({ projectId }) => {
+    const root = registry.root(projectId);
+    return { dropped: root === undefined ? 0 : await inspectorQueue.cancelProject(root) };
+  });
   handle('builder:altitudePlan', (req) => builderAltitudePlan(req, registry));
   // the LAS header day of each .zpc cloud, before Add data asks for its survey day
   handle('builder:cloudDates', (req) => builderCloudDates(req, registry));
@@ -2950,6 +2977,11 @@ if (restore) {
       console.warn('Map pack jobs could not be restored', e);
     });
     await jobStore.load();
+    // chamber spaces made ahead whose import never ran (a quit mid-line) are tidied away
+    void tidyInspectorSpacesOnStart(jobStore.all(), async (project) => {
+      const { removeEmptyInspectorSpaces } = await import('@aio/project/builder');
+      await removeEmptyInspectorSpaces(project, new Set());
+    });
     // a detector model server left by a crashed or killed app would hold the graphics memory and
     // refuse every run as too busy; only this first instance looks (starts wait for it)
     void vlmServer.sweep();

@@ -47,6 +47,11 @@ export const enFlyability = {
   'fly.picker.noneHint':
     'Pick the folder Inspector exported to (it holds flights, maps, pois and snapshots), or the mission folder that holds those exports.',
   'fly.picker.importFailed': 'Could not start the import.',
+  'fly.queue.started': 'Converting with the processing tools.',
+  'fly.queue.cancelled': 'Not imported: an Inspector import of this project was cancelled.',
+  'fly.queue.closed': 'Not imported: the project was closed.',
+  'fly.queue.failed': 'Did not start: {error}',
+  'fly.queue.failedToast': 'The import of {name} did not start.',
   'fly.addData': 'Flyability Inspector export...',
   'fly.library.tip': 'Add a project folder, or a Flyability Inspector export to import.',
   'fly.space.all': 'All spaces',

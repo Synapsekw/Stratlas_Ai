@@ -547,6 +547,12 @@ export function createShellStore(
     },
 
     closeProject: () => {
+      // its Flyability chambers still waiting their turn are not imported
+      const open = workspace.getState().project;
+      if (open)
+        void bridge
+          .call('builder:cancelInspectorQueue', { projectId: open.id })
+          .catch(() => undefined);
       leaveScene(null);
       workspace.getState().closeProject();
       setReadOnly(false);

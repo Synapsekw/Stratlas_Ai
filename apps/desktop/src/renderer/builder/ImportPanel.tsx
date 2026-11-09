@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { PagesCard } from '../drawings/PagesCard';
 import { useDrawings } from '../drawings/store';
 import { InspectorPickerHost } from '../flyability/InspectorPicker';
+import { watchInspectorQueue } from '../flyability/queueWatch';
 import { PhotoProcessLayer } from '../photogrammetry/PhotoProcessLayer';
 import { useShell } from '../shell';
 import { CloudDatesCard } from './CloudDates';
@@ -40,6 +41,9 @@ const hasFiles = (e: DragEvent) => [...(e.dataTransfer?.types ?? [])].includes('
 export function ImportLayer() {
   const [over, setOver] = useState(false);
   const projectName = useWorkspace((s) => s.project?.manifest.name ?? null);
+
+  // the chambers of a mission folder that wait their turn report here as they start or leave
+  useEffect(() => watchInspectorQueue(), []);
 
   useEffect(() => {
     let depth = 0;

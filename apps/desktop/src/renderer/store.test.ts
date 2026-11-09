@@ -883,7 +883,7 @@ describe('shell store', () => {
   });
 
   it('closing the project returns to the library', async () => {
-    const { bridge } = fakeBridge({
+    const { bridge, calls } = fakeBridge({
       'project:open': () => ({ ok: true, id: 'hcl', root: entry.path, manifest, issues: [] }),
     });
     const ws = createWorkspace();
@@ -892,6 +892,10 @@ describe('shell store', () => {
     s.getState().closeProject();
     expect(ws.getState().project).toBeNull();
     expect(s.getState().screen).toBe('projects');
+    // its Flyability chambers still waiting are taken out of the line
+    expect(calls.find((c) => c.channel === 'builder:cancelInspectorQueue')?.req).toEqual({
+      projectId: 'hcl',
+    });
   });
 
   it('keeps a picture of the last 3D view per project, in memory', () => {

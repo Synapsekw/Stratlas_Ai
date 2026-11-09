@@ -44,6 +44,9 @@ function jobsStart(
   if (!callback) throw new Error('jobs:start handler is not registered.');
   const start = vi.fn(() => Promise.resolve({ ok: true }));
   const detectStart = vi.fn(() => Promise.resolve({ ok: true }));
+  const laneStart = vi.fn((): Promise<{ ok: boolean; queued?: true }> =>
+    Promise.resolve({ ok: true }),
+  );
   const photoStarting = vi.fn();
   const findPack = vi.fn(() => Promise.resolve({ pack: { version } }));
   const compiled = ts.transpileModule(`(${callback.getText(source)})`, {
@@ -82,8 +85,10 @@ function jobsStart(
     detectPackRefusal,
     detectQueue: { start: detectStart, gpuBusy, photoStarting },
     laneSphere: () => null,
+    inspectorQueue: { start: laneStart },
+    INSPECTOR_QUEUED: 'waits',
   }) as (req: IpcRequest<'jobs:start'>) => Promise<{ ok: boolean; error?: string }>;
-  return { handle, start, detectStart, findPack, photoStarting };
+  return { handle, start, detectStart, findPack, photoStarting, laneStart };
 }
 
 describe('jobs:start resume feature gate', () => {
@@ -151,6 +156,18 @@ describe('jobs:start resume feature gate', () => {
     expect(old.start).not.toHaveBeenCalled();
     const current = jobsStart('0.31.0', 'failed');
     expect(await current.handle(req)).toEqual({ ok: true });
+    // through the one-at-a-time Inspector lane, a resume too; a waiting one says so
+    expect(current.laneStart).toHaveBeenCalledWith(req);
+    expect(current.start).not.toHaveBeenCalled();
+    current.laneStart.mockResolvedValueOnce({ ok: true, queued: true });
+    expect(await current.handle(req)).toEqual({ ok: false, error: 'waits' });
+    const resumed = jobsStart('0.31.0', 'failed', {
+      params: {},
+      packVersion: '0.31.0',
+      pipeline: 'flyability.import',
+    } as never);
+    await resumed.handle({ resume: 'saved-evidence' });
+    expect(resumed.laneStart).toHaveBeenCalledWith({ resume: 'saved-evidence' });
   });
 
   it('refuses thermal.hotspots on a pack below 0.32.0 with the update text', async () => {

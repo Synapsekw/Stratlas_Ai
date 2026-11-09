@@ -2031,6 +2031,14 @@ export const ipc = {
     ]),
   },
   /**
+   * Take a project's Flyability chambers that wait their turn out of the line (9 Nov 2026): the
+   * project was closed. `dropped`: how many left; each is also sent as `builder:inspectorQueue`.
+   */
+  'builder:cancelInspectorQueue': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.object({ dropped: z.number().int().min(0) }),
+  },
+  /**
    * Import raw files into an open project (photos, video with DJI SRT, GLB/OBJ, GeoTIFF; point
    * clouds and large rasters go to the pipeline pack). Progress arrives as `builder:progress`.
    */
@@ -4800,6 +4808,32 @@ export const ipcEvents = {
    * The detector runs waiting for the graphics card, sent on every change; `failed` names a
    * waiting run that did not start when its turn came, and why.
    */
+  /**
+   * What became of a Flyability chamber that waited its turn (9 Nov 2026): it started (`jobId`),
+   * left the line because an Inspector import of its project was cancelled or the project was
+   * closed or deleted (`reason`), or could not start (`error`). `project` is the project folder,
+   * `src` the chamber's export folder.
+   */
+  'builder:inspectorQueue': z.discriminatedUnion('state', [
+    z.object({
+      project: z.string(),
+      src: z.string(),
+      state: z.literal('started'),
+      jobId: z.string(),
+    }),
+    z.object({
+      project: z.string(),
+      src: z.string(),
+      state: z.literal('dropped'),
+      reason: z.enum(['cancelled', 'closed']),
+    }),
+    z.object({
+      project: z.string(),
+      src: z.string(),
+      state: z.literal('failed'),
+      error: z.string(),
+    }),
+  ]),
   'detect:queue': z.object({
     items: z.array(DetectQueued),
     failed: z.object({ run: z.string(), error: z.string() }).optional(),
