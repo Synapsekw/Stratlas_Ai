@@ -32,7 +32,7 @@ const PILES = ['Stockpile SP1', 'Stockpile SP2', 'Stockpile SP3'] as const;
 const PAGES = 3;
 /** The base picker's names (`base.*` in en.ts), and a survey or design side's. */
 const BASE_NAMES = [
-  'Surface through the toe',
+  'Toe surface',
   'Lowest point',
   'Best-fit plane',
   'Fixed level',

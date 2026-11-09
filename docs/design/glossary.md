@@ -22,7 +22,7 @@ The app speaks the user's language: surveying words (UTM, toe, chainage, PCI) an
 | The right panel's parts | **panel**, **tab**, **section** | The right panel holds tabs; the groups inside a tab are sections. |
 | The bar at the top centre of the stage (modes, view and tools) | **stage tools** | Matches its accessible name, "Stage tools". |
 | The point shading that brings out the shape of a point cloud | **depth shading** | The renderer calls it eye-dome lighting; the UI does not. |
-| The volume base fitted through the pile's toe | **Surface through the toe** | The standard base. "Toe" is a surveying word and stays. |
+| The volume base fitted through the pile's toe | **Toe surface** | The standard base. "Toe" is a surveying word and stays. |
 
 ## Retired terms
 
@@ -37,7 +37,7 @@ The test reads this table. Each row is a term no UI string may use; the test hol
 | `bench` | panel, tab, section | Internal name for right-panel content. |
 | `island` | stage tools | Internal name for the stage's top bar. |
 | `EDL` | depth shading | An unexplained acronym. |
-| `Triangulated toe` | Surface through the toe | Jargon; the plain words say what the base is. |
+| `Triangulated toe` | Toe surface | Jargon; the plain words say what the base is. |
 
 ## Allowed exceptions
 

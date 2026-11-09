@@ -595,7 +595,7 @@ describe('pile panel and linked hover strings', () => {
       expect(v, k).not.toMatch(/[–—]/);
       expect([...placeholders(v)].sort(), k).toEqual(p);
     }
-    expect(en['base.kitTin']).toBe('Surface through the toe');
+    expect(en['base.kitTin']).toBe('Toe surface');
     expect(t('timelapse.playing', { date: '5 Jan 2021' })).toBe('Playing · 5 Jan 2021');
     expect(t('volumes.more', { count: 2 })).toBe('+ 2 more');
   });

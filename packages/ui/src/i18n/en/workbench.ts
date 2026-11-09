@@ -284,9 +284,9 @@ export const enWorkbench = {
   'bulk.recomputeCarried.title_one': 'Recompute {count} earlier-version pile?',
   'bulk.recomputeCarried.title_other': 'Recompute {count} earlier-version piles?',
   'bulk.recomputeCarried.text_one':
-    'Its figure from the earlier version is replaced by the standard base (surface through the toe) and kept as "was". Its earlier dates are worked out again from the surveys; a date with no prepared survey then shows no figure.',
+    'Its figure from the earlier version is replaced by the standard base (toe surface) and kept as "was". Its earlier dates are worked out again from the surveys; a date with no prepared survey then shows no figure.',
   'bulk.recomputeCarried.text_other':
-    'Their figures from the earlier version are replaced by the standard base (surface through the toe) and kept as "was". Their earlier dates are worked out again from the surveys; a date with no prepared survey then shows no figure.',
+    'Their figures from the earlier version are replaced by the standard base (toe surface) and kept as "was". Their earlier dates are worked out again from the surveys; a date with no prepared survey then shows no figure.',
   'bulk.recomputeCarried.yes': 'Recompute with the standard base',
   'bulk.recomputeCarried.done_one':
     'Recomputed {count} earlier-version pile with the standard base',
