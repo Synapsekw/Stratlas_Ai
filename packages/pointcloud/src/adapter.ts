@@ -121,7 +121,7 @@ function resolveChunkUrl(
 }
 
 /** The share of a local-frame cloud's points left out at each end of an axis when framing it. */
-export const LOCAL_FRAME_TRIM = 0.005;
+export const LOCAL_FRAME_TRIM = 0.01;
 
 /** What a COPC file gives a layer: its chunks, size, header and framing box (local frame). */
 interface LoadedCopc {

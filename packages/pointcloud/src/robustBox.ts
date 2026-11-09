@@ -2,6 +2,11 @@ import { Box3, Vector3 } from 'three';
 import type { ChunkSeed } from './manager';
 
 type Axis = 0 | 1 | 2;
+interface Span {
+  a: number;
+  b: number;
+  w: number;
+}
 const AXES: readonly Axis[] = [0, 1, 2];
 
 /**
@@ -19,22 +24,39 @@ export function robustCloudBox(seeds: readonly ChunkSeed[], header: Box3, trim: 
   const lo: [number, number, number] = [Infinity, Infinity, Infinity];
   const hi: [number, number, number] = [-Infinity, -Infinity, -Infinity];
   for (const axis of AXES) {
-    const centre = (s: ChunkSeed) => (s.bounds.min[axis] + s.bounds.max[axis]) / 2;
-    const sorted = [...leaves].sort((a, b) => centre(a) - centre(b));
-    let before = 0;
-    for (const s of sorted) {
-      // keep a node unless it lies wholly inside the trimmed share at either end
-      const from = before / total;
-      const to = (before + s.points) / total;
-      before += s.points;
-      if (to <= trim || from >= 1 - trim) continue;
-      lo[axis] = Math.min(lo[axis], s.bounds.min[axis]);
-      hi[axis] = Math.max(hi[axis], s.bounds.max[axis]);
-    }
+    // each node spreads its points evenly over its own extent: the cut falls inside a coarse
+    // node at the share it asks for, not at the node's far wall
+    const spans = leaves.map((s) => ({
+      a: s.bounds.min[axis],
+      b: s.bounds.max[axis],
+      w: s.points,
+    }));
+    lo[axis] = quantile(spans, total, trim);
+    hi[axis] = quantile(spans, total, 1 - trim);
   }
   if (![...lo, ...hi].every(Number.isFinite)) return header.clone();
   const box = new Box3(new Vector3(...lo), new Vector3(...hi));
   box.min.max(header.min);
   box.max.min(header.max);
   return box.isEmpty() ? header.clone() : box;
+}
+
+/** The coordinate below which `share` of the points lie, each span's points spread evenly. */
+function quantile(spans: readonly Span[], total: number, share: number): number {
+  const cdf = (x: number) => {
+    let n = 0;
+    for (const s of spans) {
+      const len = s.b - s.a;
+      n += s.w * (len > 0 ? Math.min(1, Math.max(0, (x - s.a) / len)) : x >= s.a ? 1 : 0);
+    }
+    return n / total;
+  };
+  let from = Math.min(...spans.map((s) => s.a));
+  let to = Math.max(...spans.map((s) => s.b));
+  for (let i = 0; i < 48; i++) {
+    const mid = (from + to) / 2;
+    if (cdf(mid) < share) from = mid;
+    else to = mid;
+  }
+  return (from + to) / 2;
 }

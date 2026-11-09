@@ -22,8 +22,29 @@ describe('robustCloudBox', () => {
       seed('far', [40, 28, 10], [47, 33, 18], 20),
     ];
     const box = robustCloudBox(dense, header, 0.005);
-    expect(box.min.toArray()).toEqual([-7, -1, -7]);
-    expect(box.max.toArray()).toEqual([7, 5, 7]);
+    box.min.toArray().forEach((v, i) => {
+      expect(v).toBeCloseTo([-7, -1, -7][i] ?? 0, 0);
+    });
+    box.max.toArray().forEach((v, i) => {
+      expect(v).toBeCloseTo([7, 5, 7][i] ?? 0, 0);
+    });
+  });
+
+  it('cuts inside a coarse node that mostly holds strays, not at its far wall', () => {
+    const nodes = [
+      seed('a', [-9, -1, -1], [0, 1, 1], 50000),
+      seed('b', [0, -1, -1], [9, 1, 1], 50000),
+      // 1.5 % of the points spread over 9 m: the 0.5 % trim lands a third of the way in
+      seed('far', [9, -1, -1], [18, 1, 1], 1500),
+    ];
+    const box = robustCloudBox(
+      nodes,
+      new Box3(new Vector3(-9, -1, -1), new Vector3(18, 1, 1)),
+      0.005,
+    );
+    expect(box.max.x).toBeGreaterThan(9);
+    expect(box.max.x).toBeLessThan(15.5);
+    expect(box.min.x).toBeCloseTo(-9 + 0.045, 1);
   });
 
   it('ignores nodes that have children (their children cover them)', () => {
@@ -35,7 +56,9 @@ describe('robustCloudBox', () => {
       header,
       0.005,
     );
-    expect(box.max.toArray()).toEqual([5, 5, 5]);
+    box.max.toArray().forEach((v) => {
+      expect(v).toBeCloseTo(5, 0);
+    });
   });
 
   it('never grows past the header box', () => {
