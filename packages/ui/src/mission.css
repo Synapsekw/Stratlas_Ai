@@ -1179,7 +1179,7 @@ select.input option {
 .dtag {
   width: 10px;
   height: 10px;
-  border-radius: var(--r-4);
+  border-radius: var(--r-2);
   flex: none;
   background: var(--dtag);
 }

@@ -42,7 +42,7 @@
   flex-direction: column;
   gap: 6px;
   padding: 6px 8px;
-  border: 1px solid color-mix(in oklch, var(--sev, var(--line-strong)) 55%, var(--line));
+  border: 1px solid color-mix(in oklab, var(--sev, var(--line-strong)) 55%, var(--line));
   border-radius: var(--r-4);
   background: var(--bg-1);
 }
