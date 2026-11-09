@@ -416,6 +416,41 @@ describe('importRawFiles', () => {
     expect(isImportableExtension('.zpc')).toBe(true);
   });
 
+  it('with Inspector exports looked for, a .zpc, an AT export and a plain folder go the old way', async () => {
+    const root = await project();
+    const zpcFile = join(dir, 'Mast cloud.zpc');
+    await writeFile(zpcFile, 'PK');
+    const at = join(dir, 'Block', 'at.xml');
+    const photos = join(dir, 'Block', 'photos');
+    await mkdir(photos, { recursive: true });
+    await writeFile(at, '<BlocksExchange version="3.2"/>');
+    // a folder of a survey, no export in it or one level down
+    const survey = join(dir, 'Survey');
+    await mkdir(join(survey, 'Flight 1'), { recursive: true });
+    await writeFile(join(survey, 'Flight 1', 'notes.txt'), 'x');
+    const started: { method: string; params: Record<string, unknown> }[] = [];
+    const jobs: PipelineJobs = {
+      available: () => Promise.resolve(true),
+      start: (method, params) => {
+        started.push({ method, params });
+        return Promise.resolve({ jobId: `j${String(started.length)}` });
+      },
+    };
+    const r = await importRawFiles(root, [zpcFile, at, survey], {
+      ...deps({ jobs, cloudDates: { [zpcFile]: '2026-03-04' } }),
+      flyabilityUi: true,
+      inspector: { inspections: [{ id: 'not-here' }] },
+      pickFolder: () => Promise.resolve(photos),
+    });
+    expect(r.items.some((i) => i.kind === 'flyability')).toBe(false);
+    // the paths as given: only an Inspector export is handed over by its real folder
+    expect(started.map((s) => [s.method, s.params.src ?? s.params.xml])).toEqual([
+      ['pointcloud.toCopc', zpcFile],
+      ['bentley.import', at],
+    ]);
+    expect(started[1]?.params).toMatchObject({ xml: at, photos });
+  });
+
   it('a cloud marked Not dated gets no surveyDate', async () => {
     const root = await project();
     const zpcFile = join(dir, 'a.zpc');
@@ -1733,7 +1768,8 @@ describe('GLB georeference on import (engineering model 5.6)', () => {
     expect(started[0]).toMatchObject({
       method: 'flyability.import',
       params: {
-        src: exp,
+        // the job reads the export by its real folder (a short 8.3 temp path comes back long)
+        src: await realpath(exp),
         inspections: chosen.inspections,
         catalogueId: 'confined-space',
         severityModel: { id: 'confined-space-4' },
@@ -1828,8 +1864,8 @@ describe('GLB georeference on import (engineering model 5.6)', () => {
     // the fixture ids share their first 8 characters: the second space gets a free id
     expect(new Set(spaces.map((s) => s.id)).size).toBe(2);
     expect(started.map((s) => s.params.src)).toEqual([
-      join(mission, 'Exports', 'Chamber A'),
-      join(mission, 'Exports', 'Chamber B'),
+      await realpath(join(mission, 'Exports', 'Chamber A')),
+      await realpath(join(mission, 'Exports', 'Chamber B')),
     ]);
     // each job takes its own export's inspections, without the space name, into its space
     expect(started[0]?.params).toMatchObject({

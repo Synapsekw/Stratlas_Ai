@@ -1,7 +1,7 @@
 import { MAX_FOLDER_FILES } from '@aio/project/builder';
 import { withExif, writeInspectorFixture } from '@aio/project/builder/testing';
 import type { Georef } from '@aio/schema';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -860,7 +860,8 @@ describe('Flyability Inspector exports', () => {
     expect(t.started[0]).toMatchObject({
       method: 'flyability.import',
       params: {
-        src: t.exp,
+        // the job reads the export by its real folder (a short 8.3 temp path comes back long)
+        src: await realpath(t.exp),
         inspections,
         catalogueId: 'confined-space',
         severityModel: { id: 'confined-space-4' },

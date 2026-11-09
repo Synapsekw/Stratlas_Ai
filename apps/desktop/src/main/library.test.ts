@@ -1,10 +1,11 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as builderLib from '@aio/project/builder';
 import { writeInspectorFixture } from '@aio/project/builder/testing';
-import { addToLibrary, createLibraryStore, listLibrary, listPacks } from './library';
+import { addToLibrary, createLibraryStore, listLibrary, listPacks, sourceKeyHash } from './library';
 import { ProjectRegistry } from './project';
 import { sampleManifest, writeProject } from './testing';
 
@@ -17,6 +18,23 @@ vi.mock('@aio/project/builder', async (importOriginal) => {
       failCreate.on ? Promise.reject(new Error('disk full')) : real.createProject(...a),
   };
 });
+
+/** The 8.3 short form of a Windows folder (cmd's `%~s`), or null where there is none. */
+function shortName(p: string): string | null {
+  if (process.platform !== 'win32') return null;
+  try {
+    // verbatim: Node's own quoting of the argument is not what cmd reads
+    const r = spawnSync('cmd.exe', ['/d', '/c', `for %I in ("${p}") do @echo %~sI`], {
+      encoding: 'utf8',
+      windowsHide: true,
+      windowsVerbatimArguments: true,
+    });
+    const out = r.status === 0 ? r.stdout.trim() : '';
+    return out === '' || out.includes('"') ? null : out;
+  } catch {
+    return null;
+  }
+}
 
 /** A pack version for tests that add no export. */
 const noPack = () => Promise.resolve<string | null>('dev');
@@ -265,6 +283,42 @@ describe('library store and addToLibrary', () => {
     // one chamber dropped on its own goes to the same project
     const three = await addToLibrary(
       join(mission, 'Exports', 'Chamber B'),
+      store,
+      registry,
+      dataRoot,
+      packV,
+      true,
+    );
+    expect(one.ok && three.ok && three.entry.id).toBe(one.ok ? one.entry.id : '');
+    expect(await readdir(join(dataRoot, 'projects'))).toHaveLength(1);
+  });
+
+  it('a mission folder dropped by its short 8.3 name and by its long name is one project', async (ctx) => {
+    const mission = join(base, 'Mission folder one');
+    await writeInspectorFixture(join(mission, 'Exports', 'Chamber A'));
+    await writeInspectorFixture(join(mission, 'Exports', 'Chamber B'), { seed: 1 });
+    const long = await realpath(mission);
+    const short = shortName(long);
+    // only where the volume makes 8.3 names (Windows, and not turned off)
+    if (short === null || short.toLowerCase() === long.toLowerCase()) {
+      ctx.skip();
+      return;
+    }
+    expect(await sourceKeyHash(short)).toBe(await sourceKeyHash(long));
+    expect(await sourceKeyHash(long.toUpperCase())).toBe(await sourceKeyHash(long));
+    const store = createLibraryStore(join(base, 'library.json'));
+    const registry = new ProjectRegistry();
+    const packV = () => Promise.resolve('0.31.0');
+    const one = await addToLibrary(short, store, registry, dataRoot, packV, true);
+    const note = JSON.parse(
+      await readFile(join(one.ok ? one.entry.path : '', 'flyability-source.json'), 'utf8'),
+    ) as { sha256: string[] };
+    // one key per folder, not one per spelling
+    expect(note.sha256).toHaveLength(3);
+    const two = await addToLibrary(long, store, registry, dataRoot, packV, true);
+    expect(one.ok && two.ok && two.entry.id).toBe(one.ok ? one.entry.id : '');
+    const three = await addToLibrary(
+      join(short, 'Exports', 'Chamber B'),
       store,
       registry,
       dataRoot,

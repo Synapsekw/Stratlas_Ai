@@ -360,6 +360,14 @@ const INSPECTOR_SOURCE_FILE = 'flyability-source.json';
 /** Only a hash of the folder path is kept: the note travels nowhere, but holds no local path. */
 const sourceHash = (p: string): string => createHash('sha256').update(sameKey(p)).digest('hex');
 
+/**
+ * The folder as one key whatever way it was named: its real path (a junction followed, an 8.3
+ * short name made long), folded on Windows (`sameKey`), then hashed.
+ */
+export async function sourceKeyHash(p: string): Promise<string> {
+  return sourceHash(await realpath(p).catch(() => p));
+}
+
 async function readInspectorSources(root: string): Promise<string[]> {
   try {
     const raw = (await readJson(join(root, INSPECTOR_SOURCE_FILE))) as { sha256?: unknown };
@@ -413,10 +421,10 @@ async function projectForInspectorExport(
     // the same export (or mission) dropped again goes to the project that already holds its
     // inspections, or that was made for it
     const wanted = new Set(mission.exports.flatMap((e) => e.scan.inspections.map((i) => i.id)));
-    // as given and by real folder: a re-drop through a junction, or not, finds the same project
-    const given = [dir, ...found];
-    const real = await Promise.all(given.map((p) => realpath(p).catch(() => p)));
-    const hashes = [...new Set([...given, ...real].map(sourceHash))];
+    // by real folder only: a re-drop through a junction, or by a short 8.3 or long name, or in
+    // another case, finds the same project (a note written before kept both forms; the real one
+    // is among them)
+    const hashes = [...new Set(await Promise.all([dir, ...found].map(sourceKeyHash)))];
     const here = new Set(hashes);
     for (const e of await listLibrary({ dataRoot, extraPaths: [], registry })) {
       const m = await readManifest(e.path);
