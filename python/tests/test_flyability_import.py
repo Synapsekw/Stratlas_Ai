@@ -607,3 +607,62 @@ def test_long_ids_are_capped_and_still_linked(tmp_path, exports, what):
         assert {layer["id"] for layer in _manifest(root)["layers"]} == layer_ids
     finally:
         shutil.rmtree(short, ignore_errors=True)
+
+
+def _renamed_export(tmp_path: Path, names: list[str | None]) -> fs.SynthExport:
+    syn = fs.make_export(tmp_path / "export", points=POINTS)
+    for fid, name in zip(syn.flight_ids, names, strict=True):
+        path = syn.root / "flights" / fid / "flight.json"
+        doc = json.loads(path.read_text("utf-8"))
+        doc["name"] = name
+        path.write_text(json.dumps(doc), "utf-8")
+    return syn
+
+
+def _flight_cloud_files(root: Path, syn: fs.SynthExport) -> list[str]:
+    layers = {layer["id"]: layer for layer in _manifest(root)["layers"]}
+    sid = f"fly-{syn.inspection_id[:8]}"
+    return [layers[f"{sid}-{fid[:8]}-cloud"]["src"]["path"] for fid in syn.flight_ids]
+
+
+@pytest.mark.parametrize("names", [["Undefined", "Undefined"], [None, "undefined"], ["Pass", "Pass"]])
+def test_unnamed_and_duplicate_flights_get_unique_safe_cloud_names(tmp_path, names):
+    syn = _renamed_export(tmp_path, names)
+    root = _project(tmp_path)
+    _run(root, _params(syn))
+    files = _flight_cloud_files(root, syn)
+    assert len(set(files)) == 2
+    assert not any("undefined" in f for f in files)
+    for f in files:
+        assert (root / f).is_file()
+    # a re-import keeps the same names
+    _run(root, _params(syn), job_id="j2")
+    assert _flight_cloud_files(root, syn) == files
+
+
+def test_a_named_flight_keeps_its_cloud_file_name(tmp_path):
+    syn = _renamed_export(tmp_path, ["Chamber A pass", "Undefined"])
+    root = _project(tmp_path)
+    _run(root, _params(syn))
+    a, b = _flight_cloud_files(root, syn)
+    assert a.endswith("/chamber-a-pass.copc.laz")
+    assert b.endswith("/flight-2.copc.laz")
+
+
+def test_only_the_merged_cloud_shows_at_first(tmp_path, exports):
+    syn = exports()
+    root = _project(tmp_path)
+    _run(root, _params(syn))
+    sid = f"fly-{syn.inspection_id[:8]}"
+    clouds = {layer["id"]: layer for layer in _manifest(root)["layers"] if layer["kind"] == "pointcloud"}
+    assert clouds[f"{sid}-merged"]["visible"] is True
+    flights = [v for k, v in clouds.items() if k != f"{sid}-merged"]
+    assert flights and all(v["visible"] is False for v in flights)
+
+
+def test_flight_clouds_show_when_there_is_no_merged_cloud(tmp_path, exports):
+    syn = exports(merged=False)
+    root = _project(tmp_path)
+    _run(root, _params(syn))
+    clouds = [layer for layer in _manifest(root)["layers"] if layer["kind"] == "pointcloud"]
+    assert clouds and all(layer["visible"] is True for layer in clouds)

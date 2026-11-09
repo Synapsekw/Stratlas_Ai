@@ -72,6 +72,16 @@ def _slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:60] or "flight"
 
 
+_NO_NAME = {"", "undefined", "null", "none", "unnamed"}
+
+
+def _flight_stem(name: str | None, n: int) -> str:
+    """The cloud file stem of flight number `n`: its name, or ``flight-<n>`` when it has none
+    (the drone software names such a flight "Undefined")."""
+    slug = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
+    return f"flight-{n}" if slug in _NO_NAME else _slug(slug)
+
+
 def _imports(sid: str) -> str:
     return f"imports/flyability/{sid}"
 
@@ -334,7 +344,7 @@ class FlyabilityImport:
                             "matrix": _matrix(f.transform),
                             "layer": lid,
                             "name": f"Flight #{n} cloud",
-                            "rel": _cloud_rel(taken, sid, _slug(f.name or f"flight {n}"), lid, f.id[:8]),
+                            "rel": _cloud_rel(taken, sid, _flight_stem(f.name, n), lid, f.id[:8]),
                         }
                     )
                 if insp.merged_cloud is not None:
@@ -676,6 +686,7 @@ class FlyabilityImport:
                         layer["items"] += [it for it in old.get("items") or [] if it.get("id") not in ids]
                     layers[index[lid]] = {**layer, **keep}
 
+                merged_spaces = {c["space"]: True for c in cloud_out if c["flight"] is None}
                 for c in cloud_out:
                     if not c.get("staged") and c["layer"] in index:
                         made.setdefault(c["space"], []).append(c["layer"])
@@ -685,7 +696,9 @@ class FlyabilityImport:
                             "kind": "pointcloud",
                             "id": c["layer"],
                             "name": c["name"],
-                            "visible": True,
+                            # six overlapping flight clouds are too much at first: with a
+                            # merged cloud in the space only that one shows
+                            "visible": c["flight"] is None or not merged_spaces.get(c["space"]),
                             "src": {"path": c["rel"]},
                             "format": "copc",
                             **({"pointCount": c["points"]} if c["points"] else {}),
