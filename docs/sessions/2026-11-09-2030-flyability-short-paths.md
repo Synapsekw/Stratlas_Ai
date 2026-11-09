@@ -21,8 +21,8 @@ The mission folder batch went red on CI because CI's temp folder is an 8.3 short
 
 ## How to test
 
-1. Open the Projects screen and drop a Flyability mission folder (several chamber exports) on the library. One project is made and the picker opens.
-2. Cancel the picker, then drop the same folder again, this time by another path (for example through a mapped drive or a junction, or typed in another case). The same project opens, and no second project is made.
+1. Open the Projects screen and drop a Flyability mission folder (several chamber exports) on the library. One project is made and the picker opens. (Corrected 9 Nov: a drop on the library did not work until `2026-11-09-2228-inspector-export-root.md`; before it, use Add project folder.)
+2. Cancel the picker, then drop the same folder again, this time by another path (for example through a junction or a `subst` drive letter, or typed in another case). The same project opens, and no second project is made. (Corrected 9 Nov: a mapped network drive was named here but never tried.)
 3. Drop one chamber folder of that mission on its own. It opens the same project.
 
 ## Open threads

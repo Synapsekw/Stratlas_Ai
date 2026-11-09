@@ -24,16 +24,16 @@ The founder found adding a mission confusing ("so many files"), and the first re
 
 ## How to test
 
-1. Run `pnpm dev`. On the library, choose Add a project folder (or drop a folder) and pick the whole mission folder, not a chamber.
+1. Run `pnpm dev`. On the library, choose Add a project folder and pick the whole mission folder, not a chamber. (Corrected 9 Nov: dropping the folder on the library did not work until `2026-11-09-2228-inspector-export-root.md`.)
 2. The Inspector window lists every chamber with its photos, point clouds and findings, and a line saying how many other folders were skipped. Leave them ticked and choose Import.
 3. The import card shows each chamber as Queued, then Running, then Imported; the card closes when all are in.
-4. Switch chambers in the title bar: each opens framed on its point cloud, only the merged cloud is on, the readout says Local frame, and there is no street map chip.
+4. Switch chambers in the title bar: only the merged cloud is on, the readout says Local frame, and there is no street map chip. (Corrected 9 Nov: the view was not re-framed on a switch; Home did that. The framing on a switch came in `2026-11-09-2228-inspector-export-root.md`.)
 5. Drop the same mission folder again: the same project opens and the chambers are marked as already imported.
 6. Start a mission import and cancel the running chamber: the waiting chambers show Not imported and no empty chamber stays in the switcher.
 
 ## Open threads
 
-- Switching chamber does not re-frame the view by itself; Home does.
+- Switching chamber does not re-frame the view by itself; Home does. (Fixed in `2026-11-09-2228-inspector-export-root.md`.)
 - The remaining wall distance disagreements (51 of 587) are not investigated.
 
 ## Next session entry point
