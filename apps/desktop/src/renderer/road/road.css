@@ -144,14 +144,16 @@
   width: 0;
   pointer-events: none;
 }
+/* the marker is a 2px line drawn by its own fill, its pointer centred over it */
 .rr-mark {
-  border-left: 2px solid var(--acc);
+  width: 2px;
+  background: var(--acc);
 }
 .rr-mark::before {
   content: '';
   position: absolute;
   top: -1px;
-  left: -6px;
+  left: -4px;
   border: 5px solid transparent;
   border-top: 6px solid var(--acc);
 }
@@ -367,7 +369,6 @@
 }
 .rr-row.sel {
   background: var(--acc-a12);
-  box-shadow: inset 2px 0 0 var(--acc);
 }
 .rr-row-m {
   min-width: 0;

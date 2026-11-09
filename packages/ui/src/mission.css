@@ -1134,7 +1134,7 @@ select.input option {
 }
 .dfolder.focused > .dfolder-row {
   background: color-mix(in oklch, var(--dtag, var(--acc)) 18%, transparent);
-  box-shadow: inset 3px 0 0 var(--dtag, var(--acc));
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--dtag, var(--acc)) 50%, transparent);
 }
 .dfolder .dchev {
   all: unset;

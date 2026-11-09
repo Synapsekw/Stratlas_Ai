@@ -36,14 +36,13 @@
   min-height: 0;
 }
 
-/* confirmed: solid, in the severity colour; AI: dashed warn */
+/* confirmed: a solid border tinted by the severity colour (the badge names it); AI: dashed warn */
 .inspect-row {
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 6px 8px;
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--sev, var(--line-strong));
+  border: 1px solid color-mix(in oklch, var(--sev, var(--line-strong)) 55%, var(--line));
   border-radius: var(--r-4);
   background: var(--bg-1);
 }

@@ -278,8 +278,8 @@
 .guide .guide-tip {
   margin: 12px 0;
   padding: 8px 14px;
-  border-inline-start: 3px solid var(--acc);
-  border-radius: 0 6px 6px 0;
+  border: 1px solid var(--acc-a40);
+  border-radius: var(--r-6);
   background: var(--acc-a12);
 }
 

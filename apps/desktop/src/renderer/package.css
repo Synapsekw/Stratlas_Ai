@@ -250,7 +250,8 @@
 .welcome .msg {
   margin: 0 0 20px;
   padding: 12px 14px;
-  border-left: 2px solid var(--acc);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
   background: var(--bg-1);
   color: var(--fg-1);
   font-size: var(--t-13);

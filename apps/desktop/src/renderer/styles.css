@@ -2651,7 +2651,6 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
 }
 .pop-item[aria-pressed='true'] {
   background: var(--acc-a12);
-  box-shadow: inset 2px 0 0 var(--acc);
   color: var(--fg-0);
 }
 .pop-item:disabled {
@@ -4692,8 +4691,7 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
   background: var(--bg-2);
 }
 .job-row[aria-current='true'] {
-  background: var(--bg-3);
-  box-shadow: inset 2px 0 0 var(--acc);
+  background: var(--acc-a12);
 }
 .jr-top {
   display: flex;
