@@ -72,6 +72,32 @@ def test_location_check() -> None:
     assert frames.location_check(5.0, None) == "unchecked"
 
 
+def test_location_check_allows_for_the_reading_origin_behind_the_camera() -> None:
+    off = frames.WALL_DISTANCE_BEHIND_CAMERA_M
+    # a wall 1.0 m from the reading origin is cast 1.0 - off from the camera
+    assert frames.location_check(1.0 - off, 1.0) == "agrees"
+    # tolerance max(0.3, 0.25 * wall) is unchanged, measured from the shifted distance
+    assert frames.location_check(1.0 - off + 0.29, 1.0) == "agrees"
+    assert frames.location_check(1.0 - off + 0.31, 1.0) == "disagrees"
+    assert frames.location_check(10.0 - off - 2.4, 10.0) == "agrees"
+    assert frames.location_check(10.0 - off - 2.6, 10.0) == "disagrees"
+
+
+def test_cast_near_hit_is_exact_not_an_upper_bound() -> None:
+    ys, zs = np.meshgrid(np.linspace(-1, 1, 200), np.linspace(-1, 1, 200))
+    for dist in (0.08, 0.11):
+        wall = np.column_stack([np.full(ys.size, dist), ys.ravel(), zs.ravel()])
+        hit = frames.cast(wall, np.zeros((1, 3)), np.array([[1.0, 0, 0]]))[0]
+        assert abs(hit - dist) <= 0.02
+
+
+def test_cast_beyond_the_first_step_unchanged() -> None:
+    ys, zs = np.meshgrid(np.linspace(-1, 1, 200), np.linspace(-1, 1, 200))
+    wall = np.column_stack([np.full(ys.size, 0.12), ys.ravel(), zs.ravel()])
+    hit = frames.cast(wall, np.zeros((1, 3)), np.array([[1.0, 0, 0]]))[0]
+    assert abs(hit - 0.12) <= 0.03
+
+
 def test_cast_budget_200k_points_100_rays() -> None:
     rng = np.random.default_rng(1)
     pts = rng.uniform(-20, 20, (200_000, 3))

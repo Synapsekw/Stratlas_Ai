@@ -231,12 +231,15 @@ def _audit(created: int) -> dict:
 # the export
 
 
+# Where the drone takes its wall-distance reading, behind the camera (as on real exports).
+BEHIND_CAMERA_M = 0.14
+
 # Snapshots: (poi index, flight index, body position in the inspection frame, body yaw deg,
 # camera pitch deg, criticality, tags, seconds since boot, wall distance error (m) or None).
 _SNAPS = [
     (0, 1, (3.0, 2.0, 1.5), 0.0, -5, "High", ["corrosion"], 30, 0.0),
     (1, 0, (5.0, 2.0, 2.0), 90.0, 0, "Low", [], 30, 0.0),
-    (1, 0, (6.0, 3.0, 2.0), 180.0, -10, "Critical", [], 40, 2.0),
+    (1, 0, (6.0, 3.0, 2.0), 180.0, -10, "Critical", [], 40, 3.0),
     (2, 0, (4.0, 3.0, 2.0), 0.0, 0, None, [], 50, None),
 ]
 
@@ -333,7 +336,9 @@ def make_export(
 
         dpos, drot = to_flight(fi, pos, rb)
         cpos, crot = to_flight(fi, cam, rc)
-        wall_distance = None if err is None else float(dist + err)
+        wall_distance = (
+            None if err is None else float(dist + BEHIND_CAMERA_M + err)
+        )  # read from behind the camera
         snap_dir = root / "snapshots" / sid
         rgb, ann = f"{sid}_rgb.jpg", "result_annotated.jpg"
         snap_dir.mkdir(parents=True, exist_ok=True)

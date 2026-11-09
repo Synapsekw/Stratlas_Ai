@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from flyability_synth import LEVER_ARM, YAW_20_SHIFT, SynthExport, make_export
+from flyability_synth import BEHIND_CAMERA_M, LEVER_ARM, YAW_20_SHIFT, SynthExport, make_export
 
 
 def _json(path: Path) -> dict:
@@ -132,10 +132,13 @@ def test_wall_truth_and_snapshot_fields(tmp_path: Path) -> None:
     snaps = {sid: _json(syn.root / "snapshots" / sid / "snapshot.json") for sid in ids}
     p1, p2a, p2b, p3 = (snaps[s] for s in ids)
     assert p1["criticality"] == "High" and p1["tags"] == ["corrosion"]
-    assert p1["wall_distance"] == pytest.approx(syn.wall[ids[0]], abs=1e-4)
+    assert p1["wall_distance"] == pytest.approx(syn.wall[ids[0]] + BEHIND_CAMERA_M, abs=1e-4)
     assert (p2a["criticality"], p2b["criticality"]) == ("Low", "Critical")
-    off = [abs(s["wall_distance"] - syn.wall[i]) for s, i in zip((p2a, p2b), ids[1:3], strict=True)]
-    assert sorted(round(o, 3) for o in off) == [0.0, 2.0]
+    off = [
+        abs(s["wall_distance"] - BEHIND_CAMERA_M - syn.wall[i])
+        for s, i in zip((p2a, p2b), ids[1:3], strict=True)
+    ]
+    assert sorted(round(o, 3) for o in off) == [0.0, 3.0]
     assert p3["criticality"] is None and p3["wall_distance"] is None
     assert math.isinf(syn.wall[ids[3]])
     for sid in ids[:3]:

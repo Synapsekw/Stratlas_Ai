@@ -23,6 +23,13 @@ _C = np.array([[0.0, 0, -1.0], [-1.0, 0, 0], [0, 1.0, 0]])
 _GRID_ABOVE = 5_000_000
 _STEP_M = 0.02
 _START_M = 0.1
+_FINE_STEP_M = 0.005
+
+# The drone's wall_distance reading is taken from a point behind the camera: on two real
+# chambers (196 snapshots with both readings) the median of (cast distance from the camera
+# minus wall_distance) was -0.14 m. A cast distance is compared with wall_distance only
+# after adding this.
+WALL_DISTANCE_BEHIND_CAMERA_M = 0.14
 
 
 def apply(m: np.ndarray | None, pts: np.ndarray) -> np.ndarray:
@@ -116,6 +123,19 @@ def cast(
         hit = np.flatnonzero(np.asarray(counts) > 0)
         if hit.size:
             j = hit[0]
+            if j == 0:
+                # A hit at the first step only bounds the distance from above: march the
+                # first stretch again in fine steps from the origin.
+                fine = np.arange(_FINE_STEP_M, ts[0] + 1e-9, _FINE_STEP_M)
+                fine_r = 0.03 + 0.005 * fine
+                fs = o + fine[:, None] * (d / n)
+                fh = np.flatnonzero(np.asarray(tree.query_ball_point(fs, fine_r, return_length=True)) > 0)
+                if fh.size:
+                    k = fh[0]
+                    near = points[tree.query_ball_point(fs[k], fine_r[k])]
+                    along = (near - o) @ (d / n)
+                    out[i] = float(max(np.clip(along.mean(), fine[k] - fine_r[k], fine[k] + fine_r[k]), 0.0))
+                    continue
             # The ball reaches up to the radius ahead of the surface, so refine: the mean
             # along-ray position of the points found is the surface distance.
             near = points[tree.query_ball_point(samples[j], radii[j])]
@@ -127,9 +147,13 @@ def cast(
 def location_check(
     hit_m: float, wall_m: float | None
 ) -> Literal["agrees", "disagrees", "no-hit", "unchecked"]:
-    """Compare a cast distance with the drone wall-distance reading."""
+    """Compare a cast distance (from the camera) with the drone wall-distance reading."""
     if math.isnan(hit_m):
         return "no-hit"
     if wall_m is None:
         return "unchecked"
-    return "disagrees" if abs(hit_m - wall_m) > max(0.3, 0.25 * wall_m) else "agrees"
+    return (
+        "disagrees"
+        if abs(hit_m + WALL_DISTANCE_BEHIND_CAMERA_M - wall_m) > max(0.3, 0.25 * wall_m)
+        else "agrees"
+    )

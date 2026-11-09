@@ -176,7 +176,7 @@ def test_external_checks(tmp_path: Path) -> None:
     assert pin == pytest.approx(list(to_scene(cam + axis)))
     assert p3["external"]["hitDistanceM"] is None and p3["external"]["wallDistanceM"] is None
     ext = issues[1]["external"]
-    assert ext["wallDistanceM"] == pytest.approx(syn.wall[syn.snapshot_ids[2]] + 2.0)
+    assert ext["wallDistanceM"] == pytest.approx(syn.wall[syn.snapshot_ids[2]] + 3.14)
     assert ext["hitDistanceM"] == pytest.approx(syn.wall[syn.snapshot_ids[2]], abs=1e-6)
     assert ext["flight"] == syn.flight_ids[0]
     assert ext["source"] == "flyability" and ext["poi"] == syn.poi_ids[1]
