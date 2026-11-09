@@ -251,6 +251,8 @@ const REVIEW_PX = 2560;
 const THUMB_PX = 480;
 
 export const INSPECTOR_CHOOSE = 'Choose the inspections to import.';
+/** A folder none of whose exports holds a chosen inspection. */
+export const INSPECTOR_NONE_CHOSEN = 'None of the chosen inspections is in this folder.';
 /** A chamber's import that starts when the one before it has ended. */
 export const INSPECTOR_WAITING = 'Waits for the chamber before it, then converts.';
 
@@ -655,7 +657,18 @@ export async function importRawFiles(
   );
   /** Each chosen export with its own inspections and the space each one goes into. */
   const inspectorJobs = new Map<string, PlannedInspectorJob[]>();
-  if (deps.inspector && pipeline && !deps.signal?.aborted && inspectorRoots.size > 0)
+  // processing tools too old for the import: refused before any space is made
+  const inspectorRefusal =
+    deps.inspector && pipeline && inspectorRoots.size > 0
+      ? await (deps.inspectorRefusal?.() ?? null)
+      : null;
+  if (
+    deps.inspector &&
+    pipeline &&
+    inspectorRefusal === null &&
+    !deps.signal?.aborted &&
+    inspectorRoots.size > 0
+  )
     await planInspectorJobs(root, paths, inspectorRoots, deps.inspector, inspectorJobs);
 
   for (const file of paths) {
@@ -681,18 +694,29 @@ export async function importRawFiles(
             message: INSPECTOR_CHOOSE,
           });
         } else {
-          const refusal = pipeline ? await (deps.inspectorRefusal?.() ?? null) : null;
-          if (refusal !== null) {
-            items.push({ file: name, kind: 'flyability', status: 'error', message: refusal });
+          if (inspectorRefusal !== null) {
+            items.push({
+              file: name,
+              kind: 'flyability',
+              status: 'error',
+              message: inspectorRefusal,
+            });
             continue;
           }
           const model =
             m.severityModels.find((x) => x.id === CONFINED_SPACE_TEMPLATE.id) ??
             CONFINED_SPACE_TEMPLATE.model;
           // without the processing tools nothing was planned: the export says so once
-          const planned = inspectorJobs.get(file) ?? [
-            { root: exportRoots[0] ?? file, params: { inspections: deps.inspector.inspections } },
-          ];
+          const planned = pipeline
+            ? (inspectorJobs.get(file) ?? [])
+            : [{ root: exportRoots[0] ?? file, params: {} }];
+          if (planned.length === 0)
+            items.push({
+              file: name,
+              kind: 'flyability',
+              status: 'skipped',
+              message: INSPECTOR_NONE_CHOSEN,
+            });
           // one job per chamber, in folder order; the app runs them one at a time
           for (const p of planned)
             await job(p.root, 'flyability', 'flyability.import', {

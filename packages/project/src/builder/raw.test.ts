@@ -1901,7 +1901,7 @@ describe('GLB georeference on import (engineering model 5.6)', () => {
       available: () => Promise.resolve(true),
       start: () => Promise.reject(new Error('must not start')),
     };
-    const inspector = { inspections: [{ id: ids.inspectionId }] };
+    const inspector = { inspections: [{ id: ids.inspectionId, space: 'Chamber X' }] };
     const old = await importRawFiles(root, [exp], {
       ...deps({ jobs }),
       inspector,
@@ -1910,6 +1910,8 @@ describe('GLB georeference on import (engineering model 5.6)', () => {
     expect(old.items).toEqual([
       expect.objectContaining({ kind: 'flyability', status: 'error', message: 'Needs 0.31.0.' }),
     ]);
+    // refused before any space is made
+    expect((await readManifestFile(root)).spaces ?? []).toEqual([]);
     const ac = new AbortController();
     ac.abort();
     const gone = await importRawFiles(root, [exp], {
