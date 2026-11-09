@@ -572,7 +572,11 @@ test.describe('a synthetic project', () => {
     await expect(row).toHaveAttribute('aria-selected', 'true');
     const tick = row.getByRole('checkbox', { name: 'Select F01' });
     await expect(tick).toHaveAttribute('aria-checked', 'false');
-    await tick.focus();
+    // the selected row's tick is the one tick in the Tab order: Tab from the list reaches it
+    await grid.focus();
+    await expect(grid).toHaveAttribute('aria-activedescendant', /.+/);
+    await win.keyboard.press('Tab');
+    await expect(tick).toBeFocused();
     await win.keyboard.press('Space');
     // once: neither the button's own click on key up nor the list's Space ticks it back
     await expect(tick).toHaveAttribute('aria-checked', 'true');
