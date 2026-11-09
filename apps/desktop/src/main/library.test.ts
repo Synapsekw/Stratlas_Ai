@@ -243,6 +243,38 @@ describe('library store and addToLibrary', () => {
     expect(await readdir(join(dataRoot, 'projects'))).toHaveLength(2);
   });
 
+  it('a mission folder makes one project for all its chambers, and reopens it when dropped again', async () => {
+    const store = createLibraryStore(join(base, 'library.json'));
+    const mission = join(base, 'Mission 1');
+    await writeInspectorFixture(join(mission, 'Exports', 'Chamber A'));
+    await writeInspectorFixture(join(mission, 'Exports', 'Chamber B'), { seed: 1 });
+    await mkdir(join(mission, 'Raw drone data'), { recursive: true });
+    const registry = new ProjectRegistry();
+    const packV = () => Promise.resolve('0.31.0');
+    const one = await addToLibrary(mission, store, registry, dataRoot, packV, true);
+    // named after the mission folder, not one chamber's asset
+    expect(one.ok && one.entry).toMatchObject({ name: 'Mission 1', purpose: 'confined-space' });
+    const note = JSON.parse(
+      await readFile(join(one.ok ? one.entry.path : '', 'flyability-source.json'), 'utf8'),
+    ) as { sha256: string[] };
+    // the mission and each chamber, as hashes only
+    expect(note.sha256).toHaveLength(3);
+    expect(JSON.stringify(note)).not.toContain('Mission');
+    const two = await addToLibrary(mission, store, registry, dataRoot, packV, true);
+    expect(one.ok && two.ok && two.entry.id).toBe(one.ok ? one.entry.id : '');
+    // one chamber dropped on its own goes to the same project
+    const three = await addToLibrary(
+      join(mission, 'Exports', 'Chamber B'),
+      store,
+      registry,
+      dataRoot,
+      packV,
+      true,
+    );
+    expect(one.ok && three.ok && three.entry.id).toBe(one.ok ? one.entry.id : '');
+    expect(await readdir(join(dataRoot, 'projects'))).toHaveLength(1);
+  });
+
   it('an export project that cannot be made leaves no folder', async () => {
     const store = createLibraryStore(join(base, 'library.json'));
     const exp = join(base, 'export');

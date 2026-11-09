@@ -396,42 +396,38 @@ export function flyabilityPackRefusal(pipeline: string, packVersion: string | nu
   return `${FLYABILITY_FEATURE} needs processing tools ${FLYABILITY_MIN_PACK} or later (these are ${packVersion}). Update them in Settings, Processing tools.`;
 }
 
-/** Files the operating system adds to a folder; they are not part of what was dropped. */
-const OS_CLUTTER = /^(thumbs\.db|desktop\.ini|\.ds_store|\._.*|\..*)$/i;
-
 /**
- * A dropped folder that holds its export one level down: its other children are not imported, and
- * the list says so.
+ * A dropped folder that holds its exports further down (a mission folder): the folders and loose
+ * files on the way that are not part of an export are not imported, and the list says so (the
+ * insides of a skipped folder are not listed). OS clutter is left out.
  */
 async function otherChildren(dropped: readonly string[]): Promise<ImportItem[]> {
-  const { findInspectorExport } = await lib();
+  const { findInspectorExports } = await lib();
   const out: ImportItem[] = [];
   for (const p of dropped) {
-    const found = await findInspectorExport(p);
-    if (found === null || found === p) continue;
-    for (const e of await readdir(p).catch(() => [] as string[])) {
-      if (join(p, e) === found || OS_CLUTTER.test(e)) continue;
+    const walk = await findInspectorExports(p);
+    if (walk.exports.length === 0) continue;
+    for (const e of [...walk.skipped.folders, ...walk.looseFiles])
       out.push({
         file: e,
         kind: 'unknown',
         status: 'skipped',
         message: 'Imported the Inspector export; other files in this folder were not imported.',
       });
-    }
   }
   return out;
 }
 
-/** A Flyability Inspector export folder read for the inspection picker (`builder:inspectorScan`). */
+/**
+ * A folder read for the inspection picker (`builder:inspectorScan`): every Inspector export in it,
+ * the folder itself or chambers some levels down in a mission folder.
+ */
 export async function builderInspectorScan(
   req: IpcRequest<'builder:inspectorScan'>,
   registry: ProjectRegistry,
 ): Promise<IpcResponse<'builder:inspectorScan'>> {
   try {
-    const { findInspectorExport, scanInspectorExport, readManifestFile } = await lib();
-    const found = await findInspectorExport(req.path);
-    if (found === null)
-      return { ok: false, error: `${basename(req.path)} is not a Flyability Inspector export.` };
+    const { scanInspectorMission, readManifestFile } = await lib();
     let manifest: ProjectManifest | null = null;
     if (req.projectId !== null) {
       const root = registry.root(req.projectId);
@@ -442,7 +438,8 @@ export async function builderInspectorScan(
         };
       manifest = await readManifestFile(root);
     }
-    return { ok: true, scan: await scanInspectorExport(found, manifest) };
+    // no export in it is an answer too: the picker says so with a hint
+    return { ok: true, mission: await scanInspectorMission(req.path, manifest) };
   } catch (e) {
     return { ok: false, error: errorText(e) };
   }
@@ -456,12 +453,12 @@ export async function builderImport(
   if (root === undefined)
     return { ok: false, error: `Project "${req.projectId}" is not open. Open it, then import.` };
   // an Inspector export is one import, never read file by file: its folder goes through whole
-  const { findInspectorExport, FLYABILITY_IMPORT_UI } = await lib();
+  const { findInspectorExports, FLYABILITY_IMPORT_UI } = await lib();
   const exports: string[] = [];
   const others: string[] = [];
   const inspectorOn = (d.flyabilityUi ?? FLYABILITY_IMPORT_UI) || req.inspector !== undefined;
   for (const p of req.paths)
-    (inspectorOn && (await findInspectorExport(p)) !== null ? exports : others).push(p);
+    (inspectorOn && (await findInspectorExports(p)).exports.length > 0 ? exports : others).push(p);
   const ex =
     others.length === 0
       ? EMPTY_EXPANDED

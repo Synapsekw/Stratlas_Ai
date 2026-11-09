@@ -91,6 +91,7 @@ import {
 import { convertMedia } from './convertMedia';
 import { rotateProjectPhoto } from './rotatePhoto';
 import { builderPipelineJobs } from './builderJobs';
+import { inspectorLane } from './inspectorLane';
 import {
   listProjectWalks,
   packageWalkProcessing,
@@ -645,6 +646,7 @@ const updateWorkGate = createUpdateWorkGate(
     jobs.hasActiveWork() ||
     panoLane.running() !== null ||
     panoLane.waiting().length > 0 ||
+    inspectorQueue.waiting().length > 0 ||
     packs.jobs().some((p) => p.state === 'running' || p.state === 'verifying'),
 );
 const updates = createUpdateService({
@@ -1035,10 +1037,27 @@ const jobs = new JobRunner({
       },
     });
     if (safe) void surveyQaJobs(safe);
+    // an Inspector import ended: the next chamber of a mission folder starts
+    void inspectorQueue.settled(event).catch((e: unknown) => {
+      appLog.write('warn', [`The Inspector import queue did not move on: ${String(e)}`]);
+    });
     // a GPU job ended: the next waiting detector run starts, or the model server stops
     void detectQueue.settled(event).catch((e: unknown) => {
       appLog.write('warn', [`The detector queue did not move on: ${String(e)}`]);
     });
+  },
+});
+/** Flyability Inspector imports run one at a time: a mission folder's other chambers wait. */
+const inspectorQueue = inspectorLane({
+  start: (req) => jobs.start(req),
+  busy: async () =>
+    (await jobs.list()).jobs.some(
+      (j) =>
+        j.pipeline === 'flyability.import' &&
+        (j.status === 'starting' || j.status === 'running' || j.status === 'cancelling'),
+    ),
+  log: (line) => {
+    appLog.write('warn', [line]);
   },
 });
 /** Drone panorama stitches run one at a time on this computer; the others wait in line. */
@@ -2003,7 +2022,7 @@ function registerIpc(): void {
             process.env,
           ),
         // point clouds convert in the pipeline pack as jobs (Jobs panel)
-        jobs: builderPipelineJobs(jobs),
+        jobs: builderPipelineJobs(jobs, inspectorQueue),
         // a Bentley AT export asks for its photos folder (main's dialog, as dialog:openFolder)
         pickFolder: async (title) => {
           const win = targetWindow();

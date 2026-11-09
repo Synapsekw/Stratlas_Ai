@@ -350,9 +350,10 @@ export async function listLibrary(o: {
 }
 
 /**
- * Project-local note of the export folders a project was made for (not in the manifest: no
- * contract field). It lets a re-drop find the project before any inspection was imported, e.g.
- * after the picker was cancelled.
+ * Project-local note of the folders a project was made for (not in the manifest: no contract
+ * field): the dropped folder and every export found in it (a mission folder's chambers). It lets
+ * a re-drop of the mission, or of one of its chambers, find the project before any inspection was
+ * imported, e.g. after the picker was cancelled.
  */
 const INSPECTOR_SOURCE_FILE = 'flyability-source.json';
 
@@ -374,9 +375,11 @@ async function readInspectorSources(root: string): Promise<string[]> {
 export const INSPECTOR_LABEL = 'Flyability Inspector export';
 
 /**
- * A Flyability Inspector export dropped on the library: a project for it (local frame, the
- * confined-space template) named after the asset, else the folder. The picker then asks which
- * inspections to import into it. Null when the folder is not an export.
+ * A Flyability Inspector export, or a mission folder holding several (the chambers), dropped on
+ * the library: one project for it (local frame, the confined-space template) named after the
+ * export's asset, else the folder; a mission folder of several exports is named after itself. The
+ * picker then asks which chambers and inspections to import into it. Null when no export is found
+ * in the folder.
  */
 async function projectForInspectorExport(
   dir: string,
@@ -385,8 +388,8 @@ async function projectForInspectorExport(
   registry: ProjectRegistry,
 ): Promise<{ root: string; existing?: true } | { error: string } | null> {
   const lib = await import('@aio/project/builder');
-  const found = await lib.findInspectorExport(dir);
-  if (found === null) return null;
+  const found = (await lib.findInspectorExports(dir)).exports;
+  if (found.length === 0) return null;
   if (!dataRoot)
     return { error: `${INSPECTOR_LABEL}: set a data folder in Settings first; projects go there.` };
   // the processing tools read the export: without them (or too old) no project is made
@@ -400,10 +403,12 @@ async function projectForInspectorExport(
       error: `${INSPECTOR_LABEL}: ${String(flyabilityPackRefusal('flyability.import', version))}`,
     };
   try {
-    const scan = await lib.scanInspectorExport(found, null);
-    // the same export dropped again goes to the project that already holds its inspections
-    const wanted = new Set(scan.inspections.map((i) => i.id));
-    const here = new Set([sourceHash(dir), sourceHash(found)]);
+    const mission = await lib.scanInspectorMission(dir, null);
+    // the same export (or mission) dropped again goes to the project that already holds its
+    // inspections, or that was made for it
+    const wanted = new Set(mission.exports.flatMap((e) => e.scan.inspections.map((i) => i.id)));
+    const hashes = [...new Set([dir, ...found].map(sourceHash))];
+    const here = new Set(hashes);
     for (const e of await listLibrary({ dataRoot, extraPaths: [], registry })) {
       const m = await readManifest(e.path);
       if (
@@ -417,7 +422,7 @@ async function projectForInspectorExport(
       if ((await readInspectorSources(e.path)).some((h) => here.has(h)))
         return { root: e.path, existing: true };
     }
-    const asset = (scan.asset ?? '').trim();
+    const asset = mission.exports.length === 1 ? (mission.exports[0]?.scan.asset ?? '').trim() : '';
     const made = await lib.createProject(
       dataRoot,
       {
@@ -433,7 +438,7 @@ async function projectForInspectorExport(
     );
     await writeJsonAtomic(join(made.root, INSPECTOR_SOURCE_FILE), {
       schema: 'aio.flyability-source/1',
-      sha256: [sourceHash(dir), sourceHash(found)],
+      sha256: hashes,
     }).catch(async (e: unknown) => {
       await rm(made.root, { recursive: true, force: true });
       throw e;

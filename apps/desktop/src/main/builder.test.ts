@@ -965,16 +965,32 @@ describe('Flyability Inspector exports', () => {
   it('scan answers for an open project', async () => {
     const t = await setup(true);
     const r = await builderInspectorScan({ projectId: t.projectId, path: t.exp }, t.registry);
-    expect(r.ok && r.scan.inspections.map((i) => i.id)).toEqual([t.ids.inspectionId]);
+    expect(r.ok && r.mission.exports.map((e) => e.scan.inspections[0]?.id)).toEqual([
+      t.ids.inspectionId,
+    ]);
     expect(await builderInspectorScan({ projectId: null, path: t.exp }, t.registry)).toMatchObject({
       ok: true,
     });
     expect(
       await builderInspectorScan({ projectId: 'nope', path: t.exp }, t.registry),
     ).toMatchObject({ ok: false });
-    expect(
-      await builderInspectorScan({ projectId: null, path: join(base, 'projects') }, t.registry),
-    ).toMatchObject({ ok: false });
+    // a folder with no export: an empty answer, the picker says so
+    const none = await builderInspectorScan(
+      { projectId: null, path: join(base, 'projects') },
+      t.registry,
+    );
+    expect(none.ok && none.mission.exports).toEqual([]);
+  });
+
+  it('scan finds every chamber of a mission folder', async () => {
+    const t = await setup(true);
+    const mission = join(base, 'Mission 1');
+    await writeInspectorFixture(join(mission, 'Exports', 'Chamber A'));
+    await writeInspectorFixture(join(mission, 'Exports', 'Chamber B'), { seed: 1 });
+    await mkdir(join(mission, 'Raw drone data'), { recursive: true });
+    const r = await builderInspectorScan({ projectId: null, path: mission }, t.registry);
+    expect(r.ok && r.mission.exports.map((e) => e.name)).toEqual(['Chamber A', 'Chamber B']);
+    expect(r.ok && r.mission.skipped).toEqual({ folders: ['Raw drone data'], files: 0 });
   });
 });
 

@@ -69,6 +69,28 @@ describe('builder conversions as pipeline jobs', () => {
     ]);
   });
 
+  it('sends flyability.import through the one-at-a-time lane; a waiting chamber has no job yet', async () => {
+    const { r, started } = runner();
+    const lane: string[] = [];
+    const jobs = builderPipelineJobs(r, {
+      start: (req) => {
+        lane.push('pipeline' in req ? req.pipeline : '');
+        return Promise.resolve(
+          lane.length === 1
+            ? { ok: true as const, job: { id: 'job-a' } as JobRecord }
+            : { ok: true as const, queued: true as const },
+        );
+      },
+    });
+    const params = { projectRoot: 'E:/p', src: 'D:/a', inspections: [{ id: 'i1' }] };
+    expect(await jobs.start('flyability.import', params)).toEqual({ jobId: 'job-a' });
+    expect(await jobs.start('flyability.import', params)).toEqual({ waiting: true });
+    expect(lane).toEqual(['flyability.import', 'flyability.import']);
+    // other conversions start at once
+    await jobs.start('pointcloud.toCopc', { projectRoot: 'E:/p', src: 'D:/a.laz' });
+    expect(started.map((s) => ('pipeline' in s ? s.pipeline : ''))).toEqual(['pointcloud.to_copc']);
+  });
+
   it('starts bentley.import with the block and its photos folder only', async () => {
     const { r, started } = runner();
     await builderPipelineJobs(r).start('bentley.import', {

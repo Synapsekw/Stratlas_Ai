@@ -27,6 +27,15 @@ const PARAM_KEYS: Readonly<Partial<Record<PipelineName, readonly string[]>>> = {
   'flyability.import': ['src', 'inspections', 'severityModel', 'catalogueId', 'spaces'],
 };
 
+/** Where `flyability.import` starts: one at a time (`inspectorLane`); `queued` waits its turn. */
+export interface InspectorStarter {
+  start(
+    req: IpcRequest<'jobs:start'>,
+  ): Promise<
+    { ok: true; job: { id: string } } | { ok: true; queued: true } | { ok: false; error: string }
+  >;
+}
+
 export interface JobStarter {
   list(): Promise<IpcResponse<'jobs:list'>>;
   start(req: IpcRequest<'jobs:start'>): Promise<IpcResponse<'jobs:start'>>;
@@ -36,9 +45,13 @@ export interface JobStarter {
  * The raw import's pipeline seam over the job runner (`jobs:start`): a LAS/LAZ/E57 file becomes
  * a `pointcloud.to_copc` job in the Jobs panel. A conversion the pack does not offer yet (the
  * transcode of a video Chromium cannot play, `video.transcode`) fails with a message the import
- * list shows.
+ * list shows. An Inspector import goes through `inspector` when given: a chamber whose turn has
+ * not come is `waiting`, with no job yet.
  */
-export function builderPipelineJobs(runner: JobStarter): PipelineJobs {
+export function builderPipelineJobs(
+  runner: JobStarter,
+  inspector?: InspectorStarter,
+): PipelineJobs {
   return {
     available: async () => (await runner.list()).runtime.found,
     start: async (method, params) => {
@@ -55,9 +68,13 @@ export function builderPipelineJobs(runner: JobStarter): PipelineJobs {
       const picked = Object.fromEntries(
         keys.filter((k) => params[k] !== undefined).map((k) => [k, params[k]]),
       );
-      const r = await runner.start({ pipeline, project, params: picked });
+      const req = { pipeline, project, params: picked };
+      const r =
+        pipeline === 'flyability.import' && inspector
+          ? await inspector.start(req)
+          : await runner.start(req);
       if (!r.ok) throw new Error(r.error);
-      return { jobId: r.job.id };
+      return 'queued' in r ? { waiting: true } : { jobId: r.job.id };
     },
   };
 }
