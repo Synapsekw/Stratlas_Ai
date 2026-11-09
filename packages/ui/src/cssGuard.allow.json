@@ -1,4 +1,8 @@
 {
+  "apps/desktop/src/renderer/audit/audit.css": {
+    "spacingPx": 24,
+    "radiusOffScale": 1
+  },
   "apps/desktop/src/renderer/audit/AuditScreen.tsx": {
     "title": 1
   },
@@ -15,7 +19,10 @@
     "fontPx": 2,
     "colour": 5,
     "shadow": 3,
-    "zIndex": 6
+    "zIndex": 6,
+    "spacingPx": 101,
+    "radiusOffScale": 2,
+    "transitionLayout": 1
   },
   "apps/desktop/src/renderer/builder/CalibrateVideo.tsx": {
     "title": 2
@@ -38,12 +45,18 @@
   },
   "apps/desktop/src/renderer/detections/detections.css": {
     "shadow": 1,
-    "zIndex": 1
+    "zIndex": 1,
+    "spacingPx": 10,
+    "radiusOffScale": 1
+  },
+  "apps/desktop/src/renderer/detections/detectors/detectors.css": {
+    "spacingPx": 3
   },
   "apps/desktop/src/renderer/diagnostics/diagnostics.css": {
     "colour": 1,
     "shadow": 1,
-    "zIndex": 1
+    "zIndex": 1,
+    "spacingPx": 6
   },
   "apps/desktop/src/renderer/drawings/DrawingControls.tsx": {
     "title": 1
@@ -52,35 +65,43 @@
     "title": 1
   },
   "apps/desktop/src/renderer/drawings/drawings.css": {
-    "shadow": 2
+    "shadow": 2,
+    "spacingPx": 12
   },
   "apps/desktop/src/renderer/engineer/engineer.css": {
     "colour": 1,
     "shadow": 1,
-    "zIndex": 1
+    "zIndex": 1,
+    "spacingPx": 36
   },
   "apps/desktop/src/renderer/engineer/SetupDialog.tsx": {
     "title": 1
   },
   "apps/desktop/src/renderer/environment/environment.css": {
-    "fontPx": 1
+    "fontPx": 1,
+    "spacingPx": 6
   },
   "apps/desktop/src/renderer/gate/gate.css": {
     "fontPx": 3,
     "colour": 2,
     "shadow": 3,
-    "zIndex": 5
+    "zIndex": 5,
+    "spacingPx": 17,
+    "radiusOffScale": 2,
+    "transitionLayout": 1
   },
   "apps/desktop/src/renderer/globe/globe-map-menu.css": {
     "shadow": 1,
     "zIndex": 1
   },
   "apps/desktop/src/renderer/globe/globe-search.css": {
-    "shadow": 2
+    "shadow": 2,
+    "spacingPx": 10
   },
   "apps/desktop/src/renderer/globe/globe.css": {
     "shadow": 3,
-    "zIndex": 3
+    "zIndex": 3,
+    "spacingPx": 41
   },
   "apps/desktop/src/renderer/globe/GlobeScreen.tsx": {
     "title": 4
@@ -88,20 +109,47 @@
   "apps/desktop/src/renderer/help/help.css": {
     "fontPx": 6,
     "shadow": 1,
-    "zIndex": 1
+    "zIndex": 1,
+    "spacingPx": 51,
+    "radiusOffScale": 1
   },
   "apps/desktop/src/renderer/help/HelpPanel.tsx": {
     "title": 2
   },
   "apps/desktop/src/renderer/help/print.css": {
     "fontPx": 7,
-    "colour": 4
+    "colour": 4,
+    "spacingPx": 7
+  },
+  "apps/desktop/src/renderer/inspect/askAi/askAi.css": {
+    "spacingPx": 2,
+    "transitionLayout": 1
+  },
+  "apps/desktop/src/renderer/inspect/fields.css": {
+    "spacingPx": 8
+  },
+  "apps/desktop/src/renderer/inspect/findingsPanel.css": {
+    "spacingPx": 17,
+    "radiusOffScale": 1
+  },
+  "apps/desktop/src/renderer/inspect/inspect.css": {
+    "spacingPx": 11,
+    "radiusOffScale": 1
+  },
+  "apps/desktop/src/renderer/inspect/photoColumn.css": {
+    "spacingPx": 22,
+    "radiusOffScale": 2
+  },
+  "apps/desktop/src/renderer/inspect/reviewQueue.css": {
+    "spacingPx": 22
   },
   "apps/desktop/src/renderer/issueCard/issueCard.css": {
     "fontPx": 3,
     "colour": 2,
     "shadow": 2,
-    "zIndex": 1
+    "zIndex": 1,
+    "spacingPx": 43,
+    "radiusOffScale": 4
   },
   "apps/desktop/src/renderer/issueCard/IssueCard.tsx": {
     "title": 8
@@ -110,16 +158,21 @@
     "title": 8
   },
   "apps/desktop/src/renderer/library/cover.css": {
-    "shadow": 2
+    "shadow": 2,
+    "spacingPx": 9
   },
   "apps/desktop/src/renderer/library/CoverPicker.tsx": {
     "title": 1
+  },
+  "apps/desktop/src/renderer/lineup/lineup.css": {
+    "radiusOffScale": 1
   },
   "apps/desktop/src/renderer/maps/mapMenu.css": {
     "fontPx": 1,
     "colour": 2,
     "shadow": 7,
-    "zIndex": 2
+    "zIndex": 2,
+    "spacingPx": 28
   },
   "apps/desktop/src/renderer/maps/MapMenu.tsx": {
     "title": 5
@@ -127,22 +180,34 @@
   "apps/desktop/src/renderer/modeller/modeller.css": {
     "colour": 16,
     "shadow": 2,
-    "zIndex": 1
+    "zIndex": 1,
+    "spacingPx": 54,
+    "radiusOffScale": 2
   },
   "apps/desktop/src/renderer/package.css": {
     "colour": 2,
     "shadow": 1,
-    "zIndex": 1
+    "zIndex": 1,
+    "spacingPx": 58,
+    "radiusOffScale": 1,
+    "transitionLayout": 1
   },
   "apps/desktop/src/renderer/panos/panos.css": {
-    "fontPx": 2
+    "fontPx": 2,
+    "spacingPx": 16,
+    "radiusOffScale": 2
   },
   "apps/desktop/src/renderer/panos/PanoSphereRows.tsx": {
     "title": 1
   },
+  "apps/desktop/src/renderer/photogrammetry/photo.css": {
+    "spacingPx": 89
+  },
   "apps/desktop/src/renderer/pointcloud/cleanup.css": {
     "shadow": 4,
-    "zIndex": 4
+    "zIndex": 4,
+    "spacingPx": 22,
+    "radiusOffScale": 1
   },
   "apps/desktop/src/renderer/pointcloud/CleanupPanel.tsx": {
     "title": 3
@@ -154,7 +219,8 @@
     "fontPx": 6,
     "colour": 1,
     "shadow": 1,
-    "zIndex": 1
+    "zIndex": 1,
+    "spacingPx": 21
   },
   "apps/desktop/src/renderer/processing/ProcessingChip.tsx": {
     "title": 1
@@ -165,14 +231,23 @@
   "apps/desktop/src/renderer/report/reports.css": {
     "colour": 9,
     "shadow": 4,
-    "zIndex": 2
+    "zIndex": 2,
+    "spacingPx": 62
+  },
+  "apps/desktop/src/renderer/report/volumetric/volumetricEditor.css": {
+    "spacingPx": 17
+  },
+  "apps/desktop/src/renderer/rf/rf.css": {
+    "spacingPx": 2
   },
   "apps/desktop/src/renderer/road/ChainageRuler.tsx": {
     "title": 2
   },
   "apps/desktop/src/renderer/road/road.css": {
     "shadow": 2,
-    "zIndex": 2
+    "zIndex": 2,
+    "spacingPx": 69,
+    "radiusOffScale": 4
   },
   "apps/desktop/src/renderer/road/RoadPanel.tsx": {
     "title": 2
@@ -181,7 +256,8 @@
     "title": 1
   },
   "apps/desktop/src/renderer/screens/libraryFolders.css": {
-    "shadow": 1
+    "shadow": 1,
+    "spacingPx": 16
   },
   "apps/desktop/src/renderer/screens/LibraryFolders.tsx": {
     "title": 1
@@ -195,30 +271,61 @@
   "apps/desktop/src/renderer/screens/settings/About.tsx": {
     "title": 1
   },
+  "apps/desktop/src/renderer/screens/settings/analyticsPack.css": {
+    "spacingPx": 13
+  },
+  "apps/desktop/src/renderer/screens/settings/askAiSettings.css": {
+    "spacingPx": 9
+  },
   "apps/desktop/src/renderer/screens/settings/classes.css": {
     "shadow": 1,
-    "zIndex": 1
+    "zIndex": 1,
+    "spacingPx": 13
   },
   "apps/desktop/src/renderer/screens/settings/Classes.tsx": {
     "title": 5
   },
   "apps/desktop/src/renderer/screens/settings/detectionModels.css": {
-    "fontPx": 1
+    "fontPx": 1,
+    "spacingPx": 13,
+    "radiusOffScale": 1
+  },
+  "apps/desktop/src/renderer/screens/settings/detectorLearning.css": {
+    "spacingPx": 4
+  },
+  "apps/desktop/src/renderer/screens/settings/detectorLibrary.css": {
+    "spacingPx": 9
   },
   "apps/desktop/src/renderer/screens/settings/GeoidPacks.tsx": {
     "title": 1
   },
   "apps/desktop/src/renderer/screens/settings/localModel.css": {
-    "fontPx": 2
+    "fontPx": 2,
+    "spacingPx": 14
+  },
+  "apps/desktop/src/renderer/screens/settings/processingEngine.css": {
+    "spacingPx": 7
   },
   "apps/desktop/src/renderer/screens/settings/ProcessingEngine.tsx": {
     "title": 1
   },
+  "apps/desktop/src/renderer/screens/settings/processingTools.css": {
+    "spacingPx": 14
+  },
   "apps/desktop/src/renderer/screens/settings/ProcessingTools.tsx": {
     "title": 3
   },
+  "apps/desktop/src/renderer/screens/settings/settingsPages.css": {
+    "spacingPx": 2
+  },
+  "apps/desktop/src/renderer/screens/settings/teamServer.css": {
+    "spacingPx": 18
+  },
   "apps/desktop/src/renderer/shell/AddSurveyDate.tsx": {
     "title": 1
+  },
+  "apps/desktop/src/renderer/shell/aiStatus.css": {
+    "spacingPx": 1
   },
   "apps/desktop/src/renderer/shell/ConnectionStatus.tsx": {
     "title": 2
@@ -227,25 +334,47 @@
     "title": 1
   },
   "apps/desktop/src/renderer/shell/removal.css": {
-    "shadow": 1
+    "shadow": 1,
+    "spacingPx": 13
   },
   "apps/desktop/src/renderer/shell/Sidebar.tsx": {
     "title": 3
+  },
+  "apps/desktop/src/renderer/shell/sidebarProcessing.css": {
+    "spacingPx": 2
+  },
+  "apps/desktop/src/renderer/shell/surveyDates.css": {
+    "spacingPx": 6
   },
   "apps/desktop/src/renderer/styles.css": {
     "fontPx": 24,
     "colour": 24,
     "shadow": 11,
-    "zIndex": 12
+    "zIndex": 12,
+    "spacingPx": 386,
+    "radiusOffScale": 11,
+    "transitionLayout": 4
   },
   "apps/desktop/src/renderer/survey/Cleanup.tsx": {
     "title": 1
   },
+  "apps/desktop/src/renderer/survey/compare.css": {
+    "spacingPx": 3
+  },
   "apps/desktop/src/renderer/survey/Compliance.tsx": {
     "title": 1
   },
+  "apps/desktop/src/renderer/survey/designs.css": {
+    "spacingPx": 2
+  },
   "apps/desktop/src/renderer/survey/Designs.tsx": {
     "title": 1
+  },
+  "apps/desktop/src/renderer/survey/export.css": {
+    "spacingPx": 1
+  },
+  "apps/desktop/src/renderer/survey/haulRoad.css": {
+    "spacingPx": 10
   },
   "apps/desktop/src/renderer/survey/HaulRoad.tsx": {
     "title": 3
@@ -259,28 +388,51 @@
   "apps/desktop/src/renderer/survey/measure.css": {
     "colour": 7,
     "shadow": 3,
-    "zIndex": 5
+    "zIndex": 5,
+    "spacingPx": 70
+  },
+  "apps/desktop/src/renderer/survey/pile/pile.css": {
+    "spacingPx": 6,
+    "radiusOffScale": 1
   },
   "apps/desktop/src/renderer/survey/qa.css": {
     "shadow": 1,
-    "zIndex": 2
+    "zIndex": 2,
+    "spacingPx": 24
   },
   "apps/desktop/src/renderer/survey/section.css": {
-    "zIndex": 2
+    "zIndex": 2,
+    "spacingPx": 4
+  },
+  "apps/desktop/src/renderer/survey/site.css": {
+    "spacingPx": 9
   },
   "apps/desktop/src/renderer/survey/SiteSettings.tsx": {
     "title": 3
   },
+  "apps/desktop/src/renderer/survey/telecom.css": {
+    "spacingPx": 18
+  },
   "apps/desktop/src/renderer/survey/TemplateEditor.tsx": {
     "title": 1
+  },
+  "apps/desktop/src/renderer/survey/volumes/cutFill.css": {
+    "spacingPx": 1
+  },
+  "apps/desktop/src/renderer/survey/volumes/volumes.css": {
+    "spacingPx": 2
   },
   "apps/desktop/src/renderer/survey/WholeSite.tsx": {
     "title": 1
   },
+  "apps/desktop/src/renderer/team/conflicts.css": {
+    "spacingPx": 13
+  },
   "apps/desktop/src/renderer/team/files.css": {
     "colour": 1,
     "shadow": 1,
-    "zIndex": 1
+    "zIndex": 1,
+    "spacingPx": 13
   },
   "apps/desktop/src/renderer/team/Members.tsx": {
     "title": 3
@@ -292,10 +444,18 @@
     "title": 1
   },
   "apps/desktop/src/renderer/team/team.css": {
-    "fontPx": 2
+    "fontPx": 2,
+    "spacingPx": 18
+  },
+  "apps/desktop/src/renderer/telecom/antennaGroup.css": {
+    "spacingPx": 4
+  },
+  "apps/desktop/src/renderer/walks/detOverlay.css": {
+    "spacingPx": 2
   },
   "apps/desktop/src/renderer/walks/placeWalk.css": {
-    "shadow": 1
+    "shadow": 1,
+    "spacingPx": 7
   },
   "apps/desktop/src/renderer/walks/PlaceWalkStrip.tsx": {
     "title": 5
@@ -303,15 +463,23 @@
   "apps/desktop/src/renderer/walks/Walk360Pane.tsx": {
     "title": 6
   },
+  "apps/desktop/src/renderer/walks/walkCompare.css": {
+    "spacingPx": 8
+  },
   "apps/desktop/src/renderer/walks/WalkProcessLine.tsx": {
     "title": 2
+  },
+  "apps/desktop/src/renderer/walks/walks.css": {
+    "spacingPx": 11,
+    "radiusOffScale": 1
   },
   "apps/desktop/src/renderer/workspace/ComponentList.tsx": {
     "title": 1
   },
   "apps/desktop/src/renderer/workspace/components.css": {
     "shadow": 1,
-    "zIndex": 1
+    "zIndex": 1,
+    "spacingPx": 19
   },
   "apps/desktop/src/renderer/workspace/CutawayTool.tsx": {
     "title": 1
@@ -325,10 +493,15 @@
   "apps/desktop/src/renderer/workspace/FramesPane.tsx": {
     "title": 5
   },
+  "apps/desktop/src/renderer/workspace/island/island.css": {
+    "spacingPx": 8,
+    "transitionLayout": 2
+  },
   "apps/desktop/src/renderer/workspace/mapSwipe.css": {
     "colour": 1,
     "shadow": 1,
-    "zIndex": 5
+    "zIndex": 5,
+    "spacingPx": 11
   },
   "apps/desktop/src/renderer/workspace/PanoPane.tsx": {
     "title": 2
@@ -343,7 +516,8 @@
     "fontPx": 2,
     "colour": 2,
     "shadow": 1,
-    "zIndex": 1
+    "zIndex": 1,
+    "spacingPx": 24
   },
   "apps/desktop/src/renderer/workspace/spot/SpotHistoryEntry.tsx": {
     "title": 1
@@ -363,6 +537,16 @@
   "apps/desktop/src/renderer/workspace/tools/video.tsx": {
     "title": 1
   },
+  "apps/desktop/src/renderer/workspace/video/videoDock.css": {
+    "spacingPx": 2
+  },
+  "apps/desktop/src/renderer/workspace/workbench/project/rowList.css": {
+    "spacingPx": 2
+  },
+  "apps/desktop/src/renderer/workspace/workbench/section.css": {
+    "spacingPx": 5,
+    "transitionLayout": 1
+  },
   "packages/ui/src/actions/ContextMenu.tsx": {
     "title": 3
   },
@@ -373,17 +557,34 @@
     "fontPx": 9,
     "colour": 2,
     "shadow": 11,
-    "zIndex": 6
+    "zIndex": 6,
+    "spacingPx": 119,
+    "radiusOffScale": 13
+  },
+  "packages/ui/src/parts/button.css": {
+    "spacingPx": 1
   },
   "packages/ui/src/parts/chip.css": {
     "fontPx": 1,
-    "shadow": 1
+    "shadow": 1,
+    "spacingPx": 6,
+    "radiusOffScale": 3
+  },
+  "packages/ui/src/parts/split.css": {
+    "spacingPx": 4
   },
   "packages/ui/src/parts/surface.css": {
-    "shadow": 1
+    "shadow": 1,
+    "spacingPx": 22,
+    "radiusOffScale": 1
+  },
+  "packages/ui/src/parts/tabs.css": {
+    "spacingPx": 2,
+    "radiusOffScale": 1
   },
   "packages/ui/src/parts/tip.css": {
-    "zIndex": 1
+    "zIndex": 1,
+    "spacingPx": 6
   },
   "packages/ui/src/timeline/LaneTimeline.tsx": {
     "title": 4

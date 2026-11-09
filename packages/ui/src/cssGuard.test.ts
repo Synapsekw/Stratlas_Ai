@@ -3,16 +3,27 @@ import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Keeps raw values out of the stylesheets: font sizes, colours, shadows and layers come from
- * tokens.css. The allow list snapshots what exists today and can only shrink. After fixing
- * offenders, run once with CSS_GUARD_WRITE=1 to lower it.
+ * Keeps raw values out of the stylesheets: font sizes, colours, shadows, layers, spacing and radii
+ * come from tokens.css, focus is never hidden without a visible style, and nothing animates layout.
+ * The allow list snapshots what exists today and can only shrink. After fixing offenders, run once
+ * with CSS_GUARD_WRITE=1 to lower it.
  */
 
 const REPO = join(import.meta.dirname, '../../..');
 const ROOTS = [join(REPO, 'packages/ui/src'), join(REPO, 'apps/desktop/src/renderer')];
 const ALLOW_PATH = join(import.meta.dirname, 'cssGuard.allow.json');
 
-const METRICS = ['fontPx', 'colour', 'shadow', 'zIndex', 'title'] as const;
+const METRICS = [
+  'fontPx',
+  'colour',
+  'shadow',
+  'zIndex',
+  'spacingPx',
+  'radiusOffScale',
+  'outlineNone',
+  'transitionLayout',
+  'title',
+] as const;
 type Metric = (typeof METRICS)[number];
 type Counts = Partial<Record<Metric, number>>;
 
@@ -78,6 +89,83 @@ export function countDomTitleAttrs(source: string): number {
   return total;
 }
 
+/** The radii tokens.css names (`--r-2`, `--r-4`, `--r-6`); `--r-pill` covers 999px and up. */
+const RADIUS_SCALE = new Set([0, 2, 4, 6]);
+
+/** Flat `selector { body }` rules; an at-rule's own block is skipped and its rules are kept. */
+export function cssRules(css: string): { sel: string; body: string }[] {
+  return [...css.matchAll(/([^{}]*)\{([^{}]*)\}/g)].map((m) => ({
+    sel: (m[1] ?? '').trim(),
+    body: m[2] ?? '',
+  }));
+}
+
+/** Raw px spacing (margin, padding, gap) of 2px and more: a 1px hairline and 0 are fine. */
+export function countSpacingPx(css: string): number {
+  let n = 0;
+  for (const m of css.matchAll(
+    /(?<![\w-])(?:margin|padding|gap|row-gap|column-gap)[\w-]*\s*:\s*([^;}]+)/g,
+  )) {
+    for (const v of (m[1] ?? '').matchAll(/(?<![\w.])-?(\d*\.?\d+)px/g)) {
+      if (Number(v[1]) >= 2) n++;
+    }
+  }
+  return n;
+}
+
+/** Raw px radii off the token scale (2, 4, 6, pill). */
+export function countRadiusOffScale(css: string): number {
+  let n = 0;
+  for (const m of css.matchAll(/(?<![\w-])border(?:-[a-z]+)*-radius\s*:\s*([^;}]+)/g)) {
+    for (const v of (m[1] ?? '').matchAll(/(?<![\w.])(\d*\.?\d+)px/g)) {
+      const px = Number(v[1]);
+      if (!RADIUS_SCALE.has(px) && px < 999) n++;
+    }
+  }
+  return n;
+}
+
+/**
+ * `outline: none` (or 0) with no visible focus style beside it: neither the rule itself lights a
+ * border or a shadow, nor does the file have a `:focus-visible` / `:focus-within` rule for the
+ * same selector, or a `:focus-within` rule for an ancestor (a search field lit around its input).
+ */
+export function countBareOutlineNone(css: string): number {
+  const rules = cssRules(css);
+  const partners = rules
+    .filter(
+      (r) => /:focus-(?:visible|within)/.test(r.sel) && !/outline\s*:\s*(?:none|0)\b/.test(r.body),
+    )
+    .flatMap((r) => r.sel.split(',').map((s) => s.trim()));
+  let n = 0;
+  for (const r of rules) {
+    if (!/(?<![\w-])outline\s*:\s*(?:none|0)\s*(?:;|$)/.test(r.body)) continue;
+    if (/(?<![\w-])(?:border(?:-[a-z]+)*-color|box-shadow)\s*:/.test(r.body)) continue;
+    for (const s of r.sel.split(',')) {
+      const base = s.trim().replace(/:focus(?:-visible|-within)?(?![\w-])/g, '');
+      const paired = partners.some(
+        (p) =>
+          p.includes(`${base}:focus-visible`) ||
+          p.includes(`${base}:focus-within`) ||
+          (p.endsWith(':focus-within') && base.startsWith(`${p.slice(0, -13)} `)),
+      );
+      if (!paired) n++;
+    }
+  }
+  return n;
+}
+
+/** Transitions on layout properties (size, padding, margin, offsets, `all`): animate transform or opacity. */
+export function countTransitionLayout(css: string): number {
+  const LAYOUT =
+    /(?<![\w-])(?:all|width|height|(?:min|max)-(?:width|height)|(?:padding|margin|inset)(?:-[a-z]+)*|top|left|right|bottom|flex-basis|grid-template-(?:columns|rows))(?![\w-])/g;
+  let n = 0;
+  for (const m of css.matchAll(/(?<![\w-])transition(?:-property)?\s*:\s*([^;}]+)/g)) {
+    n += count(m[1] ?? '', LAYOUT);
+  }
+  return n;
+}
+
 function cssCounts(raw: string, isTokens: boolean): Counts {
   const css = raw.replace(/\/\*[\s\S]*?\*\//g, '');
   const shadows = [...css.matchAll(/box-shadow\s*:\s*([^;}]+)/g)].filter(
@@ -88,6 +176,10 @@ function cssCounts(raw: string, isTokens: boolean): Counts {
     colour: isTokens ? 0 : count(css, /(?<![\w-])#[0-9a-fA-F]{3,8}\b|\brgba?\(|\boklch\(/g),
     shadow: shadows.length,
     zIndex: count(css, /z-index\s*:\s*-?\d+/g),
+    spacingPx: countSpacingPx(css),
+    radiusOffScale: countRadiusOffScale(css),
+    outlineNone: countBareOutlineNone(css),
+    transitionLayout: countTransitionLayout(css),
   };
 }
 
@@ -181,6 +273,60 @@ describe('css guard', () => {
     const block = css.slice(start, css.indexOf('}', start));
     expect(block).toContain('outline');
     expect(block).not.toContain('border-radius');
+  });
+});
+
+describe('css metrics', () => {
+  it('counts raw spacing of 2px and more, not 0 or a 1px hairline', () => {
+    expect(
+      countSpacingPx('a { padding: 0 1px; margin: 4px 8px; gap: var(--sp-2); row-gap: 6px }'),
+    ).toBe(3);
+  });
+  it('counts radii off the 2/4/6/pill scale', () => {
+    expect(
+      countRadiusOffScale(
+        'a { border-radius: 3px } b { border-radius: 4px 8px } c { border-radius: 999px }',
+      ),
+    ).toBe(2);
+    expect(
+      countRadiusOffScale('a { border-top-left-radius: 10px; border-radius: var(--r-4) }'),
+    ).toBe(1);
+  });
+  it('counts outline: none only without a focus style beside it', () => {
+    expect(countBareOutlineNone('.a { outline: none }')).toBe(1);
+    expect(
+      countBareOutlineNone('.a { outline: none } .a:focus-visible { outline: 2px solid }'),
+    ).toBe(0);
+    expect(
+      countBareOutlineNone('.a:focus { outline: none } .a:focus-visible { outline: 2px solid }'),
+    ).toBe(0);
+    expect(countBareOutlineNone('.a { outline: none } .a:focus-within { border-color: red }')).toBe(
+      0,
+    );
+    expect(countBareOutlineNone('.a:focus { outline: none; border-color: red }')).toBe(0);
+    expect(
+      countBareOutlineNone('.f input { outline: none } .f:focus-within { border-color: red }'),
+    ).toBe(0);
+    expect(
+      countBareOutlineNone('.fx input { outline: none } .f:focus-within { border-color: red }'),
+    ).toBe(1);
+    expect(
+      countBareOutlineNone(
+        '@media (x) { .a, .b { outline: 0 } } .b:focus-visible { outline: 1px solid }',
+      ),
+    ).toBe(1);
+  });
+  it('counts transitions on layout properties', () => {
+    expect(
+      countTransitionLayout(
+        'a { transition: width 1s, opacity 1s } b { transition: transform 1s }',
+      ),
+    ).toBe(1);
+    expect(
+      countTransitionLayout(
+        'a { transition: padding-left 1s, max-height 1s } b { transition: border-width 1s }',
+      ),
+    ).toBe(2);
   });
 });
 
