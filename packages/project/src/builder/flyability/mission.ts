@@ -205,7 +205,7 @@ export async function scanInspectorMission(
     for (let n = Math.min(2, p.length); n <= p.length; n++) {
       const name = p.slice(-n).join(' / ');
       const clash = exports.some(
-        (o, j) => j !== k && (parts[j] ?? []).slice(-n).join(' / ') === name,
+        (_o, j) => j !== k && (parts[j] ?? []).slice(-n).join(' / ') === name,
       );
       e.name = name;
       if (!clash) break;
