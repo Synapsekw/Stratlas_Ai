@@ -91,7 +91,7 @@ import {
 import { convertMedia } from './convertMedia';
 import { rotateProjectPhoto } from './rotatePhoto';
 import { builderPipelineJobs } from './builderJobs';
-import { INSPECTOR_QUEUED, inspectorLane, tidyInspectorSpacesOnStart } from './inspectorLane';
+import { INSPECTOR_QUEUED, inspectorLane } from './inspectorLane';
 import {
   listProjectWalks,
   packageWalkProcessing,
@@ -1069,8 +1069,26 @@ const inspectorQueue = inspectorLane({
   // chamber spaces made ahead that stayed empty go
   tidy: async (project, keep) => {
     const { removeEmptyInspectorSpaces } = await import('@aio/project/builder');
-    await removeEmptyInspectorSpaces(project, keep);
+    return removeEmptyInspectorSpaces(project, keep);
   },
+  // a chamber whose import can be resumed keeps its space and its name
+  resumable: (project) =>
+    jobStore
+      .all()
+      .filter(
+        (j) =>
+          j.pipeline === 'flyability.import' &&
+          (j.status === 'failed' || j.status === 'cancelled' || j.status === 'interrupted') &&
+          samePath(j.project, project),
+      )
+      .flatMap((j) =>
+        Array.isArray(j.params.inspections)
+          ? j.params.inspections.flatMap((i: unknown) => {
+              const id = (i as { id?: unknown } | null)?.id;
+              return typeof id === 'string' ? [id] : [];
+            })
+          : [],
+      ),
   record: (id) => jobs.get(id),
 });
 /** Drone panorama stitches run one at a time on this computer; the others wait in line. */
@@ -2045,6 +2063,8 @@ function registerIpc(): void {
           ),
         // point clouds convert in the pipeline pack as jobs (Jobs panel)
         jobs: builderPipelineJobs(jobs, inspectorQueue),
+        // a drop's chamber spaces made ahead are kept from any tidy until their jobs are in line
+        holdInspections: (root, ids) => inspectorQueue.hold(root, ids),
         // a Bentley AT export asks for its photos folder (main's dialog, as dialog:openFolder)
         pickFolder: async (title) => {
           const win = targetWindow();
@@ -2978,10 +2998,8 @@ if (restore) {
     });
     await jobStore.load();
     // chamber spaces made ahead whose import never ran (a quit mid-line) are tidied away
-    void tidyInspectorSpacesOnStart(jobStore.all(), async (project) => {
-      const { removeEmptyInspectorSpaces } = await import('@aio/project/builder');
-      await removeEmptyInspectorSpaces(project, new Set());
-    });
+    // (a drop waits for it before it makes chamber spaces ahead)
+    void inspectorQueue.startUp(jobStore.all());
     // a detector model server left by a crashed or killed app would hold the graphics memory and
     // refuse every run as too busy; only this first instance looks (starts wait for it)
     void vlmServer.sweep();

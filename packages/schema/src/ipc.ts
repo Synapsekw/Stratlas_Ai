@@ -4812,24 +4812,34 @@ export const ipcEvents = {
    * What became of a Flyability chamber that waited its turn (9 Nov 2026): it started (`jobId`),
    * left the line because an Inspector import of its project was cancelled or the project was
    * closed or deleted (`reason`), or could not start (`error`). `project` is the project folder,
-   * `src` the chamber's export folder.
+   * `src` the chamber's export folder, `inspections` the inspections it imports (the import card
+   * row's). `tidied`: chamber spaces made ahead were removed or settled in the project's manifest
+   * (`removed`), so the window reads its spaces again.
    */
   'builder:inspectorQueue': z.discriminatedUnion('state', [
     z.object({
       project: z.string(),
+      state: z.literal('tidied'),
+      removed: z.array(z.string()),
+    }),
+    z.object({
+      project: z.string(),
       src: z.string(),
+      inspections: z.array(z.string()),
       state: z.literal('started'),
       jobId: z.string(),
     }),
     z.object({
       project: z.string(),
       src: z.string(),
+      inspections: z.array(z.string()),
       state: z.literal('dropped'),
       reason: z.enum(['cancelled', 'closed']),
     }),
     z.object({
       project: z.string(),
       src: z.string(),
+      inspections: z.array(z.string()),
       state: z.literal('failed'),
       error: z.string(),
     }),

@@ -4,24 +4,26 @@ import { workspace } from '@aio/workspace';
 import { builder } from '../builder/state';
 
 type LaneNotice = IpcEvent<'builder:inspectorQueue'>;
+type ChamberNotice = Exclude<LaneNotice, { state: 'tidied' }>;
 
-const lastPart = (p: string) =>
-  p
-    .replace(/[\\/]+$/, '')
-    .split(/[\\/]/)
-    .pop() ?? p;
 const folderKey = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 
 /**
  * The import card's rows once a waiting chamber started, left the line or could not start: the
- * chamber's row (its export folder's name, still queued without a job) is changed; null when no
- * row is that chamber's.
+ * row still queued without a job that imports the same inspections is changed (two chambers in
+ * folders of one name stay apart); null when no row is that chamber's.
  */
-export function applyLaneNotice(items: readonly ImportItem[], n: LaneNotice): ImportItem[] | null {
-  const name = lastPart(n.src);
+export function applyLaneNotice(
+  items: readonly ImportItem[],
+  n: ChamberNotice,
+): ImportItem[] | null {
+  const ids = new Set(n.inspections);
   const at = items.findIndex(
     (i) =>
-      i.kind === 'flyability' && i.status === 'queued' && i.jobId === undefined && i.file === name,
+      i.kind === 'flyability' &&
+      i.status === 'queued' &&
+      i.jobId === undefined &&
+      (i.inspections ?? []).some((x) => ids.has(x)),
   );
   if (at < 0) return null;
   const row = items[at];
@@ -39,16 +41,47 @@ export function applyLaneNotice(items: readonly ImportItem[], n: LaneNotice): Im
   return items.map((it, i) => (i === at ? next : it));
 }
 
-/** A notice from main: the open project's import card follows it; a failure is always said. */
+/** Chambers of each project that did not start, counted while their one notice shows. */
+const failedCount = new Map<string, number>();
+
+/** One notice per project however many of its chambers could not start (a pack gone mid-line). */
+function sayFailed(n: Extract<LaneNotice, { state: 'failed' }>): void {
+  const key = folderKey(n.project);
+  const count = (failedCount.get(key) ?? 0) + 1;
+  failedCount.set(key, count);
+  toast(t('fly.queue.failedToast', { count }), {
+    id: `inspector-queue-failed:${key}`,
+    tone: 'error',
+    detail: n.error,
+    testId: 'inspector-queue-failed',
+    onDismiss: () => {
+      failedCount.delete(key);
+    },
+  });
+}
+
+/** Reads the open project's spaces again after main tidied its manifest (team/reload). */
+let reloadSpaces: (projectId: string) => Promise<void> = async (projectId) => {
+  const { reloadRecords } = await import('../team/reload');
+  await reloadRecords(projectId, [{ rec: 'manifest', id: 'manifest' }]);
+};
+
+/** Test seam: what reads the spaces again. */
+export function setSpacesReload(fn: (projectId: string) => Promise<void>): void {
+  reloadSpaces = fn;
+}
+
+/** A notice from main: the open project's import card and spaces follow it. */
 export function onLaneNotice(n: LaneNotice): void {
-  if (n.state === 'failed')
-    toast(t('fly.queue.failedToast', { name: lastPart(n.src) }), {
-      tone: 'error',
-      detail: n.error,
-      testId: 'inspector-queue-failed',
+  if (n.state === 'failed') sayFailed(n);
+  const project = workspace.getState().project;
+  if (!project || folderKey(project.root) !== folderKey(n.project)) return;
+  if (n.state === 'tidied') {
+    void reloadSpaces(project.id).catch((e: unknown) => {
+      console.warn('The spaces were not read again after a tidy', e);
     });
-  const root = workspace.getState().project?.root;
-  if (root === undefined || folderKey(root) !== folderKey(n.project)) return;
+    return;
+  }
   const result = builder.getState().importResult;
   if (!result) return;
   const items = applyLaneNotice(result.items, n);

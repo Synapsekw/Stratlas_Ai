@@ -312,6 +312,9 @@ function failure(
   return answer.value.ok ? null : (answer.value.error ?? t('library.failed'));
 }
 
+/** A folder path compared as Windows does: either slash, no trailing one, any case. */
+const folderKey = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+
 export function createShellStore(
   bridge: Bridge,
   workspace: StoreApi<Workspace>,
@@ -326,6 +329,10 @@ export function createShellStore(
   let settingsRev = 0;
   /** Counts library reads started here; only the answer to the latest one is kept. */
   let libraryRev = 0;
+  /** A project being left: its Flyability chambers still waiting their turn are not imported. */
+  const dropWaitingChambers = (projectId: string) => {
+    void bridge.call('builder:cancelInspectorQueue', { projectId }).catch(() => undefined);
+  };
   const setReadOnly = (on: boolean) => {
     options.onReadOnly?.(on);
   };
@@ -480,6 +487,9 @@ export function createShellStore(
     },
 
     openProject: async (path, passphrase) => {
+      // the project being left: its Flyability chambers still waiting are not imported
+      const leaving = workspace.getState().project;
+      if (leaving && folderKey(leaving.root) !== folderKey(path)) dropWaitingChambers(leaving.id);
       // A screen picked while the project is still opening (a card, then Reports) is kept.
       const from = get().screen;
       set({ opening: path, openError: null });
@@ -549,10 +559,7 @@ export function createShellStore(
     closeProject: () => {
       // its Flyability chambers still waiting their turn are not imported
       const open = workspace.getState().project;
-      if (open)
-        void bridge
-          .call('builder:cancelInspectorQueue', { projectId: open.id })
-          .catch(() => undefined);
+      if (open) dropWaitingChambers(open.id);
       leaveScene(null);
       workspace.getState().closeProject();
       setReadOnly(false);
@@ -579,11 +586,10 @@ export function createShellStore(
       // an Inspector export or mission folder: the project made for it opens, and the picker
       // (one read of the folder, against that project) asks what to bring in
       const made = added.value.entry;
-      const fold = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
       if (
         isInspectorUiOn() &&
         made.purpose === 'confined-space' &&
-        fold(made.path) !== fold(pick.value.path)
+        folderKey(made.path) !== folderKey(pick.value.path)
       ) {
         await get().openProject(made.path);
         // the picker imports into the open project: not asked when it did not open

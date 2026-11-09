@@ -898,6 +898,26 @@ describe('shell store', () => {
     });
   });
 
+  it('opening another project drops the waiting chambers of the one left, not on a reopen', async () => {
+    let n = 0;
+    const { bridge, calls } = fakeBridge({
+      'project:open': (req) => {
+        n++;
+        const path = (req as { path: string }).path;
+        return { ok: true, id: `p${String(n)}`, root: path, manifest, issues: [] };
+      },
+      'builder:cancelInspectorQueue': () => ({ dropped: 0 }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    await s.getState().openProject('D:/one');
+    await s.getState().openProject('d:\\one\\');
+    expect(calls.filter((c) => c.channel === 'builder:cancelInspectorQueue')).toEqual([]);
+    await s.getState().openProject('D:/two');
+    expect(calls.find((c) => c.channel === 'builder:cancelInspectorQueue')?.req).toEqual({
+      projectId: 'p2',
+    });
+  });
+
   it('keeps a picture of the last 3D view per project, in memory', () => {
     const { bridge } = fakeBridge({});
     const s = createShellStore(bridge, createWorkspace());

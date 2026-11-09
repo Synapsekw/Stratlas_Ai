@@ -330,6 +330,8 @@ export interface BuilderImportDeps {
   packVersion?: () => Promise<string | null>;
   /** Test seam: export folders are special without a selection (default `FLYABILITY_IMPORT_UI`). */
   flyabilityUi?: boolean;
+  /** Keep a drop's chamber spaces made ahead from the tidy until their jobs are in line. */
+  holdInspections?: ImportDeps['holdInspections'];
 }
 
 /**
@@ -499,6 +501,7 @@ export async function builderImport(
       ...(req.as360 ? { as360: true } : {}),
       ...(req.inspector ? { inspector: req.inspector } : {}),
       ...(d.flyabilityUi !== undefined ? { flyabilityUi: d.flyabilityUi } : {}),
+      ...(d.holdInspections ? { holdInspections: d.holdInspections } : {}),
       ...(d.packVersion
         ? {
             inspectorRefusal: async () =>

@@ -8,9 +8,22 @@ const PIPELINE = 'flyability.import';
 
 /** What became of a chamber that waited in the lane (sent to the window for the import card). */
 export type LaneNotice =
-  | { project: string; src: string; state: 'started'; jobId: string }
-  | { project: string; src: string; state: 'dropped'; reason: 'cancelled' | 'closed' }
-  | { project: string; src: string; state: 'failed'; error: string };
+  | { project: string; src: string; inspections: string[]; state: 'started'; jobId: string }
+  | {
+      project: string;
+      src: string;
+      inspections: string[];
+      state: 'dropped';
+      reason: 'cancelled' | 'closed';
+    }
+  | { project: string; src: string; inspections: string[]; state: 'failed'; error: string }
+  | { project: string; state: 'tidied'; removed: string[] };
+
+/** What a tidy did to a project's manifest. */
+export interface TidyOutcome {
+  removed: string[];
+  changed: boolean;
+}
 
 interface Waiting {
   req: StartRequest;
@@ -55,14 +68,21 @@ export function inspectorLane(deps: {
   log?(line: string): void;
   /** A waiting chamber started, left the line or could not start. */
   notify?(n: LaneNotice): void;
-  /** Remove the project's empty chamber spaces, except those of the inspections in `keep`. */
-  tidy?(project: string, keep: ReadonlySet<string>): Promise<void>;
+  /** Remove the project's pending empty chamber spaces, except those of the inspections in `keep`. */
+  tidy?(project: string, keep: ReadonlySet<string>): Promise<TidyOutcome>;
+  /** Inspections of the project whose import can be resumed (a failed, cancelled or interrupted job). */
+  resumable?(project: string): Iterable<string>;
   /** The job a resume names (its project and params). */
   record?(id: string): Pick<JobRecord, 'project' | 'params'> | undefined;
 }) {
   const waiting: Waiting[] = [];
   let running: (Waiting & { jobId: string }) | null = null;
   let starting = false;
+  /** Inspections a drop holds while it makes their spaces ahead (`hold`), per project folder. */
+  const held = new Map<string, Map<number, readonly string[]>>();
+  let holdSeq = 0;
+  /** The start-up tidy: a drop waits for it before it makes spaces. */
+  let startup: Promise<void> = Promise.resolve();
 
   const entryOf = (req: StartRequest): Waiting => {
     const from =
@@ -90,8 +110,13 @@ export function inspectorLane(deps: {
     const keep = new Set<string>();
     for (const w of [...waiting, ...(running ? [running] : [])])
       if (folderKey(w.project) === key) for (const i of w.inspections) keep.add(i);
+    for (const ids of held.get(key)?.values() ?? []) for (const i of ids) keep.add(i);
+    // a chamber whose job can be resumed keeps its space and its name
+    for (const i of deps.resumable?.(project) ?? []) keep.add(i);
     try {
-      await deps.tidy(project, keep);
+      const r = await deps.tidy(project, keep);
+      // the window reads the project's spaces again
+      if (r.changed) deps.notify?.({ project, state: 'tidied', removed: r.removed });
     } catch (e) {
       deps.log?.(
         `Empty chamber spaces were not tidied: ${e instanceof Error ? e.message : String(e)}`,
@@ -105,7 +130,13 @@ export function inspectorLane(deps: {
     if (gone.length === 0) return 0;
     waiting.splice(0, waiting.length, ...waiting.filter((w) => folderKey(w.project) !== key));
     for (const w of gone)
-      deps.notify?.({ project: w.project, src: w.src, state: 'dropped', reason });
+      deps.notify?.({
+        project: w.project,
+        src: w.src,
+        inspections: w.inspections,
+        state: 'dropped',
+        reason,
+      });
     return gone.length;
   }
 
@@ -124,10 +155,22 @@ export function inspectorLane(deps: {
           r = { ok: false, error: e instanceof Error ? e.message : String(e) };
         }
         if (r.ok) {
-          deps.notify?.({ project: w.project, src: w.src, state: 'started', jobId: r.job.id });
+          deps.notify?.({
+            project: w.project,
+            src: w.src,
+            inspections: w.inspections,
+            state: 'started',
+            jobId: r.job.id,
+          });
         } else {
           deps.log?.(`A waiting Flyability Inspector import did not start: ${r.error}`);
-          deps.notify?.({ project: w.project, src: w.src, state: 'failed', error: r.error });
+          deps.notify?.({
+            project: w.project,
+            src: w.src,
+            inspections: w.inspections,
+            state: 'failed',
+            error: r.error,
+          });
           await tidy(w.project);
         }
       }
@@ -170,6 +213,39 @@ export function inspectorLane(deps: {
       await tidy(e.job.project);
       await next();
     },
+    /**
+     * A drop is about to make spaces ahead for these inspections: no tidy removes them until the
+     * answer releases them (once their jobs are in the line). Waits for the start-up tidy first.
+     */
+    async hold(project: string, inspections: readonly string[]): Promise<() => void> {
+      await startup;
+      const key = folderKey(project);
+      const token = ++holdSeq;
+      const mine = held.get(key) ?? new Map<number, readonly string[]>();
+      mine.set(token, [...inspections]);
+      held.set(key, mine);
+      return () => {
+        mine.delete(token);
+        if (mine.size === 0 && held.get(key) === mine) held.delete(key);
+      };
+    },
+    /**
+     * On app start no job runs: the pending empty spaces of every project an Inspector import ran
+     * in go, except those whose job can be resumed. Each project once; drops wait for it.
+     */
+    startUp(records: readonly Pick<JobRecord, 'pipeline' | 'project'>[]): Promise<void> {
+      const seen = new Set<string>();
+      const projects: string[] = [];
+      for (const r of records) {
+        if (r.pipeline !== PIPELINE || seen.has(folderKey(r.project))) continue;
+        seen.add(folderKey(r.project));
+        projects.push(r.project);
+      }
+      startup = (async () => {
+        for (const p of projects) await tidy(p);
+      })();
+      return startup;
+    },
     /** The project was closed or deleted: its waiting chambers leave the line. */
     async cancelProject(project: string): Promise<number> {
       const n = drop(project, 'closed');
@@ -191,20 +267,3 @@ export type InspectorLane = ReturnType<typeof inspectorLane>;
 /** A Jobs-panel start or resume of an Inspector import while another one runs. */
 export const INSPECTOR_QUEUED =
   'This Inspector import waits for the one running and starts when that one ends.';
-
-/**
- * On app start no job runs, so the empty chamber spaces of every project an Inspector import
- * ran in go (a quit while chambers waited leaves them behind). Each project once; a project that
- * is gone or unreadable is left alone.
- */
-export async function tidyInspectorSpacesOnStart(
-  records: readonly Pick<JobRecord, 'pipeline' | 'project'>[],
-  tidy: (project: string) => Promise<void>,
-): Promise<void> {
-  const seen = new Set<string>();
-  for (const r of records) {
-    if (r.pipeline !== PIPELINE || seen.has(folderKey(r.project))) continue;
-    seen.add(folderKey(r.project));
-    await tidy(r.project).catch(() => undefined);
-  }
-}

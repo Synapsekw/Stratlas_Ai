@@ -1,6 +1,6 @@
 import type { IpcRequest, JobEvent, JobRecord } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { inspectorLane, tidyInspectorSpacesOnStart, type LaneNotice } from './inspectorLane';
+import { inspectorLane, type LaneNotice } from './inspectorLane';
 
 type Req = IpcRequest<'jobs:start'>;
 const req = (src: string, project = 'E:/p'): Req => ({
@@ -86,7 +86,7 @@ describe('inspectorLane', () => {
     expect(lane.running()).toBe('job-3');
   });
 
-  function full() {
+  function full(resumable: Record<string, string[]> = {}, removes: string[] = []) {
     const started: Req[] = [];
     const notices: LaneNotice[] = [];
     const tidied: [string, string[]][] = [];
@@ -105,8 +105,9 @@ describe('inspectorLane', () => {
       notify: (n) => notices.push(n),
       tidy: (project, keep) => {
         tidied.push([project, [...keep].sort()]);
-        return Promise.resolve();
+        return Promise.resolve({ removed: removes, changed: removes.length > 0 });
       },
+      resumable: (project) => resumable[project] ?? [],
       record: (id) =>
         id === 'old'
           ? { project: 'E:/p', params: { src: 'R', inspections: [{ id: 'R' }] } }
@@ -131,9 +132,9 @@ describe('inspectorLane', () => {
     await t.lane.start(req('D', 'E:/q'));
     await t.lane.settled(ended('job-1', 'cancelled'));
     expect(t.notices).toEqual([
-      { project: 'E:/p', src: 'B', state: 'dropped', reason: 'cancelled' },
-      { project: 'E:/p', src: 'C', state: 'dropped', reason: 'cancelled' },
-      { project: 'E:/q', src: 'D', state: 'started', jobId: 'job-2' },
+      { project: 'E:/p', src: 'B', inspections: ['B'], state: 'dropped', reason: 'cancelled' },
+      { project: 'E:/p', src: 'C', inspections: ['C'], state: 'dropped', reason: 'cancelled' },
+      { project: 'E:/q', src: 'D', inspections: ['D'], state: 'started', jobId: 'job-2' },
     ]);
     // the other project's chamber goes on
     expect(t.started.map((r) => ('params' in r ? r.params.src : ''))).toEqual(['A', 'D']);
@@ -147,7 +148,9 @@ describe('inspectorLane', () => {
     // the same folder written another way still matches (Windows paths)
     const other = process.platform === 'win32' ? 'e:\\p' : 'E:/p';
     await t.lane.cancelProject(other);
-    expect(t.notices).toEqual([{ project: 'E:/p', src: 'B', state: 'dropped', reason: 'closed' }]);
+    expect(t.notices).toEqual([
+      { project: 'E:/p', src: 'B', inspections: ['B'], state: 'dropped', reason: 'closed' },
+    ]);
     expect(t.lane.waiting()).toHaveLength(0);
     expect(t.tidied).toEqual([[other, ['A']]]);
   });
@@ -162,12 +165,14 @@ describe('inspectorLane', () => {
     expect(t.notices).toContainEqual({
       project: 'E:/p',
       src: 'B',
+      inspections: ['B'],
       state: 'failed',
       error: 'no pack',
     });
     expect(t.notices).toContainEqual({
       project: 'E:/p',
       src: 'C',
+      inspections: ['C'],
       state: 'failed',
       error: 'no pack',
     });
@@ -182,27 +187,86 @@ describe('inspectorLane', () => {
     expect(t.notices).toContainEqual({
       project: 'E:/p',
       src: 'R',
+      inspections: ['R'],
       state: 'started',
       jobId: 'job-2',
     });
   });
 });
 
-describe('tidyInspectorSpacesOnStart', () => {
-  it('tidies each project an Inspector import ran in, once', async () => {
-    const done: string[] = [];
-    await tidyInspectorSpacesOnStart(
-      [
-        { pipeline: 'flyability.import', project: 'E:/p' },
-        { pipeline: 'pano.stitch', project: 'E:/q' },
-        { pipeline: 'flyability.import', project: 'E:/p' },
-        { pipeline: 'flyability.import', project: 'E:/r' },
-      ] as JobRecord[],
-      (p) => {
-        done.push(p);
-        return p === 'E:/r' ? Promise.reject(new Error('gone')) : Promise.resolve();
+describe('inspectorLane tidy', () => {
+  function lane(resumable: string[] = []) {
+    const tidied: [string, string[]][] = [];
+    const notices: LaneNotice[] = [];
+    let removes: string[] = [];
+    let gate: (() => void) | null = null;
+    const l = inspectorLane({
+      start: () => Promise.resolve({ ok: true as const, job: job('job-1', 'starting') }),
+      busy: () => Promise.resolve(false),
+      notify: (n) => notices.push(n),
+      tidy: async (project, keep) => {
+        if (gate === null) {
+          await new Promise<void>((r) => {
+            gate = r;
+          });
+        }
+        tidied.push([project, [...keep].sort()]);
+        return { removed: removes, changed: removes.length > 0 };
       },
-    );
-    expect(done).toEqual(['E:/p', 'E:/r']);
+      resumable: () => resumable,
+    });
+    return {
+      l,
+      tidied,
+      notices,
+      open: () => {
+        gate?.();
+        gate = () => undefined;
+      },
+      removing: (ids: string[]) => {
+        removes = ids;
+      },
+    };
+  }
+
+  it('keeps the spaces of chambers whose job can be resumed, and of a drop that holds them', async () => {
+    const t = lane(['R']);
+    t.open();
+    const release = await t.l.hold('E:/p', ['H1', 'H2']);
+    await t.l.cancelProject('E:/p');
+    release();
+    await t.l.cancelProject('E:/p');
+    expect(t.tidied).toEqual([
+      ['E:/p', ['H1', 'H2', 'R']],
+      ['E:/p', ['R']],
+    ]);
+  });
+
+  it('a drop waits for the start-up tidy; each project once', async () => {
+    const t = lane();
+    const up = t.l.startUp([
+      { pipeline: 'flyability.import', project: 'E:/p' },
+      { pipeline: 'pano.stitch', project: 'E:/q' },
+      { pipeline: 'flyability.import', project: 'E:/p' },
+    ] as JobRecord[]);
+    let held = false;
+    const hold = t.l.hold('E:/p', ['A']).then(() => {
+      held = true;
+    });
+    await Promise.resolve();
+    expect(held).toBe(false);
+    t.open();
+    await up;
+    await hold;
+    expect(held).toBe(true);
+    expect(t.tidied).toEqual([['E:/p', []]]);
+  });
+
+  it('a tidy that changed the manifest tells the window', async () => {
+    const t = lane();
+    t.open();
+    t.removing(['fly-b']);
+    await t.l.cancelProject('E:/p');
+    expect(t.notices).toEqual([{ project: 'E:/p', state: 'tidied', removed: ['fly-b'] }]);
   });
 });
