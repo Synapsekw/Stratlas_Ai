@@ -576,7 +576,11 @@ export function createShellStore(
           projectId: null,
           path: pick.value.path,
         });
-        if (scan.ok && scan.value.ok && scan.value.scan.inspections.length > 0) {
+        if (
+          scan.ok &&
+          scan.value.ok &&
+          scan.value.mission.exports.some((e) => e.scan.inspections.length > 0)
+        ) {
           await get().openProject(added.value.entry.path);
           // the picker imports into the open project: not asked when it did not open
           if (get().openError !== null || get().unlock !== null) return;

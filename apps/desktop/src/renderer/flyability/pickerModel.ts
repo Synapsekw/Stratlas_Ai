@@ -1,4 +1,4 @@
-import type { InspectorScan, InspectorSelection } from '@aio/schema';
+import type { InspectorMission, InspectorScan, InspectorSelection } from '@aio/schema';
 
 type Inspection = InspectorScan['inspections'][number];
 type Flight = Inspection['flights'][number];
@@ -65,4 +65,100 @@ export function selectionOf(choice: Choice, scan: InspectorScan): InspectorSelec
     picked.push(flights.length === all.length ? { id: i.id } : { id: i.id, flights });
   }
   return picked.length === 0 ? null : { inspections: picked };
+}
+
+/**
+ * Every chamber's inspections as one scan, for the per-inspection ticks (inspection ids are
+ * unique across exports; a repeat of one already listed is left out).
+ */
+export function flatScan(mission: InspectorMission): InspectorScan {
+  const seen = new Set<string>();
+  const inspections: Inspection[] = [];
+  for (const e of mission.exports)
+    for (const i of e.scan.inspections) {
+      if (seen.has(i.id)) continue;
+      seen.add(i.id);
+      inspections.push(i);
+    }
+  return {
+    root: mission.root,
+    generation: mission.exports[0]?.scan.generation ?? 'unknown',
+    asset: mission.exports.length === 1 ? (mission.exports[0]?.scan.asset ?? null) : null,
+    inspections,
+  };
+}
+
+/** The picked folder as a mission of one export (a picker opened on a bare scan). */
+export function missionOfScan(path: string, scan: InspectorScan): InspectorMission {
+  return {
+    root: path,
+    exports: [{ path, name: scan.asset ?? path, scan }],
+    skipped: { folders: [], files: 0 },
+    capped: false,
+  };
+}
+
+/** Whether all, some or none of a chamber's inspections come in. */
+export function chamberTick(choice: Choice, scan: InspectorScan): 'all' | 'some' | 'none' {
+  const picked = selectionOf(choice, scan)?.inspections ?? [];
+  if (picked.length === 0) return 'none';
+  const full = scan.inspections.every((i) => {
+    const c = choice.inspections[i.id];
+    return c?.on === true && importableIds(i).every((f) => c.flights.includes(f));
+  });
+  return full ? 'all' : 'some';
+}
+
+/** The whole chamber on (every inspection with every flight that has data) or off. */
+export function toggleChamber(choice: Choice, scan: InspectorScan): Choice {
+  const on = chamberTick(choice, scan) !== 'all';
+  const next = { ...choice.inspections };
+  for (const i of scan.inspections)
+    next[i.id] = on ? { on: true, flights: importableIds(i) } : { on: false, flights: [] };
+  return { inspections: next };
+}
+
+/** Chambers, finding photos and point clouds (flight clouds and merged models) in the mission. */
+export function missionTotals(mission: InspectorMission): {
+  chambers: number;
+  photos: number;
+  clouds: number;
+} {
+  let photos = 0;
+  let clouds = 0;
+  for (const e of mission.exports)
+    for (const i of e.scan.inspections) {
+      photos += i.photos;
+      clouds += i.flights.filter((f) => f.cloud).length + (i.mergedCloud ? 1 : 0);
+    }
+  return { chambers: mission.exports.length, photos, clouds };
+}
+
+/**
+ * The import request: the ticked chambers' folders and their inspections. A chamber found below
+ * the picked folder that holds one inspection not yet imported names its new space after the
+ * chamber folder (an inspection's own name is often only a date). Null when nothing is ticked.
+ */
+export function missionRequest(
+  choice: Choice,
+  mission: InspectorMission,
+): { paths: string[]; inspector: InspectorSelection } | null {
+  const paths: string[] = [];
+  const picked: InspectorSelection['inspections'] = [];
+  const taken = new Set<string>();
+  for (const e of mission.exports) {
+    const sel = selectionOf(choice, e.scan);
+    if (!sel) continue;
+    const own = e.path === mission.root;
+    const sole = e.scan.inspections.length === 1 ? e.scan.inspections[0] : undefined;
+    const fresh = sel.inspections.filter((i) => !taken.has(i.id));
+    if (fresh.length === 0) continue;
+    paths.push(e.path);
+    for (const i of fresh) {
+      taken.add(i.id);
+      const named = !own && sole?.id === i.id && sole.importedAs === null;
+      picked.push(named ? { ...i, space: e.name } : i);
+    }
+  }
+  return picked.length === 0 ? null : { paths, inspector: { inspections: picked } };
 }

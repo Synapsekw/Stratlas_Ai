@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { InspectorScan } from '@aio/schema';
+import type { InspectorMission, InspectorScan } from '@aio/schema';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,7 +14,7 @@ vi.mock('../builder/state', () => ({
 vi.mock('@aio/workspace', () => ({ workspace: { getState: () => ({ project: null }) } }));
 
 import { InspectorPickerHost } from './InspectorPicker';
-import { initialChoice } from './pickerModel';
+import { flatScan, initialChoice } from './pickerModel';
 import { closeInspectorPicker, picker } from './pickerStore';
 
 const many = (n: number) =>
@@ -30,12 +30,21 @@ const scan: InspectorScan = {
   generation: '2024-bag',
   asset: 'Chamber',
   inspections: [
-    { id: 'a', name: 'First', mergedCloud: true, findings: 95, importedAs: null, flights: many(6) },
+    {
+      id: 'a',
+      name: 'First',
+      mergedCloud: true,
+      findings: 95,
+      photos: 99,
+      importedAs: null,
+      flights: many(6),
+    },
     {
       id: 'b',
       name: 'Second',
       mergedCloud: false,
       findings: 1,
+      photos: 1,
       importedAs: 's-b',
       flights: [{ id: 'g0', name: 'Solo', cloud: true, path: false, aligned: 'reference' }],
     },
@@ -145,5 +154,65 @@ describe('inspector picker', () => {
     });
     expect(byId('inspector-picker')).toBeNull();
     expect(h.importFiles).not.toHaveBeenCalled();
+  });
+
+  const mission: InspectorMission = {
+    root: '/m',
+    exports: [
+      {
+        path: '/m/x/Chamber A',
+        name: 'Chamber A',
+        scan: { ...scan, inspections: scan.inspections.slice(0, 1) },
+      },
+      { path: '/m/x/Chamber B', name: 'Chamber B', scan: { ...scan, inspections: [second] } },
+    ],
+    skipped: { folders: ['Raw drone data', 'Reports'], files: 3 },
+    capped: false,
+  };
+  const openMission = (m: InspectorMission) => {
+    act(() => {
+      picker.setState({
+        path: m.root,
+        mission: m,
+        scan: flatScan(m),
+        choice: initialChoice(flatScan(m)),
+      });
+    });
+  };
+
+  it('lists a mission folder as chambers with counts, the summary and what was skipped', () => {
+    openMission(mission);
+    // 6 flight clouds + merged in A, one in B: 8
+    expect(byId('inspector-summary')?.textContent).toBe('2 chambers, 100 photos, 8 point clouds');
+    expect(byId('inspector-skipped')?.textContent).toContain(
+      'Skipped 2 other folders, Skipped 3 loose files',
+    );
+    expect(byId('inspector-skipped')?.textContent).toContain('Raw drone data');
+    expect(byId('inspector-chamber-0')?.textContent).toContain('Chamber A');
+    expect(byId('inspector-chamber-0')?.textContent).toContain(
+      '1 inspection · 6 flights · 95 findings · 99 photos · 7 point clouds',
+    );
+    expect((byId('inspector-chamber-tick-0') as HTMLInputElement).checked).toBe(true);
+    // B is already imported: unticked, and says it will merge
+    expect((byId('inspector-chamber-tick-1') as HTMLInputElement).checked).toBe(false);
+    expect(byId('inspector-imported-b')).not.toBeNull();
+    act(() => {
+      byId('inspector-chamber-tick-1')?.click();
+    });
+    act(() => {
+      byId('inspector-import')?.click();
+    });
+    expect(h.importFiles).toHaveBeenCalledWith(['/m/x/Chamber A', '/m/x/Chamber B'], undefined, {
+      inspector: { inspections: [{ id: 'a', space: 'Chamber A' }, { id: 'b' }] },
+    });
+  });
+
+  it('a folder with no export says so, with a hint, and cannot import', () => {
+    openMission({ ...mission, exports: [] });
+    expect(byId('inspector-none-found')?.textContent).toContain(
+      'No Inspector export found in this folder',
+    );
+    expect(byId('inspector-list')).toBeNull();
+    expect((byId('inspector-import') as HTMLButtonElement).disabled).toBe(true);
   });
 });

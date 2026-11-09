@@ -598,7 +598,10 @@ describe('shell store', () => {
   });
 
   const exportEntry = { ...entry, purpose: 'confined-space' as const };
-  const scanned = { ok: true, scan: { inspections: [{ id: 'a' }] } };
+  const scanned = {
+    ok: true,
+    mission: { exports: [{ path: 'D:/exp', name: 'A', scan: { inspections: [{ id: 'a' }] } }] },
+  };
 
   it('an export added to the library opens its project and the picker', async () => {
     fly.on = true;

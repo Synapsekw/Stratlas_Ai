@@ -83,3 +83,89 @@
   min-width: 0;
   max-width: 50%;
 }
+.fly-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.fly-summary-found {
+  margin: 0;
+  font-size: var(--t-14);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.fly-skipped {
+  margin: 0;
+  font-size: var(--t-12);
+  color: var(--fg-3);
+}
+.fly-skipped summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.fly-skipped-note {
+  margin: var(--sp-1) 0 0;
+}
+.fly-skipped-list {
+  margin: var(--sp-1) 0 0;
+  padding-left: var(--sp-5);
+  max-height: 120px;
+  overflow-y: auto;
+  color: var(--fg-2);
+}
+.fly-capped {
+  margin: 0;
+  font-size: var(--t-12);
+  color: var(--warn-ink);
+}
+.fly-chamber {
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  padding: var(--sp-3) var(--sp-4);
+}
+.fly-chamber-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--t-14);
+  color: var(--fg-0);
+}
+.fly-chamber-name {
+  font-weight: 600;
+}
+.fly-chamber-meta {
+  margin: var(--sp-1) 0 0 var(--sp-6);
+  font-size: var(--t-12);
+  color: var(--fg-3);
+}
+.fly-chamber-list {
+  margin: var(--sp-2) 0 0 var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+/* inside a chamber an inspection is a plain row, not a second box */
+.fly-chamber .fly-insp {
+  border: 0;
+  border-radius: 0;
+  padding: var(--sp-2) 0 0;
+  border-top: 1px solid var(--line);
+}
+.fly-chamber .fly-insp-name {
+  font-weight: 500;
+}
+.fly-none {
+  padding: var(--sp-4) 0;
+}
+.fly-none-title {
+  margin: 0;
+  font-size: var(--t-14);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.fly-none-hint {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--t-13);
+  color: var(--fg-2);
+  max-width: 65ch;
+}
