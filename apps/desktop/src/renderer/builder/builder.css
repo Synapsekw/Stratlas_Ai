@@ -418,7 +418,6 @@
   display: block;
   height: 100%;
   background: var(--acc);
-  transition: width 160ms var(--ease);
 }
 .b-empty {
   position: absolute;

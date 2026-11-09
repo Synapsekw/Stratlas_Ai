@@ -210,12 +210,6 @@
   display: block;
   height: 100%;
   background: var(--warn);
-  transition: width 0.2s var(--ease);
-}
-@media (prefers-reduced-motion: reduce) {
-  .ask-run-bar > span {
-    transition: none;
-  }
 }
 
 /* detector runs waiting for the graphics card, under the run strip */

@@ -177,9 +177,9 @@
   }
   .qg-enter:hover::after {
     opacity: 1;
-    left: 120%;
+    transform: translateX(533%) skewX(-18deg);
     transition:
-      left 700ms var(--qg-ease),
+      transform 700ms var(--qg-ease),
       opacity 100ms;
   }
 }

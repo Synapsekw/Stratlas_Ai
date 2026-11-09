@@ -4250,7 +4250,6 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
   display: block;
   height: 100%;
   background: var(--acc);
-  transition: width 300ms var(--ease);
 }
 .pack-job .help,
 .pack-job .prov-err {
@@ -4786,7 +4785,6 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
   display: block;
   height: 100%;
   background: var(--acc);
-  transition: width 0.3s var(--ease);
 }
 .job-bar.ok i {
   background: var(--ok);

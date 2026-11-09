@@ -21,8 +21,7 @@
     "shadow": 3,
     "zIndex": 6,
     "spacingPx": 101,
-    "radiusOffScale": 2,
-    "transitionLayout": 1
+    "radiusOffScale": 2
   },
   "apps/desktop/src/renderer/builder/CalibrateVideo.tsx": {
     "title": 2
@@ -87,8 +86,7 @@
     "shadow": 3,
     "zIndex": 5,
     "spacingPx": 17,
-    "radiusOffScale": 2,
-    "transitionLayout": 1
+    "radiusOffScale": 2
   },
   "apps/desktop/src/renderer/globe/globe-map-menu.css": {
     "shadow": 1,
@@ -122,8 +120,7 @@
     "spacingPx": 7
   },
   "apps/desktop/src/renderer/inspect/askAi/askAi.css": {
-    "spacingPx": 2,
-    "transitionLayout": 1
+    "spacingPx": 2
   },
   "apps/desktop/src/renderer/inspect/fields.css": {
     "spacingPx": 8
@@ -189,8 +186,7 @@
     "shadow": 1,
     "zIndex": 1,
     "spacingPx": 58,
-    "radiusOffScale": 1,
-    "transitionLayout": 1
+    "radiusOffScale": 1
   },
   "apps/desktop/src/renderer/panos/panos.css": {
     "fontPx": 2,
@@ -353,7 +349,7 @@
     "zIndex": 12,
     "spacingPx": 386,
     "radiusOffScale": 11,
-    "transitionLayout": 4
+    "transitionLayout": 2
   },
   "apps/desktop/src/renderer/survey/Cleanup.tsx": {
     "title": 1
