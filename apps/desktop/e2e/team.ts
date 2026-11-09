@@ -67,7 +67,7 @@ export async function editIssue(win: Page, code: string): Promise<ReturnType<Pag
   await win.locator('.sb-nav .nav-item', { hasText: 'Issues' }).click();
   await win
     .getByTestId('issue-register')
-    .getByRole('option', { name: new RegExp(code) })
+    .getByRole('row', { name: new RegExp(`^(Select ${code} )?${code} `) })
     .click();
   const card = win.getByTestId('issue-card').first();
   const details = card.locator('details', {
