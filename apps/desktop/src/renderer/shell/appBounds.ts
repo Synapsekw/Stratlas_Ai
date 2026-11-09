@@ -1,4 +1,5 @@
 import { getActiveScene, layerBox } from '@aio/engine';
+import { cloudFrameBox } from '@aio/pointcloud';
 import { workspace } from '@aio/workspace';
 import { Vector3 } from 'three';
 import type { BoundsDeps, Box } from './layerBounds';
@@ -19,7 +20,8 @@ export function appBoundsDeps(): BoundsDeps {
     orientation: ws.orientation,
     sceneBox: (id) => {
       const h = getActiveScene();
-      const b = h ? layerBox(h.scene, id) : null;
+      // a confined-space cloud frames on its robust box: its strays would make the room a speck
+      const b = h ? (cloudFrameBox(h, id) ?? layerBox(h.scene, id)) : null;
       return b ? { min: b.min.toArray(), max: b.max.toArray() } : null;
     },
     fileExtent: (id) => fileExtentSource(id),

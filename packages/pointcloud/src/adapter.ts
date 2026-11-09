@@ -18,6 +18,7 @@ import { pickPoint } from './pick';
 import { parsePngCloudIndex, type PngCloudIndex } from './pngIndex';
 import { createWorkerPool, type Decoder } from './pool';
 import { pointcloudSettings, type PointcloudSettings } from './settings';
+import { robustCloudBox } from './robustBox';
 import { pointcloudStats } from './stats';
 
 type V3 = readonly [number, number, number];
@@ -52,6 +53,15 @@ export const KIT_BASE_SIZE = 0.025;
 const managers = new WeakMap<SceneHandle, CloudManager>();
 const pickers = new WeakMap<SceneHandle, () => void>();
 const rays = new WeakMap<SceneHandle, () => void>();
+const frames = new WeakMap<SceneHandle, Map<string, Box3>>();
+
+/**
+ * The box to frame a local-frame cloud layer on (strays left out), or null when the layer has
+ * none: "Zoom to" reads this before the box of the points drawn so far.
+ */
+export function cloudFrameBox(handle: SceneHandle, layerId: string): Box3 | null {
+  return frames.get(handle)?.get(layerId) ?? null;
+}
 
 /** The cloud manager of a scene, if it shows any cloud. Used by picking. */
 export function getCloudManager(handle: SceneHandle): CloudManager | undefined {
@@ -80,6 +90,13 @@ function cloudEpsg(layer: CloudLayer): number | null {
   return crs && 'epsg' in crs ? crs.epsg : null;
 }
 
+/** Whether the layer's space is a local frame (a confined-space scan), not a CRS. */
+function cloudIsLocal(layer: CloudLayer): boolean {
+  const m = workspace.getState().project?.manifest;
+  const crs = m ? layerFrame(m, layer).crs : null;
+  return crs !== null && !('epsg' in crs);
+}
+
 /** Typical spacing: the index's own value, else sqrt(ground area / points). */
 export function pngBaseSize(idx: PngCloudIndex): number {
   if (idx.spacing) return idx.spacing;
@@ -102,6 +119,9 @@ function resolveChunkUrl(
     return file;
   }
 }
+
+/** The share of a local-frame cloud's points left out at each end of an axis when framing it. */
+export const LOCAL_FRAME_TRIM = 0.005;
 
 /** What a COPC file gives a layer: its chunks, size, header and framing box (local frame). */
 interface LoadedCopc {
@@ -146,7 +166,17 @@ async function loadCopc(
     new Vector3(b.min[0] - origin[0], b.min[2] - origin[2], origin[1] - b.max[1]),
     new Vector3(b.max[0] - origin[0], b.max[2] - origin[2], origin[1] - b.min[1]),
   );
-  return { chunks, baseSize: source.spacing, copc: { url, source, origin }, scalar, box };
+  // A confined-space (local frame) scan has lidar strays that stretch its header box to several
+  // times the chamber: frame on the finest nodes without the outermost share of the points. A
+  // georeferenced site-scale cloud keeps its header box (a hill or a mast there is real).
+  const framing = cloudIsLocal(layer) ? robustCloudBox(chunks, box, LOCAL_FRAME_TRIM) : box;
+  return {
+    chunks,
+    baseSize: source.spacing,
+    copc: { url, source, origin },
+    scalar,
+    box: framing,
+  };
 }
 
 /** The noise working copy could not be read: say so and show the original. */
@@ -300,6 +330,11 @@ export function createPointcloudAdapter(
       if (!layer.visible) m.setVisible(layer.id, false);
       let shown = layer.visible;
       const framed = box;
+      if (framed && copc && cloudIsLocal(layer)) {
+        const byLayer = frames.get(handle) ?? new Map<string, Box3>();
+        frames.set(handle, byLayer);
+        byLayer.set(layer.id, framed);
+      }
       const unframe = framed
         ? handle.addContentBounds(() => (shown ? framed : null), { solid: true })
         : () => undefined;
@@ -351,6 +386,7 @@ export function createPointcloudAdapter(
           disposed = true;
           offNoise();
           unframe();
+          if (newest()) frames.get(handle)?.delete(layer.id);
           if (newest()) latest.get(handle)?.delete(layer.id);
           if (owns()) m.removeLayer(layer.id);
           release(handle, m);

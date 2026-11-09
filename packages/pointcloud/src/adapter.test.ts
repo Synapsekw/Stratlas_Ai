@@ -6,6 +6,7 @@ import type { BufferGeometry, Vector2, Box3 } from 'three';
 import { PerspectiveCamera, Plane, Points, Scene, Vector3 } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  cloudFrameBox,
   cloudLowHeight,
   cloudOrigin,
   createPointcloudAdapter,
@@ -512,6 +513,46 @@ describe('COPC layers', () => {
     expect(bounds[0]?.get()).toBeNull();
     layer.dispose();
     expect(bounds).toHaveLength(0);
+  });
+
+  it('frames a local-frame (confined-space) cloud without its far strays, a georeferenced one not', async () => {
+    // header box x 10..30, y 0..5, z 4..44; a dense 10 m room and a thin far node
+    const hier = {
+      10: {
+        nodes: {
+          '2-0-1-0': info(50000, 1000),
+          '2-3-3-3': info(10, 2000),
+        },
+        pages: {},
+      },
+    };
+    const local = ProjectManifest.parse({
+      schema: 'aio.project/1',
+      id: 'p',
+      name: 'P',
+      crs: { local: 'flyability' },
+      origin: [0, 0, 0],
+      captures: [],
+      layers: [],
+      severityModels: [],
+      classCatalogues: [],
+    });
+    workspace.setState({ project: { id: 'p', root: 'x', manifest: local } } as never);
+    try {
+      const a = await open(hier, [32, 500, 32]);
+      const box = a.bounds[0]?.get();
+      // the room's node only (16 m cells, cut to the header); the stray node is left out
+      expect(box?.min.toArray()).toEqual([10, 0, 32]);
+      expect(box?.max.toArray()).toEqual([16, 5, 44]);
+      expect(cloudFrameBox(a.handle, 'full')?.max.toArray()).toEqual([16, 5, 44]);
+      a.layer.dispose();
+      expect(cloudFrameBox(a.handle, 'full')).toBeNull();
+    } finally {
+      workspace.setState({ project: null } as never);
+    }
+    // with no local project open the header box is kept
+    const b = await open(hier, [32, 500, 32]);
+    expect(b.bounds[0]?.get()?.min.toArray()).toEqual([10, 0, 4]);
   });
 
   it('reads the header and root page in the decoder, then loads the root node first', async () => {

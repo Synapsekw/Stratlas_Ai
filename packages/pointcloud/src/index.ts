@@ -19,6 +19,7 @@ export {
 } from './lod';
 export { lowHeight, type HeightSample } from './heights';
 export {
+  cloudFrameBox,
   cloudLowHeight,
   cloudSourceUrl,
   cloudWorldBounds,
