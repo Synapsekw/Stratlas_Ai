@@ -8,7 +8,7 @@ import { graphics } from '../graphics';
 import { shell } from '../shell';
 import { threeDates } from './__fixtures__/threeDates';
 import { siteLonLat } from './basemap';
-import { MapViewMenu, SceneMapMenu } from './MapMenus';
+import { MapViewMenu, SceneMapMenu, stageBasemapView } from './MapMenus';
 import { onlineSatelliteSwitch } from './onlineSatellite';
 import { rasterPacks } from './siteTiles';
 
@@ -191,5 +191,18 @@ describe('the 3D scene menu', () => {
       root.render(<SceneMapMenu />);
     });
     expect(q('scene-map-button')).toBeNull();
+  });
+});
+
+describe('stageBasemapView', () => {
+  it('shows the scene chip for a placed site and the map chip while a map shows', () => {
+    expect(stageBasemapView(true, true, true, false)).toBe('scene');
+    expect(stageBasemapView(true, true, true, true)).toBe('map');
+    expect(stageBasemapView(false, true, true, false)).toBeNull();
+  });
+
+  it('shows no chip in a local space, which has no map', () => {
+    expect(stageBasemapView(true, false, true, false)).toBeNull();
+    expect(stageBasemapView(true, false, false, true)).toBeNull();
   });
 });

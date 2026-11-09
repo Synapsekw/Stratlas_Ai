@@ -12,6 +12,7 @@ import { useMemo } from 'react';
 import { MapMenu } from '../maps/MapMenu';
 import { mapMenuModel, type MapMenuModel, type OnTopKey } from '../maps/mapMenuModel';
 import { shell, useShell } from '../shell';
+import { useActiveSpace } from '../spaces/activeSpace';
 import { siteLonLat } from './basemap';
 import { pickBase } from './onlineSatellite';
 import { OnlineSatelliteNotice } from './OnlineSatelliteNotice';
@@ -155,10 +156,22 @@ export function SceneMapMenu() {
  * Which view's Map menu the stage shows (D30): the Map view's while a map shows (in a split too),
  * else the 3D scene's for a site placed on the map; null: none.
  */
-export function useStageBasemap(show3d: boolean, showMap: boolean): 'map' | 'scene' | null {
-  const placed = useWorkspace((s) => siteLonLat(s.project?.manifest ?? null) !== null);
+export function stageBasemapView(
+  placed: boolean,
+  mapAvailable: boolean,
+  show3d: boolean,
+  showMap: boolean,
+): 'map' | 'scene' | null {
+  // a local space (a confined-space chamber) has no map: the chip would do nothing
+  if (!mapAvailable) return null;
   if (showMap) return 'map';
   return show3d && placed ? 'scene' : null;
+}
+
+export function useStageBasemap(show3d: boolean, showMap: boolean): 'map' | 'scene' | null {
+  const placed = useWorkspace((s) => siteLonLat(s.project?.manifest ?? null) !== null);
+  const { mapAvailable } = useActiveSpace();
+  return stageBasemapView(placed, mapAvailable, show3d, showMap);
 }
 
 /** The stage's one Map menu chip, for the view `useStageBasemap` picked. */
