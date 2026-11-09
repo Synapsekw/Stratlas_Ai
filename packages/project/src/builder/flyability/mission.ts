@@ -28,6 +28,8 @@ export interface ExportWalk {
   /** Export folders, absolute, in folder order (Chamber 2 before Chamber 10). */
   exports: string[];
   skipped: InspectorMission['skipped'];
+  /** The loose files counted in `skipped.files`, relative to the picked folder. */
+  looseFiles: string[];
   capped: boolean;
 }
 
@@ -44,7 +46,7 @@ export async function findInspectorExports(
   const maxDirs = opts.maxDirs ?? MISSION_MAX_DIRS;
   const exports: string[] = [];
   const folders: string[] = [];
-  let files = 0;
+  const looseFiles: string[] = [];
   let visited = 0;
   let capped = false;
 
@@ -80,7 +82,9 @@ export async function findInspectorExports(
     // only on the way to an export (or at the picked folder) is anything reported as left out
     if (holds || depth === 0) {
       folders.push(...without.map((p) => relative(root, p)));
-      files += entries.filter((e) => e.isFile() && !OS_FILES.test(e.name)).length;
+      for (const e of entries)
+        if (e.isFile() && !OS_FILES.test(e.name))
+          looseFiles.push(relative(root, join(dir, e.name)));
     }
     return holds;
   };
@@ -88,7 +92,7 @@ export async function findInspectorExports(
   await visit(root, 0);
   const depthOf = (p: string) => p.split(sep).length;
   folders.sort((a, b) => depthOf(a) - depthOf(b) || byName(a, b));
-  return { exports, skipped: { folders, files }, capped };
+  return { exports, skipped: { folders, files: looseFiles.length }, looseFiles, capped };
 }
 
 /** The inspection ids of an export (`inspections/<id>/inspection.json`, else the folder name). */

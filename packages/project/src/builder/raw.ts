@@ -57,7 +57,7 @@ import {
   tiffGeoreferenced,
 } from './tiff';
 import { CONFINED_SPACE_TEMPLATE } from './templates';
-import { findInspectorExport } from './flyability/scan';
+import { findInspectorExports, inspectionIdsOf } from './flyability/mission';
 import { FLYABILITY_IMPORT_UI } from './flyability/flags';
 import { findTwin, needsTwin, twinFix, type TwinCandidate } from './thermalTwin';
 import { CANCELLED_BEFORE, importWalk, type WalkTools } from './walks';
@@ -84,7 +84,11 @@ export interface ImageOps extends DrawingImages {
  */
 export interface PipelineJobs {
   available(): Promise<boolean>;
-  start(method: string, params: Record<string, unknown>): Promise<{ jobId: string }>;
+  /** `waiting`: the job starts once the one before it has ended (one Inspector import at a time). */
+  start(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<{ jobId: string } | { waiting: true }>;
 }
 
 /** Why an MP4 or MOV without its SRT, and not a stitched 360 export, is skipped. */
@@ -247,6 +251,8 @@ const REVIEW_PX = 2560;
 const THUMB_PX = 480;
 
 export const INSPECTOR_CHOOSE = 'Choose the inspections to import.';
+/** A chamber's import that starts when the one before it has ended. */
+export const INSPECTOR_WAITING = 'Waits for the chamber before it, then converts.';
 
 export const BENTLEY_NO_FOLDER =
   'No photos folder was chosen, so the Bentley block was not imported. Add the .xml again and choose the folder that holds its photos.';
@@ -366,6 +372,85 @@ const layerIdTaken = (m: ProjectManifest) => (id: string) => m.layers.some((l) =
  * can replace it, or be replaced. For an OPF project and for maps from photos the filing takes
  * as long as their files take to move, and the job's write then replaces all this import added.
  */
+interface PlannedInspectorJob {
+  root: string;
+  params: Record<string, unknown>;
+}
+
+/**
+ * The `flyability.import` jobs of the chosen inspections: one per export that holds any, each with
+ * its own inspections (the selection's space names left out) and, for an inspection that has no
+ * space yet but a name for one, the space made for it now under that name. The new spaces are
+ * saved in one write before the first job starts, so no job is writing the manifest then.
+ */
+async function planInspectorJobs(
+  root: string,
+  paths: readonly string[],
+  inspectorRoots: ReadonlyMap<string, readonly string[]>,
+  selection: InspectorSelection,
+  out: Map<string, PlannedInspectorJob[]>,
+): Promise<void> {
+  const wanted = new Map(selection.inspections.map((i) => [i.id, i]));
+  const named = new Map<string, string>();
+  const planned: { path: string; root: string; ids: string[] }[] = [];
+  for (const path of paths) {
+    for (const exp of inspectorRoots.get(path) ?? []) {
+      const ids = (await inspectionIdsOf(exp)).filter((id) => wanted.has(id));
+      if (ids.length === 0) continue;
+      planned.push({ path, root: exp, ids });
+      for (const id of ids) {
+        const name = wanted.get(id)?.space?.trim() ?? '';
+        if (name !== '') named.set(id, name);
+      }
+    }
+  }
+  const spaceOf = new Map<string, string>();
+  if (named.size > 0) {
+    // a failed write leaves the naming to the job (the inspection's own name)
+    const saved = await updateManifestFile(root, (fresh) => {
+      const spaces = [...(fresh.spaces ?? [])];
+      const taken = new Set([...spaces.map((s) => s.id), ...fresh.layers.map((l) => l.id)]);
+      let added = false;
+      for (const [id, name] of named) {
+        if (spaces.some((s) => s.source?.kind === 'flyability' && s.source.inspectionId === id))
+          continue;
+        const sid = uniqueId(`fly-${id.slice(0, 8)}`, (x) => taken.has(x));
+        taken.add(sid);
+        spaces.push({
+          id: sid,
+          name,
+          crs: { local: 'flyability' },
+          origin: [0, 0, 0],
+          source: { kind: 'flyability', inspectionId: id },
+        });
+        added = true;
+      }
+      return { manifest: added ? { ...fresh, spaces } : null };
+    }).catch(() => null);
+    for (const s of saved?.manifest.spaces ?? [])
+      if (s.source?.kind === 'flyability' && named.has(s.source.inspectionId))
+        spaceOf.set(s.source.inspectionId, s.id);
+  }
+  for (const p of planned) {
+    const inspections = p.ids.map((id) => {
+      const pick = wanted.get(id);
+      return pick?.flights ? { id, flights: pick.flights } : { id };
+    });
+    const spaces = Object.fromEntries(
+      p.ids.flatMap((id) => {
+        const sid = spaceOf.get(id);
+        return sid === undefined ? [] : [[id, sid] as const];
+      }),
+    );
+    const list = out.get(p.path) ?? [];
+    list.push({
+      root: p.root,
+      params: { inspections, ...(Object.keys(spaces).length > 0 ? { spaces } : {}) },
+    });
+    out.set(p.path, list);
+  }
+}
+
 export async function importRawFiles(
   root: string,
   paths: readonly string[],
@@ -430,20 +515,24 @@ export async function importRawFiles(
       return;
     }
     try {
-      const { jobId } = await deps.jobs.start(method, {
+      const r = await deps.jobs.start(method, {
         projectRoot: root,
         src: file,
         ...(local ? {} : { epsg }),
         origin: m.origin,
         ...params,
       });
-      items.push({
-        file: name,
-        kind,
-        status: 'queued',
-        jobId,
-        message: 'Converting with the processing tools.',
-      });
+      items.push(
+        'jobId' in r
+          ? {
+              file: name,
+              kind,
+              status: 'queued',
+              jobId: r.jobId,
+              message: 'Converting with the processing tools.',
+            }
+          : { file: name, kind, status: 'queued', message: INSPECTOR_WAITING },
+      );
     } catch (e) {
       items.push({
         file: name,
@@ -544,8 +633,11 @@ export async function importRawFiles(
     }
   };
 
-  /** The Flyability Inspector exports among the paths: folders, never imported file by file. */
-  const inspectorRoots = new Map<string, string>();
+  /**
+   * The Flyability Inspector exports among the paths (a path may be an export, or a mission folder
+   * holding several): folders, never imported file by file.
+   */
+  const inspectorRoots = new Map<string, string[]>();
   const inspectorOn = (deps.flyabilityUi ?? FLYABILITY_IMPORT_UI) || deps.inspector !== undefined;
   await Promise.all(
     (inspectorOn ? paths : []).map(async (p) => {
@@ -557,10 +649,14 @@ export async function importRawFiles(
         ))
       )
         return;
-      const found = await findInspectorExport(p);
-      if (found !== null) inspectorRoots.set(p, found);
+      const found = (await findInspectorExports(p)).exports;
+      if (found.length > 0) inspectorRoots.set(p, found);
     }),
   );
+  /** Each chosen export with its own inspections and the space each one goes into. */
+  const inspectorJobs = new Map<string, PlannedInspectorJob[]>();
+  if (deps.inspector && pipeline && !deps.signal?.aborted && inspectorRoots.size > 0)
+    await planInspectorJobs(root, paths, inspectorRoots, deps.inspector, inspectorJobs);
 
   for (const file of paths) {
     const name = basename(file);
@@ -568,8 +664,8 @@ export async function importRawFiles(
     let later = false;
     try {
       if (consumed.has(file)) continue;
-      const exportRoot = inspectorRoots.get(file);
-      if (exportRoot !== undefined) {
+      const exportRoots = inspectorRoots.get(file);
+      if (exportRoots !== undefined) {
         if (deps.signal?.aborted) {
           items.push({
             file: name,
@@ -593,11 +689,17 @@ export async function importRawFiles(
           const model =
             m.severityModels.find((x) => x.id === CONFINED_SPACE_TEMPLATE.id) ??
             CONFINED_SPACE_TEMPLATE.model;
-          await job(exportRoot, 'flyability', 'flyability.import', {
-            inspections: deps.inspector.inspections,
-            severityModel: model,
-            catalogueId: 'confined-space',
-          });
+          // without the processing tools nothing was planned: the export says so once
+          const planned = inspectorJobs.get(file) ?? [
+            { root: exportRoots[0] ?? file, params: { inspections: deps.inspector.inspections } },
+          ];
+          // one job per chamber, in folder order; the app runs them one at a time
+          for (const p of planned)
+            await job(p.root, 'flyability', 'flyability.import', {
+              ...p.params,
+              severityModel: model,
+              catalogueId: 'confined-space',
+            });
         }
         continue;
       }

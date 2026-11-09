@@ -16,6 +16,7 @@ import {
 import {
   BENTLEY_NO_FOLDER,
   INSPECTOR_CHOOSE,
+  INSPECTOR_WAITING,
   NO_PIPELINE,
   UNSUPPORTED_XML,
   importDay,
@@ -1746,6 +1747,88 @@ describe('GLB georeference on import (engineering model 5.6)', () => {
     expect(started).toHaveLength(0);
     const none = await importRawFiles(root, [exp], { ...deps(), inspector: chosen });
     expect(none.items[0]).toMatchObject({ kind: 'flyability', status: 'needs-pipeline' });
+  });
+
+  it('a mission folder queues one job per chamber, each into its own named space', async () => {
+    const root = await project();
+    const mission = join(dir, 'Mission 1');
+    const a = await writeInspectorFixture(join(mission, 'Exports', 'Chamber A'));
+    const b = await writeInspectorFixture(join(mission, 'Exports', 'Chamber B'), { seed: 1 });
+    await mkdir(join(mission, 'Raw drone data'), { recursive: true });
+    const started: { method: string; params: Record<string, unknown> }[] = [];
+    const jobs: PipelineJobs = {
+      available: () => Promise.resolve(true),
+      // the first runs, the next waits for it (the app's one-at-a-time lane)
+      start: (method, params) => {
+        started.push({ method, params });
+        return Promise.resolve(started.length === 1 ? { jobId: 'job-a' } : { waiting: true });
+      },
+    };
+    const inspector = {
+      inspections: [
+        { id: a.inspectionId, space: 'Chamber A' },
+        { id: b.inspectionId, flights: [b.flightIds[0] ?? ''], space: 'Chamber B' },
+      ],
+    };
+    const r = await importRawFiles(root, [mission], { ...deps({ jobs }), inspector });
+    expect(r.items).toEqual([
+      expect.objectContaining({
+        file: 'Chamber A',
+        kind: 'flyability',
+        status: 'queued',
+        jobId: 'job-a',
+      }),
+      expect.objectContaining({
+        file: 'Chamber B',
+        kind: 'flyability',
+        status: 'queued',
+        message: INSPECTOR_WAITING,
+      }),
+    ]);
+    expect(r.items[1]?.jobId).toBeUndefined();
+    const spaces = (await readManifestFile(root)).spaces ?? [];
+    expect(spaces.map((s) => [s.name, s.source?.inspectionId, s.crs])).toEqual([
+      ['Chamber A', a.inspectionId, { local: 'flyability' }],
+      ['Chamber B', b.inspectionId, { local: 'flyability' }],
+    ]);
+    // the fixture ids share their first 8 characters: the second space gets a free id
+    expect(new Set(spaces.map((s) => s.id)).size).toBe(2);
+    expect(started.map((s) => s.params.src)).toEqual([
+      join(mission, 'Exports', 'Chamber A'),
+      join(mission, 'Exports', 'Chamber B'),
+    ]);
+    // each job takes its own export's inspections, without the space name, into its space
+    expect(started[0]?.params).toMatchObject({
+      inspections: [{ id: a.inspectionId }],
+      spaces: { [a.inspectionId]: spaces[0]?.id },
+    });
+    expect(started[1]?.params).toMatchObject({
+      inspections: [{ id: b.inspectionId, flights: [b.flightIds[0]] }],
+      spaces: { [b.inspectionId]: spaces[1]?.id },
+    });
+    expect(JSON.stringify(started)).not.toContain('"space"');
+
+    // the same mission again: the chambers go back into their spaces, none is added
+    started.length = 0;
+    await importRawFiles(root, [mission], { ...deps({ jobs }), inspector });
+    expect((await readManifestFile(root)).spaces).toHaveLength(2);
+    expect(started).toHaveLength(2);
+  });
+
+  it('a mission folder without a choice is asked about once', async () => {
+    const root = await project();
+    const mission = join(dir, 'Mission 1');
+    await writeInspectorFixture(join(mission, 'Exports', 'Chamber A'));
+    await writeInspectorFixture(join(mission, 'Exports', 'Chamber B'), { seed: 1 });
+    const r = await importRawFiles(root, [mission], deps());
+    expect(r.items).toEqual([
+      expect.objectContaining({
+        file: 'Mission 1',
+        kind: 'flyability',
+        status: 'skipped',
+        message: INSPECTOR_CHOOSE,
+      }),
+    ]);
   });
 
   it('imports an inspector export into a local-frame project without sending an EPSG code', async () => {

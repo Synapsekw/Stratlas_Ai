@@ -99,6 +99,7 @@ describe('findInspectorExports', () => {
     const r = await findInspectorExports(dir);
     expect(r.exports).toEqual([]);
     expect(r.skipped).toEqual({ folders: ['Photos'], files: 1 });
+    expect(r.looseFiles).toEqual(['b.jpg']);
   });
 
   it('a missing folder finds nothing', async () => {
