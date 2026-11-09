@@ -815,7 +815,7 @@ describe('importFiles, Flyability Inspector exports', () => {
     });
     expect(openInspectorPicker).toHaveBeenCalledWith('/drops/one');
     expect(toastQueue().map((x) => x.message)).toEqual([
-      'Choose from this export first. Drop the other 2 exports again afterwards.',
+      'Choose from this export first, then drop the other 2 again. To take every chamber at once, pick the folder that holds them with Flyability Inspector export.',
     ]);
   });
 

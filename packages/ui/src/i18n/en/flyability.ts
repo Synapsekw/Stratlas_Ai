@@ -21,9 +21,10 @@ export const enFlyability = {
   'fly.picker.scanning': 'Reading the export...',
   'fly.picker.scanFailed': 'Could not open this folder as a Flyability Inspector export.',
   'fly.picker.none': 'This export has no inspections to import.',
-  'fly.picker.more_one': 'Choose from this export first. Drop the other export again afterwards.',
+  'fly.picker.more_one':
+    'Choose from this export first, then drop the other one again. To take every chamber at once, pick the folder that holds them with Flyability Inspector export.',
   'fly.picker.more_other':
-    'Choose from this export first. Drop the other {count} exports again afterwards.',
+    'Choose from this export first, then drop the other {count} again. To take every chamber at once, pick the folder that holds them with Flyability Inspector export.',
   'fly.picker.noData': 'No point cloud or path',
   'fly.picker.chambers_one': '{count} chamber',
   'fly.picker.chambers_other': '{count} chambers',
