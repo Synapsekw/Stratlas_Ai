@@ -45,6 +45,7 @@ import {
   type ViewPreset,
 } from '../camera/cameraMath';
 import { FAR_M, engineConfig, type StageQuality } from '../config';
+import { isDrawnElsewhere } from '../layers/drawnElsewhere';
 import { LayerSync } from '../layers/layerSync';
 import { FrameStats } from '../overlay/declutter';
 import { Overlay, type CalloutSpec } from '../overlay/Overlay';
@@ -1311,7 +1312,8 @@ export class Stage implements EngineStage {
           console.error(`Layer "${layer.name}" could not be loaded`, e);
         },
         onMissing: (layer) => {
-          if (this.warnedKinds.has(layer.kind)) return;
+          // flight lines have no adapter: the app draws them in its own scene
+          if (isDrawnElsewhere(layer.kind) || this.warnedKinds.has(layer.kind)) return;
           this.warnedKinds.add(layer.kind);
           console.warn(`No adapter for ${layer.kind} layers yet; "${layer.name}" is skipped`);
         },
