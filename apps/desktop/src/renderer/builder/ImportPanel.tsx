@@ -1,13 +1,13 @@
 import type { AioBridge, ImportItem, Layer } from '@aio/schema';
 import { Icon, useT, type IconName } from '@aio/ui';
-import { useWorkspace } from '@aio/workspace';
+import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useState } from 'react';
 import { PagesCard } from '../drawings/PagesCard';
 import { useDrawings } from '../drawings/store';
 import { InspectorPickerHost } from '../flyability/InspectorPicker';
 import { watchInspectorQueue } from '../flyability/queueWatch';
 import { PhotoProcessLayer } from '../photogrammetry/PhotoProcessLayer';
-import { useShell } from '../shell';
+import { shell, useShell } from '../shell';
 import { CloudDatesCard } from './CloudDates';
 import { heightsLine, offsetFromTakeoff, promptChoice, type HeightsPrompt } from './heights';
 import { engineeringAction, importDestination, importHeadline } from './importSummary';
@@ -68,7 +68,11 @@ export function ImportLayer() {
       e.preventDefault();
       depth = 0;
       setOver(false);
-      void builder.getState().importFiles(droppedPaths(e));
+      const paths = droppedPaths(e);
+      // with no project open (the Projects screen) a drop adds to the library, as Add project
+      // folder does: a project folder, a package, or an Inspector export or mission folder
+      if (!workspace.getState().project) void shell.getState().addFolders(paths);
+      else void builder.getState().importFiles(paths);
     };
     window.addEventListener('dragenter', enter);
     window.addEventListener('dragleave', leave);
@@ -88,12 +92,23 @@ export function ImportLayer() {
         <div className="b-drop" aria-hidden="true">
           <div>
             <Icon name="import" size={20} />
-            <h3>{projectName ? `Import into ${projectName}` : 'Open a project to import'}</h3>
-            <p>
-              Photos, video with its SRT, stitched 360 MP4s and 360 camera files (.insv), GLB or OBJ
-              models, GeoTIFF orthos and DSMs, point clouds
-            </p>
-            <p>Drawings as PDF, PNG or DXF</p>
+            {projectName ? (
+              <>
+                <h3>{`Import into ${projectName}`}</h3>
+                <p>
+                  Photos, video with its SRT, stitched 360 MP4s and 360 camera files (.insv), GLB or
+                  OBJ models, GeoTIFF orthos and DSMs, point clouds
+                </p>
+                <p>Drawings as PDF, PNG or DXF</p>
+              </>
+            ) : (
+              <>
+                <h3>Add to the library</h3>
+                <p>
+                  A project folder or package, or a Flyability Inspector export or mission folder
+                </p>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -163,6 +163,19 @@ describe('library store and addToLibrary', () => {
     expect(await createLibraryStore(join(base, 'library.json')).paths()).toEqual([dir]);
   });
 
+  it('says a file dropped on the library is not a project, not that it is missing', async () => {
+    const store = createLibraryStore(join(base, 'library.json'));
+    const photo = join(base, 'IMG_0001.JPG');
+    await writeFile(photo, 'x');
+    const r = await addToLibrary(photo, store, new ProjectRegistry(), dataRoot, noPack);
+    expect(r).toEqual({
+      ok: false,
+      error:
+        'IMG_0001.JPG is a file, not a project. Add a project folder or package here; open a project to import files into it.',
+    });
+    expect(await store.paths()).toEqual([]);
+  });
+
   it('makes a local-frame confined-space project of a Flyability Inspector export', async () => {
     const store = createLibraryStore(join(base, 'library.json'));
     const exp = join(base, 'export');

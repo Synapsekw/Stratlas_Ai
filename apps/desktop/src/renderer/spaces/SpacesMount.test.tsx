@@ -140,6 +140,18 @@ describe('SpacesMount', () => {
     expect(workspace.getState().hidden).toEqual({ lm: true });
   });
 
+  it('switching space frames the space it enters, as Home does', () => {
+    open(withSpaces([photos('lm'), photos('la', 's-a')]));
+    setActiveSpace('p1', 'main');
+    mount(null);
+    // the first scope of an opened project leaves the camera to the open
+    expect(workspace.getState().camera).toBeNull();
+    act(() => {
+      setActiveSpace('p1', 's-a');
+    });
+    expect(workspace.getState().camera?.target).toEqual({ kind: 'home' });
+  });
+
   it('a local space never stays on the map view', () => {
     open(withSpaces([photos('lm'), photos('la', 's-a')]));
     setActiveSpace('p1', 's-a');

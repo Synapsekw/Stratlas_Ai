@@ -200,6 +200,12 @@ export interface ShellActions {
   closeProject: () => void;
   addProjectFolder: () => Promise<void>;
   /**
+   * Folders (or packages) dropped on the library with no project open: each is added as Add
+   * project folder adds it, in turn, until one opens a project (an Inspector export, whose picker
+   * then asks what to bring in).
+   */
+  addFolders: (paths: readonly string[]) => Promise<void>;
+  /**
    * The menu of one project on the Projects screen. Each answers null when it worked, else the
    * sentence to show; the library is read again after a rename or a delete.
    */
@@ -342,6 +348,38 @@ export function createShellStore(
   const savePanels = ({ rightCollapsed, agentDockCollapsed, sidebarReopened }: PanelPrefs) => {
     writePanelPrefs(storage, { rightCollapsed, agentDockCollapsed, sidebarReopened });
   };
+  /**
+   * A folder (or package) into the library, as Add project folder adds it. An Inspector export or
+   * mission folder makes its project, which opens, and the picker (one read of the folder, against
+   * that project) asks what to bring in: true then.
+   */
+  async function addFolder(path: string): Promise<boolean> {
+    const { getState: get, setState: set } = store;
+    const added = await bridge.call('library:add', { path });
+    if (!added.ok) {
+      set({ libraryError: added.error });
+      return false;
+    }
+    if (!added.value.ok) {
+      set({ libraryError: added.value.error });
+      return false;
+    }
+    await get().loadLibrary();
+    const made = added.value.entry;
+    if (
+      !isInspectorUiOn() ||
+      made.purpose !== 'confined-space' ||
+      folderKey(made.path) === folderKey(path)
+    )
+      return false;
+    await get().openProject(made.path);
+    // the picker imports into the open project: not asked when it did not open
+    if (get().openError !== null || get().unlock !== null) return false;
+    const { openInspectorPicker } = await import('./flyability/pickerStore');
+    await openInspectorPicker(path);
+    return true;
+  }
+
   const store = createStore<Shell>()((set, get) => ({
     screen: 'projects',
     settingsFocus: null,
@@ -572,31 +610,11 @@ export function createShellStore(
         set({ libraryError: pick.error });
         return;
       }
-      if (!pick.value.path) return;
-      const added = await bridge.call('library:add', { path: pick.value.path });
-      if (!added.ok) {
-        set({ libraryError: added.error });
-        return;
-      }
-      if (!added.value.ok) {
-        set({ libraryError: added.value.error });
-        return;
-      }
-      await get().loadLibrary();
-      // an Inspector export or mission folder: the project made for it opens, and the picker
-      // (one read of the folder, against that project) asks what to bring in
-      const made = added.value.entry;
-      if (
-        isInspectorUiOn() &&
-        made.purpose === 'confined-space' &&
-        folderKey(made.path) !== folderKey(pick.value.path)
-      ) {
-        await get().openProject(made.path);
-        // the picker imports into the open project: not asked when it did not open
-        if (get().openError !== null || get().unlock !== null) return;
-        const { openInspectorPicker } = await import('./flyability/pickerStore');
-        await openInspectorPicker(pick.value.path);
-      }
+      if (pick.value.path) await addFolder(pick.value.path);
+    },
+
+    addFolders: async (paths) => {
+      for (const p of paths) if (await addFolder(p)) return;
     },
 
     revealProject: async (entry) => {

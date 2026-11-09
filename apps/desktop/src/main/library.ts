@@ -476,6 +476,12 @@ export async function addToLibrary(
 ): Promise<IpcResponse<'library:add'>> {
   const dir = resolve(path);
   if (!(await isDir(dir)) && !(isPackageFile(dir) && (await isFile(dir)))) {
+    // a photo or another file dropped on the library: it is there, it is just not a project
+    if (await isFile(dir))
+      return {
+        ok: false,
+        error: `${basename(dir)} is a file, not a project. Add a project folder or package here; open a project to import files into it.`,
+      };
     return {
       ok: false,
       error: `Not found: ${dir}. Pick an existing project folder or ${PACKAGE_EXTENSION} package.`,

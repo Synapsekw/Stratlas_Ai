@@ -624,6 +624,57 @@ describe('shell store', () => {
     expect(s.getState().screen).toBe('scene');
   });
 
+  it('a folder dropped on the library is added as Add project folder adds it', async () => {
+    fly.on = true;
+    fly.open.mockClear();
+    const { bridge, calls } = fakeBridge({
+      'library:add': () => ({ ok: true, entry: exportEntry }),
+      'library:list': () => [exportEntry],
+      'project:open': () => ({ ok: true, id: 'p-export', root: entry.path, manifest, issues: [] }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    await s.getState().addFolders(['D:/exp']);
+    fly.on = false;
+    const names = calls.map((c) => c.channel);
+    // no folder dialog: the drop named the folder
+    expect(names).not.toContain('dialog:openFolder');
+    expect(calls.find((c) => c.channel === 'library:add')?.req).toEqual({ path: 'D:/exp' });
+    expect(names).toContain('project:open');
+    expect(fly.open).toHaveBeenCalledWith('D:/exp');
+  });
+
+  it('folders dropped on the library are added in turn until one opens a project', async () => {
+    fly.on = true;
+    fly.open.mockClear();
+    const added: string[] = [];
+    const { bridge } = fakeBridge({
+      'library:add': (req: unknown) => {
+        const path = (req as { path: string }).path;
+        added.push(path);
+        return { ok: true, entry: path === 'D:/plain' ? entry : exportEntry };
+      },
+      'library:list': () => [entry, exportEntry],
+      'library:folders': () => ({ ok: true, folders: [] }),
+      'project:open': () => ({ ok: true, id: 'p-export', root: entry.path, manifest, issues: [] }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    await s.getState().addFolders(['D:/plain', 'D:/exp', 'D:/later']);
+    fly.on = false;
+    // the picker is open on the export: the folder after it is not added behind it
+    expect(added).toEqual(['D:/plain', 'D:/exp']);
+    expect(fly.open).toHaveBeenCalledTimes(1);
+    expect(s.getState().libraryError).toBeNull();
+  });
+
+  it('a drop the library refuses says why on the library', async () => {
+    const { bridge } = fakeBridge({
+      'library:add': () => ({ ok: false, error: 'No project here.' }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    await s.getState().addFolders(['D:/nothing']);
+    expect(s.getState().libraryError).toBe('No project here.');
+  });
+
   it('a confined-space project folder added as itself gets no picker', async () => {
     fly.on = true;
     fly.open.mockClear();

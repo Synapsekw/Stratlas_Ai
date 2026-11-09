@@ -85,6 +85,9 @@ export function SpacesMount({ stage }: { stage: EngineStage | null }): null {
     const show = r.show.filter((id) => cur[id]);
     const hide = r.hide.filter((id) => !cur[id]);
     if (show.length > 0 || hide.length > 0) workspace.getState().applyVisibility(show, hide);
+    // a switch frames the space entered, as Home does (its layers are the ones shown now); the
+    // first scope of an opened project leaves the camera to the open
+    if (prev) workspace.getState().flyTo({ kind: 'home' });
   }, [projectId, openSeq, spaceId]);
 
   // (1b) a layer that arrives after the project opened (an import, a new space) and is already

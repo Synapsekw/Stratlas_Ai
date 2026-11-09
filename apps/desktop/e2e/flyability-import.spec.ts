@@ -434,6 +434,59 @@ test.describe('Flyability Inspector import', () => {
     expect(await flyIssues(dataRoot.projectDir)).toHaveLength(6);
     await expect(win.getByTestId('crumb-space')).toBeVisible();
   });
+
+  /**
+   * A folder dropped from the file manager on the Projects screen (no project open), as the
+   * system drops it: a Chromium drag that carries the folder's path.
+   */
+  async function dropOnLibrary(win: Page, folder: string): Promise<void> {
+    // the Projects screen, with no project open
+    await expect(win.getByTestId('project-card').first()).toBeVisible({ timeout: 30_000 });
+    const cdp = await win.context().newCDPSession(win);
+    const box = await win.locator('body').boundingBox();
+    const x = Math.round((box?.width ?? 800) / 2);
+    const y = Math.round((box?.height ?? 600) / 2);
+    const data = { items: [], files: [folder], dragOperationsMask: 1 };
+    await cdp.send('Input.dispatchDragEvent', { type: 'dragEnter', x, y, data });
+    await cdp.send('Input.dispatchDragEvent', { type: 'dragOver', x, y, data });
+    await expect(win.locator('.b-drop')).toContainText('Add to the library');
+    await cdp.send('Input.dispatchDragEvent', { type: 'drop', x, y, data });
+    await cdp.detach();
+  }
+
+  /** The projects in the data folder that a drop made (the tiny project left out). */
+  const madeProjects = async (dataRoot: { root: string }) =>
+    (await readdir(join(dataRoot.root, 'projects'))).filter((n) => n !== 'e2e-tiny');
+
+  test('an export dropped on the Projects screen makes its project and opens the picker', async ({
+    dataRoot,
+    win,
+  }) => {
+    await dropOnLibrary(win, first.root);
+    await expect(win.getByTestId('inspector-list')).toBeVisible({ timeout: 60_000 });
+    await expect(win.getByTestId('inspector-summary')).toContainText('1 chamber');
+    await expect(win.getByTestId('inspector-list')).toContainText(SPACE_NAME);
+    expect(await madeProjects(dataRoot)).toHaveLength(1);
+    // no import was asked of a project that is not open
+    await expect(win.getByText('Open or create a project first')).toHaveCount(0);
+  });
+
+  test('a folder of exports dropped on the Projects screen lists its chambers', async ({
+    dataRoot,
+    win,
+  }) => {
+    const mission = join(scratch, 'Mission 2');
+    await rm(mission, { recursive: true, force: true });
+    await cp(first.root, join(mission, 'Chamber A'), { recursive: true });
+    await cloneAsSecond(first.root, join(mission, 'Chamber B'));
+    await dropOnLibrary(win, mission);
+    await expect(win.getByTestId('inspector-list')).toBeVisible({ timeout: 60_000 });
+    await expect(win.getByTestId('inspector-summary')).toContainText('2 chambers');
+    for (const [k, name] of ['Chamber A', 'Chamber B'].entries())
+      await expect(win.getByTestId(`inspector-chamber-${String(k)}`)).toContainText(name);
+    expect(await madeProjects(dataRoot)).toEqual(['mission-2']);
+    await expect(win.getByTestId('crumb-project')).toContainText('Mission 2');
+  });
 });
 
 test.describe(`${REALDATA} Flyability Inspector real export`, () => {
