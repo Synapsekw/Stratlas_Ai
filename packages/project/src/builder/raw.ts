@@ -21,7 +21,7 @@ import type {
   ProjectManifest,
   Vec3,
 } from '@aio/schema';
-import { open, copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { open, copyFile, mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { encodePng } from '../import/png';
 import {
@@ -414,7 +414,8 @@ async function planInspectorJobs(
     for (const exp of inspectorRoots.get(path) ?? []) {
       const ids = (await inspectionIdsOf(exp)).filter((id) => wanted.has(id));
       if (ids.length === 0) continue;
-      planned.push({ path, root: exp, ids });
+      // the job reads the export by its real folder: through a junction it found no clouds
+      planned.push({ path, root: await realpath(exp).catch(() => exp), ids });
       let asset: string | null | undefined;
       for (const id of ids) {
         const name = wanted.get(id)?.space?.trim() ?? '';

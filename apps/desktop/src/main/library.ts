@@ -10,7 +10,7 @@ import {
   type ProjectManifest,
 } from '@aio/schema';
 import { createHash } from 'node:crypto';
-import { readdir, rm, stat } from 'node:fs/promises';
+import { readdir, realpath, rm, stat } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 import { z } from 'zod';
 import { FLYABILITY_MIN_PACK, flyabilityPackRefusal } from './builder';
@@ -413,7 +413,10 @@ async function projectForInspectorExport(
     // the same export (or mission) dropped again goes to the project that already holds its
     // inspections, or that was made for it
     const wanted = new Set(mission.exports.flatMap((e) => e.scan.inspections.map((i) => i.id)));
-    const hashes = [...new Set([dir, ...found].map(sourceHash))];
+    // as given and by real folder: a re-drop through a junction, or not, finds the same project
+    const given = [dir, ...found];
+    const real = await Promise.all(given.map((p) => realpath(p).catch(() => p)));
+    const hashes = [...new Set([...given, ...real].map(sourceHash))];
     const here = new Set(hashes);
     for (const e of await listLibrary({ dataRoot, extraPaths: [], registry })) {
       const m = await readManifest(e.path);

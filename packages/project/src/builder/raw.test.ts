@@ -1,6 +1,17 @@
 import { fromWgs84 } from '@aio/geo';
 import { Georef, parseManifest, type ProjectManifest } from '@aio/schema';
-import { copyFile, mkdir, mkdtemp, open, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
@@ -1836,6 +1847,27 @@ describe('GLB georeference on import (engineering model 5.6)', () => {
     await importRawFiles(root, chambers, { ...deps({ jobs }), inspector });
     expect((await readManifestFile(root)).spaces).toHaveLength(2);
     expect(started).toHaveLength(2);
+  });
+
+  it('a chamber reached through a junction is handed to the job by its real folder', async () => {
+    const root = await project();
+    const real = join(dir, 'drive', 'Chamber A');
+    const ids = await writeInspectorFixture(real);
+    await mkdir(join(dir, 'Mission 1'), { recursive: true });
+    await symlink(join(dir, 'drive'), join(dir, 'Mission 1', 'Linked'), 'junction');
+    const started: Record<string, unknown>[] = [];
+    const jobs: PipelineJobs = {
+      available: () => Promise.resolve(true),
+      start: (_m, params) => {
+        started.push(params);
+        return Promise.resolve({ jobId: 'job-j' });
+      },
+    };
+    await importRawFiles(root, [join(dir, 'Mission 1', 'Linked', 'Chamber A')], {
+      ...deps({ jobs }),
+      inspector: { inspections: [{ id: ids.inspectionId, space: 'Chamber A' }] },
+    });
+    expect(started.map((p) => p.src)).toEqual([await realpath(real)]);
   });
 
   it('a folder of data with an export deep inside is not taken for an Inspector export', async () => {
