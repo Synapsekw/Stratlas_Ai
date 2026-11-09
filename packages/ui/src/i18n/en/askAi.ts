@@ -54,7 +54,7 @@ export const enAskAi = {
   'localAi.keyReplace': 'Replace key',
   'localAi.keyShort': 'That key is too short. Paste the whole key.',
   'localAi.keyFailed': 'The system vault did not accept the key.',
-  'localAi.offline': 'Offline AI',
+  'localAi.offline': 'Use Offline AI for everything',
   'localAi.offlineHint':
     'Routes Ask AI chat, vision, report writing, extraction and building from drawings to the local model in one step. Turn it off to go back to the routes before.',
   'localAi.offlineOn': 'Every task runs on {model}. Nothing leaves this machine.',
@@ -69,7 +69,7 @@ export const enAskAi = {
   'localAi.guide.llamacpp':
     'llama.cpp server: start llama-server with a GGUF model and the --jinja option, which tool calling needs. It listens on port 8080.',
   'localAi.guide.then':
-    'Then press Find models, choose the model and press Test. Turn on Offline AI to run every task on it.',
+    'Then press Find models, choose the model and press Test. To run every task on it, turn on Use Offline AI for everything.',
   'localAi.guide.hardware':
     'Small models answer more slowly and make more mistakes than cloud AI models. Without a graphics card an answer can take tens of seconds. Choose Compact for a model with a small context window.',
   'localAi.guide.licence':

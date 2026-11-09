@@ -414,7 +414,7 @@ export const enSettings = {
   'settings.agentThinkingOn':
     'On: Ask AI thinks before it acts on cloud AI models. Replies take a little longer and use more tokens, and multi-step work is more reliable.',
   'settings.agentThinkingOff':
-    'Off: Ask AI answers without thinking first: faster and cheaper, for simple requests.',
+    'Off: Ask AI answers on cloud AI models without thinking first: faster and cheaper, for simple requests.',
   'settings.task.engineer': 'Engineering models',
   'settings.task.engineerSends': 'Measurements, photos, scan views',
   'settings.autoPrepare.label': 'Prepare survey surfaces when a project opens',

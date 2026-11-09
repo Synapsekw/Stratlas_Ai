@@ -409,7 +409,7 @@ export function surveySectionIds(
 
 /**
  * A base's standard name, as the volume card's base picker names it (`baseNames.ts`):
- * "Triangulated toe", "Lowest point" ...; a survey or design side by its own name.
+ * "Toe surface", "Lowest point" ...; a survey or design side by its own name.
  */
 export function standardBaseName(ref: SurfaceRef): string {
   return baseName(
@@ -568,7 +568,7 @@ export interface PileOverTime {
   material: SiteMaterial | null;
   /** The base in words: its standard name, or the survey or design it is. */
   base: string;
-  /** "From an earlier version (kit, Triangulated)" when its figures are carried over, else null. */
+  /** "From an earlier version (kit, Toe surface)" when its figures are carried over, else null. */
   carried: string | null;
   /** One row per survey date (`volumeRows` of `pileSeries`), stale rows marked. */
   rows: TimeRow[];

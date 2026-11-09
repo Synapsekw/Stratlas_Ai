@@ -101,11 +101,10 @@ async function setUp(run: Run, model: string) {
 }
 
 async function offlineAgent(win: Page) {
-  await card(win).getByRole('switch', { name: 'Offline AI' }).click();
-  await expect(card(win).getByRole('switch', { name: 'Offline AI' })).toHaveAttribute(
-    'aria-checked',
-    'true',
-  );
+  await card(win).getByRole('switch', { name: 'Use Offline AI for everything' }).click();
+  await expect(
+    card(win).getByRole('switch', { name: 'Use Offline AI for everything' }),
+  ).toHaveAttribute('aria-checked', 'true');
 }
 
 async function ask(win: Page, text: string) {
@@ -184,7 +183,7 @@ test('local agent: find, test, offline preset, fly to a tank of the demo at no c
     ]);
 
     await openChangeDemo(win);
-    await expect(agent(win)).toContainText('Agent: local (offline) · fake-tools on this machine');
+    await expect(agent(win)).toContainText('Ask AI: local (offline) · fake-tools on this machine');
     await expect.poll(() => win.evaluate(cameraView)).not.toBeNull();
     const before = await win.evaluate(cameraView);
     const sentBefore = fake.requests.length;
@@ -232,7 +231,7 @@ test('local agent: a model without tool calling answers in text, and cancel stop
     await offlineAgent(win);
 
     await openChangeDemo(win);
-    await expect(agent(win)).toContainText('Agent: local (offline) · fake-text on this machine');
+    await expect(agent(win)).toContainText('Ask AI: local (offline) · fake-text on this machine');
     // the panel says why the agent cannot act, before anything is asked
     await expect(agent(win).getByTestId('agent-answer-only')).toHaveText(MESSAGES.answerOnly);
     const sentBefore = fake.requests.length;

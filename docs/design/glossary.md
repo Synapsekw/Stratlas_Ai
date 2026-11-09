@@ -13,9 +13,9 @@ The app speaks the user's language: surveying words (UTM, toe, chainage, PCI) an
 | Thing | Say | Notes |
 |---|---|---|
 | The AI, everywhere it is named (chat dock, photo questions, settings) | **Ask AI** | The only name for the feature. Its chat panel is "Ask AI chat" to screen readers. |
-| The AI status chip | **AI ready**, **AI off**, **Offline AI** | Offline AI is a local model on this computer or network. Never "Cloud AI" in the status. |
+| The AI status chip | **AI ready**, **AI off**, **Offline AI** | Offline AI is a local model on this computer or network. Never "Cloud AI" in the status. The switch that sends every task to it is "Use Offline AI for everything". |
 | AI that runs at an online provider | **cloud AI** | Always the two words together, never "cloud" alone. It pairs with Offline AI: "Allow cloud AI", "cloud AI off", "a cloud AI provider". |
-| A point set from a scanner or photogrammetry | **point cloud** | Always both words, also in short labels: "Point cloud box", "point clouds hidden". |
+| A point set from a scanner or photogrammetry | **point cloud** | Always both words: "point clouds hidden", "Box on the point cloud". A label too narrow for both words (a 72 px stage tools tile) says "3D" instead, "3D point" and "3D box", and its tooltip keeps the full words: a short label reads better than a clipped one. Never "cloud" alone. |
 | The network | **online**, **offline**, **Offline only** | "Go online", "online maps". Never "in the cloud" for the network. |
 | Datasets that belong to no survey date (they show with every date) | **No date** | The tree group and the move target. A prompt says "datasets with no date". |
 | The prompt that files undated datasets under their survey days | **File by date**, **Leave for now** | Buttons say what they do. "Not now" stays fine as a plain dismiss on an offer. |
@@ -47,4 +47,4 @@ A retired word may appear where it means something else. The test keeps these in
 
 ## Not covered yet
 
-The test reads the English catalogue only. Some copy is still written inline in components and in the main process (for example the Ask AI chat header "Agent: local (offline)", and "Allow cloud AI" in Settings and package export). Those follow this glossary when they move into `packages/ui/src/i18n/en/`.
+The test reads the English catalogue only. Some copy is still written inline in components and in the main process. Known leftovers: the task label "Agent chat" in Settings, AI providers (also "Provider for Agent chat"), the exported conversation title "Agent conversation", the annotation author "Agent", the annotate toolbar's own "Cloud point" and "Cloud box", and "Allow cloud AI" in Settings and package export (allowed wording, but inline). Those follow this glossary when they move into `packages/ui/src/i18n/en/`.

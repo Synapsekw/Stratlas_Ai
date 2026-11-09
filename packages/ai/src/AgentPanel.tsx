@@ -208,9 +208,9 @@ export function AgentPanel({
       <header className="ag-h">
         <h3>
           <Icon name="agent" />
-          Agent
+          Ask AI
         </h3>
-        <span className="ag-bind" title={`This agent sees the ${WINDOW_LABELS[win]} window`}>
+        <span className="ag-bind" title={`Ask AI sees the ${WINDOW_LABELS[win]} window`}>
           {binding}
         </span>
         {status}
@@ -261,7 +261,7 @@ export function AgentPanel({
         role="log"
         aria-live="polite"
         aria-busy={state.busy}
-        aria-label="Agent conversation"
+        aria-label="Ask AI conversation"
       >
         {showHistory ? (
           <History
@@ -345,9 +345,7 @@ export function AgentPanel({
         <div className="ag-box">
           <textarea
             value={draft}
-            placeholder={
-              ready ? 'Ask about this view, or tell the agent what to do' : 'Agent is off'
-            }
+            placeholder={ready ? 'Ask about this view, or tell Ask AI what to do' : 'Ask AI is off'}
             aria-label="Message the agent"
             disabled={!ready}
             onChange={(e) => {
@@ -405,9 +403,9 @@ export function AgentPanel({
           <span>
             {route
               ? route.provider === 'local'
-                ? `Agent: local (offline) · ${modelLabel(route.model)} on this machine`
+                ? `Ask AI: local (offline) · ${modelLabel(route.model)} on this machine`
                 : `${modelLabel(route.model)} · ${cloud ? 'cloud' : 'on this machine'}`
-              : 'Agent off'}
+              : 'Ask AI off'}
           </span>
           <span className="sp" />
           <span

@@ -534,9 +534,9 @@ function Usage() {
         authoritative. A local model costs nothing per token.
       </p>
       {projects.length === 0 ? (
-        <p className="help">No agent use yet.</p>
+        <p className="help">No Ask AI use yet.</p>
       ) : (
-        <table className="tbl" aria-label="Agent usage by project and provider">
+        <table className="tbl" aria-label="Ask AI usage by project and provider">
           <thead>
             <tr>
               <th>Project</th>

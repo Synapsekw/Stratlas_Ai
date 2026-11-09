@@ -184,7 +184,7 @@ test('agent: preview, history, restored approval, export and meter', async () =>
     // AI-7: Settings lists tokens and cost per project and provider.
     await win.getByRole('button', { name: 'Settings' }).first().click();
     await win.getByRole('button', { name: 'Usage and cost' }).click();
-    const table = win.getByRole('table', { name: 'Agent usage by project and provider' });
+    const table = win.getByRole('table', { name: 'Ask AI usage by project and provider' });
     await expect(table).toContainText('E2E tiny project');
     await expect(table).toContainText('Anthropic');
     await shot(win, 'settings-usage');
