@@ -13,7 +13,7 @@ const AXES: readonly Axis[] = [0, 1, 2];
  * returns more than `header`. Local frame, like the seeds.
  */
 export function robustCloudBox(seeds: readonly ChunkSeed[], header: Box3, trim: number): Box3 {
-  const leaves = seeds.filter((s) => s.points > 0 && s.children.length === 0);
+  const leaves = seeds.filter((s) => s.points > 0 && (s.children?.length ?? 0) === 0);
   const total = leaves.reduce((n, s) => n + s.points, 0);
   if (leaves.length < 1 || total <= 0) return header.clone();
   const lo: [number, number, number] = [Infinity, Infinity, Infinity];
