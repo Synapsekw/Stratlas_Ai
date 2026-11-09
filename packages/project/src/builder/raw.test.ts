@@ -1772,7 +1772,18 @@ describe('GLB georeference on import (engineering model 5.6)', () => {
     };
     // the picker sends each chamber's own folder
     const chambers = [join(mission, 'Exports', 'Chamber A'), join(mission, 'Exports', 'Chamber B')];
-    const r = await importRawFiles(root, chambers, { ...deps({ jobs }), inspector });
+    const held: (string | string[])[][] = [];
+    const holdInspections = (_root: string, ids: readonly string[]) => {
+      held.push(['hold', [...ids]]);
+      return Promise.resolve(() => {
+        held.push(['release']);
+      });
+    };
+    const r = await importRawFiles(root, chambers, {
+      ...deps({ jobs }),
+      inspector,
+      holdInspections,
+    });
     expect(r.items).toEqual([
       expect.objectContaining({
         file: 'Chamber A',
@@ -1793,6 +1804,11 @@ describe('GLB georeference on import (engineering model 5.6)', () => {
       ['Chamber A', a.inspectionId, { local: 'flyability' }],
       ['Chamber B', b.inspectionId, { local: 'flyability' }],
     ]);
+    // made ahead: pending until a job fills them; each row names its chamber's inspections
+    expect(spaces.map((s) => s.source?.pending)).toEqual([true, true]);
+    expect(r.items.map((i) => i.inspections)).toEqual([[a.inspectionId], [b.inspectionId]]);
+    // the drop held its inspections while it saved their spaces, and let go after
+    expect(held).toEqual([['hold', [a.inspectionId, b.inspectionId]], ['release']]);
     // the asset name the job itself would write
     expect(spaces.map((s) => s.source?.assetName)).toEqual([
       'Synthetic chamber',

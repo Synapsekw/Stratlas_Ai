@@ -61,6 +61,11 @@ export const SpaceSource = z.object({
   kind: z.literal('flyability'),
   inspectionId: z.string().min(1),
   assetName: z.string().optional(),
+  /**
+   * Made by the mission import ahead of its job (9 Nov 2026) and not filled yet. The app clears it
+   * once the space holds layers; only a pending space with no layers is ever removed.
+   */
+  pending: z.boolean().optional(),
 });
 
 /**

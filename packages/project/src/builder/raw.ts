@@ -187,6 +187,11 @@ export interface ImportDeps {
   inspector?: InspectorSelection;
   /** Test seam: treat export folders specially without a selection (default `FLYABILITY_IMPORT_UI`). */
   flyabilityUi?: boolean;
+  /**
+   * Hold these inspections of the project while their spaces are made ahead and their jobs are
+   * started (the app's tidy keeps their spaces); the answer releases them.
+   */
+  holdInspections?: (root: string, inspections: readonly string[]) => Promise<() => void>;
   /** Why the installed processing tools cannot run `flyability.import` (too old), or null. */
   inspectorRefusal?: () => Promise<string | null>;
   /**
@@ -382,6 +387,8 @@ const layerIdTaken = (m: ProjectManifest) => (id: string) => m.layers.some((l) =
 interface PlannedInspectorJob {
   root: string;
   params: Record<string, unknown>;
+  /** The inspections it imports (the import card row's `inspections`). */
+  ids: string[];
 }
 
 /**
@@ -396,7 +403,8 @@ async function planInspectorJobs(
   inspectorRoots: ReadonlyMap<string, readonly string[]>,
   selection: InspectorSelection,
   out: Map<string, PlannedInspectorJob[]>,
-): Promise<void> {
+  hold?: ImportDeps['holdInspections'],
+): Promise<(() => void) | undefined> {
   const wanted = new Map(selection.inspections.map((i) => [i.id, i]));
   const named = new Map<string, string>();
   /** The asset name each named inspection's export carries, as the job writes it. */
@@ -418,6 +426,10 @@ async function planInspectorJobs(
     }
   }
   const spaceOf = new Map<string, string>();
+  // held before the spaces are saved: no tidy of this project removes them before their jobs
+  // are in the app's line
+  const release =
+    named.size > 0 ? await hold?.(root, [...named.keys()]).catch(() => undefined) : undefined;
   if (named.size > 0) {
     // a failed write leaves the naming to the job (the inspection's own name)
     const saved = await updateManifestFile(root, (fresh) => {
@@ -439,6 +451,8 @@ async function planInspectorJobs(
             kind: 'flyability',
             inspectionId: id,
             ...(asset !== undefined ? { assetName: asset } : {}),
+            // made ahead: removed again if its import never fills it
+            pending: true,
           },
         });
         added = true;
@@ -463,10 +477,12 @@ async function planInspectorJobs(
     const list = out.get(p.path) ?? [];
     list.push({
       root: p.root,
+      ids: p.ids,
       params: { inspections, ...(Object.keys(spaces).length > 0 ? { spaces } : {}) },
     });
     out.set(p.path, list);
   }
+  return release;
 }
 
 export async function importRawFiles(
@@ -526,10 +542,17 @@ export async function importRawFiles(
     kind: ImportItem['kind'],
     method: string,
     params: Record<string, unknown>,
+    extra: Partial<ImportItem> = {},
   ) => {
     const name = basename(file);
     if (!pipeline) {
-      items.push({ file: name, kind, status: 'needs-pipeline', message: PIPELINE_MISSING });
+      items.push({
+        file: name,
+        kind,
+        status: 'needs-pipeline',
+        message: PIPELINE_MISSING,
+        ...extra,
+      });
       return;
     }
     try {
@@ -548,8 +571,9 @@ export async function importRawFiles(
               status: 'queued',
               jobId: r.jobId,
               message: 'Converting with the processing tools.',
+              ...extra,
             }
-          : { file: name, kind, status: 'queued', message: INSPECTOR_WAITING },
+          : { file: name, kind, status: 'queued', message: INSPECTOR_WAITING, ...extra },
       );
     } catch (e) {
       items.push({
@@ -557,6 +581,7 @@ export async function importRawFiles(
         kind,
         status: 'error',
         message: String(e instanceof Error ? e.message : e),
+        ...extra,
       });
     }
   };
@@ -672,6 +697,8 @@ export async function importRawFiles(
       if (found.length > 0) inspectorRoots.set(p, found);
     }),
   );
+  /** Lets the app tidy this drop's new chamber spaces again once its jobs are in its line. */
+  let releaseInspectors: (() => void) | undefined;
   /** Each chosen export with its own inspections and the space each one goes into. */
   const inspectorJobs = new Map<string, PlannedInspectorJob[]>();
   // processing tools too old for the import: refused before any space is made
@@ -686,7 +713,14 @@ export async function importRawFiles(
     !deps.signal?.aborted &&
     inspectorRoots.size > 0
   )
-    await planInspectorJobs(root, paths, inspectorRoots, deps.inspector, inspectorJobs);
+    releaseInspectors = await planInspectorJobs(
+      root,
+      paths,
+      inspectorRoots,
+      deps.inspector,
+      inspectorJobs,
+      deps.holdInspections,
+    );
 
   for (const file of paths) {
     const name = basename(file);
@@ -726,7 +760,7 @@ export async function importRawFiles(
           // without the processing tools nothing was planned: the export says so once
           const planned = pipeline
             ? (inspectorJobs.get(file) ?? [])
-            : [{ root: exportRoots[0] ?? file, params: {} }];
+            : [{ root: exportRoots[0] ?? file, params: {}, ids: [] as string[] }];
           if (planned.length === 0)
             items.push({
               file: name,
@@ -736,11 +770,13 @@ export async function importRawFiles(
             });
           // one job per chamber, in folder order; the app runs them one at a time
           for (const p of planned)
-            await job(p.root, 'flyability', 'flyability.import', {
-              ...p.params,
-              severityModel: model,
-              catalogueId: 'confined-space',
-            });
+            await job(
+              p.root,
+              'flyability',
+              'flyability.import',
+              { ...p.params, severityModel: model, catalogueId: 'confined-space' },
+              p.ids.length > 0 ? { inspections: p.ids } : {},
+            );
         }
         continue;
       }
@@ -1228,6 +1264,8 @@ export async function importRawFiles(
       }
     }
   }
+  // every chamber's job is started or in the app's line now, which holds its space from here
+  releaseInspectors?.();
   // one import is one survey date: the day most files carry; every layer it made is filed under it
   const day = importDay(days);
   /** The date this import added to its copy, if it added one. */

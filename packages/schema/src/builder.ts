@@ -267,6 +267,8 @@ export const ImportItem = z.object({
   message: z.string().optional(),
   layerId: z.string().optional(),
   jobId: z.string().optional(),
+  /** Flyability: the inspections this row's chamber imports (its lane notices name them). */
+  inspections: z.array(z.string()).optional(),
   /** Altitude the camera heights came from (`mixed`: some frames fell back to the other one). */
   heightSource: z.enum(['absolute', 'relative', 'none', 'mixed']).optional(),
   /**
