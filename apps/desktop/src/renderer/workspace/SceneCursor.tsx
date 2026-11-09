@@ -1,10 +1,13 @@
 import type { SceneHandle } from '@aio/engine';
 import { formatQuantity } from '@aio/geo';
-import { defaultSurveySettings } from '@aio/schema';
-import { crsLabel, formatEastNorth, localToProject } from '@aio/ui';
+import { defaultSurveySettings, spaceFrame, type Crs, type Vec3 } from '@aio/schema';
+import { crsLabel, formatEastNorth, formatLocal, localToProject } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useActiveSpace } from '../spaces/activeSpace';
 import { stationReadout } from '../survey/designsStore';
+import { measureFrameNow } from '../survey/measureFrame';
+import type { Frame } from '../survey/measureScene';
 import {
   SiteSettingsButton,
   siteCursorText,
@@ -17,11 +20,30 @@ export function elevationText(el: number): string {
   return formatQuantity(el, 'distance', defaultSurveySettings().units, 1);
 }
 
+/** The frame's name under the readout: the active space's, so a chamber is not "UTM". */
+export function cursorFrameLabel(crs: Crs): string {
+  return crsLabel(crs);
+}
+
+/**
+ * What the cursor reads in a local space (a confined-space drone's): plain metres from its
+ * origin on X, Y and Z, no easting, northing or site CRS. Null for a georeferenced frame.
+ */
+export function cursorReadoutText(frame: Frame, scenePoint: Vec3): string {
+  if (frame.local) return formatLocal(frame.toSite(scenePoint));
+  const [e, n, el] = frame.toSite(scenePoint);
+  return `${formatEastNorth(e, n)} · EL ${elevationText(el)}`;
+}
+
 /** `wide`: the other bottom corner of the pane is free, so the readout may run across it. */
 export function CursorReadout({ text, wide = false }: { text: string | null; wide?: boolean }) {
-  const crs = useWorkspace((s) => (s.project ? crsLabel(s.project.manifest.crs) : ''));
-  // M11 G1: the site's display CRS, heights and unit once the site has settings
-  const site = useSiteDisplay((s) => (s.exists && s.settings ? siteCursorTitle() : null));
+  const manifest = useWorkspace((s) => s.project?.manifest ?? null);
+  const { spaceId } = useActiveSpace();
+  const frameCrs = manifest ? (spaceFrame(manifest, spaceId)?.crs ?? manifest.crs) : null;
+  const crs = frameCrs ? cursorFrameLabel(frameCrs) : '';
+  const local = frameCrs !== null && 'local' in frameCrs;
+  // M11 G1: the site's display CRS, heights and unit once the site has settings (not in a local space)
+  const site = useSiteDisplay((s) => (!local && s.exists && s.settings ? siteCursorTitle() : null));
   return (
     <div
       className={wide ? 'cursor-ro wide' : 'cursor-ro'}
@@ -79,6 +101,11 @@ export function useSceneCursor(scene: () => SceneHandle | null): {
       const hit = h.raycast(p.x, p.y);
       if (!hit) {
         setCursor(null);
+        return;
+      }
+      const frame = measureFrameNow();
+      if (frame?.local) {
+        setCursor(cursorReadoutText(frame, [hit.point.x, hit.point.y, hit.point.z]));
         return;
       }
       const [e2, n, el] = localToProject(project.manifest.origin, [
