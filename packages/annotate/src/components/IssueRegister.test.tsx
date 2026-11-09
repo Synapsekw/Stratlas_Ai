@@ -233,6 +233,61 @@ describe('IssueRegister at scale', () => {
     ui.unmount();
   });
 
+  it('an arrow pressed on a tick steps the list and takes focus back to it', () => {
+    workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(5));
+    const ui = mount();
+    const list = ui.q('[data-issue-list]');
+    if (!(list instanceof HTMLElement)) throw new Error('no list');
+    const row = (code: string) => ui.q(`[data-tick="${code}"]`)?.closest('.ann-row');
+    act(() => {
+      row('D0001')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    // the grid names its rows and the selected one
+    expect(list.getAttribute('aria-rowcount')).toBe('5');
+    expect(row('D0001')?.getAttribute('aria-rowindex')).toBe('2');
+    expect(list.getAttribute('aria-activedescendant')).toBe(row('D0001')?.id);
+    // Tab from the list lands on the selected row's tick: the one tick in the Tab order
+    expect([...ui.el.querySelectorAll('.ann-tick[tabindex="0"]')]).toHaveLength(1);
+    const tick = ui.q('[data-tick="D0001"]');
+    if (!(tick instanceof HTMLButtonElement)) throw new Error('no tick');
+    const press = (target: HTMLElement, key: string) => {
+      act(() => {
+        target.dispatchEvent(
+          new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+        );
+      });
+    };
+    act(() => {
+      tick.focus();
+    });
+    press(tick, 'ArrowDown');
+    expect(row('D0002')?.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(list);
+    expect(list.getAttribute('aria-activedescendant')).toBe(row('D0002')?.id);
+    // Space now ticks the selected row, not the one the tick was on
+    press(list, ' ');
+    expect(ui.q('[data-tick="D0002"]')?.getAttribute('aria-checked')).toBe('true');
+    expect(tick.getAttribute('aria-checked')).toBe('false');
+    ui.unmount();
+  });
+
+  it('a press on a tick puts the focus on the list, so the arrows work after it', () => {
+    workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(5));
+    const ui = mount();
+    const search = ui.q('input[type="search"]');
+    if (!(search instanceof HTMLInputElement)) throw new Error('no search');
+    act(() => {
+      search.focus();
+    });
+    const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    act(() => {
+      ui.q('[data-tick="D0003"]')?.dispatchEvent(down);
+    });
+    expect(down.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(ui.q('[data-issue-list]'));
+    ui.unmount();
+  });
+
   it('only browses in a read-only package: no checkboxes, bulk actions or undo', () => {
     workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(30));
     setAnnotateReadOnly(true);

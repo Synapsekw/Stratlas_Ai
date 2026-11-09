@@ -208,6 +208,9 @@ export function IssueRegister({
   const [moreFilters, setMoreFilters] = useState(false);
   const moreId = useId();
   const listRef = useRef<HTMLDivElement>(null);
+  // row ids for aria-activedescendant: unique per register, as two may be open at once
+  const rowIdBase = useId();
+  const rowId = (id: string) => `${rowIdBase}-row-${id}`;
   const view = useViewport(listRef);
 
   const hidden = hiddenFilterCount({ dataset, mine: mine !== null });
@@ -332,16 +335,26 @@ export function IssueRegister({
     }
     if (next) {
       e.preventDefault();
+      // from a row's tick the keys step the list: focus goes back to the list, or it would stay
+      // on a tick that is no longer the selected row's (and leave with it when it scrolls away)
+      if (e.target !== e.currentTarget) listRef.current?.focus({ preventScroll: true });
       focusIssue(next);
     }
   };
 
-  const renderRow = (r: RegisterRow) => {
+  // the selected row while it is drawn (the list is virtual): the grid's active descendant
+  const selectedInView = rows
+    .slice(win.start, win.end)
+    .some((r) => r.kind === 'issue' && r.issue.id === selectedId)
+    ? selectedId
+    : null;
+
+  const renderRow = (r: RegisterRow, index: number) => {
     if (r.kind === 'group') {
       const open = !collapsed.has(r.key);
       // a grid row of its own, one cell wide, so the grid holds only rows
       return (
-        <div key={`g:${r.key}`} role="row" className="ann-grow">
+        <div key={`g:${r.key}`} role="row" aria-rowindex={index + 1} className="ann-grow">
           <span role="gridcell" className="ann-cell">
             <button
               type="button"
@@ -373,7 +386,9 @@ export function IssueRegister({
       <div
         key={i.id}
         data-id={i.id}
+        id={rowId(i.id)}
         role="row"
+        aria-rowindex={index + 1}
         aria-selected={i.id === selectedId}
         className={`ann-row${i.status === 'draft' ? ' draft' : ''}${on ? ' checked' : ''}${readOnly ? ' ro' : ''}`}
         onContextMenu={(e) => {
@@ -409,7 +424,10 @@ export function IssueRegister({
               title={`Select ${i.code}`}
               tabIndex={i.id === selectedId ? 0 : -1}
               onMouseDown={(e) => {
+                // the tick takes no focus (the list keeps the arrows) and the list does not
+                // scroll to it; focus goes to the list, wherever it was before
                 e.preventDefault();
+                listRef.current?.focus({ preventScroll: true });
               }}
               onClick={(e) => {
                 e.stopPropagation();
@@ -754,6 +772,8 @@ export function IssueRegister({
         data-issue-list
         role="grid"
         aria-label="Issues"
+        aria-rowcount={rows.length}
+        aria-activedescendant={selectedInView ? rowId(selectedInView) : undefined}
         aria-multiselectable={!readOnly}
         tabIndex={0}
         onKeyDown={onKey}
@@ -770,7 +790,7 @@ export function IssueRegister({
         {rows.length > 0 && (
           <div style={{ height: win.total, position: 'relative' }}>
             <div style={{ transform: `translateY(${win.padTop}px)` }}>
-              {rows.slice(win.start, win.end).map(renderRow)}
+              {rows.slice(win.start, win.end).map((r, k) => renderRow(r, win.start + k))}
             </div>
           </div>
         )}
