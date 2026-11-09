@@ -20,7 +20,7 @@ import {
   DrawingStem,
   ImportHeights,
   ImportItem,
-  InspectorScan,
+  InspectorMission,
   InspectorSelection,
   LayerPatch,
   NewProjectRequest,
@@ -2016,13 +2016,17 @@ export const ipc = {
     request: z.object({ jobId: JobId, what: z.enum(['output', 'log', 'project']) }).strict(),
     response: z.object({ ok: z.boolean(), error: z.string().optional() }),
   },
-  /** Read a Flyability Inspector export folder: its inspections, flights and findings. Reads only. */
+  /**
+   * Read a folder for Flyability Inspector exports: the folder itself or a mission folder with
+   * chambers some levels down (9 Nov 2026), each with its inspections, flights and findings.
+   * Reads only.
+   */
   'builder:inspectorScan': {
     request: z
       .object({ projectId: z.string().min(1).nullable(), path: z.string().min(1) })
       .strict(),
     response: z.discriminatedUnion('ok', [
-      z.object({ ok: z.literal(true), scan: InspectorScan }),
+      z.object({ ok: z.literal(true), mission: InspectorMission }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },

@@ -21,12 +21,16 @@ export interface FixtureOptions {
   generation?: '2024' | '2025';
   /** Flight B carries a non-null `transform` (default true). */
   transform?: boolean;
+  /** Shifts every id, so several exports can sit side by side (default 0). */
+  seed?: number;
+  /** The inspection's name (default `Synthetic room`). */
+  inspectionName?: string;
 }
 
 const MS = 1732684613000;
 const audit = { created_by: FIXTURE_EMAIL, last_updated_by: FIXTURE_EMAIL, created_date: 1 };
 
-function id(n: number): string {
+function makeId(n: number): string {
   return `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 }
 
@@ -55,6 +59,8 @@ export async function writeInspectorFixture(
   const generation = opts.generation ?? '2025';
   const withTransform = opts.transform ?? true;
   const ext = generation === '2024' ? 'bag' : 'mcap';
+  const seed = (opts.seed ?? 0) * 1000;
+  const id = (n: number) => makeId(seed + n);
   const ids: FixtureIds = {
     inspectionId: id(1),
     assetId: id(2),
@@ -72,7 +78,12 @@ export async function writeInspectorFixture(
   );
   await writeJson(
     join(await folder(dir, 'inspections', ids.inspectionId), 'inspection.json'),
-    { id: ids.inspectionId, name: 'Synthetic room', asset_id: ids.assetId, audit },
+    {
+      id: ids.inspectionId,
+      name: opts.inspectionName ?? 'Synthetic room',
+      asset_id: ids.assetId,
+      audit,
+    },
     { name: 'Old name' },
   );
 

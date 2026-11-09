@@ -173,6 +173,8 @@ export const InspectorScan = z.object({
       name: z.string(),
       mergedCloud: z.boolean(),
       findings: z.number().int(),
+      /** Snapshots (finding photos) of the inspection, grouped as the import groups them. */
+      photos: z.number().int(),
       /** Id of the space an earlier import made for this inspection. */
       importedAs: z.string().nullable(),
       flights: z.array(
@@ -189,10 +191,48 @@ export const InspectorScan = z.object({
 });
 export type InspectorScan = z.infer<typeof InspectorScan>;
 
+/**
+ * What `builder:inspectorScan` finds in a picked folder (9 Nov 2026): every Inspector export a
+ * bounded walk of it meets (the folder itself, or chambers some levels down in a mission folder),
+ * and what it left out.
+ */
+export const InspectorMission = z.object({
+  /** The picked folder. */
+  root: z.string(),
+  exports: z.array(
+    z.object({
+      /** The export folder, absolute. */
+      path: z.string(),
+      /** The chamber's name: the export folder's, or its sole inspection's when it is `root`. */
+      name: z.string(),
+      scan: InspectorScan,
+    }),
+  ),
+  skipped: z.object({
+    /** Folders with no export, relative to `root` (never the insides of an export). */
+    folders: z.array(z.string()),
+    /** Loose files on the way to the exports (in `root` and the folders that lead to them). */
+    files: z.number().int(),
+  }),
+  /** The walk stopped at its folder cap: there may be exports it did not reach. */
+  capped: z.boolean(),
+});
+export type InspectorMission = z.infer<typeof InspectorMission>;
+
 /** The inspections (and optionally flights) to import from a Flyability Inspector export. */
 export const InspectorSelection = z.object({
   inspections: z
-    .array(z.object({ id: z.string(), flights: z.array(z.string()).optional() }))
+    .array(
+      z.object({
+        id: z.string(),
+        flights: z.array(z.string()).optional(),
+        /**
+         * Name of the space made for the inspection when it has none yet (9 Nov 2026: the
+         * chamber's folder name in a mission folder). Not passed to the job.
+         */
+        space: z.string().min(1).max(200).optional(),
+      }),
+    )
     .min(1),
 });
 export type InspectorSelection = z.infer<typeof InspectorSelection>;

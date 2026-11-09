@@ -235,5 +235,13 @@ export {
   type RereadOrientation,
   type RereadResult,
 } from './reread';
-export { findInspectorExport, scanInspectorExport } from './flyability/scan';
+export { scanInspectorExport } from './flyability/scan';
+export {
+  findInspectorExports,
+  inspectionIdsOf,
+  MISSION_MAX_DEPTH,
+  MISSION_MAX_DIRS,
+  scanInspectorMission,
+  type ExportWalk,
+} from './flyability/mission';
 export { FLYABILITY_IMPORT_UI } from './flyability/flags';

@@ -5,36 +5,6 @@ import { spacesOf, type InspectorScan, type ProjectManifest } from '@aio/schema'
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 
-const REQUIRED = ['flights', 'maps', 'pois', 'snapshots'];
-
-async function isDir(p: string): Promise<boolean> {
-  try {
-    return (await stat(p)).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-async function isExport(p: string): Promise<boolean> {
-  for (const name of REQUIRED) if (!(await isDir(join(p, name)))) return false;
-  return true;
-}
-
-/** The export folder: `path` itself, or one direct child folder that holds the export. */
-export async function findInspectorExport(path: string): Promise<string | null> {
-  if (await isExport(path)) return path;
-  let entries;
-  try {
-    entries = await readdir(path, { withFileTypes: true });
-  } catch {
-    return null;
-  }
-  for (const e of entries) {
-    if (e.isDirectory() && (await isExport(join(path, e.name)))) return join(path, e.name);
-  }
-  return null;
-}
-
 type Json = Record<string, unknown>;
 interface Rec {
   data: Json;
@@ -151,6 +121,7 @@ export async function scanInspectorExport(
   // Same grouping as the import: a snapshot belongs to its flight's inspection, else to the sole
   // inspection, else it is skipped; its key is its POI when that is known, else its own.
   const findings = new Map<string, Set<string>>(inspIds.map((i) => [i, new Set<string>()]));
+  const photos = new Map<string, number>();
   for (const s of snapshots) {
     let iid = flightInsp.get(str(s.data.flight_id) ?? '');
     if (iid === undefined || !findings.has(iid)) {
@@ -158,6 +129,7 @@ export async function scanInspectorExport(
       iid = inspIds[0];
     }
     const poi = str(s.data.poi_id) ?? '';
+    photos.set(iid ?? '', (photos.get(iid ?? '') ?? 0) + 1);
     findings.get(iid ?? '')?.add(poiIds.has(poi) ? poi : 'orphan:' + idOf(s));
   }
 
@@ -193,6 +165,7 @@ export async function scanInspectorExport(
       name: str(insp.data.name) ?? inspId,
       mergedCloud,
       findings: findings.get(inspId)?.size ?? 0,
+      photos: photos.get(inspId) ?? 0,
       importedAs:
         spaces.find((s) => s.source?.kind === 'flyability' && s.source.inspectionId === inspId)
           ?.id ?? null,

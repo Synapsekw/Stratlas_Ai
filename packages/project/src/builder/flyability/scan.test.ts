@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { writeInspectorFixture, FIXTURE_EMAIL } from './fixture';
-import { byCodePoint, findInspectorExport, scanInspectorExport } from './scan';
+import { byCodePoint, scanInspectorExport } from './scan';
 
 let dir: string;
 beforeEach(async () => {
@@ -12,21 +12,6 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
-});
-
-describe('findInspectorExport', () => {
-  it('finds the export in the folder or a direct child', async () => {
-    await writeInspectorFixture(join(dir, 'export'));
-    expect(await findInspectorExport(join(dir, 'export'))).toBe(join(dir, 'export'));
-    expect(await findInspectorExport(dir)).toBe(join(dir, 'export'));
-  });
-
-  it('a folder without pois/ is not an export', async () => {
-    await mkdir(join(dir, 'flights'), { recursive: true });
-    await mkdir(join(dir, 'maps'), { recursive: true });
-    await mkdir(join(dir, 'snapshots'), { recursive: true });
-    expect(await findInspectorExport(dir)).toBeNull();
-  });
 });
 
 describe('scanInspectorExport', () => {
