@@ -1770,7 +1770,9 @@ describe('GLB georeference on import (engineering model 5.6)', () => {
         { id: b.inspectionId, flights: [b.flightIds[0] ?? ''], space: 'Chamber B' },
       ],
     };
-    const r = await importRawFiles(root, [mission], { ...deps({ jobs }), inspector });
+    // the picker sends each chamber's own folder
+    const chambers = [join(mission, 'Exports', 'Chamber A'), join(mission, 'Exports', 'Chamber B')];
+    const r = await importRawFiles(root, chambers, { ...deps({ jobs }), inspector });
     expect(r.items).toEqual([
       expect.objectContaining({
         file: 'Chamber A',
@@ -1791,6 +1793,11 @@ describe('GLB georeference on import (engineering model 5.6)', () => {
       ['Chamber A', a.inspectionId, { local: 'flyability' }],
       ['Chamber B', b.inspectionId, { local: 'flyability' }],
     ]);
+    // the asset name the job itself would write
+    expect(spaces.map((s) => s.source?.assetName)).toEqual([
+      'Synthetic chamber',
+      'Synthetic chamber',
+    ]);
     // the fixture ids share their first 8 characters: the second space gets a free id
     expect(new Set(spaces.map((s) => s.id)).size).toBe(2);
     expect(started.map((s) => s.params.src)).toEqual([
@@ -1810,20 +1817,24 @@ describe('GLB georeference on import (engineering model 5.6)', () => {
 
     // the same mission again: the chambers go back into their spaces, none is added
     started.length = 0;
-    await importRawFiles(root, [mission], { ...deps({ jobs }), inspector });
+    await importRawFiles(root, chambers, { ...deps({ jobs }), inspector });
     expect((await readManifestFile(root)).spaces).toHaveLength(2);
     expect(started).toHaveLength(2);
   });
 
-  it('a mission folder without a choice is asked about once', async () => {
+  it('a folder of data with an export deep inside is not taken for an Inspector export', async () => {
     const root = await project();
-    const mission = join(dir, 'Mission 1');
-    await writeInspectorFixture(join(mission, 'Exports', 'Chamber A'));
-    await writeInspectorFixture(join(mission, 'Exports', 'Chamber B'), { seed: 1 });
-    const r = await importRawFiles(root, [mission], deps());
-    expect(r.items).toEqual([
+    const survey = join(dir, 'Survey');
+    await writeInspectorFixture(join(survey, 'Deep', 'Exports', 'Chamber A'));
+    await mkdir(survey, { recursive: true });
+    await writeFile(join(survey, 'p.jpg'), withExif({ lat: 29.0276, lon: 48.1352 }));
+    const r = await importRawFiles(root, [survey], deps());
+    expect(r.items.filter((i) => i.kind === 'flyability')).toEqual([]);
+    // a folder holding the chambers directly is still asked about once
+    const ask = await importRawFiles(root, [join(survey, 'Deep', 'Exports')], deps());
+    expect(ask.items).toEqual([
       expect.objectContaining({
-        file: 'Mission 1',
+        file: 'Exports',
         kind: 'flyability',
         status: 'skipped',
         message: INSPECTOR_CHOOSE,

@@ -962,6 +962,19 @@ describe('Flyability Inspector exports', () => {
     expect(sel.ok && sel.items[0]).toMatchObject({ kind: 'flyability', status: 'queued' });
   });
 
+  it('a survey folder with an export deep inside keeps its own photos', async () => {
+    const t = await setup(true);
+    const survey = join(base, 'survey');
+    await writeInspectorFixture(join(survey, 'Deep', 'Exports', 'Chamber A'));
+    await writeFile(join(survey, 'DSC0001.JPG'), withExif({ lat: 29.0276, lon: 48.1352 }));
+    const r = await builderImport({ projectId: t.projectId, paths: [survey] }, t.deps);
+    expect(r.ok && r.items.filter((i) => i.kind === 'flyability')).toEqual([]);
+    expect(r.ok && r.items.find((i) => i.file === 'DSC0001.JPG')).toMatchObject({
+      kind: 'photo',
+      status: 'imported',
+    });
+  });
+
   it('scan answers for an open project', async () => {
     const t = await setup(true);
     const r = await builderInspectorScan({ projectId: t.projectId, path: t.exp }, t.registry);

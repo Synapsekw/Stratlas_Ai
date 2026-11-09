@@ -57,7 +57,12 @@ import {
   tiffGeoreferenced,
 } from './tiff';
 import { CONFINED_SPACE_TEMPLATE } from './templates';
-import { findInspectorExports, inspectionIdsOf } from './flyability/mission';
+import {
+  assetNameOf,
+  findInspectorExports,
+  inspectionIdsOf,
+  SHALLOW_WALK,
+} from './flyability/mission';
 import { FLYABILITY_IMPORT_UI } from './flyability/flags';
 import { findTwin, needsTwin, twinFix, type TwinCandidate } from './thermalTwin';
 import { CANCELLED_BEFORE, importWalk, type WalkTools } from './walks';
@@ -394,15 +399,21 @@ async function planInspectorJobs(
 ): Promise<void> {
   const wanted = new Map(selection.inspections.map((i) => [i.id, i]));
   const named = new Map<string, string>();
+  /** The asset name each named inspection's export carries, as the job writes it. */
+  const assets = new Map<string, string>();
   const planned: { path: string; root: string; ids: string[] }[] = [];
   for (const path of paths) {
     for (const exp of inspectorRoots.get(path) ?? []) {
       const ids = (await inspectionIdsOf(exp)).filter((id) => wanted.has(id));
       if (ids.length === 0) continue;
       planned.push({ path, root: exp, ids });
+      let asset: string | null | undefined;
       for (const id of ids) {
         const name = wanted.get(id)?.space?.trim() ?? '';
-        if (name !== '') named.set(id, name);
+        if (name === '') continue;
+        named.set(id, name);
+        asset ??= await assetNameOf(exp);
+        if (asset) assets.set(id, asset);
       }
     }
   }
@@ -417,13 +428,18 @@ async function planInspectorJobs(
         if (spaces.some((s) => s.source?.kind === 'flyability' && s.source.inspectionId === id))
           continue;
         const sid = uniqueId(`fly-${id.slice(0, 8)}`, (x) => taken.has(x));
+        const asset = assets.get(id);
         taken.add(sid);
         spaces.push({
           id: sid,
           name,
           crs: { local: 'flyability' },
           origin: [0, 0, 0],
-          source: { kind: 'flyability', inspectionId: id },
+          source: {
+            kind: 'flyability',
+            inspectionId: id,
+            ...(asset !== undefined ? { assetName: asset } : {}),
+          },
         });
         added = true;
       }
@@ -651,7 +667,8 @@ export async function importRawFiles(
         ))
       )
         return;
-      const found = (await findInspectorExports(p)).exports;
+      // the folder or a child only: a deep walk is the picker's (a survey folder keeps its photos)
+      const found = (await findInspectorExports(p, SHALLOW_WALK)).exports;
       if (found.length > 0) inspectorRoots.set(p, found);
     }),
   );

@@ -388,7 +388,14 @@ async function projectForInspectorExport(
   registry: ProjectRegistry,
 ): Promise<{ root: string; existing?: true } | { error: string } | null> {
   const lib = await import('@aio/project/builder');
-  const found = (await lib.findInspectorExports(dir)).exports;
+  // one walk and read of the folder serves the whole drop
+  let mission: Awaited<ReturnType<typeof lib.scanInspectorMission>>;
+  try {
+    mission = await lib.scanInspectorMission(dir, null);
+  } catch {
+    return null;
+  }
+  const found = mission.exports.map((e) => e.path);
   if (found.length === 0) return null;
   if (!dataRoot)
     return { error: `${INSPECTOR_LABEL}: set a data folder in Settings first; projects go there.` };
@@ -403,7 +410,6 @@ async function projectForInspectorExport(
       error: `${INSPECTOR_LABEL}: ${String(flyabilityPackRefusal('flyability.import', version))}`,
     };
   try {
-    const mission = await lib.scanInspectorMission(dir, null);
     // the same export (or mission) dropped again goes to the project that already holds its
     // inspections, or that was made for it
     const wanted = new Set(mission.exports.flatMap((e) => e.scan.inspections.map((i) => i.id)));

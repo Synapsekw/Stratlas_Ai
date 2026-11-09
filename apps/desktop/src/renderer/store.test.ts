@@ -617,14 +617,25 @@ describe('shell store', () => {
     await s.getState().addProjectFolder();
     fly.on = false;
     const names = calls.map((c) => c.channel);
-    expect(names).toContain('builder:inspectorScan');
     expect(names).toContain('project:open');
-    expect(calls.find((c) => c.channel === 'builder:inspectorScan')?.req).toEqual({
-      projectId: null,
-      path: 'D:/exp',
-    });
+    // the folder is read once, by the picker, against the opened project
+    expect(names).not.toContain('builder:inspectorScan');
     expect(fly.open).toHaveBeenCalledWith('D:/exp');
     expect(s.getState().screen).toBe('scene');
+  });
+
+  it('a confined-space project folder added as itself gets no picker', async () => {
+    fly.on = true;
+    fly.open.mockClear();
+    const { bridge } = fakeBridge({
+      'dialog:openFolder': () => ({ path: exportEntry.path }),
+      'library:add': () => ({ ok: true, entry: exportEntry }),
+      'library:list': () => [exportEntry],
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    await s.getState().addProjectFolder();
+    fly.on = false;
+    expect(fly.open).not.toHaveBeenCalled();
   });
 
   it('a project that fails to open gets no picker', async () => {

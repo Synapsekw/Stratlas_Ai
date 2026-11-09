@@ -243,6 +243,7 @@ export {
   MISSION_MAX_DEPTH,
   MISSION_MAX_DIRS,
   scanInspectorMission,
+  SHALLOW_WALK,
   type ExportWalk,
 } from './flyability/mission';
 export { FLYABILITY_IMPORT_UI } from './flyability/flags';

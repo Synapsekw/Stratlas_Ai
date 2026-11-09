@@ -402,10 +402,10 @@ export function flyabilityPackRefusal(pipeline: string, packVersion: string | nu
  * insides of a skipped folder are not listed). OS clutter is left out.
  */
 async function otherChildren(dropped: readonly string[]): Promise<ImportItem[]> {
-  const { findInspectorExports } = await lib();
+  const { findInspectorExports, SHALLOW_WALK } = await lib();
   const out: ImportItem[] = [];
   for (const p of dropped) {
-    const walk = await findInspectorExports(p);
+    const walk = await findInspectorExports(p, SHALLOW_WALK);
     if (walk.exports.length === 0) continue;
     for (const e of [...walk.skipped.folders, ...walk.looseFiles])
       out.push({
@@ -453,12 +453,15 @@ export async function builderImport(
   if (root === undefined)
     return { ok: false, error: `Project "${req.projectId}" is not open. Open it, then import.` };
   // an Inspector export is one import, never read file by file: its folder goes through whole
-  const { findInspectorExports, FLYABILITY_IMPORT_UI } = await lib();
+  const { findInspectorExports, FLYABILITY_IMPORT_UI, SHALLOW_WALK } = await lib();
   const exports: string[] = [];
   const others: string[] = [];
   const inspectorOn = (d.flyabilityUi ?? FLYABILITY_IMPORT_UI) || req.inspector !== undefined;
   for (const p of req.paths)
-    (inspectorOn && (await findInspectorExports(p)).exports.length > 0 ? exports : others).push(p);
+    (inspectorOn && (await findInspectorExports(p, SHALLOW_WALK)).exports.length > 0
+      ? exports
+      : others
+    ).push(p);
   const ex =
     others.length === 0
       ? EMPTY_EXPANDED

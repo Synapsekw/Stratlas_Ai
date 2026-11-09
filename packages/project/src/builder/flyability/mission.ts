@@ -11,6 +11,12 @@ const REQUIRED = ['flights', 'maps', 'pois', 'snapshots'];
 
 /** How deep below the picked folder an export may sit (the picked folder is depth 0). */
 export const MISSION_MAX_DEPTH = 5;
+/**
+ * The walk of a folder dropped on Add data or a raw import (9 Nov 2026): the folder itself or one
+ * of its children. Only the Inspector picker and the library drop walk a mission folder deep, so
+ * a survey folder with an export somewhere inside still imports its own photos and clouds.
+ */
+export const SHALLOW_WALK = { maxDepth: 1 } as const;
 /** Folders listed at most; past it the walk stops and says so (`capped`). */
 export const MISSION_MAX_DIRS = 5000;
 

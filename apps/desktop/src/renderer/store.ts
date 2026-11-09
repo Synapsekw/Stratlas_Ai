@@ -570,23 +570,20 @@ export function createShellStore(
         return;
       }
       await get().loadLibrary();
-      // an Inspector export: the project made for it opens, and the picker asks what to bring in
-      if (isInspectorUiOn() && added.value.entry.purpose === 'confined-space') {
-        const scan = await bridge.call('builder:inspectorScan', {
-          projectId: null,
-          path: pick.value.path,
-        });
-        if (
-          scan.ok &&
-          scan.value.ok &&
-          scan.value.mission.exports.some((e) => e.scan.inspections.length > 0)
-        ) {
-          await get().openProject(added.value.entry.path);
-          // the picker imports into the open project: not asked when it did not open
-          if (get().openError !== null || get().unlock !== null) return;
-          const { openInspectorPicker } = await import('./flyability/pickerStore');
-          await openInspectorPicker(pick.value.path);
-        }
+      // an Inspector export or mission folder: the project made for it opens, and the picker
+      // (one read of the folder, against that project) asks what to bring in
+      const made = added.value.entry;
+      const fold = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+      if (
+        isInspectorUiOn() &&
+        made.purpose === 'confined-space' &&
+        fold(made.path) !== fold(pick.value.path)
+      ) {
+        await get().openProject(made.path);
+        // the picker imports into the open project: not asked when it did not open
+        if (get().openError !== null || get().unlock !== null) return;
+        const { openInspectorPicker } = await import('./flyability/pickerStore');
+        await openInspectorPicker(pick.value.path);
       }
     },
 
