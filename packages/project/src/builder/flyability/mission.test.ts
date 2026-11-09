@@ -1,10 +1,15 @@
 import type { ProjectManifest } from '@aio/schema';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { writeInspectorFixture } from './fixture';
-import { findInspectorExports, inspectionIdsOf, scanInspectorMission } from './mission';
+import {
+  assetNameOf,
+  findInspectorExports,
+  inspectionIdsOf,
+  scanInspectorMission,
+} from './mission';
 
 let dir: string;
 beforeEach(async () => {
@@ -102,6 +107,36 @@ describe('findInspectorExports', () => {
     expect(r.looseFiles).toEqual(['b.jpg']);
   });
 
+  it('follows a junction or link to a folder once, and never loops', async () => {
+    await writeInspectorFixture(join(dir, 'elsewhere', 'Chamber A'));
+    const mission = join(dir, 'Mission 1');
+    await mkdir(mission, { recursive: true });
+    await symlink(join(dir, 'elsewhere'), join(mission, 'Linked'), 'junction');
+    // a link back up to the mission itself
+    await symlink(mission, join(mission, 'Loop'), 'junction');
+    const r = await findInspectorExports(mission);
+    expect(r.exports).toEqual([join(mission, 'Linked', 'Chamber A')]);
+  });
+
+  it.runIf(process.platform === 'win32')(
+    'takes the export folders in any letter case on Windows',
+    async () => {
+      const exp = join(dir, 'Chamber A');
+      await writeInspectorFixture(exp);
+      await rename(join(exp, 'flights'), join(exp, 'Flights'));
+      await rename(join(exp, 'pois'), join(exp, 'POIS'));
+      expect((await findInspectorExports(dir)).exports).toEqual([exp]);
+    },
+  );
+
+  it('the shallow walk takes the folder or its children only', async () => {
+    await mission(dir);
+    expect((await findInspectorExports(dir, { maxDepth: 1 })).exports).toEqual([]);
+    expect(
+      (await findInspectorExports(join(dir, 'Drone', 'Exports'), { maxDepth: 1 })).exports,
+    ).toHaveLength(2);
+  });
+
   it('a missing folder finds nothing', async () => {
     const r = await findInspectorExports(join(dir, 'gone'));
     expect(r.exports).toEqual([]);
@@ -139,6 +174,30 @@ describe('scanInspectorMission', () => {
     } as unknown as ProjectManifest;
     const m = await scanInspectorMission(dir, manifest);
     expect(m.exports.map((e) => e.scan.inspections[0]?.importedAs)).toEqual([null, 'fly-b']);
+  });
+});
+
+describe('chamber names', () => {
+  it('tells two chambers of one name apart by their last folders', async () => {
+    await writeInspectorFixture(join(dir, 'Day 1', 'Export'));
+    await writeInspectorFixture(join(dir, 'Day 2', 'Export'), { seed: 1 });
+    await writeInspectorFixture(join(dir, 'X', 'Survey', 'Data'), { seed: 2 });
+    await writeInspectorFixture(join(dir, 'Y', 'Survey', 'Data'), { seed: 3 });
+    const m = await scanInspectorMission(dir, null);
+    expect(m.exports.map((e) => e.name)).toEqual([
+      'Day 1 / Export',
+      'Day 2 / Export',
+      'X / Survey / Data',
+      'Y / Survey / Data',
+    ]);
+  });
+});
+
+describe('assetNameOf', () => {
+  it('reads the first asset name, as the import does', async () => {
+    await writeInspectorFixture(dir);
+    expect(await assetNameOf(dir)).toBe('Synthetic chamber');
+    expect(await assetNameOf(join(dir, 'gone'))).toBeNull();
   });
 });
 

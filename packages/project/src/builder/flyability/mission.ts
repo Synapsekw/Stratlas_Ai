@@ -3,7 +3,7 @@
 // The walk lists folders only (one readdir each), never opens a file, never goes into an export,
 // and stops at a depth and a folder cap so a whole drive picked by mistake stays quick.
 import type { InspectorMission, ProjectManifest } from '@aio/schema';
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, realpath, stat } from 'node:fs/promises';
 import { basename, join, relative, resolve, sep } from 'node:path';
 import { scanInspectorExport } from './scan';
 
@@ -49,6 +49,10 @@ export async function findInspectorExports(
   const looseFiles: string[] = [];
   let visited = 0;
   let capped = false;
+  /** Real paths listed already: a junction or link is followed once, and never in a loop. */
+  const seen = new Set<string>();
+  const fold = (n: string) => (process.platform === 'win32' ? n.toLowerCase() : n);
+  const required = REQUIRED.map(fold);
 
   /** Whether `dir` is or holds an export; the folders beside an export's path are noted. */
   const visit = async (dir: string, depth: number): Promise<boolean> => {
@@ -59,16 +63,29 @@ export async function findInspectorExports(
     visited++;
     let entries;
     try {
+      const real = await realpath(dir);
+      if (seen.has(fold(real))) return false;
+      seen.add(fold(real));
       entries = await readdir(dir, { withFileTypes: true });
     } catch {
       return false;
     }
-    const dirs = entries
-      .filter((e) => e.isDirectory() && !IGNORED.test(e.name))
-      .map((e) => e.name)
-      .sort(byName);
-    const names = new Set(dirs);
-    if (REQUIRED.every((n) => names.has(n))) {
+    const dirs: string[] = [];
+    for (const e of entries) {
+      if (IGNORED.test(e.name)) continue;
+      // a junction or symbolic link counts as the folder it points to
+      const isDir =
+        e.isDirectory() ||
+        (e.isSymbolicLink() &&
+          (await stat(join(dir, e.name)).then(
+            (x) => x.isDirectory(),
+            () => false,
+          )));
+      if (isDir) dirs.push(e.name);
+    }
+    dirs.sort(byName);
+    const names = new Set(dirs.map(fold));
+    if (required.every((n) => names.has(n))) {
       exports.push(dir);
       return true;
     }
@@ -117,6 +134,27 @@ export async function inspectionIdsOf(exportRoot: string): Promise<string[]> {
   return out;
 }
 
+/** The export's asset name as the import reads it: the first asset record's name, else null. */
+export async function assetNameOf(exportRoot: string): Promise<string | null> {
+  let names: string[];
+  try {
+    names = (await readdir(join(exportRoot, 'assets'))).sort();
+  } catch {
+    return null;
+  }
+  for (const n of names) {
+    try {
+      const v = JSON.parse(await readFile(join(exportRoot, 'assets', n, 'asset.json'), 'utf8')) as {
+        name?: unknown;
+      } | null;
+      if (typeof v?.name === 'string') return v.name;
+    } catch {
+      /* not an asset record */
+    }
+  }
+  return null;
+}
+
 const sameKey = (p: string) =>
   process.platform === 'win32' ? resolve(p).toLowerCase() : resolve(p);
 
@@ -142,10 +180,30 @@ export async function scanInspectorMission(
     const name = !own ? basename(p) : sole !== '' ? sole : asset !== '' ? asset : basename(root);
     exports.push({ path: p, name, scan });
   }
-  const seen = new Map<string, number>();
-  for (const e of exports) seen.set(e.name, (seen.get(e.name) ?? 0) + 1);
-  for (const e of exports)
-    if ((seen.get(e.name) ?? 0) > 1 && sameKey(e.path) !== sameKey(root))
-      e.name = relative(root, e.path);
+  // chambers of one name: named by their last folders below the picked folder, as few as tell
+  // them apart ("Day 1 / Export")
+  const parts = exports.map((e) =>
+    relative(root, e.path)
+      .split(sep)
+      .filter((x) => x !== ''),
+  );
+  const counts = (names: string[]) => {
+    const n = new Map<string, number>();
+    for (const x of names) n.set(x, (n.get(x) ?? 0) + 1);
+    return n;
+  };
+  const first = counts(exports.map((e) => e.name));
+  exports.forEach((e, k) => {
+    const p = parts[k] ?? [];
+    if ((first.get(e.name) ?? 0) < 2 || p.length === 0) return;
+    for (let n = Math.min(2, p.length); n <= p.length; n++) {
+      const name = p.slice(-n).join(' / ');
+      const clash = exports.some(
+        (o, j) => j !== k && (parts[j] ?? []).slice(-n).join(' / ') === name,
+      );
+      e.name = name;
+      if (!clash) break;
+    }
+  });
   return { root, exports, skipped: walk.skipped, capped: walk.capped };
 }

@@ -6,6 +6,7 @@ import {
   initialChoice,
   missionRequest,
   missionTotals,
+  SPACE_NAME_MAX,
   selectionOf,
   toggleChamber,
   toggleFlight,
@@ -167,5 +168,16 @@ describe('picker model, mission folders', () => {
     let c = initialChoice(flatScan(mission));
     for (const e of mission.exports.slice(0, 2)) c = toggleChamber(c, e.scan);
     expect(missionRequest(c, mission)).toBeNull();
+  });
+
+  it('a long chamber name is cut to what a space name takes', () => {
+    const long: InspectorMission = {
+      ...mission,
+      exports: [
+        { ...mission.exports[0], name: 'x'.repeat(250) } as InspectorMission['exports'][number],
+      ],
+    };
+    const r = missionRequest(initialChoice(flatScan(long)), long);
+    expect(r?.inspector.inspections[0]?.space).toHaveLength(SPACE_NAME_MAX);
   });
 });

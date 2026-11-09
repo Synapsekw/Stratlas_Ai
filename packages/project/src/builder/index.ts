@@ -237,6 +237,7 @@ export {
 } from './reread';
 export { scanInspectorExport } from './flyability/scan';
 export {
+  assetNameOf,
   findInspectorExports,
   inspectionIdsOf,
   MISSION_MAX_DEPTH,

@@ -8,6 +8,9 @@ export interface Choice {
   inspections: Readonly<Record<string, { on: boolean; flights: readonly string[] }>>;
 }
 
+/** The longest space name a selection may carry (`InspectorSelection` `space`). */
+export const SPACE_NAME_MAX = 200;
+
 /** A flight with neither a cloud nor a path has nothing to bring in. */
 export const importable = (f: Flight): boolean => f.cloud || f.path;
 
@@ -157,7 +160,7 @@ export function missionRequest(
     for (const i of fresh) {
       taken.add(i.id);
       const named = !own && sole?.id === i.id && sole.importedAs === null;
-      picked.push(named ? { ...i, space: e.name } : i);
+      picked.push(named ? { ...i, space: e.name.slice(0, SPACE_NAME_MAX).trim() } : i);
     }
   }
   return picked.length === 0 ? null : { paths, inspector: { inspections: picked } };
