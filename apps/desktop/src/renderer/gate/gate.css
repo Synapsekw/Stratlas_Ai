@@ -141,7 +141,7 @@
   justify-content: center;
   gap: 10px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--r-6);
   background: var(--acc);
   color: var(--acc-ink);
   font: 600 14.5px var(--f-ui);
@@ -156,7 +156,7 @@
 .qg .qg-enter:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--fg-0) 60%, transparent);
   outline-offset: 3px;
-  border-radius: 8px;
+  border-radius: var(--r-6);
 }
 .qg-enter::after {
   content: '';

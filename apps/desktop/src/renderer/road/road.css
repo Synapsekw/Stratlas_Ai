@@ -22,7 +22,7 @@
   display: block;
   width: 3px;
   align-self: stretch;
-  border-radius: 1px;
+  border-radius: var(--r-2);
   flex: none;
 }
 .rr-empty {
@@ -260,7 +260,7 @@
 .rr-type-bar {
   height: 6px;
   background: var(--bg-2);
-  border-radius: 1px;
+  border-radius: var(--r-2);
   overflow: hidden;
 }
 .rr-type-bar i {
@@ -312,7 +312,7 @@
   height: 22px;
   padding: 0 7px;
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: var(--r-pill);
   background: none;
   color: var(--fg-3);
   font: var(--t-11) var(--f-ui);
@@ -434,7 +434,7 @@
 .rr-leg-row i {
   width: 14px;
   height: 10px;
-  border-radius: 1px;
+  border-radius: var(--r-2);
   flex: none;
 }
 .rr-leg-row .mono {

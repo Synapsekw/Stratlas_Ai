@@ -259,7 +259,7 @@
   box-sizing: border-box;
   width: 12px;
   height: 12px;
-  border-radius: 3px;
+  border-radius: var(--r-4);
   background: var(--sw);
   justify-self: center;
 }

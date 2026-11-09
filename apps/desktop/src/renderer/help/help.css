@@ -16,7 +16,7 @@
   height: min(780px, calc(100vh - 72px));
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--r-6);
   background: var(--bg-1);
   box-shadow: 0 24px 64px var(--shadow);
   color: var(--fg-1);

@@ -185,7 +185,7 @@
   min-width: 0;
   height: 28px;
   padding-inline: var(--sp-3);
-  border-radius: 3px;
+  border-radius: var(--r-4);
   color: var(--fg-1);
   font-size: var(--t-12);
   white-space: nowrap;

@@ -33,7 +33,7 @@
   min-width: 24px;
   max-width: 96px;
   height: 2px;
-  border-radius: 1px;
+  border-radius: var(--r-2);
   background: var(--line);
   overflow: hidden;
 }

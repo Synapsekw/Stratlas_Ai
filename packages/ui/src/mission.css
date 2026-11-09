@@ -131,7 +131,7 @@ svg.i {
   color: var(--fg-2);
   border: 1px solid var(--line);
   border-bottom-width: 2px;
-  border-radius: 3px;
+  border-radius: var(--r-4);
   padding: 2px 4px;
   white-space: nowrap;
 }
@@ -173,7 +173,7 @@ select.input option {
   position: relative;
   width: 30px;
   height: 18px;
-  border-radius: 9px;
+  border-radius: var(--r-pill);
   background: var(--bg-3);
   border: 1px solid var(--line-strong);
   flex: none;
@@ -316,7 +316,7 @@ select.input option {
   height: 28px;
   display: grid;
   place-items: center;
-  border-radius: 3px;
+  border-radius: var(--r-4);
   color: var(--fg-1);
   position: relative;
   flex: none;
@@ -418,7 +418,7 @@ select.input option {
   height: 22px;
   padding: 0 6px;
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: var(--r-4);
   color: var(--fg-1);
 }
 .tl-h .rate:hover {
@@ -584,7 +584,7 @@ select.input option {
   width: 2px;
   height: 14px;
   background: var(--fg-2);
-  border-radius: 1px;
+  border-radius: var(--r-2);
 }
 .trk .dia {
   position: absolute;
@@ -593,7 +593,7 @@ select.input option {
   height: 9px;
   margin-inline-start: -4.5px;
   transform: rotate(45deg);
-  border-radius: 1px;
+  border-radius: var(--r-2);
   background: var(--s1);
   cursor: pointer;
 }
@@ -771,7 +771,7 @@ select.input option {
 .trk.lt-lane:not(.on) .seg-c:not(.on) {
   min-width: 4px;
   border: 0;
-  border-radius: 1px;
+  border-radius: var(--r-2);
   background: var(--fg-3);
 }
 .trk.lt-lane.on .seg-c {
@@ -1066,7 +1066,7 @@ select.input option {
   top: 10px;
   width: 6px;
   height: 6px;
-  border-radius: 1px;
+  border-radius: var(--r-2);
   background: var(--acc);
   transform: rotate(45deg);
 }
@@ -1086,7 +1086,7 @@ select.input option {
   display: inline-flex;
   align-items: center;
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: var(--r-4);
   font-size: var(--t-11);
   line-height: 1;
   color: var(--fg-2);
@@ -1179,7 +1179,7 @@ select.input option {
 .dtag {
   width: 10px;
   height: 10px;
-  border-radius: 3px;
+  border-radius: var(--r-4);
   flex: none;
   background: var(--dtag);
 }
@@ -1203,7 +1203,7 @@ select.input option {
   font-size: 11px;
   color: var(--fg-2);
   padding: 0 6px;
-  border-radius: 8px;
+  border-radius: var(--r-pill);
   background: var(--bg-3);
   white-space: nowrap;
 }
@@ -1621,7 +1621,7 @@ select.input option {
   padding: 10px;
   background: var(--bg-2);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--r-6);
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
 }
 .cal-head {
@@ -1685,7 +1685,7 @@ select.input option {
   font-size: 10px;
   min-width: 14px;
   height: 14px;
-  border-radius: 7px;
+  border-radius: var(--r-pill);
   background: var(--fg-0);
   color: var(--bg-0);
   display: grid;

@@ -32,7 +32,7 @@
 .infer-chip {
   font-size: 11px;
   padding: 1px 6px;
-  border-radius: 8px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--line-soft);
 }
 .infer-chip.warn {

@@ -267,7 +267,7 @@
 .pl-legend-bar {
   width: 160px;
   height: 9px;
-  border-radius: 3px;
+  border-radius: var(--r-4);
 }
 .pl-legend-ticks {
   display: flex;

@@ -6,7 +6,7 @@
   z-index: 20;
   max-width: min(360px, calc(100vw - 32px));
   padding: 12px 14px;
-  border-radius: 8px;
+  border-radius: var(--r-6);
   background: var(--bg-2);
   border: 1px solid var(--line-soft);
   box-shadow: 0 8px 24px var(--shadow);

@@ -1,7 +1,6 @@
 {
   "apps/desktop/src/renderer/audit/audit.css": {
-    "spacingPx": 24,
-    "radiusOffScale": 1
+    "spacingPx": 24
   },
   "apps/desktop/src/renderer/audit/AuditScreen.tsx": {
     "title": 1
@@ -20,8 +19,7 @@
     "colour": 5,
     "shadow": 3,
     "zIndex": 6,
-    "spacingPx": 101,
-    "radiusOffScale": 2
+    "spacingPx": 101
   },
   "apps/desktop/src/renderer/builder/CalibrateVideo.tsx": {
     "title": 2
@@ -45,8 +43,7 @@
   "apps/desktop/src/renderer/detections/detections.css": {
     "shadow": 1,
     "zIndex": 1,
-    "spacingPx": 10,
-    "radiusOffScale": 1
+    "spacingPx": 10
   },
   "apps/desktop/src/renderer/detections/detectors/detectors.css": {
     "spacingPx": 3
@@ -85,8 +82,7 @@
     "colour": 2,
     "shadow": 3,
     "zIndex": 5,
-    "spacingPx": 17,
-    "radiusOffScale": 2
+    "spacingPx": 17
   },
   "apps/desktop/src/renderer/globe/globe-map-menu.css": {
     "shadow": 1,
@@ -108,8 +104,7 @@
     "fontPx": 6,
     "shadow": 1,
     "zIndex": 1,
-    "spacingPx": 51,
-    "radiusOffScale": 1
+    "spacingPx": 51
   },
   "apps/desktop/src/renderer/help/HelpPanel.tsx": {
     "title": 2
@@ -126,16 +121,13 @@
     "spacingPx": 8
   },
   "apps/desktop/src/renderer/inspect/findingsPanel.css": {
-    "spacingPx": 17,
-    "radiusOffScale": 1
+    "spacingPx": 17
   },
   "apps/desktop/src/renderer/inspect/inspect.css": {
-    "spacingPx": 11,
-    "radiusOffScale": 1
+    "spacingPx": 11
   },
   "apps/desktop/src/renderer/inspect/photoColumn.css": {
-    "spacingPx": 22,
-    "radiusOffScale": 2
+    "spacingPx": 22
   },
   "apps/desktop/src/renderer/inspect/reviewQueue.css": {
     "spacingPx": 22
@@ -145,8 +137,7 @@
     "colour": 2,
     "shadow": 2,
     "zIndex": 1,
-    "spacingPx": 43,
-    "radiusOffScale": 4
+    "spacingPx": 43
   },
   "apps/desktop/src/renderer/issueCard/IssueCard.tsx": {
     "title": 8
@@ -160,9 +151,6 @@
   },
   "apps/desktop/src/renderer/library/CoverPicker.tsx": {
     "title": 1
-  },
-  "apps/desktop/src/renderer/lineup/lineup.css": {
-    "radiusOffScale": 1
   },
   "apps/desktop/src/renderer/maps/mapMenu.css": {
     "fontPx": 1,
@@ -178,17 +166,14 @@
     "colour": 16,
     "shadow": 2,
     "zIndex": 1,
-    "spacingPx": 54,
-    "radiusOffScale": 2
+    "spacingPx": 54
   },
   "apps/desktop/src/renderer/package.css": {
-    "spacingPx": 43,
-    "radiusOffScale": 1
+    "spacingPx": 43
   },
   "apps/desktop/src/renderer/panos/panos.css": {
     "fontPx": 2,
-    "spacingPx": 16,
-    "radiusOffScale": 2
+    "spacingPx": 16
   },
   "apps/desktop/src/renderer/panos/PanoSphereRows.tsx": {
     "title": 1
@@ -199,8 +184,7 @@
   "apps/desktop/src/renderer/pointcloud/cleanup.css": {
     "shadow": 4,
     "zIndex": 4,
-    "spacingPx": 22,
-    "radiusOffScale": 1
+    "spacingPx": 22
   },
   "apps/desktop/src/renderer/pointcloud/CleanupPanel.tsx": {
     "title": 3
@@ -239,8 +223,7 @@
   "apps/desktop/src/renderer/road/road.css": {
     "shadow": 1,
     "zIndex": 2,
-    "spacingPx": 69,
-    "radiusOffScale": 4
+    "spacingPx": 69
   },
   "apps/desktop/src/renderer/road/RoadPanel.tsx": {
     "title": 2
@@ -280,8 +263,7 @@
   },
   "apps/desktop/src/renderer/screens/settings/detectionModels.css": {
     "fontPx": 1,
-    "spacingPx": 13,
-    "radiusOffScale": 1
+    "spacingPx": 13
   },
   "apps/desktop/src/renderer/screens/settings/detectorLearning.css": {
     "spacingPx": 4
@@ -345,7 +327,6 @@
     "shadow": 8,
     "zIndex": 11,
     "spacingPx": 381,
-    "radiusOffScale": 11,
     "transitionLayout": 2
   },
   "apps/desktop/src/renderer/survey/Cleanup.tsx": {
@@ -385,8 +366,7 @@
     "spacingPx": 70
   },
   "apps/desktop/src/renderer/survey/pile/pile.css": {
-    "spacingPx": 6,
-    "radiusOffScale": 1
+    "spacingPx": 6
   },
   "apps/desktop/src/renderer/survey/qa.css": {
     "shadow": 1,
@@ -463,8 +443,7 @@
     "title": 2
   },
   "apps/desktop/src/renderer/walks/walks.css": {
-    "spacingPx": 11,
-    "radiusOffScale": 1
+    "spacingPx": 11
   },
   "apps/desktop/src/renderer/workspace/ComponentList.tsx": {
     "title": 1
@@ -551,8 +530,7 @@
     "colour": 2,
     "shadow": 11,
     "zIndex": 6,
-    "spacingPx": 119,
-    "radiusOffScale": 13
+    "spacingPx": 119
   },
   "packages/ui/src/parts/button.css": {
     "spacingPx": 1
@@ -560,20 +538,17 @@
   "packages/ui/src/parts/chip.css": {
     "fontPx": 1,
     "shadow": 1,
-    "spacingPx": 6,
-    "radiusOffScale": 3
+    "spacingPx": 6
   },
   "packages/ui/src/parts/split.css": {
     "spacingPx": 4
   },
   "packages/ui/src/parts/surface.css": {
     "shadow": 1,
-    "spacingPx": 22,
-    "radiusOffScale": 1
+    "spacingPx": 22
   },
   "packages/ui/src/parts/tabs.css": {
-    "spacingPx": 2,
-    "radiusOffScale": 1
+    "spacingPx": 2
   },
   "packages/ui/src/parts/tip.css": {
     "zIndex": 1,

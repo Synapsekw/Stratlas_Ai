@@ -200,7 +200,7 @@
 .b-sev span {
   font-size: 10.5px;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--r-4);
   border: 1px solid var(--line);
   display: inline-flex;
   gap: 5px;
@@ -685,7 +685,7 @@
   background: var(--scrim);
   color: var(--ov);
   padding: 3px 6px;
-  border-radius: 3px;
+  border-radius: var(--r-4);
 }
 /* survey dates of a new volumetric project */
 .b-survey {
