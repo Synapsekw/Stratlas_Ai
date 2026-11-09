@@ -1,6 +1,6 @@
 import { ProjectManifest } from '@aio/schema';
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
@@ -379,6 +379,60 @@ test.describe('Flyability Inspector import', () => {
       await expect(map).toHaveAttribute('aria-disabled', 'true');
       await expect(map).toContainText('No map: this space has its own frame');
     }
+  });
+
+  test('a mission folder picked whole imports its two chambers as two spaces', async ({
+    dataRoot,
+    app,
+    win,
+  }) => {
+    test.setTimeout(600_000);
+    // a mission folder as a field team leaves it: raw drone data, a report, a note, and the two
+    // chambers' exports two levels down
+    const mission = join(scratch, 'Mission 1');
+    await rm(mission, { recursive: true, force: true });
+    await cp(first.root, join(mission, 'Drone', 'Exports', 'Chamber A'), { recursive: true });
+    await cloneAsSecond(first.root, join(mission, 'Drone', 'Exports', 'Chamber B'));
+    await mkdir(join(mission, 'Raw drone data', 'Flight 1'), { recursive: true });
+    await writeFile(join(mission, 'Raw drone data', 'Flight 1', 'clip.mov'), 'x');
+    await mkdir(join(mission, 'Reports'), { recursive: true });
+    await writeFile(join(mission, 'Reports', 'report.pdf'), 'x');
+    await writeFile(join(mission, 'notes.txt'), 'x');
+
+    await openTinyProject(win);
+    await answerFolder(app, mission);
+    await openPicker(win);
+    // both chambers, named after their folders, ticked; what was found and what was left out
+    await expect(win.getByTestId('inspector-summary')).toContainText('2 chambers');
+    await expect(win.getByTestId('inspector-summary')).toContainText('point clouds');
+    await expect(win.getByTestId('inspector-skipped')).toContainText(
+      'Skipped 2 other folders, Skipped 1 loose file',
+    );
+    for (const [k, name] of ['Chamber A', 'Chamber B'].entries()) {
+      await expect(win.getByTestId(`inspector-chamber-${String(k)}`)).toContainText(name);
+      await expect(win.getByTestId(`inspector-chamber-${String(k)}`)).toContainText('3 findings');
+      await expect(win.getByTestId(`inspector-chamber-tick-${String(k)}`)).toBeChecked();
+    }
+    await win.getByTestId('inspector-import').click();
+    await expect(win.getByTestId('inspector-list')).toBeHidden();
+
+    // the chambers run one after the other; each lands in its own space with its clouds
+    const cloudsIn = (m: ProjectManifest, id: string) =>
+      m.layers.filter((l) => l.kind === 'pointcloud' && l.space === id).length;
+    await expect
+      .poll(
+        async () => {
+          const m = await manifestOf(dataRoot.projectDir);
+          return (m.spaces ?? []).filter((s) => cloudsIn(m, s.id) > 0).length;
+        },
+        { timeout: 540_000 },
+      )
+      .toBe(2);
+    await jobsSettled(win);
+    const m = await manifestOf(dataRoot.projectDir);
+    expect((m.spaces ?? []).map((s) => s.name).sort()).toEqual(['Chamber A', 'Chamber B']);
+    expect(await flyIssues(dataRoot.projectDir)).toHaveLength(6);
+    await expect(win.getByTestId('crumb-space')).toBeVisible();
   });
 });
 
