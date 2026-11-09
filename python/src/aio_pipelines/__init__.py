@@ -33,7 +33,8 @@ PROTOCOL = "aio.pipelines/1"
 # (adds flyability.import, which only an app with the Flyability Inspector import starts) and pack 0.32.0
 # (the multi-view vote folds drafts of one object into one, and adds thermal.hotspots; 0.29.0 and
 # 0.30.0 were reserved and stay unused) and pack 0.33.0 (a detect.vlm detector item may carry
-# few-shot example crops for the yes/no check).
+# few-shot example crops for the yes/no check) and pack 0.34.0 (flyability.import: the wall distance
+# check from behind the camera, stable cloud names for unnamed flights, flight clouds hidden first).
 # Each keeps the floor.
 # The app refuses a pack outside the range; the syntax is read by `appRangeAllows` in packages/schema/src/versions.ts
 # (space-separated >=, >, <=, <, =).
