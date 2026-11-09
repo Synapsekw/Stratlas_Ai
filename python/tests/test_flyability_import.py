@@ -646,7 +646,7 @@ def test_a_named_flight_keeps_its_cloud_file_name(tmp_path):
     _run(root, _params(syn))
     a, b = _flight_cloud_files(root, syn)
     assert a.endswith("/chamber-a-pass.copc.laz")
-    assert b.endswith("/flight-2.copc.laz")
+    assert b.endswith(f"/flight-{syn.flight_ids[1][:8]}.copc.laz")
 
 
 def test_only_the_merged_cloud_shows_at_first(tmp_path, exports):
@@ -666,3 +666,50 @@ def test_flight_clouds_show_when_there_is_no_merged_cloud(tmp_path, exports):
     _run(root, _params(syn))
     clouds = [layer for layer in _manifest(root)["layers"] if layer["kind"] == "pointcloud"]
     assert clouds and all(layer["visible"] is True for layer in clouds)
+
+
+def test_a_phase_1_undefined_cloud_is_kept_not_converted_again(tmp_path, monkeypatch):
+    syn = _renamed_export(tmp_path, ["Undefined", "Chamber A pass"])
+    root = _project(tmp_path)
+    _run(root, _params(syn))
+    sid = f"fly-{syn.inspection_id[:8]}"
+    # make the project look like phase 1: the unnamed flight's cloud is undefined.copc.laz
+    new = root / _flight_cloud_files(root, syn)[0]
+    old_rel = f"clouds/flyability/{sid}/undefined.copc.laz"
+    new.rename(root / old_rel)
+    manifest = _manifest(root)
+    for layer in manifest["layers"]:
+        if layer["id"] == f"{sid}-{syn.flight_ids[0][:8]}-cloud":
+            layer["src"]["path"] = old_rel
+    (root / "manifest.json").write_text(json.dumps(manifest, indent=2), "utf-8")
+    rec = root / "imports" / "flyability" / sid / "clouds.json"
+    doc = json.loads(rec.read_text("utf-8"))
+    for key in list(doc["clouds"]):
+        if key.endswith(f"flight-{syn.flight_ids[0][:8]}.copc.laz"):
+            doc["clouds"][old_rel] = doc["clouds"].pop(key)
+    rec.write_text(json.dumps(doc), "utf-8")
+    built: list[Path] = []
+    real = pc.build_copc
+
+    def counting(ctx, las, staged, count, epsg, start):
+        built.append(Path(las))
+        return real(ctx, las, staged, count, epsg, start)
+
+    monkeypatch.setattr(pc, "build_copc", counting)
+    _run(root, _params(syn), job_id="j2")
+    assert built == []
+    assert _flight_cloud_files(root, syn)[0] == old_rel
+    assert (root / old_rel).is_file()
+    files = sorted(p.name for p in (root / "clouds" / "flyability" / sid).glob("*.copc.laz"))
+    assert files == sorted(["undefined.copc.laz", "chamber-a-pass.copc.laz", "merged.copc.laz"])
+
+
+def test_severity_levels_without_criteria_get_an_empty_one(tmp_path, exports):
+    syn = exports()
+    root = _project(tmp_path)
+    params = _params(syn)
+    for level in params["severityModel"]["levels"]:
+        del level["criteria"]
+    _run(root, params)
+    (model,) = _manifest(root)["severityModels"]
+    assert all(level["criteria"] == "" for level in model["levels"])

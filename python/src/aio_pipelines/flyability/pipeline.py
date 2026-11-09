@@ -75,11 +75,12 @@ def _slug(name: str) -> str:
 _NO_NAME = {"", "undefined", "null", "none", "unnamed"}
 
 
-def _flight_stem(name: str | None, n: int) -> str:
-    """The cloud file stem of flight number `n`: its name, or ``flight-<n>`` when it has none
-    (the drone software names such a flight "Undefined")."""
+def _flight_stem(name: str | None, flight_id: str) -> str:
+    """The cloud file stem of a flight: its name, or ``flight-<id 8>`` when it has none (the
+    drone software names such a flight "Undefined"). The id, not the position in the export,
+    keeps the name stable."""
     slug = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
-    return f"flight-{n}" if slug in _NO_NAME else _slug(slug)
+    return f"flight-{flight_id[:8]}" if slug in _NO_NAME else _slug(slug)
 
 
 def _imports(sid: str) -> str:
@@ -327,6 +328,9 @@ class FlyabilityImport:
                 for layer in manifest.get("layers") or []
                 if isinstance(layer, dict) and isinstance(layer.get("src"), dict)
             }
+            # a layer that already exists keeps the file it has (a phase-1 project may hold
+            # undefined.copc.laz), so a re-import neither converts it again nor orphans it
+            current = {lid: path for path, lid in taken.items() if path and lid}
             for sp, insp, flights in selection(ctx, export):
                 sid = sp["id"]
                 order = {f.id: i + 1 for i, f in enumerate(insp.flights)}
@@ -344,7 +348,8 @@ class FlyabilityImport:
                             "matrix": _matrix(f.transform),
                             "layer": lid,
                             "name": f"Flight #{n} cloud",
-                            "rel": _cloud_rel(taken, sid, _flight_stem(f.name, n), lid, f.id[:8]),
+                            "rel": current.get(lid)
+                            or _cloud_rel(taken, sid, _flight_stem(f.name, f.id), lid, f.id[:8]),
                         }
                     )
                 if insp.merged_cloud is not None:
@@ -357,7 +362,7 @@ class FlyabilityImport:
                             "matrix": None,
                             "layer": lid,
                             "name": "Merged cloud",
-                            "rel": _cloud_rel(taken, sid, "merged", lid, insp.id[:8]),
+                            "rel": current.get(lid) or _cloud_rel(taken, sid, "merged", lid, insp.id[:8]),
                         }
                     )
             if not todo:
@@ -735,7 +740,11 @@ class FlyabilityImport:
                 # severity model and class catalogue
                 models = manifest.setdefault("severityModels", [])
                 if not any(isinstance(m, dict) and m.get("id") == model_id for m in models):
-                    models.append(copy.deepcopy(params["severityModel"]))
+                    model = copy.deepcopy(params["severityModel"])
+                    for level in model.get("levels") or []:
+                        if isinstance(level, dict):
+                            level.setdefault("criteria", "")  # the schema requires it
+                    models.append(model)
                 cat = _catalogue(manifest, params["catalogueId"], model_id)
                 pois = [p for sp in spaces for p in _inspection(export, sp["inspection"]).pois]
                 category_classes(pois, cat, model_id)
