@@ -1,7 +1,7 @@
 /* The removal dialog (RemoveDialog in @aio/ui) and the Datasets trash footer. */
 
 /*
- * The dialog body already scrolls inside the window (.dlg is capped at the window height); each
+ * The dialog body already scrolls inside the window (.q-dialog is capped at the window height); each
  * list also stops at 40% of the window height, so one long list never hides the other sections.
  */
 .rm-dlg .rm-list {

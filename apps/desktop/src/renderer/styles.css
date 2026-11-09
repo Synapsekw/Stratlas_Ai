@@ -301,13 +301,6 @@ button.chip-status:hover {
   margin-inline: -2px -3px;
   color: var(--fg-3);
 }
-/* cloud AI that cannot run reads quieter than cloud AI that is merely switched off */
-.conn > .conn-cloud[data-state='off'] {
-  color: var(--fg-2);
-}
-.conn > .conn-cloud[data-state='blocked'] {
-  color: var(--fg-3);
-}
 /* a narrow window: the pair gives its spare room back to what is beside it */
 @media (max-width: 1280px) {
   .conn > .chip-status {
@@ -722,78 +715,6 @@ button.chip-status:hover {
 }
 .proj-switch > svg {
   flex: none;
-}
-.proj-menu {
-  position: absolute;
-  inset-inline-start: 0;
-  top: calc(100% + 4px);
-  z-index: 40;
-  inline-size: max(100%, 280px);
-  max-inline-size: 420px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-4);
-  background: var(--bg-1);
-  padding: 4px;
-  box-shadow: 0 12px 32px var(--shadow);
-  max-height: 320px;
-  overflow-y: auto;
-  animation: cmdk-in 160ms var(--ease-x);
-}
-.proj-menu button {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 8px;
-  height: 30px;
-  padding: 0 8px;
-  border-radius: var(--r-2);
-  font-size: var(--t-12);
-  color: var(--fg-1);
-  text-align: start;
-  white-space: nowrap;
-}
-.proj-menu button:hover {
-  background: var(--bg-2);
-  color: var(--fg-0);
-}
-.proj-menu button[aria-current='true'] svg {
-  color: var(--acc);
-}
-/* a library entry: its full name first, its customer under it in mono, so a long customer never
-   cuts the name to a letter (the menu is at most 420 px wide) */
-.proj-menu button:has(.pm-c) {
-  height: auto;
-  min-height: 30px;
-  padding-block: var(--sp-1);
-}
-.proj-menu .pm-t {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.proj-menu .pm-n {
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-.proj-menu .pm-c {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  color: var(--fg-3);
-  font-size: 11px;
-}
-.pm-sep {
-  height: 1px;
-  background: var(--line-soft);
-  margin: 4px 0;
-}
-.pm-empty {
-  padding: 8px;
-  font-size: var(--t-12);
-  color: var(--fg-3);
 }
 /* ---------- Layers column (shell/LayersColumn.tsx) ----------
    The dataset tree beside the rail, on the Scene only. Folding, the column slides out under the
@@ -1357,18 +1278,8 @@ button.chip-status:hover {
 .dmenu-item.danger:not([aria-disabled='true']) {
   color: var(--danger-ink);
 }
-.dmenu-why {
-  display: block;
-  margin-top: 1px;
-  font-size: var(--t-11);
-  color: var(--fg-2);
-}
 .pm-path {
   overflow-wrap: anywhere;
-}
-/* a form inside a dialog: its children lay out as the dialog's own */
-.dlg > .dlg-form {
-  display: contents;
 }
 .pc-media {
   position: relative;

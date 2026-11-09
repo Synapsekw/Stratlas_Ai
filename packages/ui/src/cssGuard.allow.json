@@ -182,10 +182,7 @@
     "radiusOffScale": 2
   },
   "apps/desktop/src/renderer/package.css": {
-    "colour": 2,
-    "shadow": 1,
-    "zIndex": 1,
-    "spacingPx": 58,
+    "spacingPx": 43,
     "radiusOffScale": 1
   },
   "apps/desktop/src/renderer/panos/panos.css": {
@@ -343,11 +340,11 @@
     "spacingPx": 6
   },
   "apps/desktop/src/renderer/styles.css": {
-    "fontPx": 24,
+    "fontPx": 23,
     "colour": 24,
-    "shadow": 9,
-    "zIndex": 12,
-    "spacingPx": 386,
+    "shadow": 8,
+    "zIndex": 11,
+    "spacingPx": 381,
     "radiusOffScale": 11,
     "transitionLayout": 2
   },
