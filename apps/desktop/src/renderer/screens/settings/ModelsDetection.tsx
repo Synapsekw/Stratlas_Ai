@@ -7,17 +7,20 @@
  */
 import type { ReactElement } from 'react';
 import type { SettingsFocus } from '../../store';
+import { Addons } from './Addons';
 import { AnalyticsPack } from './AnalyticsPack';
 import { DetectionModels } from './DetectionModels';
 import { DetectorLibrary } from './DetectorLibrary';
 
 export const MODELS_SECTIONS: readonly {
-  focus: SettingsFocus;
+  /** `addons` has no deep link yet, so it is not a SettingsFocus of the shell store. */
+  focus: SettingsFocus | 'addons';
   Section: () => ReactElement | null;
 }[] = [
   { focus: 'detection-models', Section: DetectionModels },
   { focus: 'analytics-pack', Section: AnalyticsPack },
   { focus: 'detector-library', Section: DetectorLibrary },
+  { focus: 'addons', Section: Addons },
 ];
 
 export function ModelsDetection(): ReactElement {

@@ -359,6 +359,41 @@ export const enInspect = {
   'detect.preset.settings.installed':
     'Analytics pack {version} is installed. Detectors use it from now on.',
   'detect.preset.settings.removed': 'Analytics pack {version} was moved to the bin.',
+  'detect.addons.title': 'Add-ons',
+  'detect.addons.help':
+    'Extra models, downloaded when you need them. Each is checked before it is installed and can be removed again.',
+  'detect.addons.name.roadDefects': 'Road defects',
+  'detect.addons.name.segmentation': 'Segmentation',
+  'detect.addons.name.groundClassifier': 'Ground classifier',
+  'detect.addons.what.detector': 'Finds objects in photos with a detection model on this computer.',
+  'detect.addons.what.segmenter':
+    'Outlines objects in photos and classifies them on a point cloud.',
+  'detect.addons.what.pointClassifier':
+    'Marks ground points when noise is removed from a point cloud.',
+  'detect.addons.version': 'Version {version}',
+  'detect.addons.licence': 'Licence {licence}',
+  'detect.addons.installedSize': '{size} on disk',
+  'detect.addons.notInstalled': 'Not installed',
+  'detect.addons.download': 'Download ({size})',
+  'detect.addons.update': 'Update to {version} ({size})',
+  'detect.addons.remove': 'Remove',
+  'detect.addons.removeConfirm': 'Remove {name}',
+  'detect.addons.keep': 'Keep',
+  'detect.addons.cancel': 'Cancel',
+  'detect.addons.choose': 'Choose file',
+  'detect.addons.chooseHint':
+    'On a computer without internet, choose an add-on file (.aioaddon) copied from another computer.',
+  'detect.addons.noAddress':
+    'Downloads are not set up on this computer. Choose an add-on file instead.',
+  'detect.addons.catalogueError': 'The add-on list could not be read: {error}',
+  'detect.addons.installed': '{name} {version} is installed.',
+  'detect.addons.removed': '{name} {version} was removed.',
+  'detect.addons.progress.label': 'Installing the add-on',
+  'detect.addons.progress.starting': 'Starting',
+  'detect.addons.progress.download': 'Downloading {done} of {total}',
+  'detect.addons.progress.check': 'Checking the file',
+  'detect.addons.progress.unpack': 'Unpacking',
+  'detect.addons.progress.finishing': 'Finishing',
   'detect.preset.library.title': 'Detector library',
   'detect.preset.library.help':
     'The detectors on this computer and how often reviewers accepted their drafts. Reviews stay on this computer.',
