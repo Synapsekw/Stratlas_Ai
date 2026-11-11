@@ -239,6 +239,16 @@ import { WALK_TRACK_PACK_FEATURE, walkTrackPackRefusal } from './walkTrackPack';
 import { localVlmModel } from './analytics/models';
 import { findAnalyticsPack, unusablePacks } from './analytics/pack';
 import { registerAnalyticsPackIpc } from './analytics/packIpc';
+import {
+  GROUND_PACK_FEATURE,
+  groundGate,
+  installedAddon,
+  installedAddonDirs,
+  LIFT_PACK_FEATURE,
+  liftRefusal,
+  readPointClassifier,
+  registerAddonsIpc,
+} from './addons';
 import { registerRequestsIpc } from './analytics/requestsIpc';
 import { nodeVlmServerDeps, VlmServer } from './analytics/server';
 import { createKeyVault } from './keys';
@@ -594,6 +604,7 @@ function broadcast<
     | 'websiteUpdate:status'
     | 'pipelinePack:progress'
     | 'analyticsPack:progress'
+    | 'addons:progress'
     | 'odm:progress'
     | 'detect:queue',
 >(event: E, payload: IpcEvent<E>): void {
@@ -1013,6 +1024,11 @@ const jobStore = new JobStore(join(app.getPath('userData'), 'jobs.json'));
 const odmSystem = nodeOdmSystem(process.env);
 /** Set once the ODM channels are registered; `will-quit` stops a running install through it. */
 let odmIpc: ReturnType<typeof registerOdmIpc> | null = null;
+/** Set once the add-on channels are registered; `will-quit` stops a running install through it. */
+let addonsIpc: ReturnType<typeof registerAddonsIpc> | null = null;
+/** The installed Segmentation add-on's folder, or null (Suggest boundaries and mask assist). */
+const segmentationAddonDir = async (): Promise<string | null> =>
+  (await installedAddon(settings.current().dataRoot, 'segmenter'))?.dir ?? null;
 const odmDeps: OdmDeps = {
   dataRoot: () => settings.current().dataRoot,
   env: process.env,
@@ -1613,6 +1629,7 @@ function registerIpc(): void {
     packDir: async () =>
       (await findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp }))
         .pack?.dir ?? null,
+    addonDir: segmentationAddonDir,
     loadRuntime: loadOnnxRuntime,
     decode: (path, maxSide) => {
       const img = nativeImage.createFromPath(path);
@@ -1919,7 +1936,28 @@ function registerIpc(): void {
         );
       if (tooOld) return { ok: false, error: tooOld };
     }
-    // a detector run: the Analytics pack, the graphics card and the model server first, and it
+    // Add-on features, only with the add-on installed: a noise run marks ground with the Ground
+    // classifier add-on's settings (any `ground` the window sent is replaced; addons/gates.ts),
+    // and lifting photo masks onto a cloud takes the Segmentation add-on.
+    if (pipeline === 'pointcloud.clean' || pipeline === 'segment.lift') {
+      const dataRoot = settings.current().dataRoot;
+      const packVersion =
+        (await findPack({ dataRoot, env: process.env, app: packApp })).pack?.version ?? null;
+      if ('pipeline' in req) {
+        const g = await groundGate(req.pipeline, req.params, {
+          packVersion,
+          classifier: () => readPointClassifier(dataRoot),
+        });
+        if (!g.ok) return { ok: false, error: g.error };
+        req.params = g.params;
+      }
+      const lift = await liftRefusal(pipeline, {
+        packVersion,
+        segmenterInstalled: async () => (await installedAddon(dataRoot, 'segmenter')) !== null,
+      });
+      if (lift) return { ok: false, error: lift };
+    }
+    // a detector run:the Analytics pack, the graphics card and the model server first, and it
     // waits while the card is taken (detect.preset.queued, as PANO_QUEUED)
     if (pipeline === 'detect.vlm') return detectQueue.start(req);
     // an Inspector import (new or resumed) waits for the one running, as the chambers of a drop
@@ -2359,6 +2397,8 @@ function registerIpc(): void {
             process.env,
           )
         )?.ffmpeg ?? null,
+      // the Road defects add-on (and any other detector add-on) is listed with the models
+      addonDirs: () => installedAddonDirs(settings.current().dataRoot, 'detector'),
     }),
   });
   registerLocalModelsIpc({
@@ -2547,6 +2587,7 @@ function registerIpc(): void {
       packDir: async () =>
         (await findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp }))
           .pack?.dir ?? null,
+      addonDir: segmentationAddonDir,
       loadRuntime: loadOnnxRuntime,
     }),
   });
@@ -2593,6 +2634,8 @@ function registerIpc(): void {
             COMPONENT_EVIDENCE_PACK_FEATURE,
             RF_PACK_FEATURE,
             CLEAN_PACK_FEATURE,
+            GROUND_PACK_FEATURE,
+            LIFT_PACK_FEATURE,
             FLYABILITY_PACK_FEATURE,
             THERMAL_PACK_FEATURE,
             THERMAL_HOTSPOTS_PACK_FEATURE,
@@ -2675,6 +2718,37 @@ function registerIpc(): void {
         `Install the Analytics pack ${version}? It is not signed.`,
         'The Analytics pack holds a program that runs on this computer with your permissions. This file carries no publisher signature, so the app cannot tell where it came from. Install it only if you got it from the publisher yourself.',
       ),
+  });
+  // Settings, Models and detection, Add-ons: small model packs from the add-on catalogue (its own
+  // session: the default one blocks the network), or from a file on an offline computer
+  addonsIpc = registerAddonsIpc({
+    handle,
+    dataRoot: () => settings.current().dataRoot,
+    env: process.env,
+    settings: () => ({
+      offlineOnly: settings.current().offlineOnly === true,
+      baseUrl: settings.current().addons?.baseUrl,
+    }),
+    fetch: (u, init) => session.fromPartition('quadrion-addons').fetch(u, init),
+    chooseFile: async () => {
+      const win = targetWindow();
+      const options = {
+        title: 'Choose an add-on file (.aioaddon)',
+        properties: ['openFile' as const],
+        filters: [{ name: 'Add-on', extensions: ['aioaddon'] }],
+        defaultPath: app.getPath('downloads'),
+      };
+      const r = win
+        ? await dialog.showOpenDialog(win, options)
+        : await dialog.showOpenDialog(options);
+      return r.canceled ? null : (r.filePaths[0] ?? null);
+    },
+    emit: (p) => {
+      broadcast('addons:progress', p);
+    },
+    packVersion: async () =>
+      (await findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp }))
+        .pack?.version ?? null,
   });
   handle('analytics:hardware', async () => {
     // the installed pack's model sets the free memory floor; no pack keeps the base floor
@@ -3108,6 +3182,7 @@ app.on('will-quit', () => {
   // ODM's start check (cmd, run.bat, its Python) would outlive the app. Stopped as Cancel stops
   // it, the install stays recorded unverified, for Try again; stopSmoke catches any other check.
   odmIpc?.stopAll();
+  addonsIpc?.stopAll();
   odmSystem.stopSmoke();
   // llama-server holds about 6.5 GB of graphics memory: it must not outlive the app
   vlmServer.stopSync();

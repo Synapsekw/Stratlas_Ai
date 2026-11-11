@@ -11,7 +11,7 @@
  * Crops are square, north up, `size` pixels a side, placed in the project CRS by the easting of
  * the left edge (`x0`), the northing of the top edge (`y1`) and the pixel size (`res`).
  */
-import type { Vec2 } from '@aio/schema';
+import type { LicenceWarning, Vec2 } from '@aio/schema';
 import { simplify, traceBoundary, type BinaryMask } from '@aio/annotate/detections';
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -38,6 +38,8 @@ export interface SamCard {
   licence: string;
   source?: string;
   input: SamInput;
+  /** An add-on model's licence needs a second look before the app is handed out (`licence.ts`). */
+  licenceWarning?: LicenceWarning;
 }
 
 export interface SamModel {
@@ -56,14 +58,34 @@ const isFile = (p: string) =>
     () => false,
   );
 
-/** The pack's segmentation model and its card, or why there is none to use. */
-export async function findSegmentModel(packDir: string | null): Promise<ModelLookup> {
+/**
+ * The segmentation model and its card, or why there is none to use: the Segmentation add-on's
+ * (`addonDir`, with `encoder.onnx`, `decoder.onnx` and `model.json` at its root) when it is
+ * installed, else the pack's (`models/sam/`).
+ */
+export async function findSegmentModel(
+  packDir: string | null,
+  addonDir?: string | null,
+): Promise<ModelLookup> {
+  if (addonDir) {
+    const found = await samIn(addonDir, 'import');
+    if (found) return found;
+  }
   if (!packDir) return { ok: false, reason: 'no-pack' };
-  const dir = join(packDir, 'models', 'sam');
+  return (
+    (await samIn(join(packDir, 'models', 'sam'), 'strict')) ?? { ok: false, reason: 'no-model' }
+  );
+}
+
+/**
+ * The model in `dir`, or null when its files are not there. `strict` (the pack's own model)
+ * refuses copyleft, non-commercial and unknown licences; `import` (an add-on, whose licence the
+ * person saw before the download) refuses only a missing licence and carries the warning.
+ */
+async function samIn(dir: string, gate: 'strict' | 'import'): Promise<ModelLookup | null> {
   const encoder = join(dir, 'encoder.onnx');
   const decoder = join(dir, 'decoder.onnx');
-  if (!(await isFile(encoder)) || !(await isFile(decoder)))
-    return { ok: false, reason: 'no-model' };
+  if (!(await isFile(encoder)) || !(await isFile(decoder))) return null;
   let raw: Record<string, unknown> = {};
   try {
     raw = JSON.parse(await readFile(join(dir, 'model.json'), 'utf8')) as Record<string, unknown>;
@@ -74,10 +96,11 @@ export async function findSegmentModel(packDir: string | null): Promise<ModelLoo
     typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined;
   const licence = str(raw.licence ?? raw.license, 200) ?? '';
   // The pack's own model keeps the strict gate: the relaxed import gate (licence.ts) is for
-  // detectors a person imports for internal use.
+  // detectors a person imports and add-ons a person downloads, for internal use.
+  const warning = licenceWarning(licence);
   const problem =
     licenceProblem(licence) ??
-    (licenceWarning(licence)
+    (warning && gate === 'strict'
       ? `${licence} is not allowed for the segmentation model (copyleft, non-commercial or unknown licence).`
       : null);
   if (problem) return { ok: false, reason: 'licence', detail: problem };
@@ -89,6 +112,7 @@ export async function findSegmentModel(packDir: string | null): Promise<ModelLoo
     input: raw.input === 'hwc-255' ? 'hwc-255' : 'nchw-imagenet',
     ...(version ? { version } : {}),
     ...(source ? { source } : {}),
+    ...(warning && gate === 'import' ? { licenceWarning: warning } : {}),
   };
   return { ok: true, model: { card, encoder, decoder } };
 }
@@ -431,6 +455,8 @@ export type SegmentStatus =
 export interface SegmenterDeps {
   /** The pipeline pack folder, or null. */
   packDir(): Promise<string | null>;
+  /** The installed Segmentation add-on's folder, or null; its model wins over the pack's. */
+  addonDir?(): Promise<string | null>;
   loadRuntime(): Promise<OrtLike | null>;
 }
 
@@ -477,7 +503,7 @@ export function createSegmenter(deps: SegmenterDeps): Segmenter {
     | { ok: true; s: NonNullable<typeof sessions> }
     | { ok: false; status: Exclude<SegmentStatus, { available: true }> }
   > {
-    const found = await findSegmentModel(await deps.packDir());
+    const found = await findSegmentModel(await deps.packDir(), await deps.addonDir?.());
     if (!found.ok) {
       return {
         ok: false,
@@ -510,7 +536,7 @@ export function createSegmenter(deps: SegmenterDeps): Segmenter {
 
   return {
     async status() {
-      const found = await findSegmentModel(await deps.packDir());
+      const found = await findSegmentModel(await deps.packDir(), await deps.addonDir?.());
       if (!found.ok) {
         return {
           available: false,

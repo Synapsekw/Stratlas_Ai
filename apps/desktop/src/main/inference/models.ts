@@ -26,6 +26,11 @@ export const MAX_MODEL_BYTES = 1024 * 1024 * 1024;
 export interface ModelDirs {
   user: string;
   pack: string | null;
+  /**
+   * Installed detector add-ons (`<dataRoot>/runtime/addons/<id>/`), each with `model.onnx` and
+   * `model.json` at its root; the model id is the add-on id.
+   */
+  addons?: readonly string[];
 }
 
 export interface FoundModel {
@@ -85,7 +90,7 @@ async function readCard(
 function modelInfo(
   id: string,
   card: DetectorModelCard,
-  where: 'user' | 'pack',
+  where: DetectorModelInfo['where'],
   sizeBytes: number,
 ): DetectorModelInfo {
   const warning = licenceWarning(card.licence);
@@ -115,13 +120,31 @@ async function listIn(dir: string | null, where: 'user' | 'pack'): Promise<Found
   return out;
 }
 
-/** Installed models: the person's first, then the pipeline pack's (an id in both is the person's). */
+/** The detector add-ons: each folder is one model, named by the add-on id. */
+async function listAddons(dirs: readonly string[] | undefined): Promise<FoundModel[]> {
+  const out: FoundModel[] = [];
+  for (const dir of dirs ?? []) {
+    const id = basename(dir);
+    if (!DetectorModelId.safeParse(id).success) continue;
+    const onnx = join(dir, MODEL_FILE);
+    const s = await stat(onnx).catch(() => null);
+    if (!s?.isFile()) continue;
+    const card = await readCard(join(dir, CARD_FILE));
+    if (!card.ok) continue;
+    out.push({ info: modelInfo(id, card.card, 'addon', s.size), onnx });
+  }
+  return out;
+}
+
+/**
+ * Installed models: the person's first, then the add-ons', then the pipeline pack's (an id in
+ * more than one is the first one's).
+ */
 export async function listModels(dirs: ModelDirs): Promise<FoundModel[]> {
-  const user = await listIn(dirs.user, 'user');
-  const pack = (await listIn(dirs.pack, 'pack')).filter(
-    (p) => !user.some((u) => u.info.id === p.info.id),
-  );
-  return [...user, ...pack];
+  const out = await listIn(dirs.user, 'user');
+  for (const m of [...(await listAddons(dirs.addons)), ...(await listIn(dirs.pack, 'pack'))])
+    if (!out.some((u) => u.info.id === m.info.id)) out.push(m);
+  return out;
 }
 
 export async function findModel(dirs: ModelDirs, id: string): Promise<FoundModel | null> {
@@ -239,6 +262,11 @@ export async function removeModel(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const user = await listIn(dirs.user, 'user');
   if (!user.some((m) => m.info.id === id)) {
+    if ((await listAddons(dirs.addons)).some((m) => m.info.id === id))
+      return {
+        ok: false,
+        error: `"${id}" is an add-on. Remove it in Settings, Models and detection, Add-ons.`,
+      };
     const pack = await listIn(dirs.pack, 'pack');
     return pack.some((m) => m.info.id === id)
       ? { ok: false, error: `"${id}" comes with the processing tools and cannot be removed here.` }

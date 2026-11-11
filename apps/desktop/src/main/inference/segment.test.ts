@@ -181,6 +181,39 @@ describe('the pack model', () => {
     });
   });
 
+  it('prefers the Segmentation add-on, under the import licence gate', async () => {
+    await pack(colourSegmenterOnnx().card);
+    const addon = join(dir, 'addon');
+    await mkdir(addon);
+    const m = colourSegmenterOnnx();
+    await writeFile(join(addon, 'encoder.onnx'), m.encoder);
+    await writeFile(join(addon, 'decoder.onnx'), m.decoder);
+    // a licence the pack's own model may not have: allowed for an add-on, with the warning
+    await writeFile(
+      join(addon, 'model.json'),
+      JSON.stringify({ ...m.card, name: 'SAM add-on', licence: 'LicenseRef-SAM' }),
+    );
+    expect(await findSegmentModel(dir, addon)).toMatchObject({
+      ok: true,
+      model: { card: { name: 'SAM add-on' }, encoder: join(addon, 'encoder.onnx') },
+    });
+    await writeFile(
+      join(addon, 'model.json'),
+      JSON.stringify({ ...m.card, name: 'SAM add-on', licence: 'CC-BY-NC-4.0' }),
+    );
+    expect(await findSegmentModel(null, addon)).toMatchObject({
+      ok: true,
+      model: { card: { licenceWarning: 'non-commercial' } },
+    });
+    // a licence-less add-on is still refused; a folder without the files falls back to the pack
+    await writeFile(join(addon, 'model.json'), JSON.stringify({ name: 'x' }));
+    expect(await findSegmentModel(dir, addon)).toMatchObject({ ok: false, reason: 'licence' });
+    expect(await findSegmentModel(dir, join(dir, 'nothing'))).toMatchObject({
+      ok: true,
+      model: { card: { name: 'Colour test segmenter' } },
+    });
+  });
+
   it('is unavailable with the reason when there is no pack or no runtime', async () => {
     const none = createSegmenter({
       packDir: () => Promise.resolve(null),

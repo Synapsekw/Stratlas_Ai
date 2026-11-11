@@ -191,6 +191,21 @@ describe('mask assist seam', () => {
     return dir;
   }
 
+  it('uses the Segmentation add-on before the pack', async () => {
+    const dir = await pack(true);
+    const addon = join(base, 'addon');
+    await mkdir(addon, { recursive: true });
+    expect((await findSamModel(dir, addon))?.name).toBe('MobileSAM test');
+    await writeFile(join(addon, 'encoder.onnx'), 'x');
+    await writeFile(join(addon, 'decoder.onnx'), 'x');
+    await writeFile(join(addon, 'model.json'), '{"name":"SAM add-on"}');
+    expect(await findSamModel(dir, addon)).toMatchObject({
+      name: 'SAM add-on',
+      encoder: join(addon, 'encoder.onnx'),
+    });
+    expect((await findSamModel(null, addon))?.name).toBe('SAM add-on');
+  });
+
   it('is unavailable without a model or without the runtime', async () => {
     const empty = await pack(false);
     expect(await findSamModel(empty)).toBeNull();

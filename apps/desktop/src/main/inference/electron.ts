@@ -139,6 +139,8 @@ export interface ElectronInferenceDeps {
    * Asked once per run with walk frames.
    */
   ffmpeg: () => Promise<string | null>;
+  /** The installed detector add-ons' folders (`addons/install.ts` `installedAddonDirs`). */
+  addonDirs?: () => Promise<string[]>;
 }
 
 /** The environment `registerInferenceIpc` runs in, inside the app. */
@@ -157,6 +159,7 @@ export function electronInference(deps: ElectronInferenceDeps): { env: Inference
             ? custom
             : join(app.getPath('userData'), 'models', 'detect'),
         pack: pack ? join(pack, 'models', 'detect') : null,
+        addons: (await deps.addonDirs?.()) ?? [],
       };
     },
     project: async (projectId) => {

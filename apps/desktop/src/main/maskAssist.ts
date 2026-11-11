@@ -57,6 +57,8 @@ export interface DecodedImage {
 export interface MaskAssistDeps {
   /** The pipeline pack folder, or null. */
   packDir(): Promise<string | null>;
+  /** The installed Segmentation add-on's folder, or null; its model wins over the pack's. */
+  addonDir?(): Promise<string | null>;
   loadRuntime(): Promise<OrtLike | null>;
   decode(path: string, maxSide: number): Promise<DecodedImage>;
 }
@@ -67,10 +69,20 @@ const exists = (p: string) =>
     () => false,
   );
 
-/** The SAM model in a pipeline pack, if it carries one. */
-export async function findSamModel(packDir: string | null): Promise<SamModel | null> {
-  if (!packDir) return null;
-  const dir = join(packDir, 'models', 'sam');
+/**
+ * The SAM model to use: the Segmentation add-on's (`addonDir`, files at its root) when it is
+ * installed, else the pipeline pack's (`models/sam/`), if it carries one.
+ */
+export async function findSamModel(
+  packDir: string | null,
+  addonDir?: string | null,
+): Promise<SamModel | null> {
+  const fromAddon = addonDir ? await samIn(addonDir) : null;
+  if (fromAddon) return fromAddon;
+  return packDir ? samIn(join(packDir, 'models', 'sam')) : null;
+}
+
+async function samIn(dir: string): Promise<SamModel | null> {
   const encoder = join(dir, 'encoder.onnx');
   const decoder = join(dir, 'decoder.onnx');
   if (!(await exists(encoder)) || !(await exists(decoder))) return null;
@@ -160,7 +172,7 @@ export function createMaskAssist(deps: MaskAssistDeps): MaskAssist {
     | { ok: true; s: NonNullable<typeof sessions> }
     | { ok: false; status: Extract<MaskAssistStatus, { available: false }> }
   > {
-    const model = await findSamModel(await deps.packDir());
+    const model = await findSamModel(await deps.packDir(), await deps.addonDir?.());
     if (!model) return { ok: false, status: { available: false, reason: 'no-model' } };
     if (sessions?.model.encoder === model.encoder) return { ok: true, s: sessions };
     const ort = await deps.loadRuntime();
@@ -181,7 +193,7 @@ export function createMaskAssist(deps: MaskAssistDeps): MaskAssist {
 
   return {
     async status() {
-      const model = await findSamModel(await deps.packDir());
+      const model = await findSamModel(await deps.packDir(), await deps.addonDir?.());
       if (!model) return { available: false, reason: 'no-model' };
       if (!(await deps.loadRuntime())) return { available: false, reason: 'no-runtime' };
       return { available: true, model: model.name };

@@ -223,3 +223,22 @@ describe('import, list and remove', () => {
     });
   });
 });
+
+describe('detector add-ons', () => {
+  it('lists an installed add-on by its id and leaves its removal to Add-ons', async () => {
+    const addon = await source({ name: 'Road defects' }, 'road-defects');
+    const withAddon = { ...dirs, addons: [addon] };
+    const listed = await listModels(withAddon);
+    expect(listed.map((m) => [m.info.id, m.info.where])).toEqual([['road-defects', 'addon']]);
+    expect(listed[0]?.onnx).toBe(join(addon, 'model.onnx'));
+    expect(await removeModel(withAddon, 'road-defects')).toEqual({
+      ok: false,
+      error: '"road-defects" is an add-on. Remove it in Settings, Models and detection, Add-ons.',
+    });
+    // an add-on folder without a valid card is not a model
+    const broken = join(base, 'broken');
+    await mkdir(broken);
+    await writeFile(join(broken, 'model.onnx'), 'x');
+    expect(await listModels({ ...dirs, addons: [broken] })).toEqual([]);
+  });
+});
