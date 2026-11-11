@@ -55,6 +55,7 @@ describe('tracking the walk passes', () => {
         return Promise.resolve({ jobId: `j${String(started.length)}` });
       }),
       wait: vi.fn((id: string) => Promise.resolve(done(id))),
+      cancel: vi.fn(() => Promise.resolve(null)),
     };
     expect(await trackWalkPasses(deps, '/projects/p', passes)).toBe(2);
     expect(started).toEqual([
@@ -76,12 +77,14 @@ describe('tracking the walk passes', () => {
     const refused = {
       startQuiet: () => Promise.resolve({ error: 'needs processing tools 0.35.0' }),
       wait: vi.fn(() => Promise.resolve(null)),
+      cancel: () => Promise.resolve(null),
     };
     expect(await trackWalkPasses(refused, '/p', passes)).toBe(0);
     expect(refused.wait).not.toHaveBeenCalled();
     const failed = {
       startQuiet: () => Promise.resolve({ jobId: 'j' }),
       wait: () => Promise.resolve({ id: 'j', status: 'failed' } as JobRecord),
+      cancel: () => Promise.resolve(null),
     };
     expect(await trackWalkPasses(failed, '/p', passes)).toBe(0);
     const throws = {
@@ -89,7 +92,37 @@ describe('tracking the walk passes', () => {
         throw new Error('no jobs here');
       },
       wait: () => Promise.reject(new Error('gone')),
+      cancel: () => Promise.resolve(null),
     };
     expect(await trackWalkPasses(throws, '/p', passes)).toBe(0);
+  });
+
+  it('cancels the job in hand on Stop and starts no other', async () => {
+    const stop = new AbortController();
+    const deps = {
+      startQuiet: vi.fn(() => Promise.resolve({ jobId: 'j1' })),
+      // the job only ends when the wait is aborted, as waitForJob does
+      wait: vi.fn(
+        (_id: string, signal?: AbortSignal) =>
+          new Promise<JobRecord | null>((resolve) => {
+            signal?.addEventListener('abort', () => {
+              resolve(null);
+            });
+          }),
+      ),
+      cancel: vi.fn(() => Promise.resolve(null)),
+    };
+    const tracking = trackWalkPasses(deps, '/p', passes, stop.signal);
+    await vi.waitFor(() => {
+      expect(deps.wait).toHaveBeenCalledOnce();
+    });
+    stop.abort();
+    expect(await tracking).toBe(0);
+    expect(deps.cancel).toHaveBeenCalledWith('j1');
+    expect(deps.startQuiet).toHaveBeenCalledOnce();
+    // a Stop before anything started starts nothing
+    const none = { ...deps, startQuiet: vi.fn(() => Promise.resolve({ jobId: 'j2' })) };
+    expect(await trackWalkPasses(none, '/p', passes, stop.signal)).toBe(0);
+    expect(none.startQuiet).not.toHaveBeenCalled();
   });
 });

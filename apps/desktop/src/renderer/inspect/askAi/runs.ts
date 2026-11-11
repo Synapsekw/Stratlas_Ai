@@ -296,9 +296,12 @@ async function runLocal(
     skipped = e.skipped ?? skipped;
     patch(token, () => ({ done: e.done, total: e.total, found: e.found }));
   });
+  // Stop cancels the model run and, after it, the walk tracking (the drafts stay as they are)
+  const stopTracking = new AbortController();
   if (active?.token === token)
     active.stop = () => {
       void bridge.call('inference:cancel', { runId });
+      stopTracking.abort();
       patch(token, () => ({ phase: 'stopping' }));
     };
   let res: Awaited<ReturnType<typeof bridge.call<'inference:run'>>>;
@@ -329,10 +332,12 @@ async function runLocal(
       : await trackWalkPasses(
           {
             startQuiet: (req) => jobs.getState().startQuiet(req),
-            wait: (jobId) => waitForJob(jobs, jobId),
+            wait: (jobId, signal) => waitForJob(jobs, jobId, signal),
+            cancel: (jobId) => jobs.getState().cancel(jobId),
           },
           i.projectRoot,
           walkPasses,
+          stopTracking.signal,
         );
   if (!isLive(token)) return;
   // the review reads the pass the run wrote (and the tracking rewrote)

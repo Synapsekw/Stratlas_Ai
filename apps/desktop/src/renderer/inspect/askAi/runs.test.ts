@@ -31,6 +31,8 @@ const h = vi.hoisted(() => ({
   quietRefused: null as string | null,
   /** The status a quiet job starts in (`running`: the test ends it). */
   quietStatus: 'done',
+  /** Jobs cancelled through the jobs store. */
+  cancelled: [] as string[],
   startAnswer: null as string | null,
   progress: [] as ((e: unknown) => void)[],
   /** The review cannot be read again (a reload that throws). */
@@ -56,7 +58,10 @@ vi.mock('../../shell', async () => {
       }));
       return Promise.resolve({ jobId: id });
     },
-    cancel: () => Promise.resolve(null),
+    cancel: (id: string) => {
+      h.cancelled.push(id);
+      return Promise.resolve(null);
+    },
   }));
   return {
     jobs,
@@ -178,6 +183,7 @@ beforeEach(() => {
   h.quiet = [];
   h.quietRefused = null;
   h.quietStatus = 'done';
+  h.cancelled = [];
   h.progress = [];
   h.readFails = false;
   h.status = { ready: true, cloud: true, route: VISION };
@@ -615,6 +621,35 @@ describe('Ask AI runs', () => {
     }));
     await run;
     expect(askAiRun.getState().run).toMatchObject({ phase: 'done' });
+  });
+
+  it('Stop during the walk tracking cancels its job and ends the run as stopped', async () => {
+    h.quietStatus = 'running';
+    const run = localWalk(frames(3));
+    await flush();
+    const req = h.calls.find((c) => c.channel === 'inference:run')
+      ?.req as IpcRequest<'inference:run'>;
+    h.progress.forEach((f) => {
+      f({ runId: req.runId, done: 3, total: 3, found: 3 });
+    });
+    h.inference?.resolve({ ok: true, value: { ok: true, file: 'f.json', count: 3 } });
+    await flush();
+    expect(askAiRun.getState().run).toMatchObject({ phase: 'running' });
+    stopAskRun();
+    // the tracking job never ends by itself here: Stop alone ends the run
+    await run;
+    expect(h.cancelled).toEqual(['quiet-1']);
+    expect(askAiRun.getState().run).toMatchObject({ phase: 'stopped', found: 3 });
+  });
+
+  it('Stop before the tracking starts starts none', async () => {
+    const run = localWalk(frames(2));
+    await flush();
+    stopAskRun();
+    h.inference?.resolve({ ok: true, value: { ok: true, file: 'f.json', count: 1 } });
+    await run;
+    expect(h.quiet).toEqual([]);
+    expect(askAiRun.getState().run).toMatchObject({ phase: 'stopped' });
   });
 
   it('keeps the drafts as they are when the processing tools refuse walk.track', async () => {

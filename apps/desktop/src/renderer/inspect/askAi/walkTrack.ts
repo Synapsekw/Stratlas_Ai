@@ -43,20 +43,26 @@ export function runPasses(
 
 export interface WalkTrackDeps {
   startQuiet: (req: IpcRequest<'jobs:start'>) => Promise<{ jobId: string } | { error: string }>;
-  wait: (jobId: string) => Promise<JobRecord | null>;
+  /** Wait for the job to end; resolves null at once when `signal` aborts. */
+  wait: (jobId: string, signal?: AbortSignal) => Promise<JobRecord | null>;
+  /** Cancel a job (Stop during the tracking). */
+  cancel: (jobId: string) => Promise<unknown>;
 }
 
 /**
  * Track each walk pass in turn; resolves with how many were tracked (job done). A refused start
- * (older processing tools) or a failed job is left as it is, never an error.
+ * (older processing tools) or a failed job is left as it is, never an error. `signal` (Stop)
+ * cancels the job in hand and starts no other: the passes not tracked keep their drafts.
  */
 export async function trackWalkPasses(
   deps: WalkTrackDeps,
   project: string,
   passes: readonly { pass: string; layer: string }[],
+  signal?: AbortSignal,
 ): Promise<number> {
   let tracked = 0;
   for (const p of passes) {
+    if (signal?.aborted) break;
     const started = await Promise.resolve()
       .then(() =>
         deps.startQuiet({
@@ -67,7 +73,18 @@ export async function trackWalkPasses(
       )
       .catch(() => ({ error: 'not started' }));
     if ('error' in started) continue;
-    const job = await deps.wait(started.jobId).catch(() => null);
+    const { jobId } = started;
+    const stop = () => {
+      void Promise.resolve()
+        .then(() => deps.cancel(jobId))
+        .catch(() => undefined);
+    };
+    // a Stop pressed while the job was starting cancels it too
+    if (signal?.aborted) stop();
+    else signal?.addEventListener('abort', stop, { once: true });
+    const job = await deps.wait(jobId, signal).catch(() => null);
+    signal?.removeEventListener('abort', stop);
+    if (signal?.aborted) break;
     if (job?.status === 'done') tracked++;
   }
   return tracked;
