@@ -32,7 +32,7 @@ related: [../plans/2026-11-11-walk-detections.md, ../plans/2026-10-30-intelligen
   - Up and down faces are left out (the walker and the sky).
   - The local ONNX model keeps reading whole equirect frames.
   - A one-frame track is left unchanged.
-  - Label with AI is one click per region, with no cloud confirm box. The button's tip says where the crops go, and a local-only project never sends them out.
+  - Label with AI is one click per region. On the cloud route it shows the same confirm box as Ask AI (both crops, provider and cost, "Don't ask again for this project"), and the button's tip names who answers: the cloud provider or this computer's model. A local-only project never sends the crops out.
 
 ## Why
 
@@ -45,7 +45,7 @@ The vision study found that 360 frame detections were never placed and gave a bo
 3. Review it. The queue shows "1 waiting", "Seen in 4 frames" and "N m away, bearing N°". (Same spec.)
 4. Open the walk in the 360 pane and scrub through the frames where the object was seen. Its box is drawn at each of them and is gone after the last. (Same spec.)
 5. With a detector in the library and a walk, run Ask AI on the walk's frames with a detector check. The detectors read each frame as four views, and repeated finds come back as one tracked suggestion. (Python run: the `detect.vlm` frame cases in `python/tests/test_detect_pipeline.py`, real ffmpeg with the fake model server. No e2e yet.)
-6. Open the change demo with an imagery change between two dates (Compare dates finds them, `change-area.spec.ts`; the label spec writes the region set itself), and open the Changes tab. Pick a region row and click **Label with AI**. The row shows "AI: Material added" (the scripted model's answer; a real model names what it sees), and the label is still there after a reload. (`change-label.spec.ts`.)
+6. Open the change demo with an imagery change between two dates (Compare dates finds them, `change-area.spec.ts`; the label spec writes the region set itself), and open the Changes tab. Pick a region row and click **Label with AI**. With cloud AI the confirm box shows both crops and the provider; click Send. The row shows "AI: Material added" (the scripted model's answer; a real model names what it sees), and the label is still there after a reload. (`change-label.spec.ts`.)
 
 ## Evidence
 
@@ -60,9 +60,10 @@ The vision study found that 360 frame detections were never placed and gave a bo
 - The walk pose is used as written. A walk on a survey date with a line-up shift is not shifted again; check this on a lined-up project.
 - A tracked draft is not yet an issue on the map or the model: Accept makes an issue as before, and the `inspection.run` placement still skips frame detections. Using `track.point` there is the next step.
 - A re-run's expanded sightings take the lead's note and fields.
-- The sha guard leaves a short gap between the re-read and the rename of a pass (detection passes have no file lock).
+- An older build reads a tracked walk pass but drops `track` when it saves it: the folded sightings are lost and the lead draft stays on its own frame. Review a tracked walk in this build or later.
+- The sha guard leaves a short gap between the re-read and the rename of a pass. A lock shared with the app's `detections:write` was not built: the pipeline's manifest lock is an operating-system byte-range lock (msvcrt, fcntl) that Node cannot take without a native addon or a new lock scheme on both sides. The app keeps a walk run "running" until its tracking ends, so Review does not open on the untracked drafts, and re-tracking never drafts an object that already has an accepted or rejected detection.
 - No e2e for detectors on walk frames (the Analytics pack model is not in CI).
-- Label with AI labels one region at a time, with no "Label all". Whether it should show the cloud confirm box that Ask AI uses is for the founder.
+- Label with AI labels one region at a time, with no "Label all".
 - Bench the tracker on a real walk (the 360 test video from 18 Oct) before tuning.
 
 ## Next session entry point
