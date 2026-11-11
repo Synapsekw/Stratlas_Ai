@@ -115,8 +115,10 @@ test.describe('below 1280 px', () => {
     await expect(layers(win)).toHaveAttribute('role', 'dialog');
     await expect(layers(win)).toHaveAttribute('aria-modal', 'false');
     await expect.poll(() => focusInColumn(win)).toBe(true);
-    const box = await layers(win).boundingBox();
-    expect(Math.round(box?.x ?? -1)).toBe(RAIL);
+    // the column slides in on a transform transition, so its x settles beside the rail
+    await expect
+      .poll(async () => Math.round((await layers(win).boundingBox())?.x ?? -1))
+      .toBe(RAIL);
     const open = await settledStage(win);
     expect(open.width).toBe(folded.width);
     await shot(win, 'bands-1100-overlay');
