@@ -8,6 +8,7 @@ import { useSplit } from '../workspace/SplitPanes';
 import { openLineUp } from '../lineup/lineUpActions';
 import { rerunProducer, rerunScoped } from './rerun';
 import { createChangeActions } from './actions';
+import { RegionLabelTool } from './RegionLabel';
 import { useChangeProject, useComparedPair } from './useChangeOverlays';
 
 /** The Changes tab of the right panel: the register of the dates being compared. */
@@ -70,6 +71,17 @@ export function ChangesTab({ className }: { className?: string }) {
         );
       }}
       onRerun={rerun}
+      itemTools={(row) => {
+        const set = changeStore.getState().sets[row.setId];
+        return (
+          <RegionLabelTool
+            row={row}
+            projectId={project.id}
+            context={set ? context({ from: set.from, to: set.to }) : null}
+            dateLabel={(id) => captures.find((c) => c.id === id)?.label ?? id}
+          />
+        );
+      }}
     />
   );
 }

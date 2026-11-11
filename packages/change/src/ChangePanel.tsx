@@ -2,7 +2,7 @@ import { ChangeCollab } from '@aio/collab/ui';
 import type { ChangeItem, ChangeKind, ChangeSet, ChangeVerdict } from '@aio/schema';
 import { Icon, Menu, t, useT, type MenuEntry, type MessageKey } from '@aio/ui';
 import { captureIndex, workspace } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { VERDICT_COLOR } from './overlay';
 import {
@@ -57,6 +57,8 @@ export interface ChangePanelProps {
   onLineUp?: (from: string, to: string) => void;
   /** Run a producer's set again (offered on an out of date set); an error sentence or null. */
   onRerun?: (producer: string, set?: ChangeSet) => Promise<string | null>;
+  /** The app's extra actions on a picked item (Label with AI on a region), after the others. */
+  itemTools?: (row: RegisterRow) => ReactNode;
   className?: string | undefined;
 }
 
@@ -187,6 +189,7 @@ export function ChangePanel({
   actions,
   onLineUp,
   onRerun,
+  itemTools,
   className,
 }: ChangePanelProps) {
   const t = useT();
@@ -622,6 +625,7 @@ export function ChangePanel({
           const on = row === selectedRow;
           const { item } = row;
           const text = detailText(item, t);
+          const ai = item.kind === 'region' ? item.aiLabel : undefined;
           const fromIssue = item.kind === 'issue' ? actions.issueCode(item.from) : null;
           const toIssue = item.kind === 'issue' ? actions.issueCode(item.to) : null;
           const codes =
@@ -656,8 +660,18 @@ export function ChangePanel({
                   {item.label ?? item.id}
                 </span>
                 <span className="st">{t(sKey(row.status))}</span>
-                {(text || codes) && (
-                  <span className="m">{[codes, text].filter(Boolean).join(' · ')}</span>
+                {(text || codes || ai) && (
+                  <span className="m">
+                    {[codes, text].filter(Boolean).join(' · ')}
+                    {ai && (
+                      <span data-testid="change-ai-label" data-kind={ai.kind}>
+                        {codes || text ? ' · ' : ''}
+                        {t('change.aiLabel.chip', {
+                          kind: t(`change.aiLabel.kind.${ai.kind}` as MessageKey),
+                        })}
+                      </span>
+                    )}
+                  </span>
                 )}
               </div>
               {on && (
@@ -788,6 +802,7 @@ export function ChangePanel({
                           {t('change.openIssue')}
                         </button>
                       )}
+                      {itemTools?.(row)}
                     </div>
                   )}
                   {!s.readOnly && (

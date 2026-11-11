@@ -34,6 +34,7 @@ vi.mock('../workspace/compare', () => ({
 vi.mock('../workspace/SplitPanes', () => ({ useSplit: () => null }));
 vi.mock('../lineup/lineUpActions', () => ({ openLineUp: vi.fn() }));
 vi.mock('./actions', () => ({ createChangeActions: () => ({}) }));
+vi.mock('./RegionLabel', () => ({ RegionLabelTool: () => null }));
 vi.mock('./useChangeOverlays', () => ({
   useChangeProject: () => undefined,
   useComparedPair: () => null,

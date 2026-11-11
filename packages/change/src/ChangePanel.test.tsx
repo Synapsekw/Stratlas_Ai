@@ -384,3 +384,40 @@ describe('the Changes panel and a line-up', () => {
     expect(q('chg-misaligned')).not.toBeNull();
   });
 });
+
+describe('the Changes panel and an AI label', () => {
+  const labelled = () =>
+    ChangeSet.parse({
+      schema: 'aio.change/1',
+      id: 'd1-d2-raster',
+      from: 'd1',
+      to: 'd2',
+      producer: 'change.raster',
+      createdAt: '2026-10-06T08:00:00Z',
+      items: [
+        {
+          kind: 'region',
+          id: 'region:1',
+          verdict: 'changed',
+          label: 'Changed area of 40 m²',
+          aiLabel: { kind: 'vehicle', what: 'a tipper truck', at: '2026-11-11T08:00:00Z' },
+        },
+      ],
+    });
+
+  it("shows a region's AI label on its row and the app's tools when it is picked", async () => {
+    open(false);
+    changeStore.setState({ projectId: 'p', sets: { 'd1-d2-raster': labelled() } });
+    const itemTools = vi.fn(() => <button data-testid="tool">Label</button>);
+    await render({ itemTools });
+    const chip = q('change-ai-label');
+    expect(chip?.textContent).toBe('AI: Vehicle');
+    expect(q('tool')).toBeNull();
+    await act(async () => {
+      (q('change-row') as HTMLElement).click();
+      await Promise.resolve();
+    });
+    expect(q('tool')).not.toBeNull();
+    expect(itemTools).toHaveBeenCalledWith(expect.objectContaining({ setId: 'd1-d2-raster' }));
+  });
+});
