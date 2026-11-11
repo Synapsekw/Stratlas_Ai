@@ -618,6 +618,29 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'edits/pointcloud/<layer>.json',
     since: '0.16',
   },
+  // add-on model packs (addons.ts, N1): the manifest inside each add-on, the catalogue at the
+  // add-on address and the ground classifier's settings; app-wide, never in a project
+  {
+    family: 'aio.addon',
+    version: 1,
+    home: 'pack',
+    where: '<dataRoot>/runtime/addons/<id>/addon.json',
+    since: '0.31',
+  },
+  {
+    family: 'aio.addon-catalogue',
+    version: 1,
+    home: 'server',
+    where: 'catalogue.json at the add-on address (Settings addons.baseUrl)',
+    since: '0.31',
+  },
+  {
+    family: 'aio.point-classifier',
+    version: 1,
+    home: 'pack',
+    where: '<dataRoot>/runtime/addons/ground-classifier/classifier.json',
+    since: '0.31',
+  },
   // RF coverage (rf.ts): new files in a new folder, so older builds never read them
   {
     family: 'aio.rf-sectors',

@@ -103,7 +103,9 @@ describe('existing files 0.10 writes stay readable by 0.9', () => {
             k !== 'autoPrepareSurfaces' &&
             // agent thinking and prompt caching (30 Oct 2026): additive, absent means on
             k !== 'agentThinking' &&
-            k !== 'autoCheckNewDates',
+            k !== 'autoCheckNewDates' &&
+            // add-on model packs (N1, 11 Nov 2026): additive, absent means no address set
+            k !== 'addons',
         )
         .sort(),
     ).toEqual(Object.keys(v09.Settings.shape).sort());

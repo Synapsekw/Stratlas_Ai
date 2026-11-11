@@ -103,6 +103,8 @@ describe('M10 additive rule: no layer kind, raster format, derived kind or recor
   it('keeps the 0.9 key sets of Settings and MapPackInfo (globe settings and raster packs have their own files)', () => {
     expect(keysOf(Settings)).toEqual(
       [
+        // add-on model packs (N1, 11 Nov 2026): additive, absent means no address set
+        'addons',
         'anthropicWorkspaceId',
         'agentThinking',
         'autoCheckNewDates',

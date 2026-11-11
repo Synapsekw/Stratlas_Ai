@@ -123,6 +123,7 @@ describe('pipeline params', () => {
       'pano.stitch',
       'model.evidence',
       'pointcloud.clean',
+      'segment.lift',
       'telecom.antennas',
       'telecom.flag',
       'rf.coverage',

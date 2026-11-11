@@ -7,13 +7,13 @@
 .addons-section .addon-row .addon-acts {
   display: flex;
   flex: none;
-  gap: 6px;
+  gap: var(--sp-3);
   max-width: none;
 }
 .addons-section .addon-facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
+  gap: var(--sp-2) var(--sp-5);
   margin: 0;
   color: var(--fg-1);
   font-size: var(--t-12);
@@ -22,8 +22,8 @@
 .addons-section .addon-problem {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
-  margin: 0 0 10px;
+  gap: var(--sp-3);
+  margin: 0 0 var(--sp-4);
   color: var(--fg-1);
   font-size: var(--t-12);
   line-height: 1.5;
@@ -33,12 +33,12 @@
 }
 .addons-section .addon-problem svg {
   flex: none;
-  margin-block-start: 2px;
+  margin-block-start: var(--sp-1);
   color: var(--warn-ink);
 }
 .addons-section .ap-progress {
   display: grid;
-  gap: 8px;
+  gap: var(--sp-4);
   font-size: var(--t-12);
   color: var(--fg-1);
 }
@@ -46,14 +46,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--sp-5);
   font-variant-numeric: tabular-nums;
 }
 .addons-section .addon-file {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-block: 12px 8px;
+  gap: var(--sp-6);
+  margin-block: var(--sp-5) var(--sp-4);
 }
 .addons-section .addon-file .help {
   flex: 1;

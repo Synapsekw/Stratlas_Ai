@@ -129,6 +129,8 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
   it('keeps the 0.10 Settings keys (survey defaults are their own userData file)', () => {
     expect(keysOf(Settings)).toEqual(
       [
+        // add-on model packs (N1, 11 Nov 2026): additive, absent means no address set
+        'addons',
         'anthropicWorkspaceId',
         'agentThinking',
         'autoCheckNewDates',
