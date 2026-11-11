@@ -52,7 +52,7 @@ from typing import Any
 from ..inspection import equirect as EQ
 from ..multiview.scene import radius_for, vote_pass
 from ..params import known_keys
-from ..runtime import JobError, Step, StepContext, atomic_write_json, commit_files, now_iso
+from ..runtime import JobError, Step, StepContext, atomic_write_json, commit_files, now_iso, replace_over
 from .fewshot import Example, load_examples, summary, validate_examples
 
 DETECTIONS_SCHEMA = "aio.detections/1"
@@ -614,7 +614,7 @@ def _decode_frame(exe: str, src: Path, t: float, out: Path) -> bool:
     if res.returncode != 0 or not tmp.is_file() or tmp.stat().st_size == 0:
         tmp.unlink(missing_ok=True)
         return False
-    tmp.replace(out)
+    replace_over(tmp, out)
     return True
 
 
@@ -653,7 +653,7 @@ def _prepare_frames(ctx: StepContext, params: dict[str, Any]) -> list[dict[str, 
             if not face.exists():
                 tmp = face.with_name(face.stem + ".part.jpg")
                 Image.fromarray(EQ.render_face(rgb, yaw)).save(tmp, "JPEG", quality=92)
-                tmp.replace(face)
+                replace_over(tmp, face)
         out.append(
             {
                 "t": t,
