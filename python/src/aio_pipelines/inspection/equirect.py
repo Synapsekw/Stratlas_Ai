@@ -98,7 +98,10 @@ def face_rays(yaw: float, fov: float, size: int, pitch: float = 0.0) -> np.ndarr
 
 
 def render_face(frame: np.ndarray, yaw: float, fov: float = FACE_FOV, size: int = FACE_SIZE) -> np.ndarray:
-    """A square pinhole face of an equirectangular ``frame`` (H x W x C), bilinear, wrapping the seam."""
+    """A square pinhole face of an equirectangular ``frame`` (H x W x C), bilinear, wrapping the seam.
+
+    A ``float32`` frame (0 to 255) is read as it is, so the caller converts a frame once for all
+    its faces; the face comes back as ``uint8`` then, else in the frame's own type."""
     h, w = frame.shape[:2]
     d = face_rays(yaw, fov, size)
     yaws = np.degrees(np.arctan2(d[..., 0], -d[..., 2]))
@@ -111,11 +114,12 @@ def render_face(frame: np.ndarray, yaw: float, fov: float = FACE_FOV, size: int 
     ay = (fy - y0)[..., None]
     xa, xb = x0 % w, (x0 + 1) % w
     ya, yb = np.clip(y0, 0, h - 1), np.clip(y0 + 1, 0, h - 1)
-    img = frame.astype(np.float32)
+    img = frame if frame.dtype == np.float32 else frame.astype(np.float32)
     top = img[ya, xa] * (1 - ax) + img[ya, xb] * ax
     bot = img[yb, xa] * (1 - ax) + img[yb, xb] * ax
     out = top * (1 - ay) + bot * ay
-    return np.clip(out + 0.5, 0, 255).astype(frame.dtype)
+    kind = np.uint8 if frame.dtype == np.float32 else frame.dtype
+    return np.clip(out + 0.5, 0, 255).astype(kind)
 
 
 def face_pixel_dir(x: float, y: float, yaw: float, fov: float, size: int) -> np.ndarray:
@@ -163,8 +167,9 @@ def face_box_inside(box: Sequence[float], size: int, margin: float = 0.02) -> bo
     return box[0] > m and box[1] > m and box[2] < size - m and box[3] < size - m
 
 
-def frame_iou(a: Sequence[float], b: Sequence[float], w: float) -> float:
-    """IoU of two frame boxes on the wrapping frame (b is tried shifted by -w, 0 and +w)."""
+def frame_iou(a: Sequence[float], b: Sequence[float], w: float, over: str = "union") -> float:
+    """IoU of two frame boxes on the wrapping frame (b is tried shifted by -w, 0 and +w); with
+    ``over="smaller"`` the intersection over the smaller box's area."""
     best = 0.0
     area_a = max(0.0, a[2] - a[0]) * max(0.0, a[3] - a[1])
     area_b = max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1])
@@ -172,22 +177,31 @@ def frame_iou(a: Sequence[float], b: Sequence[float], w: float) -> float:
         ix = max(0.0, min(a[2], b[2] + s) - max(a[0], b[0] + s))
         iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
         inter = ix * iy
-        union = area_a + area_b - inter
-        if union > 0:
-            best = max(best, inter / union)
+        den = min(area_a, area_b) if over == "smaller" else area_a + area_b - inter
+        if den > 0:
+            best = max(best, inter / den)
     return best
 
 
 def merge_face_boxes(dets: list[dict], w: float, iou: float = 0.4) -> list[dict]:
-    """Drafts of one frame from overlapping faces as one: the higher score (then the box a face did
-    not cut) wins where two boxes of one class overlap by ``iou`` or more."""
+    """Drafts of one frame from overlapping faces as one. A box no face edge cut (``_inside``) wins
+    over a cut one, then the higher score. Boxes of one class from two faces (``_face``) are one
+    object when their intersection covers ``iou`` of the smaller box, so the half of an object a
+    face cut never makes a second draft; two boxes of one face (or without ``_face``) need an IoU
+    of ``iou``, so a small object in front of a large one of its class stays its own."""
 
-    def rank(d: dict) -> tuple[float, int]:
-        return (float(d.get("confidence") or 0.0), 1 if d.get("_inside") else 0)
+    def rank(d: dict) -> tuple[int, float]:
+        return (1 if d.get("_inside") else 0, float(d.get("confidence") or 0.0))
+
+    def same(a: dict, b: dict) -> bool:
+        if a["class"] != b["class"]:
+            return False
+        across = a.get("_face") is not None and b.get("_face") is not None and a["_face"] != b["_face"]
+        return frame_iou(a["bbox"], b["bbox"], w, "smaller" if across else "union") >= iou
 
     out: list[dict] = []
     for d in sorted(dets, key=rank, reverse=True):
-        if any(o["class"] == d["class"] and frame_iou(o["bbox"], d["bbox"], w) >= iou for o in out):
+        if any(same(o, d) for o in out):
             continue
         out.append(d)
     return out

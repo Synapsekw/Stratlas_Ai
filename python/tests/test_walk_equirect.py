@@ -132,7 +132,7 @@ def test_frame_iou_across_the_seam():
     assert E.frame_iou([0, 0, 10, 10], [500, 0, 510, 10], W) == 0.0
 
 
-def test_merge_face_boxes_keeps_the_higher_score():
+def test_merge_face_boxes_prefers_an_uncut_box_then_the_score():
     dets = [
         {"class": "a", "bbox": [100, 100, 200, 200], "confidence": 0.6, "_inside": True},
         {"class": "a", "bbox": [105, 100, 205, 200], "confidence": 0.9, "_inside": False},
@@ -140,16 +140,40 @@ def test_merge_face_boxes_keeps_the_higher_score():
         {"class": "a", "bbox": [800, 100, 900, 200], "confidence": 0.4},
     ]
     out = E.merge_face_boxes(dets, W)
-    assert [d["confidence"] for d in out] == [0.9, 0.5, 0.4]
-    # equal scores: the box the face did not cut wins
-    tie = E.merge_face_boxes(
+    # the uncut box wins over a higher-scored cut one; then by score
+    assert [d["confidence"] for d in out] == [0.6, 0.5, 0.4]
+    both_uncut = E.merge_face_boxes(
         [
-            {"class": "a", "bbox": [100, 100, 200, 200], "confidence": 0.7, "_inside": False, "k": 1},
-            {"class": "a", "bbox": [100, 100, 200, 200], "confidence": 0.7, "_inside": True, "k": 2},
+            {"class": "a", "bbox": [100, 100, 200, 200], "confidence": 0.7, "_inside": True, "k": 1},
+            {"class": "a", "bbox": [100, 100, 200, 200], "confidence": 0.8, "_inside": True, "k": 2},
         ],
         W,
     )
-    assert [d["k"] for d in tie] == [2]
+    assert [d["k"] for d in both_uncut] == [2]
+
+
+def test_a_half_box_a_face_cut_folds_into_the_whole_one():
+    whole = {"class": "a", "bbox": [100, 100, 300, 200], "confidence": 0.7, "_inside": True, "_face": 0.0}
+    half = {"class": "a", "bbox": [200, 100, 300, 200], "confidence": 0.9, "_inside": False, "_face": 90.0}
+    # IoU 0.5 over the union would be enough here; a quarter box is not, over the smaller box it is
+    quarter = {"class": "a", "bbox": [250, 100, 300, 200], "confidence": 0.9, "_inside": False, "_face": 90.0}
+    assert E.frame_iou(whole["bbox"], quarter["bbox"], W) == pytest.approx(0.25)
+    assert E.frame_iou(whole["bbox"], quarter["bbox"], W, "smaller") == pytest.approx(1.0)
+    assert E.merge_face_boxes([whole, half, quarter], W) == [whole]
+
+
+def test_a_small_box_inside_a_large_one_of_the_same_face_stays_its_own():
+    big = {"class": "a", "bbox": [100, 100, 400, 400], "confidence": 0.9, "_inside": True, "_face": 0.0}
+    small = {"class": "a", "bbox": [150, 150, 200, 200], "confidence": 0.8, "_inside": True, "_face": 0.0}
+    assert E.merge_face_boxes([big, small], W) == [big, small]
+
+
+def test_render_face_takes_a_float_frame_converted_once():
+    rng = np.random.default_rng(1)
+    frame = rng.integers(0, 256, (H, W, 3), dtype=np.uint8)
+    a = E.render_face(frame, 90.0, size=64)
+    b = E.render_face(frame.astype(np.float32), 90.0, size=64)
+    assert b.dtype == np.uint8 and np.array_equal(a, b)
 
 
 def test_box_size_and_centre():

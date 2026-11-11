@@ -431,6 +431,7 @@ class DetectVlm:
                                     "bbox": box,
                                     "confidence": c.get("score"),
                                     "_inside": EQ.face_box_inside(c["box"], EQ.FACE_SIZE),
+                                    "_face": yaw,
                                     "_c": {**c, "box": box},
                                 }
                             )
@@ -644,7 +645,7 @@ def _prepare_frames(ctx: StepContext, params: dict[str, Any]) -> list[dict[str, 
             continue
         try:
             with Image.open(png) as im:
-                rgb = np.asarray(im.convert("RGB"))
+                rgb = np.asarray(im.convert("RGB"), dtype=np.float32)  # once for all its faces
         except (OSError, ValueError):
             ctx.log(f"The walk frame at {t:g} s could not be read; skipped.", "warn")
             continue
