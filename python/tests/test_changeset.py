@@ -64,6 +64,34 @@ def test_a_recompute_keeps_reviews_by_item_id_and_backs_up_the_old_file(tmp_path
     assert json.loads((out.parent / "c1-c2-raster.json.bak").read_text("utf-8"))["items"][1]["id"] == "r2"
 
 
+def test_a_recompute_keeps_the_ai_label_of_a_region_with_the_same_id(tmp_path):
+    out = tmp_path / "change" / "c1-c2-raster.json"
+    label = {"kind": "vehicle", "what": "a truck", "model": "m", "at": "2026-11-11T09:00:00Z"}
+    newer = {"kind": "water", "at": "2026-11-12T09:00:00Z"}
+    first = change_set(
+        "c1-c2-raster",
+        "c1",
+        "c2",
+        "change.raster",
+        [region("r1", aiLabel=label), region("r2", aiLabel=label), region("r4", aiLabel=label)],
+    )
+    write_change_set(out, first)
+    again = change_set(
+        "c1-c2-raster",
+        "c1",
+        "c2",
+        "change.raster",
+        [region("r1", score=0.4), region("r3"), region("r4", aiLabel=newer)],
+    )
+    merged = write_change_set(out, again)
+    by_id = {it["id"]: it for it in merged["items"]}
+    assert by_id["r1"]["aiLabel"] == label
+    assert "aiLabel" not in by_id["r3"]
+    # a label the new run carries itself wins
+    assert by_id["r4"]["aiLabel"] == newer
+    assert json.loads(out.read_text("utf-8"))["items"][0]["aiLabel"] == label
+
+
 @pytest.mark.parametrize(
     "change",
     [

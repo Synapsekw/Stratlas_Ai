@@ -216,18 +216,22 @@ def read_change_set(path: Path) -> dict[str, Any] | None:
 
 
 def merge_reviews(new: Mapping[str, Any], previous: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Copy each review of ``previous`` onto the item of ``new`` with the same id."""
+    """Copy each review of ``previous`` onto the item of ``new`` with the same id, and each
+    region's ``aiLabel`` (Label with AI) onto the region with the same id: a re-run region is the
+    same place. What the new run carries itself is kept."""
     out = validate_change_set(new)
     if not previous:
         return out
-    reviews = {
-        it["id"]: it["review"]
-        for it in previous.get("items", [])
-        if isinstance(it, Mapping) and isinstance(it.get("id"), str) and it.get("review")
-    }
+    items = [
+        it for it in previous.get("items", []) if isinstance(it, Mapping) and isinstance(it.get("id"), str)
+    ]
+    reviews = {it["id"]: it["review"] for it in items if it.get("review")}
+    labels = {it["id"]: it["aiLabel"] for it in items if it.get("kind") == "region" and it.get("aiLabel")}
     for it in out["items"]:
         if "review" not in it and it["id"] in reviews:
             it["review"] = reviews[it["id"]]
+        if it.get("kind") == "region" and "aiLabel" not in it and it["id"] in labels:
+            it["aiLabel"] = labels[it["id"]]
     return out
 
 
