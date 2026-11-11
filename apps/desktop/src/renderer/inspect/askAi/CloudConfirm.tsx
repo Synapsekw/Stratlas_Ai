@@ -72,6 +72,8 @@ export function CloudConfirm({
   confirm,
   onSend,
   onCancel,
+  images,
+  line,
 }: {
   projectId: string;
   layers: readonly Layer[];
@@ -79,6 +81,10 @@ export function CloudConfirm({
   confirm: ConfirmInfo;
   onSend: () => void;
   onCancel: () => void;
+  /** Images made for the request (data URLs), previewed instead of layer items. */
+  images?: readonly string[];
+  /** The question in the caller's words, given the cost ("Send a crop ... about $0.02?"). */
+  line?: (cost: string) => string;
 }): ReactElement {
   const t = useT();
   const [dontAsk, setDontAsk] = useState(false);
@@ -92,11 +98,13 @@ export function CloudConfirm({
     <div className="ask-confirm" data-testid="cloud-confirm" role="group">
       <div className="ask-confirm-row">
         <span className="ask-confirm-line" data-testid="cloud-confirm-line">
-          {t(confirm.photos === 0 ? 'askAi.cloud.confirmFrames' : 'askAi.cloud.confirm', {
-            count,
-            provider: confirm.providerLabel,
-            cost,
-          })}
+          {line
+            ? line(cost)
+            : t(confirm.photos === 0 ? 'askAi.cloud.confirmFrames' : 'askAi.cloud.confirm', {
+                count,
+                provider: confirm.providerLabel,
+                cost,
+              })}
         </span>
         <button
           type="button"
@@ -148,6 +156,13 @@ export function CloudConfirm({
             <span className="mono">{modelLabel(confirm.model)}</span>
           </p>
           <div className="ask-prev-grid">
+            {images?.map((src, n) => (
+              <figure key={`img-${String(n)}`}>
+                <div className="m-thumb">
+                  <img src={src} alt="" />
+                </div>
+              </figure>
+            ))}
             {confirm.preview.map((it) => (
               <figure key={`${it.layer}:${it.kind === 'photo' ? it.photo : String(it.t)}`}>
                 <PreviewImage projectId={projectId} layers={layers} item={it} />

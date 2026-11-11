@@ -2,6 +2,7 @@ import { changeStore, type ChangePairContext, type RegisterRow } from '@aio/chan
 import type { ChangeItem, ChangeSet, IpcResponse, Layer, ProjectManifest, Vec3 } from '@aio/schema';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CropIo } from '../survey/orthoCrop';
+import type { LabelIo } from './labelChange';
 
 vi.mock('../shell', () => ({
   bridge: { call: () => Promise.resolve({ ok: false, error: 'Not configured' }) },
@@ -9,7 +10,11 @@ vi.mock('../shell', () => ({
 
 const {
   labelOrthos,
-  labelRegion,
+  labelConfirmInfo,
+  labelNeedsConfirm,
+  labelRouteName,
+  prepareLabel,
+  sendLabel,
   labelRoute,
   labelUnavailable,
   labelWindow,
@@ -185,7 +190,77 @@ describe('labelRegion', () => {
     status: 'open',
   };
 
-  it('sends both crops, outlined, and saves the label read from the answer', async () => {
+  const answer = (): IpcResponse<'ai:ask'> => ({
+    ok: true,
+    provider: 'anthropic',
+    model: 'claude-sonnet-5-5',
+    promptVersion: 'ask-v1',
+    items: [
+      {
+        box: [0.2, 0.2, 0.8, 0.8],
+        label: 'a tipper truck',
+        note: '',
+        fields: [{ key: 'kind', label: 'Kind of change', type: 'choice', value: 'vehicle' }],
+      },
+    ],
+    inputTokens: 1,
+    outputTokens: 1,
+    warnings: [],
+  });
+  const io = (over: Partial<LabelIo> = {}): LabelIo => ({
+    crop: fakeCrop,
+    encode: () => Promise.resolve('data:image/jpeg;base64,x'),
+    ask: () => Promise.resolve(answer()),
+    status: () => Promise.resolve(status()),
+    now: () => '2026-11-11T09:00:00Z',
+    runId: () => 'run-1',
+    ...over,
+  });
+  const prepared = async (over: Partial<LabelIo> = {}) => {
+    const p = await prepareLabel({
+      row,
+      ctx,
+      dates: { from: '1 Oct 2026', to: '1 Nov 2026' },
+      io: io(over),
+    });
+    if ('error' in p) throw new Error(p.error);
+    return p;
+  };
+
+  it('makes both crops, outlined, into a change request on the chosen route', async () => {
+    const encode = vi.fn(() => Promise.resolve('data:image/jpeg;base64,x'));
+    const p = await prepared({ encode });
+    expect(p.request.images.map((i) => i.label)).toEqual(['1 Oct 2026', '1 Nov 2026']);
+    expect(p.route).toMatchObject({ kind: 'cloud', provider: 'anthropic' });
+    expect(p.request.backend).toEqual(p.route);
+    expect(encode).toHaveBeenCalledTimes(2);
+    const outline = encode.mock.calls[0] as unknown as [unknown, number, unknown[]];
+    expect(outline[2]).toHaveLength(4);
+  });
+
+  it('asks before a cloud label leaves the computer, unless skipped for the project', async () => {
+    const p = await prepared();
+    expect(labelNeedsConfirm(p, () => false)).toBe(true);
+    expect(labelNeedsConfirm(p, () => true)).toBe(false);
+    expect(labelNeedsConfirm({ ...p, route: { kind: 'local' } }, () => false)).toBe(false);
+    const ask = vi.fn(() => Promise.resolve(answer()));
+    await expect(
+      sendLabel(p, { confirmed: false, io: { ask, now: () => '' }, skipped: () => false }),
+    ).rejects.toThrow(/confirmed/);
+    expect(ask).not.toHaveBeenCalled();
+    const info = labelConfirmInfo(p);
+    expect(info).toMatchObject({ providerLabel: 'Anthropic', photos: 2, frames: 0 });
+    expect(info.images).toHaveLength(2);
+    expect(info.userText).toContain('marked area');
+  });
+
+  it('names who answers for the tip', () => {
+    expect(labelRouteName({ kind: 'cloud', provider: 'anthropic', model: 'm' })).toBe('Anthropic');
+    expect(labelRouteName({ kind: 'local' })).toBe("this computer's model");
+    expect(labelRouteName(null)).toBeNull();
+  });
+
+  it('sends a confirmed label and saves what the answer says on the region', async () => {
     let saved: ChangeSet | null = null;
     changeStore.setState({
       sets: { 'c1-c2-raster': set() },
@@ -194,46 +269,14 @@ describe('labelRegion', () => {
         return Promise.resolve(true);
       },
     });
-    const ask = vi.fn<(req: unknown) => Promise<IpcResponse<'ai:ask'>>>(() =>
-      Promise.resolve<IpcResponse<'ai:ask'>>({
-        ok: true,
-        provider: 'anthropic',
-        model: 'claude-sonnet-5-5',
-        promptVersion: 'ask-v1',
-        items: [
-          {
-            box: [0.2, 0.2, 0.8, 0.8],
-            label: 'a tipper truck',
-            note: '',
-            fields: [{ key: 'kind', label: 'Kind of change', type: 'choice', value: 'vehicle' }],
-          },
-        ],
-        inputTokens: 1,
-        outputTokens: 1,
-        warnings: [],
-      }),
-    );
-    const encode = vi.fn(() => Promise.resolve('data:image/jpeg;base64,x'));
-    const err = await labelRegion({
-      row,
-      ctx,
-      dates: { from: '1 Oct 2026', to: '1 Nov 2026' },
-      io: {
-        crop: fakeCrop,
-        encode,
-        ask,
-        status: () => Promise.resolve(status()),
-        now: () => '2026-11-11T09:00:00Z',
-        runId: () => 'run-1',
-      },
+    const p = await prepared();
+    const ask = vi.fn(() => Promise.resolve(answer()));
+    const err = await sendLabel(p, {
+      confirmed: true,
+      io: { ask, now: () => '2026-11-11T09:00:00Z' },
     });
     expect(err).toBeNull();
-    const req = ask.mock.calls[0]?.[0] as { images: { label: string }[]; backend: unknown };
-    expect(req.images.map((i) => i.label)).toEqual(['1 Oct 2026', '1 Nov 2026']);
-    expect(req.backend).toMatchObject({ kind: 'cloud' });
-    expect(encode).toHaveBeenCalledTimes(2);
-    const outline = encode.mock.calls[0] as unknown as [unknown, number, unknown[]];
-    expect(outline[2]).toHaveLength(4);
+    expect(ask).toHaveBeenCalledWith(p.request);
     expect((saved as ChangeSet | null)?.items[0]).toMatchObject({
       aiLabel: {
         kind: 'vehicle',
@@ -247,20 +290,22 @@ describe('labelRegion', () => {
   it('says the error when the ask fails and saves nothing', async () => {
     const save = vi.fn(() => Promise.resolve(true));
     changeStore.setState({ sets: { 'c1-c2-raster': set() }, save });
-    const err = await labelRegion({
-      row,
-      ctx,
-      dates: { from: 'a', to: 'b' },
-      io: {
-        crop: fakeCrop,
-        encode: () => Promise.resolve('data:image/jpeg;base64,x'),
-        ask: () => Promise.resolve({ ok: false, error: 'The cloud is off.' }),
-        status: () => Promise.resolve(status()),
-        now: () => '',
-        runId: () => 'r',
-      },
+    const p = await prepared();
+    const err = await sendLabel(p, {
+      confirmed: true,
+      io: { ask: () => Promise.resolve({ ok: false, error: 'The cloud is off.' }), now: () => '' },
     });
     expect(err).toMatch(/The cloud is off/);
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it('says why when no AI can answer', async () => {
+    const p = await prepareLabel({
+      row,
+      ctx,
+      dates: { from: 'a', to: 'b' },
+      io: io({ status: () => Promise.resolve(null) }),
+    });
+    expect(p).toEqual({ error: expect.stringMatching(/AI/) as string });
   });
 });

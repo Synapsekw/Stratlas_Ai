@@ -2,8 +2,9 @@
  * Label with AI on a change region (V4 change labels), on the change demo (synthetic, no client
  * data). A region set over truth's first imagery change is written into the working copy (the
  * pipeline that finds regions is change-area.spec's subject, not this one's); the Changes tab
- * lists it; Label with AI sends a crop of the region on each date's ortho through the Compare
- * route and the row shows the label, which is saved on the region in the set file and survives
+ * lists it; Label with AI makes a crop of the region on each date's ortho, asks with the cloud
+ * confirm (the two crops in its preview), sends them through the Compare route on Send, and the
+ * row shows the label, which is saved on the region in the set file and survives
  * reopening.
  *
  * Stand-in: the cloud is the scripted test model (`QUADRION_AI_TEST_PROVIDER=1` with the isolated
@@ -95,7 +96,19 @@ test('Label with AI names what changed in a region and keeps it on the set', asy
   const run = panel.getByTestId('change-ai-label-run');
   await expect(run).toBeEnabled();
   await expect(run).toHaveText('Label with AI');
+  // the cloud answers (the tip names it), so the crops leave the computer only after a yes
+  await expect(run).toHaveAttribute('data-route', 'Anthropic');
   await run.click();
+  const confirm = panel.getByTestId('cloud-confirm');
+  await expect(confirm).toBeVisible();
+  await expect(confirm.getByTestId('cloud-confirm-line')).toContainText(
+    'Send a crop of this area on both dates (2 images) to Anthropic',
+  );
+  await expect(row.getByTestId('change-ai-label')).toHaveCount(0);
+  await confirm.getByTestId('cloud-confirm-preview-open').click();
+  await expect(confirm.getByTestId('cloud-confirm-preview').locator('img')).toHaveCount(2);
+  await confirm.getByTestId('cloud-confirm-send').click();
+  await expect(confirm).toHaveCount(0);
 
   const chip = row.getByTestId('change-ai-label');
   await expect(chip).toHaveAttribute('data-kind', 'material-added');

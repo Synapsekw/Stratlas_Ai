@@ -7,14 +7,41 @@
  *
  * Which AI answers is decided as for any custom ask (`routeAsk`, Auto): the cloud's strong model
  * when it is usable and the project keeps nothing local, else this PC's model. A project that
- * forbids the cloud (`aiPolicy`) is answered locally.
+ * forbids the cloud (`aiPolicy`) is answered locally. A cloud label asks first, as every cloud ask
+ * does (`CloudConfirm`, unless the person chose not to be asked for the project): the crops are
+ * made, shown in the confirm, and leave the computer only on Send.
  */
-import { changeLabelAsk, readChangeLabel, routeAsk, type AskRoute, type UnitBox } from '@aio/ai';
+import {
+  askPrompt,
+  changeLabelAsk,
+  estimateAsk,
+  PROVIDER_LABELS,
+  readChangeLabel,
+  routeAsk,
+  type AskRoute,
+  type UnitBox,
+} from '@aio/ai';
 import { changeStore, type ChangePairContext, type RegisterRow } from '@aio/change';
-import type { ChangeAiLabel, ChangeItem, ChangeSet, IpcResponse, Layer, Vec3 } from '@aio/schema';
+import type {
+  ChangeAiLabel,
+  ChangeItem,
+  ChangeSet,
+  IpcRequest,
+  IpcResponse,
+  Layer,
+  Vec3,
+} from '@aio/schema';
 import { t } from '@aio/ui';
 import { assetUrl, dateShiftOf, workspace } from '@aio/workspace';
+import type { CloudConfirm } from '../inspect/askAi/backend';
+import { cloudConfirmSkipped } from '../inspect/askAi/prefs';
 import { bridge } from '../shell';
+
+/** A cloud provider's name as people know it ("Anthropic"), else its id. */
+const providerLabelOf = (provider: string): string =>
+  provider in PROVIDER_LABELS
+    ? PROVIDER_LABELS[provider as keyof typeof PROVIDER_LABELS]
+    : provider;
 import {
   browserCropIo,
   composeCrop,
@@ -170,27 +197,86 @@ export interface LabelIo {
   runId(): string;
 }
 
+/** A label request ready to send: the crops are made, the route is chosen. */
+export interface PreparedLabel {
+  projectId: string;
+  setId: string;
+  itemId: string;
+  route: AskRoute;
+  request: IpcRequest<'ai:ask'>;
+  /** Where the region falls in the crops. */
+  mark: UnitBox;
+}
+
+/** Whether the person must say yes before the crops leave the computer (as for any cloud ask). */
+export function labelNeedsConfirm(
+  p: Pick<PreparedLabel, 'route' | 'projectId'>,
+  skipped: (projectId: string) => boolean = cloudConfirmSkipped,
+): boolean {
+  return p.route.kind === 'cloud' && !skipped(p.projectId);
+}
+
+/** What the cloud confirm says for a prepared label: two images, the provider, the cost. */
+export function labelConfirmInfo(p: PreparedLabel): CloudConfirm & { images: string[] } {
+  const provider = p.route.kind === 'cloud' ? p.route.provider : 'local';
+  const model = p.route.kind === 'cloud' ? p.route.model : '';
+  const images = p.request.images.map((i) => ({ width: i.width, height: i.height }));
+  return {
+    provider,
+    providerLabel: providerLabelOf(provider),
+    model,
+    photos: p.request.images.length,
+    frames: 0,
+    estimate: estimateAsk({
+      provider,
+      model,
+      kind: 'change',
+      images,
+      prompt: p.request.prompt,
+      fields: p.request.fields,
+      requests: 1,
+    }),
+    preview: [],
+    hint: '',
+    instructions: '',
+    userText: askPrompt({
+      family: 'cloud',
+      kind: 'change',
+      prompt: p.request.prompt,
+      fields: p.request.fields,
+      images,
+    }),
+    images: p.request.images.map((i) => i.dataUrl),
+  };
+}
+
+/** Who answers, for the button's tip: the provider's name, or this computer's model. */
+export function labelRouteName(route: AskRoute | null): string | null {
+  if (!route) return null;
+  return route.kind === 'cloud' ? providerLabelOf(route.provider) : t('change.aiLabel.whereLocal');
+}
+
 /**
- * Label one region row and save the label; an error sentence, or null when it is saved.
+ * Make the crops of one region row and the request; an error sentence when it cannot be.
  * `dates` names each capture as the panel does (said to the model with its image).
  */
-export async function labelRegion(i: {
+export async function prepareLabel(i: {
   row: RegisterRow;
   ctx: ChangePairContext;
   dates: { from: string; to: string };
   io?: LabelIo;
-}): Promise<string | null> {
+}): Promise<PreparedLabel | { error: string }> {
   const { row, ctx } = i;
   const item = row.item;
-  if (item.kind !== 'region') return null;
+  if (item.kind !== 'region') return { error: t('change.aiLabel.noPlace') };
   const io = i.io ?? browserLabelIo(ctx.projectId);
   const origin = ctx.manifest.origin;
   const placed = labelWindow(item, origin);
-  if (!placed) return t('change.aiLabel.noPlace');
+  if (!placed) return { error: t('change.aiLabel.noPlace') };
   const orthos = labelOrthos(ctx);
-  if (!orthos) return t('change.aiLabel.noOrtho');
+  if (!orthos) return { error: t('change.aiLabel.noOrtho') };
   const route = labelRoute(await io.status(ctx.projectId));
-  if (!route) return t('change.aiLabel.noAi');
+  if (!route) return { error: t('change.aiLabel.noAi') };
   const outline = outlinePixels(item, placed.window, origin);
   const image = async (layer: RasterLayer, key: string, label: string) => {
     const crop = await composeCrop(
@@ -209,14 +295,18 @@ export async function labelRegion(i: {
       label: label.slice(0, 80),
     };
   };
-  let answer: IpcResponse<'ai:ask'>;
   try {
     const [before, after] = await Promise.all([
       image(orthos.from, `${orthos.from.id}#${item.id}`, i.dates.from),
       image(orthos.to, `${orthos.to.id}#${item.id}`, i.dates.to),
     ]);
-    answer = await io.ask(
-      changeLabelAsk({
+    return {
+      projectId: ctx.projectId,
+      setId: row.setId,
+      itemId: item.id,
+      route,
+      mark: placed.mark,
+      request: changeLabelAsk({
         runId: io.runId(),
         projectId: ctx.projectId,
         backend: route,
@@ -224,16 +314,38 @@ export async function labelRegion(i: {
         after,
         region: { areaM2: item.areaM2 },
       }),
-    );
+    };
+  } catch (e) {
+    return {
+      error: t('change.aiLabel.failed', { error: e instanceof Error ? e.message : String(e) }),
+    };
+  }
+}
+
+/**
+ * Send a prepared label and save the answer on its region; an error sentence, or null when it
+ * is saved. A cloud request is refused unless the person confirmed it (or chose not to be asked
+ * for the project).
+ */
+export async function sendLabel(
+  p: PreparedLabel,
+  o: { confirmed: boolean; io?: Pick<LabelIo, 'ask' | 'now'>; skipped?: (id: string) => boolean },
+): Promise<string | null> {
+  if (!o.confirmed && labelNeedsConfirm(p, o.skipped))
+    throw new Error('A cloud label is sent only once the person has confirmed it.');
+  const io = o.io ?? browserLabelIo(p.projectId);
+  let answer: IpcResponse<'ai:ask'>;
+  try {
+    answer = await io.ask(p.request);
   } catch (e) {
     return t('change.aiLabel.failed', { error: e instanceof Error ? e.message : String(e) });
   }
-  const read = readChangeLabel(answer, placed.mark);
+  const read = readChangeLabel(answer, p.mark);
   if (!read) return t('change.aiLabel.failed', { error: answer.ok ? '' : answer.error });
   const store = changeStore.getState();
-  const set = store.sets[row.setId];
-  if (!set) return t('change.aiLabel.failed', { error: `no change set ${row.setId}` });
-  const saved = await store.save(withAiLabel(set, item.id, { ...read, at: io.now() }));
+  const set = store.sets[p.setId];
+  if (!set) return t('change.aiLabel.failed', { error: `no change set ${p.setId}` });
+  const saved = await store.save(withAiLabel(set, p.itemId, { ...read, at: io.now() }));
   return saved ? null : (changeStore.getState().error ?? t('change.aiLabel.failed', { error: '' }));
 }
 

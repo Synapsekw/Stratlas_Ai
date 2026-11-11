@@ -131,4 +131,23 @@ describe('CloudConfirm', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onSend).not.toHaveBeenCalled();
   });
+
+  it("says the caller's line and previews the images it made", () => {
+    act(() => {
+      root.render(
+        <CloudConfirm
+          projectId="proj"
+          layers={layers}
+          confirm={info({ photos: 2, preview: [] })}
+          images={['data:image/jpeg;base64,a', 'data:image/jpeg;base64,b']}
+          line={(cost) => `Send two crops, about ${cost}?`}
+          onSend={onSend}
+          onCancel={onCancel}
+        />,
+      );
+    });
+    expect(q('cloud-confirm-line')?.textContent).toBe('Send two crops, about $0.43?');
+    click('cloud-confirm-preview-open');
+    expect(q('cloud-confirm-preview')?.querySelectorAll('img')).toHaveLength(2);
+  });
 });

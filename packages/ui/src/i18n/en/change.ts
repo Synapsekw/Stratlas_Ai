@@ -128,7 +128,10 @@ export const enChange = {
   'change.aiLabel.action': 'Label with AI',
   'change.aiLabel.again': 'Label again',
   'change.aiLabel.tip':
-    'Send a crop of this area on both dates to the AI and ask what changed. The label is a suggestion; the verdict and your review stay as they are.',
+    'Ask {where} what changed here: a crop of this area on both dates is sent. The label is a suggestion; the verdict and your review stay as they are.',
+  'change.aiLabel.whereLocal': "this computer's model",
+  'change.aiLabel.confirm':
+    'Send a crop of this area on both dates (2 images) to {provider}, about {cost}?',
   'change.aiLabel.busy': 'Labelling...',
   'change.aiLabel.failed': 'The AI could not label this area: {error}',
   'change.aiLabel.noOrtho': 'Needs a tiled or image ortho on each date.',
