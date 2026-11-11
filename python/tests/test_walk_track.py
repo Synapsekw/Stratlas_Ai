@@ -353,6 +353,35 @@ def test_a_reviewed_detection_of_another_class_or_far_away_blocks_nothing(pose):
     assert len(out) == 3 and stats["droppedOnReviewed"] == 0 and out[2]["track"]["frames"] == 21
 
 
+def _marker(i: int, t: float, x: float, status: str = "draft") -> dict:
+    """A box on a 3600 x 1800 frame (10 px per degree), no pose."""
+    return {
+        **draft(i, t, [x, 880, x + 40, 920], cls="marker"),
+        "status": status,
+        "width": 3600,
+        "height": 1800,
+    }
+
+
+def test_a_second_box_beside_the_reviewed_one_on_its_frame_is_another_object():
+    # accepted marker A on t=0 only; a distinct marker B 5 degrees to its right, seen t=0..5
+    dets = [_marker(0, 0.0, 1800, "accepted")] + [_marker(10 + k, float(k), 1850) for k in range(6)]
+    out, stats = T.track_frames(dets, {LAYER: None})
+    assert stats["droppedOnReviewed"] == 0
+    assert [d["id"] for d in out] == ["d0", "d10"] and out[1]["track"]["frames"] == 6
+
+
+def test_a_true_duplicate_of_the_reviewed_object_still_drops():
+    # the accepted marker on t=2, and drafts of the same marker t=0..5 (one on its own frame)
+    dets = [_marker(0, 2.0, 1800, "accepted")] + [_marker(10 + k, float(k), 1800 + k) for k in range(6)]
+    out, stats = T.track_frames(dets, {LAYER: None})
+    assert [d["id"] for d in out] == ["d0"] and stats["droppedOnReviewed"] == 6
+    # without a draft on its own frame, the neighbours match it by direction
+    gap = [_marker(0, 2.0, 1800, "accepted")] + [_marker(10 + k, float(k), 1800) for k in (0, 1, 3, 4)]
+    out, stats = T.track_frames(gap, {LAYER: None})
+    assert [d["id"] for d in out] == ["d0"] and stats["droppedOnReviewed"] == 4
+
+
 # ---------------------------------------------------------------- the renderer's pose convention
 
 

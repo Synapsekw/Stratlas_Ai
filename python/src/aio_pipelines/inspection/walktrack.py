@@ -25,10 +25,11 @@ and ``rangeM`` are from the lead frame's walk position.
 A draft that already has ``track`` (an earlier run) is expanded back into its member drafts first,
 so a re-run or an extended run gives one draft per object again. Reviewed detections (accepted,
 rejected, linked to an issue) and drafts that are not on a walk frame pass through untouched; the
-order stays stable (a lead takes the place of its first member). A track with a draft that would
-join an accepted or rejected frame detection (or one of its sightings) by the tracking rule is
-dropped whole (``droppedOnReviewed`` counts its drafts): that object was reviewed, so it never
-gets a second draft.
+order stays stable (a lead takes the place of its first member). A track that is an accepted or
+rejected frame detection's object is dropped whole (``droppedOnReviewed`` counts its drafts), so
+a reviewed object never gets a second draft: most of its members on or next to the object's
+frames match it (on the object's own frame by overlap, IoU 0.5; on a neighbouring frame without
+a sighting of it by the base join angle), and none sits beside it on one of its own frames.
 """
 
 from __future__ import annotations
@@ -413,24 +414,32 @@ def track_frames(
         if isinstance(d, dict) and is_frame_draft(d) and d["frame"]["layer"] in poses_by_layer
     ]
     # reviewed objects: each accepted or rejected frame detection and its own sightings
-    looks: list[tuple[str, str, float, list[float], float, float]] = []
-    for d in expanded:
+    looks: list[tuple[int, str, str, float, list[float], float, float]] = []  # (object, ...)
+    for n, d in enumerate(expanded):
         if isinstance(d, dict) and is_reviewed_frame(d) and d["frame"]["layer"] in poses_by_layer:
             lay, w, h = d["frame"]["layer"], float(d["width"]), float(d["height"])
-            looks.append((lay, str(d.get("class")), float(d["frame"]["t"]), d["bbox"], w, h))
+            looks.append((n, lay, str(d.get("class")), float(d["frame"]["t"]), d["bbox"], w, h))
             tr = d.get("track") if isinstance(d.get("track"), dict) else {}
             for sg in tr.get("sightings") or []:
                 if isinstance(sg, dict) and isinstance(sg.get("t"), int | float) and _box_ok(sg.get("bbox")):
-                    looks.append((lay, str(d.get("class")), float(sg["t"]), sg["bbox"], w, h))
-    seen = [(d["frame"]["layer"], float(d["frame"]["t"])) for _, d in cand] + [(x[0], x[2]) for x in looks]
+                    looks.append((n, lay, str(d.get("class")), float(sg["t"]), sg["bbox"], w, h))
+    seen = [(d["frame"]["layer"], float(d["frame"]["t"])) for _, d in cand] + [(x[1], x[3]) for x in looks]
     frames_of = {lay: _sampled(lay, seen, assessed) for lay in {lay for lay, _ in seen}}
     index_of = {lay: {t: k for k, t in enumerate(ts)} for lay, ts in frames_of.items()}
     progress(0.1, "Following the objects from frame to frame")
-    reviewed = []
-    for lay, cls, t, box, w, h in looks:
+    reviewed: list[_Look] = []
+    for obj, lay, cls, t, box, w, h in looks:
         rd, _ = _look_dir([float(v) for v in box], w, h, t, poses_by_layer.get(lay))
-        reviewed.append((lay, cls, index_of[lay][round(t, 3)], rd, max(0.05, E.box_size_deg(box, w, h))))
-    near_reviewed: set[int] = set()  # drafts that would join a reviewed detection
+        size = max(0.05, E.box_size_deg(box, w, h))
+        reviewed.append(
+            _Look(obj, lay, cls, index_of[lay][round(t, 3)], rd, size, [float(v) for v in box], w)
+        )
+    own_frames: dict[int, set[int]] = {}  # reviewed object -> the frames it has a sighting on
+    for r in reviewed:
+        own_frames.setdefault(r.obj, set()).add(r.frame)
+    # per draft, the reviewed objects it is (matches) and the ones it cannot be (sits beside)
+    matches: dict[int, set[int]] = {}
+    beside: dict[int, set[int]] = {}
     groups: dict[tuple[str, str], list[_Obs]] = {}
     for i, d in cand:
         lay = d["frame"]["layer"]
@@ -446,8 +455,10 @@ def track_frames(
         cam = cam / np.linalg.norm(cam)
         size = max(0.05, E.box_size_deg(box, w, h))
         frame_k = index_of[lay][round(t, 3)]
-        if any(_same_object(r, cls_of(d), lay, frame_k, cam, size) for r in reviewed):
-            near_reviewed.add(i)
+        for r in reviewed:
+            v = _versus(r, cls_of(d), lay, frame_k, cam, size, box, own_frames[r.obj])
+            if v is not None:
+                (matches if v else beside).setdefault(i, set()).add(r.obj)
         conf = d.get("confidence")
         o = _Obs(
             index=i,
@@ -469,9 +480,9 @@ def track_frames(
     tracks: list[_Track] = []
     for key in sorted(groups):
         tracks += _track_group(sorted(groups[key], key=lambda o: (o.t, o.index)), check)
-    # a track touching a reviewed object is that object: none of its drafts is kept
+    # a track that is a reviewed object (see _is_reviewed_object): none of its drafts is kept
     dropped = {
-        m.index for tr in tracks if any(m.index in near_reviewed for m in tr.members) for m in tr.members
+        m.index for tr in tracks if _is_reviewed_object(tr, matches, beside, reviewed) for m in tr.members
     }
     tracks = [tr for tr in tracks if tr.members[0].index not in dropped]
     progress(0.5, "Placing the objects")
@@ -554,18 +565,60 @@ def _look_dir(box: list[float], w: float, h: float, t: float, pose: WalkPose | N
     return cam / np.linalg.norm(cam), q
 
 
-def _same_object(r, cls: str, layer: str, frame_k: int, d: np.ndarray, size: float) -> bool:
-    """Whether a draft is the object of the reviewed sighting ``r``: same class and walk, at most
-    ``MAX_GAP`` sampled frames between them either way in time, sizes within a factor of 2 and a
-    direction within the base join angle (not grown with the gap: a neighbouring object of the class
-    must not be mistaken for it). Drafts further on join through their track."""
-    lay, rcls, rk, rd, rsize = r
-    if lay != layer or rcls != cls:
-        return False
-    skipped = abs(frame_k - rk) - 1
-    if skipped > MAX_GAP:
-        return False
-    if max(size, rsize) / max(1e-6, min(size, rsize)) > MAX_SIZE_RATIO:
-        return False
-    limit = max(MIN_JOIN_DEG, JOIN_SIZE_SHARE * max(size, rsize))
-    return _angle(rd, d) <= limit
+@dataclass
+class _Look:
+    """One sighting of a reviewed object: the object (its detection's index), walk, class, sampled
+    frame, direction, size (degrees), box and frame width."""
+
+    obj: int
+    layer: str
+    cls: str
+    frame: int
+    dir: np.ndarray
+    size: float
+    box: list[float]
+    w: float
+
+
+SAME_FRAME_IOU = 0.5
+
+
+def _versus(
+    r: _Look, cls: str, layer: str, frame_k: int, d: np.ndarray, size: float, box: list[float], own: set[int]
+) -> bool | None:
+    """A draft against one reviewed sighting: True when it is that object, False when it cannot be
+    (it sits beside it on the sighting's own frame), None when it says nothing (another class or
+    walk, too far in time, or a neighbouring frame that holds a sighting of the object already).
+
+    On the sighting's own frame the draft is that object only when it overlaps it (IoU 0.5): a
+    second box of the class next to it is another object. On a neighbouring frame (at most
+    ``MAX_GAP`` sampled frames between) it is the object when its size is within a factor of 2 and
+    its direction within the base join angle (not grown with the gap)."""
+    if r.layer != layer or r.cls != cls:
+        return None
+    if frame_k == r.frame:
+        return E.frame_iou(r.box, box, r.w) >= SAME_FRAME_IOU
+    if abs(frame_k - r.frame) - 1 > MAX_GAP or frame_k in own:
+        return None
+    if max(size, r.size) / max(1e-6, min(size, r.size)) > MAX_SIZE_RATIO:
+        return None
+    return True if _angle(r.dir, d) <= max(MIN_JOIN_DEG, JOIN_SIZE_SHARE * max(size, r.size)) else None
+
+
+def _is_reviewed_object(
+    tr: _Track, matches: dict[int, set[int]], beside: dict[int, set[int]], reviewed: list[_Look]
+) -> bool:
+    """A track is a reviewed object when most of its members on or next to the object's frames
+    (else within ``MAX_GAP`` frames of them) match it, and none of them sits beside it on one of
+    its own frames: two things seen at once are two things."""
+    for obj in {o for m in tr.members for o in matches.get(m.index, ())}:
+        if any(obj in beside.get(m.index, ()) for m in tr.members):
+            continue
+        frames = [r.frame for r in reviewed if r.obj == obj]
+        near = [m for m in tr.members if any(abs(m.frame - k) <= 1 for k in frames)]
+        if not near:
+            near = [m for m in tr.members if any(abs(m.frame - k) - 1 <= MAX_GAP for k in frames)]
+        hit = sum(1 for m in near if obj in matches.get(m.index, ()))
+        if hit * 2 > len(near):
+            return True
+    return False
