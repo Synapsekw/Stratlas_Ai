@@ -194,3 +194,15 @@ export const PointClassifier = z
   .strict();
 export type PointClassifier = z.infer<typeof PointClassifier>;
 export const GROUND_CLASS = 2;
+/**
+ * What the window sends as `pointcloud.clean` noise `ground` to ask for ground: main replaces it
+ * with the installed Ground classifier add-on's `smrf` (or refuses when there is none), so the
+ * settings the pipeline uses always come from the add-on. PDAL's own SMRF defaults.
+ */
+export const GROUND_REQUEST: SmrfParams = {
+  cell: 1,
+  slope: 0.15,
+  window: 18,
+  threshold: 0.5,
+  scalar: 1.25,
+};
