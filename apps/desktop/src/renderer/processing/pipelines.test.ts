@@ -39,6 +39,9 @@ describe('pipelines by area (the Advanced list)', () => {
     expect(PIPELINE_GROUP['thermal.decode']).toBeDefined();
     expect(listed).not.toContain('thermal.hotspots');
     expect(PIPELINE_GROUP['thermal.hotspots']).toBeDefined();
+    // started after a local model run over walk frames
+    expect(listed).not.toContain('walk.track');
+    expect(jobTitle('walk.track')).toBe('Tracking walk detections');
     expect(groups.map((g) => g.label)).toEqual([
       'Photos to maps',
       'Inspection',

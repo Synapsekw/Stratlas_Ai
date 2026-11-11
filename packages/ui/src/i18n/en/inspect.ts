@@ -446,6 +446,8 @@ export const enInspect = {
   'inspect.tag.aiUnscored': 'AI',
   'inspect.vote.views': 'Seen in {count} photos',
   'inspect.vote.single': 'Only 1 of {count} photos',
+  'inspect.track.frames': 'Seen in {count} frames',
+  'inspect.track.place': '{range} m away, bearing {deg}°',
   'inspect.accept': 'Accept',
   'inspect.change': 'Change',
   'inspect.dismiss': 'Dismiss',

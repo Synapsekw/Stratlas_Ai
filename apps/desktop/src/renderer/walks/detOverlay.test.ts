@@ -175,4 +175,45 @@ describe('the detections shown at a moment of the walk', () => {
     const only = [det('r', 'w', 4, 'rejected'), det('a', 'w', 3)];
     expect(framesNear(only, 'w', 4, [3, 4])).toEqual([]);
   });
+
+  it('show a tracked draft at each of its sightings, with the sighting box', () => {
+    const lead = {
+      id: 'tr',
+      source: { kind: 'frame', layer: 'w', t: 3 },
+      status: 'draft',
+      geom: { type: 'box', x: 100, y: 50, w: 40, h: 30 },
+      track: {
+        frames: 3,
+        firstT: 2,
+        lastT: 4,
+        sightings: [
+          { t: 2, bbox: [1980, 50, 2030, 80] },
+          { t: 4, bbox: [140, 50, 190, 80] },
+          { t: 3, bbox: [0, 0, 1, 1] },
+        ],
+      },
+    } as unknown as Detection;
+    const samples = [2, 3, 4, 5];
+    const at2 = framesNear([lead], 'w', 2.1, samples);
+    expect(at2.map((d) => d.id)).toEqual(['tr']);
+    expect(at2[0]?.source).toEqual({ kind: 'frame', layer: 'w', t: 2 });
+    // a box past the seam stays as it is (x1 > width wraps)
+    expect(at2[0]?.geom).toEqual({ type: 'box', x: 1980, y: 50, w: 50, h: 30 });
+    expect(framesNear([lead], 'w', 4, samples)[0]?.geom).toEqual({
+      type: 'box',
+      x: 140,
+      y: 50,
+      w: 50,
+      h: 30,
+    });
+    // the lead's own frame shows the lead once, with its own box
+    const at3 = framesNear([lead], 'w', 3, samples);
+    expect(at3).toHaveLength(1);
+    expect(at3[0]).toBe(lead);
+    expect(framesNear([lead], 'w', 5, samples)).toEqual([]);
+    // without the sampled times, the sighting frames stand in too
+    expect(framesNear([lead], 'w', 2).map((d) => d.id)).toEqual(['tr']);
+    // a rejected track shows nowhere
+    expect(framesNear([{ ...lead, status: 'rejected' }], 'w', 2, samples)).toEqual([]);
+  });
 });

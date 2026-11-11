@@ -4,8 +4,12 @@ import type { DetectItem } from '../convert';
 import {
   EXAMPLES_TIME_FACTOR,
   estimateMinutes,
+  MAX_RUN_FRAMES,
   orderForProject,
   planRuns,
+  runItems,
+  runRequest,
+  runSize,
   type Chosen,
 } from './runPlan';
 
@@ -51,6 +55,59 @@ describe('runPlan', () => {
       runs: [],
       skippedFrames: 1,
     });
+  });
+
+  it('runs the frames of a 360 walk as a run of their own, other video frames are skipped', () => {
+    const items: DetectItem[] = [
+      { kind: 'photo', layer: 'd1', photo: 'p1' },
+      { kind: 'frame', layer: 'w1', t: 4 },
+      { kind: 'frame', layer: 'v1', t: 2 },
+      { kind: 'frame', layer: 'w1', t: 6.5 },
+      { kind: 'frame', layer: 'w1', t: 4.0001 },
+    ];
+    const chosen: Chosen[] = [{ where: 'library', detector: det('a', ['roof']), threshold: 0.8 }];
+    const plan = planRuns(items, chosen, new Set(['w1']));
+    expect(plan.skippedFrames).toBe(1);
+    expect(plan.runs.map((r) => ({ layer: r.layer, photos: r.photos, frames: r.frames }))).toEqual([
+      { layer: 'd1', photos: ['p1'], frames: undefined },
+      { layer: 'w1', photos: [], frames: [4, 6.5] },
+    ]);
+    const walk = plan.runs[1];
+    if (!walk) throw new Error('no walk run');
+    expect(runSize(walk)).toBe(2);
+    expect(runItems(walk)).toEqual([
+      { kind: 'frame', layer: 'w1', t: 4 },
+      { kind: 'frame', layer: 'w1', t: 6.5 },
+    ]);
+    const req = runRequest('E:/p', 'run-1', walk);
+    expect(req).toMatchObject({
+      pipeline: 'detect.vlm',
+      params: {
+        run: 'run-1',
+        layer: 'w1',
+        photos: [],
+        frames: [
+          { layer: 'w1', t: 4 },
+          { layer: 'w1', t: 6.5 },
+        ],
+      },
+    });
+    // a photo run sends no frames key: older processing tools refuse unknown keys
+    const photos = plan.runs[0];
+    if (!photos) throw new Error('no photo run');
+    expect('frames' in (runRequest('E:/p', 'run-2', photos) as { params: object }).params).toBe(
+      false,
+    );
+  });
+
+  it('caps a walk run at MAX_RUN_FRAMES frames', () => {
+    const items: DetectItem[] = Array.from({ length: MAX_RUN_FRAMES + 5 }, (_, k) => ({
+      kind: 'frame',
+      layer: 'w1',
+      t: k / 2,
+    }));
+    const plan = planRuns(items, [], new Set(['w1']));
+    expect(plan.runs.map((r) => r.frames?.length)).toEqual([MAX_RUN_FRAMES, 5]);
   });
 
   it('estimateMinutes rounds up', () => {

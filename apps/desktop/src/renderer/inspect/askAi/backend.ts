@@ -2,7 +2,8 @@
  * Which AI answers an Ask AI request. The person never picks it in the flow: the Settings default
  * (Auto, Local only, Cloud) and what is installed decide, so one button does the right thing. Auto
  * prefers what runs on this computer (the project's detectors, then the local model) over the
- * cloud; walk frames go to the local model only, local detectors read photos only. When nothing
+ * cloud; walk frames stay on this computer (the local model, else the detectors), local detectors
+ * read photos and walk frames, never ordinary clip frames. When nothing
  * can run, the answer says why. A cloud run also needs the person's yes first: `cloudConfirm` is
  * what that confirm shows (where it goes, how many, about what it costs, what is sent).
  */
@@ -67,6 +68,9 @@ export function resolveBackend(i: {
   const { pref, check, items, avail } = i;
   if (items.length === 0) return none('nothing');
   const allPhotos = items.every((x) => x.kind === 'photo');
+  const walkIds = new Set(i.layers.filter((l) => l.kind === 'walk').map((l) => l.id));
+  // the local model and the detectors read photos and 360 walk frames, never ordinary clip frames
+  const localFits = items.every((x) => x.kind === 'photo' || walkIds.has(x.layer));
 
   if (check.kind === 'detector') {
     const found =
@@ -74,7 +78,7 @@ export function resolveBackend(i: {
         ? undefined
         : avail.detectors.find((d) => d.where === check.where && d.detector.id === check.id);
     if (!found) return none('no-backend');
-    if (!allPhotos) return none('detector-photos');
+    if (!localFits) return none('detector-photos');
     return {
       kind: 'detectors',
       chosen: [
@@ -87,11 +91,39 @@ export function resolveBackend(i: {
     avail.local.available && avail.local.models.length > 0
       ? (avail.local.models.find((m) => m.id === i.localModel) ?? avail.local.models[0])
       : undefined;
-  const walkIds = new Set(i.layers.filter((l) => l.kind === 'walk').map((l) => l.id));
-  // the local model reads photos and walk frames; main refuses ordinary clip frames
-  const localFits = items.every((x) => x.kind === 'photo' || walkIds.has(x.layer));
-  if (items.some((x) => x.kind === 'frame' && walkIds.has(x.layer)))
-    return model && localFits ? { kind: 'local', model } : none('walk-local');
+  const modelAnswers =
+    !!model &&
+    (check.kind === 'everything' ||
+      Object.entries(i.classMapOf(model.id)).some(
+        ([raw, to]) => model.card.classes.includes(raw) && to === check.classId,
+      ));
+  /** The detectors for the check: the class's one, or the project's (up to the run's cap). */
+  const detectorsFor = (): ResolvedBackend | null => {
+    const chosen =
+      check.kind === 'class'
+        ? avail.detectors.filter((d) => d.detector.classId === check.classId).slice(0, 1)
+        : orderForProject(avail.detectors, i.assetTypes ?? []).forProject.slice(
+            0,
+            MAX_RUN_DETECTORS,
+          );
+    if (chosen.length === 0) return null;
+    return {
+      kind: 'detectors',
+      chosen: chosen.map((d) => ({
+        where: d.where,
+        detector: d.detector,
+        threshold: d.detector.threshold,
+      })),
+    };
+  };
+  // Walk frames stay on this computer, whatever the default: the local model first (it reads the
+  // whole equirect frame and was trained on them), then the detectors (four perspective faces
+  // per frame), then the local model even when it maps no class to the check.
+  if (items.some((x) => x.kind === 'frame' && walkIds.has(x.layer))) {
+    if (!localFits) return none('walk-local');
+    if (model && modelAnswers) return { kind: 'local', model };
+    return detectorsFor() ?? (model ? { kind: 'local', model } : none('walk-local'));
+  }
 
   const cloud = avail.cloud;
   const cloudFits =
@@ -109,32 +141,10 @@ export function resolveBackend(i: {
 
   // on this computer first: the detectors (photos only), then the local model, then the cloud
   if (allPhotos) {
-    const chosen =
-      check.kind === 'class'
-        ? avail.detectors.filter((d) => d.detector.classId === check.classId).slice(0, 1)
-        : orderForProject(avail.detectors, i.assetTypes ?? []).forProject.slice(
-            0,
-            MAX_RUN_DETECTORS,
-          );
-    if (chosen.length > 0)
-      return {
-        kind: 'detectors',
-        chosen: chosen.map((d) => ({
-          where: d.where,
-          detector: d.detector,
-          threshold: d.detector.threshold,
-        })),
-      };
+    const chosen = detectorsFor();
+    if (chosen) return chosen;
   }
-  if (
-    model &&
-    localFits &&
-    (check.kind === 'everything' ||
-      Object.entries(i.classMapOf(model.id)).some(
-        ([raw, to]) => model.card.classes.includes(raw) && to === check.classId,
-      ))
-  )
-    return { kind: 'local', model };
+  if (model && localFits && modelAnswers) return { kind: 'local', model };
   if (pref === 'auto' && cloudFits) return toCloud();
   return none(
     'no-backend',

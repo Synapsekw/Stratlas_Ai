@@ -282,6 +282,13 @@ describe('inspection jobs', () => {
     expect(finishedIssuesJob([running], [done], 'e:/data/p')).toBe(false);
   });
 
+  it('reads the passes again once a walk tracking finishes on the open project', () => {
+    const running = job({ id: 't1', pipeline: 'walk.track', project: 'E:/data/p/' });
+    const done = { ...running, status: 'done' as const };
+    expect(finishedPassJob([running], [done], 'e:/data/p')).toBe(true);
+    expect(finishedPassJob([running], [done], 'e:/data/other')).toBe(false);
+  });
+
   it('keeps edits made in the app while the job ran', () => {
     const issue = (id: string, updatedAt: string, title = id): Issue => ({
       id,

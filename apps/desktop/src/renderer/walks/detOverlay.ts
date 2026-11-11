@@ -148,11 +148,40 @@ export function boxScreenLines(
 }
 
 /**
+ * A tracked walk draft (`track`, one draft per object) also stands at each of its sightings: a
+ * copy of the draft on that frame, with the sighting's box (same space and size as the draft). The
+ * copy keeps the draft's id, so picking it picks the draft. A sighting on the draft's own frame
+ * adds nothing.
+ */
+export function withSightings(list: readonly Detection[]): Detection[] {
+  const out: Detection[] = [];
+  for (const d of list) {
+    out.push(d);
+    const sightings = d.track?.sightings;
+    if (d.source.kind !== 'frame' || !sightings) continue;
+    const seen = new Set([Math.round(d.source.t * 1000)]);
+    for (const s of sightings) {
+      const key = Math.round(s.t * 1000);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const [x0, y0, x1, y1] = s.bbox;
+      out.push({
+        ...d,
+        source: { ...d.source, t: s.t },
+        geom: { type: 'box', x: x0, y: y0, w: x1 - x0, h: y1 - y0 },
+      });
+    }
+  }
+  return out;
+}
+
+/**
  * The detections of walk layer `layer` to show at playback time `t`: those of the nearest sampled
  * frame (not rejected), none when that frame found nothing. The sampled frames are the pass's
  * `assessed` times (`samples`, seconds) plus the frames that hold detections, so without the
  * assessed times the detection frames stand in. The nearest frame counts while `t` is within half
- * the gap to its neighbour on `t`'s side (the other side at the ends), and at most a second.
+ * the gap to its neighbour on `t`'s side (the other side at the ends), and at most a second. A
+ * tracked draft shows at its sightings' frames too (`withSightings`).
  */
 export function framesNear(
   list: readonly Detection[],
@@ -161,7 +190,9 @@ export function framesNear(
   samples: readonly number[] = [],
 ): Detection[] {
   const ms = (x: number) => Math.round(x * 1000);
-  const own = list.filter((d) => d.source.kind === 'frame' && d.source.layer === layer);
+  const own = withSightings(
+    list.filter((d) => d.source.kind === 'frame' && d.source.layer === layer),
+  );
   const times = [
     ...new Set([
       ...samples.map(ms),

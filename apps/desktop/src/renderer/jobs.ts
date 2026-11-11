@@ -226,11 +226,12 @@ export function finishedIssuesJob(
   );
 }
 
-const PASS_WRITERS: ReadonlySet<string> = new Set(['detect.vlm']);
+const PASS_WRITERS: ReadonlySet<string> = new Set(['detect.vlm', 'walk.track']);
 
 /**
- * True when a local detector run (`detect.vlm`) on the project at `root` has just finished: it
- * wrote a pass file, so an open Detections review should read the passes again.
+ * True when a local detector run (`detect.vlm`) or a walk tracking (`walk.track`) on the project
+ * at `root` has just finished: it wrote a pass file, so an open Detections review should read the
+ * passes again.
  */
 export function finishedPassJob(
   prev: readonly JobRecord[],
@@ -1100,6 +1101,8 @@ export const FORMS: Record<PipelineName, Field[]> = {
   'thermal.hotspots': [],
   // empty on purpose: detectors start from the photo review, never from a form
   'detect.vlm': [],
+  // started quietly after a local model run over walk frames, never from a form
+  'walk.track': [],
 };
 
 /** Turn the form's text values into checked params, or say what is wrong. */

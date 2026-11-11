@@ -121,3 +121,62 @@ describe('multi-view vote in the model', () => {
     expect(out.detections[1]?.vote).toBeUndefined();
   });
 });
+
+describe('360 walk track in the model', () => {
+  const track = {
+    frames: 3,
+    firstT: 4,
+    lastT: 5,
+    score: 0.8,
+    point: [1, 2, 3] as [number, number, number],
+    placedOn: 'ground' as const,
+    bearingDeg: 90,
+    rangeM: 5,
+    sightings: [{ t: 4, bbox: [10, 20, 60, 80] as [number, number, number, number] }],
+  };
+  const tracked: DetectionsFile = {
+    schema: 'aio.detections/1',
+    source: 'model',
+    layer: 'walk-1',
+    detections: [
+      {
+        id: 't1',
+        frame: { layer: 'walk-1', t: 4.5 },
+        class: 'corrosion',
+        status: 'draft',
+        bbox: [12, 20, 62, 80],
+        space: 'source',
+        width: 5760,
+        height: 2880,
+        track,
+      },
+      {
+        id: 't2',
+        frame: { layer: 'walk-1', t: 9 },
+        class: 'corrosion',
+        status: 'draft',
+        bbox: [100, 20, 160, 80],
+        space: 'source',
+        width: 5760,
+        height: 2880,
+      },
+    ],
+  };
+  it('carries the track and writes it back on review', () => {
+    const { detections, passes } = readPasses(
+      [{ name: 'model-run-w.json', file: tracked }],
+      passCtx,
+    );
+    expect(detections[0]?.track).toEqual(track);
+    expect(detections[1]?.track).toBeUndefined();
+    const rec = passes[0];
+    if (!rec) throw new Error('no pass');
+    const reviewed = detections.map((d) =>
+      d.id === 't1' ? { ...d, status: 'rejected' as const } : d,
+    );
+    const out = writePass(rec, reviewed, new Map());
+    expect(out.detections[0]?.track).toEqual(track);
+    expect(out.detections[0]?.status).toBe('rejected');
+    expect(out.detections[1]?.track).toBeUndefined();
+  });
+});

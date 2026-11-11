@@ -79,6 +79,7 @@ export const PIPELINE_GROUP: Record<PipelineName, PipelineGroupId> = {
   'thermal.decode': 'survey',
   'thermal.hotspots': 'survey',
   'detect.vlm': 'inspection',
+  'walk.track': 'inspection',
   'drawing.import': 'import',
   'design.import': 'import',
   'opf.import': 'import',
@@ -116,6 +117,7 @@ export const BENCH_ONLY: ReadonlySet<string> = new Set<PipelineName>([
   'thermal.decode',
   'thermal.hotspots',
   'flyability.import',
+  'walk.track',
 ]);
 
 /**
@@ -151,6 +153,7 @@ const TITLE_KEYS: Partial<Record<PipelineName, MessageKey>> = {
   'telecom.antennas': 'jobs.telecom.antennas',
   'telecom.flag': 'jobs.telecom.flag',
   'detect.vlm': 'jobs.detect.vlm',
+  'walk.track': 'jobs.walk.track',
 };
 
 /** A job's title in the list and its details: plain words where there are any, else the pipeline's. */
@@ -241,6 +244,7 @@ export const JOB_KIND: Record<PipelineName, JobKind> = {
   'thermal.decode': 'survey',
   'thermal.hotspots': 'survey',
   'detect.vlm': 'ai',
+  'walk.track': 'ai',
   'drawing.import': 'files',
   'design.import': 'files',
   'opf.import': 'files',

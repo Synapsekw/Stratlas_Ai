@@ -11,12 +11,18 @@ import { detectPackRefusal } from './analytics/detectPack';
 import { flyabilityPackRefusal } from './builder';
 import { evidenceJobPackRefusal, evidencePackRefusal } from './evidencePack';
 import { thermalPackRefusal } from './thermalPack';
+import { walkTrackPackRefusal } from './walkTrackPack';
 
 /** Exercise the registered IPC callback without starting Electron or a pipeline process. */
 function jobsStart(
   version: string,
   status: 'failed' | 'cancelled' | 'interrupted',
-  saved: { params: Record<string, unknown>; packVersion: string; project?: string } = {
+  saved: {
+    params: Record<string, unknown>;
+    packVersion: string;
+    project?: string;
+    pipeline?: string;
+  } = {
     params: {},
     packVersion: '0.13.1',
   },
@@ -83,6 +89,7 @@ function jobsStart(
     thermalPackRefusal,
     evidenceJobPackRefusal,
     detectPackRefusal,
+    walkTrackPackRefusal,
     detectQueue: { start: detectStart, gpuBusy, photoStarting },
     laneSphere: () => null,
     inspectorQueue: { start: laneStart },
@@ -165,7 +172,7 @@ describe('jobs:start resume feature gate', () => {
       params: {},
       packVersion: '0.31.0',
       pipeline: 'flyability.import',
-    } as never);
+    });
     await resumed.handle({ resume: 'saved-evidence' });
     expect(resumed.laneStart).toHaveBeenCalledWith({ resume: 'saved-evidence' });
   });
@@ -197,6 +204,54 @@ describe('jobs:start resume feature gate', () => {
     const current = jobsStart('0.28.0', 'failed');
     expect(await current.handle(req)).toEqual({ ok: true });
     expect(current.detectStart).toHaveBeenCalledWith(req);
+  });
+
+  it('refuses detect.vlm over walk frames below 0.35.0, new or resumed; photos run as before', async () => {
+    const frames = {
+      run: 'run-a1',
+      layer: 'walk-1',
+      photos: [],
+      frames: [{ layer: 'walk-1', t: 1 }],
+    };
+    const req = { pipeline: 'detect.vlm' as const, project: 'synthetic', params: frames };
+    const old = jobsStart('0.34.0', 'failed');
+    expect(await old.handle(req)).toEqual({
+      ok: false,
+      error: detectPackRefusal('detect.vlm', '0.34.0', frames),
+    });
+    expect(old.detectStart).not.toHaveBeenCalled();
+    const photos = { ...req, params: { run: 'run-a2', layer: 'photos-1', photos: ['p1'] } };
+    expect(await old.handle(photos)).toEqual({ ok: true });
+    const resumed = jobsStart('0.34.0', 'interrupted', {
+      params: frames,
+      packVersion: '0.35.0',
+      pipeline: 'detect.vlm',
+    });
+    expect(await resumed.handle({ resume: 'saved-evidence' })).toEqual({
+      ok: false,
+      error: detectPackRefusal('detect.vlm', '0.34.0', frames),
+    });
+    expect(resumed.detectStart).not.toHaveBeenCalled();
+    const current = jobsStart('0.35.0', 'failed');
+    expect(await current.handle(req)).toEqual({ ok: true });
+    expect(current.detectStart).toHaveBeenCalledWith(req);
+  });
+
+  it('refuses walk.track on processing tools below 0.35.0', async () => {
+    const req = {
+      pipeline: 'walk.track' as const,
+      project: 'synthetic',
+      params: { pass: 'detections/model-r1.json' },
+    };
+    const old = jobsStart('0.34.0', 'failed');
+    expect(await old.handle(req)).toEqual({
+      ok: false,
+      error: walkTrackPackRefusal('walk.track', '0.34.0'),
+    });
+    expect(old.start).not.toHaveBeenCalled();
+    const current = jobsStart('0.35.0', 'failed');
+    expect(await current.handle(req)).toEqual({ ok: true });
+    expect(current.start).toHaveBeenCalledWith(req);
   });
 
   it('refuses a photo job while a detector run holds the graphics card', async () => {

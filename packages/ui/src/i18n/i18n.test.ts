@@ -612,7 +612,9 @@ describe('Inspect strings', () => {
       'Accept all Corrosion above 80% (5)',
     );
     expect(t('lightbox.openInInspect')).toBe('Open in Inspect');
-    expect(t('askAi.reason.walkLocal')).toBe('Walk frames need the local model.');
+    expect(t('askAi.reason.walkLocal')).toBe(
+      'Walk frames need the local model or a detector on this computer.',
+    );
   });
 });
 

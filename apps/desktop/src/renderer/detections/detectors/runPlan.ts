@@ -1,6 +1,6 @@
 /**
  * The plan of a local detector run (`detect.vlm`) from the Detect dialog: the selection split into
- * one job per photo layer (video frames are skipped, detectors run on photos), the time it will
+ * one job per photo layer or 360 walk layer (other video frames are skipped), the time it will
  * take, and the detectors ordered for the project.
  */
 import type { DetectorWhere, IpcRequest, VlmDetector } from '@aio/schema';
@@ -20,30 +20,43 @@ export interface Chosen {
   threshold: number;
 }
 
+/** At most this many walk frames in one job (`DetectVlmParams.frames`). */
+export const MAX_RUN_FRAMES = 2000;
+
 export interface PlannedRun {
+  /** A photos layer, or the walk layer of a run over walk frames. */
   layer: string;
   photos: string[];
+  /** Walk frames (video seconds of `layer`); a walk run has no photos (pipeline pack 0.35.0). */
+  frames?: number[];
   detectors: Chosen[];
 }
 
-/** One run per photo layer (in the order the layers come), each photo once; frames are counted. */
+/**
+ * One run per layer (in the order the layers come): the photos of a photos layer, each once, or
+ * the frames of a walk layer (`walkLayers`), each once. Frames of other video layers are counted
+ * and skipped: the detectors read photos and 360 walk frames only.
+ */
 export function planRuns(
   items: readonly DetectItem[],
   detectors: readonly Chosen[],
+  walkLayers: ReadonlySet<string> = new Set(),
 ): { runs: PlannedRun[]; skippedFrames: number } {
-  const byLayer = new Map<string, Set<string>>();
+  const byLayer = new Map<string, { photos: Set<string>; frames: Map<number, number> }>();
   let skippedFrames = 0;
   for (const i of items) {
-    if (i.kind === 'frame') {
+    if (i.kind === 'frame' && !walkLayers.has(i.layer)) {
       skippedFrames++;
       continue;
     }
-    const photos = byLayer.get(i.layer) ?? new Set<string>();
-    photos.add(i.photo);
-    byLayer.set(i.layer, photos);
+    const entry = byLayer.get(i.layer) ?? { photos: new Set<string>(), frames: new Map() };
+    if (i.kind === 'photo') entry.photos.add(i.photo);
+    else if (!entry.frames.has(Math.round(i.t * 1000)))
+      entry.frames.set(Math.round(i.t * 1000), i.t);
+    byLayer.set(i.layer, entry);
   }
   const runs: PlannedRun[] = [];
-  for (const [layer, set] of byLayer) {
+  for (const [layer, { photos: set, frames: times }] of byLayer) {
     const photos = [...set];
     for (let at = 0; at < photos.length; at += MAX_RUN_PHOTOS) {
       runs.push({
@@ -52,9 +65,27 @@ export function planRuns(
         detectors: [...detectors],
       });
     }
+    const frames = [...times.values()];
+    for (let at = 0; at < frames.length; at += MAX_RUN_FRAMES) {
+      runs.push({
+        layer,
+        photos: [],
+        frames: frames.slice(at, at + MAX_RUN_FRAMES),
+        detectors: [...detectors],
+      });
+    }
   }
   return { runs, skippedFrames };
 }
+
+/** The pictures one run reads: its photos, or its walk frames. */
+export const runSize = (r: PlannedRun): number => r.photos.length + (r.frames?.length ?? 0);
+
+/** What one run reads, as Ask AI items (for what is left after a stop or a failure). */
+export const runItems = (r: PlannedRun): DetectItem[] => [
+  ...r.photos.map((photo) => ({ kind: 'photo' as const, layer: r.layer, photo })),
+  ...(r.frames ?? []).map((t) => ({ kind: 'frame' as const, layer: r.layer, t })),
+];
 
 /**
  * How much longer a detector takes when its yes/no checks carry few-shot example crops (up to 4
@@ -98,6 +129,9 @@ export function runRequest(
       run: runId,
       layer: r.layer,
       photos: r.photos,
+      ...(r.frames && r.frames.length > 0
+        ? { frames: r.frames.map((t) => ({ layer: r.layer, t })) }
+        : {}),
       detectors: r.detectors.map((c) => ({
         where: c.where,
         detector: c.detector,

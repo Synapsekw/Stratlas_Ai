@@ -4,6 +4,7 @@ import type {
   RejectReason,
   Detection as PassDetection,
   DetectionRun as PassRun,
+  DetectionTrack,
   DetectionVote,
   DetectionsFile,
 } from '@aio/schema';
@@ -92,6 +93,8 @@ export interface Detection {
   proposedBox?: [number, number, number, number];
   /** The multi-view vote that merged this draft with those of other photos (the pipeline's). */
   vote?: DetectionVote;
+  /** The 360 walk track that joined this draft with those of neighbouring frames (the pipeline's). */
+  track?: DetectionTrack;
   /**
    * `accepted` without `issueId`: counted by the inspection pipeline, which makes the issue.
    * `accepted` with `issueId`: an issue already (made in the review, or by the pipeline).
@@ -236,6 +239,7 @@ function fromPass(
   if (raw.rejectNote) d.rejectNote = raw.rejectNote;
   if (raw.proposedBox) d.proposedBox = raw.proposedBox;
   if (raw.vote) d.vote = raw.vote;
+  if (raw.track) d.track = raw.track;
   if (raw.issueId) d.issueId = raw.issueId;
   if (raw.component) d.component = raw.component;
   for (const k of ['createdAt', 'updatedAt', 'reviewedBy', 'reviewedAt'] as const) {
@@ -360,6 +364,9 @@ export function toPassDetection(
   // the pipeline's vote; the review never changes it
   const vote = d.vote ?? raw?.vote;
   if (vote) out.vote = vote;
+  // the pipeline's walk track, the same
+  const track = d.track ?? raw?.track;
+  if (track) out.track = track;
   if (d.note) out.note = d.note;
   out.status = d.status;
   const kind = d.origin.kind;

@@ -26,6 +26,9 @@ const h = vi.hoisted(() => ({
   inference: null as Deferred<unknown> | null,
   queueStarted: false,
   started: [] as IpcRequest<'jobs:start'>[],
+  /** Jobs started quietly (walk.track after a local walk run), and why they are refused. */
+  quiet: [] as IpcRequest<'jobs:start'>[],
+  quietRefused: null as string | null,
   startAnswer: null as string | null,
   progress: [] as ((e: unknown) => void)[],
   /** The review cannot be read again (a reload that throws). */
@@ -36,11 +39,20 @@ const h = vi.hoisted(() => ({
 
 vi.mock('../../shell', async () => {
   const { createStore } = await import('zustand/vanilla');
-  const jobs = createStore(() => ({
+  const jobs = createStore<{ jobs: JobRecord[] } & Record<string, unknown>>((set) => ({
     jobs: [] as JobRecord[],
     start: (req: IpcRequest<'jobs:start'>) => {
       h.started.push(req);
       return Promise.resolve(h.startAnswer);
+    },
+    startQuiet: (req: IpcRequest<'jobs:start'>) => {
+      h.quiet.push(req);
+      if (h.quietRefused) return Promise.resolve({ error: h.quietRefused });
+      const id = `quiet-${String(h.quiet.length)}`;
+      set((s) => ({
+        jobs: [{ id, pipeline: 'walk.track', status: 'done' } as JobRecord, ...s.jobs],
+      }));
+      return Promise.resolve({ jobId: id });
     },
     cancel: () => Promise.resolve(null),
   }));
@@ -161,6 +173,8 @@ beforeEach(() => {
   h.queueStarted = false;
   h.started = [];
   h.startAnswer = null;
+  h.quiet = [];
+  h.quietRefused = null;
   h.progress = [];
   h.readFails = false;
   h.status = { ready: true, cloud: true, route: VISION };
@@ -536,6 +550,120 @@ describe('Ask AI runs', () => {
     expect(req.items).toEqual([1, 3, 5, 7, 9].map((time) => ({ layer: 'w1', t: time })));
     expect('tile' in req).toBe(false);
     expect(askAiRun.getState().run).toMatchObject({ frames: true, total: 5, phase: 'running' });
+  });
+
+  const WALK_MANIFEST = {
+    ...MANIFEST,
+    layers: [...MANIFEST.layers, { kind: 'walk', id: 'w1', name: 'Walk', durationS: 60 }],
+  } as unknown as ProjectManifest;
+  const localWalk = (items: DetectItem[]) =>
+    startAskRun({
+      projectId: 'p',
+      projectRoot: '/projects/p',
+      manifest: WALK_MANIFEST,
+      items,
+      check: { kind: 'everything' },
+      what: 'Frames',
+      backend: { kind: 'local', model: localModel as never },
+      prefs: readPrefs(),
+    });
+
+  it('tracks the walk pass quietly once a local walk run is done', async () => {
+    const run = localWalk(frames(3));
+    await flush();
+    const req = h.calls.find((c) => c.channel === 'inference:run')
+      ?.req as IpcRequest<'inference:run'>;
+    expect(h.quiet).toEqual([]);
+    h.progress.forEach((f) => {
+      f({ runId: req.runId, done: 3, total: 3, found: 3 });
+    });
+    h.inference?.resolve({ ok: true, value: { ok: true, file: 'f.json', count: 3 } });
+    await run;
+    expect(h.quiet).toEqual([
+      {
+        pipeline: 'walk.track',
+        project: '/projects/p',
+        params: { pass: `detections/model-${req.runId}.json`, layer: 'w1' },
+      },
+    ]);
+    expect(askAiRun.getState().run).toMatchObject({ phase: 'done' });
+    // the review is read again after the tracking
+    const reads = h.calls.filter((c) => c.channel === 'detections:read');
+    expect(reads.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('keeps the drafts as they are when the processing tools refuse walk.track', async () => {
+    h.quietRefused = 'Walk detections tracked and placed needs processing tools 0.35.0 or later.';
+    const run = localWalk(frames(2));
+    await flush();
+    const req = h.calls.find((c) => c.channel === 'inference:run')
+      ?.req as IpcRequest<'inference:run'>;
+    h.progress.forEach((f) => {
+      f({ runId: req.runId, done: 2, total: 2, found: 2 });
+    });
+    h.inference?.resolve({ ok: true, value: { ok: true, file: 'f.json', count: 2 } });
+    await run;
+    expect(h.quiet).toHaveLength(1);
+    expect(askAiRun.getState().run).toMatchObject({ phase: 'done', found: 2 });
+    expect(askAiRun.getState().run?.error).toBeUndefined();
+  });
+
+  it('sends walk frames to the detectors as a detect.vlm run of the walk', async () => {
+    const detector = { id: 'rust-v1', name: 'Rust', classId: 'corrosion', threshold: 0.9 };
+    void startAskRun({
+      projectId: 'p',
+      projectRoot: '/projects/p',
+      manifest: WALK_MANIFEST,
+      items: [...photos(1), ...frames(2)],
+      check: { kind: 'class', classId: 'corrosion' },
+      what: 'Frames',
+      backend: {
+        kind: 'detectors',
+        chosen: [
+          { where: 'library', detector: detector as unknown as VlmDetector, threshold: 0.65 },
+        ],
+      },
+      prefs: readPrefs(),
+    });
+    await flush();
+    expect(h.started).toHaveLength(2);
+    expect(h.started[1]).toMatchObject({
+      pipeline: 'detect.vlm',
+      params: {
+        layer: 'w1',
+        photos: [],
+        frames: [
+          { layer: 'w1', t: 1 },
+          { layer: 'w1', t: 3 },
+        ],
+      },
+    });
+    expect(askAiRun.getState().run).toMatchObject({ total: 3, frames: true });
+    // the run tracks its own frames when it commits: nothing is started after it
+    expect(h.quiet).toEqual([]);
+  });
+
+  it('does not track a walk run that failed, nor a photo run', async () => {
+    const failed = localWalk(frames(2));
+    await flush();
+    h.inference?.resolve({ ok: false, error: 'no model' });
+    await failed;
+    expect(h.quiet).toEqual([]);
+    clearAskRun();
+    const photoRun = startAskRun({
+      projectId: 'p',
+      projectRoot: '/projects/p',
+      manifest: WALK_MANIFEST,
+      items: photos(2),
+      check: { kind: 'everything' },
+      what: 'Photos',
+      backend: { kind: 'local', model: localModel as never },
+      prefs: readPrefs(),
+    });
+    await flush();
+    h.inference?.resolve({ ok: true, value: { ok: true, file: 'f.json', count: 1 } });
+    await photoRun;
+    expect(h.quiet).toEqual([]);
   });
 
   it('keeps the frames that could not be read as the ones left to try again', async () => {

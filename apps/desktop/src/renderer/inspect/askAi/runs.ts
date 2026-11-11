@@ -1,7 +1,8 @@
 /**
  * The one Ask AI run at a time, on the backend `resolveBackend` chose, with today's detection
  * code underneath: the cloud runner (`ai:detect` in batches), the local model (`inference:run`)
- * or the local detectors (`detect.vlm` jobs, one per photo layer). Whatever arrives stays: a run
+ * or the local detectors (`detect.vlm` jobs, one per photo or 360 walk layer). A local model run
+ * over walk frames then tracks them quietly (`walk.track`, `walkTrack.ts`). Whatever arrives stays: a run
  * that fails or is stopped keeps its suggestions and lists the items left, which Try again sends
  * on the same backend. Stop says "Stopping" until the run has ended (its pass written), then
  * "Stopped", never left "checking". A run belongs to its
@@ -29,20 +30,22 @@ import {
 import {
   newRunId,
   planRuns,
+  runItems,
   runRequest,
+  runSize,
   type Chosen,
-  type PlannedRun,
 } from '../../detections/detectors/runPlan';
 import { prepareItem } from '../../detections/prepare';
 import { startDetectRun } from '../../detections/runner';
 import { detections, dispatch, loadDetections, noteAssessed } from '../../detections/store';
-import { isActive } from '../../jobs';
+import { isActive, waitForJob } from '../../jobs';
 import { bridge, jobs } from '../../shell';
 import { cloudHint, providerLabelOf, type ResolvedBackend } from './backend';
 import type { AskCheck } from './checks';
 import { classMapFor, writeClassMap } from './classMap';
 import { askItemsToDrafts, requestName, sendFields, type AskDraftRequest } from './custom';
 import { cloudConfirmSkipped, rememberCheck, type AskAiPrefs } from './prefs';
+import { runPasses, trackWalkPasses, walkPassesOf } from './walkTrack';
 
 export interface AskRun {
   runIds: string[];
@@ -329,6 +332,26 @@ async function runLocal(
       remaining: rest(r, false),
     };
   });
+  if (!res.ok || !res.value.ok) return;
+  // walk frames: one draft per object, tracked quietly (older processing tools refuse the job and
+  // the drafts stay one per frame)
+  const walkPasses = walkPassesOf(runId, items, walkLayersOf(i.manifest));
+  if (walkPasses.length === 0) return;
+  const tracked = await trackWalkPasses(
+    {
+      startQuiet: (req) => jobs.getState().startQuiet(req),
+      wait: (jobId) => waitForJob(jobs, jobId),
+    },
+    i.projectRoot,
+    walkPasses,
+  );
+  if (tracked === 0 || !isLive(token)) return;
+  await reloadReview(projectId);
+  if (!isLive(token)) return;
+  const names = new Set(runPasses(runId, items).map((p) => p.name));
+  patch(token, () => ({
+    found: detections.getState().review.detections.filter((d) => names.has(d.pass)).length,
+  }));
 }
 
 /** One ask of a custom run: the images sent, and the item its drafts land on. */
@@ -520,15 +543,16 @@ async function runCustom(
 const vlmPassName = (runId: string) =>
   `vlm-${runId.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 100)}.json`;
 
-const photosOf = (run: PlannedRun): DetectItem[] =>
-  run.photos.map((photo) => ({ kind: 'photo', layer: run.layer, photo }));
+/** The 360 walk layers of the project: their frames run on the detectors too. */
+const walkLayersOf = (m: ProjectManifest): Set<string> =>
+  new Set(m.layers.filter((l) => l.kind === 'walk').map((l) => l.id));
 
 async function runDetectors(token: number, i: AskRunInput, chosen: Chosen[]): Promise<void> {
-  const plan = planRuns(i.items, chosen);
+  const plan = planRuns(i.items, chosen, walkLayersOf(i.manifest));
   const ids = plan.runs.map(() => newRunId());
   patch(token, () => ({
     runIds: ids,
-    total: plan.runs.reduce((n, r) => n + r.photos.length, 0),
+    total: plan.runs.reduce((n, r) => n + runSize(r), 0),
   }));
   let stopped = false;
   /** Read through a function: Stop flips it while the starts await. */
@@ -564,7 +588,7 @@ async function runDetectors(token: number, i: AskRunInput, chosen: Chosen[]): Pr
         found: detections.getState().review.detections.filter((d) => passes.has(d.pass)).length,
         remaining: plan.runs.flatMap((r, k) => {
           const id = ids[k];
-          return id !== undefined && jobOf(id)?.status === 'done' ? [] : photosOf(r);
+          return id !== undefined && jobOf(id)?.status === 'done' ? [] : runItems(r);
         }),
       }));
     });
@@ -600,7 +624,7 @@ async function runDetectors(token: number, i: AskRunInput, chosen: Chosen[]): Pr
     patch(token, () => ({
       phase: 'failed',
       error: [...refused.values()].join(' '),
-      remaining: plan.runs.flatMap(photosOf),
+      remaining: plan.runs.flatMap(runItems),
     }));
     return;
   }
@@ -615,7 +639,7 @@ async function runDetectors(token: number, i: AskRunInput, chosen: Chosen[]): Pr
       found: detections.getState().review.detections.filter((d) => passes.has(d.pass)).length,
       remaining: failedRuns.flatMap((k) => {
         const r = plan.runs[k];
-        return r ? photosOf(r) : [];
+        return r ? runItems(r) : [];
       }),
     }));
   };
@@ -640,11 +664,11 @@ async function runDetectors(token: number, i: AskRunInput, chosen: Chosen[]): Pr
       if (!job) return;
       started = true;
       if (job.status === 'done') {
-        done += run.photos.length;
+        done += runSize(run);
         ended++;
         return;
       }
-      done += Math.floor(job.progress * run.photos.length);
+      done += Math.floor(job.progress * runSize(run));
       if (!isActive(job)) {
         ended++;
         failedRuns.push(k);

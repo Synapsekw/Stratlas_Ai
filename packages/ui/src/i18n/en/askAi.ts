@@ -99,8 +99,8 @@ export const enAskAi = {
   'askAi.detectors.checking': 'Checking the Analytics pack and the graphics card.',
   'askAi.reason.noBackend':
     'Install a local model or detector in Settings, or allow cloud AI for this project.',
-  'askAi.reason.walkLocal': 'Walk frames need the local model.',
-  'askAi.reason.detectorPhotos': 'Local detectors look at photos only.',
+  'askAi.reason.walkLocal': 'Walk frames need the local model or a detector on this computer.',
+  'askAi.reason.detectorPhotos': 'Local detectors look at photos and 360 walk frames only.',
   'askAi.reason.nothing': 'Pick a photo first.',
   'askAi.mapping.keepName': 'Keep the name',
   'askAi.run.photos_one':

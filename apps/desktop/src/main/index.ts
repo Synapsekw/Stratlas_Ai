@@ -228,7 +228,12 @@ import { detectJobGate, detectLane } from './analytics/gate';
 import { checkHardware, execNvidiaSmi } from './analytics/hardware';
 import { ledgerDir, registerLedgerIpc } from './analytics/ledgerIpc';
 import { examplesForRun } from './analytics/fewShot';
-import { DETECT_PACK_FEATURE, detectPackRefusal } from './analytics/detectPack';
+import {
+  DETECT_FRAMES_PACK_FEATURE,
+  DETECT_PACK_FEATURE,
+  detectPackRefusal,
+} from './analytics/detectPack';
+import { WALK_TRACK_PACK_FEATURE, walkTrackPackRefusal } from './walkTrackPack';
 import { localVlmModel } from './analytics/models';
 import { findAnalyticsPack, unusablePacks } from './analytics/pack';
 import { registerAnalyticsPackIpc } from './analytics/packIpc';
@@ -1844,7 +1849,8 @@ function registerIpc(): void {
       pipeline === 'thermal.decode' ||
       pipeline === 'flyability.import' ||
       pipeline === 'thermal.hotspots' ||
-      pipeline === 'detect.vlm'
+      pipeline === 'detect.vlm' ||
+      pipeline === 'walk.track'
     ) {
       const found = await findPack({
         dataRoot: settings.current().dataRoot,
@@ -1876,7 +1882,12 @@ function registerIpc(): void {
         thermalPackRefusal(pipeline, version) ??
         cleanPackRefusal(pipeline, version) ??
         flyabilityPackRefusal(pipeline, version) ??
-        detectPackRefusal(pipeline, version);
+        walkTrackPackRefusal(pipeline, version) ??
+        detectPackRefusal(
+          pipeline,
+          version,
+          'params' in req ? req.params : jobs.get(req.resume)?.params,
+        );
       if (tooOld) return { ok: false, error: tooOld };
     }
     // a detector run: the Analytics pack, the graphics card and the model server first, and it
@@ -2557,6 +2568,8 @@ function registerIpc(): void {
             THERMAL_PACK_FEATURE,
             THERMAL_HOTSPOTS_PACK_FEATURE,
             DETECT_PACK_FEATURE,
+            DETECT_FRAMES_PACK_FEATURE,
+            WALK_TRACK_PACK_FEATURE,
           ],
     places: () =>
       packArchivePlaces({

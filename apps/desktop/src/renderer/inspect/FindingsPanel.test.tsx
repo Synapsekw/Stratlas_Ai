@@ -286,6 +286,28 @@ describe('FindingsPanel', () => {
     expect(chip?.querySelector('.tag.warn')).not.toBeNull();
   });
 
+  it('says how many walk frames saw a tracked draft, and where it is once placed', async () => {
+    h.detections = [
+      draft('d1', { track: { frames: 4, firstT: 2, lastT: 3.5 } }),
+      draft('d2', {
+        geom: { type: 'box', box: [100, 100, 200, 200] },
+        track: { frames: 3, firstT: 1, lastT: 2, rangeM: 6.43, bearingDeg: 359.7 },
+      }),
+      draft('d3', {
+        geom: { type: 'box', box: [1000, 1000, 1200, 1200] },
+        track: { frames: 1, firstT: 1, lastT: 1, rangeM: 12.6, bearingDeg: 90 },
+      }),
+    ];
+    await render({ rows: [ai('d1'), ai('d2'), ai('d3')] });
+    expect(byId('inspect-track', row('det:d1'))?.textContent).toBe('Seen in 4 frames');
+    expect(byId('inspect-track-place', row('det:d1'))).toBeNull();
+    expect(byId('inspect-track', row('det:d2'))?.textContent).toBe('Seen in 3 frames');
+    expect(byId('inspect-track-place', row('det:d2'))?.textContent).toBe('6.4 m away, bearing 0°');
+    // a one-frame track shows nothing
+    expect(byId('inspect-track', row('det:d3'))).toBeNull();
+    expect(byId('inspect-track-place', row('det:d3'))).toBeNull();
+  });
+
   it('shows no vote chip without a vote or for a lone unflagged view', async () => {
     await render();
     expect(byId('inspect-vote')).toBeNull();

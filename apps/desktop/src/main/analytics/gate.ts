@@ -322,7 +322,10 @@ export function detectLane(d: {
     return {
       run: typeof params.run === 'string' ? params.run : 'resume' in req ? req.resume : '',
       layer: typeof params.layer === 'string' ? params.layer : '',
-      photos: Array.isArray(params.photos) ? params.photos.length : 0,
+      // walk frames count as pictures too (a walk run has no photos)
+      photos:
+        (Array.isArray(params.photos) ? params.photos.length : 0) +
+        (Array.isArray(params.frames) ? params.frames.length : 0),
       detectors: detectors.flatMap((x) => {
         const name = (x as { detector?: { name?: unknown } } | null)?.detector?.name;
         return typeof name === 'string' ? [name] : [];

@@ -637,4 +637,5 @@ export const enProcessing = {
   'position.say.twins_other': '{count} thermal photos placed at their visual twins.',
   // ---- local detectors (Analytics pack) ----
   'jobs.detect.vlm': 'Running detectors',
+  'jobs.walk.track': 'Tracking walk detections',
 } as const satisfies Record<string, string>;

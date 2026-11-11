@@ -161,6 +161,42 @@ describe('resolveBackend', () => {
     });
   });
 
+  it('sends walk frames to the detectors when the local model cannot run them', () => {
+    const check: AskCheck = { kind: 'detector', where: 'library', id: 'rust-v1' };
+    // a detector check runs on walk frames, and on photos and walk frames together
+    expect(resolve({ check, items: WALK_FRAMES })).toMatchObject({
+      kind: 'detectors',
+      chosen: [{ detector: { id: 'rust-v1' } }],
+    });
+    expect(resolve({ check, items: [...PHOTOS, ...WALK_FRAMES] })).toMatchObject({
+      kind: 'detectors',
+    });
+    // no local model: the class's detector, or the project's detectors for everything
+    const noModel: Availability = { detectors: [RUST], local: OFF, cloud: CLOUD };
+    expect(resolve({ items: WALK_FRAMES, check: CORROSION, avail: noModel })).toMatchObject({
+      kind: 'detectors',
+      chosen: [{ detector: { id: 'rust-v1' } }],
+    });
+    expect(
+      resolve({ items: WALK_FRAMES, avail: noModel, assetTypes: ['tank'], pref: 'cloud' }),
+    ).toMatchObject({ kind: 'detectors' });
+    // a model that maps no class to the check gives way to the class's detector
+    const crackDet: Availability = { ...ALL, detectors: [detector('crack-v1', 'crack')] };
+    expect(resolve({ items: WALK_FRAMES, check: CRACK, avail: crackDet })).toMatchObject({
+      kind: 'detectors',
+      chosen: [{ detector: { id: 'crack-v1' } }],
+    });
+    // never the cloud for walk frames, and never ordinary clip frames to the detectors
+    expect(resolve({ items: WALK_FRAMES, check: CRACK, avail: noModel })).toMatchObject({
+      kind: 'none',
+      reason: 'walk-local',
+    });
+    expect(resolve({ check, items: [...WALK_FRAMES, ...CLIP_FRAMES] })).toEqual({
+      kind: 'none',
+      reason: 'detector-photos',
+    });
+  });
+
   it('runs a detector check on photos only', () => {
     const check: AskCheck = { kind: 'detector', where: 'library', id: 'rust-v1' };
     expect(resolve({ check })).toMatchObject({

@@ -94,6 +94,36 @@ function VoteChip({ vote }: { vote: Detection['vote'] }): ReactElement | null {
   );
 }
 
+/** Metres to read in a chip: one decimal under 10 m, whole metres beyond. */
+const metres = (m: number): string => (m < 10 ? m.toFixed(1) : String(Math.round(m)));
+
+/**
+ * The 360 walk track of a draft: how many frames of the walk saw the same object and, once it is
+ * placed, how far and which way it is from where the walker stood. Nothing for a one-frame draft.
+ */
+function TrackChip({ track }: { track: Detection['track'] }): ReactElement | null {
+  const t = useT();
+  if (!track || track.frames < 2) return null;
+  const placed = track.rangeM !== undefined && track.bearingDeg !== undefined;
+  return (
+    <>
+      <span data-testid="inspect-track">
+        <Chip kind="tag">{t('inspect.track.frames', { count: track.frames })}</Chip>
+      </span>
+      {placed && (
+        <span data-testid="inspect-track-place">
+          <Chip kind="tag">
+            {t('inspect.track.place', {
+              range: metres(track.rangeM ?? 0),
+              deg: Math.round(track.bearingDeg ?? 0) % 360,
+            })}
+          </Chip>
+        </span>
+      )}
+    </>
+  );
+}
+
 function AiCard(p: {
   projectId: string;
   row: AiRow;
@@ -166,6 +196,7 @@ function AiCard(p: {
           </span>
         )}
         <VoteChip vote={d?.vote} />
+        <TrackChip track={d?.track} />
         <span className="inspect-row-class">{cls?.label ?? row.label ?? t('det.class.pick')}</span>
         {severity !== null && <SeverityBadge model={model} severity={severity} />}
       </button>
