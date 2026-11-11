@@ -161,6 +161,14 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     since: '0.26',
   },
   {
+    // what each survey date measured of its antennas, for tracks across dates (antennas.ts, M2)
+    family: 'aio.antenna-history',
+    version: 1,
+    home: 'project',
+    where: 'telecom/history/<captureId>.json',
+    since: '0.31',
+  },
+  {
     family: 'aio.drawingplacement',
     version: 1,
     home: 'project',
