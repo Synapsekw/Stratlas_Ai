@@ -36,7 +36,8 @@ PROTOCOL = "aio.pipelines/1"
 # few-shot example crops for the yes/no check) and pack 0.34.0 (flyability.import: the wall distance
 # check from behind the camera, stable cloud names for unnamed flights, flight clouds hidden first;
 # and every job that adds layers writes manifest.json under the manifest lock, so two jobs finishing
-# together no longer lose a layer).
+# together no longer lose a layer) and pack 0.35.0 (telecom.antennas keeps a copy of the inventory
+# per survey date in telecom/history/, so an antenna can be followed across dates; older apps ignore it).
 # Each keeps the floor.
 # The app refuses a pack outside the range; the syntax is read by `appRangeAllows` in packages/schema/src/versions.ts
 # (space-separated >=, >, <=, <, =).
