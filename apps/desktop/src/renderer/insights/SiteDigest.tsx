@@ -59,7 +59,7 @@ export function useSiteInsights(today = localToday()): Insight[] | null {
   const liveAntennas = useAntennas((s) => s.file);
   const history = useAntennaHistory(
     antennasOf !== null && antennasOf === id ? id : null,
-    liveAntennas?.run.id ?? null,
+    liveAntennas,
   );
   const detectionsOf = useDetections((s) => s.projectId);
   const detectionList = useDetections((s) => s.review.detections);
@@ -71,6 +71,7 @@ export function useSiteInsights(today = localToday()): Insight[] | null {
       history: antennasOf === id ? history : [],
       detections: detectionsOf === id ? detectionList : [],
       sets: changesOf === id ? Object.values(sets) : [],
+      isStale: (set) => changeSetStale(set, manifest),
     });
     return [...t.antennas, ...t.hotspots, ...t.regions];
   }, [

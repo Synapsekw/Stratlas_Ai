@@ -32,7 +32,7 @@ import { SELECTION_MAX_POINTS, SelectionName, selectionByteLength } from './sele
 import { ProjectManifest } from './manifest';
 import { ClassCatalogue, LibraryClass, SeverityModel } from './severity';
 import { HexColor, IsoDate, ProjectPath, Vec3 } from './common';
-import { AntennaAiLabel, AntennasFile } from './antennas';
+import { AntennaAiLabel, AntennaHistoryFile, AntennasFile } from './antennas';
 import { ThermalFamily, ThermalFile } from './thermal';
 import { CleanupLayerId, NoiseRun, PointcloudCleanup } from './pointcloudCleanup';
 import { PanoQuality, PanoScan } from './panoStitch';
@@ -2718,15 +2718,16 @@ export const ipc = {
     ]),
   },
   /**
-   * Read the per-date inventory copies (`telecom/history/*.json`, Wave 3 M2), oldest name first;
-   * files that do not read as `aio.antennas/1` are counted in `skipped`. Packages too.
+   * Read what each survey date measured of its antennas (`telecom/history/*.json`, Wave 3 M2), by
+   * file name; files that do not read as `aio.antenna-history/1` are counted in `skipped`. Units the
+   * person deleted (the deletions sidecar) are left out. Packages too.
    */
   'telecom:readAntennaHistory': {
     request: z.object({ projectId: ProjectId }).strict(),
     response: z.discriminatedUnion('ok', [
       z.object({
         ok: z.literal(true),
-        files: z.array(AntennasFile).max(500),
+        files: z.array(AntennaHistoryFile).max(500),
         skipped: z.number().int().nonnegative(),
       }),
       Failure,

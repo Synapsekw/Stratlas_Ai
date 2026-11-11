@@ -15,6 +15,10 @@ Link the same antenna, change region and thermal hot spot across survey dates in
 5. **Digest.** Three rules in `@aio/insights` (`trackRules.ts`): `antenna-turned` (azimuth 3 degrees or downtilt 1 degree, both dates reviewed), `hotspot-hotter` (peak up 5 degC, both reviewed), `region-grew` (area up 20 % and 5 m2). Each speaks only when the last sighting is on the latest date. New actions `insights.openAntenna` and `insights.openHotspot`; a region opens the Changes tab on the latest pair.
 6. **No agent tool.** The fact index (M1) is being built in parallel and will be the query layer; a track tool would duplicate it.
 
+## Review fixes (12 Nov)
+
+The independent review found that a per-date copy of the merged inventory is not what the date measured (the merge keeps an accepted unit's old geometry, keeps person-owned units and carries units not found). The record is now `aio.antenna-history/1`: one entry per unit the run fitted, with the run's own fit values and a `reviewed` flag; the live inventory only adds the person's later decisions on its own date. Also: azimuths turn with the line-up turn, one change set per pair and producer (newest whole-site one not out of date, else per area), the panel and digest share the capture index and stale rule, deleted units are left out, no last change for a value the latest date lacks, no absolute-height fallback, and an older-pack hint on the antenna card (`TELECOM_HISTORY_MIN_PACK`).
+
 ## Tasks, tests and packages
 
 | #   | Task                                                                        | Tests                                                                  | Packages                             |

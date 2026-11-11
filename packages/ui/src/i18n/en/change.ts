@@ -272,6 +272,8 @@ export const enChange = {
   'change.track.date': 'Date',
   'change.track.draft': 'draft',
   'change.track.lastChange': 'Since the date before',
+  'change.track.antennaPack':
+    'Following this antenna across survey dates needs processing tools {version} or later. Run antenna detection on this date again with them.',
   'change.track.metric.azimuthDeg': 'Azimuth',
   'change.track.metric.downtiltDeg': 'Downtilt',
   'change.track.metric.centreHeightM': 'Centre height',

@@ -3,21 +3,25 @@
  * downtilt and height over the survey dates in its details, and a hot spot's peak and ΔT in
  * Inspect. Each shows nothing until the object is seen on two dates.
  */
-import { antennaTracks, hotspotTracks, trackOf } from '@aio/change/core';
+import { antennaTracks, hotspotTracks, liveDateRecorded, trackOf } from '@aio/change/core';
 import { TrackHistory } from '@aio/change';
 import type { Detection } from '@aio/annotate/detections';
+import { TELECOM_HISTORY_MIN_PACK } from '@aio/schema';
+import { t } from '@aio/ui';
 import { captureIndex, captureShift, dateShiftOf, useWorkspace } from '@aio/workspace';
-import type { ReactElement } from 'react';
+import type { CSSProperties, ReactElement } from 'react';
 import { useMemo } from 'react';
 import { useDetections } from '../detections/store';
 import { useAntennas } from '../telecom/antennaStore';
 import { hotspotsOf, isHotspot, useAntennaHistory, useDateLabel } from './siteTracks';
 
+const HINT: CSSProperties = { fontSize: 'var(--t-11)', color: 'var(--fg-3)', margin: 0 };
+
 export function AntennaTrackHistory({ unitId }: { unitId: string }): ReactElement | null {
   const manifest = useWorkspace((s) => s.project?.manifest);
   const projectId = useAntennas((s) => s.projectId);
   const live = useAntennas((s) => s.file);
-  const history = useAntennaHistory(projectId, live?.run.id ?? null);
+  const history = useAntennaHistory(projectId, live);
   const dateLabel = useDateLabel(manifest);
   const tracks = useMemo(() => {
     // a track needs two dates, so one copy of the inventory at least
@@ -25,6 +29,14 @@ export function AntennaTrackHistory({ unitId }: { unitId: string }): ReactElemen
     const captures = captureIndex(manifest).captures.map((c) => ({ id: c.id, date: c.date }));
     return antennaTracks(history, live, captures, (c) => captureShift(manifest, c));
   }, [manifest, history, live]);
+  // a run on an older pack keeps no record of its date: say what tracks need
+  const twoDates = Array.isArray(manifest?.captures) && manifest.captures.length >= 2;
+  if (twoDates && live && !liveDateRecorded(history, live))
+    return (
+      <p data-testid="antenna-track-hint" style={HINT}>
+        {t('change.track.antennaPack', { version: TELECOM_HISTORY_MIN_PACK })}
+      </p>
+    );
   return (
     <TrackHistory
       track={trackOf(tracks, unitId)}

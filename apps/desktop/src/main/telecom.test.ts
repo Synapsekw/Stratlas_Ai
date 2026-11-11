@@ -42,29 +42,73 @@ function setup(pkgMembers?: Record<string, unknown>) {
 }
 const antPath = (root: string) => join(root, 'telecom', 'antennas.json');
 
-describe('antenna history copies', () => {
-  it('reads none without the folder, then each copy by name and skips what does not parse', async () => {
+const record = (captureId: string, ids: string[]) => ({
+  schema: 'aio.antenna-history/1',
+  captureId,
+  runId: 'run-a',
+  at: '2026-06-01T00:00:00Z',
+  units: ids.map((id) => ({
+    id,
+    name: 'A1',
+    kind: 'panel',
+    status: 'accepted',
+    reviewed: true,
+    centre: [0, 0, 30],
+    extents: [0.3, 1.4, 0.15],
+    azimuthGridDeg: 12,
+  })),
+});
+
+describe('antenna history records', () => {
+  it('reads none without the folder, then each record by name and skips what does not parse', async () => {
     const { root, projects } = setup();
     expect(await readAntennaHistory(projects, 'p')).toEqual({ ok: true, files: [], skipped: 0 });
     const dir = join(root, 'telecom', 'history');
     mkdirSync(dir, { recursive: true });
-    const a = sample();
-    const b = { ...a, run: { ...a.run, captureId: 'c2' } };
-    writeFileSync(join(dir, 'c2.json'), JSON.stringify(b));
-    writeFileSync(
-      join(dir, 'c1.json'),
-      JSON.stringify({ ...a, run: { ...a.run, captureId: 'c1' } }),
-    );
+    writeFileSync(join(dir, 'c2.json'), JSON.stringify(record('c2', ['ant-a-1'])));
+    writeFileSync(join(dir, 'c1.json'), JSON.stringify(record('c1', ['ant-a-1'])));
+    writeFileSync(join(dir, 'old.json'), JSON.stringify(sample()));
     writeFileSync(join(dir, 'broken.json'), '{');
     writeFileSync(join(dir, 'notes.txt'), 'x');
     const r = await readAntennaHistory(projects, 'p');
-    expect(r.ok && r.files.map((f) => f.run.captureId)).toEqual(['c1', 'c2']);
-    expect(r.ok && r.skipped).toBe(1);
+    expect(r.ok && r.files.map((f) => f.captureId)).toEqual(['c1', 'c2']);
+    expect(r.ok && r.skipped).toBe(2);
   });
 
-  it('reads the copies of a package', async () => {
-    const a = sample();
-    const { projects } = setup({ 'telecom/history/c1.json': a, 'telecom/antennas.json': a });
+  it('leaves out the units the person deleted', async () => {
+    const { root, projects } = setup();
+    const dir = join(root, 'telecom', 'history');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'c1.json'), JSON.stringify(record('c1', ['ant-a-1', 'ant-a-2'])));
+    writeFileSync(
+      join(root, 'telecom', 'antenna-deletions.json'),
+      JSON.stringify({
+        schema: 'aio.antenna-deletions/1',
+        deletions: [
+          {
+            unitId: 'ant-a-2',
+            name: 'A2',
+            kind: 'panel',
+            box: {
+              centre: [0, 0, 30],
+              axes: [
+                [1, 0, 0],
+                [0, 0, 1],
+                [0, 1, 0],
+              ],
+              extents: [0.3, 1.4, 0.15],
+            },
+            deletedAt: '2026-06-02T00:00:00Z',
+          },
+        ],
+      }),
+    );
+    const r = await readAntennaHistory(projects, 'p');
+    expect(r.ok && r.files[0]?.units.map((u) => u.id)).toEqual(['ant-a-1']);
+  });
+
+  it('reads the records of a package', async () => {
+    const { projects } = setup({ 'telecom/history/c1.json': record('c1', ['ant-a-1']) });
     const r = await readAntennaHistory(projects, 'pkg');
     expect(r.ok && r.files).toHaveLength(1);
     expect(await readAntennaHistory(projects, 'nope')).toMatchObject({ ok: false });

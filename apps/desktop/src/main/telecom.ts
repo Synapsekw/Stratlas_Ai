@@ -12,6 +12,7 @@ import {
   ANTENNA_DELETIONS_FILE,
   ANTENNA_DELETIONS_SCHEMA,
   AntennaDeletionsFile,
+  AntennaHistoryFile,
   AntennasFile,
   type AntennaDeletion,
   type IpcResponse,
@@ -21,7 +22,7 @@ import { dirname, join } from 'node:path';
 import { isChangedOnDisk, readBytesSeen, readJsonSeen, writeJsonSeen } from './fsutil';
 import { newerOnDisk, parseJsonText } from './newer';
 import type { Handle } from './notYet';
-import { parseAs, readArchiveJson, why, type SurveyProjects } from './survey';
+import { parseAs, readArchiveJson, why, type SurveyArchive, type SurveyProjects } from './survey';
 
 export { antennaPackRefusal } from './telecomPack';
 
@@ -50,8 +51,26 @@ export async function readAntennas(
   return r.ok ? { ok: true, file: r.value, readOnly } : r;
 }
 
+/** Ids of the units the person deleted (the deletions sidecar); none when it is missing or bad. */
+async function deletedIds(
+  root: string | undefined,
+  archive: SurveyArchive | undefined,
+): Promise<Set<string>> {
+  try {
+    const raw = archive
+      ? await readArchiveJson(archive, ANTENNA_DELETIONS_FILE)
+      : parseJsonText(
+          await readFile(join(root ?? '', ...ANTENNA_DELETIONS_FILE.split('/')), 'utf8'),
+        );
+    const r = AntennaDeletionsFile.safeParse(raw);
+    return new Set(r.success ? r.data.deletions.map((d) => d.unitId) : []);
+  } catch {
+    return new Set();
+  }
+}
+
 /**
- * The per-date inventory copies (`telecom/history/<captureId>.json`, Wave 3 M2), by file name.
+ * What each survey date measured (`telecom/history/<captureId>.json`, Wave 3 M2), by file name.
  * A missing folder is none; a file that does not parse is skipped and counted.
  */
 export async function readAntennaHistory(
@@ -80,7 +99,8 @@ export async function readAntennaHistory(
     .filter((n) => n.endsWith('.json') && !n.includes('/'))
     .sort()
     .slice(0, 500);
-  const files: AntennasFile[] = [];
+  const deleted = await deletedIds(root, archive);
+  const files: AntennaHistoryFile[] = [];
   let skipped = 0;
   for (const name of names) {
     const rel = `${prefix}${name}`;
@@ -88,8 +108,9 @@ export async function readAntennaHistory(
       const raw = archive
         ? await readArchiveJson(archive, rel)
         : parseJsonText(await readFile(join(root ?? '', ...rel.split('/')), 'utf8'));
-      const r = AntennasFile.safeParse(raw);
-      if (r.success) files.push(r.data);
+      const r = AntennaHistoryFile.safeParse(raw);
+      if (r.success)
+        files.push({ ...r.data, units: r.data.units.filter((u) => !deleted.has(u.id)) });
       else skipped += 1;
     } catch {
       skipped += 1;

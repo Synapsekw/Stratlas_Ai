@@ -26,11 +26,13 @@ export const ANTENNA_DELETIONS_FILE = 'telecom/antenna-deletions.json';
 export const TELECOM_DELETE_MIN_PACK = '0.25.0';
 export const TELECOM_DELETE_FEATURE = 'Deleted antennas stay deleted';
 /**
- * Per-date copies of the inventory (Wave 3 M2): `<dir>/<captureId>.json`, each an `aio.antennas/1`
- * file in that date's own frame, without crops. `telecom.antennas` writes the date it replaces
- * (as reviewed) and its own; the app links them into tracks at read time and never writes them.
+ * What each survey date measured of its antennas (Wave 3 M2): `<dir>/<captureId>.json`
+ * (`aio.antenna-history/1`, `AntennaHistoryFile`), in that date's own frame. Written by
+ * `telecom.antennas` (`python/src/aio_pipelines/telecom/history.py`); the app links the records
+ * into tracks at read time and never writes them.
  */
 export const ANTENNA_HISTORY_DIR = 'telecom/history';
+export const ANTENNA_HISTORY_SCHEMA = 'aio.antenna-history/1';
 /** The first pipeline pack whose `telecom.antennas` keeps the per-date copies. */
 export const TELECOM_HISTORY_MIN_PACK = '0.35.0';
 /** Most vertices of an outline a person draws (the engine's lasso limit). */
@@ -298,3 +300,35 @@ export const AntennaDeletionsFile = z
   })
   .strict();
 export type AntennaDeletionsFile = z.infer<typeof AntennaDeletionsFile>;
+
+/**
+ * One unit a survey date's run measured: the merged unit's id, name and kind with the values of
+ * that run's own fit (box centre in project E, N, Z of that date's frame). `reviewed`: a person
+ * decided its `status` on that date; false means the status was carried over or is a fresh draft.
+ */
+export const AntennaHistoryEntry = z
+  .object({
+    id: z.string().regex(ANTENNA_ID),
+    name: z.string().min(1).max(40),
+    kind: AntennaKind,
+    status: AntennaStatus,
+    reviewed: z.boolean(),
+    centre: Vec3,
+    extents: Vec3,
+    azimuthGridDeg: z.number().optional(),
+    downtiltDeg: z.number().optional(),
+    centreHeightM: z.number().optional(),
+  })
+  .strict();
+export type AntennaHistoryEntry = z.infer<typeof AntennaHistoryEntry>;
+
+export const AntennaHistoryFile = z
+  .object({
+    schema: z.literal(ANTENNA_HISTORY_SCHEMA),
+    captureId: z.string().min(1).max(128),
+    runId: z.string().max(100),
+    at: z.string().max(40),
+    units: z.array(AntennaHistoryEntry).max(2000),
+  })
+  .strict();
+export type AntennaHistoryFile = z.infer<typeof AntennaHistoryFile>;

@@ -14,25 +14,33 @@ import {
   type Track,
 } from '@aio/change/core';
 import type { Detection } from '@aio/annotate/detections';
-import type { AntennasFile, ChangeSet, ProjectManifest } from '@aio/schema';
+import type { AntennaHistoryFile, AntennasFile, ChangeSet, ProjectManifest } from '@aio/schema';
 import { captureIndex, captureShift, dateShiftOf } from '@aio/workspace';
 import { useEffect, useMemo } from 'react';
 import { createStore, useStore } from 'zustand';
 import { bridge } from '../shell';
 
 interface HistoryState {
-  /** `<projectId>|<live run id>` the copies were read for. */
+  /** `<projectId>|<live inventory version>` the records were read for. */
   key: string | null;
-  files: readonly AntennasFile[];
+  files: readonly AntennaHistoryFile[];
 }
 
 export const antennaHistory = createStore<HistoryState>()(() => ({ key: null, files: [] }));
 
 let inFlight: string | null = null;
 
-/** Read the per-date copies for this project and live run, once per pair. */
-export async function loadAntennaHistory(projectId: string, runId: string | null): Promise<void> {
-  const key = `${projectId}|${runId ?? ''}`;
+/**
+ * The live inventory's version for the records: its run and how many units it has, so a new run
+ * (new records) and a delete (records read again without the deleted units) both read again.
+ */
+export function inventoryVersion(live: AntennasFile | null): string {
+  return live ? `${live.run.id}:${String(live.units.length)}` : '';
+}
+
+/** Read what each date measured for this project and live inventory version, once per pair. */
+export async function loadAntennaHistory(projectId: string, version: string): Promise<void> {
+  const key = `${projectId}|${version}`;
   if (antennaHistory.getState().key === key || inFlight === key) return;
   inFlight = key;
   try {
@@ -72,9 +80,11 @@ export function hotspotsOf(list: readonly Detection[]): HotspotDetection[] {
 export interface TrackSources {
   manifest: ProjectManifest;
   live: AntennasFile | null;
-  history: readonly AntennasFile[];
+  history: readonly AntennaHistoryFile[];
   detections: readonly Detection[];
   sets: readonly ChangeSet[];
+  /** Change sets out of date after a line-up (`changeSetStale`): left out of region tracks. */
+  isStale?: (set: ChangeSet) => boolean;
 }
 
 /** Every track of the project, by kind. */
@@ -98,15 +108,16 @@ export function siteTracks(src: TrackSources): {
       spots.length > 0
         ? hotspotTracks(src.manifest, index, spots, (l) => dateShiftOf(src.manifest, l))
         : [],
-    regions: regionTracks(src.sets, captures),
+    regions: regionTracks(src.sets, captures, src.isStale),
   };
 }
 
-/** Keeps the copies read for the live inventory, and returns them. */
-export function useAntennaHistory(projectId: string | null, runId: string | null) {
+/** Keeps the records read for the live inventory, and returns them. */
+export function useAntennaHistory(projectId: string | null, live: AntennasFile | null) {
+  const version = inventoryVersion(live);
   useEffect(() => {
-    if (projectId) void loadAntennaHistory(projectId, runId);
-  }, [projectId, runId]);
+    if (projectId) void loadAntennaHistory(projectId, version);
+  }, [projectId, version]);
   return useStore(antennaHistory, (s) => s.files);
 }
 

@@ -1,7 +1,9 @@
 import {
   shiftEN,
   shiftLocal,
-  type AntennaUnit,
+  inferChangeScope,
+  turnOf,
+  type AntennaHistoryFile,
   type AntennasFile,
   type ChangeItem,
   type ChangeSet,
@@ -20,10 +22,12 @@ import type { DateIndex } from './pairs';
  * Derived at read time from the files that already hold each date (nothing is stored, so a track
  * is rebuilt the same way every time):
  *
- * - antennas: the per-date inventory copies `telecom/history/<captureId>.json` (pipeline pack
- *   0.35.0) and the live `telecom/antennas.json` for its own date, rejected units left out;
- * - change regions: the `region` items of each change set between a date and the date just
- *   before it, filed under the later date;
+ * - antennas: what each date measured, `telecom/history/<captureId>.json` (pipeline pack 0.35.0),
+ *   with the live `telecom/antennas.json` giving the person's later decisions on its own date;
+ *   rejected units left out; azimuths turned with the date's line-up turn;
+ * - change regions: the `region` items of the change set between a date and the date just before
+ *   it, filed under the later date: per producer the newest whole-site set that is not out of date,
+ *   else the newest such set per area;
  * - hot spots: the review's hot spots (`thermal.hotspots` drafts and what they became) with a
  *   multi-view point (`vote.point`), rejected ones left out, filed under their layer's date.
  *
@@ -142,10 +146,12 @@ function trendsOf(kind: TrackKind, sightings: readonly TrackSighting[]): TrackTr
     const first = points[0];
     if (!last || !first) continue;
     const before = points.at(-2);
+    // the latest sighting without this value: no change since the date before for it
+    const current = last.capture === sightings.at(-1)?.capture;
     out.push({
       metric,
       points,
-      lastChange: before ? diff(metric, last.value, before.value) : null,
+      lastChange: before && current ? diff(metric, last.value, before.value) : null,
       totalChange: points.length > 1 ? diff(metric, last.value, first.value) : null,
     });
   }
@@ -232,51 +238,81 @@ export function linkTracks(
 
 // --------------------------------------------------------------------------- antennas
 
-function antennaRadius(u: AntennaUnit): number {
-  const face = Math.min(u.box.extents[0], u.box.extents[1]);
+function antennaRadius(extents: readonly number[]): number {
+  const face = Math.min(extents[0] ?? 0, extents[1] ?? 0);
   return Math.max(ANTENNA_MIN_RADIUS_M, Number.isFinite(face) ? face / 2 : 0);
 }
 
+/** An azimuth turned with the date's line-up (grid, clockwise from north; a turn is counter-clockwise). */
+export function turnedAzimuth(azimuthDeg: number, shift: DateShift | null): number {
+  const rot = turnOf(shift)?.rotationDeg ?? 0;
+  return (((azimuthDeg - rot) % 360) + 360) % 360;
+}
+
 /**
- * Antenna tracks from the per-date copies and the live inventory. Each file is filed under its
- * `run.captureId`; the live file wins for its own date. Files without a date are left out.
+ * Antenna tracks from what each date measured (`telecom/history/<captureId>.json`, one record per
+ * date). The values are each run's own fit, never the inventory's merged ones. A record's status
+ * counts as reviewed only when a person decided it on that date: `reviewed` in the record, or, for
+ * the live inventory's own date, a status the person changed since the run (`live`). Rejected
+ * entries are left out; the rest not reviewed are drafts.
  */
 export function antennaTracks(
-  files: readonly AntennasFile[],
+  records: readonly AntennaHistoryFile[],
   live: AntennasFile | null,
   captures: readonly { id: string; date: string }[],
   shiftOf: (capture: string) => DateShift | null,
 ): Track[] {
-  const byCapture = new Map<string, AntennasFile>();
-  for (const f of files) if (f.run.captureId) byCapture.set(f.run.captureId, f);
-  if (live?.run.captureId) byCapture.set(live.run.captureId, live);
+  const byCapture = new Map<string, AntennaHistoryFile>();
+  for (const r of records) byCapture.set(r.captureId, r);
+  const liveDate = live?.run.captureId;
+  const liveStatus = new Map(live?.units.map((u) => [u.id, u.status]) ?? []);
   const dateOf = new Map(captures.map((c) => [c.id, c.date]));
   const obs: TrackObservation[] = [];
-  for (const [capture, f] of byCapture) {
+  for (const [capture, r] of byCapture) {
     const date = dateOf.get(capture);
     if (date === undefined) continue;
     const shift = shiftOf(capture);
-    for (const u of f.units) {
-      if (u.status === 'rejected') continue;
+    for (const e of r.units) {
+      let status = e.status;
+      let reviewed = e.reviewed;
+      if (capture === liveDate) {
+        const now = liveStatus.get(e.id);
+        if (now === undefined) continue; // deleted, or dropped from the inventory since
+        if (now !== e.status) {
+          status = now;
+          reviewed = true;
+        }
+      }
+      if (status === 'rejected') continue;
       const values: TrackSighting['values'] = {};
-      if (u.azimuthGridDeg) values.azimuthDeg = u.azimuthGridDeg.value;
-      if (u.downtiltDeg) values.downtiltDeg = u.downtiltDeg.value;
-      values.centreHeightM = u.centreHeightM?.value ?? u.box.centre[2];
+      if (e.azimuthGridDeg !== undefined)
+        values.azimuthDeg = turnedAzimuth(e.azimuthGridDeg, shift);
+      if (e.downtiltDeg !== undefined) values.downtiltDeg = e.downtiltDeg;
+      if (e.centreHeightM !== undefined) values.centreHeightM = e.centreHeightM;
       obs.push({
         capture,
         date,
-        ref: u.id,
-        key: u.id,
-        name: u.name,
-        class: u.kind,
-        at: shiftEN<Vec3>(u.box.centre, shift),
-        radiusM: antennaRadius(u),
-        draft: u.status === 'draft',
+        ref: e.id,
+        key: e.id,
+        name: e.name,
+        class: e.kind,
+        at: shiftEN<Vec3>(e.centre, shift),
+        radiusM: antennaRadius(e.extents),
+        draft: !reviewed || status === 'draft',
         values,
       });
     }
   }
   return linkTracks('antenna', obs, captures);
+}
+
+/** Whether the live inventory's date has a record of what it measured (pipeline pack 0.35.0). */
+export function liveDateRecorded(
+  records: readonly AntennaHistoryFile[],
+  live: AntennasFile | null,
+): boolean {
+  const d = live?.run.captureId;
+  return d === undefined || records.some((r) => r.captureId === d);
 }
 
 // --------------------------------------------------------------------------- change regions
@@ -305,19 +341,50 @@ function regionAt(r: RegionItem): Vec3 | null {
 }
 
 /**
+ * The sets of one pair a region track reads: per producer, the newest whole-site set that is not
+ * out of date; without one, the newest such set per area. So a region is never counted twice.
+ */
+function pairSets(
+  sets: readonly ChangeSet[],
+  from: string,
+  to: string,
+  isStale: (set: ChangeSet) => boolean,
+): ChangeSet[] {
+  const newest = new Map<string, ChangeSet>();
+  for (const set of sets) {
+    if (set.from !== from || set.to !== to || isStale(set)) continue;
+    const key = `${set.producer}|${inferChangeScope(set)?.id ?? ''}`;
+    const had = newest.get(key);
+    if (
+      !had ||
+      set.createdAt > had.createdAt ||
+      (set.createdAt === had.createdAt && set.id > had.id)
+    )
+      newest.set(key, set);
+  }
+  const out: ChangeSet[] = [];
+  for (const [key, set] of [...newest].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    const [producer, area] = key.split('|');
+    if (area && newest.has(`${producer ?? ''}|`)) continue;
+    out.push(set);
+  }
+  return out;
+}
+
+/**
  * Change region tracks: the regions of each set from a date's predecessor to it, filed under the
  * later date, linked by outline overlap or centre distance within one producer.
  */
 export function regionTracks(
   sets: readonly ChangeSet[],
   captures: readonly { id: string; date: string }[],
+  isStale: (set: ChangeSet) => boolean = () => false,
 ): Track[] {
   const obs: TrackObservation[] = [];
   captures.forEach((c, i) => {
     const before = captures[i - 1];
     if (!before) return;
-    for (const set of sets) {
-      if (set.from !== before.id || set.to !== c.id) continue;
+    for (const set of pairSets(sets, before.id, c.id, isStale)) {
       const cell = cellOf(set);
       const radiusM = Math.max(REGION_MIN_RADIUS_M, cell ? REGION_CELL_FACTOR * cell : 0);
       for (const item of set.items) {

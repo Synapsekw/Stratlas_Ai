@@ -1,7 +1,7 @@
 import { ChangeCollab } from '@aio/collab/ui';
 import type { ChangeItem, ChangeKind, ChangeSet, ChangeVerdict } from '@aio/schema';
 import { Icon, Menu, t, useT, type MenuEntry, type MessageKey } from '@aio/ui';
-import { workspace } from '@aio/workspace';
+import { captureIndex, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useStore } from 'zustand';
 import { VERDICT_COLOR } from './overlay';
@@ -225,14 +225,18 @@ export function ChangePanel({
     if (s.area && seenAreas.current.ids.has(s.area) && !areas.some((a) => a.id === s.area))
       changeStore.getState().setArea(null);
   }, [s.area, s.pair, areas]);
-  // change regions linked across consecutive pairs (Wave 3 M2); the label stands in for the date
+  // change regions linked across consecutive pairs (Wave 3 M2), on the capture index and stale
+  // rule the site digest uses, so both read the same tracks
   const regions = useMemo(
     () =>
-      regionTracks(
-        Object.values(s.sets),
-        captures.map((c) => ({ id: c.id, date: c.label })),
-      ),
-    [s.sets, captures],
+      manifest && Object.values(s.sets).some((x) => x.items.some((i) => i.kind === 'region'))
+        ? regionTracks(
+            Object.values(s.sets),
+            captureIndex(manifest).captures.map((c) => ({ id: c.id, date: c.date })),
+            (x) => changeSetStale(x, manifest),
+          )
+        : [],
+    [s.sets, manifest],
   );
   const rows = useMemo(
     () => registerRows(pairSets, s.filter, s.sort),

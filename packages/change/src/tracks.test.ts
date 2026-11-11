@@ -1,4 +1,4 @@
-import type { AntennasFile, AntennaUnit, ChangeSet, Layer } from '@aio/schema';
+import type { AntennaHistoryFile, AntennasFile, ChangeSet, Layer } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
   acrossDates,
@@ -6,8 +6,10 @@ import {
   groundSampleM,
   hotspotTracks,
   linkTracks,
+  liveDateRecorded,
   regionTracks,
   trackOf,
+  turnedAzimuth,
   type HotspotDetection,
   type TrackObservation,
 } from './tracks';
@@ -19,43 +21,37 @@ const CAPTURES = [
   { id: 'c3', date: '2026-10-01' },
 ];
 
-const v = (value: number) => ({
-  value,
-  basis: 'measured' as const,
-  quality: { basis: 'measured' as const },
+type Entry = AntennaHistoryFile['units'][number];
+
+const entry = (
+  id: string,
+  centre: [number, number, number],
+  az: number,
+  tilt: number,
+  extra: Partial<Entry> = {},
+): Entry => ({
+  id,
+  name: 'A1',
+  kind: 'panel',
+  status: 'accepted',
+  reviewed: true,
+  centre,
+  extents: [0.3, 1.4, 0.15],
+  azimuthGridDeg: az,
+  downtiltDeg: tilt,
+  ...extra,
 });
 
-function unit(id: string, centre: [number, number, number], az: number, tilt: number): AntennaUnit {
-  return {
-    id,
-    name: id.toUpperCase().slice(-2),
-    kind: 'panel',
-    kindBasis: 'geometry',
-    status: 'accepted',
-    box: {
-      centre,
-      axes: [
-        [1, 0, 0],
-        [0, 0, 1],
-        [0, 1, 0],
-      ],
-      extents: [0.3, 1.4, 0.15],
-    },
-    support: 100,
-    azimuthGridDeg: v(az),
-    downtiltDeg: v(tilt),
-    widthM: v(0.3),
-    heightM: v(1.4),
-    depthM: v(0.15),
-    convergenceDeg: null,
-    photos: [],
-    user: {},
-    runId: 'run-a',
-    createdAt: '2026-02-01T00:00:00Z',
-  } as unknown as AntennaUnit;
-}
+const record = (captureId: string, units: Entry[]): AntennaHistoryFile => ({
+  schema: 'aio.antenna-history/1',
+  captureId,
+  runId: `run-${captureId}`,
+  at: '2026-06-01T00:00:00Z',
+  units,
+});
 
-const inventory = (capture: string, units: AntennaUnit[]): AntennasFile =>
+/** The live inventory: only ids and statuses matter to the tracks. */
+const inventory = (capture: string, units: { id: string; status: string }[]): AntennasFile =>
   ({
     schema: 'aio.antennas/1',
     run: { id: `run-${capture}`, captureId: capture },
@@ -137,12 +133,12 @@ describe('linkTracks', () => {
 
 describe('antennaTracks', () => {
   it('follows a unit across dates with its azimuth and downtilt trend, lined up', () => {
-    const files = [
-      inventory('c1', [unit('ant-a-1', [100, 200, 30], 358, 4)]),
-      inventory('c2', [unit('ant-b-9', [104, 196.5, 30], 6, 6)]),
+    const records = [
+      record('c1', [entry('ant-a-1', [100, 200, 30], 358, 4)]),
+      record('c2', [entry('ant-b-9', [104, 196.5, 30], 6, 6)]),
     ];
     // c2 is lined up 4 m west and 3.5 m north of its own frame: the same place as c1
-    const tracks = antennaTracks(files, null, CAPTURES, (c) =>
+    const tracks = antennaTracks(records, null, CAPTURES, (c) =>
       c === 'c2' ? { eastM: -4, northM: 3.5 } : null,
     );
     expect(tracks).toHaveLength(1);
@@ -150,23 +146,72 @@ describe('antennaTracks', () => {
     expect(t?.sightings.map((s) => s.ref)).toEqual(['ant-a-1', 'ant-b-9']);
     expect(t?.trends.find((x) => x.metric === 'azimuthDeg')?.lastChange).toBeCloseTo(8);
     expect(t?.trends.find((x) => x.metric === 'downtiltDeg')?.totalChange).toBeCloseTo(2);
+    expect(t?.trends.some((x) => x.metric === 'centreHeightM')).toBe(false);
     expect(trackOf(tracks, 'ant-b-9')?.id).toBe('antenna:c1:ant-a-1');
   });
 
-  it('prefers the live inventory for its date and leaves rejected units out', () => {
-    const live = inventory('c2', [
-      { ...unit('ant-a-1', [100, 200, 30], 10, 4), status: 'rejected' },
+  it("takes the person's later decision on the live date, and drops units gone from it", () => {
+    const records = [
+      record('c1', [entry('ant-a-1', [0, 0, 30], 0, 4), entry('ant-a-2', [5, 0, 30], 0, 4)]),
+      record('c2', [
+        entry('ant-a-1', [0, 0, 30], 10, 4, { reviewed: false }),
+        entry('ant-a-2', [5, 0, 30], 0, 4, { reviewed: false }),
+      ]),
+    ];
+    const live = inventory('c2', [{ id: 'ant-a-1', status: 'rejected' }]);
+    expect(
+      antennaTracks(records, live, CAPTURES, () => null).map((t) => t.sightings.length),
+    ).toEqual([1, 1]);
+    // left as carried over: a draft on c2, not reviewed
+    const kept = inventory('c2', [
+      { id: 'ant-a-1', status: 'accepted' },
+      { id: 'ant-a-2', status: 'accepted' },
     ]);
-    const tracks = antennaTracks(
+    const [t] = antennaTracks(records, kept, CAPTURES, () => null);
+    expect(t?.sightings.map((s) => s.draft)).toEqual([false, true]);
+  });
+
+  it("turns azimuths with the date's line-up turn", () => {
+    const turn = {
+      eastM: 0,
+      northM: 0,
+      turn: { rotationDeg: 10, scale: 1, pivotE: 0, pivotN: 0, pivotX: 0, pivotZ: 0 },
+    };
+    expect(turnedAzimuth(90, turn)).toBeCloseTo(80);
+    expect(turnedAzimuth(5, turn)).toBeCloseTo(355);
+    expect(turnedAzimuth(90, null)).toBe(90);
+    const [t] = antennaTracks(
       [
-        inventory('c1', [unit('ant-a-1', [100, 200, 30], 0, 4)]),
-        inventory('c2', [unit('ant-a-1', [100, 200, 30], 0, 4)]),
+        record('c1', [entry('ant-a-1', [0, 0, 30], 80, 4)]),
+        record('c2', [entry('ant-a-1', [0, 0, 30], 90, 4)]),
       ],
-      live,
+      null,
       CAPTURES,
-      () => null,
+      (c) => (c === 'c2' ? turn : null),
     );
-    expect(tracks.map((t) => t.sightings.length)).toEqual([1]);
+    expect(t?.trends.find((x) => x.metric === 'azimuthDeg')?.lastChange).toBeCloseTo(0);
+  });
+
+  it('knows whether the live date has a record', () => {
+    expect(liveDateRecorded([record('c1', [])], inventory('c2', []))).toBe(false);
+    expect(liveDateRecorded([record('c2', [])], inventory('c2', []))).toBe(true);
+    expect(liveDateRecorded([], null)).toBe(true);
+  });
+});
+
+describe('trends', () => {
+  it('shows no change since the date before for a value the latest date lacks', () => {
+    const [t] = linkTracks(
+      'antenna',
+      [
+        obs('c1', 'a', [0, 0, 0], { values: { azimuthDeg: 1, downtiltDeg: 2 } }),
+        obs('c2', 'b', [0, 0, 0], { values: { azimuthDeg: 3, downtiltDeg: 4 } }),
+        obs('c3', 'c', [0, 0, 0], { values: { azimuthDeg: 5 } }),
+      ],
+      CAPTURES,
+    );
+    expect(t?.trends.find((x) => x.metric === 'azimuthDeg')?.lastChange).toBe(2);
+    expect(t?.trends.find((x) => x.metric === 'downtiltDeg')?.lastChange).toBeNull();
   });
 });
 
@@ -211,6 +256,34 @@ describe('regionTracks', () => {
     expect(across[0]?.sightings.map((s) => s.ref)).toEqual(['c1-c2-raster/r1', 'c2-c3-raster/r7']);
     expect(across[0]?.trends.find((t) => t.metric === 'areaM2')?.lastChange).toBe(20);
     expect(tracks.some((t) => t.sightings.some((s) => s.ref.includes('skip')))).toBe(false);
+  });
+
+  it('reads one set per pair and producer: the newest whole-site one that is not out of date', () => {
+    const later = {
+      ...set('c2', 'c3', [region('new', 1, 3, 36)]),
+      createdAt: '2026-10-02T00:00:00Z',
+    };
+    const stale = {
+      ...set('c2', 'c3', [region('stale', 1, 3, 99)]),
+      id: 'c2-c3-raster-old',
+      createdAt: '2026-10-03T00:00:00Z',
+    };
+    const area = {
+      ...set('c2', 'c3', [region('area', 1, 3, 40)]),
+      id: 'c2-c3-raster-yard',
+      scope: { id: 'yard', name: 'Yard' },
+    };
+    const older = set('c2', 'c3', [region('older', 1, 3, 30)]);
+    const tracks = regionTracks(
+      [set('c1', 'c2', [region('r1', 0, 2, 16)]), older, later, stale, area],
+      CAPTURES,
+      (s) => s.id === 'c2-c3-raster-old',
+    );
+    const refs = tracks.flatMap((t) => t.sightings.map((s) => s.ref));
+    expect(refs).toEqual(['c1-c2-raster/r1', 'c2-c3-raster/new']);
+    // without a whole-site set, the area's own set is read
+    const only = regionTracks([set('c1', 'c2', [region('r1', 0, 2, 16)]), area], CAPTURES);
+    expect(only.flatMap((t) => t.sightings.map((s) => s.ref))).toContain('c2-c3-raster-yard/area');
   });
 });
 

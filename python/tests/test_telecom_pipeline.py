@@ -448,11 +448,15 @@ def test_each_date_keeps_a_copy_of_its_inventory(tmp_path, monopole):
     assert run_job(pipeline(), root, {"run": "run-b"}, job_id="jb")[0]["status"] == "done"
     assert sorted(p.name for p in history.iterdir()) == [f"{a}.json", f"{b}.json"]
     kept = json.loads((history / f"{a}.json").read_text("utf-8"))
-    assert kept["run"]["captureId"] == a and kept["units"][0]["status"] == "accepted"
-    assert not any("crop" in u for u in kept["units"])
+    assert kept["schema"] == "aio.antenna-history/1" and kept["captureId"] == a
+    reviewed = next(e for e in kept["units"] if e["id"] == first["units"][0]["id"])
+    assert reviewed["status"] == "accepted" and reviewed["reviewed"] is True
     now = json.loads((history / f"{b}.json").read_text("utf-8"))
-    assert now["run"]["captureId"] == b
-    assert [u["id"] for u in now["units"]] == [u["id"] for u in read_file(root)["units"]]
+    assert now["captureId"] == b and now["runId"] == "run-b"
+    live = {u["id"] for u in read_file(root)["units"]}
+    assert {e["id"] for e in now["units"]} <= live and len(now["units"]) > 0
+    assert all(e["reviewed"] is False for e in now["units"])
+    assert all(len(e["centre"]) == 3 and "azimuthGridDeg" in e for e in now["units"] if e["kind"] == "panel")
 
 
 def test_a_run_without_a_date_keeps_no_copy(tmp_path, monopole):

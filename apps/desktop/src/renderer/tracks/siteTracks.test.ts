@@ -1,9 +1,10 @@
 import type { Detection } from '@aio/annotate/detections';
-import type { AntennasFile, ProjectManifest } from '@aio/schema';
+import type { AntennaHistoryFile, AntennasFile, ProjectManifest } from '@aio/schema';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   antennaHistory,
   hotspotsOf,
+  inventoryVersion,
   isHotspot,
   loadAntennaHistory,
   siteTracks,
@@ -60,29 +61,31 @@ const det = (id: string, layer: string, peak: number, x = 0): Detection =>
     vote: { views: 2, point: [x, 0, 0] },
   }) as unknown as Detection;
 
-const inventory = (capture: string, az: number): AntennasFile =>
+const inventory = (capture: string): AntennasFile =>
   ({
     schema: 'aio.antennas/1',
     run: { id: `run-${capture}`, captureId: capture },
-    units: [
-      {
-        id: 'ant-a-1',
-        name: 'A1',
-        kind: 'panel',
-        status: 'accepted',
-        box: {
-          centre: [0, 0, 30],
-          axes: [
-            [1, 0, 0],
-            [0, 0, 1],
-            [0, 1, 0],
-          ],
-          extents: [0.3, 1.4, 0.1],
-        },
-        azimuthGridDeg: { value: az },
-      },
-    ],
+    units: [{ id: 'ant-a-1', status: 'accepted' }],
   }) as unknown as AntennasFile;
+
+const record = (captureId: string, az: number): AntennaHistoryFile => ({
+  schema: 'aio.antenna-history/1',
+  captureId,
+  runId: `run-${captureId}`,
+  at: '2026-06-01T00:00:00Z',
+  units: [
+    {
+      id: 'ant-a-1',
+      name: 'A1',
+      kind: 'panel',
+      status: 'accepted',
+      reviewed: true,
+      centre: [0, 0, 30],
+      extents: [0.3, 1.4, 0.1],
+      azimuthGridDeg: az,
+    },
+  ],
+});
 
 beforeEach(() => {
   calls.n = 0;
@@ -106,8 +109,8 @@ describe('siteTracks', () => {
   it('links hot spots and antennas over the two dates', () => {
     const t = siteTracks({
       manifest: MANIFEST,
-      live: inventory('c2', 12),
-      history: [inventory('c1', 2)],
+      live: inventory('c2'),
+      history: [record('c1', 2), record('c2', 12)],
       detections: [det('h1', 'th1', 60), det('h2', 'th2', 66, 0.2)],
       sets: [],
     });
@@ -116,8 +119,13 @@ describe('siteTracks', () => {
     expect(t.regions).toEqual([]);
   });
 
-  it('reads the copies once per project and live run', async () => {
-    calls.files = [inventory('c1', 2)];
+  it('versions the records by the live run and its unit count', () => {
+    expect(inventoryVersion(null)).toBe('');
+    expect(inventoryVersion(inventory('c2'))).toBe('run-c2:1');
+  });
+
+  it('reads the records once per project and live run', async () => {
+    calls.files = [record('c1', 2)];
     await loadAntennaHistory('p', 'run-c2');
     await loadAntennaHistory('p', 'run-c2');
     expect(calls.n).toBe(1);

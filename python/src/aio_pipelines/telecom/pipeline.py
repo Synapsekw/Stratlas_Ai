@@ -11,7 +11,8 @@ Steps (each resumable; state between steps is plain arrays in the job's staging 
    of each unit's best photo is staged as `crops/<photo-time id>.jpg`.
 5. commit: reads `telecom/antennas.json` again (the person may have reviewed during the run),
    merges, writes the file to staging and moves the crops in first and the inventory last. The
-   per-date copies (`history.py`, `telecom/history/<captureId>.json`) go in before the inventory.
+   per-date records of what each date measured (`history.py`, `telecom/history/<captureId>.json`)
+   go in before the inventory.
 
 Coordinates in the file are project E, N, Z with the layer's `heightOffsetM` applied, in the
 cloud date's own frame (no line-up shift, like survey measurements; the run names the date as
@@ -482,7 +483,7 @@ class TelecomAntennas:
             doc = {"schema": ANTENNAS_SCHEMA, "run": run, "units": final}
             atomic_write_json(ctx.stage("antennas.json"), doc)
             copies: list[tuple[str, str]] = []
-            for k, (rel, copy) in enumerate(history_copies(previous, doc)):
+            for k, (rel, copy) in enumerate(history_copies(ctx.project, previous, merged, units, doc)):
                 atomic_write_json(ctx.stage(f"history-{k}.json"), copy)
                 copies.append((f"history-{k}.json", rel))
             # crops and the per-date copies first, the inventory last: it never names a crop that

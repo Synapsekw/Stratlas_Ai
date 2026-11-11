@@ -65,6 +65,8 @@ export {
   linkTracks,
   regionTracks,
   trackOf,
+  liveDateRecorded,
+  turnedAzimuth,
   HOTSPOT_CLASS,
   type HotspotDetection,
   type Track,
