@@ -1,5 +1,6 @@
 import type { Detection } from '@aio/annotate/detections';
 import type { AntennaHistoryFile, AntennasFile, ProjectManifest } from '@aio/schema';
+import { trackRules } from '@aio/insights';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   antennaHistory,
@@ -93,6 +94,22 @@ beforeEach(() => {
 });
 
 describe('siteTracks', () => {
+  it('fires the digest for an accepted antenna a re-survey measured turned', () => {
+    // P1 accepted on c1 at 2 degrees; c2 measured it again at 12, the acceptance carried over
+    const later = record('c2', 12);
+    const carried = { ...later, units: later.units.map((u) => ({ ...u, reviewed: false })) };
+    const t = siteTracks({
+      manifest: MANIFEST,
+      live: inventory('c2'),
+      history: [record('c1', 2), carried],
+      detections: [],
+      sets: [],
+    });
+    expect(t.antennas[0]?.sightings.map((s) => s.draft)).toEqual([false, false]);
+    const [i] = trackRules(t.antennas, { from: 'c1', to: 'c2' });
+    expect(i).toMatchObject({ rule: 'antenna-turned', text: { params: { azimuth: '10.0' } } });
+  });
+
   it('takes thermal passes and hot-spot classes as hot spots', () => {
     expect(isHotspot({ pass: 'thermal-th1.json', classId: '' })).toBe(true);
     expect(isHotspot({ pass: 'ai-x.json', classId: 'hot-spot' })).toBe(true);

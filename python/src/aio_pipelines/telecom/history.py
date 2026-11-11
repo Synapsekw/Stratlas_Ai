@@ -15,7 +15,13 @@ antenna's azimuth or downtilt can be read across dates, the commit also writes o
   when a run replaces an inventory of another date, the record of that date takes the statuses the
   person changed while it was live (`review_of`); the app does the same for the live date.
 - a run on a date that already has a record keeps that record's reviewed entries (their status and
-  `reviewed`), so running an earlier date again does not undo its review.
+  `reviewed`; an entry it does not measure again stays as it was), so running an earlier date again
+  does not undo its review.
+- a replaced date without a record (its inventory came from an older pack) gets one from the
+  values its inventory stores (`stored_record`), so upgrading keeps the earlier date.
+
+The app counts an accepted unit a run measured again as confirmed on that date (the person
+accepted the antenna and the fit is new data); drafts and rejected units are not.
 
 A date whose id is not a plain file name, or a run without a date, gets no record. The app links
 the records into tracks at read time (`@aio/change` `antennaTracks`); nothing else reads them.
@@ -111,7 +117,44 @@ def measured_record(
             e["status"] = prior.get("status", e["status"])
             e["reviewed"] = True
         out.append(e)
+    # a reviewed entry this run did not measure again stays as it was
+    done = {e["id"] for e in out}
+    out.extend(e for e in _units(existing) if e.get("reviewed") is True and e["id"] not in done)
     return {"schema": HISTORY_SCHEMA, "captureId": capture, "runId": run_id, "at": at, "units": out}
+
+
+def stored_record(previous: dict[str, Any], capture: str) -> dict[str, Any]:
+    """A record for a date that has none (its inventory came from an older pack), from the values
+    its inventory stores: the best that is known of what it measured. Units it carried without
+    finding them (`notFoundInLatest`) are left out; a status other than draft counts as reviewed."""
+    out: list[dict[str, Any]] = []
+    for u in _units(previous):
+        box = u.get("box")
+        if u.get("notFoundInLatest") or not isinstance(box, dict):
+            continue
+        status = u.get("status") if u.get("status") in ("draft", "accepted", "rejected") else "draft"
+        e: dict[str, Any] = {
+            "id": u["id"],
+            "name": u.get("name") or u["id"],
+            "kind": u.get("kind"),
+            "status": status,
+            "reviewed": status != "draft",
+            "centre": [float(v) for v in box.get("centre") or [0, 0, 0]],
+            "extents": [float(v) for v in box.get("extents") or [0, 0, 0]],
+        }
+        for k in VALUES:
+            v = _value(u, k)
+            if v is not None:
+                e[k] = v
+        out.append(e)
+    run = previous.get("run") or {}
+    return {
+        "schema": HISTORY_SCHEMA,
+        "captureId": capture,
+        "runId": str(run.get("id", "")),
+        "at": str(run.get("at", "")),
+        "units": out,
+    }
 
 
 def history_copies(
@@ -128,8 +171,8 @@ def history_copies(
     before = capture_of(previous)
     if previous is not None and before is not None and before != now:
         old = read_record(project, before)
-        if old is not None:
-            out.append((f"{HISTORY_DIR}/{before}.json", review_of(old, previous)))
+        record = review_of(old, previous) if old is not None else stored_record(previous, before)
+        out.append((f"{HISTORY_DIR}/{before}.json", record))
     if now is not None:
         existing = read_record(project, now)
         if existing is not None and before == now:

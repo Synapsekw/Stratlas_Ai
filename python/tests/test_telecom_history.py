@@ -116,3 +116,42 @@ def test_copies_review_the_replaced_date_and_keep_reviews_on_a_rerun(tmp_path):
 
 def test_no_record_without_a_date(tmp_path):
     assert history_copies(tmp_path, None, [], [], {"run": {"id": "r"}, "units": []}) == []
+
+
+def test_an_accepted_unit_measured_again_keeps_accepted_with_the_new_fit():
+    # P1 accepted on a at 10 degrees, measured again on b at 20 (a 10 degree turn)
+    previous = _doc(
+        "a", [old("ant-a-1", "P1", (0, 0, 30), "accepted", azimuth=10.0, support=500)], run="run-a"
+    )
+    fits = [unit((0, 0, 30), azimuth=20.0, support=1000)]
+    merged = merge_with_sources(previous, fits, "run-b")
+    [e] = measured_record(merged, fits, "b", "run-b", "t")["units"]
+    assert e["status"] == "accepted" and e["azimuthGridDeg"] == 20.0
+
+
+def test_a_replaced_date_without_a_record_gets_one_from_its_inventory(tmp_path):
+    previous = _doc(
+        "a",
+        [
+            old("ant-a-1", "P1", (0, 0, 30), "accepted", azimuth=10.0),
+            old("ant-a-2", "P2", (5, 0, 30), "draft"),
+            old("ant-a-3", "P3", (9, 0, 30), "accepted", notFoundInLatest=True),
+        ],
+        run="run-a",
+    )
+    fits = [unit((0, 0, 30), azimuth=20.0)]
+    merged = merge_with_sources(previous, fits, "run-b")
+    out = dict(history_copies(tmp_path, previous, merged, fits, _doc("b", [u for u, _ in merged])))
+    rec = out[f"{HISTORY_DIR}/a.json"]
+    assert rec["schema"] == HISTORY_SCHEMA and rec["captureId"] == "a" and rec["runId"] == "run-a"
+    assert [(e["id"], e["status"], e["reviewed"]) for e in rec["units"]] == [
+        ("ant-a-1", "accepted", True),
+        ("ant-a-2", "draft", False),
+    ]
+    assert rec["units"][0]["azimuthGridDeg"] == 10.0
+
+
+def test_a_rerun_keeps_a_reviewed_entry_it_does_not_measure_again():
+    existing = _record("a", [{"id": "ant-a-9", "name": "P9", "status": "rejected", "reviewed": True}])
+    rec = measured_record([], [], "a", "run-c", "t", existing)
+    assert [e["id"] for e in rec["units"]] == ["ant-a-9"]

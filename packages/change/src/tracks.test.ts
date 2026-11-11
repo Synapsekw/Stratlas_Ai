@@ -6,7 +6,7 @@ import {
   groundSampleM,
   hotspotTracks,
   linkTracks,
-  liveDateRecorded,
+  liveDateUnrecorded,
   regionTracks,
   trackOf,
   turnedAzimuth,
@@ -162,13 +162,16 @@ describe('antennaTracks', () => {
     expect(
       antennaTracks(records, live, CAPTURES, () => null).map((t) => t.sightings.length),
     ).toEqual([1, 1]);
-    // left as carried over: a draft on c2, not reviewed
+    // the live status wins: accepted counts, draft stays a draft
     const kept = inventory('c2', [
       { id: 'ant-a-1', status: 'accepted' },
-      { id: 'ant-a-2', status: 'accepted' },
+      { id: 'ant-a-2', status: 'draft' },
     ]);
-    const [t] = antennaTracks(records, kept, CAPTURES, () => null);
-    expect(t?.sightings.map((s) => s.draft)).toEqual([false, true]);
+    const tracks = antennaTracks(records, kept, CAPTURES, () => null);
+    expect(tracks.map((t) => t.sightings.map((s) => s.draft))).toEqual([
+      [false, false],
+      [false, true],
+    ]);
   });
 
   it("turns azimuths with the date's line-up turn", () => {
@@ -192,10 +195,22 @@ describe('antennaTracks', () => {
     expect(t?.trends.find((x) => x.metric === 'azimuthDeg')?.lastChange).toBeCloseTo(0);
   });
 
-  it('knows whether the live date has a record', () => {
-    expect(liveDateRecorded([record('c1', [])], inventory('c2', []))).toBe(false);
-    expect(liveDateRecorded([record('c2', [])], inventory('c2', []))).toBe(true);
-    expect(liveDateRecorded([], null)).toBe(true);
+  it('knows whether the live date lacks a record', () => {
+    expect(liveDateUnrecorded([record('c1', [])], inventory('c2', []))).toBe(true);
+    expect(liveDateUnrecorded([record('c2', [])], inventory('c2', []))).toBe(false);
+    expect(liveDateUnrecorded([], null)).toBe(false);
+    // a date id the pipeline does not file a record under
+    expect(liveDateUnrecorded([], inventory('a b', []))).toBe(false);
+  });
+
+  it('counts an accepted unit carried over and measured again as confirmed', () => {
+    const records = [
+      record('c1', [entry('ant-a-1', [0, 0, 30], 10, 4)]),
+      record('c2', [entry('ant-a-1', [0, 0, 30], 20, 4, { reviewed: false })]),
+      record('c3', [entry('ant-a-1', [0, 0, 30], 25, 4, { status: 'draft', reviewed: false })]),
+    ];
+    const [t] = antennaTracks(records, null, CAPTURES, () => null);
+    expect(t?.sightings.map((s) => s.draft)).toEqual([false, false, true]);
   });
 });
 

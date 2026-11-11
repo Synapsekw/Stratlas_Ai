@@ -46,7 +46,9 @@ export async function loadAntennaHistory(projectId: string, version: string): Pr
   try {
     const r = await bridge.call('telecom:readAntennaHistory', { projectId });
     if (inFlight !== key) return;
-    antennaHistory.setState({ key, files: r.ok && r.value.ok ? r.value.files : [] });
+    // a failed read leaves the records unread (no track, and no hint about the pack either)
+    if (r.ok && r.value.ok) antennaHistory.setState({ key, files: r.value.files });
+    else antennaHistory.setState({ key: null, files: [] });
   } finally {
     if (inFlight === key) inFlight = null;
   }
@@ -119,6 +121,15 @@ export function useAntennaHistory(projectId: string | null, live: AntennasFile |
     if (projectId) void loadAntennaHistory(projectId, version);
   }, [projectId, version]);
   return useStore(antennaHistory, (s) => s.files);
+}
+
+/** Whether the records for this project and live inventory version have been read. */
+export function useAntennaHistoryReady(
+  projectId: string | null,
+  live: AntennasFile | null,
+): boolean {
+  const key = projectId ? `${projectId}|${inventoryVersion(live)}` : null;
+  return useStore(antennaHistory, (s) => key !== null && s.key === key);
 }
 
 /** The label the app gives each survey date, by capture id. */

@@ -5,8 +5,8 @@
  * degrees on the earlier date and 12 degrees on the later one. The live inventory
  * `telecom/antennas.json` is the later date's and, as the re-run merge does for an accepted unit
  * whose new fit has less support, still holds P1's earlier 4 degrees; the track must read the later
- * date's own fit. P1 was a fresh draft in the later record and the person accepted it since, so it
- * counts as reviewed on that date. Selecting P1 in Project > In this project shows its track in the
+ * date's own fit. P1's acceptance was carried over from the earlier date (not reviewed again on the
+ * later one): a unit a re-survey measured again while accepted counts as confirmed. Selecting P1 in Project > In this project shows its track in the
  * details card (two dates, last change +8.0 degrees), and the site digest names the turn
  * (`antenna-turned`). The other units did not move, so they raise nothing. Without a record of the
  * live date (a run on an older pack), the card says what tracks need instead.
@@ -109,7 +109,7 @@ async function writeTwoDateAntennas(dir: string, recordLater = true): Promise<vo
   if (recordLater)
     await writeFile(
       join(history, `${LATER.id}.json`),
-      JSON.stringify(recordAt(LATER.id, 12, { status: 'draft', reviewed: false })),
+      JSON.stringify(recordAt(LATER.id, 12, { status: 'accepted', reviewed: false })),
     );
 }
 
@@ -144,6 +144,8 @@ test.describe('tracks across survey dates', () => {
     await expect(rows.nth(1)).toHaveAttribute('data-capture', LATER.id);
     await expect(rows.nth(0)).toContainText('4.0°');
     await expect(rows.nth(1)).toContainText('12.0°');
+    // carried-over acceptance, measured again: confirmed, not a draft
+    await expect(rows.nth(1)).not.toContainText('draft');
     // the sighting being looked at is the live one, on the later date
     await expect(rows.nth(1)).toHaveAttribute('aria-current', 'true');
     await expect(track.getByTestId('antenna-track-change')).toContainText('+8.0°');

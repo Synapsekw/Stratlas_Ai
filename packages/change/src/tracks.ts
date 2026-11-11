@@ -251,10 +251,12 @@ export function turnedAzimuth(azimuthDeg: number, shift: DateShift | null): numb
 
 /**
  * Antenna tracks from what each date measured (`telecom/history/<captureId>.json`, one record per
- * date). The values are each run's own fit, never the inventory's merged ones. A record's status
- * counts as reviewed only when a person decided it on that date: `reviewed` in the record, or, for
- * the live inventory's own date, a status the person changed since the run (`live`). Rejected
- * entries are left out; the rest not reviewed are drafts.
+ * date). The values are each run's own fit, never the inventory's merged ones. On the live
+ * inventory's own date its status wins (the person may have decided since the run), and a unit gone
+ * from it is left out. Rejected entries are left out and drafts stay drafts; an accepted unit counts
+ * as confirmed on every date a run measured it, also when the acceptance was carried over from an
+ * earlier date (the person accepted the antenna, and the new fit is real data). `reviewed` in the
+ * record says only whether the status was decided on that date.
  */
 export function antennaTracks(
   records: readonly AntennaHistoryFile[],
@@ -274,14 +276,10 @@ export function antennaTracks(
     const shift = shiftOf(capture);
     for (const e of r.units) {
       let status = e.status;
-      let reviewed = e.reviewed;
       if (capture === liveDate) {
         const now = liveStatus.get(e.id);
         if (now === undefined) continue; // deleted, or dropped from the inventory since
-        if (now !== e.status) {
-          status = now;
-          reviewed = true;
-        }
+        status = now;
       }
       if (status === 'rejected') continue;
       const values: TrackSighting['values'] = {};
@@ -298,7 +296,7 @@ export function antennaTracks(
         class: e.kind,
         at: shiftEN<Vec3>(e.centre, shift),
         radiusM: antennaRadius(e.extents),
-        draft: !reviewed || status === 'draft',
+        draft: status === 'draft',
         values,
       });
     }
@@ -306,13 +304,21 @@ export function antennaTracks(
   return linkTracks('antenna', obs, captures);
 }
 
-/** Whether the live inventory's date has a record of what it measured (pipeline pack 0.35.0). */
-export function liveDateRecorded(
+/** A survey date id the pipeline files a record under (`history.py` `capture_of`). */
+export function recordableCapture(id: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id) && !id.endsWith('.');
+}
+
+/**
+ * Whether the live inventory's date lacks the record a pipeline pack 0.35.0 run writes: false
+ * without a live date, or for a date id no record can be filed under.
+ */
+export function liveDateUnrecorded(
   records: readonly AntennaHistoryFile[],
   live: AntennasFile | null,
 ): boolean {
   const d = live?.run.captureId;
-  return d === undefined || records.some((r) => r.captureId === d);
+  return d !== undefined && recordableCapture(d) && !records.some((r) => r.captureId === d);
 }
 
 // --------------------------------------------------------------------------- change regions
