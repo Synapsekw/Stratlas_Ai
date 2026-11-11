@@ -36,6 +36,7 @@ from .pointcloud_cleanup.pipeline import PointcloudClean
 from .rf.pipeline import RfCoverage
 from .road.pipeline import RoadBuild
 from .runtime import Pipeline
+from .segment.lift import SegmentLift
 from .selftest import SelfTest
 from .survey.cleanup import SurveyCleanup
 from .survey.compare import SurveyCompare
@@ -110,6 +111,8 @@ def all_pipelines() -> dict[str, Pipeline]:
         ModelEvidence(),
         # Point cloud cleanup (pipeline pack POINTCLOUD_CLEAN_MIN_PACK)
         PointcloudClean(),
+        # Photo masks onto a point cloud (pipeline pack SEGMENT_LIFT_MIN_PACK, Segmentation add-on)
+        SegmentLift(),
         # Telecom (pipeline pack 0.14.0)
         TelecomAntennas(),
         # Antenna flagging (pipeline pack TELECOM_FLAG_MIN_PACK)

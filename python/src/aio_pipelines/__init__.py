@@ -40,7 +40,9 @@ PROTOCOL = "aio.pipelines/1"
 # per survey date in telecom/history/, so an antenna can be followed across dates; older apps ignore it;
 # adds walk.track, one placed draft per object seen across a 360 walk's frames; detect.vlm reads walk
 # frames through perspective faces, a frames param only an app with detectors on walks sends; a change
-# recompute keeps each region's aiLabel).
+# recompute keeps each region's aiLabel; pointcloud.clean marks ground with PDAL SMRF from the Ground
+# classifier add-on; adds segment.lift, which only an app with the Segmentation add-on starts; cleanup
+# regions may carry a depth band).
 # Each keeps the floor.
 # The app refuses a pack outside the range; the syntax is read by `appRangeAllows` in packages/schema/src/versions.ts
 # (space-separated >=, >, <=, <, =).
