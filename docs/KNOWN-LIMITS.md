@@ -426,3 +426,11 @@ These limits were seen on the founder's own real projects in the data folder (no
 
 - Importing a confined-space inspection export needs processing tools 0.31.0 or later; an older pack is refused before any space is made. Use 0.34.0 for mission folders with several chambers: older packs give more false wall distance warnings and can drop a layer when two imports finish at the same moment.
 - Measurements are not tied to a space yet. Volume, surface, change, telecom and tiles jobs refuse a cloud in a space that has only local coordinates.
+
+## Model add-ons
+
+- No add-on is published yet, so this build has no download address. Settings, Models and detection, Add-ons offers Choose file until one is set (Settings `addons.baseUrl`).
+- The Road defects add-on has no trained weights yet. It was checked end to end with a synthetic detector only.
+- The Segmentation add-on runs a SAM-class ONNX export in the app's own runtime (no PyTorch). It was checked with the MobileSAM weights of the processing tools; a SAM 3 export has not been run.
+- Classify on point cloud keeps the surface each photo saw with one depth band per outline, so a few ground points right at the foot of a wall behind the object can be taken too. Points hidden under the object and ground beside it are not.
+- Ground marking is PDAL SMRF with the add-on's settings; vegetation and buildings are not classified.

@@ -9,6 +9,17 @@ Open **Settings**, **Models and detection**. **Detection models** comes first.
 - The first line says whether local detection can run, for example "onnxruntime 1.30.0 on DirectML (graphics card)". Without a usable graphics card it runs on **CPU**.
 - **Run on**: **Graphics card when available** (the default) or **CPU only**. If the graphics card cannot load a model, {product} uses the CPU.
 - The models you imported are listed below. "No detection model is installed yet." means there are none.
+- A model that came with an add-on is marked **Add-on**. Remove it under **Add-ons**, not here.
+
+## Add-ons
+
+**Add-ons**, at the end of **Models and detection**, are small model packs you download when you need them. You never install one by hand. There are three:
+
+- **Road defects**: a road defect detector. Once installed it is listed with the detection models.
+- **Segmentation**: a stronger model for **Suggest boundaries** and the outline assist in the review. With it installed, **Classify on point cloud** on a photo's right-click menu puts the outlines drawn on that photo onto a point cloud, as cleanup regions with the class you pick. It needs processing tools 0.35.0 or later.
+- **Ground classifier**: **Also mark ground** in **Clean up**, **Remove noise**, which marks ground points as class 2 as well as finding noise. It needs processing tools 0.35.0 or later.
+
+Each row shows the version, the licence and the download size. **Download** gets the add-on and checks it before it is installed, with the progress shown on its row; **Remove** takes it off again. A file that does not match its check is refused, and nothing is installed. On a computer that is offline, or when downloads are not set up, use **Choose file** with an add-on file (`.aioaddon`) copied from another computer. Settings that are **Offline only** never download.
 
 ## The model card
 
