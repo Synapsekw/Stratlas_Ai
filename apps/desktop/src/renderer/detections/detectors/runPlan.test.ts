@@ -4,9 +4,11 @@ import type { DetectItem } from '../convert';
 import {
   EXAMPLES_TIME_FACTOR,
   estimateMinutes,
+  estimateRunMinutes,
   MAX_RUN_FRAMES,
   orderForProject,
   planRuns,
+  runImages,
   runItems,
   runRequest,
   runSize,
@@ -108,6 +110,18 @@ describe('runPlan', () => {
     }));
     const plan = planRuns(items, [], new Set(['w1']));
     expect(plan.runs.map((r) => r.frames?.length)).toEqual([MAX_RUN_FRAMES, 5]);
+  });
+
+  it('estimates a walk frame as four faces, a photo as one picture', () => {
+    const photoRun = { layer: 'd1', photos: ['p1', 'p2'], detectors: [] };
+    const walkRun = { layer: 'w1', photos: [], frames: [1, 3, 5], detectors: [] };
+    expect(runImages(photoRun)).toBe(2);
+    expect(runImages(walkRun)).toBe(12);
+    // the strip still counts frames
+    expect(runSize(walkRun)).toBe(3);
+    // 14 pictures x 1 detector x 7 s = 98 s
+    expect(estimateRunMinutes([photoRun, walkRun], 1)).toBe(2);
+    expect(estimateRunMinutes([walkRun], 1)).toBe(estimateMinutes(12, 1));
   });
 
   it('estimateMinutes rounds up', () => {

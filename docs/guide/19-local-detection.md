@@ -73,7 +73,9 @@ The model looks at the whole 360 frame as it is, the equirectangular picture of 
 
 The strip counts the frames checked. **Stop** finishes the frame in hand, and **Try the n left again** checks the frames that were not reached.
 
-The local detectors read a 360 frame differently: as four level views around the camera (100 degrees wide each, overlapping a little), so their yes/no checks see ordinary pictures. Boxes found in two neighbouring views are joined into one. The floor and the sky are not checked.
+The local detectors read a 360 frame differently: as four level views around the camera (100 degrees wide each, overlapping a little), so their yes/no checks see ordinary pictures. Boxes found in two neighbouring views are joined into one. A frame takes about as long as four photos.
+
+The views straight up and straight down are not read: what lies right above the camera or at the walker's feet is not checked by the detectors.
 
 The suggestions wait in the review queue like those on photos, named after the video and the time, for example "Ground floor walk 12.0 s". A box across the seam shows in two parts, at both edges of the frame. Accept or dismiss them as usual; nothing counts until you accept it.
 

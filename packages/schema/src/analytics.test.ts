@@ -4,6 +4,7 @@ import {
   DetectQueued,
   DetectVlmParams,
   VlmDetector,
+  WALK_FRAME_FACES,
   ipc,
   ipcEvents,
   vlmPassName,
@@ -98,6 +99,8 @@ describe('analytics contracts', () => {
     const many = Array.from({ length: 2001 }, (_, k) => ({ layer: 'walk-1', t: k }));
     expect(DetectVlmParams.safeParse({ ...params, frames: many }).success).toBe(false);
     expect(DETECT_FRAMES_MIN_PACK).toBe('0.35.0');
+    // four level faces per frame (python inspection/equirect.py)
+    expect(WALK_FRAME_FACES).toBe(4);
   });
   it('DetectQueued lists a waiting run and the queue event may carry a failed start', () => {
     const item = {

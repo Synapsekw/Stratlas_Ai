@@ -29,6 +29,8 @@ const h = vi.hoisted(() => ({
   /** Jobs started quietly (walk.track after a local walk run), and why they are refused. */
   quiet: [] as IpcRequest<'jobs:start'>[],
   quietRefused: null as string | null,
+  /** The status a quiet job starts in (`running`: the test ends it). */
+  quietStatus: 'done',
   startAnswer: null as string | null,
   progress: [] as ((e: unknown) => void)[],
   /** The review cannot be read again (a reload that throws). */
@@ -50,7 +52,7 @@ vi.mock('../../shell', async () => {
       if (h.quietRefused) return Promise.resolve({ error: h.quietRefused });
       const id = `quiet-${String(h.quiet.length)}`;
       set((s) => ({
-        jobs: [{ id, pipeline: 'walk.track', status: 'done' } as JobRecord, ...s.jobs],
+        jobs: [{ id, pipeline: 'walk.track', status: h.quietStatus } as JobRecord, ...s.jobs],
       }));
       return Promise.resolve({ jobId: id });
     },
@@ -175,6 +177,7 @@ beforeEach(() => {
   h.startAnswer = null;
   h.quiet = [];
   h.quietRefused = null;
+  h.quietStatus = 'done';
   h.progress = [];
   h.readFails = false;
   h.status = { ready: true, cloud: true, route: VISION };
@@ -587,9 +590,31 @@ describe('Ask AI runs', () => {
       },
     ]);
     expect(askAiRun.getState().run).toMatchObject({ phase: 'done' });
-    // the review is read again after the tracking
-    const reads = h.calls.filter((c) => c.channel === 'detections:read');
-    expect(reads.length).toBeGreaterThanOrEqual(2);
+    // the review is read once, after the tracking
+    expect(h.calls.filter((c) => c.channel === 'detections:read')).toHaveLength(1);
+    const quietAt = h.calls.findIndex((c) => c.channel === 'detections:read');
+    expect(quietAt).toBeGreaterThan(h.calls.findIndex((c) => c.channel === 'inference:run'));
+  });
+
+  it('stays running until the walk tracking has ended, so Review never opens on untracked drafts', async () => {
+    h.quietStatus = 'running';
+    const run = localWalk(frames(3));
+    await flush();
+    const req = h.calls.find((c) => c.channel === 'inference:run')
+      ?.req as IpcRequest<'inference:run'>;
+    h.progress.forEach((f) => {
+      f({ runId: req.runId, done: 3, total: 3, found: 3 });
+    });
+    h.inference?.resolve({ ok: true, value: { ok: true, file: 'f.json', count: 3 } });
+    await flush();
+    expect(h.quiet).toHaveLength(1);
+    expect(askAiRun.getState().run).toMatchObject({ phase: 'running' });
+    // the tracking ends: only now is the run done
+    shell.jobs.setState((s) => ({
+      jobs: s.jobs.map((j) => (j.pipeline === 'walk.track' ? { ...j, status: 'done' } : j)),
+    }));
+    await run;
+    expect(askAiRun.getState().run).toMatchObject({ phase: 'done' });
   });
 
   it('keeps the drafts as they are when the processing tools refuse walk.track', async () => {

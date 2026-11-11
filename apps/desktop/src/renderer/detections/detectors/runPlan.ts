@@ -3,7 +3,12 @@
  * one job per photo layer or 360 walk layer (other video frames are skipped), the time it will
  * take, and the detectors ordered for the project.
  */
-import type { DetectorWhere, IpcRequest, VlmDetector } from '@aio/schema';
+import {
+  WALK_FRAME_FACES,
+  type DetectorWhere,
+  type IpcRequest,
+  type VlmDetector,
+} from '@aio/schema';
 import type { DetectItem } from '../convert';
 
 /** Measured seconds one detector takes on one photo (spike: 5 to 8 s on an RTX 5070 Ti). */
@@ -78,8 +83,28 @@ export function planRuns(
   return { runs, skippedFrames };
 }
 
-/** The pictures one run reads: its photos, or its walk frames. */
+/** The items one run reads, as the strip counts them: its photos, or its walk frames. */
 export const runSize = (r: PlannedRun): number => r.photos.length + (r.frames?.length ?? 0);
+
+/**
+ * The pictures one run sends to the detectors, for time estimates: a photo is one, a walk frame
+ * `WALK_FRAME_FACES` (its four perspective faces).
+ */
+export const runImages = (r: PlannedRun): number =>
+  r.photos.length + (r.frames?.length ?? 0) * WALK_FRAME_FACES;
+
+/** Whole minutes the planned runs take (`estimateMinutes` over every run's pictures). */
+export function estimateRunMinutes(
+  runs: readonly PlannedRun[],
+  detectorCount: number,
+  learning = 0,
+): number {
+  return estimateMinutes(
+    runs.reduce((n, r) => n + runImages(r), 0),
+    detectorCount,
+    learning,
+  );
+}
 
 /** What one run reads, as Ask AI items (for what is left after a stop or a failure). */
 export const runItems = (r: PlannedRun): DetectItem[] => [

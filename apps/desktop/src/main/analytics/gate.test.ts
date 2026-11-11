@@ -537,6 +537,25 @@ describe('detectLane', () => {
     expect(t.changed).toHaveBeenLastCalledWith({ items: [] });
   });
 
+  it('a queued walk run counts four faces per frame', async () => {
+    const t = lane();
+    t.jobs.push(job('photo', 'photo.align', 'running'));
+    const walk = newRequest('run-w');
+    if (!('params' in walk)) throw new Error('not a new run');
+    walk.params = {
+      ...walk.params,
+      layer: 'walk-1',
+      photos: [],
+      frames: [
+        { layer: 'walk-1', t: 1 },
+        { layer: 'walk-1', t: 3 },
+        { layer: 'walk-1', t: 5 },
+      ],
+    };
+    await t.l.start(walk);
+    expect(t.l.list()[0]).toMatchObject({ run: 'run-w', layer: 'walk-1', photos: 12 });
+  });
+
   it('a queued start of the same run is not queued twice', async () => {
     const t = lane();
     t.jobs.push(job('photo', 'photo.align', 'running'));

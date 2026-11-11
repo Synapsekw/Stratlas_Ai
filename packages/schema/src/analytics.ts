@@ -156,6 +156,12 @@ export type AnalyticsPackManifest = z.infer<typeof AnalyticsPackManifest>;
 export const DETECT_FRAMES_MIN_PACK = '0.35.0';
 
 /**
+ * Pictures `detect.vlm` reads per 360 walk frame: four level perspective faces (yaw 0, 90, 180,
+ * 270). A frame costs that many photos in time estimates and in the detector queue.
+ */
+export const WALK_FRAME_FACES = 4;
+
+/**
  * `detect.vlm` params. A run reads one layer: the photos of a photos layer, or (pipeline pack
  * `DETECT_FRAMES_MIN_PACK`) the frames of a walk layer, `layer` then naming that walk layer and
  * `photos` empty. At least one photo or frame.

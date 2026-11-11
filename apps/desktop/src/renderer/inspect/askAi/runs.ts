@@ -318,8 +318,27 @@ async function runLocal(
     off();
   }
   if (!isLive(token)) return;
-  // the review reads the pass the run wrote
+  // Walk frames: one draft per object, tracked quietly before the run ends, so the review never
+  // opens on the untracked drafts. Older processing tools refuse the job and a tracking that fails
+  // changes nothing: the drafts then stay one per frame.
+  const walkPasses =
+    res.ok && res.value.ok ? walkPassesOf(runId, items, walkLayersOf(i.manifest)) : [];
+  const tracked =
+    walkPasses.length === 0
+      ? 0
+      : await trackWalkPasses(
+          {
+            startQuiet: (req) => jobs.getState().startQuiet(req),
+            wait: (jobId) => waitForJob(jobs, jobId),
+          },
+          i.projectRoot,
+          walkPasses,
+        );
+  if (!isLive(token)) return;
+  // the review reads the pass the run wrote (and the tracking rewrote)
   await reloadReview(projectId);
+  if (!isLive(token)) return;
+  const names = new Set(runPasses(runId, items).map((p) => p.name));
   patch(token, (r) => {
     const error = !res.ok ? res.error : !res.value.ok ? res.value.error : null;
     if (error !== null) return { phase: 'failed', error, remaining: rest(r, true) };
@@ -328,30 +347,13 @@ async function runLocal(
     const stopped = r.phase === 'stopping' || r.done < r.total;
     return {
       phase: stopped ? 'stopped' : 'done',
-      found: ok?.count ?? r.found,
+      found:
+        tracked > 0
+          ? detections.getState().review.detections.filter((d) => names.has(d.pass)).length
+          : (ok?.count ?? r.found),
       remaining: rest(r, false),
     };
   });
-  if (!res.ok || !res.value.ok) return;
-  // walk frames: one draft per object, tracked quietly (older processing tools refuse the job and
-  // the drafts stay one per frame)
-  const walkPasses = walkPassesOf(runId, items, walkLayersOf(i.manifest));
-  if (walkPasses.length === 0) return;
-  const tracked = await trackWalkPasses(
-    {
-      startQuiet: (req) => jobs.getState().startQuiet(req),
-      wait: (jobId) => waitForJob(jobs, jobId),
-    },
-    i.projectRoot,
-    walkPasses,
-  );
-  if (tracked === 0 || !isLive(token)) return;
-  await reloadReview(projectId);
-  if (!isLive(token)) return;
-  const names = new Set(runPasses(runId, items).map((p) => p.name));
-  patch(token, () => ({
-    found: detections.getState().review.detections.filter((d) => names.has(d.pass)).length,
-  }));
 }
 
 /** One ask of a custom run: the images sent, and the item its drafts land on. */
