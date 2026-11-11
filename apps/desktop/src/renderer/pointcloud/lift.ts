@@ -141,16 +141,17 @@ export async function runLift(
   newId: () => string = newLiftRegionId,
 ): Promise<LiftOutcome> {
   const p = d.project();
-  if (!p) return { ok: false, error: 'No project is open.' };
+  if (!p) return { ok: false, error: t('cleanup.lift.err.noProject') };
   if (!d.cleanup.canEdit()) return { ok: false, error: t('cleanup.lookOnly') };
   const params = liftParams(layer, masks);
-  if (!params) return { ok: false, error: 'This cloud has no file in the project.' };
+  if (!params) return { ok: false, error: t('cleanup.lift.err.noFile') };
   const here = () => d.cleanup.store.getState().projectId === p.id;
   const r = await d.call('jobs:start', { pipeline: 'segment.lift', project: p.root, params });
   if (!r.ok) return { ok: false, error: r.error };
   if (!r.value.ok) return { ok: false, error: r.value.error };
   const job = await d.waitForJob(r.value.job.id);
-  if (job.status !== 'done') return { ok: false, error: job.error ?? 'The lift did not finish.' };
+  if (job.status !== 'done')
+    return { ok: false, error: job.error ?? t('cleanup.lift.err.unfinished') };
   const read = await d.call('pointcloud:readCleanup', {
     projectId: p.id,
     liftRun: { layerId: layer.id, runId: job.id },
@@ -158,7 +159,7 @@ export async function runLift(
   if (!read.ok) return { ok: false, error: read.error };
   if (!read.value.ok) return { ok: false, error: read.value.error };
   const lift = read.value.lift ?? null;
-  if (!lift) return { ok: false, error: 'The lift left no result.' };
+  if (!lift) return { ok: false, error: t('cleanup.lift.err.noResult') };
   if (!here()) return { ok: true, added: 0, skipped: lift.skipped };
   if (lift.regions.length === 0) return { ok: true, added: 0, skipped: lift.skipped };
   const base = d.cleanup.recipeOf(layer.id) ?? emptyCleanup(layer.id);
@@ -171,6 +172,6 @@ export async function runLift(
     { ...base, regions: [...base.regions, ...regions] },
     { kind: 'classSet', name: liftClassName(value) },
   );
-  if (!ok) return { ok: false, error: 'The cleanup could not be saved.' };
+  if (!ok) return { ok: false, error: t('cleanup.lift.err.notSaved') };
   return { ok: true, added: regions.length, skipped: lift.skipped };
 }

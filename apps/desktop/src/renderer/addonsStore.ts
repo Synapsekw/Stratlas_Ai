@@ -89,7 +89,11 @@ export function createAddonsStore(b: Bridge, on: AioBridge['on'] | undefined): S
           following = true;
           on('addons:progress', (p) => {
             const run = get().running;
-            if (!run) return;
+            // an install this window did not start (another window) changes the list too
+            if (!run) {
+              if (p.phase === 'done') void get().load();
+              return;
+            }
             // a chosen file names its add-on with its first progress
             set({ running: { id: run.id ?? p.id, progress: p } });
           });

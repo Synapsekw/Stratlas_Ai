@@ -229,9 +229,13 @@ function LiftForm({ picks, onClose }: { picks: PhotoPick[]; onClose: () => void 
   );
 }
 
-/** The dialog, mounted once (App.tsx); it opens when the action sets photos. */
+/** The dialog, mounted once (App.tsx), which also reads the add-on list at start; it opens when the action sets photos. */
 export function LiftHost(): ReactElement | null {
   const picks = useStore(liftDialog, (s) => s.picks);
+  // the photo menu asks synchronously whether Segmentation is installed: read the list at start
+  useEffect(() => {
+    void addons.getState().ensure();
+  }, []);
   if (!picks) return null;
   return (
     <LiftForm

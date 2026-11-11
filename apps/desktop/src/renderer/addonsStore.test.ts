@@ -226,4 +226,18 @@ describe('the add-ons store', () => {
       note: { id: 'ground-classifier', kind: 'removed', version: '1.0.0' },
     });
   });
+
+  it('reads the list again when an install this window did not start is done', async () => {
+    const ev = events();
+    let list = NONE;
+    const { bridge, calls } = fakeBridge({ 'addons:list': () => list });
+    const s = createAddonsStore(bridge, ev.on);
+    await s.getState().load();
+    list = GROUND;
+    ev.emit({ id: 'ground-classifier', phase: 'unpack', bytesDone: 1, bytesTotal: 2 });
+    expect(calls.filter((c) => c.channel === 'addons:list')).toHaveLength(1);
+    ev.emit({ id: 'ground-classifier', phase: 'done', bytesDone: 2, bytesTotal: 2 });
+    await expect.poll(() => s.getState().list).toEqual(GROUND);
+    expect(s.getState().running).toBeNull();
+  });
 });
