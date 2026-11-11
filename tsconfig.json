@@ -71,6 +71,9 @@
       "path": "packages/insights"
     },
     {
+      "path": "packages/facts"
+    },
+    {
       "path": "packages/rf"
     },
     {

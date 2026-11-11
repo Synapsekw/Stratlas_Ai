@@ -145,6 +145,9 @@ importers:
       '@aio/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@aio/facts':
+        specifier: workspace:*
+        version: link:../../packages/facts
       '@aio/geo':
         specifier: workspace:*
         version: link:../../packages/geo
@@ -346,6 +349,15 @@ importers:
       three:
         specifier: ^0.186.1
         version: 0.186.1
+
+  packages/facts:
+    dependencies:
+      '@aio/journal':
+        specifier: workspace:*
+        version: link:../journal
+      '@aio/schema':
+        specifier: workspace:*
+        version: link:../schema
 
   packages/geo:
     dependencies:
