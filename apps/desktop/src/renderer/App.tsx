@@ -33,6 +33,7 @@ import { startLineUpSession } from './lineup/lineUpStart';
 import { makeKitSurfaces, refreshSurfaces } from './survey/compareStore';
 import { preparedSurfaces } from './survey/surfaceStates';
 import { connectSurfacesWatch } from './survey/surfacesWatch';
+import { connectFactIndex } from './facts/factStore';
 import { connectNewDatesWatch } from './survey/newDatesWatch';
 import { qaStore, refreshQa } from './survey/qaStore';
 import { connectKitReady } from './survey/kitAccept';
@@ -467,6 +468,12 @@ export function App() {
         if (manifest) await makeKitSurfaces(projectId, manifest, surfaces, dates);
       },
     });
+    // the open project's fact index status (M1): the Project tab search and the agent's fact tools
+    const stopFacts = connectFactIndex(
+      window.aio,
+      () => workspace.getState().project?.id ?? null,
+      (cb) => workspace.subscribe(cb),
+    );
     // a new survey date's surface is ready: its survey QA and the change compute against the date
     // before, quietly and one at a time (Settings.autoCheckNewDates, absent means on)
     /** The change compute the checks after a new date are running, by job id. */
@@ -711,6 +718,7 @@ export function App() {
       stopFarWatch();
       stopLineUp();
       stopSurfaces();
+      stopFacts();
       stopNewDates();
       stopKitReady();
       stopChangeReload();

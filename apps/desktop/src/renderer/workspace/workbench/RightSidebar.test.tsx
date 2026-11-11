@@ -320,7 +320,12 @@ describe('RightSidebar', () => {
     render();
     clickTab('project');
     // a project without a type: the inspection preset leads with Issues, then In this project (D7)
-    expect(sectionIds()).toEqual(['project.issues', 'project.inThisProject', 'project.jobs']);
+    expect(sectionIds()).toEqual([
+      'project.issues',
+      'project.inThisProject',
+      'project.search',
+      'project.jobs',
+    ]);
     withVolumesAndDates();
     render();
     // with two dates the site digest follows the preset's lead; every section stays
@@ -328,6 +333,7 @@ describe('RightSidebar', () => {
       'project.issues',
       'project.inThisProject',
       'project.digest',
+      'project.search',
       'project.volumes',
       'project.changes',
       'project.jobs',

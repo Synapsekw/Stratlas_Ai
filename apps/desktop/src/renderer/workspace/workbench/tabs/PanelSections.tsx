@@ -7,6 +7,7 @@ import { Icon, IconButton, useT } from '@aio/ui';
 import { useVolumetric } from '@aio/volumetric';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useId, useMemo, useRef, type ReactNode } from 'react';
+import { ProjectSearch } from '../../../facts/ProjectSearch';
 import { FlightlineSection } from '../../../flyability/FlightlineSection';
 import { SiteDigest } from '../../../insights/SiteDigest';
 import { useIsRoad } from '../../../road/useRoadMap';
@@ -40,6 +41,7 @@ function SectionBody({ def, lead }: { def: SectionDef; lead?: ReactNode }) {
       </>
     );
   if (def.id === 'project.digest') return <SiteDigest />;
+  if (def.id === 'project.search') return <ProjectSearch />;
   if (def.id === 'layers.flightlines') return <FlightlineSection />;
   if (def.id === 'layers.show') return <StageShow />;
   if (def.id === 'project.inThisProject') return <ProjectList />;

@@ -1,0 +1,57 @@
+/**
+ * English UI strings: the project fact index search (M1, "Search this project" in the Project
+ * tab). Prefixes: `facts`. Part of the `en` catalogue (see `../en.ts`). No em or en dashes.
+ */
+export const enFacts = {
+  'facts.section': 'Search this project',
+  'facts.field': 'Search this project',
+  'facts.placeholder': 'Issues, measurements, dates',
+  'facts.hint': 'Type a word to find issues, measurements, survey dates and more.',
+  // The index's state (derived, kept on this computer)
+  'facts.state.loading': 'Reading the search index...',
+  'facts.state.building': 'Indexing this project...',
+  'facts.state.none': 'This project has no search index on this computer.',
+  'facts.state.error': 'The search index could not be built: {error}',
+  'facts.indexed_one': '1 record indexed',
+  'facts.indexed_other': '{count} records indexed',
+  'facts.count_one': '1 result',
+  'facts.count_other': '{count} results',
+  'facts.countOf': '{shown} of {total} results',
+  'facts.empty': 'Nothing matches "{text}".',
+  'facts.searching': 'Searching...',
+  'facts.queryFailed': 'Search failed: {error}',
+  'facts.rebuild': 'Rebuild index',
+  'facts.rebuilding': 'Rebuilding...',
+  'facts.rebuildFailed': 'The index could not be rebuilt: {error}',
+  // A result's history, inline under it
+  'facts.history': 'History of {label}',
+  'facts.history.loading': 'Reading its history...',
+  'facts.history.empty': 'Nothing linked and no changes recorded.',
+  'facts.history.failed': 'Its history could not be read: {error}',
+  'facts.history.linked': 'Linked',
+  'facts.history.events': 'Changes',
+  // What a fact is about, one short word each
+  'facts.kind.survey': 'Survey',
+  'facts.kind.layer': 'Layer',
+  'facts.kind.photo': 'Photo',
+  'facts.kind.measurement': 'Measure',
+  'facts.kind.volume': 'Volume',
+  'facts.kind.detection': 'Detection',
+  'facts.kind.issue': 'Issue',
+  'facts.kind.qa': 'QA',
+  'facts.kind.accuracy': 'Accuracy',
+  'facts.kind.change-set': 'Changes',
+  'facts.kind.change': 'Change',
+  'facts.kind.hotspot': 'Hot spot',
+  'facts.kind.walk': 'Walk',
+  'facts.kind.event': 'Edit',
+  // How a linked fact relates to the result
+  'facts.rel.on-photo': 'On photo',
+  'facts.rel.on-survey': 'Survey date',
+  'facts.rel.in-layer': 'In layer',
+  'facts.rel.issue': 'Issue',
+  'facts.rel.in-set': 'Change set',
+  'facts.rel.about': 'About',
+  'facts.rel.qa': 'QA',
+  'facts.rel.inside': 'Inside',
+} as const satisfies Record<string, string>;

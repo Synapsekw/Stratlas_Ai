@@ -1,0 +1,126 @@
+/* "Search this project" (ProjectSearch.tsx) in the Project tab: the bench's input, then a plain
+   list in the site digest's rhythm (no cards). A row reads kind, name, then its date, figure and
+   state in the faint small text; its history opens inline under it, indented to the name.
+   Mission tokens only. */
+.fs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4) var(--sp-2);
+}
+.fs-field {
+  width: 100%;
+}
+.fs-status-line:empty {
+  display: none;
+}
+.fs-note,
+.fs-hint {
+  margin: 0;
+  color: var(--fg-3);
+  font-size: var(--t-11);
+  line-height: 16px;
+}
+.fs-note[data-tone='error'] {
+  color: var(--danger-ink);
+}
+.fs-list,
+.fs-hlist {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fs-list {
+  margin-inline: calc(-1 * var(--sp-4));
+}
+.fs-row + .fs-row {
+  border-top: 1px solid var(--line-soft);
+}
+.fs-line {
+  display: grid;
+  grid-template-columns: 4.5em minmax(0, 1fr);
+  column-gap: var(--sp-3);
+  row-gap: var(--sp-1);
+  width: 100%;
+  margin: 0;
+  padding: var(--sp-2) var(--sp-4);
+  border: 0;
+  background: none;
+  color: var(--fg-1);
+  font: inherit;
+  font-size: var(--t-12);
+  line-height: 18px;
+  text-align: start;
+  cursor: pointer;
+}
+.fs-line:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.fs-line:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+.fs-line[aria-expanded='true'] .fs-label {
+  color: var(--fg-0);
+  font-weight: 500;
+}
+.fs-kind {
+  color: var(--fg-3);
+  font-size: var(--t-11);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fs-label {
+  overflow-wrap: anywhere;
+}
+.fs-meta {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--sp-3);
+  color: var(--fg-3);
+  font-size: var(--t-11);
+  line-height: 16px;
+}
+.fs-meta:empty {
+  display: none;
+}
+.fs-value {
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.fs-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-4) var(--sp-3) calc(var(--sp-4) + 4.5em + var(--sp-3));
+}
+.fs-sub {
+  margin: var(--sp-1) 0 0;
+  color: var(--fg-3);
+  font-size: var(--t-11);
+  font-weight: 500;
+}
+.fs-hrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--sp-2);
+  font-size: var(--t-11);
+  line-height: 16px;
+}
+.fs-htag,
+.fs-hdate {
+  color: var(--fg-3);
+}
+.fs-hlabel {
+  color: var(--fg-1);
+  overflow-wrap: anywhere;
+}
+.fs-foot {
+  display: flex;
+  margin-inline-start: calc(-1 * var(--sp-2));
+}

@@ -202,6 +202,7 @@ export type SectionId =
   | 'layers.flightlines'
   | 'project.digest'
   | 'project.inThisProject'
+  | 'project.search'
   | 'project.volumes'
   | 'project.changes'
   | 'project.issues'
@@ -308,6 +309,8 @@ export const SECTIONS: readonly SectionDef[] = [
   // what is worth a look on the site now (intelligence review I2): with two survey dates or more
   { id: 'project.digest', label: 'wb.sec.digest', body: null, needs: (d) => d.dated },
   { id: 'project.inThisProject', label: 'wb.sec.inThisProject', body: null },
+  // the project fact index (M1): find any record of the project by a word, and its history
+  { id: 'project.search', label: 'facts.section', body: null },
   {
     id: 'project.volumes',
     label: 'wb.sec.volumes',
