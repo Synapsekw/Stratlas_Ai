@@ -1,7 +1,10 @@
 """``pointcloud.clean`` (spec docs/plans/2026-10-15-pointcloud-cleanup-design.md, section 4).
 
 - ``mode: noise``: the layer's COPC to a staged LAS, PDAL ``filters.outlier`` (statistical) and
-  optionally ``filters.elm`` set class 7 on noise (other classes untouched), then a COPC working
+  optionally ``filters.elm`` set class 7 on noise (other classes untouched); with ``ground`` (the
+  Ground classifier add-on's settings) PDAL ``filters.smrf`` then finds ground, ignoring class 7,
+  and only the points it calls ground take class 2 (SMRF itself resets every other point to 1,
+  which would lose the classes a person gave; ``_ground_rule`` keeps them); then a COPC working
   copy ``edits/pointcloud/<layer>.noise-<job>.copc.laz`` and its record ``.json`` beside it
   (``NoiseRun``). The app writes the record into the layer's recipe.
 - ``mode: save``: the recipe applied over every point (of the noise copy when the recipe has one),
@@ -41,16 +44,27 @@ from ..runtime import (
     atomic_write_json,
     commit_files,
     manifest_lock,
+    replace_over,
     safe_project_path,
 )
 from .evaluate import evaluate, kept_for_save
-from .lasstream import class_histogram, filter_las
+from .lasstream import CLASS_BYTE, class_histogram, filter_las
 from .recipe import NOISE_CLASS, validate_recipe
 
 NOISE_DIR = "edits/pointcloud"
 # the spec's noise defaults; a missing setting takes these, a missing elm is off
 OUTLIER_DEFAULTS = {"meanK": 8, "multiplier": 2.0}
 ELM_DEFAULTS = {"cell": 10.0, "threshold": 1.0}
+# PDAL's own SMRF defaults (GROUND_REQUEST in packages/schema/src/addons.ts); ranges as SmrfParams
+SMRF_DEFAULTS = {"cell": 1.0, "slope": 0.15, "window": 18.0, "threshold": 0.5, "scalar": 1.25}
+SMRF_RANGES = {
+    "cell": (0.1, 20),
+    "slope": (0.01, 5),
+    "window": (1, 200),
+    "threshold": (0.05, 10),
+    "scalar": (0, 10),
+}
+GROUND_CLASS = 2
 # the layer ids the contract accepts for cleanup files (SAFE_LAYER_ID and isSafeLayerId in
 # packages/schema/src/pointcloudCleanup.ts): this pattern, and no ".." anywhere
 SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._ -]{0,127}")
@@ -94,6 +108,36 @@ def _elm(raw: Any) -> dict[str, Any]:
         "cell": number(raw, "cell", d["cell"], 0.5, 100),
         "threshold": number(raw, "threshold", d["threshold"], 0.1, 50),
     }
+
+
+def _ground(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise JobError("ground needs the SMRF settings: cell, slope, window, threshold and scalar.")
+    known_keys(raw, set(SMRF_DEFAULTS), "ground")
+    return {k: number(raw, k, SMRF_DEFAULTS[k], *SMRF_RANGES[k]) for k in SMRF_DEFAULTS}
+
+
+def _ground_rule(smrf_las: Path, marked: dict[str, int]):
+    """A ``filter_las`` rule over the marked LAS that gives class 2 to the points SMRF called ground
+    in ``smrf_las`` (the same points in the same order, as PDAL keeps them) and keeps every other
+    point's class. Counts the points it turned into ground in ``marked["ground"]``."""
+    from .lasstream import CHUNK, chunks, read_head, xyz_of
+
+    head = read_head(smrf_las)
+    it = chunks(smrf_las, head, CHUNK)
+
+    def rule(xyz: np.ndarray, cls: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        rec = next(it, None)
+        # the same points in the same order, or the classes would land on other points
+        if rec is None or len(rec) != len(cls) or not np.allclose(xyz_of(head, rec), xyz, rtol=0, atol=1e-6):
+            raise JobError("PDAL's ground classification changed the points. Run the noise search again.")
+        ground = rec[:, CLASS_BYTE] == GROUND_CLASS
+        out = cls.copy()
+        marked["ground"] += int(np.sum(ground & (cls != GROUND_CLASS) & (cls != NOISE_CLASS)))
+        out[ground & (cls != NOISE_CLASS)] = GROUND_CLASS
+        return np.ones(len(cls), dtype=bool), out
+
+    return rule
 
 
 def _manifest(project: Path) -> tuple[Path, dict[str, Any]]:
@@ -146,20 +190,22 @@ def _check_memory(count: int) -> None:
         )
 
 
-def _check_cleanup_space(ctx: StepContext, count: int, record: int) -> None:
-    """Two LAS copies of ``record`` bytes a point, untwine's temp and the COPC: refuse up front when the
-    staging drive is too small."""
-    needed = count * (2 * record + UNTWINE_TEMP_BYTES_PER_POINT + COPC_BYTES_PER_POINT)
+def _check_cleanup_space(ctx: StepContext, count: int, record: int, extra: int = 0) -> None:
+    """Two LAS copies of ``record`` bytes a point (plus ``extra`` bytes a point, the ground run's
+    class copy), untwine's temp and the COPC: refuse up front when the staging drive is too small."""
+    needed = count * (2 * record + extra + UNTWINE_TEMP_BYTES_PER_POINT + COPC_BYTES_PER_POINT)
     check_space(ctx.staging, needed, what="Cleaning up")
 
 
-def _stage_las(ctx: StepContext, pdal: str, src: Path, out: Path, band: tuple[float, float]) -> int:
+def _stage_las(
+    ctx: StepContext, pdal: str, src: Path, out: Path, band: tuple[float, float], extra: int = 0
+) -> int:
     """The COPC as a staged LAS; refuses up front when the cloud is too big for the memory budget or the
     staging drive is too small. Answers the count."""
     count = int(read_summary(ctx, pdal, src).get("num_points") or 0)
     _check_memory(count)
     # the writer forwards the source's format and extra dimensions: the source's record length
-    _check_cleanup_space(ctx, count, las_record_length(src) or DEFAULT_RECORD)
+    _check_cleanup_space(ctx, count, las_record_length(src) or DEFAULT_RECORD, extra)
     pipe = ctx.stage("work/to-las.json")
     atomic_write_json(pipe, {"pipeline": [{"type": "readers.copc", "filename": str(src)}, _las_writer(out)]})
     _run(ctx, [pdal, "pipeline", str(pipe)], "Reading the cloud", band)
@@ -276,7 +322,7 @@ class PointcloudClean:
     def validate(self, params: dict[str, Any]) -> dict[str, Any]:
         mode = params.get("mode")
         if mode == "noise":
-            known_keys(params, {"mode", "layerId", "src", "outlier", "elm"}, self.name)
+            known_keys(params, {"mode", "layerId", "src", "outlier", "elm", "ground"}, self.name)
             out: dict[str, Any] = {
                 "mode": "noise",
                 "layerId": _layer_id(params),
@@ -285,6 +331,8 @@ class PointcloudClean:
             }
             if params.get("elm") is not None:
                 out["elm"] = _elm(params["elm"])
+            if params.get("ground") is not None:
+                out["ground"] = _ground(params["ground"])
             return out
         if mode == "save":
             known_keys(params, {"mode", "layerId", "src", "recipe", "name"}, self.name)
@@ -315,7 +363,9 @@ class PointcloudClean:
             _cloud_layer(ctx.project, lid, params["src"])
             pdal = _pdal()
             src_las = ctx.stage("source.las")
-            count = _stage_las(ctx, pdal, ctx.input(params["src"]), src_las, (0.02, 0.25))
+            # a ground run also writes SMRF's classes as a point format 6 LAS
+            extra = FORMAT_RECORD[6] if "ground" in params else 0
+            count = _stage_las(ctx, pdal, ctx.input(params["src"]), src_las, (0.02, 0.25), extra)
             before = class_histogram(src_las)
             ctx.log(f"{count:,} points, {int(before[NOISE_CLASS]):,} already marked as noise.")
             return {"points": count, "before7": int(before[NOISE_CLASS])}
@@ -339,12 +389,16 @@ class PointcloudClean:
             stages.append(_las_writer(marked))
             pipe = ctx.stage("work/mark.json")
             atomic_write_json(pipe, {"pipeline": stages})
-            _run(ctx, [pdal, "pipeline", str(pipe)], "Finding noise", (0.25, 0.6))
-            after = class_histogram(marked)
+            ground = "ground" in params
+            _run(ctx, [pdal, "pipeline", str(pipe)], "Finding noise", (0.25, 0.45 if ground else 0.6))
             src_las.unlink(missing_ok=True)
+            out: dict[str, Any] = {}
+            if ground:
+                out["groundMarked"] = self._mark_ground(ctx, pdal, marked, params["ground"])
+            after = class_histogram(marked)
             n = max(0, int(after[NOISE_CLASS]) - int(ctx.outputs("stage").get("before7") or 0))
             ctx.log(f"Marked {n:,} points as noise.")
-            return {"marked": n, "total": int(after.sum())}
+            return {"marked": n, "total": int(after.sum()), **out}
 
         def write(ctx: StepContext) -> dict[str, Any]:
             total = int(ctx.outputs("mark").get("total") or 0)
@@ -365,8 +419,11 @@ class PointcloudClean:
                 },
                 "marked": int(m["marked"]),
                 "total": int(m["total"]),
+                **({"groundMarked": int(m["groundMarked"])} if "ground" in params else {}),
                 "runId": run_id,
             }
+            if "ground" in params:
+                record["params"]["ground"] = params["ground"]
             atomic_write_json(ctx.stage("noise.json"), record)
             commit_files(
                 ctx, [("noise.copc.laz", rel), ("noise.json", f"{NOISE_DIR}/{lid}.noise-{run_id}.json")]
@@ -379,6 +436,34 @@ class PointcloudClean:
             Step("write", "Build the working copy", write, weight=4),
             Step("commit", "Save the result", commit, weight=0.2),
         ]
+
+    @staticmethod
+    def _mark_ground(ctx: StepContext, pdal: str, marked: Path, smrf: dict[str, Any]) -> int:
+        """SMRF over the marked LAS, noise ignored; its ground points take class 2 in ``marked``,
+        every other point keeps its class. Answers how many points it turned into ground."""
+        out = ctx.stage("work/smrf.las")
+        stages = [
+            {"type": "readers.las", "filename": str(marked)},
+            {"type": "filters.smrf", "ignore": f"Classification[{NOISE_CLASS}:{NOISE_CLASS}]", **smrf},
+            # only the classes are read back: the plainest LAS 1.4 format, no extra dimensions
+            {
+                "type": "writers.las",
+                "filename": str(out),
+                "minor_version": 4,
+                "dataformat_id": 6,
+                "forward": "all",
+            },
+        ]
+        pipe = ctx.stage("work/ground.json")
+        atomic_write_json(pipe, {"pipeline": stages})
+        _run(ctx, [pdal, "pipeline", str(pipe)], "Finding ground", (0.45, 0.58))
+        counts = {"ground": 0}
+        grounded = ctx.stage("grounded.las")
+        filter_las(marked, grounded, _ground_rule(out, counts), check=ctx.check)
+        out.unlink(missing_ok=True)
+        replace_over(grounded, marked)
+        ctx.log(f"Marked {counts['ground']:,} points as ground.")
+        return counts["ground"]
 
     def _save(self, params: dict[str, Any]) -> list[Step]:
         lid, recipe = params["layerId"], params["recipe"]

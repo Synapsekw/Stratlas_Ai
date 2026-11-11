@@ -81,6 +81,10 @@ def test_noise_copy_class_is_the_starting_class():
         (empty(regions=[region(shape="lasso", polygon=[[0, 0]] * 257)]), "256"),
         (empty(regions=[region(viewProj=[1] * 15)]), "16 numbers"),
         (empty(regions=[region(action={"kind": "paint"})]), "hide, delete or class"),
+        (empty(regions=[region(depth={"near": 5, "far": 2})]), "near depth is beyond"),
+        (empty(regions=[region(depth={"near": -1, "far": 2})]), "depth band"),
+        (empty(regions=[region(depth={"near": 1})]), "depth band"),
+        (empty(regions=[region(label="x" * 121)]), "label"),
         (empty(hiddenClasses=[300]), "0 to 255"),
         (empty(height={"min": 5, "max": 1}), "lowest"),
         (empty(clipBox={"center": [0, 0, 0], "size": [0, 1, 1], "yaw": 0, "keep": "inside"}), "size"),
@@ -93,6 +97,11 @@ def test_noise_copy_class_is_the_starting_class():
 def test_validate_refuses(raw, message):
     with pytest.raises(JobError, match=message):
         validate_recipe(raw)
+
+
+def test_validate_takes_a_depth_band_and_a_label():
+    r = region(depth={"near": 1, "far": 1}, label="Mask on photo 1")
+    assert validate_recipe(empty(regions=[r]))["regions"][0]["depth"] == {"near": 1, "far": 1}
 
 
 def test_validate_checks_the_layer():

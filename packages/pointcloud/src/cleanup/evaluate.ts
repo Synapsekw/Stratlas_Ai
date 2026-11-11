@@ -33,6 +33,9 @@ export interface CompiledRegion {
   bbox: [number, number, number, number];
   kind: 'hide' | 'delete' | 'class';
   value: number;
+  /** The region's depth band on clip `w`, both included; -Infinity and Infinity without one. */
+  near: number;
+  far: number;
 }
 
 export interface CompiledBox {
@@ -85,6 +88,8 @@ export function compileCleanup(
       bbox: [minX, minY, maxX, maxY],
       kind: g.action.kind,
       value: g.action.kind === 'class' ? g.action.value : 0,
+      near: g.depth?.near ?? -Infinity,
+      far: g.depth?.far ?? Infinity,
     };
   });
   const o = frame?.origin;
@@ -130,8 +135,10 @@ export interface RegionHit {
 }
 
 /**
- * Step 2 of the evaluation: the regions in order. Later ones win on class; hide and delete marks
- * accumulate, so a delete stays whatever comes after it.
+ * Step 2 of the evaluation: the regions in order. A point counts for a region when its clip `w`
+ * is above 0 and within the region's depth band (when it has one, bounds included) and it falls
+ * inside the NDC polygon. Later ones win on class; hide and delete marks accumulate, so a delete
+ * stays whatever comes after it.
  */
 export function applyRegions(
   c: CompiledCleanup,
@@ -147,7 +154,7 @@ export function applyRegions(
   for (const g of c.regions) {
     const m = g.m;
     const w = (m[3] ?? 0) * x + (m[7] ?? 0) * y + (m[11] ?? 0) * z + (m[15] ?? 0);
-    if (!(w > 0)) continue;
+    if (!(w > 0) || w < g.near || w > g.far) continue;
     const nx = ((m[0] ?? 0) * x + (m[4] ?? 0) * y + (m[8] ?? 0) * z + (m[12] ?? 0)) / w;
     const ny = ((m[1] ?? 0) * x + (m[5] ?? 0) * y + (m[9] ?? 0) * z + (m[13] ?? 0)) / w;
     if (nx < g.bbox[0] || ny < g.bbox[1] || nx > g.bbox[2] || ny > g.bbox[3]) continue;

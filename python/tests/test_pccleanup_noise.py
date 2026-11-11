@@ -201,3 +201,96 @@ def test_a_cancelled_run_leaves_no_project_files(tmp_path, monkeypatch):
     with pytest.raises(Cancelled):
         run_job(PointcloudClean(), root, NOISE, job_id="j-cancel", cancel=cancel)
     assert not (root / "edits").exists()
+
+
+GROUND = {"cell": 1.0, "slope": 0.15, "window": 18.0, "threshold": 0.5, "scalar": 1.25}
+
+
+def test_validate_takes_ground_with_pdal_defaults_for_missing_settings():
+    v = PointcloudClean().validate
+    assert v({**NOISE, "ground": GROUND})["ground"] == GROUND
+    assert v({**NOISE, "ground": {"cell": 2}})["ground"] == {**GROUND, "cell": 2.0}
+    assert "ground" not in v(NOISE)
+
+
+@pytest.mark.parametrize(
+    "ground, message",
+    [
+        ({**GROUND, "cell": 0.05}, "cell"),
+        ({**GROUND, "slope": 6}, "slope"),
+        ({**GROUND, "window": 0.5}, "window"),
+        ({**GROUND, "threshold": 11}, "threshold"),
+        ({**GROUND, "scalar": -1}, "scalar"),
+        ({**GROUND, "method": "pmf"}, "does not take: method"),
+        ("smrf", "ground needs"),
+    ],
+)
+def test_validate_refuses_ground_settings(ground, message):
+    with pytest.raises(JobError, match=message):
+        PointcloudClean().validate({**NOISE, "ground": ground})
+
+
+def ground_cloud():
+    """Flat ground (class 1, never classified), a 10 m block on it (class 6, a person's own) that
+    hides the ground under it, and a few isolated points far above (what the outlier filter marks).
+    Answers the points, their classes and their part: 0 ground, 1 block, 2 noise."""
+    rng = np.random.default_rng(3)
+    g = np.arange(0.25, 40, 0.5)
+    gx, gy = np.meshgrid(g, g)
+    ground = np.c_[gx.ravel(), gy.ravel(), 0.03 * np.sin(gx.ravel())]
+    ground = ground[~((np.abs(ground[:, 0] - 20) < 5) & (np.abs(ground[:, 1] - 20) < 5))]
+    bx, by = np.meshgrid(np.arange(15.25, 25, 0.5), np.arange(15.25, 25, 0.5))
+    roof = np.c_[bx.ravel(), by.ravel(), np.full(bx.size, 10.0)]
+    high = np.c_[rng.uniform(2, 38, 12), rng.uniform(2, 38, 12), rng.uniform(30, 40, 12)]
+    xyz = np.vstack([ground, roof, high]) + np.array([500000.0, 3200000.0, 0.0])
+    sizes = (len(ground), len(roof), len(high))
+    cls = np.repeat(np.array([1, 6, 1], dtype=np.uint8), sizes)
+    return np.round(xyz, 3), cls, np.repeat([0, 1, 2], sizes)
+
+
+def _classes_in_order(out, xyz):
+    """The copy's classes in the order of ``xyz`` (the COPC writer reorders the points and keeps
+    them to the centimetre): matched by east and north, which no two points share."""
+    want = np.lexsort(np.round(xyz[:, 1::-1], 2).T)
+    got = np.lexsort(np.round(out.xyz[:, 1::-1], 2).T)
+    assert np.allclose(out.xyz[got], xyz[want], atol=0.011)
+    c = np.empty(len(xyz), dtype=np.uint8)
+    c[want] = out.field("Classification")[got]
+    return c
+
+
+@needs_pdal
+def test_ground_marks_class_2_and_leaves_other_classes_and_noise_alone(tmp_path):
+    from aio_pipelines.change.las import read_las
+
+    xyz, cls, part = ground_cloud()
+    root = cloud_project(tmp_path, xyz, cls)
+    result, _ = run_job(PointcloudClean(), root, {**NOISE, "ground": GROUND}, job_id="j-ground")
+    record = result["outputs"]["commit"]
+    assert record["params"]["ground"] == GROUND
+    assert json.loads((root / "edits/pointcloud/cloud-a.noise-j-ground.json").read_text("utf-8")) == record
+    c = _classes_in_order(read_las(copc_to_las(root / record["path"], tmp_path / "copy.las")), xyz)
+    assert np.mean(c[part == 0] == 2) > 0.95  # the open ground is ground
+    assert np.all(c[part == 1] == 6)  # the block keeps the class the person gave it (SMRF would set 1)
+    assert np.all(c[part == 2] == 7)  # noise stays noise, never ground
+    assert record["groundMarked"] == int(np.sum(c == 2))
+    assert record["marked"] == int(np.sum(c == 7))
+
+
+@needs_pdal
+def test_ground_counts_only_points_it_set_to_class_2(tmp_path):
+    xyz, cls, part = ground_cloud()
+    cls = cls.copy()
+    cls[part == 0] = 2  # already classified as ground
+    root = cloud_project(tmp_path, xyz, cls)
+    result, _ = run_job(PointcloudClean(), root, {**NOISE, "ground": GROUND}, job_id="j-ground2")
+    assert result["outputs"]["commit"]["groundMarked"] == 0
+
+
+@needs_pdal
+def test_without_ground_the_record_has_no_ground_count(tmp_path):
+    xyz, cls, _ = ground_cloud()
+    root = cloud_project(tmp_path, xyz, cls)
+    result, _ = run_job(PointcloudClean(), root, NOISE, job_id="j-noground")
+    record = result["outputs"]["commit"]
+    assert "groundMarked" not in record and "ground" not in record["params"]

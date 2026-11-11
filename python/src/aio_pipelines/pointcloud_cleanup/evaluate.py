@@ -2,8 +2,8 @@
 rules as the viewer (packages/pointcloud/src/cleanup/evaluate.ts), pinned by the shared vectors.
 
 Per point, in order: the starting class (the noise copy's when there is one; the caller passes
-it); the regions (``w > 0`` and inside the NDC polygon: ``class`` sets the class, later regions
-win; ``hide`` and ``delete`` marks accumulate, so a delete is never undone by a later hide);
+it); the regions (``w > 0``, ``w`` within the region's ``depth`` band when it has one, bounds
+included, and inside the NDC polygon: ``class`` sets the class, later regions win; ``hide`` and ``delete`` marks accumulate, so a delete is never undone by a later hide);
 outside the clip box (inside, for ``keep: outside``) or outside the height range: dropped, with
 box faces and height bounds counting as inside; a hidden class: class-hidden. One outcome, the
 highest code: dropped > deleted > class-hidden > hidden > kept.
@@ -59,6 +59,9 @@ def evaluate(recipe: dict[str, Any], xyz: np.ndarray, cls: np.ndarray) -> tuple[
             clip = h @ m.T
             w = clip[:, 3]
             front = w > 0
+            band = r.get("depth")
+            if band:
+                front &= (w >= band["near"]) & (w <= band["far"])
             sel = np.zeros(n, dtype=bool)
             if front.any():
                 nx = clip[front, 0] / w[front]

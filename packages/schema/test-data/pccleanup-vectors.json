@@ -1,5 +1,5 @@
 {
-  "about": "Shared cases for the point cloud cleanup evaluators (aio.pccleanup/1): packages/pointcloud/src/cleanup/evaluate.test.ts and python/tests/test_pccleanup_evaluate.py. States: kept, hidden, classHidden, deleted, dropped (precedence dropped > deleted > classHidden > hidden > kept). Rules pinned here: boundaries are inclusive (a point exactly on a clip box face, or at height min or max, is inside); hide and delete marks accumulate and delete is sticky whatever the region order; a class set is won by the last region; w must be above 0 (P6 and P9 sit at w = 0 in the perspective case). P6 to P9 lie exactly on a box face or a height bound; no point lies on a polygon edge.",
+  "about": "Shared cases for the point cloud cleanup evaluators (aio.pccleanup/1): packages/pointcloud/src/cleanup/evaluate.test.ts and python/tests/test_pccleanup_evaluate.py. States: kept, hidden, classHidden, deleted, dropped (precedence dropped > deleted > classHidden > hidden > kept). Rules pinned here: boundaries are inclusive (a point exactly on a clip box face, or at height min or max, is inside); hide and delete marks accumulate and delete is sticky whatever the region order; a class set is won by the last region; w must be above 0 (P6 and P9 sit at w = 0 in the perspective case). P6 to P9 lie exactly on a box face or a height bound; no point lies on a polygon edge. A region's depth band {near, far} takes only points whose clip w lies in it, both bounds included (in the perspective case P2 sits at w = 1.25, P7 at w = 2.5 and P3 at w = 3.125).",
   "points": [
     {
       "id": "P0",
@@ -678,6 +678,83 @@
           "kept"
         ],
         "cls": [2, 2, 6, 5, 7, 1, 2, 6, 2, 5]
+      }
+    },
+    {
+      "name": "a depth band takes only points whose w lies in it, both bounds included",
+      "recipe": {
+        "schema": "aio.pccleanup/1",
+        "layerId": "v",
+        "hiddenClasses": [],
+        "regions": [
+          {
+            "id": "d",
+            "shape": "box",
+            "viewProj": [0.02, 0, 0, 0, 0, 0.02, 0, 0, 0, 0, 0, 0.125, -10001, -64001, 0, -2.5],
+            "polygon": [
+              [-1, -1],
+              [1, -1],
+              [1, 1],
+              [-1, 1]
+            ],
+            "action": {
+              "kind": "delete"
+            },
+            "depth": {
+              "near": 1.25,
+              "far": 2.5
+            },
+            "label": "Mask on photo 1"
+          }
+        ]
+      },
+      "expect": {
+        "state": [
+          "kept",
+          "kept",
+          "deleted",
+          "kept",
+          "kept",
+          "kept",
+          "kept",
+          "deleted",
+          "kept",
+          "kept"
+        ],
+        "cls": [2, 2, 6, 5, 7, 1, 2, 6, 2, 5]
+      }
+    },
+    {
+      "name": "a depth band beyond the nearer points sets the class of the far one only",
+      "recipe": {
+        "schema": "aio.pccleanup/1",
+        "layerId": "v",
+        "hiddenClasses": [],
+        "regions": [
+          {
+            "id": "e",
+            "shape": "lasso",
+            "viewProj": [0.02, 0, 0, 0, 0, 0.02, 0, 0, 0, 0, 0, 0.125, -10001, -64001, 0, -2.5],
+            "polygon": [
+              [-1, -1],
+              [1, -1],
+              [1, 1],
+              [-1, 1]
+            ],
+            "action": {
+              "kind": "class",
+              "value": 9
+            },
+            "depth": {
+              "near": 3,
+              "far": 4
+            }
+          }
+        ]
+      },
+      "expect": {
+        "state": ["kept", "kept", "kept", "kept", "kept", "kept", "kept", "kept", "kept", "kept"],
+        "cls": [2, 2, 6, 9, 7, 1, 2, 6, 2, 5]
       }
     },
     {

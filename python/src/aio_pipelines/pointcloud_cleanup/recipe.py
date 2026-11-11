@@ -53,6 +53,21 @@ def validate_recipe(raw: Any, layer_id: str | None = None) -> dict[str, Any]:
             raise JobError("A selection hides, deletes or sets a class: hide, delete or class.")
         if kind == "class" and not _class(a.get("value")):
             raise JobError("A class is a number from 0 to 255.")
+        depth = r.get("depth")
+        if depth is not None:
+            if not (
+                isinstance(depth, dict)
+                and set(depth) == {"near", "far"}
+                and _num(depth["near"])
+                and _num(depth["far"])
+                and depth["near"] >= 0
+            ):
+                raise JobError("A selection's depth band is a near and a far depth of 0 m or more.")
+            if depth["near"] > depth["far"]:
+                raise JobError("A selection's near depth is beyond its far one.")
+        label = r.get("label")
+        if label is not None and not (isinstance(label, str) and len(label) <= 120):
+            raise JobError("A selection's label is text of at most 120 characters.")
     hidden = raw.get("hiddenClasses")
     if not isinstance(hidden, list) or not all(_class(c) for c in hidden):
         raise JobError("Hidden classes are numbers from 0 to 255.")
