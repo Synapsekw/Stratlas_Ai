@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -15,6 +15,7 @@ import {
   readInstalledAddon,
   readPointClassifier,
   removeAddon,
+  sweepAddons,
 } from './install';
 
 let base: string;
@@ -222,6 +223,134 @@ describe('installAddonArchive', () => {
     ctl.abort();
     const r = await install({ id: 'road-defects', kind: 'detector' }, { signal: ctl.signal });
     expect(r).toMatchObject({ ok: false, code: 'cancelled' });
+  });
+});
+
+describe('what an add-on may hold, and who vouches for it', () => {
+  it('refuses a model that keeps weights in another file, and one that is not ONNX', async () => {
+    const files = fakeAddonFiles('segmenter');
+    // a ModelProto whose graph has an initializer with data_location EXTERNAL (field 14 = 1)
+    const tensor = Buffer.from([0x42, 0x01, 0x77, 0x70, 0x01]); // name "w", data_location 1
+    const external = Buffer.from([0x3a, 2 + tensor.length, 0x2a, tensor.length, ...tensor]);
+    const r = await install({
+      id: 'segmentation',
+      kind: 'segmenter',
+      files: { ...files, 'encoder.onnx': external },
+    });
+    if (r.ok) throw new Error('installed');
+    expect(r.error).toBe(
+      'encoder.onnx in the add-on keeps weights in separate files (ONNX external data), which an add-on may not do. It was not installed.',
+    );
+    const junk = await install({
+      id: 'segmentation',
+      kind: 'segmenter',
+      files: { ...files, 'decoder.onnx': 'not a model' },
+    });
+    if (junk.ok) throw new Error('installed');
+    expect(junk.error).toMatch(/decoder.onnx in the add-on is not an ONNX model/);
+  });
+
+  it('asks before installing a file no catalogue vouches for, and refuses on No', async () => {
+    const asked: string[] = [];
+    const no = await install(
+      { id: 'road-defects', kind: 'detector', name: 'Road defects' },
+      {
+        catalogueSha256: () => null,
+        confirmUnlisted: (m) => {
+          asked.push(`${m.name} ${m.version}`);
+          return Promise.resolve(false);
+        },
+      },
+    );
+    expect(asked).toEqual(['Road defects 1.0.0']);
+    expect(no).toMatchObject({
+      ok: false,
+      code: 'refused',
+      error: /was not installed: the add-on list does not vouch/,
+    });
+    expect(await readInstalledAddon(dataRoot, 'road-defects')).toBeNull();
+    expect(await leftovers()).toEqual([]);
+    const yes = await install(
+      { id: 'road-defects', kind: 'detector' },
+      { catalogueSha256: () => null, confirmUnlisted: () => Promise.resolve(true) },
+    );
+    expect(yes).toMatchObject({ ok: true });
+    // listed by the catalogue: never asked
+    const a = fakeAddonArchive({ id: 'road-defects', kind: 'detector', version: '1.1.0' });
+    await writeFile(join(base, a.fileName), a.bytes);
+    const listed = await installAddonArchive(join(base, a.fileName), {
+      dataRoot,
+      catalogueSha256: () => a.sha256,
+      confirmUnlisted: () => Promise.reject(new Error('asked')),
+    });
+    expect(listed).toMatchObject({ ok: true });
+  });
+
+  it('refuses an add-on the pipeline pack is too old for', async () => {
+    const r = await install(
+      { id: 'ground-classifier', kind: 'point-classifier', minPipelinePack: '0.40.0' },
+      {
+        usable: (m) =>
+          m.minPipelinePack ? `${m.name} needs processing tools ${m.minPipelinePack}.` : null,
+      },
+    );
+    expect(r).toMatchObject({
+      ok: false,
+      error: 'Test ground-classifier needs processing tools 0.40.0. The add-on was not installed.',
+    });
+  });
+
+  it('stops unpacking once the files would not fit on the disk', async () => {
+    const big = Buffer.alloc(2 * 1024 * 1024); // compresses to a few kilobytes
+    const a = fakeAddonArchive({
+      id: 'ground-classifier',
+      kind: 'point-classifier',
+      files: { ...fakeAddonFiles('point-classifier'), 'notes.bin': big },
+    });
+    await writeFile(join(base, a.fileName), a.bytes);
+    const r = await installAddonArchive(join(base, a.fileName), {
+      dataRoot,
+      freeBytes: () => Promise.resolve(a.sizeBytes + 64 * 1024 * 1024 + 1024),
+    });
+    if (r.ok) throw new Error('installed');
+    expect(r.error).toMatch(/unpacks to more than the .* free on this disk/);
+    expect(await leftovers()).toEqual([]);
+  });
+});
+
+describe('sweepAddons', () => {
+  it('tidies staging folders, brings back an old version left aside and drops stale downloads', async () => {
+    await install({ id: 'road-defects', kind: 'detector', version: '1.0.0' });
+    await install({ id: 'segmentation', kind: 'segmenter', version: '1.0.0' });
+    const root = addonsRoot(dataRoot);
+    // an interrupted swap: segmentation moved aside, nothing moved in
+    await rename(addonDir(dataRoot, 'segmentation'), join(root, '.replaced-aaaa.tmp'));
+    // one aside of an add-on that is in place again: it goes
+    await mkdir(join(root, '.replaced-bbbb.tmp'));
+    await writeFile(
+      join(root, '.replaced-bbbb.tmp', 'addon.json'),
+      await readFile(join(addonDir(dataRoot, 'road-defects'), 'addon.json')),
+    );
+    await mkdir(join(root, '.install-cccc.tmp'));
+    await mkdir(join(root, '.removing-dddd.tmp'));
+    const dl = join(root, '.download');
+    await mkdir(dl, { recursive: true });
+    for (const f of [
+      'road-defects-1.0.0.aioaddon', // installed already
+      'road-defects-1.2.0.aioaddon.partial', // older than the next one
+      'road-defects-1.3.0.aioaddon.partial', // kept: it resumes
+      'ground-classifier-2.0.0.aioaddon', // kept: not installed
+    ])
+      await writeFile(join(dl, f), 'x');
+    const done = await sweepAddons(dataRoot);
+    expect(done).toContain('restored segmentation from .replaced-aaaa.tmp');
+    expect((await readdir(root)).sort()).toEqual(['.download', 'road-defects', 'segmentation']);
+    expect(await readInstalledAddon(dataRoot, 'segmentation')).not.toBeNull();
+    expect((await readdir(dl)).sort()).toEqual([
+      'ground-classifier-2.0.0.aioaddon',
+      'road-defects-1.3.0.aioaddon.partial',
+    ]);
+    expect(await sweepAddons(join(base, 'nowhere'))).toEqual([]);
   });
 });
 

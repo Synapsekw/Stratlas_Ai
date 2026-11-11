@@ -214,6 +214,57 @@ describe('the pack model', () => {
     });
   });
 
+  it('loads the model again after the add-on was installed again or removed', async () => {
+    await pack(colourSegmenterOnnx().card);
+    const addon = join(dir, 'addon');
+    await mkdir(addon);
+    const created: string[] = [];
+    const session = { inputNames: [], outputNames: [], run: () => Promise.resolve({}) };
+    const ort: OrtLike = {
+      InferenceSession: {
+        create: (p: string) => {
+          created.push(p);
+          return Promise.resolve(session);
+        },
+      },
+      Tensor: class {
+        constructor(
+          _t: 'float32',
+          public data: Float32Array,
+          public dims: readonly number[],
+        ) {}
+      },
+    };
+    const seg = createSegmenter({
+      packDir: () => Promise.resolve(dir),
+      addonDir: () => Promise.resolve(addon),
+      loadRuntime: () => Promise.resolve(ort),
+    });
+    // no crop held: answers "stale" after the model is loaded
+    const use = () =>
+      seg.suggest({ click: [1, -1], crop: { key: 'k', size: 64, x0: 0, y1: 0, res: 1 } });
+    await use();
+    expect(created.at(-2)).toBe(join(dir, 'models', 'sam', 'encoder.onnx'));
+    const m = colourSegmenterOnnx();
+    const install = async (name: string) => {
+      await rm(join(addon, 'encoder.onnx'), { force: true });
+      await writeFile(join(addon, 'encoder.onnx'), m.encoder);
+      await writeFile(join(addon, 'decoder.onnx'), m.decoder);
+      await writeFile(join(addon, 'model.json'), JSON.stringify({ ...m.card, name }));
+    };
+    await install('v1');
+    await use();
+    expect(created.at(-2)).toBe(join(addon, 'encoder.onnx'));
+    await use();
+    expect(created).toHaveLength(4);
+    await install('v2');
+    await use();
+    expect(created).toHaveLength(6);
+    await rm(addon, { recursive: true });
+    await use();
+    expect(created.at(-2)).toBe(join(dir, 'models', 'sam', 'encoder.onnx'));
+  });
+
   it('is unavailable with the reason when there is no pack or no runtime', async () => {
     const none = createSegmenter({
       packDir: () => Promise.resolve(null),

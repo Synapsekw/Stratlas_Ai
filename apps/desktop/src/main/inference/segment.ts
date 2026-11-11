@@ -485,9 +485,24 @@ export function unavailableMessage(s: Exclude<SegmentStatus, { available: true }
 
 const MAX_DECODED = 16;
 
+/**
+ * Which model files these are: path, size, modification time and file id of each. A session made from
+ * other files (another model, or the same add-on folder after an install or removal) is stale.
+ */
+export async function modelFilesKey(...paths: string[]): Promise<string> {
+  const parts: string[] = [];
+  for (const p of paths) {
+    const s = await stat(p).catch(() => null);
+    parts.push(`${p}|${String(s?.size ?? -1)}|${String(s?.mtimeMs ?? -1)}|${String(s?.ino ?? -1)}`);
+  }
+  return parts.join('\n');
+}
+
 export function createSegmenter(deps: SegmenterDeps): Segmenter {
   let sessions: {
     model: SamModel;
+    /** `modelFilesKey` of the files the sessions were made from. */
+    key: string;
     ort: OrtLike;
     encoder: OrtSession;
     decoder: OrtSession;
@@ -515,15 +530,15 @@ export function createSegmenter(deps: SegmenterDeps): Segmenter {
       };
     }
     const { model } = found;
-    if (sessions?.model.encoder === model.encoder && sessions.model.decoder === model.decoder) {
-      return { ok: true, s: sessions };
-    }
+    // the same files by path, size and time: an add-on installed again in place is a new model
+    const key = await modelFilesKey(model.encoder, model.decoder);
+    if (sessions?.key === key) return { ok: true, s: sessions };
     const ort = await deps.loadRuntime();
     if (!ort) return { ok: false, status: { available: false, reason: 'no-runtime' } };
     try {
       const encoder = await ort.InferenceSession.create(model.encoder);
       const decoder = await ort.InferenceSession.create(model.decoder);
-      sessions = { model, ort, encoder, decoder };
+      sessions = { model, key, ort, encoder, decoder };
       cached = null;
       return { ok: true, s: sessions };
     } catch (e) {

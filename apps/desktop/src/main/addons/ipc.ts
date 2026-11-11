@@ -21,13 +21,17 @@ import { basename, resolve } from 'node:path';
 import type { Handler } from '../ipc';
 import { compareVersions } from '../jobs/pack';
 import { downloadVerified, type FetchLike } from '../update/download';
-import { addonBaseUrl, archiveUrl, readCatalogue } from './catalogue';
+import { freeBytesOf } from '../jobs/packInstall';
+import { addonBaseUrl, archiveUrl, guardedFetch, readCatalogue } from './catalogue';
+import { packProblem } from './gates';
 import {
   addonFolders,
+  addonsRoot,
   downloadPath,
   inspectInstalledAddon,
   installAddonArchive,
   removeAddon,
+  sweepAddons,
 } from './install';
 
 export type AddonsChannel = Extract<IpcChannel, `addons:${string}`>;
@@ -47,6 +51,13 @@ export interface AddonsIpcDeps {
   packVersion: () => Promise<string | null>;
   freeBytes?: (dir: string) => Promise<number | null>;
   now?: () => number;
+  /**
+   * Choose file, for an archive the add-on list does not vouch for: the "carries no publisher
+   * signature" question (index.ts `confirmUnsignedPack`). False: nothing is installed.
+   */
+  confirmUnlisted?: (m: AddonManifest) => Promise<boolean>;
+  /** What the start sweep tidied (`sweepAddons`), for the log. */
+  log?: (line: string) => void;
 }
 
 /** The names the Add-ons list shows before the catalogue is read. */
@@ -61,6 +72,12 @@ export const OFFLINE_ERROR =
 export const NO_ADDRESS_ERROR =
   'No add-on address is set, so the add-on list cannot be read. Choose file installs one from a file.';
 const PROGRESS_EVERY_MS = 150;
+/** Left free on the disk beyond the add-on itself (as install.ts). */
+const SPARE_BYTES = 64 * 1024 * 1024;
+const mb = (bytes: number) =>
+  bytes >= 2 ** 30
+    ? `${(bytes / 2 ** 30).toFixed(1)} GB`
+    : `${String(Math.max(1, Math.ceil(bytes / 2 ** 20)))} MB`;
 
 /** The add-on id in an archive's file name (`road-defects-1.0.0.aioaddon`, a browser's ` (1)`). */
 export function archiveNameId(name: string): string | null {
@@ -71,16 +88,7 @@ export function archiveNameId(name: string): string | null {
 const pathKey = (p: string) =>
   process.platform === 'win32' ? resolve(p).toLowerCase() : resolve(p);
 
-/** Why an add-on cannot be used with the installed pipeline pack, or null. */
-export function packProblem(m: AddonManifest, packVersion: string | null): string | null {
-  const min = m.minPipelinePack;
-  if (!min || packVersion === 'dev') return null;
-  if (packVersion === null)
-    return `${m.name} needs processing tools ${min} or later. Install them in Settings, Processing tools.`;
-  return compareVersions(packVersion, min) < 0
-    ? `${m.name} needs processing tools ${min} or later (these are ${packVersion}). Update them in Settings, Processing tools.`
-    : null;
-}
+export { packProblem };
 
 /** Progress for one install: every phase change and the last bytes, else at most every 150 ms. */
 export function progressThrottle(
@@ -111,6 +119,16 @@ export function registerAddonsIpc(d: AddonsIpcDeps): {
   /** The archives main's own dialog returned: `addons:installFile` must name one of them. */
   const named = new Set<string>();
   const now = d.now ?? Date.now;
+  // what an interrupted install or removal left is tidied before anything else runs
+  const ready = sweepAddons(d.dataRoot()).then(
+    (lines) => {
+      for (const l of lines) d.log?.(`add-ons: ${l}`);
+    },
+    (e: unknown) => {
+      d.log?.(`add-ons: the start tidy failed: ${String(e)}`);
+    },
+  );
+  const fetch = guardedFetch(d.fetch);
 
   const catalogue = async (
     timeoutMs?: number,
@@ -134,6 +152,7 @@ export function registerAddonsIpc(d: AddonsIpcDeps): {
   };
 
   d.handle('addons:list', async (): Promise<AddonListResponse> => {
+    await ready;
     const [cat, packVersion, folders] = await Promise.all([
       catalogue(),
       d.packVersion(),
@@ -204,6 +223,7 @@ export function registerAddonsIpc(d: AddonsIpcDeps): {
       return r;
     };
     try {
+      await ready;
       const cat = await catalogue();
       if (!cat.ok) return failed({ ok: false, error: cat.error, code: cat.code });
       const entry = cat.catalogue.addons.find((a) => a.manifest.id === id);
@@ -213,19 +233,30 @@ export function registerAddonsIpc(d: AddonsIpcDeps): {
           error: `The add-on list does not offer "${id}".`,
           code: 'refused',
         });
-      const problem = packProblem(entry.manifest, await d.packVersion());
+      const packVersion = await d.packVersion();
+      const problem = packProblem(entry.manifest, packVersion);
       if (problem) return failed({ ok: false, error: problem, code: 'refused' });
       const url = archiveUrl(cat.base, entry);
       if (!url.ok) return failed({ ok: false, error: url.error, code: 'refused' });
       const dest = downloadPath(d.dataRoot(), id, entry.manifest.version);
       const size = entry.archive.sizeBytes;
+      // room for the archive and what it unpacks to, before a byte is downloaded
+      const root = addonsRoot(d.dataRoot());
+      const free = await (d.freeBytes ?? freeBytesOf)(root);
+      const need = size + entry.manifest.sizeBytes + SPARE_BYTES;
+      if (free !== null && free < need)
+        return failed({
+          ok: false,
+          code: 'refused',
+          error: `${entry.manifest.name} needs ${mb(need)} free in ${root} to download and install; there is ${mb(free)}. Free some space, then try again.`,
+        });
       try {
         await downloadVerified({
           url: url.url,
           sha256: entry.archive.sha256,
           size,
           dest,
-          fetch: d.fetch,
+          fetch,
           signal: ctl.signal,
           onProgress: (done) => {
             progress({ phase: 'download', bytesDone: done, bytesTotal: size });
@@ -250,6 +281,9 @@ export function registerAddonsIpc(d: AddonsIpcDeps): {
         onProgress: progress,
         needBytes: entry.manifest.sizeBytes,
         expect: { id, version: entry.manifest.version },
+        catalogueSha256: (i, v) =>
+          i === id && v === entry.manifest.version ? entry.archive.sha256 : null,
+        usable: (m) => packProblem(m, packVersion),
         ...(d.freeBytes ? { freeBytes: d.freeBytes } : {}),
       });
       // a refused archive is never tried again; a cancelled unpack keeps the verified download
@@ -277,6 +311,8 @@ export function registerAddonsIpc(d: AddonsIpcDeps): {
     const ctl = new AbortController();
     running = { ctl, id: null };
     try {
+      await ready;
+      const packVersion = await d.packVersion();
       // the catalogue, when it can be read, also vouches for the archive as a whole
       const cat = await catalogue(5000).catch(() => null);
       const listed = cat?.ok ? cat.catalogue.addons : [];
@@ -294,6 +330,8 @@ export function registerAddonsIpc(d: AddonsIpcDeps): {
           if (running) running.id = id;
           if (id !== guess) state.progress = progressThrottle(id, d.emit, now);
         },
+        usable: (m) => packProblem(m, packVersion),
+        ...(d.confirmUnlisted ? { confirmUnlisted: d.confirmUnlisted } : {}),
         ...(d.freeBytes ? { freeBytes: d.freeBytes } : {}),
       });
       if (r.ok) named.delete(pathKey(path));
@@ -317,6 +355,7 @@ export function registerAddonsIpc(d: AddonsIpcDeps): {
   });
 
   d.handle('addons:remove', async ({ id }) => {
+    await ready;
     if (running && (running.id === id || running.id === null))
       return {
         ok: false,

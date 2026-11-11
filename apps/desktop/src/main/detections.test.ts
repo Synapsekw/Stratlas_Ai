@@ -305,6 +305,58 @@ describe('mask assist seam', () => {
     expect(encodes).toBe(1);
   });
 
+  it('loads the model again after the add-on was installed or removed', async () => {
+    const dir = await pack(true);
+    const addon = join(base, 'addon-stale');
+    await mkdir(addon, { recursive: true });
+    const created: string[] = [];
+    const session = {
+      inputNames: ['x'],
+      outputNames: ['y'],
+      run: () => Promise.reject(new Error('unused')),
+    };
+    const ort: OrtLike = {
+      InferenceSession: {
+        create: (p: string) => {
+          created.push(p);
+          return Promise.resolve(session);
+        },
+      },
+      Tensor: class {
+        constructor(
+          _type: 'float32',
+          public data: Float32Array,
+          public dims: readonly number[],
+        ) {}
+      },
+    };
+    const assist = createMaskAssist({
+      packDir: () => Promise.resolve(dir),
+      addonDir: () => Promise.resolve(addon),
+      loadRuntime: () => Promise.resolve(ort),
+      decode: () => Promise.reject(new Error('no photo')),
+    });
+    const use = () => assist.segment('p.jpg', [0, 0, 10, 10]).catch(() => undefined);
+    await use();
+    expect(created.filter((p) => p.endsWith('encoder.onnx'))).toHaveLength(1); // the pack's
+    // the add-on is installed: its model is loaded
+    await writeFile(join(addon, 'encoder.onnx'), 'v1');
+    await writeFile(join(addon, 'decoder.onnx'), 'v1');
+    await use();
+    expect(created.at(-2)).toBe(join(addon, 'encoder.onnx'));
+    await use();
+    expect(created).toHaveLength(4); // the same files: the sessions are kept
+    // installed again in place (new files at the same paths): loaded again
+    await rm(join(addon, 'encoder.onnx'));
+    await writeFile(join(addon, 'encoder.onnx'), 'v2 bigger');
+    await use();
+    expect(created).toHaveLength(6);
+    // removed: back to the pack's model
+    await rm(addon, { recursive: true });
+    await use();
+    expect(created.at(-2)).toBe(join(dir, 'models', 'sam', 'encoder.onnx'));
+  });
+
   it('normalises and pads the encoder input', () => {
     const rgba = new Uint8Array([255, 0, 0, 255]);
     const t = encoderInput({ width: 1, height: 1, scaledWidth: 1, scaledHeight: 1, rgba });

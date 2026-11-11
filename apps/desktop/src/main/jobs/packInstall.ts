@@ -826,7 +826,7 @@ const LOCKED = new Set(['EPERM', 'EACCES', 'EBUSY', 'ENOTEMPTY']);
  * search indexer) may hold one open for a moment and refuse, so a refusal is tried again for a
  * few seconds.
  */
-async function renameDir(from: string, to: string, tries = 8): Promise<void> {
+export async function renameDir(from: string, to: string, tries = 8): Promise<void> {
   for (let i = 0, wait = 50; ; i++, wait *= 2) {
     try {
       await rename(from, to);

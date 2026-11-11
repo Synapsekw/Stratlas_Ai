@@ -13,17 +13,19 @@ import type { FetchLike } from '../update/download';
 /** The address the build reads add-ons from when nothing else is set; none is published yet. */
 export const DEFAULT_ADDON_BASE_URL = '';
 export const CATALOGUE_FILE = 'catalogue.json';
-/** A catalogue larger than this is not a catalogue (100 entries are a few hundred KB). */
-const MAX_CATALOGUE_BYTES = 4 * 1024 * 1024;
+/** A catalogue larger than this is not a catalogue (100 entries are well under 1 MB). */
+const MAX_CATALOGUE_BYTES = 1024 * 1024;
 const CATALOGUE_TIMEOUT_MS = 15_000;
 
-const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+const LOOPBACK = new Set(['localhost', '[::1]', '::1']);
+const IPV4_LOOPBACK = /^127(\.\d{1,3}){3}$/;
 
 /** An address the app may download add-ons from: `https://`, or `http://` to this computer. */
 export function allowedAddonUrl(u: URL): boolean {
   if (u.username || u.password) return false;
   if (u.protocol === 'https:') return true;
-  return u.protocol === 'http:' && (LOOPBACK.has(u.hostname) || u.hostname.startsWith('127.'));
+  // a literal 127.x.y.z address only: a name such as 127.example.com is anybody's
+  return u.protocol === 'http:' && (LOOPBACK.has(u.hostname) || IPV4_LOOPBACK.test(u.hostname));
 }
 
 /** The base URL in use, or null when none is set. Never a URL the app may not read. */
@@ -97,6 +99,52 @@ export function parseCatalogue(
   };
 }
 
+/**
+ * A fetch that refuses an answer that came from an address the app may not read: a redirect to
+ * plain http elsewhere, or away from https. The answer's body is never read in that case.
+ */
+export function guardedFetch(fetch: FetchLike): FetchLike {
+  return async (url, init) => {
+    const res = await fetch(url, init);
+    let final: URL | null;
+    try {
+      final = new URL(res.url || url);
+    } catch {
+      final = null;
+    }
+    if (!final || !allowedAddonUrl(final)) {
+      await res.body?.cancel().catch(() => undefined);
+      throw new Error(
+        `the server sent the request on to ${final?.origin ?? 'an address'} that is not https`,
+      );
+    }
+    return res;
+  };
+}
+
+/** The body as text, refused past `cap` bytes without reading the rest. */
+async function readCapped(res: Response, cap: number): Promise<string> {
+  if (Number(res.headers.get('content-length') ?? '0') > cap) {
+    await res.body?.cancel().catch(() => undefined);
+    throw new Error('the list is too large to be one');
+  }
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > cap) {
+      await reader.cancel().catch(() => undefined);
+      throw new Error('the list is too large to be one');
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 /** Read `catalogue.json` at `base` (a base URL from `addonBaseUrl`). */
 export async function readCatalogue(o: {
   base: string;
@@ -109,9 +157,11 @@ export async function readCatalogue(o: {
   const signal = o.signal ? AbortSignal.any([o.signal, timeout]) : timeout;
   let res: Response;
   try {
-    res = await o.fetch(url, { signal });
+    res = await guardedFetch(o.fetch)(url, { signal });
   } catch (e) {
-    const why = timeout.aborted ? 'it did not answer in time' : String(e).slice(0, 200);
+    const why = timeout.aborted
+      ? 'it did not answer in time'
+      : (e instanceof Error ? e.message : String(e)).slice(0, 200);
     return { ok: false, error: `The add-on list could not be read from ${o.base}: ${why}.` };
   }
   if (res.status !== 200) {
@@ -123,14 +173,11 @@ export async function readCatalogue(o: {
   }
   let text: string;
   try {
-    const length = Number(res.headers.get('content-length') ?? '0');
-    if (length > MAX_CATALOGUE_BYTES) throw new Error('too large');
-    text = await res.text();
-    if (text.length > MAX_CATALOGUE_BYTES) throw new Error('too large');
+    text = await readCapped(res, MAX_CATALOGUE_BYTES);
   } catch (e) {
     return {
       ok: false,
-      error: `The add-on list could not be read from ${o.base}: ${String(e).slice(0, 200)}.`,
+      error: `The add-on list could not be read from ${o.base}: ${(e instanceof Error ? e.message : String(e)).slice(0, 200)}.`,
     };
   }
   let raw: unknown;

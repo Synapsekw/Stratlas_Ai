@@ -1,7 +1,7 @@
-import type { AddonCatalogueEntry, AddonProgress } from '@aio/schema';
+import type { AddonCatalogueEntry, AddonManifest, AddonProgress } from '@aio/schema';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -19,14 +19,24 @@ let url: string;
 /** What the fake server answers, by path. */
 let routes: Map<string, Buffer | string>;
 let requests: string[];
+/** Paths the fake server answers with a 302 to another address. */
+let redirects: Map<string, string>;
 
 beforeEach(async () => {
   base = await mkdtemp(join(tmpdir(), 'aio-addons-ipc-'));
   dataRoot = join(base, 'data');
   routes = new Map();
+  redirects = new Map();
   requests = [];
   server = createServer((req, res) => {
     requests.push(req.url ?? '');
+    const to = redirects.get(req.url ?? '');
+    if (to !== undefined) {
+      res.statusCode = 302;
+      res.setHeader('location', to);
+      res.end();
+      return;
+    }
     const body = routes.get(req.url ?? '');
     if (body === undefined) {
       res.statusCode = 404;
@@ -61,7 +71,15 @@ function serve(addons: readonly FakeAddon[], tweak?: (e: AddonCatalogueEntry) =>
   routes.set('/addons/catalogue.json', JSON.stringify(fakeCatalogue(entries)));
 }
 
-function setup(o: { offline?: boolean; baseUrl?: string; pack?: string | null } = {}) {
+function setup(
+  o: {
+    offline?: boolean;
+    baseUrl?: string;
+    pack?: string | null;
+    confirm?: (m: AddonManifest) => Promise<boolean>;
+    free?: number;
+  } = {},
+) {
   const progress: AddonProgress[] = [];
   const picked = { path: null as string | null };
   let ipc: ReturnType<typeof registerAddonsIpc> | null = null;
@@ -75,6 +93,8 @@ function setup(o: { offline?: boolean; baseUrl?: string; pack?: string | null } 
       chooseFile: () => Promise.resolve(picked.path),
       emit: (p) => progress.push(p),
       packVersion: () => Promise.resolve(o.pack === undefined ? '0.35.0' : o.pack),
+      ...(o.confirm ? { confirmUnlisted: o.confirm } : {}),
+      ...(o.free !== undefined ? { freeBytes: () => Promise.resolve(o.free ?? null) } : {}),
     });
   });
   return { ...h, progress, picked, ipc };
@@ -100,6 +120,51 @@ describe('catalogue', () => {
     expect(addonBaseUrl({}, undefined)).toEqual({ url: null });
     expect(addonBaseUrl({}, 'http://b.example/')).toMatchObject({ url: null, error: /https/ });
     expect(addonBaseUrl({}, 'http://localhost:8080')).toEqual({ url: 'http://localhost:8080/' });
+  });
+
+  it('takes a literal 127.x.y.z address as this computer, never a name that starts so', () => {
+    expect(addonBaseUrl({}, 'http://127.0.0.2:9000/a')).toEqual({
+      url: 'http://127.0.0.2:9000/a/',
+    });
+    expect(addonBaseUrl({}, 'http://127.evil.example/')).toMatchObject({ url: null });
+    expect(addonBaseUrl({}, 'http://127.0.0.1.example.com/')).toMatchObject({ url: null });
+  });
+
+  it('refuses a catalogue or an archive the server sends on to an address it may not read', async () => {
+    const a = road();
+    serve([a]);
+    const port = new URL(url).port;
+    redirects.set('/addons/catalogue.json', `http://[::ffff:7f00:1]:${port}/addons/real.json`);
+    routes.set('/addons/real.json', routes.get('/addons/catalogue.json') ?? '');
+    expect(await readCatalogue({ base: url, fetch: fetchLike })).toMatchObject({
+      ok: false,
+      error: /sent the request on to .* that is not https/,
+    });
+    expect(requests).toContain('/addons/real.json'); // followed, but its answer was never used
+    // a redirect that stays on this computer is fine
+    redirects.set('/addons/catalogue.json', `http://localhost:${port}/addons/real.json`);
+    expect(await readCatalogue({ base: url, fetch: fetchLike })).toMatchObject({ ok: true });
+    // the archive: the same
+    redirects.set(`/addons/${a.fileName}`, `http://[::ffff:7f00:1]:${port}/addons/x.aioaddon`);
+    routes.set('/addons/x.aioaddon', a.bytes);
+    const r = await setup().call('addons:install', { id: 'road-defects' });
+    expect(r).toMatchObject({ ok: false, code: 'network', error: /not https/ });
+    expect(await readInstalledAddon(dataRoot, 'road-defects')).toBeNull();
+  });
+
+  it('refuses a catalogue larger than 1 MB, also without a length', async () => {
+    const huge = JSON.stringify({ pad: 'x'.repeat(1024 * 1024 + 10) });
+    routes.set('/addons/catalogue.json', huge);
+    expect(await readCatalogue({ base: url, fetch: fetchLike })).toMatchObject({
+      ok: false,
+      error: /too large/,
+    });
+    const chunked: FetchLike = () =>
+      Promise.resolve(new Response(new Blob([huge]).stream(), { status: 200 }));
+    expect(await readCatalogue({ base: url, fetch: chunked })).toMatchObject({
+      ok: false,
+      error: /too large/,
+    });
   });
 
   it('resolves archive addresses against the base and refuses plain http elsewhere', () => {
@@ -273,6 +338,70 @@ describe('addons:installFile and addons:remove', () => {
       error: /the add-on catalogue lists \(SHA-256\)/,
     });
     expect(await readInstalledAddon(dataRoot, 'road-defects')).toBeNull();
+  });
+
+  it('asks before a chosen file the catalogue does not list, never for one it does', async () => {
+    const a = road();
+    const path = join(base, a.fileName);
+    await writeFile(path, a.bytes);
+    const asked: string[] = [];
+    const answer = { value: false };
+    const { call, picked } = setup({
+      offline: true,
+      confirm: (m) => {
+        asked.push(m.id);
+        return Promise.resolve(answer.value);
+      },
+    });
+    picked.path = path;
+    await call('addons:choose', {});
+    expect(await call('addons:installFile', { path })).toMatchObject({
+      ok: false,
+      code: 'refused',
+    });
+    expect(await readInstalledAddon(dataRoot, 'road-defects')).toBeNull();
+    answer.value = true;
+    expect(await call('addons:installFile', { path })).toMatchObject({ ok: true });
+    expect(asked).toEqual(['road-defects', 'road-defects']);
+    // the catalogue lists this very file: no question
+    serve([a]);
+    const listed = setup({ confirm: () => Promise.reject(new Error('asked')) });
+    listed.picked.path = path;
+    await listed.call('addons:choose', {});
+    expect(await listed.call('addons:installFile', { path })).toMatchObject({ ok: true });
+  });
+
+  it('refuses a chosen add-on the pipeline pack is too old for', async () => {
+    const a = road('1.0.0', { minPipelinePack: '0.40.0' });
+    const path = join(base, a.fileName);
+    await writeFile(path, a.bytes);
+    const { call, picked } = setup({ offline: true });
+    picked.path = path;
+    await call('addons:choose', {});
+    expect(await call('addons:installFile', { path })).toMatchObject({
+      ok: false,
+      error: /Road defects needs processing tools 0.40.0 or later \(these are 0.35.0\)/,
+    });
+  });
+
+  it('checks the disk has room for the download and the add-on before downloading', async () => {
+    serve([road()]);
+    const r = await setup({ free: 1024 }).call('addons:install', { id: 'road-defects' });
+    expect(r).toMatchObject({ ok: false, code: 'refused', error: /needs .* free .* to download/ });
+    expect(requests.filter((p) => p.endsWith('.aioaddon'))).toEqual([]);
+  });
+
+  it('puts back an old version an interrupted swap left aside when it starts', async () => {
+    const a = road();
+    await writeFile(join(base, a.fileName), a.bytes);
+    await installAddonArchive(join(base, a.fileName), { dataRoot });
+    const root = join(dataRoot, 'runtime', 'addons');
+    await rename(join(root, 'road-defects'), join(root, '.replaced-0123.tmp'));
+    const r = await setup({ offline: true }).call('addons:list', {});
+    expect(r.addons[0]).toMatchObject({
+      id: 'road-defects',
+      installed: { manifest: { version: '1.0.0' } },
+    });
   });
 });
 

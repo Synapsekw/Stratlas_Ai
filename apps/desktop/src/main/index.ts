@@ -16,6 +16,7 @@ import {
   ipcEvents,
   PACKAGE_EXTENSION,
   VLM_SERVER_STATE,
+  type AddonKind,
   type IpcChannel,
   type IpcEvent,
   type IpcRequest,
@@ -240,13 +241,16 @@ import { localVlmModel } from './analytics/models';
 import { findAnalyticsPack, unusablePacks } from './analytics/pack';
 import { registerAnalyticsPackIpc } from './analytics/packIpc';
 import {
+  depthBandRefusal,
   GROUND_PACK_FEATURE,
   groundGate,
   installedAddon,
-  installedAddonDirs,
   LIFT_PACK_FEATURE,
   liftRefusal,
-  readPointClassifier,
+  listInstalledAddons,
+  packProblem,
+  readGroundAddon,
+  RECIPE_PIPELINES,
   registerAddonsIpc,
 } from './addons';
 import { registerRequestsIpc } from './analytics/requestsIpc';
@@ -1026,9 +1030,23 @@ const odmSystem = nodeOdmSystem(process.env);
 let odmIpc: ReturnType<typeof registerOdmIpc> | null = null;
 /** Set once the add-on channels are registered; `will-quit` stops a running install through it. */
 let addonsIpc: ReturnType<typeof registerAddonsIpc> | null = null;
+/** The installed pipeline pack's version, or null. */
+const installedPackVersion = async (): Promise<string | null> =>
+  (await findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp })).pack
+    ?.version ?? null;
+/**
+ * The installed add-ons of a kind that this pipeline pack can serve (their `minPipelinePack`):
+ * an add-on the pack is too old for stays unused, and its row in Settings says why.
+ */
+const usableAddonDirs = async (kind: AddonKind): Promise<string[]> => {
+  const packVersion = await installedPackVersion();
+  return (await listInstalledAddons(settings.current().dataRoot))
+    .filter((a) => a.manifest.kind === kind && packProblem(a.manifest, packVersion) === null)
+    .map((a) => a.dir);
+};
 /** The installed Segmentation add-on's folder, or null (Suggest boundaries and mask assist). */
 const segmentationAddonDir = async (): Promise<string | null> =>
-  (await installedAddon(settings.current().dataRoot, 'segmenter'))?.dir ?? null;
+  (await usableAddonDirs('segmenter'))[0] ?? null;
 const odmDeps: OdmDeps = {
   dataRoot: () => settings.current().dataRoot,
   env: process.env,
@@ -1938,22 +1956,26 @@ function registerIpc(): void {
     }
     // Add-on features, only with the add-on installed: a noise run marks ground with the Ground
     // classifier add-on's settings (any `ground` the window sent is replaced; addons/gates.ts),
-    // and lifting photo masks onto a cloud takes the Segmentation add-on.
-    if (pipeline === 'pointcloud.clean' || pipeline === 'segment.lift') {
+    // and lifting photo masks onto a cloud takes the Segmentation add-on. A recipe with regions
+    // from Classify on point cloud (a depth band) is saved or exported only by a pack that reads it.
+    if (pipeline && (RECIPE_PIPELINES.includes(pipeline) || pipeline === 'segment.lift')) {
       const dataRoot = settings.current().dataRoot;
       const packVersion =
         (await findPack({ dataRoot, env: process.env, app: packApp })).pack?.version ?? null;
+      const params = 'pipeline' in req ? req.params : (jobs.get(req.resume)?.params ?? {});
+      const banded = depthBandRefusal(pipeline, params, packVersion);
+      if (banded) return { ok: false, error: banded };
       if ('pipeline' in req) {
         const g = await groundGate(req.pipeline, req.params, {
           packVersion,
-          classifier: () => readPointClassifier(dataRoot),
+          addon: () => readGroundAddon(dataRoot),
         });
         if (!g.ok) return { ok: false, error: g.error };
         req.params = g.params;
       }
       const lift = await liftRefusal(pipeline, {
         packVersion,
-        segmenterInstalled: async () => (await installedAddon(dataRoot, 'segmenter')) !== null,
+        segmenter: async () => (await installedAddon(dataRoot, 'segmenter'))?.manifest ?? null,
       });
       if (lift) return { ok: false, error: lift };
     }
@@ -2398,7 +2420,7 @@ function registerIpc(): void {
           )
         )?.ffmpeg ?? null,
       // the Road defects add-on (and any other detector add-on) is listed with the models
-      addonDirs: () => installedAddonDirs(settings.current().dataRoot, 'detector'),
+      addonDirs: () => usableAddonDirs('detector'),
     }),
   });
   registerLocalModelsIpc({
@@ -2749,6 +2771,15 @@ function registerIpc(): void {
     packVersion: async () =>
       (await findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp }))
         .pack?.version ?? null,
+    // Choose file, for an archive the add-on list does not vouch for (as the packs' unsigned files)
+    confirmUnlisted: (m) =>
+      confirmUnsignedPack(
+        `Install the add-on ${m.name} ${m.version}? It is not in the add-on list.`,
+        'An add-on holds models that run on this computer. This file carries no publisher signature and the add-on list does not vouch for it, so the app cannot tell where it came from. Install it only if you got it from the publisher yourself.',
+      ),
+    log: (line) => {
+      appLog.write('info', [line]);
+    },
   });
   handle('analytics:hardware', async () => {
     // the installed pack's model sets the free memory floor; no pack keeps the base floor

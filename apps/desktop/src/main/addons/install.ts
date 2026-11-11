@@ -24,12 +24,14 @@ import {
 } from '@aio/schema';
 import { createHash, randomBytes } from 'node:crypto';
 import { createReadStream, createWriteStream, mkdirSync, type WriteStream } from 'node:fs';
-import { readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Parser, type ReadEntry } from 'tar';
 import { parseCard } from '../inference/models';
 import { licenceProblem } from '../inference/licence';
-import { archiveSegments, freeBytesOf } from '../jobs/packInstall';
+import { compareVersions } from '../jobs/pack';
+import { archiveSegments, freeBytesOf, renameDir } from '../jobs/packInstall';
+import { onnxExternalData } from './onnxExternal';
 
 /** `<dataRoot>/runtime/addons`: every installed add-on, the staging folders and downloads. */
 export const addonsRoot = (dataRoot: string): string => join(dataRoot, 'runtime', ADDONS_DIR);
@@ -199,13 +201,20 @@ export async function installedAddonDirs(dataRoot: string, kind: AddonKind): Pro
 
 /** The Ground classifier add-on's settings, or null when no point classifier is installed. */
 export async function readPointClassifier(dataRoot: string): Promise<PointClassifier | null> {
+  return (await readGroundAddon(dataRoot))?.classifier ?? null;
+}
+
+/** The installed point classifier: its settings and its manifest (`gates.ts` `GroundAddon`). */
+export async function readGroundAddon(
+  dataRoot: string,
+): Promise<{ classifier: PointClassifier; manifest: AddonManifest } | null> {
   const a = await installedAddon(dataRoot, 'point-classifier');
   if (!a) return null;
   try {
     const r = PointClassifier.safeParse(
       JSON.parse(await readFile(join(a.dir, 'classifier.json'), 'utf8')),
     );
-    return r.success ? r.data : null;
+    return r.success ? { classifier: r.data, manifest: a.manifest } : null;
   } catch {
     return null;
   }
@@ -228,7 +237,12 @@ interface Unpacked {
 async function unpack(
   archive: string,
   tmp: string,
-  o: { signal?: AbortSignal | undefined; onBytes: (done: number) => void },
+  o: {
+    signal?: AbortSignal | undefined;
+    onBytes: (done: number) => void;
+    /** Bytes the files may take on the disk (its free space less a margin); null: unknown. */
+    budget: number | null;
+  },
 ): Promise<Unpacked> {
   const files = new Map<string, FileSum>();
   const lower = new Set<string>();
@@ -341,6 +355,10 @@ async function unpack(
         if (declared > MAX_ADDON_BYTES)
           throw refused(
             `The add-on file unpacks to more than ${mb(MAX_ADDON_BYTES)}, which no add-on does. It was not installed.`,
+          );
+        if (o.budget !== null && declared > o.budget)
+          throw refused(
+            `The add-on unpacks to more than the ${mb(o.budget)} free on this disk. Free some space, then try again.`,
           );
         const dest = join(tmp, ...segs);
         mkdirSync(dirname(dest), { recursive: true });
@@ -477,6 +495,17 @@ async function checkKind(
         `A ${label} add-on holds ${KIND_FILES[manifest.kind].join(', ')}; this one lacks ${need}. It was not installed.`,
       );
   }
+  // every model runs from its own file: no tensor may name another file (ONNX external data)
+  for (const f of manifest.files) {
+    if (!f.path.toLowerCase().endsWith('.onnx')) continue;
+    const external = await onnxExternalData(join(dir, ...f.path.split('/')));
+    if (external === 'external')
+      throw refused(
+        `${f.path} in the add-on keeps weights in separate files (ONNX external data), which an add-on may not do. It was not installed.`,
+      );
+    if (external === 'not-onnx')
+      throw refused(`${f.path} in the add-on is not an ONNX model. It was not installed.`);
+  }
   switch (manifest.kind) {
     case 'detector': {
       const card = parseCard(await readJsonIn(dir, 'model.json'));
@@ -530,6 +559,136 @@ export interface InstallArchiveOptions {
   catalogueSha256?: (id: string, version: string) => string | null;
   /** The add-on `id` is being written: refuse a second install of it (the IPC's own lock). */
   onId?: (id: string) => void;
+  /** Why this add-on cannot be used here (its `minPipelinePack`), or null. */
+  usable?: (m: AddonManifest) => string | null;
+  /**
+   * An archive no catalogue vouches for (Choose file, the catalogue does not list it): the
+   * "carries no publisher signature" question. False refuses it and nothing is installed.
+   */
+  confirmUnlisted?: (m: AddonManifest) => Promise<boolean>;
+}
+
+/**
+ * Put the checked folder `tmp` at `dest`: the old version aside first (`.replaced-*`), then the
+ * new one in, then the old one gone. Windows may hold a just-written file for a moment, so each
+ * rename is tried again (`renameDir`). A failed rollback is said, never swallowed; the next start
+ * (`sweepAddons`) puts an old version left aside back.
+ */
+async function swapIn(root: string, tmp: string, dest: string): Promise<void> {
+  const had = await stat(dest).then(
+    () => true,
+    () => false,
+  );
+  const aside = join(root, tempName('replaced'));
+  if (had) {
+    try {
+      await renameDir(dest, aside, 3);
+    } catch {
+      throw refused(
+        'The installed version of this add-on is in use and could not be replaced. Close what uses it (a detection or Suggest boundaries), then try again.',
+      );
+    }
+  }
+  try {
+    await renameDir(tmp, dest);
+  } catch (e) {
+    if (had) {
+      try {
+        await renameDir(aside, dest);
+      } catch (back) {
+        throw new Error(
+          `The new version could not be moved in (${why(e)}), and the old one could not be put back (${why(back)}). It stays in ${aside} and comes back when the app starts again.`,
+          { cause: back },
+        );
+      }
+    }
+    throw e;
+  }
+  if (had) await removeDir(aside).catch(() => undefined);
+}
+
+const removeDir = (dir: string) =>
+  rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+
+/**
+ * Tidy `runtime/addons` when the app starts: staging and removal folders an interrupted install
+ * or removal left go; an old version left aside (`.replaced-*`) comes back when its add-on folder
+ * is missing, else it goes; downloads (`.download/<id>-<version>.aioaddon[.partial]`) of a version
+ * that is installed, older than one installed, or older than another download of that add-on go.
+ * Answers what it did, for the log.
+ */
+export async function sweepAddons(dataRoot: string): Promise<string[]> {
+  const root = addonsRoot(dataRoot);
+  const done: string[] = [];
+  let names: string[];
+  try {
+    names = await readdir(root);
+  } catch {
+    return done;
+  }
+  for (const name of names.sort()) {
+    const full = join(root, name);
+    if (/^\.(install|removing)-[0-9a-f]+\.tmp$/.test(name)) {
+      await removeDir(full).catch(() => undefined);
+      done.push(`removed ${name}`);
+    } else if (/^\.replaced-[0-9a-f]+\.tmp$/.test(name)) {
+      let id: string | null;
+      try {
+        const m = parseAddonManifest(
+          JSON.parse(await readFile(join(full, ADDON_MANIFEST_FILE), 'utf8')),
+        );
+        id = m.ok ? m.manifest.id : null;
+      } catch {
+        id = null;
+      }
+      const dest = id ? addonDir(dataRoot, id) : null;
+      const missing =
+        dest !== null &&
+        (await stat(dest).then(
+          () => false,
+          () => true,
+        ));
+      if (dest && missing) {
+        try {
+          await renameDir(full, dest);
+          done.push(`restored ${id ?? ''} from ${name}`);
+          continue;
+        } catch {
+          // left for the next start
+          continue;
+        }
+      }
+      await removeDir(full).catch(() => undefined);
+      done.push(`removed ${name}`);
+    }
+  }
+  const downloads = join(root, '.download');
+  let files: string[];
+  try {
+    files = await readdir(downloads);
+  } catch {
+    return done;
+  }
+  const parsed = files
+    .map((f) => ({ f, m: /^([a-z0-9][a-z0-9-]*?)-(\d+\.\d+\.\d+)\.aioaddon(\.partial)?$/.exec(f) }))
+    .filter((x): x is { f: string; m: RegExpExecArray } => x.m !== null);
+  const newest = new Map<string, string>();
+  for (const { m } of parsed) {
+    const [, id = '', v = ''] = m;
+    const had = newest.get(id);
+    if (!had || compareVersions(v, had) > 0) newest.set(id, v);
+  }
+  for (const { f, m } of parsed) {
+    const [, id = '', v = ''] = m;
+    const installed = (await readInstalledAddon(dataRoot, id))?.manifest.version;
+    const stale =
+      v !== newest.get(id) || (installed !== undefined && compareVersions(v, installed) <= 0);
+    if (stale) {
+      await rm(join(downloads, f), { force: true }).catch(() => undefined);
+      done.push(`removed .download/${f}`);
+    }
+  }
+  return done;
 }
 
 /** Unpack, check and install an add-on archive; the old version stays until the new one is in. */
@@ -561,6 +720,7 @@ export async function installAddonArchive(
     const u = await unpack(archive, tmp, {
       signal: o.signal,
       onBytes: (done) => o.onProgress?.({ phase: 'unpack', bytesDone: done, bytesTotal: size }),
+      budget: free === null ? null : Math.max(0, free - SPARE_BYTES),
     });
     o.onProgress?.({ phase: 'check', bytesDone: size, bytesTotal: size });
     if (!u.manifest)
@@ -585,25 +745,17 @@ export async function installAddonArchive(
       );
     checkFiles(m, u.files);
     await checkKind(m, tmp, u.files);
+    const unusable = o.usable?.(m) ?? null;
+    if (unusable) throw refused(sentences(unusable, 'The add-on was not installed.'));
+    if (listedSha === null && o.confirmUnlisted && !(await o.confirmUnlisted(m)))
+      throw refused(
+        `${m.name} ${m.version} was not installed: the add-on list does not vouch for this file, and installing it was not confirmed.`,
+      );
     // the manifest as it was checked, so the installed add-on says what it holds
     await writeFile(join(tmp, ADDON_MANIFEST_FILE), u.manifest, { flag: 'wx' });
     if (o.signal?.aborted) throw new AddonRefused(CANCELLED, 'cancelled');
     o.onId?.(m.id);
-    // replace: the old folder aside, the new one in, the old one gone
-    const dest = addonDir(o.dataRoot, m.id);
-    const aside = join(root, tempName('replaced'));
-    const had = await stat(dest).then(
-      () => true,
-      () => false,
-    );
-    if (had) await rename(dest, aside);
-    try {
-      await rename(tmp, dest);
-    } catch (e) {
-      if (had) await rename(aside, dest).catch(() => undefined);
-      throw e;
-    }
-    if (had) await rm(aside, { recursive: true, force: true }).catch(() => undefined);
+    await swapIn(root, tmp, addonDir(o.dataRoot, m.id));
     o.onProgress?.({ phase: 'done', bytesDone: size, bytesTotal: size });
     return { ok: true, manifest: m };
   } catch (e) {
@@ -626,13 +778,13 @@ export async function removeAddon(
   if (!there) return { ok: false, error: `The add-on "${id}" is not installed.` };
   const aside = join(addonsRoot(dataRoot), tempName('removing'));
   try {
-    await rename(dir, aside);
+    await renameDir(dir, aside, 3);
   } catch (e) {
     return {
       ok: false,
       error: `The add-on could not be removed (a program may be using it): ${why(e)}`,
     };
   }
-  await rm(aside, { recursive: true, force: true }).catch(() => undefined);
+  await removeDir(aside).catch(() => undefined);
   return { ok: true };
 }

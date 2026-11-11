@@ -16,6 +16,7 @@ import { maskToPolygon, type MaskAssistStatus } from '@aio/annotate/detections';
 import type { Vec2 } from '@aio/schema';
 import { access, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { modelFilesKey } from './inference/segment';
 
 export const SAM_SIZE = 1024;
 const MEAN = [123.675, 116.28, 103.53];
@@ -163,8 +164,14 @@ export interface MaskAssist {
 }
 
 export function createMaskAssist(deps: MaskAssistDeps): MaskAssist {
-  let sessions: { model: SamModel; encoder: OrtSession; decoder: OrtSession; ort: OrtLike } | null =
-    null;
+  let sessions: {
+    model: SamModel;
+    /** `modelFilesKey` of the files the sessions were made from. */
+    key: string;
+    encoder: OrtSession;
+    decoder: OrtSession;
+    ort: OrtLike;
+  } | null = null;
   /** The last image's embeddings: refining boxes on one photo encodes it once. */
   let cached: { path: string; image: DecodedImage; embeddings: OrtTensor } | null = null;
 
@@ -174,13 +181,15 @@ export function createMaskAssist(deps: MaskAssistDeps): MaskAssist {
   > {
     const model = await findSamModel(await deps.packDir(), await deps.addonDir?.());
     if (!model) return { ok: false, status: { available: false, reason: 'no-model' } };
-    if (sessions?.model.encoder === model.encoder) return { ok: true, s: sessions };
+    // the same files by path, size and time: an add-on installed again in place is a new model
+    const key = await modelFilesKey(model.encoder, model.decoder);
+    if (sessions?.key === key) return { ok: true, s: sessions };
     const ort = await deps.loadRuntime();
     if (!ort) return { ok: false, status: { available: false, reason: 'no-runtime' } };
     try {
       const encoder = await ort.InferenceSession.create(model.encoder);
       const decoder = await ort.InferenceSession.create(model.decoder);
-      sessions = { model, encoder, decoder, ort };
+      sessions = { model, key, encoder, decoder, ort };
       cached = null;
       return { ok: true, s: sessions };
     } catch (e) {

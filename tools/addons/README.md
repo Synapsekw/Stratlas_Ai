@@ -13,6 +13,8 @@ node tools/addons/build-addon.mjs <folder> --info info.json --out dist/addons \
 - `segmenter`: `encoder.onnx`, `decoder.onnx` and `model.json` (name, licence, `input`).
 - `point-classifier`: `classifier.json` (`aio.point-classifier/1`, PDAL SMRF settings).
 
+Every `.onnx` file must hold its own weights: the app refuses a model with ONNX external data (a tensor whose `data_location` is EXTERNAL or that has `external_data` entries), since onnxruntime would then open files the manifest does not list. Save such a model with its data inside (`onnx.save_model(m, path, save_as_external_data=False)`, under 2 GB).
+
 Without `--catalogue` the entry is printed. Without `--url-prefix` the archive's address is its file name, relative to the catalogue. Upload the archive and `catalogue.json` side by side.
 
 Tests build fake archives with `apps/desktop/src/main/addons/addon.fakes.ts` (`fakeAddonArchive`), which also writes what this builder never does: a tampered file, an unlisted entry, a `..`.
