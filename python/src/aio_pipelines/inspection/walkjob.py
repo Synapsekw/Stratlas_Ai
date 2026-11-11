@@ -16,7 +16,8 @@ error keeps the drafts as they were, each with a warning.
 
 Outputs: ``pass``, ``objects`` (tracks, one-frame ones included), ``merged`` (drafts folded into
 another), ``placed``, ``placedOn`` (counts per ``mesh``, ``cloud``, ``rays``, ``ground``),
-``unplaced`` (tracks of two or more frames with no point) and ``unchanged``.
+``unplaced`` (tracks of two or more frames with no point), ``droppedOnReviewed`` (new drafts of an
+object already accepted or rejected, left out) and ``unchanged``.
 """
 
 from __future__ import annotations
@@ -59,7 +60,7 @@ def track_doc(
     from .frame import read_manifest
 
     dets = [d for d in doc.get("detections") or []]
-    empty = {"objects": 0, "merged": 0, "placed": 0, "placedOn": {}, "unplaced": 0}
+    empty = {"objects": 0, "merged": 0, "placed": 0, "placedOn": {}, "unplaced": 0, "droppedOnReviewed": 0}
     manifest = read_manifest(ctx.project)
     walks = [
         x

@@ -194,7 +194,7 @@ def test_without_a_pose_a_track_but_no_point(pose):
 
 def test_reviewed_and_other_detections_untouched_order_kept(pose):
     dets = frames(pose, [P], TIMES)
-    accepted = {**dets[3], "id": "acc", "status": "accepted"}
+    accepted = {**dets[3], "id": "acc", "status": "accepted", "class": "light"}  # another object
     photo = {"id": "ph", "photo": "p1", "class": "sign", "status": "draft", "bbox": [0, 0, 5, 5]}
     other_walk = {**dets[4], "id": "ow", "frame": {"layer": "walk-b", "t": 2.0}}
     out, _ = T.track_frames([photo, accepted, *dets, other_walk], {LAYER: pose}, None, {LAYER: HEIGHT})
@@ -314,6 +314,79 @@ def test_job_tracks_again_when_the_pass_changed_before_commit(tmp_path, pose, mo
     run_job(all_pipelines()["walk.track"], root, PARAMS)
     dets = read_pass(root)["detections"]
     assert len(dets) == 1 and dets[0]["track"]["frames"] == 21
+
+
+def test_job_retrack_after_a_review_makes_no_duplicate_of_the_reviewed_object(tmp_path, pose, monkeypatch):
+    root = make_project(tmp_path / "p", frames(pose, [P], TIMES[:10]))
+    accepted = {**draft(900, 5.0, project(pose, 5.0, P)), "id": "acc", "status": "accepted"}
+    later = [accepted, *frames(pose, [P], TIMES)]
+    orig = walkjob.WalkTrack._track
+
+    def track_then_review(self, ctx):
+        out = orig(self, ctx)
+        write_pass(root, later)  # the person accepted the object meanwhile, and a run added frames
+        return out
+
+    monkeypatch.setattr(walkjob.WalkTrack, "_track", track_then_review)
+    res, _ = run_job(all_pipelines()["walk.track"], root, PARAMS)
+    assert [d["id"] for d in read_pass(root)["detections"]] == ["acc"]
+    assert _outputs(res)["droppedOnReviewed"] == 21
+
+
+def test_a_reviewed_object_gets_no_new_draft_another_object_still_tracks(pose):
+    q2 = (8.0, 1.0, -6.0)
+    dets = frames(pose, [P, q2], TIMES)
+    # rejected, with sightings only early in the walk: the drafts later on chain to it
+    rejected = {**draft(900, 0.0, project(pose, 0.0, P)), "id": "rej", "status": "rejected"}
+    rejected["track"] = {"frames": 2, "firstT": 0.0, "lastT": 0.5,
+                         "sightings": [{"t": 0.5, "bbox": project(pose, 0.5, P)}]}  # fmt: skip
+    out, stats = T.track_frames([rejected, *dets], {LAYER: pose}, None, {LAYER: HEIGHT})
+    assert out[0] is rejected and len(out) == 2
+    assert np.linalg.norm(np.subtract(out[1]["track"]["point"], q2)) < 0.3
+    assert stats["droppedOnReviewed"] == 21 and stats["objects"] == 1
+
+
+def test_a_reviewed_detection_of_another_class_or_far_away_blocks_nothing(pose):
+    other = {**draft(900, 5.0, project(pose, 5.0, P)), "id": "acc", "status": "accepted", "class": "light"}
+    far = {**draft(901, 5.0, project(pose, 5.0, (5.0, 1.0, 6.0))), "id": "acc2", "status": "accepted"}
+    out, stats = T.track_frames([other, far, *frames(pose, [P], TIMES)], {LAYER: pose}, None, {LAYER: HEIGHT})
+    assert len(out) == 3 and stats["droppedOnReviewed"] == 0 and out[2]["track"]["frames"] == 21
+
+
+# ---------------------------------------------------------------- the renderer's pose convention
+
+
+def quat_from_yaw_pitch_roll(yaw: float, pitch: float, roll: float) -> list[float]:
+    """``@aio/geo`` walk/horizontal.ts ``quatFromYawPitchRoll``: Ry(yaw) Rx(pitch) Rz(roll), YXZ."""
+    c1, c2, c3 = math.cos(pitch / 2), math.cos(yaw / 2), math.cos(roll / 2)
+    s1, s2, s3 = math.sin(pitch / 2), math.sin(yaw / 2), math.sin(roll / 2)
+    return [
+        s1 * c2 * c3 + c1 * s2 * s3,
+        c1 * s2 * c3 - s1 * c2 * s3,
+        c1 * c2 * s3 - s1 * s2 * c3,
+        c1 * c2 * c3 + s1 * s2 * s3,
+    ]
+
+
+def heading_of(dx: float, dz: float) -> float:
+    """``headingOf``: the Ry angle of a travel direction (0 looks down -Z)."""
+    return math.atan2(-dx, -dz)
+
+
+@pytest.mark.parametrize(
+    "frame_yaw,pitch,expected",
+    [(0.0, 0.0, 90.0), (90.0, 0.0, 180.0), (-90.0, 0.0, 0.0), (0.0, 0.2, 90.0), (180.0, -0.1, 270.0)],
+)
+def test_a_box_at_a_known_yaw_has_the_renderers_bearing(frame_yaw, pitch, expected):
+    # walkPoseSamples: q = quatFromYawPitchRoll(heading + yawOffset, pitch, roll), walking east
+    q = quat_from_yaw_pitch_roll(heading_of(1.0, 0.0), pitch, 0.0)
+    pose = T.pose_from_samples([{"t": k * 500.0, "pos": [k * 0.5, HEIGHT, 0.0], "q": q} for k in range(3)])
+    x, y = E.look_to_pixel(frame_yaw, math.degrees(-pitch) + 5.0, W, H)  # level, a little above
+    box = [x - 10, y - 10, x + 10, y + 10]
+    dets = [draft(k, k * 0.5, box) for k in range(3)]
+    out, _ = T.track_frames(dets, {LAYER: pose}, None, {LAYER: HEIGHT})
+    b = out[0]["track"]["bearingDeg"]
+    assert min(abs(b - expected), 360 - abs(b - expected)) < 0.5
 
 
 def test_job_params_are_strict():

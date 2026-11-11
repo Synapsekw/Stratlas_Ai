@@ -25,7 +25,10 @@ and ``rangeM`` are from the lead frame's walk position.
 A draft that already has ``track`` (an earlier run) is expanded back into its member drafts first,
 so a re-run or an extended run gives one draft per object again. Reviewed detections (accepted,
 rejected, linked to an issue) and drafts that are not on a walk frame pass through untouched; the
-order stays stable (a lead takes the place of its first member).
+order stays stable (a lead takes the place of its first member). A track with a draft that would
+join an accepted or rejected frame detection (or one of its sightings) by the tracking rule is
+dropped whole (``droppedOnReviewed`` counts its drafts): that object was reviewed, so it never
+gets a second draft.
 """
 
 from __future__ import annotations
@@ -43,6 +46,7 @@ from . import equirect as E
 
 MAX_SIGHTINGS = 200
 MAX_GAP = 2  # sampled frames that may be missing inside a track
+REVIEWED = ("accepted", "rejected")
 MIN_JOIN_DEG = 6.0
 JOIN_SIZE_SHARE = 0.6
 MAX_SIZE_RATIO = 2.0
@@ -158,13 +162,20 @@ def _rotate(q: np.ndarray, v: np.ndarray) -> np.ndarray:
 
 def is_frame_draft(d: Mapping[str, Any]) -> bool:
     """A draft on a walk frame with a usable source box."""
+    return d.get("status", "draft") == "draft" and not d.get("issueId") and _on_frame(d)
+
+
+def is_reviewed_frame(d: Mapping[str, Any]) -> bool:
+    """An accepted or rejected detection on a walk frame with a usable source box."""
+    return d.get("status") in REVIEWED and _on_frame(d)
+
+
+def _on_frame(d: Mapping[str, Any]) -> bool:
     fr = d.get("frame")
     if not isinstance(fr, dict) or not isinstance(fr.get("layer"), str):
         return False
     t = fr.get("t")
     if isinstance(t, bool) or not isinstance(t, int | float) or not math.isfinite(t):
-        return False
-    if d.get("status", "draft") != "draft" or d.get("issueId"):
         return False
     if d.get("space") != "source" or not d.get("width") or not d.get("height"):
         return False
@@ -401,12 +412,25 @@ def track_frames(
         for i, d in enumerate(expanded)
         if isinstance(d, dict) and is_frame_draft(d) and d["frame"]["layer"] in poses_by_layer
     ]
-    frames_of = {
-        lay: _sampled(lay, [(d["frame"]["layer"], float(d["frame"]["t"])) for _, d in cand], assessed)
-        for lay in {d["frame"]["layer"] for _, d in cand}
-    }
+    # reviewed objects: each accepted or rejected frame detection and its own sightings
+    looks: list[tuple[str, str, float, list[float], float, float]] = []
+    for d in expanded:
+        if isinstance(d, dict) and is_reviewed_frame(d) and d["frame"]["layer"] in poses_by_layer:
+            lay, w, h = d["frame"]["layer"], float(d["width"]), float(d["height"])
+            looks.append((lay, str(d.get("class")), float(d["frame"]["t"]), d["bbox"], w, h))
+            tr = d.get("track") if isinstance(d.get("track"), dict) else {}
+            for sg in tr.get("sightings") or []:
+                if isinstance(sg, dict) and isinstance(sg.get("t"), int | float) and _box_ok(sg.get("bbox")):
+                    looks.append((lay, str(d.get("class")), float(sg["t"]), sg["bbox"], w, h))
+    seen = [(d["frame"]["layer"], float(d["frame"]["t"])) for _, d in cand] + [(x[0], x[2]) for x in looks]
+    frames_of = {lay: _sampled(lay, seen, assessed) for lay in {lay for lay, _ in seen}}
     index_of = {lay: {t: k for k, t in enumerate(ts)} for lay, ts in frames_of.items()}
     progress(0.1, "Following the objects from frame to frame")
+    reviewed = []
+    for lay, cls, t, box, w, h in looks:
+        rd, _ = _look_dir([float(v) for v in box], w, h, t, poses_by_layer.get(lay))
+        reviewed.append((lay, cls, index_of[lay][round(t, 3)], rd, max(0.05, E.box_size_deg(box, w, h))))
+    near_reviewed: set[int] = set()  # drafts that would join a reviewed detection
     groups: dict[tuple[str, str], list[_Obs]] = {}
     for i, d in cand:
         lay = d["frame"]["layer"]
@@ -420,6 +444,10 @@ def track_frames(
             org, q = pose.at(t)
             cam = _rotate(q, cam)
         cam = cam / np.linalg.norm(cam)
+        size = max(0.05, E.box_size_deg(box, w, h))
+        frame_k = index_of[lay][round(t, 3)]
+        if any(_same_object(r, cls_of(d), lay, frame_k, cam, size) for r in reviewed):
+            near_reviewed.add(i)
         conf = d.get("confidence")
         o = _Obs(
             index=i,
@@ -427,10 +455,10 @@ def track_frames(
             layer=lay,
             cls=str(d.get("class")),
             t=t,
-            frame=index_of[lay][round(t, 3)],
+            frame=frame_k,
             w=w,
             h=h,
-            size=max(0.05, E.box_size_deg(box, w, h)),
+            size=size,
             dir=cam,
             org=org,
             q=q,
@@ -441,9 +469,14 @@ def track_frames(
     tracks: list[_Track] = []
     for key in sorted(groups):
         tracks += _track_group(sorted(groups[key], key=lambda o: (o.t, o.index)), check)
+    # a track touching a reviewed object is that object: none of its drafts is kept
+    dropped = {
+        m.index for tr in tracks if any(m.index in near_reviewed for m in tr.members) for m in tr.members
+    }
+    tracks = [tr for tr in tracks if tr.members[0].index not in dropped]
     progress(0.5, "Placing the objects")
 
-    replaced: dict[int, dict[str, Any] | None] = {}
+    replaced: dict[int, dict[str, Any] | None] = dict.fromkeys(dropped)
     placed_on: dict[str, int] = {}
     placed = unplaced = merged = 0
     for n, tr in enumerate(tracks):
@@ -498,5 +531,41 @@ def track_frames(
         "placed": placed,
         "placedOn": placed_on,
         "unplaced": unplaced,
+        "droppedOnReviewed": len(dropped),
     }
     return out, stats
+
+
+def cls_of(d: Mapping[str, Any]) -> str:
+    return str(d.get("class"))
+
+
+def _box_ok(box: Any) -> bool:
+    return isinstance(box, list) and len(box) == 4 and all(isinstance(v, int | float) for v in box)
+
+
+def _look_dir(box: list[float], w: float, h: float, t: float, pose: WalkPose | None):
+    """The unit direction of a box centre in the walk's frame (the camera frame without a pose)."""
+    cam = E.box_dir(box, w, h)
+    q = None
+    if pose is not None:
+        _, q = pose.at(t)
+        cam = _rotate(q, cam)
+    return cam / np.linalg.norm(cam), q
+
+
+def _same_object(r, cls: str, layer: str, frame_k: int, d: np.ndarray, size: float) -> bool:
+    """Whether a draft is the object of the reviewed sighting ``r``: same class and walk, at most
+    ``MAX_GAP`` sampled frames between them either way in time, sizes within a factor of 2 and a
+    direction within the base join angle (not grown with the gap: a neighbouring object of the class
+    must not be mistaken for it). Drafts further on join through their track."""
+    lay, rcls, rk, rd, rsize = r
+    if lay != layer or rcls != cls:
+        return False
+    skipped = abs(frame_k - rk) - 1
+    if skipped > MAX_GAP:
+        return False
+    if max(size, rsize) / max(1e-6, min(size, rsize)) > MAX_SIZE_RATIO:
+        return False
+    limit = max(MIN_JOIN_DEG, JOIN_SIZE_SHARE * max(size, rsize))
+    return _angle(rd, d) <= limit
