@@ -8,7 +8,8 @@
 import { brand } from '@aio/brand';
 import type { DetectorModelInfo, InferenceRuntime } from '@aio/schema';
 import { Icon, t, Tip } from '@aio/ui';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useAddons } from '../../addons';
 import { modelsChanged } from '../../inspect/askAi/modelsRevision';
 import { bridge, shell, useCall, useShell } from '../../shell';
 import './detectionModels.css';
@@ -29,7 +30,13 @@ function ModelRow({ m, onRemove }: { m: DetectorModelInfo; onRemove: () => void 
         <b>{c.name}</b>
         <span className="mono faint">{c.version}</span>
         <span className="infer-chip">
-          {t(m.where === 'user' ? 'infer.model.where.user' : 'infer.model.where.pack')}
+          {t(
+            m.where === 'user'
+              ? 'infer.model.where.user'
+              : m.where === 'addon'
+                ? 'infer.model.where.addon'
+                : 'infer.model.where.pack',
+          )}
         </span>
         {m.licenceWarning && (
           <Tip content={t(`infer.licence.note.${m.licenceWarning}`, { licence: c.licence })}>
@@ -80,7 +87,20 @@ export function DetectionModels() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
-  const res = useCall('inference:models', {}, `${String(refresh)}|${inference?.provider ?? ''}`);
+  // an add-on installed or removed in the section below adds or takes away its model
+  const installed = useAddons(
+    (s) =>
+      s.list?.addons.map((a) => `${a.id}@${a.installed?.manifest.version ?? '-'}`).join() ?? '',
+  );
+  useEffect(() => {
+    // the Ask AI settings and bar list the models too
+    if (installed) modelsChanged();
+  }, [installed]);
+  const res = useCall(
+    'inference:models',
+    {},
+    `${String(refresh)}|${inference?.provider ?? ''}|${installed}`,
+  );
   const value = res?.ok ? res.value : null;
   const runtime = value?.runtime;
 

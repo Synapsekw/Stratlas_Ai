@@ -184,6 +184,7 @@ export const enInspect = {
   'infer.model.source': 'Source: {source}',
   'infer.model.where.user': 'Imported',
   'infer.model.where.pack': 'Processing tools',
+  'infer.model.where.addon': 'Add-on',
   'infer.model.remove': 'Remove',
   'infer.model.removeLabel': 'Remove {name}',
   'infer.import.accept': 'I may use the model I import under the licence on its model card',
