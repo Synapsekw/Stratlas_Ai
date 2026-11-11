@@ -290,6 +290,9 @@ const WRITERS: Partial<
  * taken into the first baseline or recorded as changed outside the app.
  */
 const READS: ReadonlySet<IpcChannel> = new Set<IpcChannel>([
+  'facts:status',
+  'facts:query',
+  'facts:history',
   'project:readVolumes',
   'survey:readDesigns',
   'detections:read',

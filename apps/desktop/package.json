@@ -36,6 +36,7 @@
     "@aio/engine": "workspace:*",
     "@aio/geo": "workspace:*",
     "@aio/globe": "workspace:*",
+    "@aio/facts": "workspace:*",
     "@aio/insights": "workspace:*",
     "@aio/maps": "workspace:*",
     "@aio/modelling": "workspace:*",

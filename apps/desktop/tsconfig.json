@@ -32,6 +32,7 @@
     { "path": "../../packages/sync" },
     { "path": "../../packages/tiles" },
     { "path": "../../packages/survey" },
-    { "path": "../../packages/insights" }
+    { "path": "../../packages/insights" },
+    { "path": "../../packages/facts" }
   ]
 }

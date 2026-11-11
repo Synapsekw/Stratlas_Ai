@@ -122,6 +122,7 @@ import {
   scanPanoPaths,
 } from './panos';
 import { registerChangeIpc } from './change';
+import { createFactService, registerFactIpc } from './facts';
 import { registerInferenceIpc } from './inference';
 import {
   electronInference,
@@ -529,6 +530,19 @@ const identityService = createIdentityService({
 });
 /** userData `team/projects.json`: per folder, the replica id and sharing setup (T5). */
 const teamConfig = createTeamConfigStore(join(app.getPath('userData'), 'team', 'projects.json'));
+// M1: the project fact index (derived, never the truth), one SQLite file per folder in userData.
+const facts = createFactService({
+  dir: join(app.getPath('userData'), 'fact-index'),
+  root: (id) => registry.root(id),
+  isPackage: (id) => registry.package(id) !== undefined,
+  emit: (e) => {
+    const parsed = ipcEvents['facts:changed'].safeParse(e);
+    if (parsed.success) targetWindow()?.webContents.send('facts:changed', parsed.data);
+  },
+  log: (line) => {
+    appLog.write('info', [line]);
+  },
+});
 // M9 T1: every project write appends a signed op to this device's journal chain first.
 const journal = createJournalService({
   userData: app.getPath('userData'),
@@ -536,6 +550,7 @@ const journal = createJournalService({
   identity: journalIdentity(identityService, appStamp),
   replicaOf: async (root) => (await teamConfig.get(root)).replicaId,
   emitChanged: (e) => {
+    facts.changed(e.projectId);
     const parsed = ipcEvents['journal:changed'].safeParse(e);
     if (parsed.success) targetWindow()?.webContents.send('journal:changed', parsed.data);
   },
@@ -1391,8 +1406,12 @@ function registerIpc(): void {
       await inspectorQueue.cancelProject(root);
       return journal.close(root);
     },
-    forget: (root) => journal.forget(root),
+    forget: async (root) => {
+      await facts.forget(root);
+      return journal.forget(root);
+    },
   });
+  registerFactIpc(handle, facts);
   // Properties, Export and Reveal in folder of one dataset
   const layerJobs = registerLayerIpc({
     handle,
@@ -1411,6 +1430,7 @@ function registerIpc(): void {
     });
     if (r.ok) {
       policy.opened(r.id);
+      if (!r.package) facts.opened(r.id);
       projectNames.set(r.id, r.manifest.name);
       // Packages opened by double-click or File > Open stay in the library.
       if (r.package) {
@@ -3084,6 +3104,7 @@ app.on('will-quit', () => {
   vlmServer.stopSync();
   // the journal keeps each chain's segment open between appends (T8 finding 4)
   void journal.closeAll();
+  facts.closeAll();
 });
 
 app.on('window-all-closed', () => {
