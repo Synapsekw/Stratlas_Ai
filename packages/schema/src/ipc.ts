@@ -35,7 +35,12 @@ import { ClassCatalogue, LibraryClass, SeverityModel } from './severity';
 import { HexColor, IsoDate, ProjectPath, Vec3 } from './common';
 import { AntennaAiLabel, AntennaHistoryFile, AntennasFile } from './antennas';
 import { ThermalFamily, ThermalFile } from './thermal';
-import { CleanupLayerId, NoiseRun, PointcloudCleanup } from './pointcloudCleanup';
+import {
+  CleanupLayerId,
+  NoiseRun,
+  PointcloudCleanup,
+  SegmentLiftResult,
+} from './pointcloudCleanup';
 import { PanoQuality, PanoScan } from './panoStitch';
 import {
   AntennaId,
@@ -4062,13 +4067,15 @@ export const ipc = {
   /**
    * Every cleanup recipe of a project (`edits/pointcloud/<layer>.json`, `aio.pccleanup/1`); with
    * `noiseRun`, also the record a `pointcloud.clean` noise job wrote beside its working copy
-   * (null when it is missing). `readOnly` for a package.
+   * (null when it is missing); with `liftRun`, the answer a `segment.lift` job wrote
+   * (`liftResultPath`, null when it is missing). `readOnly` for a package.
    */
   'pointcloud:readCleanup': {
     request: z
       .object({
         projectId: ProjectId,
         noiseRun: z.object({ layerId: CleanupLayerId, runId: JobId }).strict().optional(),
+        liftRun: z.object({ layerId: CleanupLayerId, runId: JobId }).strict().optional(),
       })
       .strict(),
     response: z.discriminatedUnion('ok', [
@@ -4076,6 +4083,7 @@ export const ipc = {
         ok: z.literal(true),
         recipes: z.array(PointcloudCleanup),
         noise: NoiseRun.nullable().optional(),
+        lift: SegmentLiftResult.nullable().optional(),
         readOnly: z.boolean(),
       }),
       Failure,
