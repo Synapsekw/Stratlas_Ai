@@ -96,9 +96,10 @@ test('the Project tab search finds a measurement and an issue, with history and 
     search.getByTestId('project-search-result').filter({ hasText: MEASUREMENT }).first(),
   ).toContainText('Measure');
 
-  // an issue by a word of its title: on both dates
+  // an issue by a word of its title
   const issues = await find(search, 'corrosion', ISSUE);
-  expect(issues.filter((l) => l === ISSUE).length).toBeGreaterThanOrEqual(1);
+  // an issue's label is its code and title
+  expect(issues.filter((l) => l.endsWith(ISSUE)).length).toBeGreaterThanOrEqual(1);
   await expect(search.getByTestId('project-search-count')).toContainText(/\d+ results?/);
 
   // a result opens its history inline, and closes again
