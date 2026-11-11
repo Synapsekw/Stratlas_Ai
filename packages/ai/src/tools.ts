@@ -17,6 +17,7 @@ import { ACTION_TOOL_SPECS } from './action-tool-specs';
 import { CHANGE_TOOL_SPECS } from './change-tool-specs';
 import { COLLAB_TOOL_SPECS } from './collab-tool-specs';
 import { CORRECTION_TOOL_SPECS } from './correction-tool-specs';
+import { FACT_TOOL_SPECS, FACT_TOOLS } from './fact-tool-specs';
 import { MODELLING_TOOL_SPECS } from './modelling-tools';
 import { PHOTO_TOOL_SPECS } from './photo-tool-specs';
 import { SHOW_TOOL_SPECS } from './show-tool-specs';
@@ -618,6 +619,7 @@ const BUILT_IN: ToolSpec[] = [
   ...SHOW_TOOL_SPECS,
   ...PHOTO_TOOL_SPECS,
   ...SURVEY_PACKAGE_SPECS,
+  ...FACT_TOOL_SPECS,
 ];
 
 const extra = new Map<string, ToolSpec>();
@@ -721,11 +723,13 @@ const MODEL_TOOLS = new Set(
  * True when a tool can do something in this project: no change tools with fewer than two survey
  * dates, no clip tools without clips, no photo tools without photos, no modelling tools without a
  * model (the Model builder's route keeps them, it is where a model starts), no point cloud fit
- * without a point cloud. Unknown facts keep the tool.
+ * without a point cloud, no fact index tools until the project's index is ready. Unknown facts
+ * keep the tool.
  */
 export function fitsProject(name: string, fit: ToolFit): boolean {
   const f = fit.facts;
   if (!f) return true;
+  if (FACT_TOOLS.has(name)) return f.factIndex === true;
   if (CHANGE_TOOLS.has(name)) return f.captures >= 2;
   if (CLIP_TOOLS.has(name)) return f.clips;
   if (PHOTO_TOOLS.has(name)) return f.photos;

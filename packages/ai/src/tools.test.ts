@@ -258,7 +258,14 @@ describe('photo tools', () => {
 });
 
 describe('tools that fit the project', () => {
-  const rich = { captures: 3, photos: true, clips: true, pointClouds: true, models: true };
+  const rich = {
+    captures: 3,
+    photos: true,
+    clips: true,
+    pointClouds: true,
+    models: true,
+    factIndex: true,
+  };
   const names = (fit: Parameters<typeof toolsForWindow>[2]) =>
     toolsForWindow('scene3d', 'full', fit).map((s) => s.meta.name);
 
@@ -292,6 +299,16 @@ describe('tools that fit the project', () => {
     expect(names({ facts: { ...rich, pointClouds: false }, task: 'build' })).not.toContain(
       'fit_primitives',
     );
+  });
+
+  it('offers the fact index tools only while the index is ready', () => {
+    for (const n of ['query_facts', 'history_of']) {
+      expect(names({}), n).toContain(n);
+      expect(names({ facts: rich }), n).toContain(n);
+      expect(names({ facts: { ...rich, factIndex: false } }), n).not.toContain(n);
+      const unknown = { captures: 3, photos: true, clips: true, pointClouds: true };
+      expect(names({ facts: unknown }), n).not.toContain(n);
+    }
   });
 
   it('filters the compact profile too', () => {

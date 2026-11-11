@@ -356,6 +356,15 @@ export function changeCases(f: ChangeFacts): EvalCase[] {
         ran('list_detections')(s) ??
         saysFigure('the accepted detections', f.acceptedDetections, 0)(s),
     },
+    // M1: the fact index (offered once the project's index is ready)
+    {
+      ask: 'Find everything about the survey markers',
+      expect: ran('query_facts'),
+    },
+    {
+      ask: `What is the history of issue ${resolvedCode}?`,
+      expect: (s) => ran('history_of')(s) ?? mentions(resolvedCode)(s),
+    },
     { ask: 'Show me the survey from January 2025', expect: notFound('survey from January 2025') },
     { ask: 'How many issues did the June survey find?', expect: notFound('June survey') },
   ];
@@ -458,6 +467,15 @@ export function quarryCases(f: QuarryFacts): EvalCase[] {
           ? null
           : 'the reply gives no pile volume of the quarry';
       },
+    },
+    // M1: the fact index
+    {
+      ask: 'What happened to Stockpile SP1 over time?',
+      expect: (s) => ran('history_of')(s) ?? mentions('SP1')(s),
+    },
+    {
+      ask: 'Search the project for SP2',
+      expect: (s) => ran('query_facts')(s) ?? mentions('SP2')(s),
     },
     { ask: 'What is the volume of Stockpile SP9?', expect: notFound('Stockpile SP9') },
     {

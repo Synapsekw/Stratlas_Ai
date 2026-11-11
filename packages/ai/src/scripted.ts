@@ -22,6 +22,12 @@ import type { ModelProvider } from './providers';
 export const SCRIPT: readonly { when: string; tool: string; input: Record<string, unknown> }[] = [
   // A2 read tools and menu actions, for the eval suite (agent-eval.suites.ts). Long phrases,
   // first, so they never catch another spec's request and win over the short keywords below.
+  // M1 fact index: a fixed subject (the quarry's first pile) and a search with no words
+  { when: 'what happened to', tool: 'history_of', input: { subject: 'Stockpile SP1' } },
+  { when: 'history of', tool: 'history_of', input: { subject: 'Stockpile SP1' } },
+  { when: 'search the project for', tool: 'query_facts', input: {} },
+  { when: 'what do we know about', tool: 'query_facts', input: {} },
+  { when: 'find everything about', tool: 'query_facts', input: {} },
   { when: 'list the survey dates', tool: 'list_surveys', input: {} },
   { when: 'earliest survey into view', tool: 'set_survey_date', input: { date: 'earliest' } },
   { when: 'detections were accepted', tool: 'list_detections', input: { status: 'accepted' } },

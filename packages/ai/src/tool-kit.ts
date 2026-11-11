@@ -225,10 +225,11 @@ export interface AppHooks {
   say?: (key: string, vars: Record<string, string | number>) => string | null;
   /**
    * What the open project has beyond its manifest (measurements, volumes, detections, thermal,
-   * walks), so the agent is offered only the read tools that can answer. A key left out: unknown.
+   * walks, a ready fact index), so the agent is offered only the read tools that can answer. A key
+   * left out: unknown.
    */
   agentFacts?: () => Partial<
-    Pick<AgentFacts, 'measurements' | 'volumes' | 'detections' | 'thermal' | 'walks'>
+    Pick<AgentFacts, 'measurements' | 'volumes' | 'detections' | 'thermal' | 'walks' | 'factIndex'>
   >;
 }
 

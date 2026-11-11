@@ -172,6 +172,9 @@ export const READ_TOOLS: readonly string[] = [
   'list_jobs',
   'thermal_summary',
   'list_walks',
+  // M1 fact index
+  'query_facts',
+  'history_of',
   'list_actions',
 ];
 

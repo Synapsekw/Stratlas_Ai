@@ -18,6 +18,7 @@ const det = await import('../detections/store');
 const { jobs } = await import('../shell');
 const { timeline } = await import('../workspace/timeline');
 const { measureStore } = await import('../survey/measureStore');
+const { factIndex } = await import('../facts/factStore');
 
 const L = (o: Record<string, unknown>) => ({ visible: true, ...o });
 const manifest = {
@@ -319,5 +320,15 @@ describe('facts for the tool list', () => {
       file: { schema: 'aio.measurements/1', measurements: [] },
     } as never);
     expect(agentFacts()).toMatchObject({ measurements: false, volumes: false });
+  });
+
+  it('says whether the fact index is ready for the open project', () => {
+    factIndex.setState({ projectId: 'p', status: { state: 'building', counts: {}, links: 0 } });
+    expect(agentFacts().factIndex).toBe(false);
+    factIndex.setState({ projectId: 'p', status: { state: 'ready', counts: {}, links: 0 } });
+    expect(agentFacts().factIndex).toBe(true);
+    factIndex.setState({ projectId: 'other', status: { state: 'ready', counts: {}, links: 0 } });
+    expect(agentFacts().factIndex).toBe(false);
+    factIndex.setState({ projectId: null, status: null });
   });
 });

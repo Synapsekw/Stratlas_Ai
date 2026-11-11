@@ -71,6 +71,8 @@ export {
 } from './action-tool-specs';
 export { surveyToolInputs, type SurveyToolInput, type SurveyToolName } from './survey-tool-specs';
 export { captureRef, capturesOf, resolveCapture, resolveLayer } from './survey-tools';
+export { factToolInputs, type FactToolInput, type FactToolName } from './fact-tool-specs';
+export { factRow, isSubjectId, resolveSubject } from './fact-tools';
 export {
   allToolSpecs,
   approvalFor,

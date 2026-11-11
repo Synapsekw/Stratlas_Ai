@@ -20,6 +20,7 @@ import { assetIndex, describeIssue } from './asset-index';
 import './camera-tools';
 import './class-tools';
 import './collab-tools';
+import './fact-tools';
 import './photo-tools';
 import './placement-tools';
 import './survey-tools';

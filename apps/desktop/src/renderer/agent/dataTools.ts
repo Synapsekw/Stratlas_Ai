@@ -24,6 +24,7 @@ import { ThermalFile, type JobRecord, type Layer } from '@aio/schema';
 import { formatDate, t } from '@aio/ui';
 import { assetUrl, captureIndex, workspace } from '@aio/workspace';
 import { acceptByIds, detections, rejectAll, dispatch, undoReview } from '../detections/store';
+import { factIndexReady } from '../facts/factStore';
 import { isActive, sameFolder } from '../jobs';
 import { jobs } from '../shell';
 import { thermalPhotosOf } from '../shell/actions/thermalActions';
@@ -378,6 +379,7 @@ export const agentFacts: NonNullable<AppHooks['agentFacts']> = () => {
   if (!p) return {};
   const out: ReturnType<NonNullable<AppHooks['agentFacts']>> = {
     walks: p.manifest.layers.some((l) => l.kind === 'walk'),
+    factIndex: factIndexReady(p.id),
   };
   const m = measureStore.getState();
   if (m.projectId === p.id && m.status === 'ready') {
