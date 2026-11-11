@@ -64,7 +64,7 @@ A local model also checks frames of a 360 video (a walk under **360 walks** in *
 1. Click **Inspect** in the sidebar, then **Ask AI**, and pick **Frames...**.
 2. Pick the **Clip or walk**: the **360 video**.
 3. Pick **One frame every** 1, 2, 5 or 10 seconds. The dialog shows how many frames that makes, for example "30 frames". A run takes at most 2000 frames; pick a longer interval to cover a longer video. Or pick **Current frame**: the frame the **360 video** pane shows now. It is offered while that pane plays the same video.
-4. The model, the lowest confidence and the classes are the ones set in **Settings**, **AI for Ask AI**. Walk frames need the local model. Start the run.
+4. The model, the lowest confidence and the classes are the ones set in **Settings**, **AI for Ask AI**. Walk frames stay on this computer: the local model reads them, or the local detectors when you pick a detector or the model has no class for your check. Start the run.
 
 The model looks at the whole 360 frame as it is, the equirectangular picture of the 360 video, not at cut-out views. That keeps one detection per object: a cut-out view would cut objects at its edges and see others twice where views overlap.
 
@@ -73,9 +73,13 @@ The model looks at the whole 360 frame as it is, the equirectangular picture of 
 
 The strip counts the frames checked. **Stop** finishes the frame in hand, and **Try the n left again** checks the frames that were not reached.
 
-The suggestions wait in the review queue like those on photos, one per frame, named after the video and the time, for example "Ground floor walk 12.0 s". A box across the seam shows in two parts, at both edges of the frame. Accept or dismiss them as usual; nothing counts until you accept it.
+The local detectors read a 360 frame differently: as four level views around the camera (100 degrees wide each, overlapping a little), so their yes/no checks see ordinary pictures. Boxes found in two neighbouring views are joined into one. The floor and the sky are not checked.
 
-The **360 video** pane draws the detections of the frame nearest to the time you watch, within a second of it, as boxes in the view. Turn to look at them; **Show detections** hides and shows them. The boxes are drawn on the video as it was recorded. While **Level horizon** is on, the pane plays the levelled copy and draws no boxes; a note says to turn **Level horizon** off to see them.
+The suggestions wait in the review queue like those on photos, named after the video and the time, for example "Ground floor walk 12.0 s". A box across the seam shows in two parts, at both edges of the frame. Accept or dismiss them as usual; nothing counts until you accept it.
+
+**One suggestion per object.** An object seen in several neighbouring frames becomes one suggestion, on the frame where it was found best; the review queue reads, for example, "Seen in 4 frames". When the walk is placed, {product} also puts the object in the project, on a model or point cloud, where the views cross, or on the ground under the walk, and the queue says how far and which way it is from where you stood, for example "8.5 m away, bearing 90°". This needs processing tools 0.35.0 or later; with older ones every frame keeps its own suggestion. Reviewed suggestions are never joined or changed.
+
+The **360 video** pane draws the detections of the frame nearest to the time you watch, within a second of it, as boxes in the view. A suggestion seen in several frames is drawn on each of them. Turn to look at them; **Show detections** hides and shows them. The boxes are drawn on the video as it was recorded. While **Level horizon** is on, the pane plays the levelled copy and draws no boxes; a note says to turn **Level horizon** off to see them.
 
 Ordinary video clips (drone or phone video that is not 360) are not checked by local models yet. Use cloud vision for them.
 

@@ -12,6 +12,10 @@
  * with markers, the look turned to the seam: the overlay draws the seam box, and Show detections
  * hides the overlay. The project is written into the test's own data root (`walkFixture.ts`);
  * the zero-network guard of the fixture stays on. Skipped without ffmpeg and libx264.
+ *
+ * The second test runs `walk.track` (the development Python; skipped without it) after the run: a
+ * marker that stays put for four sampled frames becomes one placed draft, "Seen in 4 frames" in
+ * the review queue, drawn at its sightings' frames in the 360 pane.
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { mkdir, readFile, readdir, writeFile, copyFile } from 'node:fs/promises';
@@ -22,7 +26,7 @@ import {
   type MarkerPatch,
 } from '../src/main/inference/fixtures/markerDetector';
 import { writeMarkerVideo } from '../src/main/inference/fixtures/walkVideo';
-import { expect, test } from './fixtures';
+import { expect, hasPipelinePython, test, VENV_PYTHON } from './fixtures';
 import { openInspect } from './inspect';
 import {
   createWalkProject,
@@ -304,5 +308,157 @@ test.describe('local detection on 360 video', () => {
     await expect(overlay).toHaveCount(0);
     await toggle.click();
     await expect(seamBox).toHaveCount(1);
+  });
+});
+
+/**
+ * One marker that stays in place for 4 s of a 6 s walk, checked every second (0.5 to 5.5 s): the
+ * four frames that see it become ONE draft once `walk.track` has run (pipeline pack 0.35.0, the
+ * development Python here). The walk has a pose (a camera standing at 1.7 m, looking north), so
+ * the object is placed: its box bottom ray meets the walk's ground some 8.5 m ahead.
+ */
+const STILL_MARKER: MarkerPatch = { cls: 'marker', box: [300, 140, 340, 180] };
+const STILL_SECONDS: MarkerPatch[][] = [
+  [STILL_MARKER],
+  [STILL_MARKER],
+  [STILL_MARKER],
+  [STILL_MARKER],
+  [],
+  [],
+];
+const STILL_SEEN = [0.5, 1.5, 2.5, 3.5];
+
+interface TrackedPass extends Pass {
+  detections: (Pass['detections'][number] & {
+    track?: {
+      frames: number;
+      firstT: number;
+      lastT: number;
+      placedOn?: string;
+      rangeM?: number;
+      bearingDeg?: number;
+      sightings?: { t: number; bbox: number[] }[];
+    };
+  })[];
+}
+
+/** Give the fixture's walk a pose: a camera standing still at 1.7 m (`aio.flight/1`). */
+async function placeWalk(dir: string): Promise<void> {
+  const pose = {
+    schema: 'aio.flight/1',
+    samples: [0, 6_000].map((t) => ({ t, pos: [0, 1.7, 0], q: [0, 0, 0, 1] })),
+  };
+  await writeFile(join(dir, 'walks', 'w1', 'pose.json'), JSON.stringify(pose, null, 2));
+  const path = join(dir, 'manifest.json');
+  const manifest = JSON.parse(await readFile(path, 'utf8')) as {
+    layers: { id: string; flight?: unknown }[];
+  };
+  const walk = manifest.layers.find((l) => l.id === WALK_LAYER);
+  if (!walk) throw new Error('no walk layer');
+  walk.flight = { src: { path: 'walks/w1/pose.json' }, startUtcMs: 1_772_704_800_000 };
+  await writeFile(path, JSON.stringify(manifest, null, 2));
+}
+
+test.describe('local detection on 360 video, tracked', () => {
+  test.skip(!ffmpegReady(), 'needs ffmpeg with libx264 on the PATH');
+  test.skip(!hasPipelinePython(), 'needs the pipeline Python (uv sync in python/)');
+  test.use({ appEnv: { QUADRION_PIPELINE_PYTHON: VENV_PYTHON } });
+
+  test('a marker seen in four frames becomes one placed draft, seen in 4 frames', async ({
+    app,
+    win,
+    dataRoot,
+  }) => {
+    test.setTimeout(300_000);
+    const made = join(dataRoot.base, 'still.mp4');
+    await writeMarkerVideo(FFMPEG, made, W, H, STILL_SECONDS);
+    const dir = await createWalkProject(dataRoot.root, {
+      drawing: false,
+      processed: false,
+      video: {
+        make: (out) => copyFile(made, out),
+        width: W,
+        height: H,
+        durationS: STILL_SECONDS.length,
+        fps: 5,
+      },
+    });
+    await placeWalk(dir);
+    const card = await writeDetector(join(dataRoot.base, 'detector'));
+    await win.evaluate(() => window.aio.invoke('settings:set', { inference: { provider: 'cpu' } }));
+    await win.reload();
+    await openWalkProject(win);
+
+    await win.locator('.nav-item', { hasText: 'Settings' }).click();
+    await win.locator('.set-nav button', { hasText: 'Models and detection' }).click();
+    await win.getByTestId('detection-models').scrollIntoViewIfNeeded();
+    await win.getByTestId('infer-accept').check();
+    await nextOpenDialog(app, card);
+    await win.getByTestId('infer-import').click();
+    await expect(win.getByTestId('infer-import-done')).toContainText(
+      'Imported Marker test detector.',
+    );
+    await win.locator('.set-nav button', { hasText: 'AI providers' }).click();
+    await win.getByTestId('ask-ai-settings-panel').scrollIntoViewIfNeeded();
+    await win.getByTestId('ask-ai-backend-local').check();
+
+    // Inspect: Ask AI on the walk, one frame every second
+    await openInspect(win);
+    await win.getByTestId('ask-ai-scope-frames').click();
+    await expect(win.getByTestId('ask-ai-frames-source')).toHaveValue(WALK_LAYER);
+    await win.getByTestId('ask-ai-frames-every-1').click();
+    await expect(win.getByTestId('ask-ai-frames-count')).toHaveText('6 frames');
+    await win.getByTestId('ask-ai').click();
+    const progress = win.getByTestId('ask-ai-run');
+    // four drafts, one per frame, then the quiet tracking leaves one per object
+    await expect(progress).toContainText('AI checked 6 frames and found 1.', { timeout: 150_000 });
+
+    // the pass: ONE draft for the marker, its other frames as sightings, placed on the ground
+    const all = (await passes(dir)) as TrackedPass[];
+    expect(all).toHaveLength(1);
+    const pass = all[0];
+    expect(pass?.assessed).toEqual(['t:500', 't:1500', 't:2500', 't:3500', 't:4500', 't:5500']);
+    expect(pass?.detections).toHaveLength(1);
+    const lead = pass?.detections[0];
+    if (!lead?.track || !lead.frame) throw new Error(`no tracked draft: ${JSON.stringify(pass)}`);
+    expect(lead).toMatchObject({ class: 'marker', status: 'draft', frame: { layer: WALK_LAYER } });
+    expect(near(lead.bbox, STILL_MARKER.box)).toBe(true);
+    const track = lead.track;
+    expect(track).toMatchObject({ frames: 4, firstT: 0.5, lastT: 3.5 });
+    const sightings = track.sightings ?? [];
+    expect([lead.frame.t, ...sightings.map((s) => s.t)].sort()).toEqual(STILL_SEEN);
+    for (const s of sightings) expect(near(s.bbox, STILL_MARKER.box), String(s.bbox)).toBe(true);
+    expect(track.placedOn).toBeDefined();
+    expect(track.rangeM ?? 0).toBeGreaterThan(5);
+    expect(track.rangeM ?? 0).toBeLessThan(12);
+    expect(track.bearingDeg).toBeDefined();
+
+    // the review queue: one draft, seen in 4 frames, how far and which way
+    await win.getByTestId('ask-ai-review').click();
+    await expect(win.getByTestId('inspect-queue')).toBeVisible();
+    await expect(win.getByTestId('det-counts')).toContainText('1 waiting');
+    await expect(win.getByTestId('inspect-track')).toHaveText('Seen in 4 frames');
+    await expect(win.getByTestId('inspect-track-place')).toHaveText(
+      /^\d+(\.\d)? m away, bearing \d+°$/,
+    );
+    await win.getByTestId('queue-leave').click();
+
+    // the 360 pane: the draft is drawn at a sighting's frame too, ahead of the camera
+    await win.locator('.nav-item', { hasText: 'Scene' }).click();
+    await (await walkRow(win)).click();
+    const view = win.getByTestId('walk-view');
+    await expect(view).toHaveAttribute('data-status', 'ready', { timeout: 60_000 });
+    const at = sightings[0]?.t;
+    if (at === undefined) throw new Error('no sighting');
+    await win.getByTestId('walk-scrub').fill(String(at));
+    await expect.poll(() => num(win, 'walk-bar', 'data-time')).toBeCloseTo(at, 1);
+    const box = win
+      .getByTestId('walk-det-overlay')
+      .locator(`[data-testid="walk-det-box"][data-id="${lead.id}"]`);
+    await expect(box).toHaveCount(1);
+    // after the frames that saw it, nothing is drawn
+    await win.getByTestId('walk-scrub').fill('5.5');
+    await expect.poll(() => num(win, 'walk-bar', 'data-time')).toBeCloseTo(5.5, 1);
+    await expect(box).toHaveCount(0);
   });
 });

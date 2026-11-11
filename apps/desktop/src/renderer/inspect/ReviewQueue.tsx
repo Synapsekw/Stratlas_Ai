@@ -46,6 +46,7 @@ import { FieldsList } from './FieldsForm';
 import { visibleDetections } from './findings';
 import { leaveQueue, openQueue, useInspectUi } from './inspectUi';
 import './reviewQueue.css';
+import { TrackChip } from './TrackChip';
 
 export type QueueCommand = 'accept' | 'fix' | 'dismiss' | 'next' | 'prev';
 
@@ -494,6 +495,7 @@ export function ReviewQueue(p: {
             {current.confidence !== undefined && !current.unscored && (
               <span className="mono faint">{Math.round(current.confidence * 100)}%</span>
             )}
+            <TrackChip track={current.track} />
             <Tip content={shortcutHint('review.next')} repeatsName>
               <button
                 type="button"

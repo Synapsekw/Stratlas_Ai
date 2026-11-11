@@ -220,6 +220,27 @@ describe('ReviewQueue', () => {
     expect(host.querySelector('[data-testid="fields-list"]')?.textContent).toContain('42.5 bar');
   });
 
+  it('says how many walk frames saw a tracked draft, and where it is once placed', async () => {
+    load([
+      det('d1', {
+        track: { frames: 4, firstT: 0.5, lastT: 3.5, rangeM: 8.46, bearingDeg: 90.2 },
+      }),
+    ]);
+    await mount();
+    expect(host.querySelector('[data-testid="inspect-track"]')?.textContent).toBe(
+      'Seen in 4 frames',
+    );
+    expect(host.querySelector('[data-testid="inspect-track-place"]')?.textContent).toBe(
+      '8.5 m away, bearing 90°',
+    );
+  });
+
+  it('shows no track chip on an untracked draft', async () => {
+    load([det('d1')]);
+    await mount();
+    expect(host.querySelector('[data-testid="inspect-track"]')).toBeNull();
+  });
+
   it('keys every severity button', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
