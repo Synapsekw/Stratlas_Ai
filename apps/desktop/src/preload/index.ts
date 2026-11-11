@@ -344,6 +344,11 @@ const CHANNELS = {
   'odm:cancel': true,
   'odm:remove': true,
   'odm:setGpu': true,
+  // M1 fact index
+  'facts:status': true,
+  'facts:query': true,
+  'facts:history': true,
+  'facts:rebuild': true,
 } as const satisfies Record<IpcChannel, true>;
 
 const EVENTS = {
@@ -372,6 +377,7 @@ const EVENTS = {
   'analyticsPack:progress': true,
   'odm:progress': true,
   'detect:queue': true,
+  'facts:changed': true,
 } as const satisfies Record<IpcEventName, true>;
 
 const known = <K extends string>(table: Record<K, true>, key: string): key is K =>

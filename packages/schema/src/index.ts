@@ -79,3 +79,5 @@ export * from './thermal';
 // Local vision-model detectors and the Analytics pack
 export * from './analytics';
 export * from './csv';
+// M1 project fact index (derived, never the truth)
+export * from './facts';

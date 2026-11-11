@@ -62,6 +62,8 @@ export const AgentFacts = z
     thermal: z.boolean().optional(),
     /** Walk layers. Absent: unknown. */
     walks: z.boolean().optional(),
+    /** The project's fact index is ready (M1): `query_facts` and `history_of` need it. */
+    factIndex: z.boolean().optional(),
   })
   .strict();
 export type AgentFacts = z.infer<typeof AgentFacts>;

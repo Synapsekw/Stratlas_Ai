@@ -144,6 +144,7 @@ import {
 import { DetectQueued, DetectorWhere, HardwareCheck, LedgerEntry, VlmDetector } from './analytics';
 import { TilesetEntry, TilesetsFile } from './tilesets';
 import { WalkFile } from './walks';
+import { Fact, FactHistory, FactIndexStatus, FactQuery } from './facts';
 import { WalkProcessSummary } from './walkProcess';
 import { RemovalPlan, RemoveTarget } from './removal';
 import {
@@ -2421,6 +2422,51 @@ export const ipc = {
 
   // ---------------------------------------------------------------- M8 change (C1)
   /** Every change set of the project (`<project>/change/*.json`), newest first. */
+  /**
+   * M1 fact index (derived, never the truth): its state on this computer. Folder projects only; a
+   * package answers state `none`.
+   */
+  'facts:status': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), status: FactIndexStatus }),
+      Failure,
+    ]),
+  },
+  /** Facts matching a query, best match first for text, else newest first. */
+  'facts:query': {
+    request: z.object({ projectId: ProjectId, query: FactQuery }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        facts: z.array(Fact),
+        total: z.number().int().nonnegative(),
+      }),
+      Failure,
+    ]),
+  },
+  /** One subject's facts, linked facts and journal ops in date order. */
+  'facts:history': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        subject: z.string().min(1).max(400),
+        limit: z.number().int().min(1).max(500).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), history: FactHistory }),
+      Failure,
+    ]),
+  },
+  /** Delete the index and build it again from the project's files and journal. */
+  'facts:rebuild': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), status: FactIndexStatus }),
+      Failure,
+    ]),
+  },
   'change:list': {
     request: z.object({ projectId: ProjectId }).strict(),
     response: z.discriminatedUnion('ok', [
@@ -4761,6 +4807,8 @@ export const ipcEvents = {
     projectId: z.string(),
     records: z.array(RecordRef),
   }),
+  /** M1: a project's fact index was built, updated or failed. */
+  'facts:changed': z.object({ projectId: z.string(), status: FactIndexStatus }),
   /** Progress of a hub or server sync (M9). */
   'sync:progress': z.object({
     projectId: z.string(),
