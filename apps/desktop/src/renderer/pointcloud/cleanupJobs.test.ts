@@ -1,8 +1,21 @@
 // @vitest-environment jsdom
 import { createCleanupRecipes } from '@aio/pointcloud';
-import { emptyCleanup, noiseCopyPath, type JobRecord, type Layer } from '@aio/schema';
+import {
+  GROUND_REQUEST,
+  emptyCleanup,
+  noiseCopyPath,
+  type JobRecord,
+  type Layer,
+} from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
-import { applyNoiseRun, noiseShare, runNoise, saveCleaned, type JobsDeps } from './cleanupJobs';
+import {
+  applyNoiseRun,
+  noiseShare,
+  runNoise,
+  saveCleaned,
+  withGround,
+  type JobsDeps,
+} from './cleanupJobs';
 import { createCleanup } from './cleanupStore';
 
 vi.mock('../shell', () => ({
@@ -243,5 +256,39 @@ describe('who may run the jobs', () => {
     expect(await runNoise(d, layer, { outlier: { meanK: 8, multiplier: 2 } })).toBeTruthy();
     expect(await saveCleaned(d, layer, 'Scan')).toBeTruthy();
     expect(started).toEqual([]);
+  });
+});
+
+describe('marking ground with the noise run', () => {
+  it('withGround asks for ground with GROUND_REQUEST, or drops it', () => {
+    const base = { outlier: { meanK: 8, multiplier: 2 } };
+    expect(withGround(base, true)).toEqual({ ...base, ground: GROUND_REQUEST });
+    expect(withGround({ ...base, ground: GROUND_REQUEST }, false)).toEqual(base);
+    expect(withGround(base, false)).toEqual(base);
+  });
+
+  it('sends ground with the job and keeps a run that marked only ground', async () => {
+    const { d, cleanup, started, call } = deps(0);
+    const plain = call.getMockImplementation();
+    call.mockImplementation((channel: string, req: unknown) =>
+      channel === 'pointcloud:readCleanup'
+        ? Promise.resolve({
+            ok: true,
+            value: {
+              ok: true,
+              recipes: [],
+              noise: { ...run(0), params: withGround(run(0).params, true), groundMarked: 900 },
+              readOnly: false,
+            },
+          })
+        : (plain?.(channel, req) ?? Promise.resolve({ ok: false, error: channel })),
+    );
+    await cleanup.load('p', [layer]);
+    const params = withGround({ outlier: { meanK: 8, multiplier: 2 } }, true);
+    expect(await runNoise(d, layer, params)).toBeNull();
+    expect((started[0] as { params: Record<string, unknown> }).params.ground).toEqual(
+      GROUND_REQUEST,
+    );
+    expect(cleanup.recipeOf('a')?.noise?.groundMarked).toBe(900);
   });
 });

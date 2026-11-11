@@ -30,7 +30,8 @@ import {
   type Ref,
 } from 'react';
 import { boxToLocal, fitBox } from './cleanupFrame';
-import { defaultJobsDeps, noiseShare, runNoise, saveCleaned } from './cleanupJobs';
+import { addons, installedOf, useAddons } from '../addons';
+import { defaultJobsDeps, noiseShare, runNoise, saveCleaned, withGround } from './cleanupJobs';
 import { cleanup, isCleanable, useCleanup } from './cleanupStore';
 import './cleanup.css';
 
@@ -272,7 +273,14 @@ export function CleanupPanel({
   const [low, setLow] = useState(false);
   const [cell, setCell] = useState(String(DEFAULT_ELM.cell));
   const [threshold, setThreshold] = useState(String(DEFAULT_ELM.threshold));
-  const noiseParams = (): NoiseParams => ({
+  // Also mark ground: only with the Ground classifier add-on installed, off by default
+  const groundAddon = useAddons((s) => installedOf(s, 'point-classifier') !== null);
+  const [ground, setGround] = useState(false);
+  useEffect(() => {
+    void addons.getState().ensure();
+  }, []);
+  const noiseParams = (): NoiseParams => withGround(noiseSettings(), groundAddon && ground);
+  const noiseSettings = (): NoiseParams => ({
     outlier: {
       meanK: Math.round(clamp(meanK, DEFAULT_OUTLIER.meanK, 2, 64)),
       multiplier: clamp(multiplier, DEFAULT_OUTLIER.multiplier, 0.1, 10),
@@ -632,6 +640,20 @@ export function CleanupPanel({
       </Section>
 
       <Section title={t('cleanup.noise.title')} sectionRef={noiseRef}>
+        {groundAddon && (
+          <label className="pop-row">
+            <span className="pop-grow">{t('cleanup.noise.ground')}</span>
+            <input
+              type="checkbox"
+              data-testid="cleanup-noise-ground"
+              checked={ground}
+              disabled={!can || busy !== null}
+              onChange={(e) => {
+                setGround(e.currentTarget.checked);
+              }}
+            />
+          </label>
+        )}
         <button
           type="button"
           className="btn sm"
@@ -650,6 +672,12 @@ export function CleanupPanel({
                 count: recipe.noise.marked,
                 share: noiseShare(recipe.noise.marked, recipe.noise.total),
               })}
+              {recipe.noise.groundMarked !== undefined && (
+                <span data-testid="cleanup-noise-ground-result">
+                  {' · '}
+                  {t('cleanup.noise.groundResult', { count: recipe.noise.groundMarked })}
+                </span>
+              )}
             </span>
             <button
               type="button"

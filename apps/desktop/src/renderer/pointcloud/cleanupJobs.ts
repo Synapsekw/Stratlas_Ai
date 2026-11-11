@@ -6,6 +6,7 @@
  * `jobs:start` on an older pack with the pack update wording, which comes back here as the error.
  */
 import {
+  GROUND_REQUEST,
   NOISE_CLASS,
   emptyCleanup,
   type JobRecord,
@@ -36,6 +37,16 @@ export function noiseShare(marked: number, total: number): string {
   if (!total || !marked) return '0 %';
   const pct = (100 * marked) / total;
   return `${pct.toFixed(pct < 0.1 ? 2 : 1)} %`;
+}
+
+/**
+ * The noise settings with or without ground marking: ticked, the request carries GROUND_REQUEST,
+ * which main replaces with the installed Ground classifier add-on's own settings.
+ */
+export function withGround(params: NoiseParams, ground: boolean): NoiseParams {
+  const rest = { ...params };
+  delete rest.ground;
+  return ground ? { ...rest, ground: GROUND_REQUEST } : rest;
 }
 
 export interface JobsDeps {
@@ -115,6 +126,7 @@ export async function runNoise(
       src,
       outlier: params.outlier,
       ...(params.elm ? { elm: params.elm } : {}),
+      ...(params.ground ? { ground: params.ground } : {}),
     });
     if ('error' in started) return started.error;
     const { job } = started;
@@ -130,7 +142,8 @@ export async function runNoise(
     if (!r.value.ok) return r.value.error;
     const run = r.value.noise ?? null;
     if (!run) return 'The noise run left no result.';
-    if (run.marked === 0) {
+    // ground marking changes the working copy even when no noise was found
+    if (run.marked === 0 && !run.groundMarked) {
       d.cleanup.notify({
         text: t('cleanup.noise.none'),
         undo: false,

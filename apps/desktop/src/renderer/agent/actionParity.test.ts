@@ -12,6 +12,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 beforeAll(async () => {
   const { registerSidebarActions } = await import('../shell/actions');
   registerSidebarActions();
+  // the photo menu's Classify on point cloud registers with its dialog (pointcloud/LiftDialog)
+  await import('../pointcloud/LiftDialog');
 });
 
 const TABLE = 'AGENT_ACTIONS in packages/ai/src/action-tool-specs.ts';

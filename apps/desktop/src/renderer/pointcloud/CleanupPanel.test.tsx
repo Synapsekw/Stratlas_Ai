@@ -2,11 +2,12 @@
 import { setAnnotateReadOnly } from '@aio/annotate';
 import { cloudWorldBounds } from '@aio/pointcloud';
 import type * as Pointcloud from '@aio/pointcloud';
-import { ProjectManifest, emptyCleanup, type Layer } from '@aio/schema';
+import { GROUND_REQUEST, ProjectManifest, emptyCleanup, type Layer } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { addons } from '../addons';
 import { CleanupHost } from './CleanupHost';
 import { CleanupPanel } from './CleanupPanel';
 import type * as Jobs from './cleanupJobs';
@@ -364,6 +365,67 @@ describe('CleanupPanel', () => {
     expect(runNoise).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
       outlier: { meanK: 64, multiplier: 0.1 },
     });
+  });
+
+  it('offers Also mark ground only with the Ground classifier installed, and sends it', () => {
+    project([copc('a')]);
+    addons.setState({ list: null });
+    render();
+    expect(q('cleanup-noise-ground')).toBeNull();
+    act(() => {
+      addons.setState({
+        list: {
+          baseUrl: null,
+          addons: [
+            {
+              id: 'ground-classifier',
+              kind: 'point-classifier',
+              installed: { manifest: {} as never, dir: 'D:/a', sizeBytes: 1 },
+              available: null,
+              update: false,
+            },
+          ],
+        },
+      });
+    });
+    const box = q('cleanup-noise-ground') as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    act(() => {
+      box.click();
+    });
+    act(() => {
+      q('cleanup-noise-run')?.click();
+    });
+    expect(runNoise).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), {
+      outlier: { meanK: 8, multiplier: 2 },
+      ground: GROUND_REQUEST,
+    });
+    addons.setState({ list: null });
+  });
+
+  it('shows the ground points beside the noise count', () => {
+    project([copc('a')]);
+    cleanup.store.setState({
+      layers: {
+        a: {
+          past: [],
+          present: {
+            ...emptyCleanup('a'),
+            noise: {
+              path: 'edits/pointcloud/a.noise-job1.copc.laz',
+              params: { outlier: { meanK: 8, multiplier: 2 }, ground: GROUND_REQUEST },
+              marked: 10,
+              total: 1000,
+              groundMarked: 420,
+              runId: 'job1',
+            },
+          },
+          future: [],
+        },
+      },
+    });
+    render();
+    expect(q('cleanup-noise-ground-result')?.textContent).toContain('420 ground points');
   });
 
   it.each([

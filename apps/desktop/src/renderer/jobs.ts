@@ -1089,6 +1089,8 @@ export const FORMS: Record<PipelineName, Field[]> = {
   'model.evidence': [],
   // started from the Clean up panel only
   'pointcloud.clean': [],
+  // started from a photo menu's Classify on point cloud only
+  'segment.lift': [],
   // started from the antenna inventory panel only
   'telecom.antennas': [],
   // started from the antenna flagging tool only

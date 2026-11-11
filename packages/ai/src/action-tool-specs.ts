@@ -134,6 +134,7 @@ export const AGENT_ACTIONS: Readonly<Record<string, AgentActionEntry>> = {
   'media.remove': WRITE,
   'photos.editPosition': { exclude: 'Opens a position form for the person to fill in.' },
   'photos.resetPosition': WRITE,
+  'photos.classifyOnCloud': FINISH,
   'layers.rereadPhotos': { exclude: 'Opens a folder picker and its own dialogs.' },
   // measurements
   'measure.rename': { exclude: NAME_FIELD },
