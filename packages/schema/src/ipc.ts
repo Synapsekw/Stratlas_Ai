@@ -2717,6 +2717,21 @@ export const ipc = {
       Failure,
     ]),
   },
+  /**
+   * Read the per-date inventory copies (`telecom/history/*.json`, Wave 3 M2), oldest name first;
+   * files that do not read as `aio.antennas/1` are counted in `skipped`. Packages too.
+   */
+  'telecom:readAntennaHistory': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        files: z.array(AntennasFile).max(500),
+        skipped: z.number().int().nonnegative(),
+      }),
+      Failure,
+    ]),
+  },
   /** Write `telecom/antennas.json` atomically (`.bak`, journaled); refused for packages. */
   'telecom:writeAntennas': {
     request: z.object({ projectId: ProjectId, file: AntennasFile }).strict(),

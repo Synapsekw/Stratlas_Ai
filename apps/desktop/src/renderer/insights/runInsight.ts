@@ -14,6 +14,8 @@ import { registerSidebarActions } from '../shell/actions';
 import { toastHost } from '../shell/actions/toastHost';
 import { revealMeasurement, select } from '../survey/measureStore';
 import { openQaPanel } from '../survey/qaStore';
+import { dispatch as reviewDispatch } from '../detections/store';
+import { antennaStore, revealAntenna } from '../telecom/antennaStore';
 import { timeline } from '../workspace/timeline';
 
 /**
@@ -64,6 +66,22 @@ function openChanges(pair: { from: string; to: string }): void {
   openChangesTab();
 }
 
+/** An antenna of the live inventory, shown in the Project list with its details. */
+function openAntenna(unit: string): boolean {
+  if (!antennaStore.getState().file?.units.some((u) => u.id === unit)) return false;
+  revealAntenna(unit, undefined, 'review');
+  return true;
+}
+
+/** A hot spot in Inspect: its photo opened and the detection picked. */
+function openHotspot(a: { detection?: string; layer?: string; photo?: string }): boolean {
+  if (!a.detection || !a.layer || !a.photo) return false;
+  workspace.getState().select({ kind: 'photo', id: a.photo, layer: a.layer });
+  shell.getState().go('inspect');
+  reviewDispatch({ type: 'select', id: a.detection });
+  return true;
+}
+
 /** Run one of an insight's actions; false when it could not run. */
 export function runInsightAction(a: InsightAction): boolean {
   switch (a.id) {
@@ -83,6 +101,10 @@ export function runInsightAction(a: InsightAction): boolean {
       if (!a.pair) return false;
       openChanges(a.pair);
       return true;
+    case 'insights.openAntenna':
+      return a.unit !== undefined && openAntenna(a.unit);
+    case 'insights.openHotspot':
+      return openHotspot(a);
   }
 }
 
@@ -99,6 +121,17 @@ export function focusEvidence(e: EvidenceRef): boolean {
     case 'qa':
       openQa(e.capture);
       return true;
+    case 'track':
+      // the object itself: an antenna in the list, a region's pair in Changes; a hot spot only
+      // through its action (it needs its photo)
+      if (e.object === 'antenna') return openAntenna(e.ref);
+      if (e.object === 'region') {
+        const set = changeStore.getState().sets[e.ref.split('/')[0] ?? ''];
+        if (!set) return false;
+        openChanges({ from: set.from, to: set.to });
+        return true;
+      }
+      return false;
     case 'changeSet': {
       const set = changeStore.getState().summaries.find((s) => s.id === e.id);
       if (!set) return false;

@@ -202,6 +202,7 @@ const CHANNELS = {
   'engineer:sourceStamp': true,
   'ai:engineer': true,
   'telecom:readAntennas': true,
+  'telecom:readAntennaHistory': true,
   'telecom:writeAntennas': true,
   'telecom:deleteAntennas': true,
   'thermal:probe': true,

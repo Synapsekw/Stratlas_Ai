@@ -8,6 +8,7 @@ import type { SurveyArchive } from './survey';
 import {
   deleteAntennas,
   readAntennaCrop,
+  readAntennaHistory,
   readAntennas,
   registerTelecomIpc,
   writeAntennas,
@@ -40,6 +41,35 @@ function setup(pkgMembers?: Record<string, unknown>) {
   return { root, projects };
 }
 const antPath = (root: string) => join(root, 'telecom', 'antennas.json');
+
+describe('antenna history copies', () => {
+  it('reads none without the folder, then each copy by name and skips what does not parse', async () => {
+    const { root, projects } = setup();
+    expect(await readAntennaHistory(projects, 'p')).toEqual({ ok: true, files: [], skipped: 0 });
+    const dir = join(root, 'telecom', 'history');
+    mkdirSync(dir, { recursive: true });
+    const a = sample();
+    const b = { ...a, run: { ...a.run, captureId: 'c2' } };
+    writeFileSync(join(dir, 'c2.json'), JSON.stringify(b));
+    writeFileSync(
+      join(dir, 'c1.json'),
+      JSON.stringify({ ...a, run: { ...a.run, captureId: 'c1' } }),
+    );
+    writeFileSync(join(dir, 'broken.json'), '{');
+    writeFileSync(join(dir, 'notes.txt'), 'x');
+    const r = await readAntennaHistory(projects, 'p');
+    expect(r.ok && r.files.map((f) => f.run.captureId)).toEqual(['c1', 'c2']);
+    expect(r.ok && r.skipped).toBe(1);
+  });
+
+  it('reads the copies of a package', async () => {
+    const a = sample();
+    const { projects } = setup({ 'telecom/history/c1.json': a, 'telecom/antennas.json': a });
+    const r = await readAntennaHistory(projects, 'pkg');
+    expect(r.ok && r.files).toHaveLength(1);
+    expect(await readAntennaHistory(projects, 'nope')).toMatchObject({ ok: false });
+  });
+});
 
 describe('antenna inventory files', () => {
   it('reads null when there is no run yet', async () => {

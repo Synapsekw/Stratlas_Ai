@@ -18,6 +18,7 @@ import {
 } from 'react';
 import { openPhoto } from '../builder/photoOpen';
 import { thumbUrl } from '../thumbs/Thumb';
+import { AntennaTrackHistory } from '../tracks/TrackSections';
 import { askDeleteAntennas } from './antennaDelete';
 import { formatDeg, qualityTip, trueAzimuth } from './antennaFormat';
 import {
@@ -636,6 +637,7 @@ export function AntennaDetails({
       ) : null}
       <PhotoStrip key={`photos-${unit.id}`} entries={entries} />
       <Values unit={unit} />
+      <AntennaTrackHistory unitId={unit.id} />
       <AntennaTypedValues key={`typed-${unit.id}`} unit={unit} readOnly={readOnly} />
       <details>
         <summary style={{ cursor: 'pointer', color: 'var(--fg-2)' }}>

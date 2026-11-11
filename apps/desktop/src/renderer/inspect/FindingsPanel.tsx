@@ -13,6 +13,7 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { RejectReasonMenu } from '../detections/detectors/RejectReasonMenu';
 import { ScoreBadge } from '../detections/detectors/ScoreBadge';
 import { useDetections } from '../detections/store';
+import { HotspotTrackHistory } from '../tracks/TrackSections';
 import { acceptSuggestion, dismissSuggestion } from './actions';
 import { ChangePicker } from './ChangePicker';
 import { FieldsList } from './FieldsForm';
@@ -174,6 +175,7 @@ function AiCard(p: {
         </p>
       )}
       {d?.fields && d.fields.length > 0 && <FieldsList fields={d.fields} />}
+      {d && row.selected && <HotspotTrackHistory detection={d} />}
       {error && (
         <p className="ann-error" role="alert">
           {error}

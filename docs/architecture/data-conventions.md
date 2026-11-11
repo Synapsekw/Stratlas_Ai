@@ -1026,6 +1026,7 @@ Two separate imports through Add data (founder, 15 Oct 2026): a `.zpc` point clo
 
     telecom/antennas.json                  aio.antennas/1: the antenna inventory of a tower (telecom.antennas)
     telecom/crops/<unitId>.jpg             a crop of each unit's best photo
+    telecom/history/<captureId>.json       aio.antennas/1: the inventory as it stood on that survey date, no crops (pack 0.35.0)
     rf/sectors.json                        aio.rf-sectors/1: sectors, per-antenna RF settings, study settings
     rf/sectors.origins.json                aio.rf-origins/1: who set each planned value (sidecar)
     rf/catalogue.json                      aio.rf-catalogue/1: the catalogue entries this project uses

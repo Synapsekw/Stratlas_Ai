@@ -8,6 +8,7 @@
 import {
   ANTENNAS_FILE,
   ANTENNA_CROPS_DIR,
+  ANTENNA_HISTORY_DIR,
   ANTENNA_DELETIONS_FILE,
   ANTENNA_DELETIONS_SCHEMA,
   AntennaDeletionsFile,
@@ -15,7 +16,7 @@ import {
   type AntennaDeletion,
   type IpcResponse,
 } from '@aio/schema';
-import { mkdir, readFile, unlink } from 'node:fs/promises';
+import { mkdir, readdir, readFile, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { isChangedOnDisk, readBytesSeen, readJsonSeen, writeJsonSeen } from './fsutil';
 import { newerOnDisk, parseJsonText } from './newer';
@@ -47,6 +48,54 @@ export async function readAntennas(
   if (raw === undefined) return { ok: true, file: null, readOnly };
   const r = parseAs(raw, AntennasFile, 'aio.antennas', ANTENNAS_FILE);
   return r.ok ? { ok: true, file: r.value, readOnly } : r;
+}
+
+/**
+ * The per-date inventory copies (`telecom/history/<captureId>.json`, Wave 3 M2), by file name.
+ * A missing folder is none; a file that does not parse is skipped and counted.
+ */
+export async function readAntennaHistory(
+  projects: SurveyProjects,
+  projectId: string,
+): Promise<IpcResponse<'telecom:readAntennaHistory'>> {
+  const root = projects.root(projectId);
+  const archive = root === undefined ? projects.package(projectId)?.archive : undefined;
+  if (root === undefined && !archive)
+    return { ok: false, error: `Project "${projectId}" is not open.` };
+  const prefix = `${ANTENNA_HISTORY_DIR}/`;
+  let names: string[];
+  try {
+    names = archive
+      ? [...archive.entries.keys()]
+          .filter((k) => k.startsWith(prefix))
+          .map((k) => k.slice(prefix.length))
+      : await readdir(join(root ?? '', ...ANTENNA_HISTORY_DIR.split('/'))).catch((e: unknown) => {
+          if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+          throw e;
+        });
+  } catch (e) {
+    return { ok: false, error: `Could not read the antenna history: ${why(e)}` };
+  }
+  names = names
+    .filter((n) => n.endsWith('.json') && !n.includes('/'))
+    .sort()
+    .slice(0, 500);
+  const files: AntennasFile[] = [];
+  let skipped = 0;
+  for (const name of names) {
+    const rel = `${prefix}${name}`;
+    try {
+      const raw = archive
+        ? await readArchiveJson(archive, rel)
+        : parseJsonText(await readFile(join(root ?? '', ...rel.split('/')), 'utf8'));
+      const r = AntennasFile.safeParse(raw);
+      if (r.success) files.push(r.data);
+      else skipped += 1;
+    } catch {
+      skipped += 1;
+    }
+  }
+  return { ok: true, files, skipped };
 }
 
 export async function writeAntennas(
@@ -187,6 +236,7 @@ export function registerTelecomIpc({
   projects: SurveyProjects;
 }): void {
   handle('telecom:readAntennas', ({ projectId }) => readAntennas(projects, projectId));
+  handle('telecom:readAntennaHistory', ({ projectId }) => readAntennaHistory(projects, projectId));
   handle('telecom:writeAntennas', ({ projectId, file }) =>
     writeAntennas(projects, projectId, file),
   );

@@ -16,7 +16,10 @@ import { inventoryPiles } from '@aio/survey';
 import { Button, Icon, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useId, useMemo, useState, type ReactElement } from 'react';
+import { useDetections } from '../detections/store';
 import { useMeasure } from '../survey/measureStore';
+import { useAntennas } from '../telecom/antennaStore';
+import { siteTracks, useAntennaHistory } from '../tracks/siteTracks';
 import { toastHost } from '../shell/actions/toastHost';
 import { useInventory } from '../survey/useInventory';
 import { useQa } from '../survey/qaStore';
@@ -51,6 +54,36 @@ export function useSiteInsights(today = localToday()): Insight[] | null {
     [measuresOf, id, measurements],
   );
   const rows = useInventory(piles);
+  // antennas, hot spots and change regions across dates (M2), from what the stores hold
+  const antennasOf = useAntennas((s) => s.projectId);
+  const liveAntennas = useAntennas((s) => s.file);
+  const history = useAntennaHistory(
+    antennasOf !== null && antennasOf === id ? id : null,
+    liveAntennas?.run.id ?? null,
+  );
+  const detectionsOf = useDetections((s) => s.projectId);
+  const detectionList = useDetections((s) => s.review.detections);
+  const tracks = useMemo(() => {
+    if (!manifest || manifest.captures.length < 2) return [];
+    const t = siteTracks({
+      manifest,
+      live: antennasOf === id ? liveAntennas : null,
+      history: antennasOf === id ? history : [],
+      detections: detectionsOf === id ? detectionList : [],
+      sets: changesOf === id ? Object.values(sets) : [],
+    });
+    return [...t.antennas, ...t.hotspots, ...t.regions];
+  }, [
+    manifest,
+    id,
+    antennasOf,
+    liveAntennas,
+    history,
+    detectionsOf,
+    detectionList,
+    changesOf,
+    sets,
+  ]);
   return useMemo(() => {
     const mine = (of: string | null) => of === id;
     // no digest until the project's QA files are read: a date is never called unchecked early
@@ -66,9 +99,10 @@ export function useSiteInsights(today = localToday()): Insight[] | null {
         sets: mine(changesOf) ? sets : {},
         isStale: (set) => changeSetStale(set, manifest),
         today,
+        tracks,
       }),
     );
-  }, [manifest, id, qaOf, qa, settings, piles, rows, changesOf, summaries, sets, today]);
+  }, [manifest, id, qaOf, qa, settings, piles, rows, changesOf, summaries, sets, today, tracks]);
 }
 
 function Row({ insight }: { insight: Insight }): ReactElement {
@@ -106,7 +140,7 @@ function Row({ insight }: { insight: Insight }): ReactElement {
           <div className="sd-actions">
             {insight.actions.map((a) => (
               <Button
-                key={`${a.id}:${a.measurement ?? a.capture ?? a.pair?.to ?? ''}`}
+                key={`${a.id}:${a.measurement ?? a.capture ?? a.unit ?? a.detection ?? a.pair?.to ?? ''}`}
                 variant="quiet"
                 data-testid={`site-digest-action-${a.id}`}
                 onClick={() => {

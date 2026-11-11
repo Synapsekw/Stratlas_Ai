@@ -57,3 +57,21 @@ export {
 } from './register';
 export { changeSetStale, lineUpOfPair, lineUpTurnOfPair } from './stale';
 export { DEFAULT_VECTOR_KEYS, vectorChanges, type VectorChangeInput } from './vector';
+export {
+  acrossDates,
+  antennaTracks,
+  groundSampleM,
+  hotspotTracks,
+  linkTracks,
+  regionTracks,
+  trackOf,
+  HOTSPOT_CLASS,
+  type HotspotDetection,
+  type Track,
+  type TrackKind,
+  type TrackMetric,
+  type TrackObservation,
+  type TrackSighting,
+  type TrackTrend,
+  type TrackTrendPoint,
+} from './tracks';

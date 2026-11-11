@@ -17,6 +17,7 @@ import {
   type InsightParam,
   type InsightTextKey,
   type SiteSnapshot,
+  type SiteTrack,
 } from '@aio/insights';
 import type {
   ChangeSet,
@@ -42,6 +43,8 @@ export interface DigestSources {
   isStale: (set: ChangeSet) => boolean;
   /** Today, an ISO date. */
   today: string;
+  /** Tracks across dates (`siteTracks`, M2). */
+  tracks?: readonly SiteTrack[];
 }
 
 export function digestSnapshot(x: DigestSources): SiteSnapshot {
@@ -56,6 +59,7 @@ export function digestSnapshot(x: DigestSources): SiteSnapshot {
       .filter((s) => x.isStale(s))
       .map((s) => s.id),
     today: x.today,
+    ...(x.tracks ? { tracks: x.tracks } : {}),
   };
 }
 
@@ -80,6 +84,11 @@ const TEXT_KEYS: Record<InsightTextKey, MessageKey> = {
   'insights.pileShrank': 'insights.pileShrank',
   'insights.pileEmpties': 'insights.pileEmpties',
   'insights.pileEmptyPast': 'insights.pileEmptyPast',
+  'insights.antennaTurned': 'insights.antennaTurned',
+  'insights.antennaTilted': 'insights.antennaTilted',
+  'insights.antennaTurnedTilted': 'insights.antennaTurnedTilted',
+  'insights.hotspotHotter': 'insights.hotspotHotter',
+  'insights.regionGrew': 'insights.regionGrew',
 };
 
 /** Parameters that hold an ISO date, shown as the app shows dates. */
@@ -121,6 +130,8 @@ export const ACTION_LABEL: Record<InsightActionId, MessageKey> = {
   'insights.openChanges': 'insights.action.openChanges',
   'measure.flyTo': 'insights.action.flyTo',
   'date.compare': 'insights.action.compare',
+  'insights.openAntenna': 'insights.action.openAntenna',
+  'insights.openHotspot': 'insights.action.openHotspot',
 };
 
 /** The rows shown while folded. */

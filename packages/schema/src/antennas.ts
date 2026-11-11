@@ -25,6 +25,14 @@ export const ANTENNA_DELETIONS_FILE = 'telecom/antenna-deletions.json';
 /** The first pipeline pack whose `telecom.antennas` reads the deletions sidecar. */
 export const TELECOM_DELETE_MIN_PACK = '0.25.0';
 export const TELECOM_DELETE_FEATURE = 'Deleted antennas stay deleted';
+/**
+ * Per-date copies of the inventory (Wave 3 M2): `<dir>/<captureId>.json`, each an `aio.antennas/1`
+ * file in that date's own frame, without crops. `telecom.antennas` writes the date it replaces
+ * (as reviewed) and its own; the app links them into tracks at read time and never writes them.
+ */
+export const ANTENNA_HISTORY_DIR = 'telecom/history';
+/** The first pipeline pack whose `telecom.antennas` keeps the per-date copies. */
+export const TELECOM_HISTORY_MIN_PACK = '0.35.0';
 /** Most vertices of an outline a person draws (the engine's lasso limit). */
 const FLAG_MAX_POLYGON_VERTICES = 256;
 /** Shared with python through `__fixtures__/antennas-contract.json`. */

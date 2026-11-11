@@ -19,6 +19,11 @@
  * | `pile-moved`        | info            | a figure moved over 20 % and 5 m³ since the date before     |
  * | `pile-empties`      | warning or info | at its rate a falling figure is empty within 60 days of     |
  * |                     |                 | today (14: warning), or would already be empty (warning)    |
+ * | `antenna-turned`    | warning         | an antenna turned or tilted since the date before (M2)      |
+ * | `hotspot-hotter`    | warning         | a hot spot's peak rose since the date before (M2)           |
+ * | `region-grew`       | info            | a change region grew since the pair before (M2)             |
+ *
+ * The track rules are in `trackRules.ts`.
  *
  * The figures are the app's counted figures per date (`figuresFromRows` over the inventory rows,
  * the volume card's own rule), so the digest's numbers are the card's. Figure rules look only at
@@ -27,6 +32,7 @@
  */
 import type { ChangeSetSummary, QaLevel, SurveyQa } from '@aio/schema';
 import { qaFlagsFor, type QaFlagContext } from './qaFlags';
+import { trackRules, type SiteTrack } from './trackRules';
 import { dayOf, volumeTrend, type TrendPoint } from './trend';
 
 export type Severity = 'critical' | 'warning' | 'info';
@@ -36,7 +42,9 @@ export type EvidenceRef =
   | { kind: 'measurement'; id: string }
   | { kind: 'capture'; id: string }
   | { kind: 'qa'; capture: string }
-  | { kind: 'changeSet'; id: string };
+  | { kind: 'changeSet'; id: string }
+  /** A track across dates and the sighting on the latest date (`ref`: unit, detection or item). */
+  | { kind: 'track'; id: string; object: 'antenna' | 'region' | 'hotspot'; ref: string };
 
 /**
  * A suggested action: a right-click registry id (`measure.flyTo` on `measurement`,
@@ -48,10 +56,21 @@ export interface InsightAction {
   measurement?: string;
   capture?: string;
   pair?: { from: string; to: string };
+  /** `insights.openAntenna`: the unit to show. */
+  unit?: string;
+  /** `insights.openHotspot`: the detection, and the photo it is on. */
+  detection?: string;
+  layer?: string;
+  photo?: string;
 }
 
 export type InsightActionId =
-  'measure.flyTo' | 'date.compare' | 'insights.openQa' | 'insights.openChanges';
+  | 'measure.flyTo'
+  | 'date.compare'
+  | 'insights.openQa'
+  | 'insights.openChanges'
+  | 'insights.openAntenna'
+  | 'insights.openHotspot';
 
 export type InsightRule =
   | 'survey-held'
@@ -63,7 +82,10 @@ export type InsightRule =
   | 'change-review'
   | 'pile-departs'
   | 'pile-moved'
-  | 'pile-empties';
+  | 'pile-empties'
+  | 'antenna-turned'
+  | 'hotspot-hotter'
+  | 'region-grew';
 
 /**
  * A value in an insight's words: text, a plain number (a count, a whole percent), or a quantity
@@ -91,7 +113,12 @@ export type InsightTextKey =
   | 'insights.pileGrew'
   | 'insights.pileShrank'
   | 'insights.pileEmpties'
-  | 'insights.pileEmptyPast';
+  | 'insights.pileEmptyPast'
+  | 'insights.antennaTurned'
+  | 'insights.antennaTilted'
+  | 'insights.antennaTurnedTilted'
+  | 'insights.hotspotHotter'
+  | 'insights.regionGrew';
 
 export interface Insight {
   /** Stable for the same rule and subject: `<rule>:<subject>`. */
@@ -126,6 +153,8 @@ export interface SiteSnapshot {
   staleChangeSets: readonly string[];
   /** Today, an ISO date: forecasts are read against it. */
   today: string;
+  /** Antennas, hot spots and change regions linked across dates (M2); none when left out. */
+  tracks?: readonly SiteTrack[];
 }
 
 /** A figure moved this share or more since the date before... */
@@ -151,6 +180,9 @@ const RULE_ORDER: readonly InsightRule[] = [
   'pile-departs',
   'pile-moved',
   'pile-empties',
+  'antenna-turned',
+  'hotspot-hotter',
+  'region-grew',
 ];
 
 const byDate = <T extends { id: string; date: string }>(xs: readonly T[]): T[] =>
@@ -406,6 +438,7 @@ export function siteInsights(s: SiteSnapshot): Insight[] {
     ...qaRules(s, ctx, latest),
     ...changeRules(s, latestPair),
     ...figureRules(s, latest),
+    ...trackRules(s.tracks ?? [], latestPair),
   ];
   const rank = (i: Insight) =>
     SEVERITY_ORDER.indexOf(i.severity) * 100 + RULE_ORDER.indexOf(i.rule);

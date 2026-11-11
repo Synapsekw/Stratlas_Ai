@@ -9,7 +9,7 @@ const calls = vi.hoisted(() => ({
   log: [] as unknown[][],
 }));
 vi.mock('../shell', () => ({
-  shell: { getState: () => ({ pkg: null }) },
+  shell: { getState: () => ({ pkg: null, go: (s: string) => calls.log.push(['go', s]) }) },
   bridge: { call: () => Promise.resolve({ ok: false, error: 'none' }) },
   jobs: { getState: () => ({ jobs: [] }), subscribe: () => () => undefined },
 }));
@@ -23,6 +23,13 @@ vi.mock('../shell/actions/toastHost', () => ({
     askUnplace: () => undefined,
     emptyTrash: () => undefined,
   }),
+}));
+vi.mock('../telecom/antennaStore', () => ({
+  antennaStore: { getState: () => ({ file: { units: [{ id: 'ant-1' }] } }) },
+  revealAntenna: (id: string, _b: unknown, ask: string) => calls.log.push(['antenna', id, ask]),
+}));
+vi.mock('../detections/store', () => ({
+  dispatch: (a: { type: string; id: string }) => calls.log.push(['review', a.type, a.id]),
 }));
 vi.mock('../change', () => ({
   openChangesTab: () => calls.log.push(['changesTab']),
@@ -143,5 +150,29 @@ describe('focusEvidence', () => {
       ['focus', 'm2'],
       ['qaPanel', 'qa'],
     ]);
+  });
+});
+
+describe('track insights (M2)', () => {
+  it('shows an antenna of the live inventory, and refuses one that is gone', () => {
+    expect(runInsightAction({ id: 'insights.openAntenna', unit: 'ant-1' })).toBe(true);
+    expect(runInsightAction({ id: 'insights.openAntenna', unit: 'ant-9' })).toBe(false);
+    expect(focusEvidence({ kind: 'track', id: 't', object: 'antenna', ref: 'ant-1' })).toBe(true);
+    expect(calls.log).toEqual([
+      ['antenna', 'ant-1', 'review'],
+      ['antenna', 'ant-1', 'review'],
+    ]);
+  });
+
+  it('opens a hot spot on its photo in Inspect', () => {
+    expect(
+      runInsightAction({ id: 'insights.openHotspot', detection: 'h1', layer: 'th', photo: 'p1' }),
+    ).toBe(true);
+    expect(calls.log).toEqual([
+      ['go', 'inspect'],
+      ['review', 'select', 'h1'],
+    ]);
+    expect(workspace.getState().selection).toMatchObject({ kind: 'photo', id: 'p1', layer: 'th' });
+    expect(runInsightAction({ id: 'insights.openHotspot', detection: 'h1' })).toBe(false);
   });
 });

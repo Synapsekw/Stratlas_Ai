@@ -41,4 +41,13 @@ export const enInsights = {
   'insights.action.flyTo': 'Fly to',
   'insights.action.compare': 'Compare dates',
   'insights.notFound': 'That item is no longer in the project.',
+  // Tracks across survey dates (Wave 3 M2)
+  'insights.antennaTurned': 'Antenna {name} turned {azimuth}° in azimuth since {from}',
+  'insights.antennaTilted': 'Antenna {name} tilted {tilt}° since {from}',
+  'insights.antennaTurnedTilted':
+    'Antenna {name} turned {azimuth}° in azimuth and tilted {tilt}° since {from}',
+  'insights.hotspotHotter': 'A hot spot peaks at {peak} °C, {rise} °C hotter than on {from}',
+  'insights.regionGrew': 'A change region grew {share}% to {area} m² since {from}',
+  'insights.action.openAntenna': 'Show antenna',
+  'insights.action.openHotspot': 'Open in Inspect',
 } as const satisfies Record<string, string>;

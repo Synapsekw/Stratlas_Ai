@@ -11,6 +11,7 @@ export {
   type ChangePanelProps,
   type ChangeRowActions,
 } from './ChangePanel';
+export { formatTrackValue, TrackHistory, type TrackHistoryProps } from './TrackHistory';
 export { changeMarkers, VERDICT_COLOR, type ChangeMarker, type MarkerInput } from './overlay';
 export {
   changeStore,

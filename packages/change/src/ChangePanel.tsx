@@ -13,6 +13,8 @@ import {
 } from './producers';
 import { registerRows, verdictCounts, type RegisterRow, type ReviewStatus } from './register';
 import { changeSetStale } from './stale';
+import { TrackHistory } from './TrackHistory';
+import { regionTracks, trackOf } from './tracks';
 import {
   areasOfPair,
   changeStore,
@@ -223,6 +225,15 @@ export function ChangePanel({
     if (s.area && seenAreas.current.ids.has(s.area) && !areas.some((a) => a.id === s.area))
       changeStore.getState().setArea(null);
   }, [s.area, s.pair, areas]);
+  // change regions linked across consecutive pairs (Wave 3 M2); the label stands in for the date
+  const regions = useMemo(
+    () =>
+      regionTracks(
+        Object.values(s.sets),
+        captures.map((c) => ({ id: c.id, date: c.label })),
+      ),
+    [s.sets, captures],
+  );
   const rows = useMemo(
     () => registerRows(pairSets, s.filter, s.sort),
     [pairSets, s.filter, s.sort],
@@ -651,6 +662,14 @@ export function ChangePanel({
                     <p className="chg-note">{t('change.notSeenTip')}</p>
                   )}
                   {item.review?.note && <p className="chg-note">{item.review.note}</p>}
+                  {item.kind === 'region' && (
+                    <TrackHistory
+                      track={trackOf(regions, `${row.setId}/${item.id}`)}
+                      current={`${row.setId}/${item.id}`}
+                      dateLabel={label}
+                      testId="change-track"
+                    />
+                  )}
                   {!s.readOnly && (
                     <div className="acts">
                       {row.status !== 'confirmed' && item.verdict !== 'resolved' && (
