@@ -15,7 +15,9 @@ import {
   POINTCLOUD_CLEAN_FEATURE,
   POINTCLOUD_CLEAN_MIN_PACK,
   PointcloudCleanup,
+  SegmentLiftResult,
   isSafeLayerId,
+  liftResultPath,
   noiseCopyPath,
   noiseRunPath,
   type IpcResponse,
@@ -46,7 +48,8 @@ export function cleanPackRefusal(pipeline: string, packVersion: string | null): 
   return `${POINTCLOUD_CLEAN_FEATURE} needs processing tools ${POINTCLOUD_CLEAN_MIN_PACK} or later (these are ${packVersion}). Update them in Settings, Processing tools.`;
 }
 
-const isRecipeName = (n: string) => n.endsWith('.json') && !n.includes('.noise-');
+const isRecipeName = (n: string) =>
+  n.endsWith('.json') && !n.includes('.noise-') && !n.includes('.lift-');
 const why = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export async function readCleanups(root: string): Promise<PointcloudCleanup[]> {
@@ -82,6 +85,23 @@ export async function readNoiseRun(
     return r.success && r.data.runId === runId && r.data.path === noiseCopyPath(layerId, runId)
       ? r.data
       : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The answer a `segment.lift` job wrote (`liftResultPath`), or null when missing or damaged. */
+export async function readLiftRun(
+  root: string,
+  layerId: string,
+  runId: string,
+): Promise<SegmentLiftResult | null> {
+  if (!isSafeLayerId(layerId) || !/^[A-Za-z0-9_-]+$/.test(runId)) return null;
+  try {
+    const r = SegmentLiftResult.safeParse(
+      await readJsonSeen(join(root, liftResultPath(layerId, runId))),
+    );
+    return r.success ? r.data : null;
   } catch {
     return null;
   }
@@ -163,7 +183,7 @@ const NOT_OPEN = { ok: false as const, error: 'The project is not open.' };
 export function registerPointcloudCleanupIpc(deps: Deps): void {
   const { handle, projects } = deps;
 
-  handle('pointcloud:readCleanup', async ({ projectId, noiseRun }) => {
+  handle('pointcloud:readCleanup', async ({ projectId, noiseRun, liftRun }) => {
     if (projects.package(projectId)) {
       const archive = deps.projectPackage?.(projectId);
       const recipes: PointcloudCleanup[] = [];
@@ -183,9 +203,13 @@ export function registerPointcloudCleanupIpc(deps: Deps): void {
     const root = projects.root(projectId);
     if (root === undefined) return NOT_OPEN;
     const recipes = await readCleanups(root);
-    if (!noiseRun) return { ok: true, recipes, readOnly: false };
-    const noise = await readNoiseRun(root, noiseRun.layerId, noiseRun.runId);
-    return { ok: true, recipes, noise, readOnly: false };
+    return {
+      ok: true,
+      recipes,
+      ...(noiseRun ? { noise: await readNoiseRun(root, noiseRun.layerId, noiseRun.runId) } : {}),
+      ...(liftRun ? { lift: await readLiftRun(root, liftRun.layerId, liftRun.runId) } : {}),
+      readOnly: false,
+    };
   });
 
   handle('pointcloud:writeCleanup', ({ projectId, layerId, recipe, keep }) => {

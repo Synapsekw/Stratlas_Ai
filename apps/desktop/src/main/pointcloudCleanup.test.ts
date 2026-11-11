@@ -1,4 +1,10 @@
-import { emptyCleanup, noiseCopyPath, noiseRunPath, type PointcloudCleanup } from '@aio/schema';
+import {
+  emptyCleanup,
+  liftResultPath,
+  noiseCopyPath,
+  noiseRunPath,
+  type PointcloudCleanup,
+} from '@aio/schema';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -88,6 +94,38 @@ describe('point cloud cleanup IPC', () => {
       noiseRun: { layerId: 'a', runId: 'j2' },
     });
     expect(none.ok && none.noise).toBeNull();
+  });
+
+  it('reads the answer of a segment.lift run, or null, and never takes it for a recipe', async () => {
+    const answer = {
+      regions: [
+        {
+          photo: 'p1',
+          viewProj: Array.from({ length: 16 }, (_, i) => (i % 5 === 0 ? 1 : 0)),
+          polygon: [
+            [0, 0],
+            [0.5, 0],
+            [0, 0.5],
+          ],
+          depth: { near: 1, far: 9 },
+          points: 120,
+          label: 'tank',
+        },
+      ],
+      skipped: [{ photo: 'p2', reason: 'The photo is not posed.' }],
+    };
+    await put(liftResultPath('a', 'j3'), JSON.stringify(answer));
+    const r = await ipc.call('pointcloud:readCleanup', {
+      projectId: 'p',
+      liftRun: { layerId: 'a', runId: 'j3' },
+    });
+    expect(r).toMatchObject({ ok: true, recipes: [], lift: answer });
+    expect(r.ok && 'noise' in r).toBe(false);
+    const none = await ipc.call('pointcloud:readCleanup', {
+      projectId: 'p',
+      liftRun: { layerId: 'a', runId: 'j4' },
+    });
+    expect(none.ok && none.lift).toBeNull();
   });
 
   it('writes a recipe atomically with a .bak of the one before', async () => {
