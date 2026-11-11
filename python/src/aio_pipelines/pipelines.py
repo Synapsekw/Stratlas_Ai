@@ -21,6 +21,7 @@ from .hydro.flood import HydroFlood
 from .hydro.flow import HydroFlow
 from .hydro.rainfall import HydroRainfall
 from .inspection.pipeline import InspectionRun
+from .inspection.walkjob import WalkTrack
 from .modelfit.fit import ModelFitCloud
 from .opf.exporter import OpfExport
 from .opf.importer import OpfImport
@@ -121,5 +122,7 @@ def all_pipelines() -> dict[str, Pipeline]:
         ThermalHotspots(),
         # Local vision-model detectors (Analytics pack)
         DetectVlm(),
+        # Walk detections tracked and placed (pipeline pack 0.35.0)
+        WalkTrack(),
     ]
     return {p.name: p for p in items}
