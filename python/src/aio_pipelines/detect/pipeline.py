@@ -16,6 +16,21 @@ Steps (each resumable):
    vote (``multiview/``) folds the drafts of one object seen in several posed photos into one
    draft with a ``vote``; single-view outliers are kept and flagged.
 
+Walk frames (``frames: [{layer, t}]``, pipeline pack 0.35.0): a run reads either photos or the
+frames of one 360 walk, never both (the app makes one run per layer). ``layer`` is then the walk
+layer, every frame names it, and ``photos`` is empty. Prepare decodes each frame of the walk's
+playback copy (``src``) at ``t`` with ffmpeg (``-ss t -frames:v 1``; a frame that does not decode
+is skipped with a warning, as a missing photo) and cuts ``equirect.FACE_YAWS`` perspective faces
+(``equirect.render_face``, ``FACE_FOV`` wide, ``FACE_SIZE`` square) into staging. Detect runs
+every detector on every face as on a photo (one staged result per face, so a resume continues).
+Commit maps the face boxes back to the frame (``face_box_to_frame``; x1 past the width wraps the
+seam), folds the boxes of overlapping faces (``merge_face_boxes``) and writes drafts with
+``frame: {layer, t}``, ``space: "source"`` and the playback copy's size. The pass is still
+``detections/vlm-<run>.json``, its ``layer`` the walk layer and its ``assessed`` the frames as
+``t:<milliseconds>`` (the local model's walk passes use the same names); a frame is assessed when
+every face has a result for every detector. Frame drafts are then tracked and placed by
+``inspection.walktrack`` (one draft per object, ``track``) instead of the multi-view vote.
+
 A detector item may carry ``examples`` (absolute crop files with ``is`` / ``is-not``, chosen by the
 app from the detector and the review ledger): they are read once per run and shown to the model in
 every yes/no check (``fewshot``).
@@ -29,10 +44,12 @@ in the project's catalogues keeps its class id in ``class`` and adds ``label`` (
 from __future__ import annotations
 
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any
 
+from ..inspection import equirect as EQ
 from ..multiview.scene import radius_for, vote_pass
 from ..params import known_keys
 from ..runtime import JobError, Step, StepContext, atomic_write_json, commit_files, now_iso
@@ -46,12 +63,17 @@ SHA256 = re.compile(r"^[a-f0-9]{64}$")
 ABSOLUTE = re.compile(r"^([A-Za-z]:[\\/]|/|\\\\)")
 WHERE = ("shipped", "project", "library")
 MAX_PHOTOS = 5000
+MAX_FRAMES = 2000
 MAX_DETECTORS = 10
+FRAME_DECODE_TIMEOUT_S = 120.0
 MAX_FAILED_IN_A_ROW = 3
 
 STOPPED = "The detector model stopped. Run the remaining photos again."
 ALL_FAILED = "The detector model could not read any of the photos. Run the detectors again."
 NO_PHOTOS = "None of the chosen photos could be opened. Check that the photo files are still in the project."
+NO_FRAMES = (
+    "None of the chosen walk frames could be read. Check that the walk's video is still in the project."
+)
 
 _DETECTOR_KEYS = {
     "schema", "id", "name", "version", "classId", "assetTypes", "looksLike", "ignore", "question",
@@ -61,7 +83,7 @@ _DETECTOR_KEYS = {
 _DETECTOR_REQUIRED = _DETECTOR_KEYS - {"samples", "examples", "objectSizeM"}
 OBJECT_SIZE_M = (0.01, 100.0)
 _ITEM_KEYS = {"where", "detector", "threshold"}
-_KEYS = {"run", "layer", "photos", "detectors", "serverFile", "modelSha256", "model"}
+_KEYS = {"run", "layer", "photos", "frames", "detectors", "serverFile", "modelSha256", "model"}
 
 
 def _is_number(v: Any) -> bool:
@@ -137,10 +159,15 @@ class DetectVlm:
         photos = params.get("photos")
         if (
             not isinstance(photos, list)
-            or not 1 <= len(photos) <= MAX_PHOTOS
+            or not len(photos) <= MAX_PHOTOS
             or not all(isinstance(p, str) and 1 <= len(p) <= 128 for p in photos)
         ):
-            raise JobError(f"photos must be a list of 1 to {MAX_PHOTOS} photo ids.")
+            raise JobError(f"photos must be a list of up to {MAX_PHOTOS} photo ids.")
+        frames = _validate_frames(params.get("frames"), layer)
+        if photos and frames:
+            raise JobError("A run reads photos or the frames of one walk, not both.")
+        if not photos and not frames:
+            raise JobError("A run needs at least one photo or walk frame.")
         items = params.get("detectors")
         if not isinstance(items, list) or not 1 <= len(items) <= MAX_DETECTORS:
             raise JobError(f"detectors must be a list of 1 to {MAX_DETECTORS} detectors.")
@@ -172,7 +199,7 @@ class DetectVlm:
         model = params.get("model")
         if not isinstance(model, str) or not model.strip():
             raise JobError("model must be a non-empty text.")
-        return {
+        out = {
             "run": run,
             "layer": layer,
             "photos": list(photos),
@@ -181,9 +208,17 @@ class DetectVlm:
             "modelSha256": sha,
             "model": model,
         }
+        if frames:
+            out["frames"] = frames
+        return out
 
     def inputs(self, params: dict[str, Any], project: Path) -> list[str]:
-        """The photo files, so a resumed job refuses photos that changed."""
+        """The photo files (or the walk's video), so a resumed job refuses inputs that changed."""
+        if params.get("frames"):
+            try:
+                return [str(_find_walk(_manifest(project), project, params["layer"])[1])]
+            except JobError:
+                return ["manifest.json"]
         try:
             files = [str(p) for _, p in _find_photos(_manifest(project), project, params)[0]]
         except JobError:
@@ -195,6 +230,10 @@ class DetectVlm:
         detectors: list[dict[str, Any]] = params["detectors"]
 
         def prepare_step(ctx: StepContext) -> dict[str, Any]:
+            if params.get("frames"):
+                return {"photos": [], "frames": _prepare_frames(ctx, params), "skipped": 0} | {
+                    "classIds": _class_ids(_manifest(ctx.project))
+                }
             ctx.progress(0.0, "Finding the photos")
             found, problems = _find_photos(_manifest(ctx.project), ctx.project, params)
             for problem in problems:
@@ -220,19 +259,10 @@ class DetectVlm:
                 ctx.progress((k + 1) / max(1, len(found)))
             if not photos:
                 raise JobError(NO_PHOTOS)
-            manifest = _manifest(ctx.project)
-            class_ids = sorted(
-                {
-                    c["id"]
-                    for cat in manifest.get("classCatalogues", [])
-                    for c in cat.get("classes", [])
-                    if isinstance(c, dict) and isinstance(c.get("id"), str)
-                }
-            )
             return {
                 "photos": photos,
                 "skipped": len(params["photos"]) - len(photos),
-                "classIds": class_ids,
+                "classIds": _class_ids(_manifest(ctx.project)),
             }
 
         def detect_step(ctx: StepContext) -> dict[str, Any]:
@@ -240,50 +270,48 @@ class DetectVlm:
 
             from .engine import MAX_CANDIDATES, VlmUnavailable, box_frame, run_detector
 
-            photos: list[dict[str, Any]] = ctx.outputs("prepare")["photos"]
+            units = _units(ctx.outputs("prepare"))
             client = _client(params["serverFile"])
             frame = box_frame(params["model"])
-            total = len(photos) * len(detectors)
+            total = len(units) * len(detectors)
             done = ok = failed = streak = capped = 0
             shots = _load_shots(ctx, detectors)
-            for pi, photo in enumerate(photos):
+            for ui, unit in enumerate(units):
                 for entry in detectors:
                     det = entry["detector"]
-                    ctx.progress(done / max(1, total), f"photo {pi + 1} of {len(photos)}, {det['name']}")
+                    ctx.progress(done / max(1, total), f"{unit['progress']}, {det['name']}")
                     ctx.check()
                     done += 1
-                    staged = ctx.stage(_result_name(pi, photo["id"], det["id"]))
+                    staged = ctx.stage(unit["result"](det["id"]))
                     if staged.exists():
                         ok += 1
                         streak = 0
                         capped += bool(json.loads(staged.read_text("utf-8")).get("capped"))
                         continue
                     try:
-                        with Image.open(photo["path"]) as im:
+                        with Image.open(unit["path"]) as im:
                             im.load()
                             result = run_detector(
                                 client,
                                 im,
-                                _fit_tiles(det, im.width, im.height, photo.get("gsdM")),
+                                _fit_tiles(det, im.width, im.height, unit.get("gsdM")),
                                 frame=frame,
-                                start_tile=pi,
+                                start_tile=ui,
                                 examples=shots[det["id"]],
                             )
                     except VlmUnavailable as e:
                         raise JobError(STOPPED) from e
                     except OSError as e:
-                        ctx.log(
-                            f"Photo {photo['id']} could not be read ({type(e).__name__}); skipped.", "warn"
-                        )
+                        ctx.log(f"{unit['label']} could not be read ({type(e).__name__}); skipped.", "warn")
                         failed += 1
                         continue
                     for w in result.warnings:
-                        ctx.log(f"Photo {photo['id']}, {det['name']}: {w}", "warn")
+                        ctx.log(f"{unit['label']}, {det['name']}: {w}", "warn")
                     if result.failed:
                         failed += 1
                         streak += 1
                         ctx.log(
-                            f"Photo {photo['id']}: the model gave no usable answer for {det['name']}.", "warn"
+                            f"{unit['label']}: the model gave no usable answer for {det['name']}.", "warn"
                         )
                         if streak >= MAX_FAILED_IN_A_ROW:
                             raise JobError(STOPPED)
@@ -294,7 +322,7 @@ class DetectVlm:
                     atomic_write_json(
                         staged,
                         {
-                            "photo": photo["id"],
+                            unit["kind"]: unit["id"],
                             "detector": det["id"],
                             "candidates": [
                                 {"box": list(c.box), "note": c.note, "score": c.score}
@@ -326,6 +354,41 @@ class DetectVlm:
             dets: list[dict[str, Any]] = []
             capped = 0  # photo results cut to MAX_CANDIDATES
             looked: dict[str, set[str]] = {}  # class -> photos its detector ran on
+
+            def draft(entry: dict[str, Any], c: dict[str, Any], id_part: str, k: int, w: int, h: int):
+                det = entry["detector"]
+                score = c.get("score")
+                d: dict[str, Any] = {"id": f"{run_id}-{id_part}-{det['id']}-{k}"}
+                d["class"] = det["classId"]
+                d["severity"] = "uncertain"
+                if class_ids is not None and det["classId"] not in class_ids:
+                    # the project lacks the class: offer the detector's name as a new one.
+                    # `class` keeps the detector's class id (aio.detections/1 needs a
+                    # non-empty class; the review reads an unknown one as no class yet)
+                    d["label"] = det["name"]
+                    d["suggestedNew"] = True
+                if score is not None:
+                    d["confidence"] = round(float(score), 4)
+                d["note"] = c.get("note", "")
+                d["status"] = "draft"
+                d["bbox"] = [round(float(v), 1) for v in c["box"]]
+                d["space"] = "source"
+                d["width"] = w
+                d["height"] = h
+                if score is None:
+                    d["unscored"] = True
+                elif score < entry["threshold"]:
+                    d["belowThreshold"] = True
+                d["origin"] = {
+                    "runId": run_id,
+                    "model": model,
+                    "detectorId": det["id"],
+                    "detectorVersion": det["version"],
+                    "modelSha256": params["modelSha256"],
+                    "threshold": entry["threshold"],
+                }
+                return d
+
             for pi, photo in enumerate(photos):
                 # assessed only when every detector of the run has a result for the photo: one
                 # that failed must not read as "checked, nothing found"
@@ -340,45 +403,56 @@ class DetectVlm:
                     result = json.loads(staged.read_text("utf-8"))
                     capped += bool(result.get("capped"))
                     for k, c in enumerate(result["candidates"]):
-                        score = c.get("score")
-                        d: dict[str, Any] = {
-                            "id": f"{run_id}-{photo['id']}-{det['id']}-{k}",
-                            "photo": photo["id"],
-                            "class": det["classId"],
-                            "severity": "uncertain",
-                        }
-                        if class_ids is not None and det["classId"] not in class_ids:
-                            # the project lacks the class: offer the detector's name as a new one.
-                            # `class` keeps the detector's class id (aio.detections/1 needs a
-                            # non-empty class; the review reads an unknown one as no class yet)
-                            d["label"] = det["name"]
-                            d["suggestedNew"] = True
-                        if score is not None:
-                            d["confidence"] = round(float(score), 4)
-                        d["note"] = c.get("note", "")
-                        d["status"] = "draft"
-                        d["bbox"] = [round(float(v), 1) for v in c["box"]]
-                        d["space"] = "source"
-                        d["width"] = photo["width"]
-                        d["height"] = photo["height"]
-                        if score is None:
-                            d["unscored"] = True
-                        elif score < entry["threshold"]:
-                            d["belowThreshold"] = True
-                        d["origin"] = {
-                            "runId": run_id,
-                            "model": model,
-                            "detectorId": det["id"],
-                            "detectorVersion": det["version"],
-                            "modelSha256": params["modelSha256"],
-                            "threshold": entry["threshold"],
-                        }
-                        dets.append(d)
+                        d = draft(entry, c, photo["id"], k, photo["width"], photo["height"])
+                        dets.append({"id": d.pop("id"), "photo": photo["id"], **d})
                 if ran_all:
                     assessed.append(photo["id"])
-            # one draft per object seen in several posed photos (multiview/, vision audit 3.6)
+            frames: list[dict[str, Any]] = ctx.outputs("prepare").get("frames") or []
+            for fi, fr in enumerate(frames):
+                ran_all = True
+                found: list[dict[str, Any]] = []
+                for entry in detectors:
+                    det = entry["detector"]
+                    boxes: list[dict[str, Any]] = []
+                    for yaw in fr["yaws"]:
+                        staged = ctx.stage(_face_result_name(fi, fr["ms"], yaw, det["id"]))
+                        if not staged.exists():
+                            ran_all = False
+                            continue
+                        result = json.loads(staged.read_text("utf-8"))
+                        capped += bool(result.get("capped"))
+                        for c in result["candidates"]:
+                            box = EQ.face_box_to_frame(
+                                c["box"], yaw, EQ.FACE_FOV, EQ.FACE_SIZE, fr["width"], fr["height"]
+                            )
+                            boxes.append(
+                                {
+                                    "class": det["classId"],
+                                    "bbox": box,
+                                    "confidence": c.get("score"),
+                                    "_inside": EQ.face_box_inside(c["box"], EQ.FACE_SIZE),
+                                    "_c": {**c, "box": box},
+                                }
+                            )
+                    # the faces overlap: one box per object of this detector
+                    for k, m in enumerate(EQ.merge_face_boxes(boxes, fr["width"])):
+                        d = draft(entry, m["_c"], f"t{fr['ms']}", k, fr["width"], fr["height"])
+                        found.append({**d, "frame": {"layer": params["layer"], "t": fr["t"]}})
+                dets.extend(found)
+                if ran_all:
+                    assessed.append(f"t:{fr['ms']}")
             sizes = {e["detector"]["id"]: e["detector"] for e in detectors}
-            dets, voted = vote_pass(ctx, params["layer"], dets, radius_for(sizes), assessed=looked)
+            voted = tracked = None
+            if frames:
+                # one draft per object followed across the walk's frames (inspection/walktrack)
+                from ..inspection.walkjob import track_doc
+
+                doc0 = {"layer": params["layer"], "assessed": assessed, "detections": dets}
+                doc1, tracked = track_doc(ctx, doc0, params["layer"])
+                dets = doc1["detections"]
+            else:
+                # one draft per object seen in several posed photos (multiview/, vision audit 3.6)
+                dets, voted = vote_pass(ctx, params["layer"], dets, radius_for(sizes), assessed=looked)
             doc = {
                 "schema": DETECTIONS_SCHEMA,
                 "source": "model",
@@ -411,14 +485,19 @@ class DetectVlm:
             rel = _pass_name(run_id)
             atomic_write_json(ctx.stage(rel), doc)
             commit_files(ctx, [(rel, f"detections/{rel}")])
-            ctx.log(f"{len(dets)} candidates on {len(assessed)} photos.")
+            what = "walk frames" if frames else "photos"
+            ctx.log(f"{len(dets)} candidates on {len(assessed)} {what}.")
             ctx.progress(1.0)
             out = {
                 "pass": f"detections/{rel}",
-                "photos": len(assessed),
+                "photos": 0 if frames else len(assessed),
                 "detections": len(dets),
                 "capped": capped,
             }
+            if frames:
+                out["frames"] = len(assessed)
+            if tracked is not None:
+                out["tracked"] = tracked
             if voted:
                 out["voted"] = {k: voted[k] for k in ("merged", "singleView")} | {
                     "objects": voted["clusters"]
@@ -452,6 +531,178 @@ def _pass_name(run_id: str) -> str:
 
 def _result_name(index: int, photo_id: str, detector_id: str) -> str:
     return f"results/{index}-{re.sub(r'[^A-Za-z0-9._-]', '_', photo_id)[:80]}--{detector_id}.json"
+
+
+def _face_result_name(index: int, ms: int, yaw: float, detector_id: str) -> str:
+    return f"results/f{index}-t{ms}-y{round(yaw)}--{detector_id}.json"
+
+
+def _validate_frames(frames: Any, layer: str) -> list[dict[str, Any]]:
+    """``frames`` as ``[{layer, t}]`` of the run's walk layer (none: an empty list)."""
+    if frames is None:
+        return []
+    if not isinstance(frames, list) or len(frames) > MAX_FRAMES:
+        raise JobError(f"frames must be a list of up to {MAX_FRAMES} walk frames.")
+    out: list[dict[str, Any]] = []
+    for f in frames:
+        if not isinstance(f, dict) or set(f) != {"layer", "t"}:
+            raise JobError("Each frame must be {layer, t}.")
+        t = f["t"]
+        if not _is_number(t) or not math.isfinite(t) or t < 0:
+            raise JobError("A frame's t must be a number of seconds from 0.")
+        if f["layer"] != layer:
+            raise JobError("Every frame must be on the run's walk layer (layer).")
+        out.append({"layer": layer, "t": t})
+    return out
+
+
+def _class_ids(manifest: dict[str, Any]) -> list[str]:
+    return sorted(
+        {
+            c["id"]
+            for cat in manifest.get("classCatalogues", [])
+            for c in cat.get("classes", [])
+            if isinstance(c, dict) and isinstance(c.get("id"), str)
+        }
+    )
+
+
+def _find_walk(manifest: dict[str, Any], project: Path, layer_id: str) -> tuple[dict[str, Any], Path]:
+    """The walk layer and its playback copy."""
+    from ..inspection.frame import asset_path
+
+    layer = next(
+        (x for x in manifest.get("layers", []) if x.get("id") == layer_id and x.get("kind") == "walk"),
+        None,
+    )
+    if layer is None:
+        raise JobError(f'The project has no 360 walk layer "{layer_id}".')
+    path = asset_path(project, layer.get("src"))
+    if path is None or not path.is_file():
+        raise JobError(NO_FRAMES)
+    return layer, path
+
+
+def _decode_frame(exe: str, src: Path, t: float, out: Path) -> bool:
+    """The frame of ``src`` at ``t`` seconds as a PNG; False when ffmpeg gives none."""
+    import subprocess
+
+    from ..walk.ffmpeg import _NO_WINDOW
+
+    tmp = out.with_name(out.stem + ".part.png")
+    args = [
+        exe,
+        "-v",
+        "error",
+        "-nostdin",
+        "-ss",
+        f"{t:.3f}",
+        "-i",
+        str(src),
+        "-frames:v",
+        "1",
+        "-y",
+        str(tmp),
+    ]
+    try:
+        res = subprocess.run(
+            args, stdin=subprocess.DEVNULL, capture_output=True, timeout=FRAME_DECODE_TIMEOUT_S,
+            creationflags=_NO_WINDOW,
+        )  # fmt: skip
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if res.returncode != 0 or not tmp.is_file() or tmp.stat().st_size == 0:
+        tmp.unlink(missing_ok=True)
+        return False
+    tmp.replace(out)
+    return True
+
+
+def _prepare_frames(ctx: StepContext, params: dict[str, Any]) -> list[dict[str, Any]]:
+    """Each asked walk frame decoded and cut into perspective faces in staging (resumable)."""
+    import numpy as np
+    from PIL import Image
+
+    from ..walk.ffmpeg import FFMPEG_MISSING, find_ffmpeg
+
+    ctx.progress(0.0, "Reading the walk frames")
+    _layer, src = _find_walk(_manifest(ctx.project), ctx.project, params["layer"])
+    exe = find_ffmpeg()
+    if exe is None:
+        raise JobError(FFMPEG_MISSING)
+    asked: dict[int, float] = {}
+    for f in params["frames"]:
+        asked.setdefault(round(float(f["t"]) * 1000), float(f["t"]))
+    out: list[dict[str, Any]] = []
+    for k, (ms, t) in enumerate(asked.items()):
+        ctx.check()
+        ctx.progress(k / max(1, len(asked)), f"frame {k + 1} of {len(asked)}")
+        png = ctx.stage(f"frames/{ms}.png")
+        faces = [ctx.stage(f"faces/{ms}-y{round(yaw)}.jpg") for yaw in EQ.FACE_YAWS]
+        if not png.exists() and not _decode_frame(exe, src, t, png):
+            ctx.log(f"The walk frame at {t:g} s could not be read; skipped.", "warn")
+            continue
+        try:
+            with Image.open(png) as im:
+                rgb = np.asarray(im.convert("RGB"))
+        except (OSError, ValueError):
+            ctx.log(f"The walk frame at {t:g} s could not be read; skipped.", "warn")
+            continue
+        h, w = rgb.shape[:2]
+        for yaw, face in zip(EQ.FACE_YAWS, faces, strict=True):
+            if not face.exists():
+                tmp = face.with_name(face.stem + ".part.jpg")
+                Image.fromarray(EQ.render_face(rgb, yaw)).save(tmp, "JPEG", quality=92)
+                tmp.replace(face)
+        out.append(
+            {
+                "t": t,
+                "ms": ms,
+                "width": int(w),
+                "height": int(h),
+                "yaws": list(EQ.FACE_YAWS),
+                "faces": [str(p) for p in faces],
+            }
+        )
+    if not out:
+        raise JobError(NO_FRAMES)
+    ctx.progress(1.0)
+    return out
+
+
+def _units(prepared: dict[str, Any]) -> list[dict[str, Any]]:
+    """What the detect step runs each detector on: every photo, or every face of every frame."""
+    units: list[dict[str, Any]] = []
+    photos = prepared.get("photos") or []
+    for pi, p in enumerate(photos):
+        units.append(
+            {
+                "kind": "photo",
+                "id": p["id"],
+                "path": p["path"],
+                "gsdM": p.get("gsdM"),
+                "label": f"Photo {p['id']}",
+                "progress": f"photo {pi + 1} of {len(photos)}",
+                "result": lambda det_id, pi=pi, pid=p["id"]: _result_name(pi, pid, det_id),
+            }
+        )
+    frames = prepared.get("frames") or []
+    for fi, f in enumerate(frames):
+        for yaw, path in zip(f["yaws"], f["faces"], strict=True):
+            units.append(
+                {
+                    "kind": "frame",
+                    "id": f"t:{f['ms']}",
+                    "path": path,
+                    "gsdM": None,
+                    "label": f"The walk frame at {f['t']:g} s",
+                    "progress": f"frame {fi + 1} of {len(frames)}",
+                    "result": lambda det_id, fi=fi, ms=f["ms"], yaw=yaw: _face_result_name(
+                        fi, ms, yaw, det_id
+                    ),
+                }
+            )
+    return units
 
 
 def _manifest(project: Path) -> dict[str, Any]:

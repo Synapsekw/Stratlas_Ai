@@ -631,3 +631,122 @@ def test_unposed_photos_keep_every_draft_and_no_vote(tmp_path):
     dets = pass_of(root)["detections"]
     assert len(dets) == 6 and not any("vote" in d for d in dets)
     assert "voted" not in result["outputs"]["commit"]
+
+
+# ---------------------------------------------------------------------------------- walk frames
+
+WALK = "walk-w1"
+FW, FH = 512, 256
+
+
+def walk_project(root: Path, ffmpeg: str) -> Path:
+    """A project with one unplaced 360 walk: a 2 s grey equirect clip of FW x FH."""
+    import subprocess
+
+    root.mkdir(parents=True)
+    (root / "walks" / "w1").mkdir(parents=True)
+    clip = root / "walks" / "w1" / "play.mp4"
+    subprocess.run(
+        [ffmpeg, "-v", "error", "-f", "lavfi", "-i", f"color=c=gray:size={FW}x{FH}:rate=4", "-t", "2",
+         "-pix_fmt", "yuv420p", "-y", str(clip)],
+        check=True, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )  # fmt: skip
+    layer = {"kind": "walk", "id": WALK, "name": "Walk", "visible": True,
+             "record": {"path": "walks/w1/walk.json"}, "src": {"path": "walks/w1/play.mp4"}, "durationS": 2}  # fmt: skip
+    manifest = {"schema": "aio.project/1", "layers": [layer],
+                "classCatalogues": [{"assetType": "tower", "classes": [{"id": "rust", "label": "Rust"}]}]}  # fmt: skip
+    (root / "manifest.json").write_text(json.dumps(manifest), "utf-8")
+    return root
+
+
+@pytest.fixture
+def ffmpeg(monkeypatch):
+    from walk_synth import find_ffmpeg
+
+    exe = find_ffmpeg()
+    if exe is None:
+        pytest.skip("ffmpeg is not installed")
+    monkeypatch.setenv("QUADRION_FFMPEG", exe)
+    return exe
+
+
+def frame_params(server_file: str, times=(0.0, 0.5, 1.0), **extra) -> dict:
+    return params(
+        server_file, photos=(), layer=WALK, frames=[{"layer": WALK, "t": t} for t in times], **extra
+    )
+
+
+def test_walk_frames_run_on_faces_and_track_into_one_draft_per_object(tmp_path, ffmpeg):
+    root = walk_project(tmp_path / "p", ffmpeg)
+    with FakeVlm(scoring([0.9, 0.7])) as vlm:
+        result, _ = run_job(pipeline(), root, frame_params(state_file(root, vlm.url)))
+    doc = pass_of(root)
+    assert doc["layer"] == WALK and doc["assessed"] == ["t:0", "t:500", "t:1000"]
+    dets = doc["detections"]
+    # two boxes on each of the four faces, seen in all three frames: eight objects of three frames
+    assert len(dets) == 8
+    for d in dets:
+        assert d["space"] == "source" and (d["width"], d["height"]) == (FW, FH)
+        assert d["frame"]["layer"] == WALK and d["status"] == "draft" and d["class"] == "rust"
+        assert "photo" not in d and "_inside" not in d
+        assert 0 <= d["bbox"][0] < FW and d["bbox"][0] < d["bbox"][2] and d["bbox"][3] <= FH
+        assert d["track"]["frames"] == 3 and "point" not in d["track"]  # the walk is not placed
+        assert d["origin"]["detectorId"] == "rust-spots"
+    out = result["outputs"]["commit"]
+    assert out["frames"] == 3 and out["photos"] == 0 and out["tracked"]["merged"] == 16
+    # 3 frames x 4 faces, one detect call each (and the checks of their candidates)
+    assert sum(1 for r in vlm.requests if not r.get("logprobs")) == 12
+
+
+def test_a_walk_frame_past_the_end_is_skipped(tmp_path, ffmpeg):
+    root = walk_project(tmp_path / "p", ffmpeg)
+    with FakeVlm(scoring([0.9])) as vlm:
+        _, rec = run_job(pipeline(), root, frame_params(state_file(root, vlm.url), times=(0.5, 30.0)))
+    assert pass_of(root)["assessed"] == ["t:500"]
+    assert any("30 s could not be read" in str(m) for m in rec.of("log"))
+
+
+def test_the_faces_are_cut_from_the_decoded_frame(tmp_path, ffmpeg):
+    from aio_pipelines.inspection import equirect as EQ
+
+    root = walk_project(tmp_path / "p", ffmpeg)
+    with FakeVlm(scoring([0.9])) as vlm:
+        run_job(pipeline(), root, frame_params(state_file(root, vlm.url), times=(0.5,)), job_id="jf")
+    faces = sorted((root / "jobs" / "jf").rglob("500-y*.jpg"))
+    assert sorted(f.name for f in faces) == sorted(f"500-y{round(y)}.jpg" for y in EQ.FACE_YAWS)
+    with Image.open(faces[0]) as im:
+        assert im.size == (EQ.FACE_SIZE, EQ.FACE_SIZE)
+        r, g, _b = im.convert("RGB").getpixel((512, 512))
+        assert abs(r - 128) < 20 and abs(g - r) < 10
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda p: p.update(photos=["p1"]),  # photos and frames in one run
+        lambda p: p["frames"][0].update(layer="walk-other"),
+        lambda p: p["frames"][0].update(t=-1),
+        lambda p: p["frames"][0].update(extra=1),
+        lambda p: p.update(frames=[]),  # then nothing to run
+        lambda p: p.update(frames=[{"layer": WALK, "t": 0}] * 2001),
+    ],
+)
+def test_validate_rejects_bad_frames(tmp_path, mutate):
+    p = frame_params(str((tmp_path / "s.json").resolve()))
+    mutate(p)
+    with pytest.raises(JobError):
+        pipeline().validate(p)
+
+
+def test_validate_accepts_frames(tmp_path):
+    p = pipeline().validate(frame_params(str((tmp_path / "s.json").resolve())))
+    assert p["photos"] == [] and p["frames"][1] == {"layer": WALK, "t": 0.5}
+
+
+def test_frames_need_a_walk_layer(tmp_path, ffmpeg):
+    root = make_project(tmp_path / "p")
+    with FakeVlm(scoring([0.9])) as vlm:
+        p = frame_params(state_file(root, vlm.url))
+        p.update(layer="ph", frames=[{"layer": "ph", "t": 0}])
+        with pytest.raises(JobError, match="no 360 walk layer"):
+            run_job(pipeline(), root, p)
