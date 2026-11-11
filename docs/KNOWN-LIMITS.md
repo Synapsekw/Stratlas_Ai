@@ -421,3 +421,8 @@ These limits were seen on the founder's own real projects in the data folder (no
 - **Drop to ground uses the DSM under the item's footprint, or else the project ground level.** Where there is no DSM, a cloud over a hill is lowered to the flat project level, not to the hill.
 - **Results made before an offset changed keep the old height.** A 3D Tiles set and a change result are made from the heights at the time; make them again after changing an offset.
 - **Older builds ignore the offset.** A build from before this one draws the cloud at its file heights and drops the offset the next time it saves the project.
+
+## Confined-space inspections
+
+- Importing a confined-space inspection export needs processing tools 0.31.0 or later; an older pack is refused before any space is made. Use 0.34.0 for mission folders with several chambers: older packs give more false wall distance warnings and can drop a layer when two imports finish at the same moment.
+- Measurements are not tied to a space yet. Volume, surface, change, telecom and tiles jobs refuse a cloud in a space that has only local coordinates.
