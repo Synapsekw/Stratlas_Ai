@@ -4,6 +4,8 @@
         --detector <detector.json> --server <url> --split tune|bench [--truth-class <id>...] \
         [--threshold 0.8] [--iou 0.3] [--limit 50] [--compare <ref.json>] [--tolerance 0.05] \
         [--write-reference <ref.json>] [--example is=<crop> --example is-not=<crop>...] --out <dir>
+    uv run --project python python tools/detectors/bench.py --project <dir> --drafts <model-run.json> \
+        --split tune|bench [--truth-class <id>...] [...as above, without --example] --out <dir>
 
 Projects are only read, never written to. Photos come from the manifest's photo layers. Truth is
 every image sighting of an issue whose shape has bounds (box, rotated box, polygon), plus every
@@ -11,6 +13,12 @@ accepted detection of ``detections/*.json``, filtered by ``--truth-class``. A dr
 threshold is a true positive when it takes a truth item by IoU (at least ``--iou``, one to one, in
 score order; see ``metrics.py``). The old centre-contains rule is reported beside it. Output in
 ``--out``: ``report.json``, ``drafts.json``, ``pr.csv``, ``pr.json`` and ``sheet-<n>.jpg``.
+
+``--drafts <file>`` (one per ``--project``, in place of ``--detector`` and ``--server``) scores a
+finished run instead: the drafts of an ``aio.detections/1`` file, such as the app's
+``detections/model-<run>.json`` from an ONNX detector add-on, with their photo, box and confidence,
+through the same truth, split, matching, PR curve, references and compare. The report's
+``draftsSource`` names the files, their producer and model.
 
 ``--example is=<crop>`` / ``--example is-not=<crop>`` (at most 2 of each, as in the app) put few-shot
 example crops into every yes/no check, the way a ``detect.vlm`` run does with the crops the app
@@ -247,7 +255,20 @@ def run(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    detector = json.loads(Path(args.detector).read_text("utf-8"))
+    drafts_mode = bool(args.drafts)
+    if drafts_mode and (args.detector or args.server or args.example):
+        print(
+            "error: --drafts scores a finished run: leave out --detector, --server and --example.",
+            file=sys.stderr,
+        )
+        return 2
+    if not drafts_mode and not (args.detector and args.server):
+        print("error: give --detector and --server, or --drafts.", file=sys.stderr)
+        return 2
+    if drafts_mode and len(args.drafts) != len(projects):
+        print("error: give one --drafts file for each --project, in the same order.", file=sys.stderr)
+        return 2
+    detector = json.loads(Path(args.detector).read_text("utf-8")) if args.detector else {}
     classes = set(args.truth_class or [])
     ids, photos, sizes, truth = load_set(projects, args.split, args.limit, classes)
     off_grid = sorted(pid for pid, (w, h) in sizes.items() if max(w, h) != REVIEW_LONG_EDGE)
@@ -259,45 +280,27 @@ def run(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
 
-    try:
-        shots, problems = load_examples(validate_examples(examples_of(args.example)))
-    except (JobError, ValueError) as e:  # a bad --example
-        print(f"error: {e}", file=sys.stderr)
-        return 2
-    if problems:
-        print(f"error: {'; '.join(problems)}", file=sys.stderr)
-        return 2
-    client = VlmClient(args.server, api_key=args.api_key)
-    model = args.model or server_model(args.server, args.api_key)
-    frame = box_frame(model) if model else "pixels"
-    entries: list[dict[str, Any]] = []
-    failed = 0
-    for k, pid in enumerate(ids):
+    if drafts_mode:
         try:
-            with Image.open(photos[pid]) as im:
-                im.load()
-                # the tile count the app's job would use for this photo (detect.vlm ``_fit_tiles``)
-                gsd = _gsd(photos[pid], im.width, im.height) if detector.get("objectSizeM") else None
-                fitted = _fit_tiles(detector, im.width, im.height, gsd)
-                result = run_detector(client, im, fitted, frame=frame, start_tile=k, examples=shots)
-        except VlmUnavailable as e:
-            print(f"The model server cannot be reached: {e}", file=sys.stderr)
+            entries, source = drafts_entries(projects, [Path(p) for p in args.drafts], ids, sizes, classes)
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
             return 2
-        failed += result.failed
-        drafts = [
-            {
-                "photo": pid,
-                "box": [round(v, 1) for v in c.box],
-                "score": c.score,
-                "note": c.note,
-                "matched": False,
-            }
-            for c in result.candidates
-        ]
-        entries.append({"photo": pid, "drafts": drafts})
+        model = args.model or source["model"]
+        det_class = source["classId"]
+        detector = {"id": source["detector"], "version": None}
+        shots: list[Any] = []
+        failed = 0
+    else:
+        entries = []
+        ran = vlm_entries(args, detector, ids, photos, entries)
+        if isinstance(ran, int):
+            return ran
+        shots, model, failed = ran
+        det_class = class_label(detector.get("classId"))
+        source = None
 
     drafts = [d for e in entries for d in e["drafts"]]
-    det_class = class_label(detector.get("classId"))
     for d, (j, v) in zip(drafts, metrics.match(drafts, truth, args.iou), strict=True):
         at = d["score"] is not None and d["score"] >= args.threshold
         d["matched"] = at and j is not None
@@ -308,6 +311,7 @@ def run(args: argparse.Namespace) -> int:
     report = {
         "detector": detector.get("id"),
         "detectorVersion": detector.get("version"),
+        **({"draftsSource": source} if source else {}),
         "classId": det_class,
         "model": model,
         "split": args.split,
@@ -333,6 +337,131 @@ def run(args: argparse.Namespace) -> int:
         "reviewGridMismatch": len(off_grid),
         "datasetHash": metrics.dataset_hash(ids, truth),
     }
+    return finish(args, report, drafts, pr, entries, photos, truth)
+
+
+def drafts_entries(
+    projects: list[Path],
+    files: list[Path],
+    ids: list[str],
+    sizes: dict[str, tuple[int, int]],
+    classes: set[str],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """The drafts of finished runs (``aio.detections/1`` files, one per project, such as the app's
+    ``detections/model-<run>.json`` of an ONNX detector) as bench entries over the set's photos.
+
+    A draft counts when its photo is in the set and its box maps to the photo's pixels (``preview``,
+    ``normalized`` or ``source`` space, as accepted truth); with ``classes``, only drafts of those
+    classes (by ``class``, or the model's own ``label``). Its score is its ``confidence``. Answers the
+    entries and the source the report names: the files, their producer and model, the class."""
+    by_photo: dict[str, list[dict[str, Any]]] = {}
+    producers: list[str] = []
+    models: list[str] = []
+    seen_classes: set[str] = set()
+    outside = 0
+    for project, file in zip(projects, files, strict=True):
+        doc = _read_json(file)
+        if not isinstance(doc, dict) or doc.get("schema") != "aio.detections/1":
+            raise ValueError(f"{file} is not an aio.detections/1 file")
+        prefix = f"{project.name}/" if len(projects) > 1 else ""
+        if doc.get("producer"):
+            producers.append(str(doc["producer"]))
+        run = doc.get("run") if isinstance(doc.get("run"), dict) else {}
+        if run.get("model"):
+            models.append(str(run["model"]))
+        for d in doc.get("detections") or []:
+            if not isinstance(d, dict) or d.get("frame") or d.get("photo") is None:
+                continue
+            if classes and d.get("class") not in classes and d.get("label") not in classes:
+                continue
+            key = prefix + str(d["photo"])
+            box = _detection_box(d, sizes[key]) if key in sizes else None
+            if box is None:
+                outside += 1
+                continue
+            score = d.get("confidence")
+            seen_classes.add(class_label(d.get("class")))
+            by_photo.setdefault(key, []).append(
+                {
+                    "photo": key,
+                    "box": [round(v, 1) for v in box],
+                    "score": float(score) if isinstance(score, int | float) else None,
+                    "note": d.get("note"),
+                    "matched": False,
+                }
+            )
+    if len(classes) == 1:
+        cls = next(iter(classes))
+    else:
+        cls = next(iter(seen_classes)) if len(seen_classes) == 1 else UNCLASSIFIED
+    source = {
+        "files": [str(f) for f in files],
+        "detector": ", ".join(sorted(set(producers))) or None,
+        "model": ", ".join(sorted(set(models))) or None,
+        "classId": cls,
+        "draftsOutsideSet": outside,
+    }
+    return [{"photo": pid, "drafts": by_photo.get(pid, [])} for pid in ids], source
+
+
+def vlm_entries(
+    args: argparse.Namespace,
+    detector: dict[str, Any],
+    ids: list[str],
+    photos: dict[str, Path],
+    entries: list[dict[str, Any]],
+) -> int | tuple[list[Any], str | None, int]:
+    """Run the detector over the photos into ``entries``; answers the few-shot examples, the model
+    and the failed tiles, or an exit code."""
+    try:
+        shots, problems = load_examples(validate_examples(examples_of(args.example)))
+    except (JobError, ValueError) as e:  # a bad --example
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    if problems:
+        print(f"error: {'; '.join(problems)}", file=sys.stderr)
+        return 2
+    client = VlmClient(args.server, api_key=args.api_key)
+    model = args.model or server_model(args.server, args.api_key)
+    frame = box_frame(model) if model else "pixels"
+    failed = 0
+    for k, pid in enumerate(ids):
+        try:
+            with Image.open(photos[pid]) as im:
+                im.load()
+                # the tile count the app's job would use for this photo (detect.vlm ``_fit_tiles``)
+                gsd = _gsd(photos[pid], im.width, im.height) if detector.get("objectSizeM") else None
+                fitted = _fit_tiles(detector, im.width, im.height, gsd)
+                result = run_detector(client, im, fitted, frame=frame, start_tile=k, examples=shots)
+        except VlmUnavailable as e:
+            print(f"The model server cannot be reached: {e}", file=sys.stderr)
+            return 2
+        failed += result.failed
+        drafts = [
+            {
+                "photo": pid,
+                "box": [round(v, 1) for v in c.box],
+                "score": c.score,
+                "note": c.note,
+                "matched": False,
+            }
+            for c in result.candidates
+        ]
+        entries.append({"photo": pid, "drafts": drafts})
+
+    return shots, model, failed
+
+
+def finish(
+    args: argparse.Namespace,
+    report: dict[str, Any],
+    drafts: list[dict[str, Any]],
+    pr: list[dict[str, Any]],
+    entries: list[dict[str, Any]],
+    photos: dict[str, Path],
+    truth: dict[str, list[dict[str, Any]]],
+) -> int:
+    """Write the report, drafts, PR curve and sheets; compare and store the reference. Answers the exit code."""
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "report.json").write_text(json.dumps(report, indent=2), "utf-8")
@@ -427,8 +556,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--project", required=True, action="append", help="a reference project; repeat for several"
     )
-    ap.add_argument("--detector", required=True, help="an aio.vlm-detector/1 file")
-    ap.add_argument("--server", required=True, help="llama-server URL")
+    ap.add_argument("--detector", help="an aio.vlm-detector/1 file (with --server)")
+    ap.add_argument("--server", help="llama-server URL (with --detector)")
+    ap.add_argument(
+        "--drafts",
+        action="append",
+        default=[],
+        help="score a finished run instead: an aio.detections/1 file (detections/model-<run>.json), one per --project",
+    )
     ap.add_argument("--model", help="model id, picks the box frame (default: the server's loaded model)")
     ap.add_argument("--split", required=True, choices=("tune", "bench"))
     ap.add_argument("--truth-class", action="append", default=[], help="class id; repeat for several")

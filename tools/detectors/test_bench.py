@@ -449,3 +449,82 @@ def test_a_bad_or_missing_example_stops_the_bench(project, tmp_path):
             "http://127.0.0.1:1", "--split", "bench", "--out", str(project["out"])]  # fmt: skip
     assert bench.main([*base, "--example", "maybe=x.jpg"]) == 2
     assert bench.main([*base, "--example", f"is={tmp_path / 'gone.jpg'}"]) == 2
+
+
+def _model_run(project: dict, path: Path) -> Path:
+    """An ONNX detection run as the app writes it (detections/model-<run>.json): drafts on two truth
+    squares (one in source pixels at 2x, one normalised), the distractor, a low score, another class,
+    a photo outside the split and a video frame."""
+    ids, tune_id = project["ids"], project["tune_id"]
+
+    def det(photo, bbox, conf, cls=CLASS, **extra):
+        return {"photo": photo, "class": cls, "confidence": conf, "status": "draft", "source": "model",
+                "bbox": bbox, "space": "source", "width": W, "height": H, **extra}  # fmt: skip
+
+    dets = [
+        det(ids[0], [100, 100, 180, 180], 0.91, width=W * 2, height=H * 2),
+        {**det(ids[1], [200 / W, 100 / H, 260 / W, 160 / H], 0.88), "space": "normalized"},
+        det(ids[4], [300, 200, 340, 240], 0.85),  # the distractor: a false alarm
+        det(ids[3], [10, 10, 40, 40], 0.2),  # on a truth square, but below the threshold
+        det(ids[5], [5, 5, 35, 35], 0.95, cls="road-crack"),  # another class: left out
+        det(tune_id, [10, 10, 50, 50], 0.9),  # in the tune split: outside the set
+        {"frame": {"layer": "v", "t": 1.0}, "class": CLASS, "confidence": 0.9, "bbox": [0, 0, 9, 9]},
+    ]
+    doc = {"schema": "aio.detections/1", "source": "model", "producer": "Road YOLO 1.0.0", "layer": "ph",
+           "run": {"id": "r1", "at": "2026-11-11T10:00:00Z", "model": "road-yolo", "images": 10},
+           "detections": dets}  # fmt: skip
+    path.write_text(json.dumps(doc), "utf-8")
+    return path
+
+
+def _drafts_run(project: dict, drafts: Path, *extra: str) -> dict:
+    code = bench.main(
+        ["--project", str(project["root"]), "--drafts", str(drafts), "--split", "bench",
+         "--truth-class", CLASS, "--out", str(project["out"]), *extra]
+    )  # fmt: skip
+    assert code == 0
+    return json.loads((project["out"] / "report.json").read_text("utf-8"))
+
+
+def test_drafts_of_a_finished_run_are_scored_like_a_vlm_run(project, tmp_path):
+    report = _drafts_run(project, _model_run(project, tmp_path / "model-r1.json"))
+    assert report["photos"] == 10 and report["truth"] == 4
+    assert report["tp"] == 2 and report["fp"] == 1 and report["fn"] == 2
+    assert report["precision"] == pytest.approx(2 / 3) and report["recall"] == pytest.approx(0.5)
+    assert report["model"] == "road-yolo" and report["detector"] == "Road YOLO 1.0.0"
+    assert report["classId"] == CLASS and report["examples"] == summary_none()
+    src = report["draftsSource"]
+    assert (
+        src["files"] == [str(tmp_path / "model-r1.json")] and src["draftsOutsideSet"] == 1
+    )  # the tune photo's
+    drafts = json.loads((project["out"] / "drafts.json").read_text("utf-8"))
+    assert len(drafts) == 4  # the two hits, the distractor and the low score
+    assert {d["photo"] for d in drafts if d["matched"]} == {project["ids"][0], project["ids"][1]}
+    rows = json.loads((project["out"] / "pr.json").read_text("utf-8"))
+    assert rows[4]["threshold"] == 0.2 and rows[4]["tp"] == 3  # the low score counts from 0.2 down
+    assert (project["out"] / "sheet-1.jpg").is_file()
+
+
+def test_drafts_runs_write_and_compare_references(project, tmp_path, capsys):
+    drafts = _model_run(project, tmp_path / "model-r1.json")
+    ref = tmp_path / "refs" / "road.json"
+    _drafts_run(project, drafts, "--write-reference", str(ref))
+    stored = json.loads(ref.read_text("utf-8"))
+    assert stored["detector"] == "Road YOLO 1.0.0" and stored["model"] == "road-yolo"
+    _drafts_run(project, drafts, "--compare", str(ref))
+    assert "Within 0.05" in capsys.readouterr().out
+
+
+def test_drafts_mode_refuses_a_mix_or_a_missing_source(project, tmp_path, capsys):
+    drafts = str(_model_run(project, tmp_path / "model-r1.json"))
+    base = ["--project", str(project["root"]), "--split", "bench", "--out", str(project["out"])]
+    assert bench.main([*base, "--drafts", drafts, "--server", "http://127.0.0.1:1"]) == 2
+    assert bench.main([*base, "--detector", str(project["detector"])]) == 2
+    assert bench.main([*base, "--drafts", drafts, "--drafts", drafts]) == 2  # one per project
+    (tmp_path / "bad.json").write_text("{}", "utf-8")
+    assert bench.main([*base, "--drafts", str(tmp_path / "bad.json")]) == 2
+    assert "aio.detections/1" in capsys.readouterr().err
+
+
+def summary_none():
+    return bench.summary([])

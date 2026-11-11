@@ -22,6 +22,22 @@ uv run --project python python tools/detectors/bench.py \
   into every yes/no check, as a `detect.vlm` run does with the crops the app picks from the detector's
   `examples` and the review ledger. The report's `examples` says how many were used. Bench with and
   without them on the same split to see what they change.
+- `--drafts <file>` scores a finished run instead of running a vision model, so an ONNX detector
+  add-on (the road YOLO model, for one) is judged the same way: `--drafts` takes an
+  `aio.detections/1` file such as the app's `detections/model-<run>.json`, one per `--project` in the
+  same order, in place of `--detector` and `--server` (`--example` does not apply). Each draft on a
+  photo of the split counts with its box (`preview`, `normalized` or `source` space, as accepted
+  truth) and its `confidence` as the score; with `--truth-class`, only drafts of those classes (by
+  `class`, or the model's own `label`). Video frames are left out. The same truth, split, matching, PR
+  curve, references and compare apply. The report's `detector` and `model` are the file's
+  `producer` and `run.model` (`--model` overrides), and `draftsSource` names the files, the class the
+  unmatched drafts count for and `draftsOutsideSet` (drafts on photos outside the split or the limit).
+
+  ```
+  uv run --project python python tools/detectors/bench.py --project <dir> \
+    --drafts <dir>/detections/model-<run>.json --split bench --truth-class <id> --out <dir>
+  ```
+
 - `--project` may repeat. `--limit` caps the photos per project, read in id order. With several
   projects a photo key is `<project folder>/<photo id>`, so two projects with the same folder name are
   refused.
@@ -157,8 +173,8 @@ so the vote still needs a run on a reference project with posed photos.
 uv run --project python pytest tools/detectors
 ```
 
-`test_metrics.py` (matching and metrics on synthetic boxes), `test_bench.py` (a synthetic project and
-the fake llama-server from `python/tests/fake_vlm.py`), `test_prerelease.py` (the bench stubbed) and
+`test_metrics.py` (matching and metrics on synthetic boxes), `test_bench.py` (a synthetic project, the
+fake llama-server from `python/tests/fake_vlm.py` and a finished model run for `--drafts`), `test_prerelease.py` (the bench stubbed) and
 `test_vote_bench.py` (two vote fixtures). No real model runs and nothing is downloaded.
 
 ## Reference projects
