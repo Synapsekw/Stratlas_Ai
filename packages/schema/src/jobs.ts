@@ -113,6 +113,8 @@ export const PipelineName = z.enum([
   'thermal.hotspots',
   // Local vision-model detectors (Analytics pack)
   'detect.vlm',
+  // 360 walk detections tracked and placed (pipeline pack WALK_TRACK_MIN_PACK)
+  'walk.track',
 ]);
 export type PipelineName = z.infer<typeof PipelineName>;
 
@@ -412,6 +414,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     title: 'Run detectors',
     description:
       'Find defects in photos with the detectors of the Analytics pack, on this computer.',
+  },
+  {
+    name: 'walk.track',
+    title: 'Track walk detections',
+    description:
+      'Joins the drafts of neighbouring 360 walk frames that saw the same object into one draft, and places it in the project from the walk path.',
   },
 ];
 
@@ -1286,6 +1294,27 @@ export const WalkProcessParams = z
   .strict();
 export type WalkProcessParams = z.infer<typeof WalkProcessParams>;
 
+/** The first pipeline pack with `walk.track` (plan 2026-11-11-walk-detections), and its name. */
+export const WALK_TRACK_MIN_PACK = '0.35.0';
+export const WALK_TRACK_FEATURE = 'Walk detections tracked and placed';
+
+/**
+ * `walk.track` (python `aio_pipelines/inspection/walkjob.py`; plan 2026-11-11-walk-detections):
+ * the walk frame drafts of one pass become one draft per object (`Detection.track`). Rewrites only
+ * that pass; reviewed detections are never changed.
+ */
+export const WalkTrackParams = z
+  .object({
+    /** The pass, `detections/<name>.json`. */
+    pass: z
+      .string()
+      .regex(/^detections\/[A-Za-z0-9._-]{1,120}\.json$/, 'A pass is detections/<name>.json'),
+    /** Only the frames of this walk layer; default every walk layer of the pass. */
+    layer: Id.optional(),
+  })
+  .strict();
+export type WalkTrackParams = z.infer<typeof WalkTrackParams>;
+
 /**
  * `pano.stitch` (python `aio_pipelines/pano/pipeline.py`; plan 2026-10-13-drone-panoramas-p1).
  * Reads `panoramas/<layer>/<pano>/frames/`, writes `pano.jpg`, `thumb.jpg` and `stitch.json` beside.
@@ -1373,6 +1402,7 @@ const PARAMS = {
   'thermal.decode': ThermalDecodeParams,
   'thermal.hotspots': ThermalHotspotsParams,
   'detect.vlm': DetectVlmParams,
+  'walk.track': WalkTrackParams,
 } as const satisfies Record<PipelineName, z.ZodType>;
 
 export function pipelineParams(name: PipelineName): z.ZodType<Record<string, unknown>> {

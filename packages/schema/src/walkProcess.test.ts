@@ -1,7 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { ipc } from './ipc';
-import { PIPELINES, PipelineName, WalkProcessParams, pipelineParams } from './jobs';
+import {
+  PIPELINES,
+  PipelineName,
+  WALK_TRACK_MIN_PACK,
+  WalkProcessParams,
+  WalkTrackParams,
+  pipelineParams,
+} from './jobs';
 import { SCHEMA_REGISTRY } from './versions';
 import {
   WALK_IMU_COLUMNS,
@@ -71,6 +78,31 @@ describe('aio.walk-process/1', () => {
   it('is registered as a project file beside the walk', () => {
     const row = SCHEMA_REGISTRY.find((e) => e.family === 'aio.walk-process');
     expect(row).toMatchObject({ version: 1, home: 'project', where: 'walks/<id>/process.json' });
+  });
+});
+
+describe('walk.track', () => {
+  it('is a pipeline with a title, from pack 0.35.0', () => {
+    expect(PipelineName.options).toContain('walk.track');
+    expect(PIPELINES.find((p) => p.name === 'walk.track')?.title).toBe('Track walk detections');
+    expect(pipelineParams('walk.track')).toBe(WalkTrackParams);
+    expect(WALK_TRACK_MIN_PACK).toBe('0.35.0');
+  });
+
+  it('takes a pass under detections/ and an optional walk layer, nothing else', () => {
+    expect(WalkTrackParams.safeParse({ pass: 'detections/model-run1.json' }).success).toBe(true);
+    expect(
+      WalkTrackParams.safeParse({ pass: 'detections/vlm-run-a1.json', layer: 'walk-1' }).success,
+    ).toBe(true);
+    for (const pass of [
+      'model-run1.json',
+      'detections/../x.json',
+      'detections/a/b.json',
+      'detections/x.txt',
+      'C:/p/detections/x.json',
+    ])
+      expect(WalkTrackParams.safeParse({ pass }).success).toBe(false);
+    expect(WalkTrackParams.safeParse({ pass: 'detections/x.json', walk: 'w' }).success).toBe(false);
   });
 });
 

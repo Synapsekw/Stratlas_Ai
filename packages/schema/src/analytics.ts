@@ -152,12 +152,24 @@ export const AnalyticsPackManifest = z
   .strict();
 export type AnalyticsPackManifest = z.infer<typeof AnalyticsPackManifest>;
 
-/** `detect.vlm` params. */
+/** The first pipeline pack whose `detect.vlm` reads 360 walk frames (`DetectVlmParams.frames`). */
+export const DETECT_FRAMES_MIN_PACK = '0.35.0';
+
+/**
+ * `detect.vlm` params. A run reads one layer: the photos of a photos layer, or (pipeline pack
+ * `DETECT_FRAMES_MIN_PACK`) the frames of a walk layer, `layer` then naming that walk layer and
+ * `photos` empty. At least one photo or frame.
+ */
 export const DetectVlmParams = z
   .object({
     run: z.string().regex(/^run-[a-z0-9-]{1,60}$/),
     layer: Id,
-    photos: z.array(Id).min(1).max(5000),
+    photos: z.array(Id).max(5000),
+    /** 360 walk frames, read through perspective faces: the walk layer and the video second. */
+    frames: z
+      .array(z.object({ layer: Id, t: z.number().nonnegative() }).strict())
+      .max(2000)
+      .optional(),
     detectors: z
       .array(
         z
@@ -191,7 +203,11 @@ export const DetectVlmParams = z
     modelSha256: Sha256,
     model: z.string().min(1),
   })
-  .strict();
+  .strict()
+  .refine((p) => p.photos.length + (p.frames?.length ?? 0) > 0, {
+    message: 'A detector run reads at least one photo or frame.',
+    path: ['photos'],
+  });
 export type DetectVlmParams = z.infer<typeof DetectVlmParams>;
 
 /**

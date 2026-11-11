@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { DetectQueued, DetectVlmParams, VlmDetector, ipc, ipcEvents, vlmPassName } from './index';
+import {
+  DETECT_FRAMES_MIN_PACK,
+  DetectQueued,
+  DetectVlmParams,
+  VlmDetector,
+  ipc,
+  ipcEvents,
+  vlmPassName,
+} from './index';
 
 const sha = 'a'.repeat(64);
 
@@ -62,6 +70,34 @@ describe('analytics contracts', () => {
       DetectVlmParams.safeParse({ ...params, serverFile: 'C:/data/runtime/analytics-server.json' })
         .success,
     ).toBe(true);
+  });
+  it('DetectVlmParams takes walk frames in place of photos, at least one of either', () => {
+    const params = {
+      run: 'run-1',
+      layer: 'walk-1',
+      photos: [] as string[],
+      detectors: [{ where: 'shipped', detector, threshold: 0.8 }],
+      serverFile: 'C:/data/runtime/analytics-server.json',
+      modelSha256: sha,
+      model: 'qwen2.5-vl-7b-instruct-q4_k_m',
+    };
+    const frames = [
+      { layer: 'walk-1', t: 0 },
+      { layer: 'walk-1', t: 2.5 },
+    ];
+    expect(DetectVlmParams.safeParse({ ...params, frames }).success).toBe(true);
+    expect(DetectVlmParams.safeParse(params).success).toBe(false);
+    expect(DetectVlmParams.safeParse({ ...params, frames: [] }).success).toBe(false);
+    expect(DetectVlmParams.safeParse({ ...params, photos: ['p001'] }).success).toBe(true);
+    expect(
+      DetectVlmParams.safeParse({ ...params, frames: [{ layer: 'walk-1', t: -1 }] }).success,
+    ).toBe(false);
+    expect(
+      DetectVlmParams.safeParse({ ...params, frames: [{ layer: 'walk-1', t: 1, x: 1 }] }).success,
+    ).toBe(false);
+    const many = Array.from({ length: 2001 }, (_, k) => ({ layer: 'walk-1', t: k }));
+    expect(DetectVlmParams.safeParse({ ...params, frames: many }).success).toBe(false);
+    expect(DETECT_FRAMES_MIN_PACK).toBe('0.35.0');
   });
   it('DetectQueued lists a waiting run and the queue event may carry a failed start', () => {
     const item = {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DETECTIONS_SCHEMA,
   DetectionOrigin,
+  DetectionTrack,
   DetectionVote,
   DetectionsFile,
   pipelineParams,
@@ -259,5 +260,77 @@ describe('multi-view vote', () => {
     expect(DetectionsFile.safeParse(fileWith({ views: 0 })).success).toBe(false);
     expect(DetectionVote.safeParse({ views: 2, placedOn: 'sky' }).success).toBe(false);
     expect(DetectionVote.safeParse({ views: 2, score: 1.5 }).success).toBe(false);
+  });
+});
+
+describe('the 360 walk track', () => {
+  const track = {
+    frames: 3,
+    firstT: 4,
+    lastT: 5,
+    score: 0.82,
+    point: [3.5, -1, 0.25],
+    placedOn: 'rays',
+    bearingDeg: 271.5,
+    rangeM: 6.4,
+    sightings: [
+      { t: 4, bbox: [5700, 1400, 5900, 1600], confidence: 0.7, id: 'd2' },
+      { t: 5, bbox: [100, 1400, 300, 1600] },
+    ],
+    sightingsOmitted: 2,
+  };
+  const frameDraft = (tr: unknown) => ({
+    schema: DETECTIONS_SCHEMA,
+    source: 'model',
+    layer: 'walk-1',
+    detections: [
+      {
+        frame: { layer: 'walk-1', t: 4.5 },
+        class: 'crack',
+        bbox: [5600, 1400, 6200, 1600],
+        space: 'source',
+        width: 5760,
+        height: 2880,
+        track: tr,
+      },
+    ],
+  });
+  it('round-trips a track on a walk frame draft; a box may wrap the seam', () => {
+    const parsed = DetectionsFile.parse(frameDraft(track));
+    expect(parsed.detections[0]?.track).toEqual(track);
+    expect(DetectionsFile.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed);
+  });
+  it('takes a track without a point (walk not placed) and every placement', () => {
+    const ok = { frames: 2, firstT: 0, lastT: 1 };
+    expect(DetectionTrack.parse(ok)).toEqual(ok);
+    for (const placedOn of ['mesh', 'cloud', 'rays', 'ground'])
+      expect(DetectionTrack.safeParse({ ...ok, placedOn }).success).toBe(true);
+  });
+  it('refuses an unknown key, in the track and in a sighting', () => {
+    const ok = { frames: 2, firstT: 0, lastT: 1 };
+    expect(DetectionTrack.safeParse({ ...ok, views: 2 }).success).toBe(false);
+    expect(
+      DetectionTrack.safeParse({ ...ok, sightings: [{ t: 1, bbox: [1, 1, 5, 5], photo: 'p1' }] })
+        .success,
+    ).toBe(false);
+  });
+  it('checks its ranges', () => {
+    const ok = { frames: 2, firstT: 0, lastT: 1 };
+    expect(DetectionsFile.safeParse(frameDraft({ ...ok, frames: 0 })).success).toBe(false);
+    for (const bad of [
+      { frames: 1.5 },
+      { firstT: -1 },
+      { lastT: -1 },
+      { placedOn: 'sky' },
+      { score: 1.5 },
+      { bearingDeg: 361 },
+      { rangeM: -0.1 },
+      { sightingsOmitted: 0 },
+      { sightings: [{ t: -1, bbox: [1, 1, 5, 5] }] },
+      { sightings: [{ t: 1, bbox: [5, 1, 1, 5] }] },
+      { sightings: [{ t: 1, bbox: [1, 1, 5, 5], confidence: 2 }] },
+      { sightings: Array.from({ length: 201 }, (_, k) => ({ t: k, bbox: [1, 1, 5, 5] })) },
+    ])
+      expect(DetectionTrack.safeParse({ ...ok, ...bad }).success).toBe(false);
   });
 });

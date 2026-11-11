@@ -120,6 +120,51 @@ export const DetectionVote = z
   })
   .strict();
 
+/**
+ * A 360 walk track (`walk.track`, and `detect.vlm` on walk frames, pipeline pack 0.35.0): this draft
+ * stands for the drafts of neighbouring frames of one walk that saw the same object. The lead (this
+ * draft) is the best-scored frame; the others live on in `sightings`. Confidence stays the lead's
+ * own score: frames of one walk are not independent views.
+ */
+export const DetectionTrack = z
+  .object({
+    /** Sampled frames of the walk whose drafts joined the track, this one included. */
+    frames: z.number().int().min(1),
+    /** The first and last frame time of the track, video seconds of the walk layer. */
+    firstT: z.number().nonnegative(),
+    lastT: z.number().nonnegative(),
+    /** This draft's own detector score before the tracking. */
+    score: z.number().min(0).max(1).optional(),
+    /** Where the object sits, project local frame, metres (absent: the walk is not placed). */
+    point: z.tuple([z.number(), z.number(), z.number()]).optional(),
+    /** What the point was placed on: a mesh, the point cloud, crossing rays, or the ground. */
+    placedOn: z.enum(['mesh', 'cloud', 'rays', 'ground']).optional(),
+    /** Compass bearing from the lead frame's walk position to the point, degrees from north. */
+    bearingDeg: z.number().min(0).max(360).optional(),
+    /** Distance from the lead frame's walk position to the point, metres. */
+    rangeM: z.number().nonnegative().optional(),
+    /**
+     * The other members: frame time, box, score and id. Each box is in this draft's `space` and
+     * size (a walk's frames are one size) and, like any walk frame box, may wrap past `width`.
+     */
+    sightings: z
+      .array(
+        z
+          .object({
+            t: z.number().nonnegative(),
+            bbox: DetectionBox,
+            confidence: z.number().min(0).max(1).optional(),
+            id: z.string().min(1).max(128).optional(),
+          })
+          .strict(),
+      )
+      .max(200)
+      .optional(),
+    /** Members past the cap of 200 sightings that were not listed. */
+    sightingsOmitted: z.number().int().min(1).optional(),
+  })
+  .strict();
+
 export const Detection = z
   .object({
     /** Stable id chosen by the producer; issues follow their detections by it across runs. */
@@ -178,6 +223,8 @@ export const Detection = z
     origin: DetectionOrigin.optional(),
     /** The multi-view vote that merged this draft with those of other photos. */
     vote: DetectionVote.optional(),
+    /** The 360 walk track that joined this draft with those of neighbouring frames. */
+    track: DetectionTrack.optional(),
     /** Values a custom analytics request read off the photo (a gauge reading, a state). */
     fields: z.array(FieldValue).max(14).optional(),
     /**
@@ -278,3 +325,4 @@ export type DetectionGeom = z.infer<typeof DetectionGeom>;
 export type DetectionOrigin = z.infer<typeof DetectionOrigin>;
 export type DetectionRun = z.infer<typeof DetectionRun>;
 export type DetectionVote = z.infer<typeof DetectionVote>;
+export type DetectionTrack = z.infer<typeof DetectionTrack>;

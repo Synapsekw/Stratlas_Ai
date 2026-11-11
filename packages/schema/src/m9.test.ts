@@ -121,7 +121,8 @@ describe('M9 additive rule: no new field inside existing records', () => {
       'threshold',
     ]);
     // suggestedNew (2026-10-15) is display-only and safe for an 0.8 build to strip; so is the
-    // multi-view vote (2026-10-31, tools/compat/multiview-vote-additive.test.mjs).
+    // multi-view vote (2026-10-31, tools/compat/multiview-vote-additive.test.mjs) and the 360 walk
+    // track (2026-11-11, tools/compat/walk-track-additive.test.mjs).
     expect(keysOf(Detection)).toMatchInlineSnapshot(`
       [
         "bbox",
@@ -151,6 +152,7 @@ describe('M9 additive rule: no new field inside existing records', () => {
         "space",
         "status",
         "suggestedNew",
+        "track",
         "uncertain",
         "unscored",
         "updatedAt",

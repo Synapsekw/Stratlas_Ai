@@ -129,6 +129,7 @@ describe('pipeline params', () => {
       'thermal.decode',
       'thermal.hotspots',
       'detect.vlm',
+      'walk.track',
     ]);
     for (const p of PIPELINES) expect(p.title.length).toBeGreaterThan(3);
   });
