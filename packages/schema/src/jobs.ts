@@ -11,7 +11,7 @@ import { SeverityModel } from './severity';
 import { PhotoPreset, PhotoProduct, PhotoRunId, PhotoSource } from './photogrammetry';
 import { ModelEvidenceParams } from './modelEvidence';
 import { PanoFolderId, PanoQuality, PanoShape } from './panoStitch';
-import { PointcloudCleanParams, PointcloudCleanup } from './pointcloudCleanup';
+import { PointcloudCleanParams, PointcloudCleanup, SegmentLiftParams } from './pointcloudCleanup';
 import { ProcModelId, ProcPartKind } from './procmodel';
 import { RfRunId, SectorId } from './rf';
 import { TilesetId } from './tilesets';
@@ -101,6 +101,8 @@ export const PipelineName = z.enum([
   'model.evidence',
   // Point cloud cleanup (pipeline pack POINTCLOUD_CLEAN_MIN_PACK)
   'pointcloud.clean',
+  // Photo masks lifted onto a point cloud (pipeline pack SEGMENT_LIFT_MIN_PACK)
+  'segment.lift',
   // Telecom antenna inventory (pipeline pack TELECOM_ANTENNAS_MIN_PACK)
   'telecom.antennas',
   // Antenna flagging (pipeline pack TELECOM_FLAG_MIN_PACK)
@@ -378,6 +380,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     title: 'Clean up a point cloud',
     description:
       'Marks noise with PDAL outlier filters, or writes a cleaned copy of a COPC cloud as a new layer.',
+  },
+  {
+    name: 'segment.lift',
+    title: 'Lift photo masks onto a point cloud',
+    description:
+      'Projects object outlines drawn on posed photos onto a point cloud, keeping the surface each photo saw, as classification regions.',
   },
   {
     name: 'telecom.antennas',
@@ -1396,6 +1404,7 @@ const PARAMS = {
   'pano.stitch': PanoStitchParams,
   'model.evidence': ModelEvidenceParams,
   'pointcloud.clean': PointcloudCleanParams,
+  'segment.lift': SegmentLiftParams,
   'telecom.antennas': TelecomAntennasParams,
   'telecom.flag': TelecomFlagParams,
   'rf.coverage': RfCoverageParams,

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SmrfParams } from './addons';
 import { Id, ProjectPath } from './common';
 
 /*
@@ -19,6 +20,16 @@ export const NOISE_CLASS = 7;
 /** The first pipeline pack with `pointcloud.clean`; one constant, set at merge time (0.12.0, provisional). */
 export const POINTCLOUD_CLEAN_MIN_PACK = '0.12.0';
 export const POINTCLOUD_CLEAN_FEATURE = 'Point cloud noise removal and cleaned copies';
+/** The first pipeline pack whose noise run takes `ground` (the Ground classifier add-on). */
+export const POINTCLOUD_GROUND_MIN_PACK = '0.35.0';
+export const POINTCLOUD_GROUND_FEATURE = 'Marking ground points (Ground classifier add-on)';
+/**
+ * The first pipeline pack that reads a region's `depth` band and runs `segment.lift`. A recipe
+ * with a depth band is saved or exported only by this pack or later.
+ */
+export const SEGMENT_LIFT_MIN_PACK = '0.35.0';
+export const SEGMENT_LIFT_FEATURE =
+  'Classifying a point cloud from photo masks (Segmentation add-on)';
 
 export const DEFAULT_OUTLIER = { meanK: 8, multiplier: 2 } as const;
 export const DEFAULT_ELM = { cell: 10, threshold: 1 } as const;
@@ -87,6 +98,19 @@ export const CleanupRegion = z
     /** NDC vertices: 4 corners for a box, 3 to 256 for a lasso. */
     polygon: z.array(Ndc).min(3).max(MAX_LASSO_VERTICES),
     action: RegionAction,
+    /**
+     * Only points whose clip `w` (their depth along the view, metres for a perspective camera)
+     * lies in `[near, far]`, both included. A region lifted from a photo mask (`segment.lift`)
+     * carries one so it takes the surface the photo saw, not everything behind it. Absent: any
+     * depth in front of the view, as before (pack 0.35.0 and later read it).
+     */
+    depth: z
+      .object({ near: z.number().min(0), far: z.number().min(0) })
+      .strict()
+      .refine((d) => d.near <= d.far, { message: 'The near depth is beyond the far one.' })
+      .optional(),
+    /** Where the region came from, shown in the cleanup steps (for example "Mask on DJI_0042"). */
+    label: z.string().max(120).optional(),
   })
   .strict()
   .refine((r) => r.shape !== 'box' || r.polygon.length === 4, {
@@ -103,7 +127,14 @@ export const OutlierParams = z
 export const ElmParams = z
   .object({ cell: z.number().min(0.5).max(100), threshold: z.number().min(0.1).max(50) })
   .strict();
-export const NoiseParams = z.object({ outlier: OutlierParams, elm: ElmParams.optional() }).strict();
+export const NoiseParams = z
+  .object({
+    outlier: OutlierParams,
+    elm: ElmParams.optional(),
+    /** Ground classification (PDAL SMRF, class 2) from the Ground classifier add-on. */
+    ground: SmrfParams.optional(),
+  })
+  .strict();
 export type NoiseParams = z.infer<typeof NoiseParams>;
 
 /** A noise run: its working copy, the settings, what it marked. Also the record file beside the copy. */
@@ -116,6 +147,8 @@ export const NoiseRun = z
     params: NoiseParams,
     marked: z.number().int().nonnegative(),
     total: z.number().int().nonnegative(),
+    /** Points the ground classification set to class 2 (runs with `params.ground`). */
+    groundMarked: z.number().int().nonnegative().optional(),
     runId: RunId,
   })
   .strict();
@@ -179,6 +212,11 @@ export const PointcloudCleanParams = z.discriminatedUnion('mode', [
       src: ProjectPath,
       outlier: OutlierParams,
       elm: ElmParams.optional(),
+      /**
+       * Also mark ground (class 2) with PDAL SMRF. Main fills it from the installed Ground
+       * classifier add-on (`classifier.json`) and drops any the window sent; pack 0.35.0 and later.
+       */
+      ground: SmrfParams.optional(),
     })
     .strict(),
   z
@@ -193,3 +231,62 @@ export const PointcloudCleanParams = z.discriminatedUnion('mode', [
     .strict(),
 ]);
 export type PointcloudCleanParams = z.infer<typeof PointcloudCleanParams>;
+
+/** A photo mask to lift onto the cloud: its outline in the photo's pixels (the full photo). */
+export const LiftMask = z
+  .object({
+    /** The photos layer and the photo, as in the manifest. */
+    layer: Id,
+    photo: Id,
+    /** Outline vertices in pixels of the photo at `width` x `height`. */
+    polygon: z
+      .array(z.tuple([z.number(), z.number()]))
+      .min(3)
+      .max(MAX_LASSO_VERTICES),
+    width: z.number().int().min(16).max(100000),
+    height: z.number().int().min(16).max(100000),
+    label: z.string().max(120).optional(),
+  })
+  .strict();
+export type LiftMask = z.infer<typeof LiftMask>;
+
+/**
+ * `segment.lift` (python `aio_pipelines/segment/lift.py`, pack `SEGMENT_LIFT_MIN_PACK`): each mask
+ * through its photo's camera onto the cloud. The answer has one region per mask that saw the cloud
+ * (`LiftedRegion`), which the app adds to the layer's recipe with the class the person picked.
+ */
+export const SegmentLiftParams = z
+  .object({
+    layerId: CleanupLayerId,
+    /** The cloud layer's COPC file, project-relative (checked against the manifest). */
+    src: ProjectPath,
+    masks: z.array(LiftMask).min(1).max(50),
+  })
+  .strict();
+export type SegmentLiftParams = z.infer<typeof SegmentLiftParams>;
+
+/** One lifted mask: a lasso region in the photo camera's clip space with its depth band. */
+export const LiftedRegion = z
+  .object({
+    photo: Id,
+    viewProj: z.array(z.number()).length(16),
+    polygon: z.array(Ndc).min(3).max(MAX_LASSO_VERTICES),
+    depth: z.object({ near: z.number().min(0), far: z.number().min(0) }).strict(),
+    /** Cloud points the photo saw inside the mask. */
+    points: z.number().int().nonnegative(),
+    label: z.string().max(120).optional(),
+  })
+  .strict();
+export type LiftedRegion = z.infer<typeof LiftedRegion>;
+
+/** The `segment.lift` job result, also written to `edits/pointcloud/<layer>.lift-<run>.json`. */
+export const SegmentLiftResult = z
+  .object({
+    regions: z.array(LiftedRegion),
+    /** Masks that did not lift, with why (photo not posed, the cloud not in view, nothing seen). */
+    skipped: z.array(z.object({ photo: Id, reason: z.string() }).strict()),
+  })
+  .strict();
+export type SegmentLiftResult = z.infer<typeof SegmentLiftResult>;
+export const liftResultPath = (layerId: string, runId: string): string =>
+  `${PCCLEANUP_DIR}/${layerId}.lift-${runId}.json`;

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AgentFacts, AiErrorCode, AiProvider, AiTask, ToolRisk, WindowKind } from './agent';
+import { AddonId, AddonInstallResult, AddonListResponse, AddonProgress } from './addons';
 import { Issue } from './annotation';
 import { Conversation, ConversationId, ConversationSummary } from './conversation';
 import {
@@ -556,6 +557,12 @@ export const Settings = z.object({
   change: ChangeThresholds.optional(),
   /** Local ONNX detection (M8): model folder, execution provider, memory cap. */
   inference: InferenceSettings.optional(),
+  /**
+   * Add-on model packs (Settings > Models and detection > Add-ons): `baseUrl` is the folder that
+   * holds `catalogue.json` and the archives. Empty or absent: the built-in address, when the build
+   * has one (`QUADRION_ADDONS_URL` overrides both).
+   */
+  addons: z.object({ baseUrl: OptionalUrl.optional() }).strict().optional(),
   /** Sync preferences (M9). Never keys, tokens or invite codes: those live in the vault. */
   team: TeamSettings.optional(),
   /** Settings, Processing tools: the photogrammetry engine (ODM). Absent: GPU auto. */
@@ -4580,6 +4587,22 @@ export const ipc = {
     request: z.object({ version: z.string().min(1) }).strict(),
     response: z.union([Ok, DetectorFailure]),
   },
+  /**
+   * Add-on model packs (`addons.ts`): the known add-ons with what is installed and what the
+   * catalogue at the add-on address offers (read on each call, never when offline only).
+   */
+  'addons:list': { request: Empty, response: AddonListResponse },
+  /** Download the catalogue's archive of an add-on, check its size and SHA-256, unpack, install. */
+  'addons:install': { request: z.object({ id: AddonId }).strict(), response: AddonInstallResult },
+  /** Native open dialog for an add-on archive (`.aioaddon`). */
+  'addons:choose': { request: Empty, response: z.object({ path: z.string().nullable() }) },
+  /** Install an add-on archive from a file main picked (`addons:choose`), for offline computers. */
+  'addons:installFile': {
+    request: z.object({ path: z.string().min(1) }).strict(),
+    response: AddonInstallResult,
+  },
+  'addons:cancel': { request: Empty, response: Ok },
+  'addons:remove': { request: z.object({ id: AddonId }).strict(), response: OkOrFailure },
   'analytics:hardware': { request: Empty, response: HardwareCheck },
   /** Detector runs waiting for the graphics card, oldest first. */
   'detect:queue': { request: Empty, response: z.object({ items: z.array(DetectQueued) }) },
@@ -4868,6 +4891,8 @@ export const ipcEvents = {
   'pipelinePack:progress': PackInstallProgress,
   /** Progress of `analyticsPack:install` (Settings, Analytics). */
   'analyticsPack:progress': PackInstallProgress,
+  /** Progress of `addons:install` and `addons:installFile`. */
+  'addons:progress': AddonProgress,
   /** Progress of `odm:install` (Settings, Processing tools). */
   'odm:progress': OdmInstallProgress,
   /**

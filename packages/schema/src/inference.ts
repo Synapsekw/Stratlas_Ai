@@ -80,8 +80,11 @@ export const LicenceWarning = z.enum(['copyleft', 'non-commercial', 'unknown']);
 export const DetectorModelInfo = z.object({
   id: DetectorModelId,
   card: DetectorModelCard,
-  /** `user`: imported into userData `models/detect/`; `pack`: in the pipeline pack. */
-  where: z.enum(['user', 'pack']),
+  /**
+   * `user`: imported into userData `models/detect/`; `pack`: in the pipeline pack; `addon`: a
+   * detector add-on (`addons.ts`), removed from the Add-ons list, not here.
+   */
+  where: z.enum(['user', 'pack', 'addon']),
   sizeBytes: z.number().int().nonnegative(),
   /** The card's licence needs checking before the app is sold or handed out. */
   licenceWarning: LicenceWarning.optional(),

@@ -25,6 +25,7 @@ export * from './detections';
 export * from './update';
 export * from './change';
 export * from './procmodel';
+export * from './addons';
 export * from './inference';
 // M9
 export * from './identity';
