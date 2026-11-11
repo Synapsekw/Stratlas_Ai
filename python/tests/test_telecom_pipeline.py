@@ -430,6 +430,38 @@ def test_rerun_on_another_date_moves_the_inventory_into_its_frame(tmp_path, mono
     assert near == []
 
 
+def test_each_date_keeps_a_copy_of_its_inventory(tmp_path, monopole):
+    # Wave 3 M2: the run on date B replaces the inventory, and date A's reviewed copy stays
+    xyz, _ = monopole
+    a, b = "capture-2026-02-01", "capture-2026-06-01"
+    shifts = {a: (0.0, 0.0), b: (0.0, 0.0)}
+    root = make_tower_project(tmp_path / "p", xyz)
+    _dated(root, a, shifts)
+    assert run_job(pipeline(), root, {"run": "run-a"})[0]["status"] == "done"
+    history = root / "telecom" / "history"
+    first = read_file(root)
+    assert sorted(p.name for p in history.iterdir()) == [f"{a}.json"]
+    first["units"][0] = {**first["units"][0], "status": "accepted"}
+    (root / "telecom" / "antennas.json").write_text(json.dumps(first), encoding="utf-8")
+
+    _dated(root, b, shifts)
+    assert run_job(pipeline(), root, {"run": "run-b"}, job_id="jb")[0]["status"] == "done"
+    assert sorted(p.name for p in history.iterdir()) == [f"{a}.json", f"{b}.json"]
+    kept = json.loads((history / f"{a}.json").read_text("utf-8"))
+    assert kept["run"]["captureId"] == a and kept["units"][0]["status"] == "accepted"
+    assert not any("crop" in u for u in kept["units"])
+    now = json.loads((history / f"{b}.json").read_text("utf-8"))
+    assert now["run"]["captureId"] == b
+    assert [u["id"] for u in now["units"]] == [u["id"] for u in read_file(root)["units"]]
+
+
+def test_a_run_without_a_date_keeps_no_copy(tmp_path, monopole):
+    xyz, _ = monopole
+    root = make_tower_project(tmp_path / "p", xyz)
+    assert run_job(pipeline(), root, {"run": "run-a"})[0]["status"] == "done"
+    assert not (root / "telecom" / "history").exists()
+
+
 def _write_deletion(root: Path, gone: dict, capture_id: str | None) -> None:
     rec = {
         "unitId": gone["id"],

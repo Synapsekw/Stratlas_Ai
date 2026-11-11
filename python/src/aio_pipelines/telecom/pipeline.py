@@ -10,7 +10,8 @@ Steps (each resumable; state between steps is plain arrays in the job's staging 
 4. photos: the best photos of each unit; the re-run merge gives the final unit ids, then the crop
    of each unit's best photo is staged as `crops/<photo-time id>.jpg`.
 5. commit: reads `telecom/antennas.json` again (the person may have reviewed during the run),
-   merges, writes the file to staging and moves the crops in first and the inventory last.
+   merges, writes the file to staging and moves the crops in first and the inventory last. The
+   per-date copies (`history.py`, `telecom/history/<captureId>.json`) go in before the inventory.
 
 Coordinates in the file are project E, N, Z with the layer's `heightOffsetM` applied, in the
 cloud date's own frame (no line-up shift, like survey measurements; the run names the date as
@@ -409,6 +410,7 @@ class TelecomAntennas:
 
         def commit_step(ctx: StepContext) -> dict[str, Any]:
             from .boxes import drop_warning
+            from .history import history_copies
             from .measure import to_project, to_project_dir
             from .merge import merge_with_sources
 
@@ -479,8 +481,14 @@ class TelecomAntennas:
             }
             doc = {"schema": ANTENNAS_SCHEMA, "run": run, "units": final}
             atomic_write_json(ctx.stage("antennas.json"), doc)
-            # crops first, the inventory last: it never names a crop that is not there yet
+            copies: list[tuple[str, str]] = []
+            for k, (rel, copy) in enumerate(history_copies(previous, doc)):
+                atomic_write_json(ctx.stage(f"history-{k}.json"), copy)
+                copies.append((f"history-{k}.json", rel))
+            # crops and the per-date copies first, the inventory last: it never names a crop that
+            # is not there yet, and the date it replaces is kept before it goes
             commit_files(ctx, moves, announce=False)
+            commit_files(ctx, copies, announce=False)
             commit_files(ctx, [("antennas.json", ANTENNAS_FILE)])
             _drop_stale_crops(ctx.project, previous, final)
             ctx.log(
