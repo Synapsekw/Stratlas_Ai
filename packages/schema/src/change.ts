@@ -147,6 +147,34 @@ const VectorChange = z
   })
   .strict();
 
+/**
+ * What an AI model said changed inside a region (V4 change labels): the kind, a few words of what,
+ * the model and when. A proposal shown on the row; it never changes the verdict or the review.
+ */
+export const CHANGE_LABEL_KINDS = [
+  'material-added',
+  'material-removed',
+  'earthworks',
+  'vehicle',
+  'equipment',
+  'structure',
+  'vegetation',
+  'water',
+  'no-change',
+  'other',
+] as const;
+export type ChangeLabelKind = (typeof CHANGE_LABEL_KINDS)[number];
+
+export const ChangeAiLabel = z
+  .object({
+    kind: z.enum(CHANGE_LABEL_KINDS),
+    what: z.string().max(80).optional(),
+    model: z.string().max(120).optional(),
+    at: IsoTime,
+  })
+  .strict();
+export type ChangeAiLabel = z.infer<typeof ChangeAiLabel>;
+
 const RegionChange = z
   .object({
     kind: z.literal('region'),
@@ -170,6 +198,8 @@ const RegionChange = z
     /** The derived polygon layer and its feature for this region. */
     layer: Id.optional(),
     feature: z.union([z.string(), z.number()]).optional(),
+    /** What an AI model said changed here (Label with AI). */
+    aiLabel: ChangeAiLabel.optional(),
   })
   .strict();
 

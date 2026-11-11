@@ -142,6 +142,14 @@ export {
   type AskRoute,
 } from './ask';
 export {
+  CHANGE_LABEL_FIELDS,
+  CHANGE_LABEL_PROMPT,
+  CHANGE_LABEL_WORDS,
+  changeLabelAsk,
+  readChangeLabel,
+  type UnitBox,
+} from './changeLabels';
+export {
   DEFAULT_BATCH,
   DETECT_PROMPT_VERSION,
   MAX_BATCH,

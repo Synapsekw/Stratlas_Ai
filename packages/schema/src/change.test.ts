@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  CHANGE_LABEL_KINDS,
   CHANGE_VERDICTS,
   ChangeScope,
   ChangeSet,
@@ -204,6 +205,23 @@ describe('change sets (aio.change/1)', () => {
     ).toBe(true);
     for (const verdicts of Object.values(CHANGE_VERDICTS))
       expect(verdicts.length).toBeGreaterThan(1);
+  });
+
+  it('keeps an AI label on a region and refuses an unknown kind or extra keys', () => {
+    const region = { kind: 'region', id: 'r', verdict: 'changed' } as const;
+    const at = '2026-11-11T08:00:00Z';
+    const ok = ChangeSet.parse({
+      ...base(),
+      items: [{ ...region, aiLabel: { kind: 'vehicle', what: 'a truck', model: 'm', at } }],
+    });
+    expect(ok.items[0]).toMatchObject({ aiLabel: { kind: 'vehicle', what: 'a truck' } });
+    expect(CHANGE_LABEL_KINDS).toContain('no-change');
+    const bad = (aiLabel: unknown) =>
+      ChangeSet.safeParse({ ...base(), items: [{ ...region, aiLabel }] }).success;
+    expect(bad({ kind: 'cat', at })).toBe(false);
+    expect(bad({ kind: 'other', at, extra: 1 })).toBe(false);
+    expect(bad({ kind: 'other', what: 'x'.repeat(81), at })).toBe(false);
+    expect(bad({ kind: 'other' })).toBe(false);
   });
 
   it('refuses the same date twice, duplicate item ids and unsafe ids', () => {
