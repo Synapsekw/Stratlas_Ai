@@ -111,7 +111,7 @@ describe('agent memory', () => {
 
   it('is read-only in a package and refuses writes with the reason', async () => {
     const s = store(true);
-    expect(await s.memory('p1')).toMatchObject({ ok: true, readOnly: true });
+    expect(await s.memory('p1')).toMatchObject({ ok: true, readOnly: true, package: true });
     const r = await s.remember({ projectId: 'p1', text: 'a', by: 'person' });
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/read-only package/);

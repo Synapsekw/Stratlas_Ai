@@ -4,7 +4,8 @@
  * first `capture_frame` asks with "Allow for this project", "Just this once" and "Reject";
  * "Allow for this project" stores the choice on this computer (`ai:project` says so) and runs
  * the capture. The next capture runs without a card and says why. Turned off again with the
- * switch in the dock's project panel, the card comes back.
+ * switch in the dock's project panel, the card comes back. The choice for this computer is its
+ * own: on all the while, it never lets a cloud capture run without its card.
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { rm } from 'node:fs/promises';
@@ -50,12 +51,24 @@ test('agent: view capture asks once per project, then runs without a card until 
   await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: true }));
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
   await expect(win.locator('.proj-switch')).toContainText('E2E tiny project');
+  // [this computer, cloud AI]: the scripted model is a cloud route here
   const viewCapture = () =>
-    win.evaluate(
-      async (id) => (await window.aio.invoke('ai:project', { projectId: id })).viewCapture ?? false,
-      projectId,
-    );
-  expect(await viewCapture()).toBe(false);
+    win.evaluate(async (id) => {
+      const p = await window.aio.invoke('ai:project', { projectId: id });
+      return [p.viewCapture ?? false, p.viewCaptureCloud ?? false];
+    }, projectId);
+  expect(await viewCapture()).toEqual([false, false]);
+
+  // allowed on this computer only: a cloud capture still asks
+  const panel = agent(win).getByRole('button', { name: 'This project: notes and permissions' });
+  const local = agent(win).getByRole('switch', {
+    name: 'Look at the view without asking: on this computer',
+  });
+  await panel.click();
+  await local.click();
+  await expect(local).toBeChecked();
+  await expect.poll(viewCapture).toEqual([true, false]);
+  await panel.click();
 
   // the first capture asks, with the three choices
   await ask(win, CAPTURE);
@@ -76,7 +89,7 @@ test('agent: view capture asks once per project, then runs without a card until 
   await expect(captures(win).first()).toHaveClass(/\bdone\b/);
   await expect(captures(win).first()).toContainText(/Frame at \d\d:\d\d:\d\d/);
   await expect(agent(win).getByText(/^Tool capture_frame returned/)).toBeVisible();
-  await expect.poll(viewCapture).toBe(true);
+  await expect.poll(viewCapture).toEqual([true, true]);
 
   // the next capture in this project runs without a card and says why
   await ask(win, CAPTURE);
@@ -88,15 +101,15 @@ test('agent: view capture asks once per project, then runs without a card until 
 
   // turned off in the dock's project panel, the card comes back
   await expect(agent(win).getByText(/^Tool capture_frame returned/)).toHaveCount(2);
-  const panel = agent(win).getByRole('button', { name: 'This project: notes and permissions' });
   await panel.click();
   const allow = agent(win).getByRole('switch', {
-    name: 'Let the agent look at the view without asking',
+    name: 'Look at the view without asking: with cloud AI',
   });
+  await expect(local).toBeChecked();
   await expect(allow).toBeChecked();
   await allow.click();
   await expect(allow).not.toBeChecked();
-  await expect.poll(viewCapture).toBe(false);
+  await expect.poll(viewCapture).toEqual([true, false]);
   await panel.click();
   await ask(win, CAPTURE);
   await expect(captures(win)).toHaveCount(3);

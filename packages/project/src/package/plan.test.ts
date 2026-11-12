@@ -375,6 +375,18 @@ describe('rf coverage runs', () => {
   });
 });
 
+describe('the project notes of Ask AI (A3)', () => {
+  it('never packages ai/memory.json', () => {
+    const files: SourceFile[] = ['ai/memory.json', 'issues.json'].map((path) => ({
+      path,
+      size: 10,
+    }));
+    const p = planPackage(manifest(), files, []);
+    expect(p.members.map((m) => m.path)).not.toContain('ai/memory.json');
+    expect(p.members.map((m) => m.path)).toContain('issues.json');
+  });
+});
+
 describe('rf path-loss folders named by run.json', () => {
   const run = 'rf/runs/rf-20261017-0900';
   const files: SourceFile[] = [

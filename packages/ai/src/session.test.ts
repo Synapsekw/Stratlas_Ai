@@ -30,11 +30,15 @@ interface BridgeOpts {
   saved?: Conversation;
   /** The ready route can only answer in text (a local model without tool calling). */
   answerOnly?: string;
-  /** The project lets the agent capture the view without asking (A3). */
+  /** The project lets Ask AI capture the view without asking on this computer (A3). */
   viewCapture?: boolean;
+  /** The same for cloud AI. */
+  viewCaptureCloud?: boolean;
   /** The project's notes (A3); absent: main answers no notes list at all. */
   notes?: AgentNote[];
   notesReadOnly?: boolean;
+  /** The open project is a package (A3): its notes are shown, never sent. */
+  notesPackage?: boolean;
 }
 
 function fakeBridge(opts: BridgeOpts = {}) {
@@ -80,7 +84,14 @@ function fakeBridge(opts: BridgeOpts = {}) {
       }
       const answer: Partial<Record<IpcChannel, unknown>> = {
         ...(notes
-          ? { 'ai:memory': { ok: true, notes, readOnly: opts.notesReadOnly ?? false } }
+          ? {
+              'ai:memory': {
+                ok: true,
+                notes,
+                readOnly: opts.notesReadOnly ?? false,
+                ...(opts.notesPackage ? { package: true } : {}),
+              },
+            }
           : {}),
         'ai:status': {
           ...status,
@@ -89,6 +100,9 @@ function fakeBridge(opts: BridgeOpts = {}) {
         'ai:project': {
           alwaysAllow: opts.alwaysAllow ?? true,
           ...(opts.viewCapture !== undefined ? { viewCapture: opts.viewCapture } : {}),
+          ...(opts.viewCaptureCloud !== undefined
+            ? { viewCaptureCloud: opts.viewCaptureCloud }
+            : {}),
           policy: 'allow',
           usage: [
             {
@@ -1120,9 +1134,9 @@ describe('view capture consent (A3)', () => {
   });
 
   it('runs a capture without a card once the project allows it, and says why', async () => {
-    const t = setup({ viewCapture: true });
+    const t = setup({ viewCaptureCloud: true });
     await t.session.refresh();
-    expect(t.session.getState().viewCapture).toBe(true);
+    expect(t.session.getState().viewCaptureCloud).toBe(true);
     await t.session.send('look');
     t.emit(capture('f1'));
     await flush();
@@ -1149,15 +1163,55 @@ describe('view capture consent (A3)', () => {
     expect(t.session.getState().steps.w1?.status).toBe('awaiting');
   });
 
-  it('stores the choice for the project and turns it off again', async () => {
+  it('stores the choice for the route in use, and turns it off again', async () => {
     const t = setup({ viewCapture: false });
     await t.session.refresh();
     expect(await t.session.setViewCapture(true)).toBe(true);
-    expect(t.session.getState().viewCapture).toBe(true);
-    await t.session.setViewCapture(false);
+    expect(t.session.getState().viewCaptureCloud).toBe(true);
     expect(t.session.getState().viewCapture).toBe(false);
-    const reqs = t.sent('ai:setViewCapture').map((c) => c.req as { allow: boolean });
-    expect(reqs.map((r) => r.allow)).toEqual([true, false]);
+    await t.session.setViewCapture(false);
+    expect(t.session.getState().viewCaptureCloud).toBe(false);
+    await t.session.setViewCapture(true, false);
+    expect(t.session.getState().viewCapture).toBe(true);
+    const reqs = t
+      .sent('ai:setViewCapture')
+      .map((c) => c.req as { allow: boolean; cloud?: boolean });
+    expect(reqs.map((r) => [r.allow, r.cloud])).toEqual([
+      [true, true],
+      [false, true],
+      [true, false],
+    ]);
+  });
+
+  it('a capture allowed on this computer still asks on cloud AI', async () => {
+    const t = setup({ viewCapture: true, viewCaptureCloud: false });
+    await t.session.refresh();
+    await t.session.send('look');
+    t.emit(capture('f1'));
+    await flush();
+    expect(t.session.getState().steps.f1?.status).toBe('awaiting');
+  });
+
+  it('a capture allowed on this computer runs without a card on a local route', async () => {
+    const t = setup({ viewCapture: true, cloud: false });
+    await t.session.refresh();
+    await t.session.send('look');
+    t.emit(capture('f1'));
+    await flush();
+    await flush();
+    expect(t.session.getState().steps.f1?.status).toBe('done');
+  });
+
+  it('"Allow for this project" on a local route never covers cloud AI', async () => {
+    const t = setup({ cloud: false });
+    await t.session.refresh();
+    await t.session.send('look');
+    t.emit(capture('f1'));
+    await flush();
+    await t.session.approve('f1', { allowViewCapture: true });
+    expect(t.session.getState().viewCapture).toBe(true);
+    expect(t.session.getState().viewCaptureCloud).toBe(false);
+    expect(t.sent('ai:setViewCapture')[0]?.req).toMatchObject({ allow: true, cloud: false });
   });
 
   it('"Allow for this project" stores the choice and runs the waiting capture', async () => {
@@ -1167,7 +1221,7 @@ describe('view capture consent (A3)', () => {
     t.emit(capture('f1'));
     await flush();
     await t.session.approve('f1', { allowViewCapture: true });
-    expect(t.session.getState().viewCapture).toBe(true);
+    expect(t.session.getState().viewCaptureCloud).toBe(true);
     expect(t.session.getState().steps.f1?.status).toBe('done');
     t.emit(capture('f2'));
     await flush();
@@ -1215,6 +1269,36 @@ describe('project notes in the session (A3)', () => {
     expect(await t.session.deleteNote('n-pile1')).toBeNull();
     expect(t.session.getState().notes.map((n) => n.id)).toEqual(['n-new2']);
     expect(await t.session.deleteNote('n-gone1')).toBe('No such note.');
+  });
+
+  it('never sends the notes of a package, though it shows them', async () => {
+    const t = setup({ notes: [pile], notesReadOnly: true, notesPackage: true });
+    await t.session.send('how many piles?');
+    expect(t.session.getState().notes).toEqual([pile]);
+    const req = t.sent('ai:send')[0]?.req as IpcRequest<'ai:send'>;
+    expect(req.context).not.toHaveProperty('projectNotes');
+  });
+
+  it('shows the notes in the send preview, as they will be sent', async () => {
+    const t = setup({ notes: [pile], alwaysAllow: false });
+    await t.session.refresh();
+    await t.session.send('how many piles?');
+    expect(t.session.getState().preview?.context.projectNotes).toEqual([
+      { id: 'n-pile1', text: pile.text, about: 'measurement:m-3' },
+    ]);
+  });
+
+  it('adds or deletes one note at a time', async () => {
+    const t = setup({ notes: [pile] });
+    await t.session.refresh();
+    const first = t.session.addNote('Units are feet');
+    expect(t.session.getState().notesBusy).toBe(true);
+    expect(await t.session.deleteNote('n-pile1')).toBe(
+      'A note is still being saved. Try again in a moment.',
+    );
+    expect(await first).toBeNull();
+    expect(t.session.getState().notesBusy).toBe(false);
+    expect(t.sent('ai:forget')).toHaveLength(0);
   });
 
   it('says the notes are read-only in a package', async () => {

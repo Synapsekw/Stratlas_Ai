@@ -83,7 +83,7 @@ test('agent: a note the person states is saved with approval, followed, found an
   await panelButton.click();
   const notes = agent(win).getByRole('list', { name: 'Notes' });
   await expect(notes).toContainText(NOTE);
-  await expect(notes).toContainText('Saved by the agent');
+  await expect(notes).toContainText('Saved by Ask AI');
   if (SHOTS) await win.screenshot({ path: join(SHOTS, 'agent-memory-panel.png') });
 
   // stop sending without the preview, so the next message shows its context: the note is in it

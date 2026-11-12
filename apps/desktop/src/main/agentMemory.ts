@@ -165,6 +165,8 @@ export function createAgentMemory({ projects, changed, now = () => new Date() }:
       ok: true,
       notes: read.notes,
       readOnly: refused !== null || read.problem !== null,
+      // a package's notes are shown, never sent to the model (session.ts leaves them out)
+      ...(projects.package(projectId) !== undefined ? { package: true } : {}),
       ...(read.problem ? { error: read.problem } : {}),
     };
   }

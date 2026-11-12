@@ -102,14 +102,23 @@ export interface SessionState {
   availability: Availability;
   /** The person allowed sends for this project without the preview. */
   alwaysAllow: boolean;
-  /** A3: the person let the agent capture the view in this project without a card each time. */
+  /**
+   * A3: the person let Ask AI capture the view in this project without a card each time, on a
+   * route that stays on this computer (a local or the bundled model).
+   */
   viewCapture: boolean;
+  /** A3: the same choice for cloud AI; the local one never covers it. */
+  viewCaptureCloud: boolean;
   /** A3: the open project's notes (`ai/memory.json`), sent with each message as projectNotes. */
   notes: AgentNote[];
   /** The notes cannot be changed here (a package, or a read-only folder). */
   notesReadOnly: boolean;
   /** Why the notes cannot be read or changed (a file from a newer version...), or null. */
   notesProblem: string | null;
+  /** The open project is a package: its notes are shown, never sent to the model. */
+  notesPackage: boolean;
+  /** A note is being added or deleted from the panel: the next one waits. */
+  notesBusy: boolean;
   /** A batch of approvals is running: the batch card waits, a second "Approve N" is ignored. */
   batching: boolean;
   policy: AiPolicy;
@@ -145,6 +154,7 @@ export const SESSION_TEXT = {
   noResponse: 'The agent did not answer. Try again.',
   stopped: 'Stopped.',
   noProject: 'Open a project to save and list conversations.',
+  notesBusy: 'A note is still being saved. Try again in a moment.',
   viewCaptureAllowed: 'Ran without asking: view capture is allowed for this project.',
 } as const;
 
@@ -194,6 +204,8 @@ export class AgentSession {
   private closing = false;
   /** The project `viewCapture` was read or stored for: it never carries over to another one. */
   private viewCaptureFor: string | null = null;
+  /** The running reply goes to cloud AI (unknown: yes), for the view-capture choice it may use. */
+  private runCloud = true;
   /** The project the notes in the state belong to, and the newest notes read asked (A3). */
   private notesFor: string | null = null;
   private notesAsked = 0;
@@ -213,9 +225,12 @@ export class AgentSession {
       availability: { status: 'checking' },
       alwaysAllow: false,
       viewCapture: false,
+      viewCaptureCloud: false,
       notes: [],
       notesReadOnly: false,
       notesProblem: null,
+      notesPackage: false,
+      notesBusy: false,
       batching: false,
       policy: 'allow',
       preview: null,
@@ -308,12 +323,14 @@ export class AgentSession {
         this.set({
           alwaysAllow: p.alwaysAllow,
           viewCapture: p.viewCapture ?? false,
+          viewCaptureCloud: p.viewCaptureCloud ?? false,
           policy: p.policy,
           projectUsage: p.usage,
         });
         await this.loadNotes();
       } else {
-        if (this.state.viewCapture) this.set({ viewCapture: false });
+        if (this.state.viewCapture || this.state.viewCaptureCloud)
+          this.set({ viewCapture: false, viewCaptureCloud: false });
         this.dropNotesOf(null);
       }
     } catch (e) {
@@ -367,7 +384,10 @@ export class AgentSession {
       ...assembleContext(ctx.workspace.getState(), this.window),
       ...spatialContext(ctx, this.window),
       ...viewContext(ctx),
-      ...(notes.length ? { projectNotes: notes.map(noteForContext) } : {}),
+      // a package's notes were not written by the person using it: they are never sent
+      ...(notes.length && !this.state.notesPackage
+        ? { projectNotes: notes.map(noteForContext) }
+        : {}),
     };
     let image: string | undefined;
     if (opts.attachFrame) image = (await ctx.captureFrame(this.window)) ?? undefined;
@@ -461,6 +481,7 @@ export class AgentSession {
           notes,
           notesReadOnly: r?.readOnly ?? false,
           notesProblem: r?.error ?? null,
+          notesPackage: r?.package ?? false,
         });
       }
       return notes;
@@ -475,12 +496,17 @@ export class AgentSession {
     const projectId = this.projectId();
     const bridge = this.deps.bridge;
     if (!projectId || !bridge) return SESSION_TEXT.noProject;
+    // one change at a time: a second click while one is saving would race it
+    if (this.state.notesBusy) return SESSION_TEXT.notesBusy;
+    this.set({ notesBusy: true }, false);
     try {
       const r = await bridge.invoke('ai:remember', { projectId, text, by: 'person' });
       await this.loadNotes();
       return r.ok ? null : (r.error ?? SESSION_TEXT.failed);
     } catch {
       return SESSION_TEXT.failed;
+    } finally {
+      this.set({ notesBusy: false }, false);
     }
   }
 
@@ -489,12 +515,17 @@ export class AgentSession {
     const projectId = this.projectId();
     const bridge = this.deps.bridge;
     if (!projectId || !bridge) return SESSION_TEXT.noProject;
+    // one change at a time: a second click while one is saving would race it
+    if (this.state.notesBusy) return SESSION_TEXT.notesBusy;
+    this.set({ notesBusy: true }, false);
     try {
       const r = await bridge.invoke('ai:forget', { projectId, id });
       await this.loadNotes();
       return r.ok ? null : (r.error ?? SESSION_TEXT.failed);
     } catch {
       return SESSION_TEXT.failed;
+    } finally {
+      this.set({ notesBusy: false }, false);
     }
   }
 
@@ -512,15 +543,15 @@ export class AgentSession {
    * Let the agent capture the view in this project without a card each time, or stop it (stored
    * on this computer, `ai:setViewCapture`). True when stored.
    */
-  async setViewCapture(allow: boolean): Promise<boolean> {
+  async setViewCapture(allow: boolean, cloud = this.routeCloud()): Promise<boolean> {
     const projectId = this.projectId();
     const bridge = this.deps.bridge;
     if (!projectId || !bridge) return false;
     try {
-      const r = await bridge.invoke('ai:setViewCapture', { projectId, allow });
+      const r = await bridge.invoke('ai:setViewCapture', { projectId, allow, cloud });
       if (r.ok && this.projectId() === projectId) {
         this.viewCaptureFor = projectId;
-        this.set({ viewCapture: allow });
+        this.set(cloud ? { viewCaptureCloud: allow } : { viewCapture: allow });
       }
       return r.ok;
     } catch {
@@ -558,6 +589,7 @@ export class AgentSession {
       status: 'streaming',
     };
     this.runId = runId;
+    this.runCloud = target?.cloud ?? true;
     this.batch = 0;
     this.stepCalls = [];
     this.live.clear();
@@ -589,7 +621,10 @@ export class AgentSession {
   async approve(callId: string, opts: { allowViewCapture?: boolean } = {}): Promise<boolean> {
     const step = this.state.steps[callId];
     if (step?.status !== 'awaiting') return false;
-    if (opts.allowViewCapture && step.name === VIEW_CAPTURE_TOOL) await this.setViewCapture(true);
+    if (opts.allowViewCapture && step.name === VIEW_CAPTURE_TOOL) {
+      // the choice is for the route the capture would go to: the run's, else the one in use now
+      await this.setViewCapture(true, this.live.has(callId) ? this.runCloud : this.routeCloud());
+    }
     const now = this.state.steps[callId];
     if (now?.status !== 'awaiting') return false;
     if (this.live.has(callId) && this.runId) return this.execute(now);
@@ -705,15 +740,30 @@ export class AgentSession {
   private dropNotesOf(projectId: string | null): void {
     if (this.notesFor === projectId) return;
     this.notesFor = null;
-    if (this.state.notes.length || this.state.notesReadOnly || this.state.notesProblem)
-      this.set({ notes: [], notesReadOnly: false, notesProblem: null });
+    if (
+      this.state.notes.length ||
+      this.state.notesReadOnly ||
+      this.state.notesProblem ||
+      this.state.notesPackage
+    )
+      this.set({ notes: [], notesReadOnly: false, notesProblem: null, notesPackage: false });
   }
 
   /** Forget the view-capture choice when it belongs to a project other than `projectId`. */
   private dropViewCaptureOf(projectId: string | null): void {
     if (this.viewCaptureFor === projectId) return;
     this.viewCaptureFor = null;
-    if (this.state.viewCapture) this.set({ viewCapture: false });
+    if (this.state.viewCapture || this.state.viewCaptureCloud)
+      this.set({ viewCapture: false, viewCaptureCloud: false });
+  }
+
+  /**
+   * Whether the route in use goes to cloud AI. Unknown counts as cloud, so a choice made for this
+   * computer is never used for it.
+   */
+  private routeCloud(): boolean {
+    const a = this.state.availability;
+    return a.status === 'ready' ? a.cloud : true;
   }
 
   // History (AI-8) -----------------------------------------------------------------------------
@@ -970,7 +1020,7 @@ export class AgentSession {
     const allowed =
       needsApproval(e.risk) &&
       e.name === VIEW_CAPTURE_TOOL &&
-      this.state.viewCapture &&
+      (this.runCloud ? this.state.viewCaptureCloud : this.state.viewCapture) &&
       this.viewCaptureFor !== null &&
       this.viewCaptureFor === this.projectId() &&
       e.runId === this.runId;

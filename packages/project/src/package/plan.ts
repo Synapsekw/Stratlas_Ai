@@ -57,6 +57,9 @@ const SKIP = [
   // path-loss cache (any folder or file whose name starts `pathloss` or `path-loss`) is rebuilt
   // on demand, so it stays behind (RF coverage spec, founder answer 2).
   /^rf\/runs\/[^/]+\/(?:[^/]+\/)*path-?loss[^/]*(?:\/|$)/i,
+  // The notes Ask AI keeps about this project (`ai/memory.json`, A3) steer its answers: they are
+  // the person's own and stay with the project folder, never handed on in a package.
+  /^ai\/memory\.json$/i,
 ];
 
 /** What a built procedural model layer owns beside its GLB, per source model id. */

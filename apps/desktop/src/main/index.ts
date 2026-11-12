@@ -1934,11 +1934,17 @@ function registerIpc(): void {
     await aiProjects.setConsent(r.root, projectNames.get(projectId) ?? projectId, alwaysAllow);
     return { ok: true };
   });
-  handle('ai:setViewCapture', async ({ projectId, allow }) => {
+  handle('ai:setViewCapture', async ({ projectId, allow, cloud }) => {
     const r = openRoot(projectId);
     if ('error' in r) return { ok: false, error: r.error };
     try {
-      await aiProjects.setViewCapture(r.root, projectNames.get(projectId) ?? projectId, allow);
+      // a choice for this computer never covers cloud AI (A3)
+      await aiProjects.setViewCapture(
+        r.root,
+        projectNames.get(projectId) ?? projectId,
+        allow,
+        cloud === true,
+      );
       return { ok: true };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };

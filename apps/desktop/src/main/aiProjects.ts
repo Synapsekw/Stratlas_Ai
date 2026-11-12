@@ -15,8 +15,14 @@ import { newerThanThisBuild } from './newer';
 const Entry = z.object({
   name: z.string(),
   alwaysAllow: z.boolean(),
-  /** A3: the agent may capture the view in this project without a card (absent: off). */
+  /**
+   * A3: Ask AI may capture the view in this project without a card on a route that stays on this
+   * computer (absent: off). Entries written before the routes were told apart hold their choice
+   * here, so it counts for the local routes only, never for cloud AI.
+   */
   viewCapture: z.boolean().optional(),
+  /** A3: the same choice for cloud AI (absent: off). */
+  viewCaptureCloud: z.boolean().optional(),
   usage: z.array(
     z.object({
       provider: z.string(),
@@ -48,12 +54,15 @@ export interface UsageReport {
 }
 
 export interface AiProjectStore {
-  get(
-    root: string,
-  ): Promise<{ alwaysAllow: boolean; viewCapture: boolean; usage: ProviderUsage[] }>;
+  get(root: string): Promise<{
+    alwaysAllow: boolean;
+    viewCapture: boolean;
+    viewCaptureCloud: boolean;
+    usage: ProviderUsage[];
+  }>;
   setConsent(root: string, name: string, alwaysAllow: boolean): Promise<void>;
-  /** A3: allow or stop the agent's view capture in this project without a card each time. */
-  setViewCapture(root: string, name: string, allow: boolean): Promise<void>;
+  /** A3: allow or stop view capture without a card in this project, for one route class. */
+  setViewCapture(root: string, name: string, allow: boolean, cloud?: boolean): Promise<void>;
   addUsage(root: string, name: string, usage: UsageReport): void;
   list(): Promise<ProjectUsage[]>;
   /** Write pending usage now (on quit). */
@@ -115,7 +124,7 @@ export function createAiProjectStore(
   async function patch(
     root: string,
     name: string,
-    change: Partial<Pick<Entry, 'alwaysAllow' | 'viewCapture'>>,
+    change: Partial<Pick<Entry, 'alwaysAllow' | 'viewCapture' | 'viewCaptureCloud'>>,
   ): Promise<void> {
     const all = await load();
     if (refused) throw new Error(refused);
@@ -130,14 +139,15 @@ export function createAiProjectStore(
       return {
         alwaysAllow: e?.alwaysAllow ?? false,
         viewCapture: e?.viewCapture ?? false,
+        viewCaptureCloud: e?.viewCaptureCloud ?? false,
         usage: e?.usage ?? [],
       };
     },
     async setConsent(root, name, alwaysAllow) {
       await patch(root, name, { alwaysAllow });
     },
-    async setViewCapture(root, name, allow) {
-      await patch(root, name, { viewCapture: allow });
+    async setViewCapture(root, name, allow, cloud = false) {
+      await patch(root, name, cloud ? { viewCaptureCloud: allow } : { viewCapture: allow });
     },
     addUsage(root, name, usage) {
       void load().then((all) => {

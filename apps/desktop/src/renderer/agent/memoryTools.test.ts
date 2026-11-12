@@ -37,8 +37,7 @@ const call = vi.fn((channel: string, req: Record<string, unknown>) =>
 );
 vi.mock('../shell', () => ({ bridge: { call: (c: string, r: never) => call(c, r) } }));
 
-const { agentNotes, describeForget, describeRemember, loadNotes, registerMemoryTools } =
-  await import('./memoryTools');
+const { describeForget, describeRemember, registerMemoryTools } = await import('./memoryTools');
 
 const ctx = (): RendererToolContext => defaultToolContext('scene3d');
 const open = (id: string | null) => {
@@ -55,13 +54,11 @@ beforeEach(() => {
   notes = [];
   readOnly = false;
   call.mockClear();
-  agentNotes.setState({ projectId: null, notes: [], readOnly: false, error: null });
   open('p');
 });
 
 describe('remember_note', () => {
   it('saves the note as the agent, says so, and its undo forgets it', async () => {
-    await loadNotes('p');
     const r = await runRendererTool(
       'remember_note',
       { text: 'Volumes are reported in cubic yards', about: 'measurement:m-3' },
@@ -81,9 +78,7 @@ describe('remember_note', () => {
       },
     });
     expect(r.summary).toBe('Noted: Volumes are reported in cubic yards');
-    await vi.waitFor(() => {
-      expect(agentNotes.getState().notes).toHaveLength(1);
-    });
+    expect(notes).toHaveLength(1);
     expect(await r.undo?.()).toBeNull();
     expect(notes).toEqual([]);
   });
@@ -148,11 +143,7 @@ describe('forget_note', () => {
     );
   });
 
-  it('names the note on the approval card once the notes were read, else its id', async () => {
+  it('falls back to the id on the card (the dock names the note from its session first)', () => {
     expect(describeForget({ id: 'n-keep1' })).toBe('Forget: n-keep1');
-    notes = [kept];
-    await loadNotes('p');
-    expect(describeForget({ id: 'n-keep1' })).toBe('Forget: The crusher is called C-2');
-    expect(agentNotes.getState()).toMatchObject({ projectId: 'p', readOnly: false, error: null });
   });
 });

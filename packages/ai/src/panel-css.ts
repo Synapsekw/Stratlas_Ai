@@ -95,6 +95,7 @@ export const PANEL_CSS = `
 .aio-agent .ag-pp-add input:focus-visible, .aio-agent .ag-pp-switch input:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
 .aio-agent .ag-pp-switch { display: flex; align-items: center; gap: 8px; font-size: var(--t-12); color: var(--fg-1); cursor: pointer; }
 .aio-agent .ag-pp-switch input { margin: 0; accent-color: var(--acc); flex: none; }
+.aio-agent .ag-pp-switches { display: grid; gap: 6px; }
 .aio-agent .ag-pp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .aio-agent .ag-pending { font-size: var(--t-11); color: var(--warn-ink); }
 .aio-agent .ag-modal-back { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; background: oklch(0.1 0.01 250 / 0.6); }

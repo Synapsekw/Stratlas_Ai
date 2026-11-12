@@ -1510,13 +1510,26 @@ export const ipc = {
       usage: z.array(ProviderUsage),
       /** M8: the project allows plan images and drawings to go to a cloud model (default false). */
       cloudDrawings: z.boolean().optional(),
-      /** A3: the person let the agent look at the view in this project without asking each time. */
+      /**
+       * A3: the person let Ask AI look at the view in this project without asking each time, on a
+       * route that stays on this computer (a local or the bundled model). A choice stored before
+       * the routes were told apart counts here only, never for cloud AI.
+       */
       viewCapture: z.boolean().optional(),
+      /** A3: the same choice for cloud AI; never implied by the local one. */
+      viewCaptureCloud: z.boolean().optional(),
     }),
   },
   /** A3: allow or stop the agent's view capture in this project without a card each time. */
   'ai:setViewCapture': {
-    request: z.object({ projectId: z.string().min(1), allow: z.boolean() }).strict(),
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        allow: z.boolean(),
+        /** The route class the choice is for: true cloud AI, absent or false this computer. */
+        cloud: z.boolean().optional(),
+      })
+      .strict(),
     response: z.object({ ok: z.boolean(), error: z.string().optional() }),
   },
   /** A3: the agent's notes of a project (`<project>/ai/memory.json`); read-only in a package. */
@@ -1527,6 +1540,11 @@ export const ipc = {
       notes: z.array(AgentNote),
       /** Notes cannot be saved or deleted here (a package, or the folder is read-only). */
       readOnly: z.boolean(),
+      /**
+       * The open project is a package: its notes (if one carries any) are shown, never sent to the
+       * model, since they were not written by the person using it.
+       */
+      package: z.boolean().optional(),
       error: z.string().optional(),
     }),
   },

@@ -1,7 +1,8 @@
 /**
  * The agent's project notes (A3, plan decision 5): the executors of `remember_note` and
- * `forget_note` (specs in `@aio/ai` memory-tool-specs.ts), their approval card lines and undos,
- * and a small store of the open project's notes that the dock's project panel reads (T5).
+ * `forget_note` (specs in `@aio/ai` memory-tool-specs.ts), their approval card lines and undos.
+ * The dock reads the notes through its session (`@aio/ai` session.ts), which also names the note
+ * on a forget card.
  * Notes live in `<project>/ai/memory.json`; main reads and writes them (`ai:memory`,
  * `ai:remember`, `ai:forget`) and tells the fact index.
  */
@@ -14,41 +15,8 @@ import {
 } from '@aio/ai';
 import type { AgentNote } from '@aio/schema';
 import { t } from '@aio/ui';
-import { createStore, useStore } from 'zustand';
 import type { Res } from '../bridge';
 import { bridge } from '../shell';
-
-export interface AgentNotesView {
-  /** The project the notes are of; null before the first read. */
-  projectId: string | null;
-  notes: AgentNote[];
-  /** Notes cannot be saved or deleted (a package, or a read-only folder). */
-  readOnly: boolean;
-  /** The last read or write that failed, for the panel. */
-  error: string | null;
-}
-
-export const agentNotes = createStore<AgentNotesView>()(() => ({
-  projectId: null,
-  notes: [],
-  readOnly: false,
-  error: null,
-}));
-
-export const useAgentNotes = <T>(pick: (s: AgentNotesView) => T): T => useStore(agentNotes, pick);
-
-/** Read a project's notes into the store; answers them ([] when they could not be read). */
-export async function loadNotes(projectId: string): Promise<AgentNote[]> {
-  const r = await bridge.call('ai:memory', { projectId });
-  const v = r.ok ? r.value : { ok: false, notes: [], readOnly: true, error: r.error };
-  agentNotes.setState({
-    projectId,
-    notes: v.notes,
-    readOnly: v.readOnly,
-    error: v.ok ? null : (v.error ?? null),
-  });
-  return v.notes;
-}
 
 type Answer = { ok: true; note: AgentNote } | { ok: false; error: string };
 
@@ -59,11 +27,6 @@ function answer(
   if (!r.ok) return { ok: false, error: r.error };
   if (!r.value.ok || !r.value.note) return { ok: false, error: r.value.error ?? fallback };
   return { ok: true, note: r.value.note };
-}
-
-/** Keep the store in step after a write in the project it shows. */
-function settle(projectId: string): void {
-  if (agentNotes.getState().projectId === projectId) void loadNotes(projectId);
 }
 
 /** Save a note (the agent after approval, or the person); `restore` puts a deleted one back. */
@@ -81,17 +44,13 @@ export async function rememberNote(req: {
     ...(req.about ? { about: req.about } : {}),
     ...(req.restore ? { restore: req.restore } : {}),
   });
-  const a = answer(r, 'The note could not be saved.');
-  if (a.ok) settle(req.projectId);
-  return a;
+  return answer(r, 'The note could not be saved.');
 }
 
 /** Delete a note; answers the deleted note, for an undo. */
 export async function forgetNote(projectId: string, id: string): Promise<Answer> {
   const r = await bridge.call('ai:forget', { projectId, id });
-  const a = answer(r, 'The note could not be deleted.');
-  if (a.ok) settle(projectId);
-  return a;
+  return answer(r, 'The note could not be deleted.');
 }
 
 function projectOf(ctx: RendererToolContext): string {
@@ -150,12 +109,13 @@ export function describeRemember(input: unknown): string | null {
     : t('agentTool.card.remember', { text });
 }
 
-/** The approval card of a delete: the note's text when the panel has read it, else its id. */
+/**
+ * The approval card of a delete when the dock does not hold the note (another project's id, say):
+ * its id. The dock names the note from its session's notes first (AgentPanel `describeStep`).
+ */
 export function describeForget(input: unknown): string | null {
   const p = memoryToolInputs.forget_note.safeParse(input);
-  if (!p.success) return null;
-  const note = agentNotes.getState().notes.find((n) => n.id === p.data.id);
-  return t('agentTool.card.forget', { text: note?.text ?? p.data.id });
+  return p.success ? t('agentTool.card.forget', { text: p.data.id }) : null;
 }
 
 let registered = false;

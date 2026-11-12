@@ -286,11 +286,13 @@ export function AgentPanel({
             notes={state.notes}
             readOnly={state.notesReadOnly}
             problem={state.notesProblem}
+            busy={state.notesBusy}
             viewCapture={state.viewCapture}
+            viewCaptureCloud={state.viewCaptureCloud}
             alwaysAllow={state.alwaysAllow}
             onAdd={(text) => session.addNote(text)}
             onDelete={(id) => session.deleteNote(id)}
-            onViewCapture={(allow) => void session.setViewCapture(allow)}
+            onViewCapture={(allow, cloud) => void session.setViewCapture(allow, cloud)}
             onRevoke={() => void session.revokeConsent()}
           />
         ) : showHistory ? (
@@ -614,14 +616,17 @@ function History({
 }
 
 /**
- * A3: what the agent keeps and may do in this project: the notes it follows (each deletable,
- * and the person can add one), view capture without asking, and sending without the preview.
+ * A3: what Ask AI keeps and may do in this project: the notes it follows (each deletable, and the
+ * person can add one), view capture without asking (on this computer and with cloud AI, each its
+ * own choice), and sending without the preview.
  */
 function ProjectPanel({
   notes,
   readOnly,
   problem,
+  busy,
   viewCapture,
+  viewCaptureCloud,
   alwaysAllow,
   onAdd,
   onDelete,
@@ -631,11 +636,14 @@ function ProjectPanel({
   notes: AgentNote[];
   readOnly: boolean;
   problem: string | null;
+  /** A note is being added or deleted: the controls wait for it. */
+  busy: boolean;
   viewCapture: boolean;
+  viewCaptureCloud: boolean;
   alwaysAllow: boolean;
   onAdd: (text: string) => Promise<string | null>;
   onDelete: (id: string) => Promise<string | null>;
-  onViewCapture: (allow: boolean) => void;
+  onViewCapture: (allow: boolean, cloud: boolean) => void;
   onRevoke: () => void;
 }) {
   const [text, setText] = useState('');
@@ -651,7 +659,7 @@ function ProjectPanel({
     <div className="ag-pp" aria-label="This project">
       <section className="ag-pp-sec" aria-label="Project notes">
         <div className="ag-pp-head">
-          <b>Notes the agent follows</b>
+          <b>Notes Ask AI follows</b>
           <span className="ag-mono">
             {String(notes.length)} of {String(AGENT_MEMORY_MAX_NOTES)}
           </span>
@@ -664,7 +672,7 @@ function ProjectPanel({
         )}
         {notes.length === 0 ? (
           <p className="ag-faint">
-            No notes yet. Ask the agent to remember something, or add a note here.
+            No notes yet. Tell Ask AI to remember something, or add a note here.
           </p>
         ) : (
           <ul className="ag-notes" aria-label="Notes">
@@ -672,7 +680,7 @@ function ProjectPanel({
               <li key={n.id}>
                 <span className="ag-notes-text">{n.text}</span>
                 <span className="ag-mono">
-                  {n.by === 'agent' ? 'Saved by the agent' : 'Added by you'} ·{' '}
+                  {n.by === 'agent' ? 'Saved by Ask AI' : 'Added by you'} ·{' '}
                   {n.createdAt.slice(0, 10)}
                 </span>
                 {!readOnly && (
@@ -681,6 +689,7 @@ function ProjectPanel({
                     className="ag-btn ghost icon"
                     title="Delete this note"
                     aria-label={`Delete note: ${n.text}`}
+                    disabled={busy}
                     onClick={() => {
                       void onDelete(n.id).then(setError);
                     }}
@@ -706,12 +715,12 @@ function ProjectPanel({
               placeholder={full ? 'Delete a note to add another' : 'Add a note'}
               maxLength={AGENT_NOTE_MAX_CHARS}
               value={text}
-              disabled={full}
+              disabled={full || busy}
               onChange={(e) => {
                 setText(e.target.value);
               }}
             />
-            <button type="submit" className="ag-btn sm" disabled={full || !text.trim()}>
+            <button type="submit" className="ag-btn sm" disabled={full || busy || !text.trim()}>
               Add
             </button>
           </form>
@@ -723,20 +732,33 @@ function ProjectPanel({
         )}
       </section>
       <section className="ag-pp-sec" aria-label="Permissions">
-        <label className="ag-pp-switch">
-          <input
-            type="checkbox"
-            role="switch"
-            checked={viewCapture}
-            onChange={(e) => {
-              onViewCapture(e.target.checked);
-            }}
-          />
-          <span>Let the agent look at the view without asking</span>
-        </label>
+        <div className="ag-pp-head" id="ag-pp-view">
+          <b>Look at the view without asking</b>
+        </div>
+        <div className="ag-pp-switches" role="group" aria-labelledby="ag-pp-view">
+          {(
+            [
+              [false, 'On this computer', viewCapture],
+              [true, 'With cloud AI', viewCaptureCloud],
+            ] as const
+          ).map(([cloud, label, checked]) => (
+            <label key={label} className="ag-pp-switch">
+              <input
+                type="checkbox"
+                role="switch"
+                aria-label={`Look at the view without asking: ${cloud ? 'with cloud AI' : 'on this computer'}`}
+                checked={checked}
+                onChange={(e) => {
+                  onViewCapture(e.target.checked, cloud);
+                }}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
         {alwaysAllow && (
           <div className="ag-pp-row">
-            <span className="ag-faint">Messages go to the cloud without the send preview.</span>
+            <span className="ag-faint">Messages go to cloud AI without the send preview.</span>
             <button type="button" className="ag-btn sm" onClick={onRevoke}>
               Stop sending without the preview
             </button>
@@ -936,7 +958,7 @@ function BatchCard({ steps, session }: { steps: Step[]; session: AgentSession })
                   });
                 }}
               />
-              <span>{describeStep(s)}</span>
+              <span>{describeStep(s, session.getState().notes)}</span>
             </label>
           </li>
         ))}
@@ -1016,7 +1038,7 @@ function StepRow({
       {step.note && <div className="step-note">{step.note}</div>}
       {step.status === 'awaiting' && !batched && (
         <div className="approve">
-          <span className="note">{describeStep(step)}</span>
+          <span className="note">{describeStep(step, session.getState().notes)}</span>
           <button
             type="button"
             className="ag-btn sm"
@@ -1039,7 +1061,7 @@ function StepRow({
                 <button
                   type="button"
                   className="ag-btn sm primary"
-                  title="Later captures in this project run without asking. Turn it off under This project (the note button beside the message field)."
+                  title="Later captures in this project run without asking on this route: this computer and cloud AI are asked apart. Turn it off under This project (the note button beside the message field)."
                   onClick={() => void session.approve(step.callId, { allowViewCapture: true })}
                 >
                   <Icon name="check" size={12} />
@@ -1064,7 +1086,16 @@ function StepRow({
 }
 
 /** What an approval will do, in one line. */
-export function describeStep(step: Pick<Step, 'name' | 'input'>): string {
+export function describeStep(
+  step: Pick<Step, 'name' | 'input'>,
+  /** The project's notes, so a forget card names the note, not its id (A3). */
+  notes: readonly AgentNote[] = [],
+): string {
+  if (step.name === 'forget_note') {
+    const id = (step.input as { id?: unknown } | null)?.id;
+    const note = notes.find((n) => n.id === id);
+    if (note) return `Forget: ${note.text}`;
+  }
   const byApp = describedByApp(step.name, step.input);
   if (byApp) return byApp;
   const input = (step.input ?? {}) as Record<string, unknown>;
