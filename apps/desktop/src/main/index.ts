@@ -250,7 +250,6 @@ import {
   listInstalledAddons,
   packProblem,
   readGroundAddon,
-  RECIPE_PIPELINES,
   registerAddonsIpc,
 } from './addons';
 import { registerRequestsIpc } from './analytics/requestsIpc';
@@ -1958,7 +1957,11 @@ function registerIpc(): void {
     // classifier add-on's settings (any `ground` the window sent is replaced; addons/gates.ts),
     // and lifting photo masks onto a cloud takes the Segmentation add-on. A recipe with regions
     // from Classify on point cloud (a depth band) is saved or exported only by a pack that reads it.
-    if (pipeline && (RECIPE_PIPELINES.includes(pipeline) || pipeline === 'segment.lift')) {
+    if (
+      pipeline === 'pointcloud.clean' ||
+      pipeline === 'survey.export' ||
+      pipeline === 'segment.lift'
+    ) {
       const dataRoot = settings.current().dataRoot;
       const packVersion =
         (await findPack({ dataRoot, env: process.env, app: packApp })).pack?.version ?? null;

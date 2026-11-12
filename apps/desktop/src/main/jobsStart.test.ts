@@ -7,6 +7,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { en } from '@aio/ui/i18n/en';
 import { describe, expect, it, vi } from 'vitest';
+import { depthBandRefusal, GROUND_ADDON_MISSING, groundGate, liftRefusal } from './addons/gates';
 import { detectPackRefusal } from './analytics/detectPack';
 import { flyabilityPackRefusal } from './builder';
 import { evidenceJobPackRefusal, evidencePackRefusal } from './evidencePack';
@@ -94,9 +95,69 @@ function jobsStart(
     laneSphere: () => null,
     inspectorQueue: { start: laneStart },
     INSPECTOR_QUEUED: 'waits',
+    // the add-on gates, with no add-on installed
+    depthBandRefusal,
+    groundGate,
+    liftRefusal,
+    readGroundAddon: () => Promise.resolve(null),
+    installedAddon: () => Promise.resolve(null),
   }) as (req: IpcRequest<'jobs:start'>) => Promise<{ ok: boolean; error?: string }>;
   return { handle, start, detectStart, findPack, photoStarting, laneStart };
 }
+
+describe('jobs:start add-on gates', () => {
+  const banded = {
+    schema: 'aio.pccleanup/1',
+    layerId: 'cloud',
+    regions: [{ id: 'r', depth: { near: 1, far: 9 } }],
+  };
+
+  it('refuses a save or an export of depth bands on a pack that cannot read them', async () => {
+    const t = jobsStart('0.34.0', 'failed');
+    for (const req of [
+      {
+        pipeline: 'pointcloud.clean' as const,
+        project: 'synthetic',
+        params: { mode: 'save', recipe: banded },
+      },
+      {
+        pipeline: 'survey.export' as const,
+        project: 'synthetic',
+        params: { what: 'cloud', cleanup: banded },
+      },
+    ]) {
+      expect(await t.handle(req)).toEqual({
+        ok: false,
+        error:
+          'This cleanup has regions from Classify on point cloud, which need processing tools 0.35.0 or later (these are 0.34.0). Update them in Settings, Processing tools.',
+      });
+    }
+    expect(t.start).not.toHaveBeenCalled();
+    const fresh = jobsStart('0.35.0', 'failed');
+    expect(
+      await fresh.handle({
+        pipeline: 'pointcloud.clean',
+        project: 'synthetic',
+        params: { mode: 'save', recipe: banded },
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it('refuses ground and lifting without their add-ons', async () => {
+    const t = jobsStart('0.35.0', 'failed');
+    expect(
+      await t.handle({
+        pipeline: 'pointcloud.clean',
+        project: 'synthetic',
+        params: { mode: 'noise', ground: { cell: 1 } },
+      }),
+    ).toEqual({ ok: false, error: GROUND_ADDON_MISSING });
+    expect(
+      await t.handle({ pipeline: 'segment.lift', project: 'synthetic', params: {} }),
+    ).toMatchObject({ ok: false, error: /Install the Segmentation add-on/ });
+    expect(t.start).not.toHaveBeenCalled();
+  });
+});
 
 describe('jobs:start resume feature gate', () => {
   it.each(['failed', 'cancelled', 'interrupted'] as const)(
