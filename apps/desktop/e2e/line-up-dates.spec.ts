@@ -28,6 +28,7 @@ import { producerItem } from './changeRun';
 import { expectRegionsMatchTruth, type Item, type RasterTruth } from './changeRaster';
 import { openBench, toggleCompareDates } from './island';
 import { choosePane } from './panoFixtures';
+import { openSection } from './panel';
 
 interface Misaligned {
   id: string;
@@ -1046,6 +1047,24 @@ test.describe('at the window size CI uses', () => {
     // 6. the imagery change runs, with no misaligned notice
     const truth = changeDemoTruth();
     const { from, to } = truth.captures;
+    // the line-up's notice (Undo) still shows, in the window corner while the stage is a Split:
+    // it keeps off the panel on the right, so every section head there takes a click
+    await expect(win.getByTestId('toast-host-window').getByTestId('lineup-notice')).toBeVisible();
+    await openSection(win, 'project');
+    const heads = await win.evaluate(() => {
+      const card = document.querySelector('[data-testid="lineup-notice"]')?.getBoundingClientRect();
+      const panel = document.querySelector('.ws > .right')?.getBoundingClientRect();
+      if (!card || !panel) return ['missing'];
+      const out = card.right <= panel.left ? [] : ['the notice lies over the panel'];
+      for (const head of document.querySelectorAll('.ws > .right .wb-psec > .wb-section-head')) {
+        const r = head.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        if (!head.contains(hit)) out.push(head.textContent);
+      }
+      return out;
+    });
+    expect(heads).toEqual([]);
+    await shot('notice-off-panel.png');
     await openBench(win, 'changes');
     const run = await producerItem(win, 'raster');
     await expect(run).toBeEnabled();

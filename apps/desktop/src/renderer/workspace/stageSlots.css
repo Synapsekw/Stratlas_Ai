@@ -37,3 +37,18 @@
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+
+/* The window's toast host (exports/Toasts.tsx), which shows the toasts while the stage's own host
+   is not mounted (a Split, the corner taken): bottom right of the window, but never over the panel
+   on the right. Its notices (an undo, an offer) stay until they are acted on or closed, and at
+   1100 x 720 the panel's last section heads sit where the corner is. So it keeps to the stage's
+   column, its end inset the panel's width (the stage's end edge, measure.css --sv-stage) and no
+   wider than the stage; with no stage on screen it stands in the window corner as before. The
+   stage's anchor is named here too (the same name), so the host never waits on measure.css. */
+.stage {
+  anchor-name: --sv-stage;
+}
+.app .q-toasts[data-placement='window'] {
+  inset-inline-end: calc(anchor(--sv-stage end, 0px) + var(--sp-6));
+  width: min(360px, calc(anchor-size(--sv-stage inline, 100vw) - 2 * var(--sp-6)));
+}
