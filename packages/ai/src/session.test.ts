@@ -1300,3 +1300,48 @@ describe('view capture belongs to one project (A3)', () => {
     expect(t.session.getState().viewCapture).toBe(false);
   });
 });
+
+describe('notes belong to one project (A3)', () => {
+  const pile: AgentNote = {
+    id: 'n-pile1',
+    text: 'The piles here are named SP-1 to SP-9',
+    by: 'agent',
+    createdAt: '2026-10-01T09:00:00.000Z',
+  };
+
+  it("never sends one project's notes with another project's message", async () => {
+    const t = setup({ notes: [pile] });
+    await t.session.refresh();
+    expect(t.session.getState().notes).toEqual([pile]);
+    const p = t.ws.getState().project;
+    if (!p) throw new Error('fixture project');
+    t.ws.setState({ project: { ...p, id: 'other' } });
+    // the other project's notes cannot be read
+    const invoke = t.bridge.invoke.bind(t.bridge);
+    t.bridge.invoke = ((channel: IpcChannel, req: unknown) =>
+      channel === 'ai:memory'
+        ? Promise.reject(new Error('main is busy'))
+        : invoke(channel, req as never)) as typeof t.bridge.invoke;
+    await t.session.send('how many piles?');
+    const req = t.sent('ai:send')[0]?.req as IpcRequest<'ai:send'>;
+    expect(req.context).not.toHaveProperty('projectNotes');
+    expect(t.session.getState().notes).toEqual([]);
+  });
+
+  it('drops the notes on a project switch', async () => {
+    const t = setup({ notes: [pile] });
+    await t.session.refresh();
+    const p = t.ws.getState().project;
+    if (!p) throw new Error('fixture project');
+    t.ws.setState({ project: { ...p, id: 'other' } });
+    t.session.reset();
+    expect(t.session.getState().notes).toEqual([]);
+  });
+
+  it('sends once when two messages are sent while the notes are read', async () => {
+    const t = setup({ notes: [pile], alwaysAllow: true });
+    await t.session.refresh();
+    await Promise.all([t.session.send('first'), t.session.send('second')]);
+    expect(t.sent('ai:send')).toHaveLength(1);
+  });
+});

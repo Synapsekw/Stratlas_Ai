@@ -97,7 +97,9 @@ describe('existing files 0.11 writes stay readable by 0.10', () => {
             k !== 'agentThinking' &&
             k !== 'autoCheckNewDates' &&
             // add-on model packs (N1, 11 Nov 2026): additive, absent means no address set
-            k !== 'addons',
+            k !== 'addons' &&
+            // the bundled model's tool check (A3, 12 Nov 2026): additive, absent means not checked
+            k !== 'bundledAgentCheck',
         )
         .sort(),
     ).toEqual(Object.keys(v010.Settings.shape).sort());

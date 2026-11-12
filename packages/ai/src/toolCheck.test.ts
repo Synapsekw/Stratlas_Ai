@@ -156,6 +156,10 @@ describe('the tool-calling check', () => {
     const r = await runToolCheck({ model: once.model });
     expect(r.cases[2]).toMatchObject({ ok: false, outcome: 'text-only' });
     expect(r.correct).toBe(11);
+    // the last request fails: the server may have gone away, no verdict
+    let k = 0;
+    const last = scripted((ask) => (++k === 12 ? down : (byAsk(ask) ?? '')));
+    await expect(runToolCheck({ model: last.model })).rejects.toThrow(/ECONNREFUSED/);
   });
 
   it('needs four in five right', () => {

@@ -234,6 +234,7 @@ export async function runToolCheck(opts: ToolCheckOptions): Promise<ToolCheckRes
   let invalidCalls = 0;
   let promptTokens: number | undefined;
   let lastFailed = false;
+  let lastError: unknown;
   for (const [index, c] of cases.entries()) {
     const timeout = AbortSignal.timeout(opts.timeoutMs ?? CASE_TIMEOUT_MS);
     const signal = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;
@@ -264,6 +265,7 @@ export async function runToolCheck(opts: ToolCheckOptions): Promise<ToolCheckRes
       // on the model, so no failed check is recorded that would block it
       if (results.length === 0 || lastFailed) throw e;
       lastFailed = true;
+      lastError = e;
       const result: ToolCheckCaseResult = {
         id: c.id,
         ok: false,
@@ -288,6 +290,8 @@ export async function runToolCheck(opts: ToolCheckOptions): Promise<ToolCheckRes
     results.push(result);
     opts.onCase?.(result, index, cases.length);
   }
+  // the last request failed: the server may have gone away, so no verdict either
+  if (lastFailed) throw lastError;
   const correct = results.filter((r) => r.ok).length;
   const needed = neededFor(cases.length);
   const meanLatencyMs =

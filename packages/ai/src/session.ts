@@ -194,6 +194,9 @@ export class AgentSession {
   private closing = false;
   /** The project `viewCapture` was read or stored for: it never carries over to another one. */
   private viewCaptureFor: string | null = null;
+  /** The project the notes in the state belong to, and the newest notes read asked (A3). */
+  private notesFor: string | null = null;
+  private notesAsked = 0;
 
   constructor(private readonly deps: SessionDeps) {
     this.newId = deps.newId ?? (() => globalThis.crypto.randomUUID());
@@ -275,6 +278,7 @@ export class AgentSession {
     const projectId = this.projectId();
     // another project's choice is dropped at once, even if the reads below fail
     this.dropViewCaptureOf(projectId);
+    this.dropNotesOf(projectId);
     try {
       const task = this.deps.task?.();
       const status = await bridge.invoke('ai:status', {
@@ -310,7 +314,7 @@ export class AgentSession {
         await this.loadNotes();
       } else {
         if (this.state.viewCapture) this.set({ viewCapture: false });
-        if (this.state.notes.length) this.set({ notes: [], notesReadOnly: false });
+        this.dropNotesOf(null);
       }
     } catch (e) {
       this.set({
@@ -353,7 +357,11 @@ export class AgentSession {
       }
       a = { status: 'ready', route: status.route, cloud: status.cloud };
     }
+    const sendingFor = this.projectId();
     const notes = await this.loadNotes();
+    // the notes read took a moment: another send, a preview or a project switch may have come
+    const after = this.getState();
+    if (this.projectId() !== sendingFor || after.busy || after.preview) return;
     const ctx = this.deps.toolContext();
     const context = {
       ...assembleContext(ctx.workspace.getState(), this.window),
@@ -438,23 +446,27 @@ export class AgentSession {
   async loadNotes(): Promise<AgentNote[]> {
     const projectId = this.projectId();
     const bridge = this.deps.bridge;
-    if (!projectId || !bridge) {
-      if (this.state.notes.length) this.set({ notes: [], notesReadOnly: false });
-      return [];
-    }
+    this.dropNotesOf(projectId);
+    if (!projectId || !bridge) return [];
+    const asked = ++this.notesAsked;
     try {
       // an answer without a notes list (an older main, a test bridge) is no notes
       const r = (await bridge.invoke('ai:memory', { projectId })) as MemoryAnswer;
       if (this.projectId() !== projectId) return [];
       const notes = r?.ok && Array.isArray(r.notes) ? r.notes : [];
-      this.set({
-        notes,
-        notesReadOnly: r?.readOnly ?? false,
-        notesProblem: r?.error ?? null,
-      });
+      // a newer read asked meanwhile: its answer is the one to show
+      if (asked === this.notesAsked) {
+        this.notesFor = projectId;
+        this.set({
+          notes,
+          notesReadOnly: r?.readOnly ?? false,
+          notesProblem: r?.error ?? null,
+        });
+      }
       return notes;
     } catch {
-      return this.state.notes;
+      // only this project's notes, never the ones of the project open before
+      return this.notesFor === projectId ? this.state.notes : [];
     }
   }
 
@@ -686,6 +698,15 @@ export class AgentSession {
     });
     // a new conversation in the same project keeps its choice; a project switch drops it
     this.dropViewCaptureOf(this.projectId());
+    this.dropNotesOf(this.projectId());
+  }
+
+  /** Forget the notes when they belong to a project other than `projectId`. */
+  private dropNotesOf(projectId: string | null): void {
+    if (this.notesFor === projectId) return;
+    this.notesFor = null;
+    if (this.state.notes.length || this.state.notesReadOnly || this.state.notesProblem)
+      this.set({ notes: [], notesReadOnly: false, notesProblem: null });
   }
 
   /** Forget the view-capture choice when it belongs to a project other than `projectId`. */
