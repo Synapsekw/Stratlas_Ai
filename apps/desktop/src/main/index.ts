@@ -34,6 +34,7 @@ import {
   ipcMain,
   nativeImage,
   nativeTheme,
+  net,
   protocol,
   screen,
   session,
@@ -252,6 +253,7 @@ import {
   readGroundAddon,
   registerAddonsIpc,
 } from './addons';
+import { netCatalogueFetch } from './addons/netCatalogueFetch';
 import { registerRequestsIpc } from './analytics/requestsIpc';
 import { nodeVlmServerDeps, VlmServer } from './analytics/server';
 import { createKeyVault } from './keys';
@@ -2755,6 +2757,10 @@ function registerIpc(): void {
       baseUrl: settings.current().addons?.baseUrl,
     }),
     fetch: (u, init) => session.fromPartition('quadrion-addons').fetch(u, init),
+    // the catalogue checks each redirect before following it (net.fetch cannot with 'manual')
+    catalogueFetch: netCatalogueFetch((o) =>
+      net.request({ ...o, session: session.fromPartition('quadrion-addons') }),
+    ),
     chooseFile: async () => {
       const win = targetWindow();
       const options = {

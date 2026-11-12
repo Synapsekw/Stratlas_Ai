@@ -13,12 +13,15 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-function countingOrt(created: string[]): OrtNodeLike {
-  const session: OrtSession = {
+function countingOrt(created: string[], released: string[] = []): OrtNodeLike {
+  const sessionFor = (path: string): OrtSession => ({
     inputNames: ['images'],
     outputNames: ['output0'],
     run: () => Promise.resolve({} as Record<string, OrtTensor>),
-  };
+    release: () => {
+      released.push(path);
+    },
+  });
   return {
     listSupportedBackends: () => [{ name: 'cpu' }],
     Tensor: class {
@@ -31,7 +34,7 @@ function countingOrt(created: string[]): OrtNodeLike {
     InferenceSession: {
       create(path) {
         created.push(String(path));
-        return Promise.resolve(session);
+        return Promise.resolve(sessionFor(String(path)));
       },
     },
   };
@@ -40,7 +43,8 @@ function countingOrt(created: string[]): OrtNodeLike {
 describe('the worker session cache', () => {
   it('keeps a session for the same file and loads a model replaced in place again', async () => {
     const created: string[] = [];
-    const core = createWorkerCore(() => Promise.resolve(countingOrt(created)), 'win32');
+    const released: string[] = [];
+    const core = createWorkerCore(() => Promise.resolve(countingOrt(created, released)), 'win32');
     const model = join(dir, 'model.onnx');
     await writeFile(model, 'weights v1');
     let id = 0;
@@ -48,11 +52,14 @@ describe('the worker session cache', () => {
     expect(await open()).toMatchObject({ type: 'result' });
     await open();
     expect(created).toHaveLength(1);
+    expect(released).toEqual([]);
     // a Road defects update: new files at the same path
     await rm(model);
     await writeFile(model, 'weights v2, longer');
     const r = await open();
     expect(r).toMatchObject({ type: 'result' });
     expect(created).toHaveLength(2);
+    // the dropped session's native memory is freed
+    expect(released).toEqual([model]);
   });
 });

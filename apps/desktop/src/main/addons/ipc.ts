@@ -44,6 +44,12 @@ export interface AddonsIpcDeps {
   settings: () => { offlineOnly: boolean; baseUrl?: string | undefined };
   /** Fetch through the add-ons' own session (the default one blocks the network). */
   fetch: FetchLike;
+  /**
+   * The catalogue read, when it is not `fetch`: in the app, `netCatalogueFetch` over
+   * `net.request`, which checks each redirect before following it (`net.fetch` with
+   * `redirect: 'manual'` refuses every redirect instead).
+   */
+  catalogueFetch?: FetchLike;
   /** The native open dialog for a `.aioaddon`; null when the person closed it. */
   chooseFile: () => Promise<string | null>;
   emit: (p: AddonProgress) => void;
@@ -143,7 +149,7 @@ export function registerAddonsIpc(d: AddonsIpcDeps): {
       return { ok: false, base: null, error: base.error ?? NO_ADDRESS_ERROR, code: 'refused' };
     const r = await readCatalogue({
       base: base.url,
-      fetch: d.fetch,
+      fetch: d.catalogueFetch ?? d.fetch,
       ...(timeoutMs ? { timeoutMs } : {}),
     });
     return r.ok

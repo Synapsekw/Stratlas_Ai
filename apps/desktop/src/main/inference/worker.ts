@@ -130,6 +130,8 @@ export function createWorkerCore(
     const files = await modelFilesKey(path);
     let entry = sessions.get(key);
     if (entry && entry.files !== files) {
+      // the old weights' native memory goes with their session
+      await Promise.resolve(entry.s.release?.()).catch(() => undefined);
       sessions.delete(key);
       entry = undefined;
     }

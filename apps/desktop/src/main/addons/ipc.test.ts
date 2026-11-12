@@ -139,7 +139,7 @@ describe('catalogue', () => {
     redirects.set('/addons/catalogue.json', `http://[::ffff:7f00:1]:${port}/addons/real.json`);
     expect(await readCatalogue({ base: url, fetch: fetchLike })).toMatchObject({
       ok: false,
-      error: /sent the request on to http:\/\/\[::ffff:7f00:1\]:\d+, which is not https/,
+      error: /sends the app on to http:\/\/\[::ffff:7f00:1\]:\d+, which the app does not read/,
     });
     expect(requests).not.toContain('/addons/real.json');
     // a plain-http hop on this computer that sends the request on to https elsewhere
@@ -147,7 +147,7 @@ describe('catalogue', () => {
     redirects.set('/addons/hop', `http://[::ffff:7f00:1]:${port}/addons/real.json`);
     expect(await readCatalogue({ base: url, fetch: fetchLike })).toMatchObject({
       ok: false,
-      error: /which is not https/,
+      error: /which the app does not read add-ons from/,
     });
     expect(requests).toContain('/addons/hop');
     expect(requests).not.toContain('/addons/real.json');
@@ -168,7 +168,7 @@ describe('catalogue', () => {
     };
     expect(await readCatalogue({ base: url, fetch: followed })).toMatchObject({
       ok: false,
-      error: /could not check where/,
+      error: /somewhere it could not check/,
     });
     redirects.delete('/addons/catalogue.json');
     // the archive: the same

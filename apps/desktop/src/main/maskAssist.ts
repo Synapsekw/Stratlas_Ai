@@ -31,6 +31,8 @@ export interface OrtSession {
   inputNames: readonly string[];
   outputNames: readonly string[];
   run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensor>>;
+  /** Frees the session's native memory (onnxruntime-node); absent in test stand-ins. */
+  release?(): Promise<void> | void;
 }
 export interface OrtLike {
   InferenceSession: { create(path: string): Promise<OrtSession> };

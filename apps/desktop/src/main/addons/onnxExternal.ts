@@ -52,15 +52,20 @@ class Reader {
     return this.buf[pos - this.at] ?? 0;
   }
 
-  /** A varint at `pos`: its value (exact up to 2^53) and the position after it. */
-  async varint(pos: number): Promise<[number, number]> {
+  /**
+   * A varint at `pos`: its value (exact up to 2^53), the position after it, and its low 32 bits
+   * exactly (from the first five bytes, in integer maths), which is what an int32 enum reads.
+   */
+  async varint(pos: number): Promise<[number, number, number]> {
     let value = 0;
     let scale = 1;
+    let low = 0;
     for (let i = 0; i < 10; i++) {
       const b = await this.byte(pos + i);
       value += (b & 0x7f) * scale;
       scale *= 128;
-      if ((b & 0x80) === 0) return [value, pos + i + 1];
+      if (i < 5) low = (low | ((b & 0x7f) << (7 * i))) >>> 0;
+      if ((b & 0x80) === 0) return [value, pos + i + 1, low];
     }
     throw new NotOnnx('a varint longer than 10 bytes');
   }
@@ -83,9 +88,9 @@ async function walk(
     if (field === 0) throw new NotOnnx('field 0');
     switch (wire) {
       case 0: {
-        const [value, next] = await r.varint(afterTag);
-        // an enum is an int32 on the wire: a negative or sign-extended 1 is still EXTERNAL
-        if (kind === 'tensor' && field === 14 && value % 2 ** 32 === 1) return true;
+        const [, next, low32] = await r.varint(afterTag);
+        // an enum is an int32 on the wire: whatever is padded above bit 31, a low 1 is EXTERNAL
+        if (kind === 'tensor' && field === 14 && low32 === 1) return true;
         pos = next;
         break;
       }

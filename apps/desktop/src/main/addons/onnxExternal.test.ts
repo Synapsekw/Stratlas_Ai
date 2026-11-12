@@ -65,6 +65,14 @@ describe('onnxExternalData', () => {
 
   it('reads EXTERNAL past the int32 width, and in a function attribute default', async () => {
     expect(await check(model(tensorWith(intField(14, 2 ** 32 + 1))))).toBe('external');
+    // 2^60 + 1, past what a double holds exactly (it would read as 2^60): its low bits are still 1
+    const padded = Buffer.from([14 * 8, 0x81, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x10]);
+    expect(await check(model(tensorWith(padded)))).toBe('external');
+    // and a 1 padded to ten bytes (a sign-extended encoder's form)
+    const tenBytes = Buffer.from([14 * 8, 0x81, ...Array<number>(8).fill(0x80), 0x00]);
+    expect(await check(model(tensorWith(tenBytes)))).toBe('external');
+    // 2^32 + 2 has low bits 2: DEFAULT-like, not external
+    expect(await check(model(tensorWith(intField(14, 2 ** 32 + 2))))).not.toBe('external');
     // ModelProto.functions (25) > FunctionProto.attribute_proto (11) > AttributeProto.t (5)
     const fn = field(
       25,

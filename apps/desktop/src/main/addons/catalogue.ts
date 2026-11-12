@@ -100,8 +100,10 @@ export function parseCatalogue(
 }
 
 /**
- * A fetch that refuses an answer that came from an address the app may not read: a redirect to
- * plain http elsewhere, or away from https. The answer's body is never read in that case.
+ * A fetch for add-on archives that refuses an answer it can see came from an address the app may
+ * not read. This is a courtesy, not the guarantee: Electron's `net.fetch` leaves `res.url` empty,
+ * so in the app it checks only the address asked for. What protects an archive is the catalogue's
+ * SHA-256 (and each file's in `addon.json`), checked before anything is unpacked.
  */
 export function guardedFetch(fetch: FetchLike): FetchLike {
   return async (url, init) => {
@@ -123,43 +125,71 @@ export function guardedFetch(fetch: FetchLike): FetchLike {
   };
 }
 
-const MAX_HOPS = 5;
+export const MAX_HOPS = 5;
+
+/** The sentence for a refused redirect, shown after "The add-on list could not be read from <base>: ". */
+export const REDIRECT_REFUSED = (origin: string): string =>
+  `the address sends the app on to ${origin}, which the app does not read add-ons from (use an https address that answers directly)`;
+export const REDIRECT_UNSEEN =
+  'the address sends the app on somewhere it could not check (use an https address that answers directly)';
+export const REDIRECT_TOO_MANY = 'the address sends the app on too many times';
+
+/**
+ * Whether the request at `from` may follow a redirect to `location` as hop number `hop` (0 for the
+ * first redirect): the next address must be one `allowedAddonUrl` accepts, never a step down from
+ * https to plain http (even to this computer), and at most `MAX_HOPS` hops. The one rule for both
+ * the tested fetch path (`fetchHopByHop`) and the app's `net.request` adapter
+ * (`netCatalogueFetch`).
+ */
+export function checkHop(
+  from: string,
+  location: string | null | undefined,
+  hop: number,
+): { ok: true; url: string } | { ok: false; error: string } {
+  if (!location) return { ok: false, error: REDIRECT_UNSEEN };
+  if (hop >= MAX_HOPS) return { ok: false, error: REDIRECT_TOO_MANY };
+  let next: URL;
+  try {
+    next = new URL(location, from);
+  } catch {
+    return { ok: false, error: REDIRECT_UNSEEN };
+  }
+  if (new URL(from).protocol === 'https:' && next.protocol !== 'https:')
+    return { ok: false, error: REDIRECT_REFUSED(next.origin) };
+  if (!allowedAddonUrl(next)) return { ok: false, error: REDIRECT_REFUSED(next.origin) };
+  return { ok: true, url: next.toString() };
+}
 
 /**
  * Fetch the catalogue following redirects by hand (`redirect: 'manual'`), each hop checked with
- * `allowedAddonUrl` before it is requested: a plain-http hop can never send the request on to a
- * host of its choosing, as checking only the final address would let it. A redirect the fetch
- * does not show (an opaque one), or one it followed anyway, is refused.
+ * `checkHop` before it is requested: a plain-http hop can never send the request on to a host of
+ * its choosing, as checking only the final address would let it. A redirect the fetch does not
+ * show (an opaque one), or one it followed anyway, is refused. A fetch that applies `checkHop`
+ * itself (the app's `netCatalogueFetch`) only ever answers the final response, which passes
+ * straight through.
  */
 export async function fetchHopByHop(
   fetch: FetchLike,
   url: string,
   init: { signal?: AbortSignal } = {},
 ): Promise<Response> {
+  if (!allowedAddonUrl(new URL(url))) throw new Error(REDIRECT_REFUSED(new URL(url).origin));
   let at = url;
   for (let hop = 0; ; hop++) {
-    const u = new URL(at);
-    if (!allowedAddonUrl(u))
-      throw new Error(`the server sent the request on to ${u.origin}, which is not https`);
     const res = await fetch(at, { ...init, redirect: 'manual' });
     const isRedirect =
       res.type === 'opaqueredirect' ||
       (res.status >= 300 && res.status < 400 && res.status !== 304);
     if (res.redirected) {
       await res.body?.cancel().catch(() => undefined);
-      throw new Error('the server sent the request on, and the app could not check where');
+      throw new Error(REDIRECT_UNSEEN);
     }
     if (!isRedirect) return res;
     await res.body?.cancel().catch(() => undefined);
     const location = res.type === 'opaqueredirect' ? null : res.headers.get('location');
-    if (!location)
-      throw new Error('the server sent the request on, and the app could not check where');
-    if (hop >= MAX_HOPS) throw new Error('the server sent the request on too many times');
-    const next = new URL(location, at);
-    // never from https down to plain http, even to this computer
-    if (u.protocol === 'https:' && next.protocol !== 'https:')
-      throw new Error(`the server sent the request on to ${next.origin}, which is not https`);
-    at = next.toString();
+    const next = checkHop(at, location, hop);
+    if (!next.ok) throw new Error(next.error);
+    at = next.url;
   }
 }
 
