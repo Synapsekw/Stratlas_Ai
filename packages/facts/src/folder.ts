@@ -5,7 +5,7 @@
  */
 import { existsSync } from 'node:fs';
 import { readdir, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, parse } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { extractFacts } from './extract';
 import { readProjectSources, type ProjectSources } from './sources';
@@ -75,11 +75,22 @@ export async function syncFolder(
 }
 
 /**
+ * Is the folder there, or could it come back? A folder whose drive or share root is missing (an
+ * unplugged disk, a share offline) counts as still there, so its index is kept.
+ */
+export function stillThere(root: string, exists: (p: string) => boolean = existsSync): boolean {
+  if (exists(root)) return true;
+  const volume = parse(root).root;
+  return volume !== '' && volume !== '/' && !exists(volume);
+}
+
+/**
  * Delete the index files in `dir` whose project folder no longer exists (or that do not say which
  * folder they were built from, or cannot be read): they are derived and rebuilt on the next open.
+ * A folder on a drive or share that is not there now (unplugged, offline) keeps its index.
  * Returns the index files removed.
  */
-export async function pruneIndexes(dir: string, keep: (root: string) => boolean = existsSync) {
+export async function pruneIndexes(dir: string, keep: (root: string) => boolean = stillThere) {
   let names: string[];
   try {
     names = await readdir(dir);

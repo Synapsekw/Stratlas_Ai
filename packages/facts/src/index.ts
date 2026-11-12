@@ -3,6 +3,7 @@ export {
   indexFiles,
   openOrReset,
   pruneIndexes,
+  stillThere,
   removeIndex,
   syncFolder,
   type FolderSync,

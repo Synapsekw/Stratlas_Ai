@@ -111,14 +111,10 @@ test('the agent answers what happened to a stockpile from the fact index', async
   ).toBeVisible(INDEXED);
 
   await unfoldAgent(win);
-  // an index update between the wait and the send can briefly take the tools away: ask again
-  // (bounded) once the index says ready, rather than sleeping
-  let step = await ask(win, QUESTION);
-  for (let tries = 1; tries < 3 && step === null; tries++) {
-    await indexReady(win);
-    step = await ask(win, QUESTION);
-  }
-  expect(step, 'history_of never ended done').not.toBeNull();
+  // asked once: after the first build an update never reports anything but ready (main keeps the
+  // state through updates, `facts.test.ts` "updates after a change"), so the tools stay offered
+  const step = await ask(win, QUESTION);
+  expect(step, 'history_of did not end done').not.toBeNull();
   if (!step) return;
   await expect(step).toHaveClass(/\bdone\b/);
   // the step's summary is the pile's label and how many entries its history holds

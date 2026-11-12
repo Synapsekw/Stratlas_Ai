@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { Detection, type AuditEntry } from '@aio/schema';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { extractFacts, fitKey } from './extract';
-import { pruneIndexes, syncFolder } from './folder';
+import { pruneIndexes, stillThere, syncFolder } from './folder';
 import { readProjectSources, type ProjectSources } from './sources';
 import { openFactIndex } from './store';
 import { writeFixtureProject } from './testing';
@@ -115,6 +115,31 @@ describe('folders', () => {
     expect(await pruneIndexes(dir)).toEqual([]);
     rmSync(join(root, 'p'), { recursive: true, force: true });
     expect(await pruneIndexes(dir)).toEqual([file]);
+  });
+});
+
+describe('an unplugged drive', () => {
+  it('keeps the index of a folder whose drive or share is not there', () => {
+    const on =
+      (...paths: string[]) =>
+      (p: string) =>
+        paths.includes(p);
+    // the drive is there but the folder is gone: prune
+    expect(stillThere('E:\\Sites\\gone', on('E:\\'))).toBe(false);
+    // the drive itself is missing (unplugged): keep
+    expect(stillThere('F:\\Sites\\quarry', on('E:\\'))).toBe(true);
+    // a share offline: keep
+    expect(stillThere('\\\\nas\\survey\\quarry', on())).toBe(true);
+    expect(stillThere('E:\\Sites\\here', on('E:\\', 'E:\\Sites\\here'))).toBe(true);
+  });
+
+  it('prunes nothing whose drive is missing', async () => {
+    const dir = join(root, 'ix');
+    const file = join(dir, 'a.sqlite');
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(dir);
+    await syncFolder(join(root, 'p'), file);
+    expect(await pruneIndexes(dir, () => true)).toEqual([]);
   });
 });
 

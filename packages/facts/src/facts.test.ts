@@ -7,7 +7,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { extractFacts, inside, subjectOfTarget } from './extract';
 import { readProjectSources } from './sources';
 import { ftsQuery, openFactIndex } from './store';
-import { measurement, result, writeFixtureProject } from './testing';
+import {
+  measurement,
+  result,
+  writeAntennaDeletion,
+  writeAntennaInventory,
+  writeFixtureProject,
+} from './testing';
 
 let root: string;
 beforeEach(() => {
@@ -168,6 +174,32 @@ describe('extracting facts', () => {
 });
 
 describe('the index', () => {
+  it('leaves a deleted antenna out of search and history', async () => {
+    writeAntennaDeletion(root);
+    const ix = await build();
+    expect(ix.historyOf('antenna:ant-a1').facts).toEqual([]);
+    expect(ix.query({ kinds: ['antenna'] }).total).toBe(0);
+    expect(ix.query({ text: 'downtilt' }).facts.some((f) => f.kind === 'antenna')).toBe(false);
+  });
+
+  it("shows an antenna's current name and review state on its inventory's date", async () => {
+    writeAntennaInventory(root, { name: 'A1 north', status: 'rejected' }, 'c2');
+    const ix = await build();
+    const h = ix.historyOf('antenna:ant-a1');
+    expect(h.facts.map((f) => [f.date, f.label, f.status, f.source, f.evidence])).toEqual([
+      ['2026-07-01', 'A1', 'accepted', 'human', 'telecom/history/c1.json'],
+      ['2026-08-01', 'A1 north', 'rejected', 'human', 'telecom/antennas.json'],
+    ]);
+    expect(ix.query({ text: 'north', kinds: ['antenna'] }).facts[0]?.id).toBe('antenna:ant-a1@c2');
+  });
+
+  it('lays an inventory without a date over the latest date measured', async () => {
+    writeAntennaInventory(root, { name: 'A1', status: 'accepted' });
+    const ix = await build();
+    const latest = ix.historyOf('antenna:ant-a1').facts.at(-1);
+    expect([latest?.date, latest?.status]).toEqual(['2026-08-01', 'accepted']);
+  });
+
   it('gives an antenna its history across survey dates', async () => {
     const ix = await build();
     const h = ix.historyOf('antenna:ant-a1');

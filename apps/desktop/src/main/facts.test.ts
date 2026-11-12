@@ -229,16 +229,24 @@ describe('the fact index service', () => {
 });
 
 describe('the worker runner', () => {
-  /** A stand-in worker: answers with `answer`, or fails at once. */
+  type Mode = 'ok' | 'fail-load' | 'crash-late';
+  /** A stand-in worker: answers, fails to load (error before online), or crashes later. */
   class FakeWorker extends EventEmitter {
-    constructor(private readonly answer: 'ok' | 'fail-start') {
+    constructor(
+      private readonly mode: Mode,
+      private readonly clock: { t: number },
+    ) {
       super();
+      if (mode !== 'fail-load') setTimeout(() => this.emit('online'), 0);
     }
     postMessage(m: { id: number }) {
       setTimeout(() => {
-        if (this.answer === 'fail-start') this.emit('error', new Error('cannot load'));
-        else this.emit('message', { id: m.id, ok: true, result: { pruned: ['x'] } });
-      }, 0);
+        if (this.mode === 'fail-load') this.emit('error', new Error('cannot load'));
+        else if (this.mode === 'crash-late') {
+          this.clock.t += 10_000;
+          this.emit('exit', 134);
+        } else this.emit('message', { id: m.id, ok: true, result: { pruned: ['x'] } });
+      }, 5);
     }
     unref() {
       return this;
@@ -247,28 +255,44 @@ describe('the worker runner', () => {
       return Promise.resolve(0);
     }
   }
-
-  it('answers through the worker', async () => {
-    const run = createWorkerRunner('w.js', {
-      make: () => new FakeWorker('ok') as unknown as Worker,
-    });
-    expect(await run({ kind: 'prune', dir })).toEqual({ pruned: ['x'] });
-  });
-
-  it('runs in process when the worker cannot start, from then on', async () => {
+  const runner = (modes: Mode[] | 'throw', lines: string[] = []) => {
+    const clock = { t: 0 };
     let made = 0;
-    const lines: string[] = [];
     const run = createWorkerRunner('w.js', {
       make: () => {
-        made++;
-        return new FakeWorker('fail-start') as unknown as Worker;
+        if (modes === 'throw') throw new Error('no such file');
+        return new FakeWorker(modes[made++] ?? 'ok', clock) as unknown as Worker;
       },
       fallback: () => Promise.resolve({ pruned: ['in-process'] }),
       log: (l) => lines.push(l),
+      now: () => clock.t,
     });
+    return { run, made: () => made };
+  };
+
+  it('answers through the worker', async () => {
+    const { run } = runner(['ok']);
+    expect(await run({ kind: 'prune', dir })).toEqual({ pruned: ['x'] });
+  });
+
+  it('runs in process when the worker cannot load, from then on', async () => {
+    const lines: string[] = [];
+    const { run, made } = runner(['fail-load'], lines);
     expect(await run({ kind: 'prune', dir })).toEqual({ pruned: ['in-process'] });
     expect(await run({ kind: 'prune', dir })).toEqual({ pruned: ['in-process'] });
-    expect(made).toBe(1);
+    expect(made()).toBe(1);
     expect(lines[0]).toMatch(/could not start/);
+  });
+
+  it('runs in process when new Worker throws', async () => {
+    const { run } = runner('throw');
+    expect(await run({ kind: 'prune', dir })).toEqual({ pruned: ['in-process'] });
+  });
+
+  it('fails the job of a worker that crashes later, never on main, and starts again', async () => {
+    const { run, made } = runner(['crash-late', 'ok']);
+    await expect(run({ kind: 'prune', dir })).rejects.toThrow(/stopped \(exit 134\)/);
+    expect(await run({ kind: 'prune', dir })).toEqual({ pruned: ['x'] });
+    expect(made()).toBe(2);
   });
 });

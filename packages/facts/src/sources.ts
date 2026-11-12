@@ -8,7 +8,11 @@ import { join } from 'node:path';
 import { auditEntries, loadJournal } from '@aio/journal';
 import {
   AccuracyReport,
+  ANTENNA_DELETIONS_FILE,
+  AntennaDeletionsFile,
   AntennaHistoryFile,
+  ANTENNAS_FILE,
+  AntennasFile,
   ChangeSet,
   Detection,
   DetectionsFile,
@@ -19,6 +23,7 @@ import {
   ThermalCandidatesFile,
   ThermalFile,
   WalkFile,
+  type AntennaStatus,
   type AuditEntry,
   type ProjectManifest,
   type SurveyMeasurement,
@@ -49,6 +54,15 @@ export interface ProjectSources {
   walks: { file: string; walk: WalkFile }[];
   /** What each survey date measured of its antennas (M2, pipeline pack 0.35.0 and later). */
   antennas: { file: string; history: AntennaHistoryFile }[];
+  /**
+   * The current antenna inventory (`telecom/antennas.json`): each unit's name and review state now,
+   * laid over the facts of the date it belongs to, so an accept, reject or rename shows.
+   */
+  antennaInventory: {
+    file: string;
+    captureId?: string;
+    units: { id: string; name: string; status: AntennaStatus }[];
+  } | null;
   /** The journal's ops as audit entries (newest first, as `auditEntries` gives them). */
   events: AuditEntry[];
 }
@@ -65,6 +79,7 @@ export const emptySources = (): ProjectSources => ({
   candidates: null,
   walks: [],
   antennas: [],
+  antennaInventory: null,
   events: [],
 });
 
@@ -211,9 +226,29 @@ export async function readProjectSources(root: string): Promise<ProjectSources> 
     if (w.success) out.walks.push({ file: `walks/${id}/walk.json`, walk: w.data });
   }
 
+  // antennas a person deleted stay deleted (telecom.ts `deletedIds`): left out of every date
+  const del = AntennaDeletionsFile.safeParse(
+    await json(join(root, ...ANTENNA_DELETIONS_FILE.split('/'))),
+  );
+  const deleted = new Set(del.success ? del.data.deletions.map((d) => d.unitId) : []);
   for (const n of await names(join(root, 'telecom', 'history'), /\.json$/)) {
     const h = AntennaHistoryFile.safeParse(await json(join(root, 'telecom', 'history', n)));
-    if (h.success) out.antennas.push({ file: `telecom/history/${n}`, history: h.data });
+    if (h.success) {
+      out.antennas.push({
+        file: `telecom/history/${n}`,
+        history: { ...h.data, units: h.data.units.filter((u) => !deleted.has(u.id)) },
+      });
+    }
+  }
+  const inv = AntennasFile.safeParse(await json(join(root, ...ANTENNAS_FILE.split('/'))));
+  if (inv.success) {
+    out.antennaInventory = {
+      file: ANTENNAS_FILE,
+      ...(inv.data.run.captureId ? { captureId: inv.data.run.captureId } : {}),
+      units: inv.data.units
+        .filter((u) => !deleted.has(u.id))
+        .map((u) => ({ id: u.id, name: u.name, status: u.status })),
+    };
   }
 
   const files = await journalFiles(root);

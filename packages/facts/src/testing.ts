@@ -1,5 +1,5 @@
 /** A small project folder with one record of every kind the index reads (tests only). */
-import { cpSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -67,6 +67,64 @@ export const measurement = (series: unknown[]) => ({
   series,
   createdAt: '2026-07-01T09:00:00.000Z',
 });
+
+/** The antenna inventory example of `@aio/schema` (aio.antennas/1). */
+const ANTENNAS_FIXTURE = join(
+  here,
+  '..',
+  '..',
+  'schema',
+  'src',
+  '__fixtures__',
+  'antennas-contract.json',
+);
+
+/**
+ * Write `telecom/antennas.json` from the schema's example, its first unit made `ant-a1` with the
+ * name and review state given, for survey date `captureId` (absent: no date on the run).
+ */
+export function writeAntennaInventory(
+  root: string,
+  unit: { name: string; status: 'draft' | 'accepted' | 'rejected' },
+  captureId?: string,
+): void {
+  const example = (JSON.parse(readFileSync(ANTENNAS_FIXTURE, 'utf8')) as { example: AnyJson })
+    .example;
+  const run = example.run as AnyJson;
+  const units = example.units as AnyJson[];
+  const first = { ...(units[0] ?? {}), id: 'ant-a1', ...unit };
+  put(root, 'telecom/antennas.json', {
+    ...example,
+    run: { ...run, ...(captureId ? { captureId } : {}) },
+    units: [first],
+  });
+}
+
+/** Record `ant-a1` as deleted (`telecom/antenna-deletions.json`). */
+export function writeAntennaDeletion(root: string): void {
+  put(root, 'telecom/antenna-deletions.json', {
+    schema: 'aio.antenna-deletions/1',
+    deletions: [
+      {
+        unitId: 'ant-a1',
+        name: 'A1',
+        kind: 'panel',
+        box: {
+          centre: [1005, 1995, 30],
+          axes: [
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+          ],
+          extents: [0.3, 1.4, 0.1],
+        },
+        deletedAt: '2026-08-10T00:00:00.000Z',
+      },
+    ],
+  });
+}
+
+type AnyJson = Record<string, unknown>;
 
 export function writeFixtureProject(root: string, opts: { journal?: boolean } = {}): void {
   put(root, 'manifest.json', {

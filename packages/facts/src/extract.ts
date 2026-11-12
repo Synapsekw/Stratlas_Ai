@@ -633,9 +633,22 @@ function thermalFacts(b: Builder, ctx: Context, src: ProjectSources): void {
  * is that date's own frame (project E, N, Z), as the file says.
  */
 function antennaFacts(b: Builder, ctx: Context, src: ProjectSources): void {
+  // the inventory belongs to its run's date, else to the latest date measured
+  const inv = src.antennaInventory;
+  const dayOfFile = (h: (typeof src.antennas)[number]['history']) =>
+    ctx.date(h.captureId) ?? h.at.slice(0, 10);
+  const latest = [...src.antennas]
+    .sort((a, c) => (dayOfFile(a.history) < dayOfFile(c.history) ? -1 : 1))
+    .at(-1)?.history.captureId;
+  const invCapture = inv ? (inv.captureId ?? latest) : undefined;
+  const now = new Map((inv?.units ?? []).map((u) => [u.id, u]));
   for (const { file, history } of src.antennas) {
     const capture = history.captureId;
-    for (const u of history.units) {
+    for (const measured of history.units) {
+      // on the inventory's date, the unit's name and review state are the ones it has now
+      const cur = capture === invCapture ? now.get(measured.id) : undefined;
+      const overlaid = !!cur && (cur.status !== measured.status || cur.name !== measured.name);
+      const u = cur ? { ...measured, name: cur.name, status: cur.status } : measured;
       const s = `antenna:${u.id}`;
       b.add({
         id: `antenna:${u.id}@${capture}`,
@@ -653,10 +666,10 @@ function antennaFacts(b: Builder, ctx: Context, src: ProjectSources): void {
         ...(history.at && /^\d{4}-\d{2}-\d{2}T/.test(history.at) ? { at: history.at } : {}),
         ...(u.centreHeightM !== undefined ? { value: u.centreHeightM, unit: 'm' } : {}),
         status: u.status,
-        source: u.reviewed ? 'human' : 'pipeline',
+        source: u.reviewed || overlaid ? 'human' : 'pipeline',
         e: u.centre[0],
         n: u.centre[1],
-        evidence: file,
+        evidence: overlaid && inv ? inv.file : file,
       });
       b.link(s, `survey:${capture}`, 'on-survey');
     }
