@@ -2,7 +2,7 @@
 type: plan
 date: 2026-11-11
 branch: feat/offline-agent
-status: in-progress
+status: complete
 related: [plans/2026-10-30-intelligence-review.md, design/intelligence-review-2026-10/agent.md]
 ---
 
