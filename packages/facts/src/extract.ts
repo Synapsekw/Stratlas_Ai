@@ -2,6 +2,7 @@
  * Facts and links from a project's sources. Pure and deterministic: the same sources give the same
  * facts and links, in the same order, so a rebuilt index equals the one it replaces.
  */
+import { createHash } from 'node:crypto';
 import type {
   AuditEntry,
   ChangeItem,
@@ -67,21 +68,55 @@ export function inside(e: number, n: number, ring: readonly (readonly number[])[
   return hit;
 }
 
+/** The string limits of `Fact` (`@aio/schema` facts.ts). */
+const LIMITS: Partial<Record<keyof Fact, number>> = {
+  id: 400,
+  subject: 400,
+  label: 400,
+  text: 4000,
+  capture: 200,
+  unit: 16,
+  status: 40,
+  source: 40,
+  evidence: 400,
+  op: 200,
+};
+/** Fields that name a thing: cut with a hash of the whole, so two long names stay apart. */
+const KEYED = new Set(['id', 'subject', 'capture', 'op']);
+
+/** Cut text to `max` characters, ending in an ellipsis. */
+export const fit = (s: string, max: number): string =>
+  s.length <= max ? s : `${s.slice(0, max - 3).trimEnd()}...`;
+
+/** Cut a key to `max` characters, keeping it unique: its start and a hash of the whole. */
+export const fitKey = (s: string, max: number): string =>
+  s.length <= max
+    ? s
+    : `${s.slice(0, max - 17)}#${createHash('sha256').update(s).digest('hex').slice(0, 16)}`;
+
 class Builder {
   readonly facts = new Map<string, Fact>();
   readonly links = new Map<string, FactLink>();
 
   add(f: Fact): void {
-    // Drop absent fields so the same input always gives the same object.
+    // Drop absent fields so the same input always gives the same object, and keep every string
+    // within the contract's limits (a 1,000-character title must not fail the whole answer).
     const clean = Object.fromEntries(
-      Object.entries(f).filter(
-        ([, v]) => v !== undefined && !(typeof v === 'number' && !isFinite(v)),
-      ),
+      Object.entries(f).flatMap(([k, v]): [string, unknown][] => {
+        if (v === undefined || (typeof v === 'number' && !isFinite(v))) return [];
+        if (typeof v === 'string') {
+          const max = LIMITS[k as keyof Fact];
+          if (max) return [[k, KEYED.has(k) ? fitKey(v, max) : fit(v, max)]];
+        }
+        return [[k, v]];
+      }),
     ) as Fact;
     if (!this.facts.has(clean.id)) this.facts.set(clean.id, clean);
   }
 
-  link(from: string, to: string, rel: FactRelation): void {
+  link(rawFrom: string, rawTo: string, rel: FactRelation): void {
+    const from = fitKey(rawFrom, 400);
+    const to = fitKey(rawTo, 400);
     if (from === to) return;
     const key = `${from}\u0000${to}\u0000${rel}`;
     if (!this.links.has(key)) this.links.set(key, { from, to, rel });
@@ -628,17 +663,25 @@ function eventFacts(b: Builder, events: readonly AuditEntry[]): void {
 /** Point things inside a polygon measurement on the same date (or any date for a site one). */
 function spatialLinks(b: Builder, measurements: readonly SurveyMeasurement[]): void {
   const POINT_KINDS: ReadonlySet<FactKind> = new Set(['detection', 'issue', 'hotspot', 'change']);
-  const polys = measurements.flatMap((m) => {
-    if (m.family !== 'polygon') return [];
-    const ring = m.points;
-    if (ring.length < 3) return [];
-    return [{ m }];
-  });
+  const polys = measurements.filter((m) => m.family === 'polygon' && m.points.length >= 3);
   if (!polys.length) return;
-  for (const f of b.facts.values()) {
-    if (!POINT_KINDS.has(f.kind) || f.e === undefined || f.n === undefined) continue;
-    for (const { m } of polys) {
-      const ring = ringOn(m, f.capture);
+  // each measurement's ring and its bounds, worked out once per date
+  interface Ring {
+    subject: string;
+    ring: readonly Vec3[];
+    minE: number;
+    maxE: number;
+    minN: number;
+    maxN: number;
+  }
+  const byCapture = new Map<string, Ring[]>();
+  const ringsOn = (capture: string | undefined): Ring[] => {
+    const key = capture ?? '';
+    const known = byCapture.get(key);
+    if (known) return known;
+    const out: Ring[] = [];
+    for (const m of polys) {
+      const ring = ringOn(m, capture);
       if (!ring) continue;
       let minE = Infinity;
       let maxE = -Infinity;
@@ -650,8 +693,16 @@ function spatialLinks(b: Builder, measurements: readonly SurveyMeasurement[]): v
         minN = Math.min(minN, p[1]);
         maxN = Math.max(maxN, p[1]);
       }
-      if (f.e < minE || f.e > maxE || f.n < minN || f.n > maxN) continue;
-      if (inside(f.e, f.n, ring)) b.link(f.subject, `measurement:${m.id}`, 'inside');
+      out.push({ subject: `measurement:${m.id}`, ring, minE, maxE, minN, maxN });
+    }
+    byCapture.set(key, out);
+    return out;
+  };
+  for (const f of b.facts.values()) {
+    if (!POINT_KINDS.has(f.kind) || f.e === undefined || f.n === undefined) continue;
+    for (const r of ringsOn(f.capture)) {
+      if (f.e < r.minE || f.e > r.maxE || f.n < r.minN || f.n > r.maxN) continue;
+      if (inside(f.e, f.n, r.ring)) b.link(f.subject, r.subject, 'inside');
     }
   }
 }

@@ -10,20 +10,46 @@
  * - Update on change: `changed` (every `journal:changed`: journaled writes, outside edits, merges,
  *   sync) schedules a debounced update, which applies only the rows that differ from a fresh
  *   extract, so an updated index always equals a rebuilt one.
+ * - Reading the folder, extracting and writing run in a worker thread (`factsWorker.ts`, through
+ *   `sync`); main keeps a read connection per project for the queries (SQLite WAL: one writer,
+ *   readers alongside).
+ * - On start, index files whose folder is gone are pruned.
  * - Packages get no index (state `none`): they are read-only and the agent tools stay away.
  */
 import { createHash } from 'node:crypto';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import {
-  extractFacts,
   openFactIndex,
-  readProjectSources,
+  pruneIndexes,
+  removeIndex,
+  syncFolder,
   type FactIndex,
-  type ProjectSources,
+  type FolderSync,
 } from '@aio/facts';
-import type { Fact, FactHistory, FactIndexStatus, FactQuery, IpcChannel } from '@aio/schema';
+import type {
+  Fact,
+  FactHistory,
+  FactIndexStatus,
+  FactQuery,
+  FactsUnavailable,
+  IpcChannel,
+} from '@aio/schema';
 import type { Handler } from './ipc';
+
+/** A job for the worker (or the in-process runner in tests). */
+export type FactsJob =
+  { kind: 'sync'; root: string; file: string; fresh?: boolean } | { kind: 'prune'; dir: string };
+export type FactsJobResult = FolderSync | { pruned: string[] };
+
+/** Runs one job: in a worker thread in the app, in process in tests. */
+export type FactsRunner = (job: FactsJob) => Promise<FactsJobResult>;
+
+/** The in-process runner (tests, and the fallback when the worker cannot start). */
+export const runInProcess: FactsRunner = async (job) =>
+  job.kind === 'sync'
+    ? syncFolder(job.root, job.file, job.fresh ? { fresh: true } : {})
+    : { pruned: await pruneIndexes(job.dir) };
 
 export interface FactServiceDeps {
   /** `userData/fact-index`. */
@@ -32,8 +58,8 @@ export interface FactServiceDeps {
   isPackage(projectId: string): boolean;
   /** `facts:changed` to the renderer. */
   emit?: (e: { projectId: string; status: FactIndexStatus }) => void;
-  /** Test hook: the sources reader. */
-  read?: (root: string) => Promise<ProjectSources>;
+  /** Where the builds run (default: in process). */
+  run?: FactsRunner;
   /** Wait after an open before the first build (ms). */
   openDelayMs?: number;
   /** Debounce of updates after a change (ms). */
@@ -43,6 +69,7 @@ export interface FactServiceDeps {
 
 interface Tracked {
   root: string;
+  /** Main's read connection, opened after the first build. */
   index: FactIndex | null;
   /** First build or rebuild running. */
   building: boolean;
@@ -52,6 +79,22 @@ interface Tracked {
 
 const EMPTY: FactIndexStatus = { state: 'none', counts: {}, links: 0 };
 
+/** Why an index cannot answer, with the English text the log and older readers see. */
+export interface Unavailable {
+  error: string;
+  reason: FactsUnavailable;
+}
+
+const UNAVAILABLE: Record<FactsUnavailable, string> = {
+  'not-built': 'The fact index of this project is not built yet.',
+  package: 'Packages have no fact index.',
+  'not-open': 'The project is not open.',
+};
+const unavailable = (reason: FactsUnavailable): Unavailable => ({
+  error: UNAVAILABLE[reason],
+  reason,
+});
+
 /** The index file of a folder: a hash of its path, so renames of the project name do not matter. */
 export const indexFileOf = (dir: string, root: string): string =>
   join(
@@ -60,10 +103,13 @@ export const indexFileOf = (dir: string, root: string): string =>
   );
 
 export function createFactService(deps: FactServiceDeps) {
-  const read = deps.read ?? readProjectSources;
+  const runJob = deps.run ?? runInProcess;
   const openDelay = deps.openDelayMs ?? 2000;
   const changeDelay = deps.changeDelayMs ?? 1500;
   const projects = new Map<string, Tracked>();
+  let closed = false;
+  // read through a function: `closed` changes while a build awaits
+  const isClosed = () => closed;
   // one build at a time across projects (light local load)
   let chain: Promise<unknown> = Promise.resolve();
   const serial = <T>(fn: () => Promise<T>): Promise<T> => {
@@ -72,27 +118,31 @@ export function createFactService(deps: FactServiceDeps) {
     return next;
   };
 
+  // first job of all: drop the index files of folders that are gone
+  void serial(async () => {
+    await mkdir(deps.dir, { recursive: true });
+    const r = await runJob({ kind: 'prune', dir: deps.dir });
+    if ('pruned' in r && r.pruned.length) {
+      deps.log?.(`Fact index: removed ${r.pruned.length} index file(s) of folders that are gone`);
+    }
+  }).catch((e: unknown) => {
+    deps.log?.(`Fact index prune failed: ${e instanceof Error ? e.message : String(e)}`);
+  });
+
   function statusOf(t: Tracked | undefined): FactIndexStatus {
     if (!t) return EMPTY;
-    if (t.building) {
-      return { ...(t.index ? t.index.status() : EMPTY), state: 'building' };
-    }
-    if (t.error) {
-      return {
-        ...(t.index ? t.index.status() : EMPTY),
-        state: 'error',
-        error: t.error.slice(0, 500),
-      };
-    }
-    return t.index ? t.index.status() : EMPTY;
+    const base = t.index ? t.index.status() : EMPTY;
+    if (t.building) return { ...base, state: 'building' };
+    if (t.error) return { ...base, state: 'error', error: t.error.slice(0, 500) };
+    return base;
   }
 
   const announce = (projectId: string) => {
-    deps.emit?.({ projectId, status: statusOf(projects.get(projectId)) });
+    if (!closed) deps.emit?.({ projectId, status: statusOf(projects.get(projectId)) });
   };
 
   function track(projectId: string): Tracked | null {
-    if (deps.isPackage(projectId)) return null;
+    if (closed || deps.isPackage(projectId)) return null;
     const root = deps.root(projectId);
     if (!root) return null;
     const known = projects.get(projectId);
@@ -106,42 +156,33 @@ export function createFactService(deps: FactServiceDeps) {
     return t;
   }
 
-  async function removeFiles(file: string) {
-    for (const f of [file, `${file}-wal`, `${file}-shm`]) await rm(f, { force: true });
-  }
-
-  async function openIndex(t: Tracked): Promise<FactIndex> {
-    if (t.index) return t.index;
-    await mkdir(deps.dir, { recursive: true });
-    const file = indexFileOf(deps.dir, t.root);
-    try {
-      t.index = openFactIndex(file);
-    } catch {
-      // a damaged index is derived data: drop it and start again
-      await removeFiles(file);
-      t.index = openFactIndex(file);
-    }
-    return t.index;
-  }
-
-  /** Bring the index up to date with the folder (a first build when it is empty). */
-  function run(projectId: string): Promise<void> {
+  /** Bring the index up to date with the folder (a first build when there is none). */
+  function run(projectId: string, fresh = false): Promise<void> {
     return serial(async () => {
       const t = projects.get(projectId);
-      if (!t) return;
-      const first = !t.index || t.index.status().state === 'none';
+      if (closed || !t) return;
+      const first = fresh || !t.index;
       if (first) {
         t.building = true;
         announce(projectId);
       }
+      const file = indexFileOf(deps.dir, t.root);
       try {
-        const index = await openIndex(t);
-        const started = Date.now();
-        const r = index.sync(extractFacts(await read(t.root)));
+        await mkdir(deps.dir, { recursive: true });
+        if (fresh) {
+          t.index?.close();
+          t.index = null;
+        }
+        const r = await runJob({ kind: 'sync', root: t.root, file, ...(fresh ? { fresh } : {}) });
+        if (isClosed()) return;
         delete t.error;
-        if (r.added || r.changed || r.removed || r.linksAdded || r.linksRemoved || first) {
+        t.index ??= openFactIndex(file);
+        if (
+          'added' in r &&
+          (r.added || r.changed || r.removed || r.linksAdded || r.linksRemoved || first)
+        ) {
           deps.log?.(
-            `Fact index ${projectId}: +${r.added} ~${r.changed} -${r.removed} facts, +${r.linksAdded} -${r.linksRemoved} links in ${Date.now() - started} ms`,
+            `Fact index ${projectId}: ${r.facts} facts, ${r.links} links (+${r.added} ~${r.changed} -${r.removed}); read ${r.ms.read} ms, extract ${r.ms.extract} ms, write ${r.ms.sync} ms`,
           );
         }
       } catch (e) {
@@ -164,10 +205,15 @@ export function createFactService(deps: FactServiceDeps) {
     }, ms);
   }
 
-  const notReady = (projectId: string) =>
-    deps.isPackage(projectId)
-      ? 'Packages have no fact index.'
-      : 'The fact index of this project is not built yet.';
+  const notReady = (projectId: string): Unavailable =>
+    unavailable(
+      deps.isPackage(projectId) ? 'package' : deps.root(projectId) ? 'not-built' : 'not-open',
+    );
+
+  const ready = (projectId: string): FactIndex | null => {
+    const index = projects.get(projectId)?.index;
+    return index && index.status().state !== 'none' ? index : null;
+  };
 
   return {
     /** A project opened: build (or catch up) its index in the background. */
@@ -183,30 +229,25 @@ export function createFactService(deps: FactServiceDeps) {
       if (!t && track(projectId)) schedule(projectId, 0);
       return statusOf(t ?? projects.get(projectId));
     },
-    query(projectId: string, q: FactQuery): { facts: Fact[]; total: number } | { error: string } {
-      const index = projects.get(projectId)?.index;
-      if (!index || index.status().state === 'none') return { error: notReady(projectId) };
-      return index.query(q);
+    query(projectId: string, q: FactQuery): { facts: Fact[]; total: number } | Unavailable {
+      const index = ready(projectId);
+      return index ? index.query(q) : notReady(projectId);
     },
-    history(projectId: string, subject: string, limit?: number): FactHistory | { error: string } {
-      const index = projects.get(projectId)?.index;
-      if (!index || index.status().state === 'none') return { error: notReady(projectId) };
-      return index.historyOf(subject, limit);
+    history(projectId: string, subject: string, limit?: number): FactHistory | Unavailable {
+      const index = ready(projectId);
+      return index ? index.historyOf(subject, limit) : notReady(projectId);
     },
     /** Delete the index and build it again from the files and journal. */
     async rebuild(
       projectId: string,
-    ): Promise<{ ok: true; status: FactIndexStatus } | { ok: false; error: string }> {
+    ): Promise<
+      { ok: true; status: FactIndexStatus } | { ok: false; error: string; reason: FactsUnavailable }
+    > {
       const t = track(projectId);
-      if (!t) return { ok: false, error: notReady(projectId) };
+      if (!t) return { ok: false, ...notReady(projectId) };
       if (t.timer) clearTimeout(t.timer);
       t.timer = null;
-      await serial(async () => {
-        t.index?.close();
-        t.index = null;
-        await removeFiles(indexFileOf(deps.dir, t.root));
-      });
-      await run(projectId);
+      await run(projectId, true);
       return { ok: true, status: statusOf(t) };
     },
     /** A project folder was deleted or forgotten: drop its index. */
@@ -217,11 +258,13 @@ export function createFactService(deps: FactServiceDeps) {
         t.index?.close();
         projects.delete(id);
       }
-      await serial(() => removeFiles(indexFileOf(deps.dir, root)));
+      await serial(() => removeIndex(indexFileOf(deps.dir, root)));
     },
     /** Wait for the queued builds (tests and quit). */
     idle: () => serial(() => Promise.resolve()),
+    /** Quit: no build starts after this, and the read connections close. */
     closeAll() {
+      closed = true;
       for (const t of projects.values()) {
         if (t.timer) clearTimeout(t.timer);
         t.index?.close();
@@ -241,11 +284,11 @@ export function registerFactIpc(handle: Handle, facts: FactService): void {
   handle('facts:status', ({ projectId }) => ({ ok: true, status: facts.status(projectId) }));
   handle('facts:query', ({ projectId, query }) => {
     const r = facts.query(projectId, query);
-    return 'error' in r ? { ok: false, error: r.error } : { ok: true, ...r };
+    return 'reason' in r ? { ok: false, ...r } : { ok: true, ...r };
   });
   handle('facts:history', ({ projectId, subject, limit }) => {
     const r = facts.history(projectId, subject, limit);
-    return 'error' in r ? { ok: false, error: r.error } : { ok: true, history: r };
+    return 'reason' in r ? { ok: false, ...r } : { ok: true, history: r };
   });
   handle('facts:rebuild', ({ projectId }) => facts.rebuild(projectId));
 }

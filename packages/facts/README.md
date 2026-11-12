@@ -32,11 +32,22 @@ ix.close();
   - `near`: `{ e, n, radiusM }` in the project CRS.
   - `limit`: default 50, at most 500.
   - Ordering: with text, the best match comes first. Without text, the newest comes first. `total` counts every match.
-- **`historyOf(subject, limit?)`** returns three lists, each oldest first:
+- **`historyOf(subject, limit?)`** returns three lists. Each holds the newest `limit` entries (default 200, at most 500), shown oldest first:
   - `facts`: the subject's own facts, events left out (a measurement and its volume on each date).
-  - `linked`: the facts of every linked subject, with the relation.
+  - `linked`: the facts of every linked subject, with the relation. One limit covers all linked subjects together, newest first by day, so a date's issues and volumes are not crowded out by hundreds of detections.
   - `events`: the journal ops on the subject.
+  - `totals` counts every entry of each list, so a reader can say how many older ones were left out.
 - **`sync(next)`** runs in one transaction. It inserts, updates (by row hash) and deletes facts, and adds and removes links, so an updated index always equals a fresh build.
+- **Limits:** every string stays within the `Fact` limits (label 400, text 4000, ...). Text is cut with an ellipsis. Ids and subjects are cut with a hash of the whole name, so two long names stay apart and links still meet their facts.
+
+## Files and the worker (`folder.ts`)
+
+- `syncFolder(root, file, { fresh? })` reads, extracts and writes one index file. It returns the counts and the time of each phase. A damaged file is deleted and made again, and the folder is recorded in the index (`root()`).
+- `pruneIndexes(dir)` deletes the index files whose folder is gone, together with their `-wal` and `-shm` files.
+- Main runs both in a worker thread (`apps/desktop/src/main/factsWorker.ts`) and keeps only a read connection per project. If the worker cannot start, it builds in process.
+- **Measured (11 Nov 2026, this computer):**
+  - Synthetic 20,000 detections (20,016 facts, 60,026 links): extract 110 ms, first write 1.7 s, an unchanged update 185 ms.
+  - The built demos (27 to 52 facts): under 60 ms each in all.
 
 ### Subjects
 
@@ -65,4 +76,5 @@ A subject names the thing a fact is about as `<record kind>:<id>`. Where the jou
 ## Tests
 
 - `facts.test.ts` runs on the fixture project of `testing.ts` (`@aio/facts/testing`: one record of every kind, plus the signed journal fixture of `@aio/schema`). It checks reading, extraction per kind, the links, determinism, rebuild equality, the incremental diff, search, the filters, history order, the version reset and a damaged file.
-- The main service has its own test (`apps/desktop/src/main/facts.test.ts`).
+- `scale.test.ts` covers history cuts at size (300 detections on a date, 300 journal ops), long names, folder sync and prune, and the 20,000-detection build time. Set `QUADRION_FACTS_BENCH` (folders separated by `;`) to time real folders.
+- The main service and the worker runner have their own test (`apps/desktop/src/main/facts.test.ts`).

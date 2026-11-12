@@ -136,7 +136,11 @@ export const FactQuery = z
   .strict();
 export type FactQuery = z.infer<typeof FactQuery>;
 
-/** One subject's history: its facts and the facts linked to it, in date order. */
+/**
+ * One subject's history: its facts and the facts linked to it, in date order. Each list holds the
+ * newest `limit` entries (oldest first); `totals` counts every entry, so a reader can say how
+ * many older ones were left out.
+ */
 export const FactHistory = z.object({
   subject: z.string(),
   /** The subject's own facts (all kinds but events), oldest first. */
@@ -145,8 +149,17 @@ export const FactHistory = z.object({
   linked: z.array(z.object({ rel: FactRelation, fact: Fact })),
   /** Journal ops on the subject, oldest first. */
   events: z.array(Fact),
+  totals: z.object({
+    facts: z.number().int().nonnegative(),
+    linked: z.number().int().nonnegative(),
+    events: z.number().int().nonnegative(),
+  }),
 });
 export type FactHistory = z.infer<typeof FactHistory>;
+
+/** Why the index cannot answer: the renderer and the agent map it to their own words. */
+export const FactsUnavailable = z.enum(['not-built', 'package', 'not-open']);
+export type FactsUnavailable = z.infer<typeof FactsUnavailable>;
 
 export const FactIndexState = z.enum(['none', 'building', 'ready', 'error']);
 export type FactIndexState = z.infer<typeof FactIndexState>;

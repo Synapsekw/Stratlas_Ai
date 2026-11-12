@@ -144,7 +144,7 @@ import {
 import { DetectQueued, DetectorWhere, HardwareCheck, LedgerEntry, VlmDetector } from './analytics';
 import { TilesetEntry, TilesetsFile } from './tilesets';
 import { WalkFile } from './walks';
-import { Fact, FactHistory, FactIndexStatus, FactQuery } from './facts';
+import { Fact, FactHistory, FactIndexStatus, FactQuery, FactsUnavailable } from './facts';
 import { WalkProcessSummary } from './walkProcess';
 import { RemovalPlan, RemoveTarget } from './removal';
 import {
@@ -164,6 +164,8 @@ const Empty = z.object({}).strict();
  */
 export const FailureCode = z.enum(['not-implemented', 'read-only', 'forbidden', 'offline-only']);
 const Failure = z.object({ ok: z.literal(false), error: z.string(), code: FailureCode.optional() });
+/** A fact index answer that failed, with why (M1). */
+const FactsFailure = Failure.extend({ reason: FactsUnavailable.optional() });
 const OkOrFailure = z.discriminatedUnion('ok', [z.object({ ok: z.literal(true) }), Failure]);
 const ProjectId = z.string().min(1);
 
@@ -2430,7 +2432,7 @@ export const ipc = {
     request: z.object({ projectId: ProjectId }).strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), status: FactIndexStatus }),
-      Failure,
+      FactsFailure,
     ]),
   },
   /** Facts matching a query, best match first for text, else newest first. */
@@ -2442,7 +2444,7 @@ export const ipc = {
         facts: z.array(Fact),
         total: z.number().int().nonnegative(),
       }),
-      Failure,
+      FactsFailure,
     ]),
   },
   /** One subject's facts, linked facts and journal ops in date order. */
@@ -2456,7 +2458,7 @@ export const ipc = {
       .strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), history: FactHistory }),
-      Failure,
+      FactsFailure,
     ]),
   },
   /** Delete the index and build it again from the project's files and journal. */
@@ -2464,7 +2466,7 @@ export const ipc = {
     request: z.object({ projectId: ProjectId }).strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), status: FactIndexStatus }),
-      Failure,
+      FactsFailure,
     ]),
   },
   'change:list': {

@@ -106,6 +106,9 @@ export interface FactIndex {
   status(): FactIndexStatus;
   /** Every fact and link, sorted: two indexes of the same sources dump the same. */
   dump(): Extracted;
+  /** The project folder the index was built from (kept so a stale index can be pruned). */
+  root(): string | undefined;
+  setRoot(root: string): void;
   close(): void;
 }
 
@@ -146,7 +149,7 @@ DROP TABLE IF EXISTS meta;
 
 /** Create the tables; an index of another `FACT_INDEX_VERSION` is dropped and made again. */
 function prepare(db: DatabaseSync): void {
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;');
+  db.exec('PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;');
   const hasMeta = db
     .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'meta'`)
     .get();
@@ -307,46 +310,56 @@ export function openFactIndex(file: string): FactIndex {
     }));
   }
 
-  const ORDER = `ORDER BY day IS NULL, day, at, id`;
+  /** Newest first: the limit keeps the latest entries; undated ones go first when cut. */
+  const NEWEST = (a: string) => `ORDER BY ${a}day IS NULL, ${a}day DESC, ${a}at DESC, ${a}id DESC`;
+  /** Every subject linked to `?` (both directions), one relation each (the first by name). */
+  const LINKED = `WITH l AS (
+    SELECT other, MIN(rel) AS rel FROM (
+      SELECT dst AS other, rel FROM links WHERE src = ?
+      UNION ALL SELECT src AS other, rel FROM links WHERE dst = ?
+    ) GROUP BY other
+  )`;
+  const countOwn = db.prepare(
+    `SELECT COUNT(*) AS c FROM facts WHERE subject = ? AND kind != 'event'`,
+  );
+  const countEvents = db.prepare(
+    `SELECT COUNT(*) AS c FROM facts WHERE subject = ? AND kind = 'event'`,
+  );
+  const ownRows = db.prepare(
+    `SELECT * FROM facts WHERE subject = ? AND kind != 'event' ${NEWEST('')} LIMIT ?`,
+  );
+  const eventRows = db.prepare(
+    `SELECT * FROM facts WHERE subject = ? AND kind = 'event' ${NEWEST('')} LIMIT ?`,
+  );
+  const countLinked = db.prepare(
+    `${LINKED} SELECT COUNT(*) AS c FROM l JOIN facts f ON f.subject = l.other WHERE f.kind != 'event'`,
+  );
+  const linkedRows = db.prepare(
+    `${LINKED} SELECT f.*, l.rel AS link_rel FROM l JOIN facts f ON f.subject = l.other
+     WHERE f.kind != 'event' ${NEWEST('f.')} LIMIT ?`,
+  );
 
   function historyOf(subject: string, limit = 200): FactHistory {
     const cap = Math.min(500, Math.max(1, limit));
-    const own = db
-      .prepare(`SELECT * FROM facts WHERE subject = ? AND kind != 'event' ${ORDER} LIMIT ?`)
-      .all(subject, cap) as Row[];
-    const events = db
-      .prepare(`SELECT * FROM facts WHERE subject = ? AND kind = 'event' ${ORDER} LIMIT ?`)
-      .all(subject, cap) as Row[];
-    const linked: FactHistory['linked'] = [];
-    const rels = new Map<string, FactRelation>();
-    for (const l of linksOf(subject)) {
-      const other = l.from === subject ? l.to : l.from;
-      if (!rels.has(other)) rels.set(other, l.rel);
-    }
-    const others = [...rels.keys()];
-    for (let i = 0; i < others.length && linked.length < cap; i += 200) {
-      const chunk = others.slice(i, i + 200);
-      const rows = db
-        .prepare(
-          `SELECT * FROM facts WHERE subject IN (${chunk.map(() => '?').join(', ')}) AND kind != 'event' ${ORDER} LIMIT ?`,
-        )
-        .all(...chunk, cap - linked.length) as Row[];
-      for (const r of rows) {
-        const f = toFact(r);
-        linked.push({ rel: rels.get(f.subject) ?? 'about', fact: f });
-      }
-    }
-    const day = (f: Fact) => dayOf(f) ?? '￿';
-    linked.sort((a, b) =>
-      day(a.fact) !== day(b.fact)
-        ? day(a.fact) < day(b.fact)
-          ? -1
-          : 1
-        : a.fact.id < b.fact.id
-          ? -1
-          : 1,
-    );
-    return { subject, facts: own.map(toFact), linked, events: events.map(toFact) };
+    // the newest `cap` of each list, shown oldest first
+    const own = (ownRows.all(subject, cap) as Row[]).reverse();
+    const events = (eventRows.all(subject, cap) as Row[]).reverse();
+    const linked = (linkedRows.all(subject, subject, cap) as Row[]).reverse().map((r) => ({
+      rel: str(r.link_rel) as FactRelation,
+      fact: toFact(r),
+    }));
+    const n = (r: unknown) => Number((r as Row | undefined)?.c ?? 0);
+    return {
+      subject,
+      facts: own.map(toFact),
+      linked,
+      events: events.map(toFact),
+      totals: {
+        facts: n(countOwn.get(subject)),
+        linked: n(countLinked.get(subject, subject)),
+        events: n(countEvents.get(subject)),
+      },
+    };
   }
 
   function status(): FactIndexStatus {
@@ -382,6 +395,13 @@ export function openFactIndex(file: string): FactIndex {
     linksOf,
     status,
     dump,
+    root: () => {
+      const r = db.prepare("SELECT value FROM meta WHERE key = 'root'").get() as Row | undefined;
+      return r ? str(r.value) : undefined;
+    },
+    setRoot: (root) => {
+      db.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES ('root', ?)").run(root);
+    },
     close: () => {
       db.close();
     },

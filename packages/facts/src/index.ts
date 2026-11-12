@@ -1,4 +1,13 @@
-export { extractFacts, inside, subjectOfTarget, type Extracted } from './extract';
+export { extractFacts, fit, fitKey, inside, subjectOfTarget, type Extracted } from './extract';
+export {
+  indexFiles,
+  openOrReset,
+  pruneIndexes,
+  removeIndex,
+  syncFolder,
+  type FolderSync,
+  type FolderSyncOptions,
+} from './folder';
 export {
   emptySources,
   parsePass,

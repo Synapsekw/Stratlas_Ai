@@ -122,7 +122,8 @@ import {
   scanPanoPaths,
 } from './panos';
 import { registerChangeIpc } from './change';
-import { createFactService, registerFactIpc } from './facts';
+import { createFactService, registerFactIpc, runInProcess } from './facts';
+import { createWorkerRunner } from './factsWorkerRunner';
 import { registerInferenceIpc } from './inference';
 import {
   electronInference,
@@ -531,7 +532,15 @@ const identityService = createIdentityService({
 /** userData `team/projects.json`: per folder, the replica id and sharing setup (T5). */
 const teamConfig = createTeamConfigStore(join(app.getPath('userData'), 'team', 'projects.json'));
 // M1: the project fact index (derived, never the truth), one SQLite file per folder in userData.
+// reading, extracting and writing the index run in a worker thread, off main's thread
+const factsWorker = createWorkerRunner(join(import.meta.dirname, 'factsWorker.js'), {
+  fallback: runInProcess,
+  log: (line) => {
+    appLog.write('warn', [line]);
+  },
+});
 const facts = createFactService({
+  run: factsWorker,
   dir: join(app.getPath('userData'), 'fact-index'),
   root: (id) => registry.root(id),
   isPackage: (id) => registry.package(id) !== undefined,
@@ -3105,6 +3114,7 @@ app.on('will-quit', () => {
   // the journal keeps each chain's segment open between appends (T8 finding 4)
   void journal.closeAll();
   facts.closeAll();
+  void factsWorker.stop();
 });
 
 app.on('window-all-closed', () => {

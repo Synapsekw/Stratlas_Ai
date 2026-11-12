@@ -294,6 +294,8 @@ export default defineConfig({
           exportWorker: resolve(import.meta.dirname, 'src/main/exports/worker.ts'),
           // local detection utility process (onnxruntime-node, BLD-10)
           inferenceWorker: resolve(import.meta.dirname, 'src/main/inference/workerMain.ts'),
+          // fact index worker thread (M1): read, extract, write off main's thread
+          factsWorker: resolve(import.meta.dirname, 'src/main/factsWorker.ts'),
         },
         // Native addons load from node_modules at runtime so each platform gets its own binary.
         // `original-fs` is Electron's fs without asar support (rollback copies app.asar as a file).
