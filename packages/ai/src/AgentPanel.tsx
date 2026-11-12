@@ -640,12 +640,21 @@ function TurnView({
       </div>
     );
   }
+  // Two or more writes of this run waiting at once are approved from one card, shown under the
+  // step box that holds the last of them. A view capture keeps its own card (its own choices).
+  const waiting = turn.parts.flatMap((p) => {
+    const s = p.type === 'step' ? steps[p.callId] : undefined;
+    return s?.status === 'awaiting' && s.name !== VIEW_CAPTURE ? [s] : [];
+  });
+  const batch = waiting.length >= 2 ? waiting : null;
+  const lastWaiting = batch?.at(-1)?.callId;
   // Group consecutive steps into one box, keep text in between.
   const blocks: ReactNode[] = [];
   let group: Step[] = [];
   const flush = (key: string) => {
     if (group.length === 0) return;
-    blocks.push(<Steps key={key} steps={group} session={session} />);
+    const here = batch && group.some((s) => s.callId === lastWaiting) ? batch : null;
+    blocks.push(<Steps key={key} steps={group} session={session} batch={batch} batchHere={here} />);
     group = [];
   };
   turn.parts.forEach((p, i) => {
@@ -688,17 +697,108 @@ const STATUS_TEXT: Record<Step['status'], string> = {
   cancelled: 'not run',
 };
 
-function Steps({ steps, session }: { steps: Step[]; session: AgentSession }) {
+/** The tool whose card offers to allow it for the project (A3). */
+const VIEW_CAPTURE = 'capture_frame';
+
+function Steps({
+  steps,
+  session,
+  batch,
+  batchHere,
+}: {
+  steps: Step[];
+  session: AgentSession;
+  /** The waiting steps of this run approved from one card, or null. */
+  batch: Step[] | null;
+  /** This box shows that card (it holds the last of them). */
+  batchHere: Step[] | null;
+}) {
+  const inBatch = new Set(batch?.map((s) => s.callId));
   return (
     <div className="steps">
       {steps.map((s) => (
-        <StepRow key={s.callId} step={s} session={session} />
+        <StepRow key={s.callId} step={s} session={session} batched={inBatch.has(s.callId)} />
       ))}
+      {batchHere && (
+        <BatchCard
+          key={batchHere.map((s) => s.callId).join(' ')}
+          steps={batchHere}
+          session={session}
+        />
+      )}
     </div>
   );
 }
 
-function StepRow({ step, session }: { step: Step; session: AgentSession }) {
+/**
+ * One card for several waiting writes of a run: each item ticked, untick to leave it out.
+ * "Approve N" runs the ticked ones in the model's order and declines the rest.
+ */
+function BatchCard({ steps, session }: { steps: Step[]; session: AgentSession }) {
+  const [left, setLeft] = useState<ReadonlySet<string>>(() => new Set());
+  const ticked = steps.filter((s) => !left.has(s.callId)).map((s) => s.callId);
+  const unticked = steps.filter((s) => left.has(s.callId)).map((s) => s.callId);
+  return (
+    <div className="approve batch" role="group" aria-label="Actions waiting for approval">
+      <b className="batch-head">{steps.length} actions waiting for you</b>
+      <ul className="batch-list">
+        {steps.map((s) => (
+          <li key={s.callId}>
+            <label>
+              <input
+                type="checkbox"
+                checked={!left.has(s.callId)}
+                onChange={() => {
+                  setLeft((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(s.callId)) next.delete(s.callId);
+                    else next.add(s.callId);
+                    return next;
+                  });
+                }}
+              />
+              <span>{describeStep(s)}</span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      <div className="batch-actions">
+        <button
+          type="button"
+          className="ag-btn sm"
+          onClick={() =>
+            void session.approveBatch(
+              [],
+              steps.map((s) => s.callId),
+            )
+          }
+        >
+          Reject all
+        </button>
+        <button
+          type="button"
+          className="ag-btn sm primary"
+          disabled={ticked.length === 0}
+          onClick={() => void session.approveBatch(ticked, unticked)}
+        >
+          <Icon name="check" size={12} />
+          Approve {ticked.length}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function StepRow({
+  step,
+  session,
+  batched = false,
+}: {
+  step: Step;
+  session: AgentSession;
+  /** Approved from the batch card, so the row has no card of its own. */
+  batched?: boolean;
+}) {
   const icon =
     step.status === 'done'
       ? 'check'
@@ -709,7 +809,10 @@ function StepRow({ step, session }: { step: Step; session: AgentSession }) {
           : 'x';
   return (
     <>
-      <div className={`step ${step.status}`}>
+      <div
+        className={`step ${step.status}`}
+        {...(step.batch !== undefined ? { 'data-batch': String(step.batch) } : {})}
+      >
         <span className="si">
           <Icon name={icon} size={14} />
         </span>
@@ -730,7 +833,8 @@ function StepRow({ step, session }: { step: Step; session: AgentSession }) {
           )}
         </span>
       </div>
-      {step.status === 'awaiting' && (
+      {step.note && <div className="step-note">{step.note}</div>}
+      {step.status === 'awaiting' && !batched && (
         <div className="approve">
           <span className="note">{describeStep(step)}</span>
           <button
@@ -742,14 +846,37 @@ function StepRow({ step, session }: { step: Step; session: AgentSession }) {
           >
             Reject
           </button>
-          <button
-            type="button"
-            className="ag-btn sm primary"
-            onClick={() => void session.approve(step.callId)}
-          >
-            <Icon name="check" size={12} />
-            Approve
-          </button>
+          {step.name === VIEW_CAPTURE ? (
+            <>
+              <button
+                type="button"
+                className="ag-btn sm"
+                onClick={() => void session.approve(step.callId)}
+              >
+                Just this once
+              </button>
+              {session.hasProject() && (
+                <button
+                  type="button"
+                  className="ag-btn sm primary"
+                  title="Later captures in this project run without asking. Turn it off in the agent's project panel."
+                  onClick={() => void session.approve(step.callId, { allowViewCapture: true })}
+                >
+                  <Icon name="check" size={12} />
+                  Allow for this project
+                </button>
+              )}
+            </>
+          ) : (
+            <button
+              type="button"
+              className="ag-btn sm primary"
+              onClick={() => void session.approve(step.callId)}
+            >
+              <Icon name="check" size={12} />
+              Approve
+            </button>
+          )}
         </div>
       )}
     </>

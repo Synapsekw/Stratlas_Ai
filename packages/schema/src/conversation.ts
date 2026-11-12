@@ -44,6 +44,11 @@ export const ConversationStep = z.object({
    * to a cloud provider later (only its summary). Absent in older conversations.
    */
   provider: AiProvider.optional(),
+  /**
+   * A3: why the step ran without its approval card (view capture allowed for the project), shown
+   * under the step. Absent for every other step.
+   */
+  note: z.string().max(200).optional(),
 });
 
 export const ConversationPart = z.discriminatedUnion('type', [

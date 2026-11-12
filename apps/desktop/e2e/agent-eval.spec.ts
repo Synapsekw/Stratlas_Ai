@@ -475,10 +475,12 @@ const readTurn = (win: Page) =>
       steps: reply.flatMap((m) =>
         [...m.querySelectorAll('.step')].map((el) => {
           const code = el.querySelector('code');
+          const batch = el.getAttribute('data-batch');
           return {
             name: code?.textContent ?? '',
             status: el.className.replace(/\bstep\b/, '').trim(),
             input: parse(code?.getAttribute('title') ?? null),
+            ...(batch !== null ? { batch: Number(batch) } : {}),
           };
         }),
       ),

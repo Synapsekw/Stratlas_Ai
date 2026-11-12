@@ -101,6 +101,8 @@ export interface SessionState {
   availability: Availability;
   /** The person allowed sends for this project without the preview. */
   alwaysAllow: boolean;
+  /** A3: the person let the agent capture the view in this project without a card each time. */
+  viewCapture: boolean;
   policy: AiPolicy;
   preview: SendPreview | null;
   /** Saved conversations of the project, newest first; null until listed. */
@@ -134,7 +136,11 @@ export const SESSION_TEXT = {
   noResponse: 'The agent did not answer. Try again.',
   stopped: 'Stopped.',
   noProject: 'Open a project to save and list conversations.',
+  viewCaptureAllowed: 'Ran without asking: view capture is allowed for this project.',
 } as const;
+
+/** The tool that sends the view to the model; once allowed for a project it runs without a card. */
+const VIEW_CAPTURE_TOOL = 'capture_frame';
 
 const EMPTY_USAGE: UsageTotals = { inputTokens: 0, outputTokens: 0, costUsd: 0, costKnown: true };
 
@@ -179,6 +185,7 @@ export class AgentSession {
       busy: false,
       availability: { status: 'checking' },
       alwaysAllow: false,
+      viewCapture: false,
       policy: 'allow',
       preview: null,
       history: null,
@@ -262,8 +269,13 @@ export class AgentSession {
       this.set({ availability });
       if (projectId) {
         const p = await bridge.invoke('ai:project', { projectId });
-        this.set({ alwaysAllow: p.alwaysAllow, policy: p.policy, projectUsage: p.usage });
-      }
+        this.set({
+          alwaysAllow: p.alwaysAllow,
+          viewCapture: p.viewCapture ?? false,
+          policy: p.policy,
+          projectUsage: p.usage,
+        });
+      } else if (this.state.viewCapture) this.set({ viewCapture: false });
     } catch (e) {
       this.set({
         availability: {
@@ -381,6 +393,28 @@ export class AgentSession {
     if (r.ok) this.set({ alwaysAllow: false });
   }
 
+  /** Whether a project is open, so a choice can be stored for it. */
+  hasProject(): boolean {
+    return this.projectId() !== null;
+  }
+
+  /**
+   * Let the agent capture the view in this project without a card each time, or stop it (stored
+   * on this computer, `ai:setViewCapture`). True when stored.
+   */
+  async setViewCapture(allow: boolean): Promise<boolean> {
+    const projectId = this.projectId();
+    const bridge = this.deps.bridge;
+    if (!projectId || !bridge) return false;
+    try {
+      const r = await bridge.invoke('ai:setViewCapture', { projectId, allow });
+      if (r.ok) this.set({ viewCapture: allow });
+      return r.ok;
+    } catch {
+      return false;
+    }
+  }
+
   private async dispatch(
     text: string,
     context: Record<string, unknown>,
@@ -435,11 +469,46 @@ export class AgentSession {
     }
   }
 
-  async approve(callId: string): Promise<void> {
+  /**
+   * Run a waiting step. `allowViewCapture` (a capture_frame card's "Allow for this project")
+   * first stores that later captures in this project need no card. True when the step ran done.
+   */
+  async approve(callId: string, opts: { allowViewCapture?: boolean } = {}): Promise<boolean> {
     const step = this.state.steps[callId];
-    if (step?.status !== 'awaiting') return;
-    if (this.live.has(callId) && this.runId) await this.execute(step);
-    else await this.executeDetached(step);
+    if (step?.status !== 'awaiting') return false;
+    if (opts.allowViewCapture && step.name === VIEW_CAPTURE_TOOL) await this.setViewCapture(true);
+    const now = this.state.steps[callId];
+    if (now?.status !== 'awaiting') return false;
+    if (this.live.has(callId) && this.runId) return this.execute(now);
+    return this.executeDetached(now);
+  }
+
+  /**
+   * Approve several waiting steps from one batch card: `skip` (unticked) are declined, then
+   * `callIds` run one after another in the order the model made them, each awaited. A step that
+   * fails stops the batch; the steps after it stay waiting. Steps that no longer wait are left
+   * alone. Each step keeps its own status and Undo.
+   */
+  async approveBatch(callIds: readonly string[], skip: readonly string[] = []): Promise<void> {
+    for (const id of skip) this.reject(id);
+    const order = this.modelOrder();
+    const run = [...new Set(callIds)]
+      .filter((id) => !skip.includes(id) && this.state.steps[id]?.status === 'awaiting')
+      .sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+    for (const id of run) {
+      if (this.state.steps[id]?.status !== 'awaiting') continue;
+      if (!(await this.approve(id))) break;
+    }
+  }
+
+  /** Each step's place in the conversation, the order the model made the calls. */
+  private modelOrder(): Map<string, number> {
+    const order = new Map<string, number>();
+    for (const t of this.state.turns) {
+      if (t.kind !== 'assistant') continue;
+      for (const p of t.parts) if (p.type === 'step') order.set(p.callId, order.size);
+    }
+    return order;
   }
 
   reject(callId: string): void {
@@ -757,14 +826,21 @@ export class AgentSession {
   }
 
   private onToolCall(e: Extract<IpcEvent<'ai:event'>, { type: 'tool-call' }>): void {
+    // A view capture in a project that allows it runs without its card; nothing else ever does.
+    const allowed =
+      needsApproval(e.risk) &&
+      e.name === VIEW_CAPTURE_TOOL &&
+      this.state.viewCapture &&
+      e.runId === this.runId;
     const step: Step = {
       callId: e.callId,
       name: e.name,
       input: e.input,
       risk: e.risk,
-      status: needsApproval(e.risk) ? 'awaiting' : 'running',
+      status: needsApproval(e.risk) && !allowed ? 'awaiting' : 'running',
       canUndo: false,
       ...(e.runId === this.runId ? { batch: this.batch } : {}),
+      ...(allowed ? { note: SESSION_TEXT.viewCaptureAllowed } : {}),
     };
     if (e.runId === this.runId) this.stepCalls.push(e.callId);
     this.live.add(e.callId);
@@ -778,9 +854,10 @@ export class AgentSession {
     else this.saveSoon(true);
   }
 
-  private async execute(step: Step): Promise<void> {
+  /** Run a step of the live run and send its result to main. True when it ran done. */
+  private async execute(step: Step): Promise<boolean> {
     const runId = this.runId;
-    if (!runId) return;
+    if (!runId) return false;
     this.patchStep(step.callId, { status: 'running' });
     try {
       const r = await runRendererTool(step.name, step.input, this.deps.toolContext());
@@ -797,6 +874,7 @@ export class AgentSession {
         approved: true,
         result: r.result,
       });
+      return true;
     } catch (e) {
       const message = e instanceof ToolError ? e.message : SESSION_TEXT.failed;
       this.patchStep(step.callId, { status: 'error', summary: message });
@@ -806,6 +884,7 @@ export class AgentSession {
         approved: true,
         error: message,
       });
+      return false;
     }
   }
 
@@ -814,9 +893,10 @@ export class AgentSession {
    * conversation): run the tool here and note the outcome in the reply, so the next message
    * tells the model what happened.
    */
-  private async executeDetached(step: Step): Promise<void> {
+  private async executeDetached(step: Step): Promise<boolean> {
     this.patchStep(step.callId, { status: 'running' });
     let note: string;
+    let ok = false;
     try {
       const r = await runRendererTool(step.name, step.input, this.deps.toolContext());
       if (r.undo && undoable(step.name)) this.undos.set(step.callId, r.undo);
@@ -827,6 +907,7 @@ export class AgentSession {
         result: compactValue(r.result),
       });
       note = `Approved later and run: ${step.name}, ${r.summary}.`;
+      ok = true;
     } catch (e) {
       const message = e instanceof ToolError ? e.message : SESSION_TEXT.failed;
       this.patchStep(step.callId, { status: 'error', summary: message });
@@ -840,6 +921,7 @@ export class AgentSession {
       ),
     });
     this.saveSoon(true);
+    return ok;
   }
 
   private finish(runId: string, status: 'done' | 'error' | 'stopped', error?: string): void {

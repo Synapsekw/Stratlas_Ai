@@ -131,7 +131,38 @@ export const SCRIPT: readonly { when: string; tool: string; input: ScriptInput }
     input: { target: { kind: 'point', p: [0, 0, 0] }, radiusM: 50 },
   },
   { when: 'frame', tool: 'capture_frame', input: {} },
+  // A3: a look at the view, asked once (the eval's consent case)
+  { when: 'look at the view', tool: 'capture_frame', input: {} },
 ];
+
+/** A scripted draft issue at a point, for the batch requests. */
+const draftAt = (title: string, x: number): Record<string, unknown> => ({
+  title,
+  note: 'Created by the scripted test model.',
+  severity: 3,
+  at: { kind: 'point', p: [x, 0, -0.5] },
+});
+
+/**
+ * Keyword to several tool calls the script makes in one model step (A3 batch approvals), checked
+ * before SCRIPT so "draft three issues" is not one draft.
+ */
+export const SCRIPT_BATCHES: readonly {
+  when: string;
+  calls: { tool: string; input: ScriptInput }[];
+}[] = [
+  {
+    when: 'draft three issues',
+    calls: [
+      { tool: 'create_issue_draft', input: draftAt('Scripted draft one', 0.2) },
+      { tool: 'create_issue_draft', input: draftAt('Scripted draft two', 0.5) },
+      { tool: 'create_issue_draft', input: draftAt('Scripted draft three', 0.8) },
+    ],
+  },
+];
+
+/** In a message with `#tool` lines, `#batch` makes all of them one model step (A3). */
+export const BATCH_MARKER = '#batch';
 
 const USAGE = {
   inputTokens: { total: 1200, noCache: 1200, cacheRead: 0, cacheWrite: 0 },
@@ -161,7 +192,8 @@ function lastToolResult(prompt: LanguageModelV4Prompt): { name: string; output: 
 
 /**
  * Explicit tool calls written into a message for end-to-end tests: `#tool <name> <json input>`,
- * any number in one message, made one after another (each after the previous result).
+ * any number in one message, made one after another (each after the previous result), or all in
+ * one model step when the message also holds `#batch` (BATCH_MARKER).
  */
 export function scriptedDirectives(
   text: string,
@@ -236,18 +268,34 @@ export function scriptedCorrectionTurn(
   };
 }
 
+export type ScriptedTurn =
+  | { kind: 'text'; text: string }
+  | { kind: 'tool'; tool: string; input: Record<string, unknown> }
+  /** Several calls in one model step (`#batch`, SCRIPT_BATCHES). */
+  | { kind: 'tools'; calls: { tool: string; input: Record<string, unknown> }[] };
+
 /** What the script answers for a prompt. Exported for tests. */
-export function scriptedTurn(
-  prompt: LanguageModelV4Prompt,
-): { kind: 'text'; text: string } | { kind: 'tool'; tool: string; input: Record<string, unknown> } {
+export function scriptedTurn(prompt: LanguageModelV4Prompt): ScriptedTurn {
   const correction = scriptedCorrectionTurn(prompt);
   if (correction) return correction;
-  const directives = scriptedDirectives(lastUserText(prompt));
-  const next = directives[resultsSinceUser(prompt)];
-  if (next) return { kind: 'tool', tool: next.tool, input: next.input };
+  const text = lastUserText(prompt);
+  const directives = scriptedDirectives(text);
+  const done = resultsSinceUser(prompt);
+  if (text.includes(BATCH_MARKER) && directives.length > 0) {
+    if (done === 0) return { kind: 'tools', calls: directives };
+  } else {
+    const next = directives[done];
+    if (next) return { kind: 'tool', tool: next.tool, input: next.input };
+  }
   const result = lastToolResult(prompt);
   if (result) return { kind: 'text', text: `Tool ${result.name} returned ${result.output}` };
-  const text = lastUserText(prompt);
+  const batch = SCRIPT_BATCHES.find((s) => text.toLowerCase().includes(s.when));
+  if (batch) {
+    return {
+      kind: 'tools',
+      calls: batch.calls.map((c) => ({ tool: c.tool, input: scriptInput(c.input, text) })),
+    };
+  }
   const hit = SCRIPT.find((s) => text.toLowerCase().includes(s.when));
   if (hit) return { kind: 'tool', tool: hit.tool, input: scriptInput(hit.input, text) };
   return { kind: 'text', text: `Scripted reply to: ${text.slice(0, 120)}` };
@@ -575,15 +623,16 @@ function scriptedModel(modelId: string, options: ScriptedOptions = {}): Language
   const parts = (prompt: LanguageModelV4Prompt): LanguageModelV4StreamPart[] => {
     const turn = scriptedTurn(prompt);
     calls += 1;
-    if (turn.kind === 'tool') {
+    if (turn.kind === 'tool' || turn.kind === 'tools') {
+      const list = turn.kind === 'tool' ? [{ tool: turn.tool, input: turn.input }] : turn.calls;
       return [
         { type: 'stream-start', warnings: [] },
-        {
+        ...list.map((c, i): LanguageModelV4StreamPart => ({
           type: 'tool-call',
-          toolCallId: `scripted-${String(calls)}`,
-          toolName: turn.tool,
-          input: JSON.stringify(turn.input),
-        },
+          toolCallId: `scripted-${String(calls)}${i > 0 ? `-${String(i)}` : ''}`,
+          toolName: c.tool,
+          input: JSON.stringify(c.input),
+        })),
         { type: 'finish', finishReason: { unified: 'tool-calls', raw: 'tool_use' }, usage: USAGE },
       ];
     }

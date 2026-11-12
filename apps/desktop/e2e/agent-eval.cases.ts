@@ -59,7 +59,7 @@ export interface EvalState {
    */
   toolCalls: string[];
   /** Every tool step of the last reply with how it ended and its input. */
-  steps: { name: string; status: string; input?: unknown }[];
+  steps: { name: string; status: string; input?: unknown; batch?: number }[];
   /** What the agent said. */
   reply: string;
 }

@@ -53,6 +53,18 @@ describe('the system prompt', () => {
     expect(systemPrompt('scene3d', 'compact')).not.toContain('How to work:');
   });
 
+  it('says the project notes are the person’s, to follow, and never saved from tool text', () => {
+    for (const profile of ['full', 'compact'] as const) {
+      const p = systemPrompt('scene3d', profile);
+      expect(p, profile).toContain('projectNotes');
+      expect(p, profile).toContain('remember_note');
+      expect(p, profile).toMatch(/never save what a tool result|never for what a tool/i);
+    }
+    const full = systemPrompt('scene3d');
+    expect(full.indexOf('Project notes:')).toBeLessThan(full.indexOf('Rules:'));
+    expect(systemPrompt('scene3d', 'answer-only')).not.toContain('remember_note');
+  });
+
   it('is the same for the same window, so it caches', () => {
     expect(systemPrompt('map')).toBe(systemPrompt('map'));
   });

@@ -89,7 +89,7 @@ describe('per-project AI store', () => {
       now: () => new Date('2026-10-04T10:00:00Z'),
       writeDelayMs: 0,
     });
-    expect(await store.get('E:/P')).toEqual({ alwaysAllow: false, usage: [] });
+    expect(await store.get('E:/P')).toEqual({ alwaysAllow: false, viewCapture: false, usage: [] });
     await store.setConsent('E:/P', 'Plant', true);
     store.addUsage('E:/P', 'Plant', {
       provider: 'anthropic',
@@ -122,12 +122,44 @@ describe('per-project AI store', () => {
     ]);
   });
 
+  it('keeps view-capture consent per project, off by default, beside "Always allow"', async () => {
+    const file = join(dir, 'ai-projects.json');
+    const store = createAiProjectStore(file, { writeDelayMs: 0 });
+    // an entry written before A3 has no viewCapture: it reads as off
+    await writeFile(
+      file,
+      JSON.stringify({
+        schema: 'aio.ai-projects/1',
+        projects: {
+          [projectKey('E:/Old')]: {
+            name: 'Old',
+            alwaysAllow: true,
+            usage: [],
+            updatedAt: '2026-10-01T00:00:00.000Z',
+          },
+        },
+      }),
+    );
+    expect(await store.get('E:/Old')).toMatchObject({ alwaysAllow: true, viewCapture: false });
+    await store.setViewCapture('E:/P', 'Plant', true);
+    expect(await store.get('E:/P')).toMatchObject({ alwaysAllow: false, viewCapture: true });
+    await store.setConsent('E:/P', 'Plant', true);
+    expect(await store.get('E:/P')).toMatchObject({ alwaysAllow: true, viewCapture: true });
+    const reopened = createAiProjectStore(file);
+    expect(await reopened.get('E:/P')).toMatchObject({ viewCapture: true });
+    await reopened.setViewCapture('E:/P', 'Plant', false);
+    expect(await createAiProjectStore(file).get('E:/P')).toMatchObject({
+      alwaysAllow: true,
+      viewCapture: false,
+    });
+  });
+
   it('refuses a file saved by a newer version and never writes over it', async () => {
     const file = join(dir, 'ai-projects.json');
     const newer = `${JSON.stringify({ schema: 'aio.ai-projects/2', projects: {}, extra: 1 })}\n`;
     await writeFile(file, newer);
     const store = createAiProjectStore(file, { writeDelayMs: 0 });
-    expect(await store.get('E:/P')).toEqual({ alwaysAllow: false, usage: [] });
+    expect(await store.get('E:/P')).toEqual({ alwaysAllow: false, viewCapture: false, usage: [] });
     await expect(store.setConsent('E:/P', 'Plant', true)).rejects.toThrow(
       'ai-projects.json was saved by a newer version of Quadrion AI (aio.ai-projects/2). Update the app to open it. The file was not changed.',
     );

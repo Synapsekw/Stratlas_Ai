@@ -15,6 +15,8 @@ import { newerThanThisBuild } from './newer';
 const Entry = z.object({
   name: z.string(),
   alwaysAllow: z.boolean(),
+  /** A3: the agent may capture the view in this project without a card (absent: off). */
+  viewCapture: z.boolean().optional(),
   usage: z.array(
     z.object({
       provider: z.string(),
@@ -46,8 +48,12 @@ export interface UsageReport {
 }
 
 export interface AiProjectStore {
-  get(root: string): Promise<{ alwaysAllow: boolean; usage: ProviderUsage[] }>;
+  get(
+    root: string,
+  ): Promise<{ alwaysAllow: boolean; viewCapture: boolean; usage: ProviderUsage[] }>;
   setConsent(root: string, name: string, alwaysAllow: boolean): Promise<void>;
+  /** A3: allow or stop the agent's view capture in this project without a card each time. */
+  setViewCapture(root: string, name: string, allow: boolean): Promise<void>;
   addUsage(root: string, name: string, usage: UsageReport): void;
   list(): Promise<ProjectUsage[]>;
   /** Write pending usage now (on quit). */
@@ -105,22 +111,33 @@ export function createAiProjectStore(
     updatedAt: now().toISOString(),
   });
 
+  /** Change a project's choices and write the file at once. */
+  async function patch(
+    root: string,
+    name: string,
+    change: Partial<Pick<Entry, 'alwaysAllow' | 'viewCapture'>>,
+  ): Promise<void> {
+    const all = await load();
+    if (refused) throw new Error(refused);
+    const key = projectKey(root);
+    all[key] = { ...(all[key] ?? blank(name)), ...change, name, updatedAt: now().toISOString() };
+    await write();
+  }
+
   return {
     async get(root) {
       const e = (await load())[projectKey(root)];
-      return { alwaysAllow: e?.alwaysAllow ?? false, usage: e?.usage ?? [] };
+      return {
+        alwaysAllow: e?.alwaysAllow ?? false,
+        viewCapture: e?.viewCapture ?? false,
+        usage: e?.usage ?? [],
+      };
     },
     async setConsent(root, name, alwaysAllow) {
-      const all = await load();
-      if (refused) throw new Error(refused);
-      const key = projectKey(root);
-      all[key] = {
-        ...(all[key] ?? blank(name)),
-        name,
-        alwaysAllow,
-        updatedAt: now().toISOString(),
-      };
-      await write();
+      await patch(root, name, { alwaysAllow });
+    },
+    async setViewCapture(root, name, allow) {
+      await patch(root, name, { viewCapture: allow });
     },
     addUsage(root, name, usage) {
       void load().then((all) => {

@@ -29,6 +29,8 @@ interface BridgeOpts {
   saved?: Conversation;
   /** The ready route can only answer in text (a local model without tool calling). */
   answerOnly?: string;
+  /** The project lets the agent capture the view without asking (A3). */
+  viewCapture?: boolean;
 }
 
 function fakeBridge(opts: BridgeOpts = {}) {
@@ -59,6 +61,7 @@ function fakeBridge(opts: BridgeOpts = {}) {
         },
         'ai:project': {
           alwaysAllow: opts.alwaysAllow ?? true,
+          ...(opts.viewCapture !== undefined ? { viewCapture: opts.viewCapture } : {}),
           policy: 'allow',
           usage: [
             {
@@ -71,6 +74,7 @@ function fakeBridge(opts: BridgeOpts = {}) {
           ],
         },
         'ai:setConsent': { ok: true },
+        'ai:setViewCapture': { ok: true },
         'ai:send': opts.sendError ? { ok: false, error: opts.sendError } : { ok: true },
         'ai:toolResult': { ok: true },
         'ai:cancel': { ok: true },
@@ -935,5 +939,197 @@ describe('approvals after a restart', () => {
     await session.settled();
     const last = b.sent('ai:saveConversation').at(-1)?.req as IpcRequest<'ai:saveConversation'>;
     expect(last.conversation.steps.c1?.status).toBe('awaiting');
+  });
+});
+
+describe('batch approvals (A3)', () => {
+  const draft = (title: string) => ({
+    title,
+    severity: 3,
+    classId: 'corrosion',
+    at: { kind: 'point', p: [0, 0, 0] },
+  });
+
+  async function threeWrites(t: ReturnType<typeof setup>, failSecond = false) {
+    await t.session.send('draft three');
+    t.emit({
+      type: 'tool-call',
+      runId: 'id1',
+      callId: 'b1',
+      name: 'create_issue_draft',
+      input: draft('One'),
+      risk: 'write',
+    });
+    t.emit(
+      failSecond
+        ? {
+            type: 'tool-call',
+            runId: 'id1',
+            callId: 'b2',
+            name: 'set_layer_visible',
+            input: { layerId: 'nope', visible: false },
+            risk: 'write',
+          }
+        : {
+            type: 'tool-call',
+            runId: 'id1',
+            callId: 'b2',
+            name: 'create_issue_draft',
+            input: draft('Two'),
+            risk: 'write',
+          },
+    );
+    t.emit({
+      type: 'tool-call',
+      runId: 'id1',
+      callId: 'b3',
+      name: 'create_issue_draft',
+      input: draft('Three'),
+      risk: 'write',
+    });
+    await flush();
+  }
+
+  it('runs the ticked calls in the model order and declines the others', async () => {
+    const t = setup();
+    await threeWrites(t);
+    await t.session.approveBatch(['b3', 'b1'], ['b2']);
+    const s = t.session.getState().steps;
+    expect(s.b1?.status).toBe('done');
+    expect(s.b2?.status).toBe('rejected');
+    expect(s.b3?.status).toBe('done');
+    expect(s.b1?.canUndo).toBe(true);
+    expect(s.b3?.canUndo).toBe(true);
+    const results = t.sent('ai:toolResult').map((c) => c.req as IpcRequest<'ai:toolResult'>);
+    expect(results.map((r) => [r.callId, r.approved])).toEqual([
+      ['b2', false],
+      ['b1', true],
+      ['b3', true],
+    ]);
+    // one draft per approved call, in the model's order
+    const titles = t.ws.getState().issues.map((i) => i.title);
+    expect(titles.slice(-2)).toEqual(['One', 'Three']);
+    // each keeps its own undo
+    t.session.undo('b1');
+    await flush();
+    expect(t.session.getState().steps.b1?.status).toBe('undone');
+    expect(t.session.getState().steps.b3?.status).toBe('done');
+    expect(t.ws.getState().issues.map((i) => i.title)).not.toContain('One');
+  });
+
+  it('stops at a call that fails: the rest stay waiting and can be approved one by one', async () => {
+    const t = setup();
+    await threeWrites(t, true);
+    await t.session.approveBatch(['b1', 'b2', 'b3']);
+    let s = t.session.getState().steps;
+    expect(s.b1?.status).toBe('done');
+    expect(s.b2?.status).toBe('error');
+    expect(s.b3?.status).toBe('awaiting');
+    await t.session.approve('b3');
+    s = t.session.getState().steps;
+    expect(s.b3?.status).toBe('done');
+  });
+
+  it('rejects all when nothing is ticked', async () => {
+    const t = setup();
+    await threeWrites(t);
+    const before = t.ws.getState().issues.length;
+    await t.session.approveBatch([], ['b1', 'b2', 'b3']);
+    const s = t.session.getState().steps;
+    expect([s.b1?.status, s.b2?.status, s.b3?.status]).toEqual([
+      'rejected',
+      'rejected',
+      'rejected',
+    ]);
+    expect(t.ws.getState().issues).toHaveLength(before);
+  });
+
+  it('leaves calls that no longer wait alone', async () => {
+    const t = setup();
+    await threeWrites(t);
+    t.session.reject('b2');
+    await t.session.approveBatch(['b1', 'b2', 'b3']);
+    const s = t.session.getState().steps;
+    expect(s.b2?.status).toBe('rejected');
+    const b2 = t.sent('ai:toolResult').filter((c) => (c.req as { callId: string }).callId === 'b2');
+    expect(b2).toHaveLength(1);
+  });
+});
+
+describe('view capture consent (A3)', () => {
+  const capture = (callId: string): IpcEvent<'ai:event'> => ({
+    type: 'tool-call',
+    runId: 'id1',
+    callId,
+    name: 'capture_frame',
+    input: {},
+    risk: 'send',
+  });
+
+  it('asks before a capture while the project has not allowed it', async () => {
+    const t = setup({ viewCapture: false });
+    await t.session.refresh();
+    expect(t.session.getState().viewCapture).toBe(false);
+    await t.session.send('look');
+    t.emit(capture('f1'));
+    await flush();
+    expect(t.session.getState().steps.f1?.status).toBe('awaiting');
+    expect(t.sent('ai:toolResult')).toHaveLength(0);
+  });
+
+  it('runs a capture without a card once the project allows it, and says why', async () => {
+    const t = setup({ viewCapture: true });
+    await t.session.refresh();
+    expect(t.session.getState().viewCapture).toBe(true);
+    await t.session.send('look');
+    t.emit(capture('f1'));
+    await flush();
+    await flush();
+    const step = t.session.getState().steps.f1;
+    expect(step?.status).toBe('done');
+    expect(step?.note).toBe('Ran without asking: view capture is allowed for this project.');
+    expect(t.sent('ai:toolResult')[0]?.req).toMatchObject({ callId: 'f1', approved: true });
+  });
+
+  it('never runs another tool without its card', async () => {
+    const t = setup({ viewCapture: true });
+    await t.session.refresh();
+    await t.session.send('draft');
+    t.emit({
+      type: 'tool-call',
+      runId: 'id1',
+      callId: 'w1',
+      name: 'create_issue_draft',
+      input: { title: 'Rust', severity: 3 },
+      risk: 'write',
+    });
+    await flush();
+    expect(t.session.getState().steps.w1?.status).toBe('awaiting');
+  });
+
+  it('stores the choice for the project and turns it off again', async () => {
+    const t = setup({ viewCapture: false });
+    await t.session.refresh();
+    expect(await t.session.setViewCapture(true)).toBe(true);
+    expect(t.session.getState().viewCapture).toBe(true);
+    await t.session.setViewCapture(false);
+    expect(t.session.getState().viewCapture).toBe(false);
+    const reqs = t.sent('ai:setViewCapture').map((c) => c.req as { allow: boolean });
+    expect(reqs.map((r) => r.allow)).toEqual([true, false]);
+  });
+
+  it('"Allow for this project" stores the choice and runs the waiting capture', async () => {
+    const t = setup({ viewCapture: false });
+    await t.session.refresh();
+    await t.session.send('look');
+    t.emit(capture('f1'));
+    await flush();
+    await t.session.approve('f1', { allowViewCapture: true });
+    expect(t.session.getState().viewCapture).toBe(true);
+    expect(t.session.getState().steps.f1?.status).toBe('done');
+    t.emit(capture('f2'));
+    await flush();
+    await flush();
+    expect(t.session.getState().steps.f2?.status).toBe('done');
   });
 });

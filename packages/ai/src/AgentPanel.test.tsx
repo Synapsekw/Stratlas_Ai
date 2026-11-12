@@ -456,6 +456,144 @@ describe('describeStep for the placement tools', () => {
   });
 });
 
+describe('batch approvals and view capture in the panel (A3)', () => {
+  const draft = (title: string) => ({
+    title,
+    severity: 3,
+    classId: 'corrosion',
+    at: { kind: 'point', p: [0, 0, 0] },
+  });
+
+  async function withCalls(calls: { callId: string; name: string; input: unknown }[]) {
+    workspace.getState().openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, []);
+    const t = bridge(true);
+    const session = await ownedSession(t.b);
+    const el = await render(t.b, { session });
+    const runId = t.sent[0]?.runId ?? '';
+    await act(async () => {
+      for (const c of calls) {
+        t.emit({
+          type: 'tool-call',
+          runId,
+          callId: c.callId,
+          name: c.name,
+          input: c.input,
+          risk: c.name === 'capture_frame' ? 'send' : 'write',
+        });
+      }
+      await Promise.resolve();
+    });
+    return { el, session, t };
+  }
+
+  const only = (el: HTMLElement, selector: string): HTMLElement => {
+    const found = el.querySelector<HTMLElement>(selector);
+    if (!found) throw new Error(`nothing matches ${selector}`);
+    return found;
+  };
+
+  const button = (el: HTMLElement, name: string) =>
+    [...el.querySelectorAll('button')].find((b) => b.textContent.trim() === name);
+
+  it('shows one card for several waiting writes, each ticked, and approves the ticked ones', async () => {
+    const { el, session } = await withCalls([
+      { callId: 'b1', name: 'create_issue_draft', input: draft('One') },
+      { callId: 'b2', name: 'create_issue_draft', input: draft('Two') },
+      { callId: 'b3', name: 'create_issue_draft', input: draft('Three') },
+    ]);
+    const cards = el.querySelectorAll('.approve');
+    expect(cards).toHaveLength(1);
+    const card = cards[0] as HTMLElement;
+    expect(card.textContent).toContain('3 actions waiting for you');
+    const boxes = [...card.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+    expect(boxes.map((b) => b.checked)).toEqual([true, true, true]);
+    expect(card.textContent).toContain('Adds draft issue "Two", severity 3');
+    // each step keeps its own row and chip
+    expect(el.querySelectorAll('.step.awaiting')).toHaveLength(3);
+    act(() => {
+      boxes[1]?.click();
+    });
+    expect(button(card, 'Approve 2')).toBeTruthy();
+    const spy = vi.spyOn(session, 'approveBatch').mockResolvedValue();
+    act(() => {
+      button(card, 'Approve 2')?.click();
+    });
+    expect(spy).toHaveBeenCalledWith(['b1', 'b3'], ['b2']);
+    act(() => {
+      button(card, 'Reject all')?.click();
+    });
+    expect(spy).toHaveBeenLastCalledWith([], ['b1', 'b2', 'b3']);
+  });
+
+  it('cannot approve a batch with nothing ticked', async () => {
+    const { el } = await withCalls([
+      { callId: 'b1', name: 'create_issue_draft', input: draft('One') },
+      { callId: 'b2', name: 'create_issue_draft', input: draft('Two') },
+    ]);
+    const card = only(el, '.approve');
+    for (const b of card.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')) {
+      act(() => {
+        b.click();
+      });
+    }
+    expect(button(card, 'Approve 0')?.disabled).toBe(true);
+  });
+
+  it('keeps the single card for one waiting write', async () => {
+    const { el } = await withCalls([
+      { callId: 'b1', name: 'create_issue_draft', input: draft('One') },
+    ]);
+    const cards = el.querySelectorAll('.approve');
+    expect(cards).toHaveLength(1);
+    expect(cards[0]?.querySelector('input')).toBeNull();
+    expect(button(cards[0] as HTMLElement, 'Approve')).toBeTruthy();
+  });
+
+  it('offers to allow view capture for the project on the capture card', async () => {
+    const { el, session } = await withCalls([{ callId: 'f1', name: 'capture_frame', input: {} }]);
+    const card = only(el, '.approve');
+    expect([...card.querySelectorAll('button')].map((b) => b.textContent.trim())).toEqual([
+      'Reject',
+      'Just this once',
+      'Allow for this project',
+    ]);
+    const spy = vi.spyOn(session, 'approve').mockResolvedValue(true);
+    act(() => {
+      button(card, 'Allow for this project')?.click();
+    });
+    expect(spy).toHaveBeenCalledWith('f1', { allowViewCapture: true });
+    act(() => {
+      button(card, 'Just this once')?.click();
+    });
+    expect(spy).toHaveBeenLastCalledWith('f1');
+  });
+
+  it('says under a capture that it ran because the project allows it', async () => {
+    workspace.getState().openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, []);
+    const t = bridge(true);
+    const session = await ownedSession(t.b);
+    const el = await render(t.b, { session });
+    await act(async () => {
+      await session.setViewCapture(true);
+    });
+    await act(async () => {
+      t.emit({
+        type: 'tool-call',
+        runId: t.sent[0]?.runId ?? '',
+        callId: 'f1',
+        name: 'capture_frame',
+        input: {},
+        risk: 'send',
+      });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(el.querySelector('.approve')).toBeNull();
+    expect(el.querySelector('.step-note')?.textContent).toBe(
+      'Ran without asking: view capture is allowed for this project.',
+    );
+  });
+});
+
 describe('describeStep for propose_class', () => {
   it('asks to create the named class', () => {
     expect(describeStep({ name: 'propose_class', input: { label: 'Spalling' } })).toBe(

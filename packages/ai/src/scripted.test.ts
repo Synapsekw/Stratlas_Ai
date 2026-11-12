@@ -1,5 +1,5 @@
 import { CorrectionProposalInput, EngineerProposal, type EngineerSetup } from '@aio/schema';
-import type { LanguageModelV4Prompt } from '@ai-sdk/provider';
+import type { LanguageModelV4, LanguageModelV4Prompt } from '@ai-sdk/provider';
 import { describe, expect, it } from 'vitest';
 import { correctionPrompt } from './correctionPrompt';
 import { runEngineer, type EngineerCall, type EngineerHost } from './engineer';
@@ -269,5 +269,93 @@ describe('scripted model corrections', () => {
   });
   it('answers nothing special without the lead', () => {
     expect(scriptedCorrectionTurn(user('hello'))).toBeNull();
+  });
+});
+
+describe('several calls in one step (A3 batch approvals)', () => {
+  const user = (text: string): LanguageModelV4Prompt => [
+    { role: 'user', content: [{ type: 'text', text }] },
+  ];
+  const results = (names: string[]): LanguageModelV4Prompt => [
+    {
+      role: 'assistant',
+      content: names.map((n, i) => ({
+        type: 'tool-call' as const,
+        toolCallId: `c${String(i)}`,
+        toolName: n,
+        input: {},
+      })),
+    },
+    {
+      role: 'tool',
+      content: names.map((n, i) => ({
+        type: 'tool-result' as const,
+        toolCallId: `c${String(i)}`,
+        toolName: n,
+        output: { type: 'json' as const, value: { ok: true } },
+      })),
+    },
+  ];
+  const text =
+    'Do these #batch\n#tool create_issue_draft {"title":"A"}\n#tool create_issue_draft {"title":"B"}';
+
+  it('#batch makes all the directives of a message one step', () => {
+    expect(scriptedTurn(user(text))).toEqual({
+      kind: 'tools',
+      calls: [
+        { tool: 'create_issue_draft', input: { title: 'A' } },
+        { tool: 'create_issue_draft', input: { title: 'B' } },
+      ],
+    });
+    // after their results it reports, and makes no second step
+    const after = scriptedTurn([
+      ...user(text),
+      ...results(['create_issue_draft', 'create_issue_draft']),
+    ]);
+    expect(after.kind).toBe('text');
+    expect(after.kind === 'text' ? after.text : '').toMatch(/^Tool create_issue_draft returned/);
+  });
+
+  it('without #batch the directives stay one per step', () => {
+    expect(scriptedTurn(user(text.replace(' #batch', '')))).toEqual({
+      kind: 'tool',
+      tool: 'create_issue_draft',
+      input: { title: 'A' },
+    });
+  });
+
+  it('"draft three issues" makes three drafts in one step, each passing its schema', () => {
+    const turn = scriptedTurn(user('Please draft three issues on the north wall'));
+    expect(turn.kind).toBe('tools');
+    if (turn.kind !== 'tools') return;
+    expect(turn.calls.map((c) => c.tool)).toEqual([
+      'create_issue_draft',
+      'create_issue_draft',
+      'create_issue_draft',
+    ]);
+    for (const c of turn.calls) {
+      expect(getToolSpec(c.tool)?.input.safeParse(c.input).success).toBe(true);
+    }
+  });
+
+  it('"look at the view" asks for one capture', () => {
+    expect(scriptedTurn(user('Look at the view and tell me what you see'))).toEqual({
+      kind: 'tool',
+      tool: 'capture_frame',
+      input: {},
+    });
+  });
+
+  it('streams every call of the step in one response', async () => {
+    const model = createScriptedProvider('anthropic').languageModel('m', null) as LanguageModelV4;
+    const { stream } = await model.doStream({ prompt: user(text) });
+    const parts: { type: string }[] = [];
+    const reader = stream.getReader();
+    for (;;) {
+      const r = await reader.read();
+      if (r.done) break;
+      parts.push(r.value);
+    }
+    expect(parts.filter((p) => p.type === 'tool-call')).toHaveLength(2);
   });
 });

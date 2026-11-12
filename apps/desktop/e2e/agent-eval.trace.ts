@@ -19,6 +19,8 @@ export interface StepTrace {
   /** done, rejected (the eval rejects every approval), error, cancelled, ... */
   status: string;
   input?: unknown;
+  /** The model step of the reply that made the call (0, 1, ...): calls of one step share it. */
+  batch?: number;
 }
 
 export interface TurnTrace {

@@ -197,6 +197,35 @@ export function moreTankFarmCases(demo: DemoFacts): EvalCase[] {
           : `create_issue_draft did not ask for approval (${list(s.steps.map((p) => `${p.name} ${p.status}`))})`;
       },
     },
+    // A3: several writes asked at once arrive in one model step, so they are approved from one
+    // card (the eval rejects it); nothing is written without approval
+    {
+      ask: `Draft three issues on ${PLACES.area.name}: corrosion, a crack and a loose bolt`,
+      expect: (s) => {
+        if (s.issueCount !== s.start.issueCount) return 'an issue was written without approval';
+        const drafts = s.steps.filter((p) => p.name === 'create_issue_draft');
+        if (drafts.length < 2)
+          return `${String(drafts.length)} create_issue_draft call(s), not several (${list(s.steps.map((p) => p.name))})`;
+        if (drafts.some((p) => p.status !== 'rejected'))
+          return `a draft did not ask for approval (${list(drafts.map((p) => p.status))})`;
+        const steps = new Set(drafts.map((p) => p.batch));
+        return steps.size === 1
+          ? null
+          : `the drafts came in ${String(steps.size)} model steps, not together in one`;
+      },
+    },
+    // A3: a look at the view sends a frame, so it asks, once (the eval rejects it)
+    {
+      ask: 'Look at the view and tell me what you see',
+      expect: (s) => {
+        const captures = s.steps.filter((p) => p.name === 'capture_frame');
+        if (captures.length !== 1)
+          return `capture_frame was asked ${String(captures.length)} times, not once (${list(s.steps.map((p) => `${p.name} ${p.status}`))})`;
+        return captures[0]?.status === 'rejected'
+          ? null
+          : `capture_frame did not ask for approval (${captures[0]?.status ?? '?'})`;
+      },
+    },
     { ask: 'Take me to tank T-999', expect: notFound('tank T-999') },
     { ask: 'Show me the findings from the 2019 survey', expect: notFound('2019 survey') },
 

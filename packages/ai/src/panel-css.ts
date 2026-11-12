@@ -28,6 +28,14 @@ export const PANEL_CSS = `
 .aio-agent .approve { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--line-soft); align-items: center; }
 .aio-agent .approve .note { font-size: var(--t-11); color: var(--fg-2); margin-right: auto; min-width: 0; }
 .aio-agent .approve .ag-btn { flex: none; white-space: nowrap; }
+.aio-agent .approve.batch { flex-direction: column; align-items: stretch; gap: 6px; }
+.aio-agent .approve.batch + .step, .aio-agent .step-note + .step { border-top: 1px solid var(--line-soft); }
+.aio-agent .batch-head { font-size: var(--t-12); font-weight: 600; color: var(--fg-0); }
+.aio-agent .batch-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.aio-agent .batch-list label { display: flex; align-items: flex-start; gap: 6px; font-size: var(--t-11); color: var(--fg-1); cursor: pointer; padding: 2px 0; }
+.aio-agent .batch-list input { margin: 2px 0 0; accent-color: var(--acc); flex: none; }
+.aio-agent .batch-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.aio-agent .step-note { padding: 0 8px 6px 34px; font-size: var(--t-11); color: var(--fg-3); }
 .aio-agent .ag-btn { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: var(--r-4); border: 1px solid var(--line); background: var(--bg-2); color: var(--fg-1); font: 500 var(--t-12)/1 var(--f-ui); cursor: pointer; transition: background 120ms var(--ease), border-color 120ms var(--ease); }
 .aio-agent .ag-btn:hover { background: var(--bg-3); border-color: var(--line-strong); }
 .aio-agent .ag-btn:focus-visible, .aio-agent .ag-sug:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
