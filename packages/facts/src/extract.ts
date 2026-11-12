@@ -343,6 +343,7 @@ function detectionFacts(b: Builder, ctx: Context, src: ProjectSources): void {
           d.rejectReason,
           d.rejectNote,
           d.uncertain && 'uncertain',
+          d.track && `walk track ${String(d.track.frames)} frames`,
           ...fields,
         ),
         ...onDate(ctx, capture),
@@ -352,12 +353,14 @@ function detectionFacts(b: Builder, ctx: Context, src: ProjectSources): void {
         ...(d.confidence !== undefined ? { value: d.confidence, unit: 'score' } : {}),
         status,
         source,
-        ...at(photo?.pos),
+        // a walk track (V4) is placed at its point; a photo detection sits at its photo
+        ...at(d.track?.point ? ctx.en(d.track.point) : photo?.pos),
         evidence: pass.file,
       });
       if (photo) b.link(s, photo.subject, 'on-photo');
       if (capture) b.link(s, `survey:${capture}`, 'on-survey');
       if (d.issueId) b.link(s, `issue:${d.issueId}`, 'issue');
+      if (d.frame) b.link(s, `layer:${d.frame.layer}`, 'in-layer');
     });
   }
 }
@@ -543,6 +546,9 @@ function changeFacts(b: Builder, ctx: Context, src: ProjectSources): void {
           item.verdict,
           classId ? ctx.className(classId) : undefined,
           item.review?.note,
+          item.kind === 'region' && item.aiLabel
+            ? `${item.aiLabel.kind.replace('-', ' ')} ${item.aiLabel.what ?? ''}`
+            : undefined,
         ),
         ...onDate(ctx, set.to),
         at: item.review?.at ?? set.createdAt,

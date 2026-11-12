@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { ChangeItem, Detection } from '@aio/schema';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { extractFacts, inside, subjectOfTarget } from './extract';
 import { readProjectSources } from './sources';
@@ -108,6 +109,36 @@ describe('extracting facts', () => {
     expect(has('issue:i1', 'measurement:pile-north', 'inside')).toBe(true);
     expect(has('detection:d1', 'measurement:pile-north', 'inside')).toBe(true);
     expect(has('detection:d2', 'measurement:pile-north', 'inside')).toBe(false);
+  });
+
+  it('reads a walk track draft (V4) at its point and an AI label of a change region', async () => {
+    const src = await readProjectSources(root);
+    const d = Detection.parse({
+      id: 'wt1',
+      frame: { layer: 'walk-1', t: 12 },
+      space: 'normalized',
+      class: 'crack',
+      bbox: [0.1, 0.1, 0.2, 0.2],
+      track: { frames: 4, firstT: 10, lastT: 14, point: [3, 1, -4], placedOn: 'ground' },
+    });
+    src.detections.push({ file: 'detections/walk-1.json', source: 'model', detections: [d] });
+    const set = src.changeSets[0]?.set;
+    if (!set) throw new Error('fixture has a change set');
+    set.items.push(
+      ChangeItem.parse({
+        kind: 'region',
+        id: 'r1',
+        verdict: 'added',
+        aiLabel: { kind: 'material-added', what: 'gravel heap', at: '2026-08-05T00:00:00.000Z' },
+      }),
+    );
+    const { facts, links } = extractFacts(src);
+    expect(facts.find((f) => f.id === 'detection:wt1')).toMatchObject({ e: 1003, n: 2004 });
+    expect(facts.find((f) => f.id === 'detection:wt1')?.text).toContain('walk track 4 frames');
+    expect(links).toContainEqual({ from: 'detection:wt1', to: 'layer:walk-1', rel: 'in-layer' });
+    expect(facts.find((f) => f.id === 'change-item:c1-c2-issues/r1')?.text).toContain(
+      'material added gravel heap',
+    );
   });
 
   it('is deterministic', async () => {
