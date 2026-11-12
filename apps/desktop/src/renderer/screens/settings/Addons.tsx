@@ -10,7 +10,7 @@ import type { AddonStatus } from '@aio/schema';
 import { Icon, Progress, t } from '@aio/ui';
 import { useEffect, useState } from 'react';
 import { addons, useAddons } from '../../addons';
-import { useShell } from '../../shell';
+import { shell, useShell } from '../../shell';
 import { addonFacts, addonName, addonOffer, addonProgressText, addonWhat } from './addonsView';
 import './addons.css';
 
@@ -151,6 +151,53 @@ function Row({ status }: { status: AddonStatus }) {
   );
 }
 
+/** Settings `addons.baseUrl`: where the add-on list and files come from. Saved on leaving it. */
+function Address() {
+  const saved = useShell((s) => s.settings.addons?.baseUrl ?? '');
+  const [draft, setDraft] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const save = async () => {
+    if (draft === null) return;
+    const v = draft.trim();
+    setDraft(null);
+    if (v === saved) return;
+    if (v && !/^https?:\/\/\S+$/i.test(v)) {
+      setError(t('detect.addons.addressInvalid'));
+      return;
+    }
+    setError(null);
+    const err = await shell.getState().updateSettings({ addons: { baseUrl: v } });
+    if (err) setError(err);
+    else void addons.getState().load();
+  };
+  return (
+    <label className="oc-field addon-address">
+      <span>{t('detect.addons.address')}</span>
+      <input
+        className="input mono"
+        aria-label={t('detect.addons.address')}
+        data-testid="addons-address"
+        placeholder="https://downloads.example.com/addons/"
+        value={draft ?? saved}
+        spellCheck={false}
+        onChange={(e) => {
+          setDraft(e.target.value);
+        }}
+        onBlur={() => void save()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+        }}
+      />
+      <span className="help">{t('detect.addons.addressHelp')}</span>
+      {error && (
+        <span className="prov-err" role="alert" data-testid="addons-address-error">
+          {error}
+        </span>
+      )}
+    </label>
+  );
+}
+
 export function Addons() {
   const dataRoot = useShell((s) => s.settings.dataRoot);
   const list = useAddons((s) => s.list);
@@ -191,6 +238,7 @@ export function Addons() {
           ))}
         </ul>
       )}
+      <Address />
       <div className="addon-file">
         <span className="help">{t('detect.addons.chooseHint')}</span>
         <button

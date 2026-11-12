@@ -6,10 +6,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const calls: string[] = [];
 let list: AddonListResponse;
+const patches: unknown[] = [];
 
 vi.mock('../../shell', () => ({
   useShell: (sel: (s: { settings: { dataRoot: string } }) => unknown) =>
     sel({ settings: { dataRoot: 'D:/data' } }),
+  shell: {
+    getState: () => ({
+      updateSettings: (patch: unknown) => {
+        patches.push(patch);
+        return Promise.resolve(null);
+      },
+    }),
+  },
   bridge: {
     call: (channel: string) => {
       calls.push(channel);
@@ -50,6 +59,7 @@ let root: Root | undefined;
 const q = (id: string) => document.body.querySelector<HTMLElement>(`[data-testid="${id}"]`);
 beforeEach(() => {
   calls.length = 0;
+  patches.length = 0;
   host = document.createElement('div');
   document.body.append(host);
 });
@@ -94,5 +104,33 @@ describe('Settings, Add-ons', () => {
       'Downloads are not set up on this computer. Choose an add-on file instead.',
     );
     expect(q('addon-ground-classifier-problem')?.textContent).toBe('Needs pack 0.35.0.');
+  });
+
+  it('saves the add-on address on leaving the field, and refuses one that is not a web address', async () => {
+    list = { baseUrl: null, addons: [ground] };
+    await render();
+    const input = q('addons-address') as HTMLInputElement;
+    const type = async (v: string) => {
+      await act(async () => {
+        // React tracks the value: set it through the prototype's setter, as typing does
+        Reflect.set(HTMLInputElement.prototype, 'value', v, input);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        await Promise.resolve();
+      });
+      await act(async () => {
+        input.focus();
+        input.blur();
+        await Promise.resolve();
+      });
+    };
+    await type('ftp://nope');
+    expect(patches).toEqual([]);
+    expect(q('addons-address-error')?.textContent).toContain('must start with https://');
+    calls.length = 0;
+    await type(' http://127.0.0.1:4747/addons/ ');
+    expect(patches).toEqual([{ addons: { baseUrl: 'http://127.0.0.1:4747/addons/' } }]);
+    expect(q('addons-address-error')).toBeNull();
+    // the list is read again from the new address
+    expect(calls).toContain('addons:list');
   });
 });

@@ -387,6 +387,11 @@ export const enInspect = {
   'detect.addons.noAddress':
     'Downloads are not set up on this computer. Choose an add-on file instead.',
   'detect.addons.catalogueError': 'The add-on list could not be read: {error}',
+  'detect.addons.address': 'Add-on address',
+  'detect.addons.addressHelp':
+    'The folder that holds catalogue.json, for example https://downloads.example.com/addons/. Empty: the built-in address, when this build has one.',
+  'detect.addons.addressInvalid':
+    'The add-on address must start with https:// (or http:// on this computer).',
   'detect.addons.installed': '{name} {version} is installed.',
   'detect.addons.removed': '{name} {version} was removed.',
   'detect.addons.progress.label': 'Installing the add-on',

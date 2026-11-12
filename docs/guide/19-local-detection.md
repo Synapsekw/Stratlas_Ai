@@ -21,6 +21,16 @@ Open **Settings**, **Models and detection**. **Detection models** comes first.
 
 Each row shows the version, the licence and the download size. **Download** gets the add-on and checks it before it is installed, with the progress shown on its row; **Remove** takes it off again. A file that does not match its check is refused, and nothing is installed. On a computer that is offline, or when downloads are not set up, use **Choose file** with an add-on file (`.aioaddon`) copied from another computer. Settings that are **Offline only** never download.
 
+**Add-on address**, under the list, is where the add-on list (`catalogue.json`) and the files come from: an `https://` folder, or `http://` on this computer. Leave it empty for the built-in address, when this build has one. It is saved when you leave the field, and the list is read again.
+
+### Try the add-ons before they are published
+
+No add-on is published yet. To try the Add-ons section from a source checkout, serve three test add-ons on this computer:
+
+1. In a terminal at the repository, run `pnpm addons:serve`. It builds Road defects (a test detector that finds the demo's magenta markers, not a road model), Ground classifier and Segmentation (the MobileSAM model of your installed processing tools when it finds them, else a test segmenter) into a temporary folder, and prints `Add-on address: http://127.0.0.1:4747/addons/`. Leave it running; `--port <n>` picks another port.
+2. Start {product} with that address, in a second PowerShell window at the repository: `$env:QUADRION_ADDONS_URL = 'http://127.0.0.1:4747/addons/'; pnpm dev`. Or start it as usual and paste the address into **Settings**, **Models and detection**, **Add-ons**, **Add-on address**.
+3. Open **Settings**, **Models and detection**, **Add-ons**: the three add-ons show with their licence and download size. **Download**, **Remove** and **Choose file** work as described above. The files are in the folder the first window names, if you want one for **Choose file**.
+
 ## The model card
 
 A model is two files in one folder: `model.onnx` and its card `model.json`. The card gives the model's name and version, its output layout (`yolo-v8`, `yolo-v5`, `detr`, `ssd` or `generic`), its input size, its classes, the SPDX licence of the weights, where the weights come from, and the SHA-256 of `model.onnx`. For example:
