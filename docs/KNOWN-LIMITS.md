@@ -433,4 +433,5 @@ These limits were seen on the founder's own real projects in the data folder (no
 - The Road defects add-on has no trained weights yet. It was checked end to end with a synthetic detector only.
 - The Segmentation add-on runs a SAM-class ONNX export in the app's own runtime (no PyTorch). It was checked with the MobileSAM weights of the processing tools; a SAM 3 export has not been run.
 - Classify on point cloud keeps the surface each photo saw with one depth band per outline, so a few ground points right at the foot of a wall behind the object can be taken too. Points hidden under the object and ground beside it are not.
+- Classify on point cloud treats each photo as a pinhole camera with no lens distortion, so outlines near the edge of a wide-angle photo land slightly off. Photos stored rotated (an EXIF orientation other than upright) are skipped, with "The mask is not the shape of its photo." as the reason.
 - Ground marking is PDAL SMRF with the add-on's settings; vegetation and buildings are not classified.
