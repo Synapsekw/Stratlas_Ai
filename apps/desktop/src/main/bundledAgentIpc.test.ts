@@ -1,4 +1,4 @@
-import type { ToolCheckResult } from '@aio/ai/main';
+import { toolCheckVersion, type ToolCheckResult } from '@aio/ai/main';
 import {
   BundledAgentCheck,
   type BundledAgentStatus,
@@ -92,6 +92,7 @@ describe('bundled agent IPC', () => {
     expect(r.check).toEqual({
       modelSha256: SHA.toLowerCase(),
       runtimeRelease: 'b11489',
+      checkVersion: toolCheckVersion(),
       modelId: 'qwen3.5-9b-q4_k_m',
       packVersion: '0.2.0',
       passed: true,

@@ -7,6 +7,7 @@ import {
   neededFor,
   runToolCheck,
   TOOL_CHECK_CASES,
+  toolCheckVersion,
   type ToolCheckCase,
 } from './toolCheck';
 
@@ -160,6 +161,12 @@ describe('the tool-calling check', () => {
     let k = 0;
     const last = scripted((ask) => (++k === 12 ? down : (byAsk(ask) ?? '')));
     await expect(runToolCheck({ model: last.model })).rejects.toThrow(/ECONNREFUSED/);
+  });
+
+  it('names what it sends with a short stable hash', () => {
+    const v = toolCheckVersion();
+    expect(v).toMatch(/^[0-9a-f]{16}$/);
+    expect(toolCheckVersion()).toBe(v);
   });
 
   it('needs four in five right', () => {

@@ -5,7 +5,7 @@
  * while a detector run holds the card), runs `runToolCheck` against the pack's server and keeps
  * the result in `Settings.bundledAgentCheck` with the model's SHA-256 and the pack version.
  */
-import { localProvider, runToolCheck, type ToolCheckResult } from '@aio/ai/main';
+import { localProvider, runToolCheck, toolCheckVersion, type ToolCheckResult } from '@aio/ai/main';
 import type { BundledAgentCheck, IpcChannel } from '@aio/schema';
 import { en } from '@aio/ui/i18n/en';
 import { runtimeReleaseOf, type BundledAgent } from './analytics/agentModel';
@@ -36,6 +36,7 @@ export function toStoredCheck(
   return {
     modelSha256: pack.manifest.model.sha256.toLowerCase(),
     runtimeRelease: runtimeReleaseOf(pack),
+    checkVersion: toolCheckVersion(),
     modelId: pack.manifest.model.id,
     packVersion: pack.version,
     passed: r.passed,

@@ -6,7 +6,7 @@
  * agent's tool waits for the person's approval, and the agent's next step waits for the card.
  */
 import { approvalFor, toolsForWindow } from '@aio/ai';
-import { createAgentRuntime, WAITING_FOR_MODEL } from '@aio/ai/main';
+import { createAgentRuntime, toolCheckVersion, WAITING_FOR_MODEL } from '@aio/ai/main';
 import type {
   BundledAgentCheck,
   IpcEvent,
@@ -99,6 +99,7 @@ const pack = {
 const check: BundledAgentCheck = {
   modelSha256: SHA,
   runtimeRelease: RELEASE,
+  checkVersion: toolCheckVersion(),
   modelId: MODEL,
   packVersion: '0.2.0',
   passed: true,

@@ -1,3 +1,4 @@
+import { toolCheckVersion } from '@aio/ai/main';
 import type { BundledAgentCheck } from '@aio/schema';
 import { en } from '@aio/ui/i18n/en';
 import { describe, expect, it, vi } from 'vitest';
@@ -22,6 +23,7 @@ const pack = {
 const check = (over: Partial<BundledAgentCheck> = {}): BundledAgentCheck => ({
   modelSha256: SHA,
   runtimeRelease: 'b11489',
+  checkVersion: toolCheckVersion(),
   modelId: 'qwen3.5-9b-q4_k_m',
   packVersion: '0.2.0',
   passed: true,
@@ -70,6 +72,7 @@ describe('the bundled agent model', () => {
       modelId: 'qwen3.5-9b-q4_k_m',
       modelSha256: SHA,
       runtimeRelease: 'b11489',
+      checkVersion: toolCheckVersion(),
       contextTokens: VLM_CONTEXT_TOKENS,
     });
     expect(s.blocked).toBeNull();
@@ -94,6 +97,14 @@ describe('the bundled agent model', () => {
     expect(await updated.agent.ready()).toBe(en['localAi.bundled.checkFirst']);
     const old = check();
     delete old.runtimeRelease;
+    expect(await setup({ check: old }).agent.ready()).toBe(en['localAi.bundled.checkFirst']);
+  });
+
+  it('blocks again when the app sends another check, and for a check without a version', async () => {
+    const other = setup({ check: check({ checkVersion: '0000000000000000' }) });
+    expect(await other.agent.ready()).toBe(en['localAi.bundled.checkFirst']);
+    const old = check();
+    delete old.checkVersion;
     expect(await setup({ check: old }).agent.ready()).toBe(en['localAi.bundled.checkFirst']);
   });
 

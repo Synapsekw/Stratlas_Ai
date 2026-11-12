@@ -36,7 +36,7 @@ let seen: Seen[];
  * `tool`: the streamed answer is a call of list_layers; `write`: a call of a tool that needs the
  * person's approval, then text after its result; else text.
  */
-let replyWith: 'text' | 'tool' | 'write';
+let replyWith: 'text' | 'tool' | 'write' | 'write2';
 
 /** A compact 3D tool that waits for approval and takes no arguments. */
 const WRITE_TOOL =
@@ -93,6 +93,22 @@ beforeEach(async () => {
       const base = { id: 'c1', object: 'chat.completion.chunk', created: 1, model: body.model };
       const send = (v: unknown) => res.write(`data: ${JSON.stringify(v)}\n\n`);
       const answered = body.messages?.at(-1)?.role === 'tool';
+      if (replyWith === 'write2' && !answered) {
+        const fn = { name: WRITE_TOOL, arguments: '{}' };
+        const calls = ['call_1', 'call_2'].map((id, index) => ({
+          index,
+          id,
+          type: 'function',
+          function: fn,
+        }));
+        send({
+          ...base,
+          choices: [{ index: 0, delta: { role: 'assistant', tool_calls: calls } }],
+        });
+        send({ ...base, choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] });
+        res.end('data: [DONE]\n\n');
+        return;
+      }
       if (replyWith === 'tool' || (replyWith === 'write' && !answered)) {
         const call = { index: 0, id: 'call_1', type: 'function' };
         const fn = { name: replyWith === 'write' ? WRITE_TOOL : 'list_layers', arguments: '{}' };
@@ -147,7 +163,7 @@ const req = (over: Partial<IpcRequest<'ai:send'>> = {}): IpcRequest<'ai:send'> =
 });
 
 function setup(o: {
-  ready?: string | null;
+  ready?: string | null | (() => string | null);
   lease?: () => BundledLease;
   bundled?: false;
   cfg?: LocalModelSettings;
@@ -176,7 +192,14 @@ function setup(o: {
     },
     routes,
     localModel: () => o.cfg ?? BUNDLED,
-    ...(o.bundled === false ? {} : { bundled: { ready: () => o.ready ?? null, acquire } }),
+    ...(o.bundled === false
+      ? {}
+      : {
+          bundled: {
+            ready: () => (typeof o.ready === 'function' ? o.ready() : (o.ready ?? null)),
+            acquire,
+          },
+        }),
   };
   const runtime = createAgentRuntime(host, { maxRetries: 0 });
   return { runtime, events, end, acquire, release };
@@ -358,6 +381,38 @@ describe('the bundled model as the offline agent', () => {
         type: 'error',
         message: 'The Analytics pack is gone.',
       });
+      expect(seen).toHaveLength(1);
+    });
+
+    it('two cards open at once: given back on the first, taken again once after the last', async () => {
+      replyWith = 'write2';
+      const t = setup({});
+      await t.runtime.send(req());
+      await vi.waitFor(() => {
+        expect(t.events.filter((e) => e.type === 'tool-call')).toHaveLength(2);
+      });
+      const calls = t.events.flatMap((e) => (e.type === 'tool-call' ? [e.callId] : []));
+      expect(t.release).toHaveBeenCalledTimes(1);
+      t.runtime.toolResult({ runId: 'r1', callId: calls[0] ?? '', approved: true, result: {} });
+      // the second card is still open: the model stays given back
+      await new Promise((ok) => setTimeout(ok, 50));
+      expect(t.acquire).toHaveBeenCalledTimes(1);
+      t.runtime.toolResult({ runId: 'r1', callId: calls[1] ?? '', approved: true, result: {} });
+      expect(await t.end).toMatchObject({ type: 'done' });
+      expect(t.acquire).toHaveBeenCalledTimes(2);
+      expect(t.release).toHaveBeenCalledTimes(2);
+    });
+
+    it('a pack changed while the card was open must pass its own check before the next step', async () => {
+      replyWith = 'write';
+      let checked = true;
+      const t = setup({ ready: () => (checked ? null : 'Check the new model first.') });
+      await t.runtime.send(req());
+      const call = await callOf(t);
+      checked = false;
+      t.runtime.toolResult({ runId: 'r1', callId: call.callId, approved: true, result: {} });
+      expect(await t.end).toMatchObject({ type: 'error', message: 'Check the new model first.' });
+      expect(t.acquire).toHaveBeenCalledTimes(1);
       expect(seen).toHaveLength(1);
     });
   });

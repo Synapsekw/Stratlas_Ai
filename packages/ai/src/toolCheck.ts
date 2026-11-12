@@ -10,6 +10,8 @@
  */
 import type { AgentFacts, WindowKind } from '@aio/schema';
 import { generateText, type LanguageModel, type ToolSet } from 'ai';
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
 import { contextBlock, systemPrompt } from './prompt';
 import { createToolCallRepair } from './repair';
 import { toolsForWindow } from './tools';
@@ -179,6 +181,42 @@ export function neededFor(total: number): number {
 }
 
 /** The compact tools of `window`, without executors: the model's call is graded, never run. */
+let version: string | undefined;
+
+/**
+ * What the check sends, as a short hash: the compact prompt, the compact tool list (names,
+ * descriptions, argument schemas), the window context, the cases and the pass share. A stored
+ * check of another version is stale (an app update that changes the agent's compact profile asks
+ * for a new check), and nothing needs to be bumped by hand.
+ */
+export function toolCheckVersion(): string {
+  if (version !== undefined) return version;
+  const window: WindowKind = 'scene3d';
+  const tools = toolsForWindow(window, 'compact', { facts: TOOL_CHECK_FACTS, task: 'chat' }).map(
+    (s) => ({
+      name: s.meta.name,
+      description: s.meta.description,
+      schema: z.toJSONSchema(s.input, { io: 'input', unrepresentable: 'any' }),
+    }),
+  );
+  const cases = TOOL_CHECK_CASES.map((c) => ({
+    id: c.id,
+    ask: c.ask,
+    expect: c.expect,
+    args: c.args?.toString() ?? null,
+  }));
+  const text = JSON.stringify({
+    prompt: systemPrompt(window, 'compact'),
+    tools,
+    context: TOOL_CHECK_CONTEXT,
+    facts: TOOL_CHECK_FACTS,
+    cases,
+    share: TOOL_CHECK_PASS_SHARE,
+  });
+  version = createHash('sha256').update(text).digest('hex').slice(0, 16);
+  return version;
+}
+
 function compactTools(window: WindowKind, facts: AgentFacts): ToolSet {
   const set: ToolSet = {};
   for (const spec of toolsForWindow(window, 'compact', { facts, task: 'chat' })) {

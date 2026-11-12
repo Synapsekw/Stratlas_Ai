@@ -6,6 +6,7 @@
  * through `localAsk.active()`, with no second lock). The model may run the agent only while the
  * stored tool-calling check passed for the model file installed now (its SHA-256).
  */
+import { toolCheckVersion } from '@aio/ai/main';
 import { bundledCheckFits, type BundledAgentCheck, type BundledAgentStatus } from '@aio/schema';
 import { en } from '@aio/ui/i18n/en';
 import type { LocalAsk } from './ask';
@@ -72,6 +73,7 @@ export function createBundledAgent(d: BundledAgentDeps): BundledAgent {
           modelId: found.manifest.model.id,
           modelSha256: found.manifest.model.sha256.toLowerCase(),
           runtimeRelease: runtimeReleaseOf(found),
+          checkVersion: toolCheckVersion(),
           contextTokens: VLM_CONTEXT_TOKENS,
         }
       : null;

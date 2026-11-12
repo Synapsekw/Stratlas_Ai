@@ -32,6 +32,11 @@ export const BundledAgentCheck = z
      * checks again. Absent in checks stored before it was kept: such a check counts as stale.
      */
     runtimeRelease: z.string().min(1).max(80).optional(),
+    /**
+     * What the check sent (`toolCheckVersion()`: a hash of the compact prompt, the compact tools
+     * and the cases): an app update that changes them checks again. Absent: stale.
+     */
+    checkVersion: z.string().min(1).max(64).optional(),
     modelId: z.string().min(1).max(200),
     packVersion: z.string().min(1).max(40),
     passed: z.boolean(),
@@ -70,6 +75,8 @@ export const BundledAgentStatus = z.object({
       modelSha256: Sha256Hex,
       /** The pack's llama.cpp release (`runtime.release`); a stored check must name the same. */
       runtimeRelease: z.string().optional(),
+      /** The check this app sends (`toolCheckVersion()`); a stored check must name the same. */
+      checkVersion: z.string().optional(),
       /** The context the server is started with, tokens. */
       contextTokens: z.number().int().positive(),
     })
@@ -82,8 +89,9 @@ export const BundledAgentStatus = z.object({
 export type BundledAgentStatus = z.infer<typeof BundledAgentStatus>;
 
 /**
- * The stored check is about the pack installed now: the same model file and the same llama.cpp
- * release (a check without a release, stored before it was kept, is stale).
+ * The stored check is about the pack installed now and the check this app sends: the same model
+ * file, the same llama.cpp release and the same check version (a check without either, stored
+ * before they were kept, is stale).
  */
 export function bundledCheckFits(
   pack: NonNullable<BundledAgentStatus['pack']>,
@@ -92,7 +100,9 @@ export function bundledCheckFits(
   return (
     check?.modelSha256.toLowerCase() === pack.modelSha256.toLowerCase() &&
     check.runtimeRelease !== undefined &&
-    check.runtimeRelease === pack.runtimeRelease
+    check.runtimeRelease === pack.runtimeRelease &&
+    check.checkVersion !== undefined &&
+    check.checkVersion === pack.checkVersion
   );
 }
 

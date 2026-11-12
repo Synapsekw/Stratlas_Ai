@@ -19,11 +19,13 @@ const PACK = {
   modelId: 'qwen3.5-9b-q4_k_m',
   modelSha256: SHA,
   runtimeRelease: 'b0000',
+  checkVersion: 'v1',
   contextTokens: 16_384,
 };
 const CHECK: BundledAgentCheck = {
   modelSha256: SHA,
   runtimeRelease: 'b0000',
+  checkVersion: 'v1',
   modelId: 'qwen3.5-9b-q4_k_m',
   packVersion: '0.2.0',
   passed: true,

@@ -66,6 +66,7 @@ import {
   type RunSpend,
 } from './engineerSpend';
 import { existsSync } from 'node:fs';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { join } from 'node:path';
 import {
   generateText,
@@ -183,7 +184,7 @@ export {
   type ProbeResult,
 } from './local';
 export { addProviderUsage, totalUsage, type ProviderUsageRow } from './pricing';
-export { runToolCheck, type ToolCheckResult } from './toolCheck';
+export { runToolCheck, toolCheckVersion, type ToolCheckResult } from './toolCheck';
 
 /** Every tool the agent can be offered; main checks that none of them approves (M9 decision 6). */
 export const agentToolNames = (): string[] => allToolSpecs().map((s) => s.meta.name);
@@ -579,6 +580,8 @@ export function createAgentRuntime(
     profile: ToolProfile = 'full',
     watchdog?: Watchdog,
     fit: ToolFit = {},
+    /** The route this step really uses sends data off this machine (A3: the view-capture card). */
+    cloud = true,
   ): ToolSet {
     const set: ToolSet = {};
     for (const spec of toolsForWindow(window, profile, fit)) {
@@ -595,6 +598,7 @@ export function createAgentRuntime(
             name,
             input,
             risk: riskOf(name, input),
+            cloud,
           });
           // The person may take their time to approve: that is not the model being slow.
           watchdog?.pause();
@@ -692,39 +696,59 @@ export function createAgentRuntime(
       { baseUrl: first.baseUrl },
       { offlineOnly, fetch: via },
     ).languageModel(first.modelId, first.apiKey);
+    // approvals waiting now: the model goes back on the first and is taken again after the last
+    let waiting = 0;
+    let retaking: Promise<void> | null = null;
+    let ended = false;
+    // read fresh after each await: the run may end while the model is taken
+    const over = () => ended;
+    const retake = async (runId: string, stop: AbortSignal): Promise<void> => {
+      let told = false;
+      while (!held) {
+        if (stop.aborted || over()) throw new Cancelled();
+        // a pack changed while the card was open must pass its own check first
+        const why = await bundled.ready();
+        if (why) throw new Error(why);
+        const got = await bundled.acquire(stop);
+        if (got.ok) {
+          if (over()) {
+            got.release();
+            throw new Cancelled();
+          }
+          // another approval opened meanwhile: it gives the model back, and takes it after
+          if (waiting > 0) {
+            got.release();
+            return;
+          }
+          held = got;
+          return;
+        }
+        if (!got.busy) throw new Error(got.message);
+        if (!told) {
+          told = true;
+          host.emit({ type: 'text', runId, delta: `\n\n${WAITING_FOR_MODEL}\n\n` });
+        }
+        await sleep(RETAKE_EVERY_MS, undefined, { signal: stop }).catch(() => undefined);
+      }
+    };
     const hold: ModelHold = {
       pause: () => {
+        waiting += 1;
+        if (waiting > 1) return;
         held?.release();
         held = null;
       },
-      resume: async (runId, stop) => {
-        let told = false;
-        while (!held) {
-          if (stop.aborted) throw new Cancelled();
-          const got = await bundled.acquire(stop);
-          if (got.ok) {
-            held = got;
-            return;
-          }
-          if (!got.busy) throw new Error(got.message);
-          if (!told) {
-            told = true;
-            host.emit({ type: 'text', runId, delta: `\n\n${WAITING_FOR_MODEL}\n\n` });
-          }
-          await new Promise<void>((done) => {
-            const timer = setTimeout(done, RETAKE_EVERY_MS);
-            stop.addEventListener(
-              'abort',
-              () => {
-                clearTimeout(timer);
-                done();
-              },
-              { once: true },
-            );
-          });
-        }
+      resume: (runId, stop) => {
+        waiting = Math.max(0, waiting - 1);
+        if (waiting > 0) return Promise.resolve();
+        // two approvals answered at once share one try to take the model back
+        retaking ??= retake(runId, stop).finally(() => {
+          retaking = null;
+        });
+        return retaking;
       },
       release: () => {
+        ended = true;
         held?.release();
         held = null;
       },
@@ -1010,10 +1034,17 @@ export function createAgentRuntime(
       : run.controller.signal;
     const tools = o.answerOnly
       ? undefined
-      : buildTools(runId, run, req.window, toolProfile, watchdog, {
-          facts: req.facts,
-          task: route.task,
-        });
+      : buildTools(
+          runId,
+          run,
+          req.window,
+          toolProfile,
+          watchdog,
+          { facts: req.facts, task: route.task },
+          // the route main picked for this run (an attached frame goes to vision), never the
+          // renderer's guess: a capture on a cloud route asks with its cloud card
+          o.cloud,
+        );
     const common = {
       model,
       instructions,
