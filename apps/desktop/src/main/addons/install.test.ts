@@ -318,6 +318,41 @@ describe('what an add-on may hold, and who vouches for it', () => {
   });
 });
 
+describe('a removed add-on stays removed', () => {
+  /** An old version left aside as a failed cleanup after an update leaves it. */
+  async function leaveAside(version: string, hex: string) {
+    const other = join(base, `other-${hex}`);
+    await installAddonArchive(await archiveOf({ id: 'road-defects', kind: 'detector', version }), {
+      dataRoot: other,
+    });
+    await rename(
+      addonDir(other, 'road-defects'),
+      join(addonsRoot(dataRoot), `.replaced-${hex}.tmp`),
+    );
+  }
+
+  it('after an update whose cleanup failed, a removal, and a restart', async () => {
+    await install({ id: 'road-defects', kind: 'detector', version: '1.0.0' });
+    await install({ id: 'road-defects', kind: 'detector', version: '1.1.0' });
+    await leaveAside('1.0.0', 'aa01');
+    expect(await removeAddon(dataRoot, 'road-defects')).toEqual({ ok: true });
+    expect(await leftovers()).toEqual([]);
+    await sweepAddons(dataRoot);
+    expect(await readInstalledAddon(dataRoot, 'road-defects')).toBeNull();
+  });
+
+  it('brings back the newest of several versions left aside', async () => {
+    await mkdir(addonsRoot(dataRoot), { recursive: true });
+    await leaveAside('1.2.0', 'bb02');
+    await leaveAside('1.10.0', 'aa01'); // sorts first by name, newest by version
+    await leaveAside('1.3.0', 'cc03');
+    const done = await sweepAddons(dataRoot);
+    expect(done).toContain('restored road-defects from .replaced-aa01.tmp');
+    expect((await readInstalledAddon(dataRoot, 'road-defects'))?.manifest.version).toBe('1.10.0');
+    expect(await leftovers()).toEqual([]);
+  });
+});
+
 describe('sweepAddons', () => {
   it('tidies staging folders, brings back an old version left aside and drops stale downloads', async () => {
     await install({ id: 'road-defects', kind: 'detector', version: '1.0.0' });

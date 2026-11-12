@@ -10,6 +10,7 @@
 import type { DetectorModelCard, InferenceRuntime } from '@aio/schema';
 import type { OrtSession, OrtTensor } from '../maskAssist';
 import { detectImage } from './detect';
+import { modelFilesKey } from './modelKey';
 import type { NamedTensor } from './layouts';
 import type { ScoredBox } from './nms';
 import type { RgbaImage } from './tile';
@@ -103,7 +104,7 @@ export function createWorkerCore(
   let ort: OrtNodeLike | null | undefined;
   let loadProblem = '';
   /** Session key (`<provider>|<path>`) to its session. */
-  const sessions = new Map<string, { s: OrtSession; provider: Provider }>();
+  const sessions = new Map<string, { s: OrtSession; provider: Provider; files: string }>();
 
   async function runtime(): Promise<OrtNodeLike | null> {
     if (ort === undefined) {
@@ -125,7 +126,13 @@ export function createWorkerCore(
     if (!o) throw new Error(loadProblem);
     const want = preferredProvider(setting, platform, backends(o));
     const key = `${setting}|${path}`;
+    // the same file by size, time and id: an add-on updated in place is a new model
+    const files = await modelFilesKey(path);
     let entry = sessions.get(key);
+    if (entry && entry.files !== files) {
+      sessions.delete(key);
+      entry = undefined;
+    }
     if (!entry) {
       try {
         entry = {
@@ -133,6 +140,7 @@ export function createWorkerCore(
             executionProviders: want === 'cpu' ? ['cpu'] : [want, 'cpu'],
           }),
           provider: want,
+          files,
         };
       } catch (e) {
         if (want === 'cpu')
@@ -142,6 +150,7 @@ export function createWorkerCore(
           entry = {
             s: await o.InferenceSession.create(path, { executionProviders: ['cpu'] }),
             provider: 'cpu',
+            files,
           };
         } catch (e2) {
           throw new Error(`The model could not be loaded: ${message(e2)}`, { cause: e2 });

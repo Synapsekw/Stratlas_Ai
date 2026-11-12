@@ -134,16 +134,43 @@ describe('catalogue', () => {
     const a = road();
     serve([a]);
     const port = new URL(url).port;
-    redirects.set('/addons/catalogue.json', `http://[::ffff:7f00:1]:${port}/addons/real.json`);
     routes.set('/addons/real.json', routes.get('/addons/catalogue.json') ?? '');
+    // the catalogue: every hop is checked before it is asked, never only the last one
+    redirects.set('/addons/catalogue.json', `http://[::ffff:7f00:1]:${port}/addons/real.json`);
     expect(await readCatalogue({ base: url, fetch: fetchLike })).toMatchObject({
       ok: false,
-      error: /sent the request on to .* that is not https/,
+      error: /sent the request on to http:\/\/\[::ffff:7f00:1\]:\d+, which is not https/,
     });
-    expect(requests).toContain('/addons/real.json'); // followed, but its answer was never used
+    expect(requests).not.toContain('/addons/real.json');
+    // a plain-http hop on this computer that sends the request on to https elsewhere
+    redirects.set('/addons/catalogue.json', `http://localhost:${port}/addons/hop`);
+    redirects.set('/addons/hop', `http://[::ffff:7f00:1]:${port}/addons/real.json`);
+    expect(await readCatalogue({ base: url, fetch: fetchLike })).toMatchObject({
+      ok: false,
+      error: /which is not https/,
+    });
+    expect(requests).toContain('/addons/hop');
+    expect(requests).not.toContain('/addons/real.json');
     // a redirect that stays on this computer is fine
-    redirects.set('/addons/catalogue.json', `http://localhost:${port}/addons/real.json`);
+    redirects.set('/addons/hop', `http://localhost:${port}/addons/real.json`);
     expect(await readCatalogue({ base: url, fetch: fetchLike })).toMatchObject({ ok: true });
+    // a loop gives up
+    redirects.set('/addons/hop', `http://localhost:${port}/addons/catalogue.json`);
+    expect(await readCatalogue({ base: url, fetch: fetchLike })).toMatchObject({
+      ok: false,
+      error: /too many times/,
+    });
+    // a fetch that followed a redirect anyway, or hides where it leads, is refused
+    const followed: FetchLike = () => {
+      const res = new Response('{}', { status: 200 });
+      Object.defineProperty(res, 'redirected', { value: true });
+      return Promise.resolve(res);
+    };
+    expect(await readCatalogue({ base: url, fetch: followed })).toMatchObject({
+      ok: false,
+      error: /could not check where/,
+    });
+    redirects.delete('/addons/catalogue.json');
     // the archive: the same
     redirects.set(`/addons/${a.fileName}`, `http://[::ffff:7f00:1]:${port}/addons/x.aioaddon`);
     routes.set('/addons/x.aioaddon', a.bytes);

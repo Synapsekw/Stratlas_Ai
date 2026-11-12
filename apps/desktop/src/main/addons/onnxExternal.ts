@@ -22,7 +22,8 @@ const CHILDREN: Record<Exclude<Kind, 'tensor'>, Record<number, Kind>> = {
   graph: { 1: 'node', 5: 'tensor', 15: 'sparse' },
   node: { 5: 'attribute' },
   attribute: { 5: 'tensor', 6: 'graph', 10: 'tensor', 11: 'graph', 22: 'sparse', 23: 'sparse' },
-  function: { 7: 'node' },
+  // FunctionProto: its nodes (7) and its attribute defaults (attribute_proto, 11)
+  function: { 7: 'node', 11: 'attribute' },
   sparse: { 1: 'tensor', 2: 'tensor' },
 };
 const MAX_DEPTH = 64;
@@ -83,7 +84,8 @@ async function walk(
     switch (wire) {
       case 0: {
         const [value, next] = await r.varint(afterTag);
-        if (kind === 'tensor' && field === 14 && value === 1) return true;
+        // an enum is an int32 on the wire: a negative or sign-extended 1 is still EXTERNAL
+        if (kind === 'tensor' && field === 14 && value % 2 ** 32 === 1) return true;
         pos = next;
         break;
       }

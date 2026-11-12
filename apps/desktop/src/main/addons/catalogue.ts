@@ -108,7 +108,8 @@ export function guardedFetch(fetch: FetchLike): FetchLike {
     const res = await fetch(url, init);
     let final: URL | null;
     try {
-      final = new URL(res.url || url);
+      // a redirected answer that does not say where it came from is refused
+      final = res.url ? new URL(res.url) : res.redirected ? null : new URL(url);
     } catch {
       final = null;
     }
@@ -120,6 +121,46 @@ export function guardedFetch(fetch: FetchLike): FetchLike {
     }
     return res;
   };
+}
+
+const MAX_HOPS = 5;
+
+/**
+ * Fetch the catalogue following redirects by hand (`redirect: 'manual'`), each hop checked with
+ * `allowedAddonUrl` before it is requested: a plain-http hop can never send the request on to a
+ * host of its choosing, as checking only the final address would let it. A redirect the fetch
+ * does not show (an opaque one), or one it followed anyway, is refused.
+ */
+export async function fetchHopByHop(
+  fetch: FetchLike,
+  url: string,
+  init: { signal?: AbortSignal } = {},
+): Promise<Response> {
+  let at = url;
+  for (let hop = 0; ; hop++) {
+    const u = new URL(at);
+    if (!allowedAddonUrl(u))
+      throw new Error(`the server sent the request on to ${u.origin}, which is not https`);
+    const res = await fetch(at, { ...init, redirect: 'manual' });
+    const isRedirect =
+      res.type === 'opaqueredirect' ||
+      (res.status >= 300 && res.status < 400 && res.status !== 304);
+    if (res.redirected) {
+      await res.body?.cancel().catch(() => undefined);
+      throw new Error('the server sent the request on, and the app could not check where');
+    }
+    if (!isRedirect) return res;
+    await res.body?.cancel().catch(() => undefined);
+    const location = res.type === 'opaqueredirect' ? null : res.headers.get('location');
+    if (!location)
+      throw new Error('the server sent the request on, and the app could not check where');
+    if (hop >= MAX_HOPS) throw new Error('the server sent the request on too many times');
+    const next = new URL(location, at);
+    // never from https down to plain http, even to this computer
+    if (u.protocol === 'https:' && next.protocol !== 'https:')
+      throw new Error(`the server sent the request on to ${next.origin}, which is not https`);
+    at = next.toString();
+  }
 }
 
 /** The body as text, refused past `cap` bytes without reading the rest. */
@@ -157,7 +198,7 @@ export async function readCatalogue(o: {
   const signal = o.signal ? AbortSignal.any([o.signal, timeout]) : timeout;
   let res: Response;
   try {
-    res = await guardedFetch(o.fetch)(url, { signal });
+    res = await fetchHopByHop(o.fetch, url, { signal });
   } catch (e) {
     const why = timeout.aborted
       ? 'it did not answer in time'

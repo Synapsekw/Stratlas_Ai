@@ -5,7 +5,12 @@ import { dirname } from 'node:path';
 
 export type FetchLike = (
   url: string,
-  init?: { headers?: Record<string, string>; signal?: AbortSignal },
+  init?: {
+    headers?: Record<string, string>;
+    signal?: AbortSignal;
+    /** `manual`: a redirect is answered, not followed (the add-on catalogue checks each hop). */
+    redirect?: 'follow' | 'manual' | 'error';
+  },
 ) => Promise<Response>;
 
 export interface DownloadRequest {

@@ -63,6 +63,16 @@ describe('onnxExternalData', () => {
     expect(await check(model(located, true))).toBe('external');
   });
 
+  it('reads EXTERNAL past the int32 width, and in a function attribute default', async () => {
+    expect(await check(model(tensorWith(intField(14, 2 ** 32 + 1))))).toBe('external');
+    // ModelProto.functions (25) > FunctionProto.attribute_proto (11) > AttributeProto.t (5)
+    const fn = field(
+      25,
+      field(11, Buffer.concat([field(1, text('w')), field(5, tensorWith(intField(14, 1)))])),
+    );
+    expect(await check(Buffer.concat([model(tensorWith()), fn]))).toBe('external');
+  });
+
   it('answers not ONNX for bytes that are not a protobuf', async () => {
     expect(await check(Buffer.from('not a model at all'))).toBe('not-onnx');
     expect(await check(Buffer.from([0x3a, 0xff, 0xff, 0x01]))).toBe('not-onnx');

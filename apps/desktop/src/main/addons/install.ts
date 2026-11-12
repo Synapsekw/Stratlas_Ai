@@ -604,11 +604,38 @@ async function swapIn(root: string, tmp: string, dest: string): Promise<void> {
     }
     throw e;
   }
-  if (had) await removeDir(aside).catch(() => undefined);
+  if (had) await discard(root, aside);
 }
 
 const removeDir = (dir: string) =>
   rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+
+/**
+ * Delete a folder that is done with. When Windows holds a file in it, it is renamed to a
+ * `.removing-*` folder, which the start sweep only ever deletes: an old version that could not be
+ * deleted never stays a `.replaced-*` folder the sweep could bring back after a removal.
+ */
+async function discard(root: string, dir: string): Promise<void> {
+  try {
+    await removeDir(dir);
+    return;
+  } catch {
+    // held open: out of the way, for the next start
+  }
+  await renameDir(dir, join(root, tempName('removing')), 3).catch(() => undefined);
+}
+
+/** The manifest in a folder left aside, or null when it has none that parses. */
+async function asideManifest(dir: string): Promise<AddonManifest | null> {
+  try {
+    const m = parseAddonManifest(
+      JSON.parse(await readFile(join(dir, ADDON_MANIFEST_FILE), 'utf8')),
+    );
+    return m.ok ? m.manifest : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Tidy `runtime/addons` when the app starts: staging and removal folders an interrupted install
@@ -626,40 +653,49 @@ export async function sweepAddons(dataRoot: string): Promise<string[]> {
   } catch {
     return done;
   }
+  /** Old versions left aside, by add-on id; null id: no readable manifest. */
+  const aside = new Map<string | null, { name: string; m: AddonManifest | null; at: number }[]>();
   for (const name of names.sort()) {
     const full = join(root, name);
     if (/^\.(install|removing)-[0-9a-f]+\.tmp$/.test(name)) {
       await removeDir(full).catch(() => undefined);
       done.push(`removed ${name}`);
     } else if (/^\.replaced-[0-9a-f]+\.tmp$/.test(name)) {
-      let id: string | null;
+      const m = await asideManifest(full);
+      const at = (await stat(full).catch(() => null))?.mtimeMs ?? 0;
+      const list = aside.get(m?.id ?? null) ?? [];
+      list.push({ name, m, at });
+      aside.set(m?.id ?? null, list);
+    }
+  }
+  // an add-on whose folder is missing gets its newest version back (by version, then time);
+  // every other folder left aside goes
+  for (const [id, list] of aside) {
+    list.sort(
+      (a, b) => compareVersions(b.m?.version ?? '0.0.0', a.m?.version ?? '0.0.0') || b.at - a.at,
+    );
+    const dest = id ? addonDir(dataRoot, id) : null;
+    const missing =
+      dest !== null &&
+      (await stat(dest).then(
+        () => false,
+        () => true,
+      ));
+    const [newest] = list;
+    let rest = list;
+    if (dest && missing && newest) {
       try {
-        const m = parseAddonManifest(
-          JSON.parse(await readFile(join(full, ADDON_MANIFEST_FILE), 'utf8')),
-        );
-        id = m.ok ? m.manifest.id : null;
+        await renameDir(join(root, newest.name), dest);
+        done.push(`restored ${id ?? ''} from ${newest.name}`);
+        rest = list.slice(1);
       } catch {
-        id = null;
+        // left for the next start, with the others
+        continue;
       }
-      const dest = id ? addonDir(dataRoot, id) : null;
-      const missing =
-        dest !== null &&
-        (await stat(dest).then(
-          () => false,
-          () => true,
-        ));
-      if (dest && missing) {
-        try {
-          await renameDir(full, dest);
-          done.push(`restored ${id ?? ''} from ${name}`);
-          continue;
-        } catch {
-          // left for the next start
-          continue;
-        }
-      }
-      await removeDir(full).catch(() => undefined);
-      done.push(`removed ${name}`);
+    }
+    for (const r of rest) {
+      await removeDir(join(root, r.name)).catch(() => undefined);
+      done.push(`removed ${r.name}`);
     }
   }
   const downloads = join(root, '.download');
@@ -786,5 +822,11 @@ export async function removeAddon(
     };
   }
   await removeDir(aside).catch(() => undefined);
+  // and any old version of it left aside, so the start sweep cannot bring it back
+  const root = addonsRoot(dataRoot);
+  for (const name of await readdir(root).catch(() => [] as string[])) {
+    if (!/^\.replaced-[0-9a-f]+\.tmp$/.test(name)) continue;
+    if ((await asideManifest(join(root, name)))?.id === id) await discard(root, join(root, name));
+  }
   return { ok: true };
 }
