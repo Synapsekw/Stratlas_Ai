@@ -49,6 +49,7 @@ export const enFacts = {
   'facts.kind.change': 'Change',
   'facts.kind.hotspot': 'Hot spot',
   'facts.kind.walk': 'Walk',
+  'facts.kind.antenna': 'Antenna',
   'facts.kind.event': 'Edit',
   // A fact's status, as the index stores it
   'facts.status.accepted': 'Accepted',

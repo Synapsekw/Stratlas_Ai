@@ -209,6 +209,32 @@ export function writeFixtureProject(root: string, opts: { journal?: boolean } = 
       audio: false,
     },
   });
+  // one antenna measured on both dates (M2 per-date copies), tilted further on the later one
+  for (const [capture, tilt, status] of [
+    ['c1', 2, 'accepted'],
+    ['c2', 5, 'draft'],
+  ] as const) {
+    put(root, `telecom/history/${capture}.json`, {
+      schema: 'aio.antenna-history/1',
+      captureId: capture,
+      runId: `run-${capture}`,
+      at: capture === 'c1' ? '2026-07-02T00:00:00.000Z' : '2026-08-02T00:00:00.000Z',
+      units: [
+        {
+          id: 'ant-a1',
+          name: 'A1',
+          kind: 'panel',
+          status,
+          reviewed: capture === 'c1',
+          centre: [1005, 1995, 30],
+          extents: [0.3, 1.4, 0.1],
+          azimuthGridDeg: 120,
+          downtiltDeg: tilt,
+          centreHeightM: 30,
+        },
+      ],
+    });
+  }
   if (opts.journal)
     cpSync(join(JOURNAL_FIXTURE, 'journal'), join(root, 'journal'), { recursive: true });
 }

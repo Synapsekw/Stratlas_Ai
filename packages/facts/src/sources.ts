@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { auditEntries, loadJournal } from '@aio/journal';
 import {
   AccuracyReport,
+  AntennaHistoryFile,
   ChangeSet,
   Detection,
   DetectionsFile,
@@ -46,6 +47,8 @@ export interface ProjectSources {
   thermal: ThermalFile | null;
   candidates: ThermalCandidatesFile | null;
   walks: { file: string; walk: WalkFile }[];
+  /** What each survey date measured of its antennas (M2, pipeline pack 0.35.0 and later). */
+  antennas: { file: string; history: AntennaHistoryFile }[];
   /** The journal's ops as audit entries (newest first, as `auditEntries` gives them). */
   events: AuditEntry[];
 }
@@ -61,6 +64,7 @@ export const emptySources = (): ProjectSources => ({
   thermal: null,
   candidates: null,
   walks: [],
+  antennas: [],
   events: [],
 });
 
@@ -205,6 +209,11 @@ export async function readProjectSources(root: string): Promise<ProjectSources> 
   for (const id of await dirs(join(root, 'walks'))) {
     const w = WalkFile.safeParse(await json(join(root, 'walks', id, 'walk.json')));
     if (w.success) out.walks.push({ file: `walks/${id}/walk.json`, walk: w.data });
+  }
+
+  for (const n of await names(join(root, 'telecom', 'history'), /\.json$/)) {
+    const h = AntennaHistoryFile.safeParse(await json(join(root, 'telecom', 'history', n)));
+    if (h.success) out.antennas.push({ file: `telecom/history/${n}`, history: h.data });
   }
 
   const files = await journalFiles(root);

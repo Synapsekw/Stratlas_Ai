@@ -41,6 +41,8 @@ export const FACT_KINDS = [
   'hotspot',
   /** A 360 walk. */
   'walk',
+  /** A telecom antenna as one survey date measured it (`telecom/history/<capture>.json`). */
+  'antenna',
   /** A journal op: who changed what, when. */
   'event',
 ] as const;

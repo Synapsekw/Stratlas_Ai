@@ -621,6 +621,42 @@ function thermalFacts(b: Builder, ctx: Context, src: ProjectSources): void {
   });
 }
 
+/**
+ * An antenna as each survey date measured it (`telecom/history/<capture>.json`, M2): one fact per
+ * unit and date, all under the unit's subject, so its history shows the dates in order. The centre
+ * is that date's own frame (project E, N, Z), as the file says.
+ */
+function antennaFacts(b: Builder, ctx: Context, src: ProjectSources): void {
+  for (const { file, history } of src.antennas) {
+    const capture = history.captureId;
+    for (const u of history.units) {
+      const s = `antenna:${u.id}`;
+      b.add({
+        id: `antenna:${u.id}@${capture}`,
+        kind: 'antenna',
+        subject: s,
+        label: u.name,
+        text: words(
+          'antenna',
+          u.kind,
+          u.reviewed ? 'reviewed' : undefined,
+          u.azimuthGridDeg !== undefined ? `azimuth ${u.azimuthGridDeg.toFixed(1)}` : undefined,
+          u.downtiltDeg !== undefined ? `downtilt ${u.downtiltDeg.toFixed(1)}` : undefined,
+        ),
+        ...onDate(ctx, capture),
+        ...(history.at && /^\d{4}-\d{2}-\d{2}T/.test(history.at) ? { at: history.at } : {}),
+        ...(u.centreHeightM !== undefined ? { value: u.centreHeightM, unit: 'm' } : {}),
+        status: u.status,
+        source: u.reviewed ? 'human' : 'pipeline',
+        e: u.centre[0],
+        n: u.centre[1],
+        evidence: file,
+      });
+      b.link(s, `survey:${capture}`, 'on-survey');
+    }
+  }
+}
+
 function walkFacts(b: Builder, ctx: Context, src: ProjectSources): void {
   for (const { file, walk } of src.walks) {
     const s = `walk:${walk.id}`;
@@ -719,6 +755,7 @@ export function extractFacts(src: ProjectSources): Extracted {
   changeFacts(b, ctx, src);
   thermalFacts(b, ctx, src);
   walkFacts(b, ctx, src);
+  antennaFacts(b, ctx, src);
   eventFacts(b, src.events);
   spatialLinks(b, src.measurements);
   return b.done();

@@ -34,6 +34,7 @@ describe('reading a project', () => {
     expect(s.changeSets).toHaveLength(1);
     expect(s.thermal?.hotspots).toHaveLength(1);
     expect(s.walks).toHaveLength(1);
+    expect(s.antennas).toHaveLength(2);
     expect(s.events.length).toBeGreaterThan(0);
   });
 
@@ -62,6 +63,7 @@ describe('extracting facts', () => {
       'change',
       'hotspot',
       'walk',
+      'antenna',
       'event',
     ]) {
       expect(kinds, k).toContain(k);
@@ -135,6 +137,17 @@ describe('extracting facts', () => {
 });
 
 describe('the index', () => {
+  it('gives an antenna its history across survey dates', async () => {
+    const ix = await build();
+    const h = ix.historyOf('antenna:ant-a1');
+    expect(h.facts.map((f) => [f.date, f.status, f.source])).toEqual([
+      ['2026-07-01', 'accepted', 'human'],
+      ['2026-08-01', 'draft', 'pipeline'],
+    ]);
+    expect(h.linked.map((l) => l.fact.subject)).toContain('survey:c2');
+    expect(ix.query({ text: 'downtilt 5' }).facts[0]?.id).toBe('antenna:ant-a1@c2');
+  });
+
   it('deleting it and building again gives the same index', async () => {
     const file = join(root, 'ix.sqlite');
     const a = await build(file);
