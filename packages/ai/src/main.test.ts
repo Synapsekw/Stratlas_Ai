@@ -50,6 +50,8 @@ function setup(opts: {
   keys?: Partial<Record<AiProvider, string>>;
   host?: Partial<AgentRuntimeHost>;
   providers?: ModelProvider[];
+  /** What the vision model streams; default one text step. */
+  visionSteps?: LanguageModelV4StreamPart[][];
 }) {
   const chat = new MockLanguageModelV4({
     modelId: 'claude-sonnet-5-5',
@@ -57,7 +59,7 @@ function setup(opts: {
   });
   const vision = new MockLanguageModelV4({
     modelId: 'claude-opus-5-5',
-    doStream: [stream(textStep('I see a tank roof.'))],
+    doStream: (opts.visionSteps ?? [textStep('I see a tank roof.')]).map(stream),
   });
   const seenKeys: (string | null)[] = [];
   const anthropic: ModelProvider = {
@@ -842,6 +844,55 @@ describe('the local agent on a small model (AI-9)', () => {
     });
     return { ...t, model, localKeys };
   }
+
+  it('says on each tool call which route main used: local chat, cloud vision with a frame (A3)', async () => {
+    const t = localSetup({
+      cfg: { capabilities: { tools: true, vision: false } },
+      steps: [toolStep('c1', 'capture_frame', {}), textStep('Looked.')],
+    });
+    // chat stays on the local model, vision goes to cloud AI
+    const routes = [
+      ...offlineRoutes('example-small').filter((r) => r.task !== 'vision'),
+      { task: 'vision' as const, provider: 'anthropic' as const, model: 'claude-opus-5-5' },
+    ];
+    const cloudy = setup({
+      cloud: true,
+      keys: { anthropic: 'test-key-not-real' },
+      providers: [
+        {
+          id: 'local',
+          label: 'Local model',
+          cloud: false,
+          needsKey: false,
+          optionalKey: true,
+          languageModel: () => t.model,
+        },
+      ],
+      host: {
+        routes: () => routes,
+        localModel: () => ({ enabled: true, baseUrl: BASE, model: 'example-small' }),
+      },
+      visionSteps: [toolStep('v1', 'capture_frame', {}), textStep('A tank.')],
+    });
+    // a message without a frame: the local chat route, so the call says cloud: false
+    const local = respond(cloudy.runtime, cloudy.next, { approved: false });
+    await cloudy.runtime.send(req({ runId: 'r1' }));
+    expect(await local).toMatchObject({ name: 'capture_frame', cloud: false });
+    await cloudy.end('r1');
+    // with a frame attached main picks the cloud vision route: the call says cloud: true
+    const seen = cloudy.events.length;
+    const cloud = cloudy
+      .next((e) => e.type === 'tool-call' && e.runId === 'r2')
+      .then((e) => {
+        if (e.type === 'tool-call')
+          cloudy.runtime.toolResult({ runId: 'r2', callId: e.callId, approved: false });
+        return e;
+      });
+    await cloudy.runtime.send(req({ runId: 'r2', image: 'data:image/jpeg;base64,/9j/4AAQ' }));
+    expect(await cloud).toMatchObject({ name: 'capture_frame', cloud: true });
+    await cloudy.end('r2');
+    expect(cloudy.events.length).toBeGreaterThan(seen);
+  });
 
   it('answers in text only, with a notice, on a model without tool calling', async () => {
     const t = localSetup({
