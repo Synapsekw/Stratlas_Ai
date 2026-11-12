@@ -293,6 +293,7 @@ const READS: ReadonlySet<IpcChannel> = new Set<IpcChannel>([
   'facts:status',
   'facts:query',
   'facts:history',
+  'ai:memory',
   'project:readVolumes',
   'survey:readDesigns',
   'detections:read',

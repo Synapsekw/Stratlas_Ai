@@ -211,6 +211,7 @@ export const SETTINGS_RULES = {
       toolProfile: 'keep',
       capabilities: 'keep',
       timeoutMs: 'keep',
+      source: 'keep',
     },
   },
   direction: 'keep',
@@ -229,6 +230,8 @@ export const SETTINGS_RULES = {
   processing: { fields: { odm: { fields: { gpu: 'keep' } } } },
   autoPrepareSurfaces: 'keep',
   agentThinking: 'keep',
+  // A3: the bundled model's tool check (scores and tool names, nothing from a project)
+  bundledAgentCheck: 'keep',
   autoCheckNewDates: 'keep',
   // the add-on catalogue address (Settings, Models and detection): scheme, host and path
   addons: { fields: { baseUrl: 'url' } },

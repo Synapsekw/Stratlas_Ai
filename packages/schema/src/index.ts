@@ -83,3 +83,5 @@ export * from './csv';
 // M1 project fact index (derived, never the truth)
 export * from './facts';
 export * from './mcp';
+// A3 offline agent: the bundled model's tool check and the agent's project memory
+export * from './offlineAgent';

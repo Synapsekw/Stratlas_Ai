@@ -95,6 +95,7 @@ import { ExchangeKind, ExchangePreview, Heads, TeamProjectId } from './exchange'
 import { ActorId, DeviceId, Identity, Initials, Member, PersonName, Role } from './identity';
 import { LaunchSettings } from './launch';
 import { McpCall, McpCallResult, McpStatus } from './mcp';
+import { AgentNote, AgentNoteId, BundledAgentCheck, BundledAgentStatus } from './offlineAgent';
 import { LayerExportResult, LayerInfo } from './layerInfo';
 import {
   MapKeyProvider,
@@ -346,6 +347,11 @@ export const LocalModelSettings = z.object({
   capabilities: z.object({ tools: z.boolean(), vision: z.boolean() }).strict().optional(),
   /** Request timeout, ms (first token included: model load can be slow). */
   timeoutMs: z.number().int().min(1000).max(3_600_000).optional(),
+  /**
+   * A3: `bundled` runs the Analytics pack's own model (main starts its server and fills in the
+   * address and key per run; `baseUrl` is then unused); absent or `server`: the person's server.
+   */
+  source: z.enum(['server', 'bundled']).optional(),
 });
 
 /** One model a local server offers (`ai:localModels`). */
@@ -559,6 +565,8 @@ export const Settings = z.object({
   reportBranding: ReportBrandingSettings.optional(),
   /** Sections of the house-format report and which issues get a page. Absent: everything. */
   reportContents: ReportContentsSettings.optional(),
+  /** A3: the last tool-calling check of the bundled model (written by main). */
+  bundledAgentCheck: BundledAgentCheck.optional(),
   /** Change thresholds (M8); absent: `DEFAULT_CHANGE_THRESHOLDS`. */
   change: ChangeThresholds.optional(),
   /** Local ONNX detection (M8): model folder, execution provider, memory cap. */
@@ -1502,6 +1510,53 @@ export const ipc = {
       usage: z.array(ProviderUsage),
       /** M8: the project allows plan images and drawings to go to a cloud model (default false). */
       cloudDrawings: z.boolean().optional(),
+      /** A3: the person let the agent look at the view in this project without asking each time. */
+      viewCapture: z.boolean().optional(),
+    }),
+  },
+  /** A3: allow or stop the agent's view capture in this project without a card each time. */
+  'ai:setViewCapture': {
+    request: z.object({ projectId: z.string().min(1), allow: z.boolean() }).strict(),
+    response: z.object({ ok: z.boolean(), error: z.string().optional() }),
+  },
+  /** A3: the agent's notes of a project (`<project>/ai/memory.json`); read-only in a package. */
+  'ai:memory': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.object({
+      ok: z.boolean(),
+      notes: z.array(AgentNote),
+      /** Notes cannot be saved or deleted here (a package, or the folder is read-only). */
+      readOnly: z.boolean(),
+      error: z.string().optional(),
+    }),
+  },
+  /**
+   * A3: save a note (the agent's `remember_note` after approval, or typed by the person). With
+   * `restore`, the deleted note comes back as it was (the undo of a forget).
+   */
+  'ai:remember': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        text: z.string().max(2000),
+        about: z.string().max(240).optional(),
+        by: z.enum(['agent', 'person']),
+        restore: AgentNote.optional(),
+      })
+      .strict(),
+    response: z.object({
+      ok: z.boolean(),
+      note: AgentNote.optional(),
+      error: z.string().optional(),
+    }),
+  },
+  /** A3: delete a note; answers the deleted note, for the undo. */
+  'ai:forget': {
+    request: z.object({ projectId: z.string().min(1), id: AgentNoteId }).strict(),
+    response: z.object({
+      ok: z.boolean(),
+      note: AgentNote.optional(),
+      error: z.string().optional(),
     }),
   },
   /** "Always allow for this project" in the send preview (AI-6). */
@@ -3081,6 +3136,22 @@ export const ipc = {
   },
 
   // ---------------------------------------------------------------- M8 local agent (C7)
+  /** A3: the Analytics pack's model as the offline agent: what is installed and the last check. */
+  'ai:bundledAgent': {
+    request: Empty,
+    response: BundledAgentStatus,
+  },
+  /**
+   * A3: run the tool-calling check on the bundled model (starts its server, about a minute) and
+   * keep the result in `Settings.bundledAgentCheck`.
+   */
+  'ai:bundledAgentCheck': {
+    request: Empty,
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), check: BundledAgentCheck, status: BundledAgentStatus }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
   /** Find the models of a local server (loopback unless the person accepted the cloud warning). */
   'ai:localModels': {
     request: z.object({ baseUrl: z.url({ protocol: /^https?$/ }).optional() }).strict(),
