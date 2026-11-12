@@ -151,6 +151,9 @@ export const SESSION_TEXT = {
 /** The tools that change the project notes: the notes are read again after them. */
 const NOTE_TOOLS: ReadonlySet<string> = new Set(['remember_note', 'forget_note']);
 
+/** What `ai:memory` may answer: an older main or a test bridge can leave fields out. */
+type MemoryAnswer = Partial<IpcResponse<'ai:memory'>> | undefined;
+
 /** A note as the model sees it in the window context. */
 const noteForContext = (n: AgentNote) => ({
   id: n.id,
@@ -441,8 +444,7 @@ export class AgentSession {
     }
     try {
       // an answer without a notes list (an older main, a test bridge) is no notes
-      const r = (await bridge.invoke('ai:memory', { projectId })) as
-        Partial<IpcResponse<'ai:memory'>> | undefined;
+      const r = (await bridge.invoke('ai:memory', { projectId })) as MemoryAnswer;
       if (this.projectId() !== projectId) return [];
       const notes = r?.ok && Array.isArray(r.notes) ? r.notes : [];
       this.set({
