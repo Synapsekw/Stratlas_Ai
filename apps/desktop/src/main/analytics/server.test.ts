@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AnalyticsPack } from './pack';
 import {
   parseProcessImage,
+  VLM_CONTEXT_TOKENS,
   VLM_HEALTH_TIMEOUT_MS,
   nodeVlmServerDeps,
   VlmServer,
@@ -148,7 +149,7 @@ describe('VlmServer', () => {
       '--port',
       '51234',
       '--ctx-size',
-      '8192',
+      '16384',
       '-ngl',
       '99',
       '--parallel',
@@ -157,6 +158,8 @@ describe('VlmServer', () => {
     ]);
     // the key never goes on the command line
     expect(args.join(' ')).not.toContain(KEY);
+    // one context for detector runs and the offline agent's compact profile (A3)
+    expect(VLM_CONTEXT_TOKENS).toBe(16_384);
     // nvidia-smi numbers cards in PCI bus order; CUDA does too only when told to
     expect(env).toEqual({
       LLAMA_API_KEY: KEY,

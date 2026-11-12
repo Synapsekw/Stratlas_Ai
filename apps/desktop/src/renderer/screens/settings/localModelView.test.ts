@@ -1,12 +1,92 @@
+import type { BundledAgentCheck, BundledAgentStatus, LocalModelSettings } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
+  bundledPassed,
   candidates,
+  checkLine,
   contextLabel,
   localRoutesTo,
   sizeLabel,
+  toBundled,
+  toOwnServer,
   withModel,
   withProbe,
 } from './localModelView';
+
+const SHA = 'b'.repeat(64);
+const PACK = {
+  version: '0.2.0',
+  modelId: 'qwen3.5-9b-q4_k_m',
+  modelSha256: SHA,
+  contextTokens: 16_384,
+};
+const CHECK: BundledAgentCheck = {
+  modelSha256: SHA,
+  modelId: 'qwen3.5-9b-q4_k_m',
+  packVersion: '0.2.0',
+  passed: true,
+  correct: 12,
+  total: 12,
+  needed: 10,
+  invalidCalls: 0,
+  meanLatencyMs: 412,
+  checkedAt: '2026-11-12T00:00:00.000Z',
+  cases: [],
+};
+const OWN: LocalModelSettings = {
+  enabled: true,
+  baseUrl: 'http://localhost:11434/v1',
+  model: 'my-model',
+  kind: 'ollama',
+  contextTokens: 8192,
+  capabilities: { tools: true, vision: false },
+};
+
+describe('the bundled model in Settings (A3)', () => {
+  const passed: BundledAgentStatus = { pack: PACK, check: CHECK, blocked: null };
+  it('choosing it: compact, the 16k context, vision, tools only after a pass; the address kept', () => {
+    expect(toBundled(OWN, PACK, passed)).toEqual({
+      ...OWN,
+      enabled: true,
+      source: 'bundled',
+      model: 'qwen3.5-9b-q4_k_m',
+      toolProfile: 'compact',
+      contextTokens: 16_384,
+      capabilities: { tools: true, vision: true },
+    });
+    const unchecked = { pack: PACK, check: null, blocked: 'Check first.' };
+    expect(toBundled(OWN, PACK, unchecked).capabilities).toEqual({ tools: false, vision: true });
+    expect(bundledPassed(unchecked)).toBe(false);
+  });
+
+  it('switching back restores the own server saved before, else drops the bundled values', () => {
+    const bundled = toBundled(OWN, PACK, passed);
+    expect(toOwnServer(JSON.stringify(OWN), bundled)).toEqual({ ...OWN, source: 'server' });
+    expect(toOwnServer('not json', bundled)).toEqual({
+      enabled: true,
+      baseUrl: OWN.baseUrl,
+      model: 'qwen3.5-9b-q4_k_m',
+      kind: 'ollama',
+      toolProfile: 'compact',
+      source: 'server',
+    });
+  });
+
+  it('the check line: a pass, a failure, or why not yet', () => {
+    expect(checkLine(passed)).toEqual({
+      tone: 'ok',
+      text: 'Passed: 12 of 12 right, 0.4 s per request. Offline AI can run on this model.',
+    });
+    expect(
+      checkLine({ pack: PACK, check: { ...CHECK, passed: false }, blocked: 'Failed text.' }),
+    ).toEqual({ tone: 'err', text: 'Failed text.' });
+    expect(checkLine({ pack: PACK, check: null, blocked: 'Check first.' })).toEqual({
+      tone: 'faint',
+      text: 'Check first.',
+    });
+    expect(checkLine(null)).toBeNull();
+  });
+});
 
 describe('Find models candidates', () => {
   it('tries the typed address, then the default ports on this machine', () => {

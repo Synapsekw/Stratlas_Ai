@@ -74,6 +74,29 @@ export const enAskAi = {
     'Small models answer more slowly and make more mistakes than cloud AI models. Without a graphics card an answer can take tens of seconds. Choose Compact for a model with a small context window.',
   'localAi.guide.licence':
     'You install the model, so its licence terms apply to you. Check them before you use it for work.',
+  // A3: the Analytics pack's own model as the offline agent
+  'localAi.bundled.source': 'Model to use',
+  'localAi.bundled.sourceHint':
+    'Your own server (Ollama, LM Studio, llama.cpp), or the model that comes with the Analytics pack.',
+  'localAi.bundled.own': 'Your own model server',
+  'localAi.bundled.pack': 'The bundled Analytics model',
+  'localAi.bundled.model': '{model}, Analytics pack {version}, on this computer.',
+  'localAi.bundled.check': 'Check tool calling',
+  'localAi.bundled.checking': 'Checking (about a minute)',
+  'localAi.bundled.checkHint':
+    'Sends twelve short requests to the model to see whether it calls the right tools on this computer. Offline AI can run on it only after a pass.',
+  'localAi.bundled.passed':
+    'Passed: {correct} of {total} right, {seconds} s per request. Offline AI can run on this model.',
+  'localAi.bundled.noPack':
+    'Offline AI on the bundled model needs the Analytics pack. Install it in Settings, Models and detection.',
+  'localAi.bundled.checkFirst':
+    "Check the bundled model's tool calling first: Settings, AI providers, Local model, Check tool calling.",
+  'localAi.bundled.failed':
+    'The bundled model made the right tool call in {correct} of {total} checks ({needed} needed), so it cannot run Offline AI on this computer. Use your own local model server with tool calling, or cloud AI.',
+  'localAi.bundled.gpuBusy':
+    'The graphics card is busy with a detector run or a photo job. Offline AI can answer when it finishes.',
+  'localAi.bundled.busy':
+    'The model on this computer is answering another request. Offline AI can answer when it has finished.',
 
   // Ask AI
   'askAi.button': 'Ask AI',

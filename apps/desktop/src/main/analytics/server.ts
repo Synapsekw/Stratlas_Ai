@@ -24,6 +24,11 @@ import { localVlmModel } from './models';
 import type { AnalyticsPack } from './pack';
 import { presetText } from './text';
 
+/**
+ * The server's context, tokens, for every launch (A3 decision 1): the offline agent's compact
+ * profile is about 11 000 prompt tokens, so 8192 does not fit; detector runs share the shape.
+ */
+export const VLM_CONTEXT_TOKENS = 16_384;
 /** How long the model may take to load before the start counts as failed. */
 export const VLM_HEALTH_TIMEOUT_MS = 120_000;
 /** Between two `/health` asks while the model loads. */
@@ -302,7 +307,7 @@ export class VlmServer {
       '--port',
       String(port),
       '--ctx-size',
-      '8192',
+      String(VLM_CONTEXT_TOKENS),
       '-ngl',
       '99',
       '--parallel',

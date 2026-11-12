@@ -200,6 +200,7 @@ import { registerTelecomIpc } from './telecom';
 import { telecomLabelHost } from './telecomAi';
 import { antennaPackRefusal, readAntennaDeletions, readAntennaInventory } from './telecomPack';
 import { registerThermalIpc } from './thermal';
+import { registerAgentMemoryIpc } from './agentMemory';
 import {
   THERMAL_HOTSPOTS_PACK_FEATURE,
   THERMAL_PACK_FEATURE,
@@ -229,6 +230,8 @@ import { packArchivePlaces, registerPipelinePackIpc } from './jobs/packInstall';
 import { resolveDetectors } from './analytics/detectors';
 import { registerDetectorsIpc } from './analytics/detectorsIpc';
 import { createLocalAsk } from './analytics/ask';
+import { createBundledAgent } from './analytics/agentModel';
+import { registerBundledAgentIpc } from './bundledAgentIpc';
 import { detectJobGate, detectLane } from './analytics/gate';
 import { checkHardware, execNvidiaSmi } from './analytics/hardware';
 import { ledgerDir, registerLedgerIpc } from './analytics/ledgerIpc';
@@ -930,6 +933,11 @@ const agent = createAgentRuntime(
       resize: (dataUrl, maxPx) =>
         resizeDataUrl(dataUrl, maxPx, (url) => nativeImage.createFromDataURL(url)),
     }),
+    // A3: the Analytics pack's model as the offline agent, taken per run like a local ask
+    bundled: {
+      ready: () => bundledAgent.ready(),
+      acquire: (signal) => bundledAgent.acquire(signal),
+    },
   },
   { providers },
 );
@@ -1304,6 +1312,21 @@ const localAsk = createLocalAsk({
   },
   fetch,
   now: () => Date.now(),
+});
+/**
+ * A3: the pack's model as the offline agent: through `localAsk.acquire`, so the detector queue's
+ * `othersOnCard` (`localAsk.active()`) waits for an agent run too.
+ */
+const bundledAgent = createBundledAgent({
+  localAsk,
+  findPack: () =>
+    findAnalyticsPack({
+      dataRoot: settings.current().dataRoot,
+      env: process.env,
+      app: packApp,
+      platform: packPlatform,
+    }),
+  check: () => settings.current().bundledAgentCheck,
 });
 detectQueue.onChange((e) => {
   broadcast('detect:queue', e);
@@ -1909,6 +1932,16 @@ function registerIpc(): void {
     await aiProjects.setConsent(r.root, projectNames.get(projectId) ?? projectId, alwaysAllow);
     return { ok: true };
   });
+  handle('ai:setViewCapture', async ({ projectId, allow }) => {
+    const r = openRoot(projectId);
+    if ('error' in r) return { ok: false, error: r.error };
+    try {
+      await aiProjects.setViewCapture(r.root, projectNames.get(projectId) ?? projectId, allow);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
   handle('ai:usage', async () => ({ projects: await aiProjects.list() }));
   handle('ai:listConversations', ({ projectId }) => {
     const r = openRoot(projectId);
@@ -2481,6 +2514,20 @@ function registerIpc(): void {
       addonDirs: () => usableAddonDirs('detector'),
     }),
   });
+  registerBundledAgentIpc({
+    handle,
+    agent: bundledAgent,
+    findPack: () =>
+      findAnalyticsPack({
+        dataRoot: settings.current().dataRoot,
+        env: process.env,
+        app: packApp,
+        platform: packPlatform,
+      }),
+    saveCheck: async (check) => {
+      await settings.update(() => ({ bundledAgentCheck: check }));
+    },
+  });
   registerLocalModelsIpc({
     handle,
     localModel: () => settings.current().localModel,
@@ -2632,6 +2679,14 @@ function registerIpc(): void {
   registerTelecomIpc({ handle, projects: registry });
   // thermal analysis (files and probe: thermal.ts; pack gate: thermalPack.ts)
   registerThermalIpc({ handle, projects: registry });
+  // A3: the agent's project notes (<project>/ai/memory.json); the fact index indexes them
+  registerAgentMemoryIpc({
+    handle,
+    projects: registry,
+    changed: (id) => {
+      facts.changed(id);
+    },
+  });
   registerSurveyOverlaysIpc({ handle, ...survey });
   registerGeodesyIpc({ handle, ...survey });
   registerSurveyQaIpc({ handle, ...survey });

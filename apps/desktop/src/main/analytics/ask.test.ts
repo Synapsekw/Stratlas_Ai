@@ -375,3 +375,73 @@ describe('local ask', () => {
     expect(t.idleIfUnused).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('acquire (the offline agent, A3)', () => {
+  it('starts the server, holds the card until released, then keeps the model warm', async () => {
+    const t = setup({});
+    const got = await t.ask.acquire('agent-1');
+    expect(got).toMatchObject({
+      ok: true,
+      url: 'http://127.0.0.1:5555',
+      key: KEY,
+      model: 'qwen3.5-9b-q4_k_m',
+    });
+    expect(t.server.ensure).toHaveBeenCalledTimes(1);
+    expect(t.started).toHaveBeenCalledTimes(1);
+    expect(t.ask.active()).toBe(true);
+    // a photo ask waits its turn while the agent holds the model
+    expect(await t.ask.run(findReq())).toMatchObject({ ok: false, code: 'busy' });
+    expect(t.release).not.toHaveBeenCalled();
+    if (!got.ok) throw new Error('not acquired');
+    got.release();
+    got.release();
+    expect(t.release).toHaveBeenCalledTimes(1);
+    expect(t.idleIfUnused).toHaveBeenCalledTimes(1);
+    expect(t.ask.active()).toBe(false);
+  });
+
+  it('refuses while the card is taken, and while another request runs', async () => {
+    const busy = setup({ gpuBusy: 'A detector run is using the graphics card.' });
+    expect(await busy.ask.acquire('a')).toEqual({
+      ok: false,
+      code: 'gpu',
+      error: 'A detector run is using the graphics card.',
+    });
+    expect(busy.server.lease).not.toHaveBeenCalled();
+    const t = setup({});
+    const first = await t.ask.acquire('a');
+    expect(first.ok).toBe(true);
+    expect(await t.ask.acquire('b')).toMatchObject({ ok: false, code: 'busy' });
+  });
+
+  it('gives the card reason and frees the slot when the card is too small', async () => {
+    const t = setup({
+      hw: { ok: false, reason: 'Not enough free graphics memory.' },
+    });
+    expect(await t.ask.acquire('a')).toEqual({
+      ok: false,
+      code: 'no-card',
+      error: 'Not enough free graphics memory.',
+    });
+    expect(t.release).toHaveBeenCalledTimes(1);
+    expect(t.ask.active()).toBe(false);
+  });
+
+  it('answers no-pack without a pack', async () => {
+    const t = setup({ pack: null });
+    expect(await t.ask.acquire('a')).toMatchObject({ ok: false, code: 'no-pack' });
+    expect(t.ask.active()).toBe(false);
+  });
+
+  it('frees the slot when stopped while the model loads', async () => {
+    const t = setup({});
+    const stop = new AbortController();
+    t.server.ensure.mockImplementation(() => {
+      stop.abort();
+      return Promise.resolve({ ok: true as const, state });
+    });
+    expect(await t.ask.acquire('a', stop.signal)).toMatchObject({ ok: false, code: 'stopped' });
+    expect(t.release).toHaveBeenCalledTimes(1);
+    expect(t.ask.active()).toBe(false);
+  });
+});

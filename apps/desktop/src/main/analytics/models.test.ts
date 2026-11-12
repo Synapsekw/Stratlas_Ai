@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { localVlmModel } from './models';
 
 describe('localVlmModel', () => {
-  it('Qwen3.5 runs with reasoning off and needs 7400 MB', () => {
+  it('Qwen3.5 runs with reasoning off and needs 7650 MB (16k context, A3)', () => {
     expect(localVlmModel('qwen3.5-9b-q4_k_m')).toEqual({
       family: 'qwen3',
       serverArgs: ['--reasoning', 'off'],
-      minFreeMb: 7400,
+      minFreeMb: 7650,
       thinkingOff: true,
     });
   });

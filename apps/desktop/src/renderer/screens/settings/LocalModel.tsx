@@ -17,10 +17,14 @@ import { Icon, Switch, t } from '@aio/ui';
 import { useState } from 'react';
 import { bridge, shell, useCall, useShell } from '../../shell';
 import {
+  bundledPassed,
   candidates,
+  checkLine,
   contextLabel,
   localRoutesTo,
   sizeLabel,
+  toBundled,
+  toOwnServer,
   withModel,
   withProbe,
 } from './localModelView';
@@ -28,19 +32,21 @@ import './localModel.css';
 
 /** Routes before the Offline agent preset, so turning it off goes back (this workstation only). */
 const BEFORE_OFFLINE = 'stratlas.routesBeforeOffline';
+/** The own server's settings before the bundled model was chosen (A3; this workstation only). */
+const BEFORE_BUNDLED = 'stratlas.localBeforeBundled';
 const WAIT_MINUTES = [1, 2, 5, 10];
 
-function readSaved(): string | null {
+function readSaved(key = BEFORE_OFFLINE): string | null {
   try {
-    return localStorage.getItem(BEFORE_OFFLINE);
+    return localStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-function writeSaved(value: string): void {
+function writeSaved(value: string, key = BEFORE_OFFLINE): void {
   try {
-    localStorage.setItem(BEFORE_OFFLINE, value);
+    localStorage.setItem(key, value);
   } catch {
     // the preset still works; turning it off then goes back to the defaults
   }
@@ -72,6 +78,14 @@ export function LocalModel() {
   const [testing, setTesting] = useState(false);
   const [probe, setProbe] = useState<Probe | null>(null);
   const [probeError, setProbeError] = useState<string | null>(null);
+  // A3: the Analytics pack's own model
+  const [statusRev, setStatusRev] = useState(0);
+  const statusCall = useCall('ai:bundledAgent', {}, statusRev);
+  const status = statusCall?.ok ? statusCall.value : null;
+  const pack = status?.pack ?? null;
+  const bundled = cfg.source === 'bundled';
+  const [checking, setChecking] = useState(false);
+  const [checkError, setCheckError] = useState<string | null>(null);
 
   const save = async (next: LocalModelSettings, extra: { routes?: typeof routes } = {}) => {
     const e = await shell.getState().updateSettings({ localModel: next, ...extra });
@@ -128,6 +142,40 @@ export function LocalModel() {
     await save(withProbe(cfg, p));
   };
 
+  const chooseSource = async (source: string) => {
+    if (source === 'bundled' && pack && !bundled) {
+      writeSaved(JSON.stringify(cfg), BEFORE_BUNDLED);
+      await save(toBundled(cfg, pack, status), { routes: localRoutesTo(routes, pack.modelId) });
+    } else if (source === 'server' && bundled) {
+      const own = toOwnServer(readSaved(BEFORE_BUNDLED), cfg);
+      setBaseUrl(own.baseUrl);
+      setModel(own.model);
+      await save(own, { routes: localRoutesTo(routes, own.model) });
+    }
+  };
+
+  const checkTools = async () => {
+    setChecking(true);
+    setCheckError(null);
+    const r = await bridge.call('ai:bundledAgentCheck', {});
+    setChecking(false);
+    setStatusRev((n) => n + 1);
+    if (!r.ok || !r.value.ok) {
+      setCheckError(r.ok ? (r.value.ok ? null : r.value.error) : r.error);
+      return;
+    }
+    // the runtime answers in text only while the stored capabilities say no tools
+    if (bundled) {
+      await save({
+        ...cfg,
+        capabilities: { tools: r.value.check.passed, vision: cfg.capabilities?.vision ?? true },
+      });
+    }
+  };
+
+  // the bundled model runs the agent only after its tool-calling check passed
+  const offlineBlocked = bundled && !bundledPassed(status);
+  const line = bundled ? checkLine(status) : null;
   const offline = cfg.enabled && isOfflineAgent(routes);
   const setOffline = async (on: boolean) => {
     if (on) {
@@ -154,172 +202,243 @@ export function LocalModel() {
           onChange={(v) => void save({ ...cfg, enabled: v })}
         />
       </div>
+      {(pack !== null || bundled) && (
+        <div className="opt">
+          <b>{t('localAi.bundled.source')}</b>
+          <span>{t('localAi.bundled.sourceHint')}</span>
+          <select
+            className="input"
+            aria-label={t('localAi.bundled.source')}
+            value={bundled ? 'bundled' : 'server'}
+            onChange={(e) => void chooseSource(e.target.value)}
+          >
+            <option value="server">{t('localAi.bundled.own')}</option>
+            <option value="bundled" disabled={!pack}>
+              {t('localAi.bundled.pack')}
+            </option>
+          </select>
+        </div>
+      )}
       <div className="opt">
         <b>{t('localAi.offline')}</b>
         <span>
           {offline
-            ? t(isLoopbackUrl(cfg.baseUrl) ? 'localAi.offlineOn' : 'localAi.offlineRemote', {
-                model: cfg.model,
-              })
+            ? t(
+                bundled || isLoopbackUrl(cfg.baseUrl)
+                  ? 'localAi.offlineOn'
+                  : 'localAi.offlineRemote',
+                {
+                  model: cfg.model,
+                },
+              )
             : t('localAi.offlineHint')}
         </span>
         <Switch
           checked={offline}
           label={t('localAi.offline')}
+          // the bundled model may be turned off at any time, on only after a passed check
+          disabled={offlineBlocked && !offline}
           onChange={(v) => void setOffline(v)}
         />
       </div>
 
-      <div className="lm-row">
-        <label>
-          <span className="faint">{t('localAi.address')}</span>
-          <input
-            className="input mono"
-            aria-label={t('localAi.addressLabel')}
-            value={baseUrl}
-            spellCheck={false}
-            onChange={(e) => {
-              setBaseUrl(e.target.value);
-              setRemoteAsk(false);
-            }}
-            onBlur={() => {
-              if (baseUrl.trim() !== cfg.baseUrl) void save({ ...cfg, baseUrl: baseUrl.trim() });
-            }}
-          />
-        </label>
-        <button
-          type="button"
-          className="btn sm"
-          disabled={finding || !baseUrl.trim()}
-          onClick={() => void find()}
-        >
-          <Icon name="search" size={14} />
-          {finding ? t('localAi.finding') : t('localAi.find')}
-        </button>
-      </div>
-      {remoteAsk && (
-        <p className="notice warn lm-note" role="alert">
-          <Icon name="warn" size={14} />
-          <span>{t('localAi.remoteWarn', { address: serverRoot(baseUrl.trim()) })}</span>
-          <button type="button" className="btn sm" onClick={() => void find(true)}>
-            {t('localAi.remoteContinue')}
-          </button>
-          <button
-            type="button"
-            className="btn sm ghost"
-            onClick={() => {
-              setRemoteAsk(false);
-            }}
-          >
-            {t('localAi.cancel')}
-          </button>
-        </p>
+      {bundled && (
+        <div className="lm-bundled" data-testid="bundled-model">
+          {pack && (
+            <p className="faint lm-note" data-testid="bundled-model-id">
+              {t('localAi.bundled.model', { model: pack.modelId, version: pack.version })}
+            </p>
+          )}
+          <div className="opt">
+            <b>{t('localAi.bundled.check')}</b>
+            <span>{t('localAi.bundled.checkHint')}</span>
+            <button
+              type="button"
+              className="btn sm"
+              disabled={checking || !pack}
+              aria-busy={checking}
+              onClick={() => void checkTools()}
+            >
+              {checking ? t('localAi.bundled.checking') : t('localAi.bundled.check')}
+            </button>
+          </div>
+          {checkError ? (
+            <p className="prov-err lm-note" role="alert" data-testid="bundled-check">
+              {checkError}
+            </p>
+          ) : (
+            line &&
+            !checking && (
+              <p
+                className={`${line.tone === 'ok' ? 'prov-ok' : line.tone === 'err' ? 'prov-err' : 'faint'} lm-note`}
+                role={line.tone === 'err' ? 'alert' : 'status'}
+                data-testid="bundled-check"
+              >
+                {line.text}
+              </p>
+            )
+          )}
+        </div>
       )}
-      {findError && (
-        <p className="prov-err lm-note" role="alert">
-          {findError}
-        </p>
-      )}
-      {found && (
+
+      {!bundled && (
         <>
-          <p className="faint lm-note" role="status">
-            {t('localAi.found', {
-              server:
-                found.server.kind === 'ollama'
-                  ? `${t('localAi.server.ollama')}${found.server.version ? ` ${found.server.version}` : ''}`
-                  : t('localAi.server.openai'),
-              address: serverRoot(found.address),
-              count: found.models.length,
-            })}
-          </p>
-          <ul className="lm-models" aria-label={t('localAi.models')}>
-            {found.models.map((m) => (
-              <li key={m.id}>
-                <button
-                  type="button"
-                  className="lm-model"
-                  aria-pressed={m.id === cfg.model}
-                  aria-label={t('localAi.choose', { model: m.id })}
-                  onClick={() => void choose(m)}
-                >
-                  <span className="mono lm-id">{m.id}</span>
-                  {m.tools && <span className="lm-badge">{t('localAi.badge.tools')}</span>}
-                  {m.vision && <span className="lm-badge">{t('localAi.badge.vision')}</span>}
-                  {m.contextTokens !== undefined && (
-                    <span className="lm-badge">
-                      {t('localAi.badge.context', { size: contextLabel(m.contextTokens) })}
-                    </span>
-                  )}
-                  {m.sizeBytes !== undefined && (
-                    <span className="lm-badge faint">{sizeLabel(m.sizeBytes)}</span>
-                  )}
-                  {m.id === cfg.model && <span className="lm-in">{t('localAi.chosen')}</span>}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className="lm-row">
+            <label>
+              <span className="faint">{t('localAi.address')}</span>
+              <input
+                className="input mono"
+                aria-label={t('localAi.addressLabel')}
+                value={baseUrl}
+                spellCheck={false}
+                onChange={(e) => {
+                  setBaseUrl(e.target.value);
+                  setRemoteAsk(false);
+                }}
+                onBlur={() => {
+                  if (baseUrl.trim() !== cfg.baseUrl)
+                    void save({ ...cfg, baseUrl: baseUrl.trim() });
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn sm"
+              disabled={finding || !baseUrl.trim()}
+              onClick={() => void find()}
+            >
+              <Icon name="search" size={14} />
+              {finding ? t('localAi.finding') : t('localAi.find')}
+            </button>
+          </div>
+          {remoteAsk && (
+            <p className="notice warn lm-note" role="alert">
+              <Icon name="warn" size={14} />
+              <span>{t('localAi.remoteWarn', { address: serverRoot(baseUrl.trim()) })}</span>
+              <button type="button" className="btn sm" onClick={() => void find(true)}>
+                {t('localAi.remoteContinue')}
+              </button>
+              <button
+                type="button"
+                className="btn sm ghost"
+                onClick={() => {
+                  setRemoteAsk(false);
+                }}
+              >
+                {t('localAi.cancel')}
+              </button>
+            </p>
+          )}
+          {findError && (
+            <p className="prov-err lm-note" role="alert">
+              {findError}
+            </p>
+          )}
+          {found && (
+            <>
+              <p className="faint lm-note" role="status">
+                {t('localAi.found', {
+                  server:
+                    found.server.kind === 'ollama'
+                      ? `${t('localAi.server.ollama')}${found.server.version ? ` ${found.server.version}` : ''}`
+                      : t('localAi.server.openai'),
+                  address: serverRoot(found.address),
+                  count: found.models.length,
+                })}
+              </p>
+              <ul className="lm-models" aria-label={t('localAi.models')}>
+                {found.models.map((m) => (
+                  <li key={m.id}>
+                    <button
+                      type="button"
+                      className="lm-model"
+                      aria-pressed={m.id === cfg.model}
+                      aria-label={t('localAi.choose', { model: m.id })}
+                      onClick={() => void choose(m)}
+                    >
+                      <span className="mono lm-id">{m.id}</span>
+                      {m.tools && <span className="lm-badge">{t('localAi.badge.tools')}</span>}
+                      {m.vision && <span className="lm-badge">{t('localAi.badge.vision')}</span>}
+                      {m.contextTokens !== undefined && (
+                        <span className="lm-badge">
+                          {t('localAi.badge.context', { size: contextLabel(m.contextTokens) })}
+                        </span>
+                      )}
+                      {m.sizeBytes !== undefined && (
+                        <span className="lm-badge faint">{sizeLabel(m.sizeBytes)}</span>
+                      )}
+                      {m.id === cfg.model && <span className="lm-in">{t('localAi.chosen')}</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          <div className="lm-row">
+            <label>
+              <span className="faint">{t('localAi.model')}</span>
+              <input
+                className="input mono"
+                aria-label={t('localAi.modelLabel')}
+                value={model}
+                spellCheck={false}
+                onChange={(e) => {
+                  setModel(e.target.value);
+                }}
+                onBlur={() => {
+                  const v = model.trim();
+                  if (v && v !== cfg.model) {
+                    void save(withModel(cfg, { id: v }), { routes: localRoutesTo(routes, v) });
+                  }
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn sm"
+              disabled={testing || !cfg.model}
+              onClick={() => void test()}
+            >
+              {testing ? t('localAi.testing') : t('localAi.test')}
+            </button>
+          </div>
+          {probe && (
+            <p className="prov-ok lm-note" role="status" data-testid="local-probe">
+              {t('localAi.tested', {
+                tools: yesNo(probe.tools),
+                vision: yesNo(probe.vision),
+                seconds: (probe.latencyMs / 1000).toFixed(1),
+              })}
+            </p>
+          )}
+          {probe && !probe.tools && <p className="faint lm-note">{t('localAi.answerOnly')}</p>}
+          {probeError && (
+            <p className="prov-err lm-note" role="alert">
+              {probeError}
+            </p>
+          )}
+
+          <div className="opt">
+            <b>{t('localAi.profile')}</b>
+            <span>{t('localAi.profileHint')}</span>
+            <select
+              className="input"
+              aria-label={t('localAi.profile')}
+              value={cfg.toolProfile ?? 'full'}
+              onChange={(e) =>
+                void save({
+                  ...cfg,
+                  toolProfile: e.target.value === 'compact' ? 'compact' : 'full',
+                })
+              }
+            >
+              <option value="full">{t('localAi.profile.full')}</option>
+              <option value="compact">{t('localAi.profile.compact')}</option>
+            </select>
+          </div>
         </>
       )}
-
-      <div className="lm-row">
-        <label>
-          <span className="faint">{t('localAi.model')}</span>
-          <input
-            className="input mono"
-            aria-label={t('localAi.modelLabel')}
-            value={model}
-            spellCheck={false}
-            onChange={(e) => {
-              setModel(e.target.value);
-            }}
-            onBlur={() => {
-              const v = model.trim();
-              if (v && v !== cfg.model) {
-                void save(withModel(cfg, { id: v }), { routes: localRoutesTo(routes, v) });
-              }
-            }}
-          />
-        </label>
-        <button
-          type="button"
-          className="btn sm"
-          disabled={testing || !cfg.model}
-          onClick={() => void test()}
-        >
-          {testing ? t('localAi.testing') : t('localAi.test')}
-        </button>
-      </div>
-      {probe && (
-        <p className="prov-ok lm-note" role="status" data-testid="local-probe">
-          {t('localAi.tested', {
-            tools: yesNo(probe.tools),
-            vision: yesNo(probe.vision),
-            seconds: (probe.latencyMs / 1000).toFixed(1),
-          })}
-        </p>
-      )}
-      {probe && !probe.tools && <p className="faint lm-note">{t('localAi.answerOnly')}</p>}
-      {probeError && (
-        <p className="prov-err lm-note" role="alert">
-          {probeError}
-        </p>
-      )}
-
-      <div className="opt">
-        <b>{t('localAi.profile')}</b>
-        <span>{t('localAi.profileHint')}</span>
-        <select
-          className="input"
-          aria-label={t('localAi.profile')}
-          value={cfg.toolProfile ?? 'full'}
-          onChange={(e) =>
-            void save({ ...cfg, toolProfile: e.target.value === 'compact' ? 'compact' : 'full' })
-          }
-        >
-          <option value="full">{t('localAi.profile.full')}</option>
-          <option value="compact">{t('localAi.profile.compact')}</option>
-        </select>
-      </div>
       <div className="opt">
         <b>{t('localAi.wait')}</b>
         <span>{t('localAi.waitHint')}</span>
@@ -336,8 +455,8 @@ export function LocalModel() {
           ))}
         </select>
       </div>
-      <ServerKey />
-      <details className="lm-guide">
+      {!bundled && <ServerKey />}
+      <details className="lm-guide" hidden={bundled}>
         <summary>{t('localAi.guide.title')}</summary>
         <p>{t('localAi.guide.intro')}</p>
         <ul>

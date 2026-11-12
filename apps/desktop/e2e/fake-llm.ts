@@ -29,6 +29,8 @@
  *   option, text "scripted"), written with the doubled closing brace (`}}`) small local models
  *   write, so the app's repair runs end to end; a question ("You help an inspection engineer")
  *   gets `ASK_ANSWER`;
+ * - with `toolCheck` set, the requests of the bundled model's tool-calling check (A3) get the
+ *   right call each (`pass`) or text only (`text-only`);
  * - anything else gets a fixed greeting.
  * A model without tools answers a request with tools with the 400 Ollama gives; a model without
  * vision refuses images the same way.
@@ -46,6 +48,38 @@ export interface FakeModel {
 export interface FakeLlmOptions {
   kind: 'ollama' | 'openai-compatible';
   models: FakeModel[];
+  /**
+   * A3, the tool-calling check of the bundled model (`runToolCheck`): `pass` answers each of its
+   * twelve requests with the right tool call (`TOOL_CHECK_RIGHT`; anything else as above);
+   * `text-only` answers every request in text, as a model that never calls a tool.
+   */
+  toolCheck?: 'pass' | 'text-only';
+}
+
+/** The right first call for each request of the tool-calling check, by its words. */
+export const TOOL_CHECK_RIGHT: Readonly<Record<string, { tool: string; args: string }>> = {
+  'Fly to tank 3.': { tool: 'find_places', args: '{"query":"Tank 3"}' },
+  'Show me the whole site.': { tool: 'frame_all', args: '{}' },
+  'Switch to the top view.': { tool: 'set_view', args: '{"view":"top"}' },
+  'Hide the point cloud layer.': { tool: 'list_layers', args: '{}' },
+  'How many issues are there of each severity?': { tool: 'summarize_issues', args: '{}' },
+  'What are the survey dates?': { tool: 'list_surveys', args: '{}' },
+  'What is the volume of Stockpile A on each survey?': { tool: 'get_volume', args: '{}' },
+  'Show me the most severe finding.': { tool: 'show_issue', args: '{}' },
+  'Open the photos with critical findings.': { tool: 'show_photos', args: '{"severity":3}' },
+  'Create a draft issue: corrosion on the roof of tank 2.': {
+    tool: 'find_places',
+    args: '{"query":"Tank 2"}',
+  },
+  'List the open issues.': { tool: 'list_issues', args: '{}' },
+};
+
+/** The reply in a tool-check mode, or null to answer as usual. */
+function toolCheckReply(mode: FakeLlmOptions['toolCheck'], body: ChatBody): Reply | null {
+  if (!mode || !body.tools?.length) return null;
+  if (mode === 'text-only') return { text: GREETING };
+  if (body.messages.at(-1)?.role === 'tool') return null;
+  return TOOL_CHECK_RIGHT[lastUserText(body.messages)] ?? null;
 }
 
 export interface FakeRequest {
@@ -483,7 +517,7 @@ export async function startFakeLlm(opts: FakeLlmOptions): Promise<FakeLlm> {
           });
           return;
         }
-        const reply = script(body);
+        const reply = toolCheckReply(opts.toolCheck, body) ?? script(body);
         if ('tool' in reply) record.call = { tool: reply.tool, args: reply.args };
         if (body.stream) sse(res, m.id, reply);
         else completion(res, m.id, reply);

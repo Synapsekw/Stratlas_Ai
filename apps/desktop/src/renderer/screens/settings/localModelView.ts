@@ -3,7 +3,85 @@
  * texts, and how a chosen model or a test result changes the settings.
  */
 import { isLoopbackUrl, LOCAL_SERVERS, serverRoot, type ModelRoute } from '@aio/ai/routes';
-import type { LocalModelInfo, LocalModelSettings } from '@aio/schema';
+import {
+  LocalModelSettings as LocalModelSettingsSchema,
+  type BundledAgentStatus,
+  type LocalModelInfo,
+  type LocalModelSettings,
+} from '@aio/schema';
+import { t } from '@aio/ui';
+
+type BundledPack = NonNullable<BundledAgentStatus['pack']>;
+
+/** The stored check passed for the model installed now. */
+export function bundledPassed(status: BundledAgentStatus | null): boolean {
+  return status?.pack != null && status.check != null && status.blocked === null;
+}
+
+/**
+ * The bundled Analytics model chosen (A3): compact, the server's context, vision, tools once its
+ * check passed. The address stays the person's own server, so switching back finds it again; the
+ * model name is the pack's (the settings hold one model name).
+ */
+export function toBundled(
+  cfg: LocalModelSettings,
+  pack: BundledPack,
+  status: BundledAgentStatus | null,
+): LocalModelSettings {
+  return {
+    ...cfg,
+    enabled: true,
+    source: 'bundled',
+    model: pack.modelId,
+    toolProfile: 'compact',
+    contextTokens: pack.contextTokens,
+    capabilities: { tools: bundledPassed(status), vision: true },
+  };
+}
+
+/**
+ * Back to the person's own server: the settings saved before the bundled model was chosen (this
+ * workstation), else the current ones without what belonged to the bundled model.
+ */
+export function toOwnServer(saved: string | null, cfg: LocalModelSettings): LocalModelSettings {
+  let parsed: unknown;
+  try {
+    parsed = saved ? JSON.parse(saved) : null;
+  } catch {
+    parsed = null;
+  }
+  const before = LocalModelSettingsSchema.safeParse(parsed);
+  if (before.success && before.data.source !== 'bundled')
+    return { ...before.data, enabled: cfg.enabled, source: 'server' };
+  const rest: LocalModelSettings = { ...cfg, source: 'server' };
+  delete rest.capabilities;
+  delete rest.contextTokens;
+  return rest;
+}
+
+/** The line under Check tool calling: the pass, why the model may not run the agent, or nothing. */
+export function checkLine(
+  status: BundledAgentStatus | null,
+): { tone: 'ok' | 'err' | 'faint'; text: string } | null {
+  if (!status) return null;
+  if (bundledPassed(status) && status.check) {
+    return {
+      tone: 'ok',
+      text: t('localAi.bundled.passed', {
+        correct: status.check.correct,
+        total: status.check.total,
+        seconds: (status.check.meanLatencyMs / 1000).toFixed(1),
+      }),
+    };
+  }
+  if (status.blocked === null) return null;
+  const failed =
+    status.pack !== null &&
+    status.check !== null &&
+    !status.check.passed &&
+    status.check.modelSha256 === status.pack.modelSha256;
+  return { tone: failed ? 'err' : 'faint', text: status.blocked };
+}
 
 /**
  * The addresses Find models tries, in order: the typed one, then (when it is on this machine) the

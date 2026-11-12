@@ -30,15 +30,33 @@ export interface LocalAskDeps {
   now(): number;
 }
 
+/**
+ * The model on this PC for someone else's requests (the offline agent, A3): the server's address,
+ * its per-launch key and the model, held until `release` (once; later calls do nothing).
+ */
+export type LocalAcquire =
+  | { ok: true; url: string; key: string; model: string; release: () => void }
+  | {
+      ok: false;
+      /** `gpu`: a detector run or GPU job holds the card; `busy`: another request runs. */
+      code: 'gpu' | 'busy' | 'no-pack' | 'no-card' | 'stopped' | 'failed';
+      error: string;
+    };
+
 export interface LocalAsk {
   run(req: AskRequest): Promise<AskResponse>;
+  /**
+   * Take the model for a run of requests made elsewhere (the offline agent): the same one at a
+   * time, card and lease rules as `run`; `release` keeps the model warm as a finished ask does.
+   */
+  acquire(owner: string, signal?: AbortSignal): Promise<LocalAcquire>;
   cancel(runId: string): boolean;
   active(): boolean;
   status(): Promise<{ ready: boolean; model?: string; problem?: string }>;
 }
 
 export const LOCAL_ASK_TIMEOUT_MS = 180_000;
-/** Earlier turns after the first question sent to the model on this PC (`--ctx-size 8192`). */
+/** Earlier turns after the first question sent to the model on this PC (its small context). */
 export const LOCAL_MAX_TURNS = 8;
 const TOO_LONG =
   'This conversation is too long for the model on this PC. Start a new question on this photo.';
@@ -274,6 +292,41 @@ export function createLocalAsk(d: LocalAskDeps): LocalAsk {
         release?.();
         current = null;
         d.idleIfUnused();
+      }
+    },
+    async acquire(owner, signal) {
+      if (current) return { ok: false, code: 'busy', error: BUSY };
+      const busy = d.gpuBusy();
+      if (busy) return { ok: false, code: 'gpu', error: busy };
+      const run = { runId: owner, abort: new AbortController(), stopped: false };
+      current = run;
+      d.started?.();
+      let lease: (() => void) | null = null;
+      let held = true;
+      const release = () => {
+        if (!held) return;
+        held = false;
+        lease?.();
+        if (current === run) current = null;
+        d.idleIfUnused();
+      };
+      try {
+        lease = d.server.lease();
+        const r = await resolve();
+        if ('error' in r && r.error) {
+          release();
+          const e = r.error;
+          const code = !e.ok && (e.code === 'no-pack' || e.code === 'no-card') ? e.code : 'failed';
+          return { ok: false, code, error: e.ok ? 'failed' : e.error };
+        }
+        if (signal?.aborted || run.stopped) {
+          release();
+          return { ok: false, code: 'stopped', error: 'Stopped.' };
+        }
+        return { ok: true, url: r.url, key: r.key, model: r.model, release };
+      } catch (e) {
+        release();
+        return { ok: false, code: 'failed', error: message(e) };
       }
     },
     cancel(runId) {

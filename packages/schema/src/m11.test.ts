@@ -134,6 +134,8 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
         'anthropicWorkspaceId',
         'agentThinking',
         'autoCheckNewDates',
+        // A3 (12 Nov 2026): the bundled model's tool-calling check, additive, absent means never checked
+        'bundledAgentCheck',
         'autoPrepareSurfaces',
         'change',
         'cloudAi',

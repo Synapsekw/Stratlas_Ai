@@ -176,6 +176,7 @@ export {
   type ProbeResult,
 } from './local';
 export { addProviderUsage, totalUsage, type ProviderUsageRow } from './pricing';
+export { runToolCheck, type ToolCheckResult } from './toolCheck';
 
 /** Every tool the agent can be offered; main checks that none of them approves (M9 decision 6). */
 export const agentToolNames = (): string[] => allToolSpecs().map((s) => s.meta.name);
@@ -213,6 +214,16 @@ export interface AgentRuntimeHost {
    * AI step (`ai:rfPlanPreview`, `ai:rfPlan`); absent: refused.
    */
   telecom?: TelecomLabelHost;
+  /**
+   * A3: the Analytics pack's own model, for a local route whose settings say `source: 'bundled'`.
+   * `ready` is null while it may run the agent (its tool-calling check passed), else why not;
+   * `acquire` takes it for one run (the address and key are new per server launch). Absent: a
+   * bundled route is not ready.
+   */
+  bundled?: {
+    ready(): string | null | Promise<string | null>;
+    acquire(signal: AbortSignal): Promise<BundledLease>;
+  };
 }
 
 /** What the antenna labelling needs from the Electron main process. */
@@ -391,7 +402,40 @@ export const MESSAGES = {
   stepLimit: stepLimitAfter(MAX_STEPS),
   failed: 'Something went wrong in the agent. Try again.',
   noTestModel: 'No model is set for this provider. Choose one in Settings, AI providers.',
+  bundledAgentOnly:
+    'The bundled model runs the agent and its drafts only. Use your own local model server or cloud AI for this.',
+  bundledMissing:
+    'The bundled model is not available in this window. Use your own local model server or cloud AI.',
+  bundledDown:
+    'The bundled model stopped answering. Try again; if it keeps failing, check the Analytics pack in Settings, Models and detection.',
 } as const;
+
+/** The context the bundled model's server is started with (A3; `VLM_CONTEXT_TOKENS` in main). */
+export const BUNDLED_CONTEXT_TOKENS = 16_384;
+/** A loopback address for the bundled model's provider before a run takes the real one. */
+const BUNDLED_STAND_IN = 'http://127.0.0.1/';
+
+/** The bundled model taken for one run: its server's address, per-launch key and model. */
+export type BundledLease =
+  | { ok: true; baseUrl: string; apiKey: string; modelId: string; release: () => void }
+  | { ok: false; message: string };
+
+/**
+ * The local model settings a run uses: the bundled model always runs the compact profile, with
+ * the server's context and vision unless the settings say otherwise (A3).
+ */
+export function effectiveLocal(cfg: LocalModelSettings): LocalModelSettings {
+  if (cfg.source !== 'bundled') return cfg;
+  return {
+    ...cfg,
+    toolProfile: 'compact',
+    contextTokens: cfg.contextTokens ?? BUNDLED_CONTEXT_TOKENS,
+    capabilities: {
+      tools: cfg.capabilities?.tools ?? true,
+      vision: cfg.capabilities?.vision ?? true,
+    },
+  };
+}
 
 /** The connection test asks for a one-word answer: a few tokens in and out. */
 const TEST_PROMPT = 'Reply with the single word OK.';
@@ -531,13 +575,54 @@ export function createAgentRuntime(
     if (registered) return registered;
     if (id !== 'local') return undefined;
     const cfg = host.localModel?.();
-    return cfg?.enabled ? localProvider(cfg, { offlineOnly }) : undefined;
+    if (!cfg?.enabled) return undefined;
+    // the bundled model's address is known per run only (`modelFor`); this one stands in for it
+    return localProvider(cfg.source === 'bundled' ? { baseUrl: BUNDLED_STAND_IN } : cfg, {
+      offlineOnly,
+    });
+  }
+
+  /** The route runs on the bundled model (A3). */
+  function bundledRoute(route: ModelRoute): boolean {
+    const cfg = route.provider === 'local' ? host.localModel?.() : undefined;
+    return cfg?.enabled === true && cfg.source === 'bundled';
   }
 
   /**
-   * Every gate before a call, in order: route, then `gateRoute`.
+   * The model a call runs on, and its key. The bundled model is taken for the call (its release
+   * goes in the caller's `finally`); a refusal comes back as `error`, for the person.
    */
-  async function check(task: AiTask, projectId: string | undefined): Promise<Check> {
+  async function modelFor(
+    route: ModelRoute,
+    provider: ModelProvider,
+    signal: AbortSignal,
+  ): Promise<
+    | { model: LanguageModel; key: string | null; release?: () => void; error?: undefined }
+    | { error: string }
+  > {
+    if (!bundledRoute(route)) {
+      const key = await keyFor(provider, route.provider);
+      return { model: provider.languageModel(route.model, key), key };
+    }
+    if (!host.bundled) return { error: MESSAGES.bundledMissing };
+    const got = await host.bundled.acquire(signal);
+    if (!got.ok) return { error: got.message };
+    const model = localProvider({ baseUrl: got.baseUrl }, { offlineOnly }).languageModel(
+      got.modelId,
+      got.apiKey,
+    );
+    return { model, key: got.apiKey, release: got.release };
+  }
+
+  /**
+   * Every gate before a call, in order: route, then `gateRoute`. `bundled`: the caller takes the
+   * bundled model through `modelFor` (the agent run and drafts); others are refused it.
+   */
+  async function check(
+    task: AiTask,
+    projectId: string | undefined,
+    o: { bundled?: boolean } = {},
+  ): Promise<Check> {
     let route: ModelRoute;
     try {
       route = routeFor(host.routes?.() ?? defaultRoutes(), task);
@@ -549,7 +634,7 @@ export function createAgentRuntime(
         cloud: true,
       };
     }
-    return gateRoute(route, task, projectId);
+    return gateRoute(route, task, projectId, o);
   }
 
   /**
@@ -561,12 +646,28 @@ export function createAgentRuntime(
     route: ModelRoute,
     task: AiTask,
     projectId: string | undefined,
+    o: { bundled?: boolean } = {},
   ): Promise<Check> {
     const provider = resolveProvider(route.provider);
     if (!provider) {
       return route.provider === 'local'
         ? { ok: false, reason: 'local-off', message: MESSAGES.localOff, route, cloud: false }
         : { ok: false, reason: 'no-provider', message: MESSAGES.noProvider, route, cloud: true };
+    }
+    // A3: the bundled model, only for callers that take it per run, and only once it passed its
+    // tool-calling check for the model installed now
+    if (bundledRoute(route)) {
+      const no = (message: string): Check => ({
+        ok: false,
+        reason: 'no-route',
+        message,
+        route,
+        cloud: false,
+      });
+      if (!o.bundled) return no(MESSAGES.bundledAgentOnly);
+      if (!host.bundled) return no(MESSAGES.bundledMissing);
+      const why = await host.bundled.ready();
+      if (why) return no(why);
     }
     const cloud = provider.cloud;
     // before the cloud switch: turning that on would not help while the workstation is offline-only
@@ -596,7 +697,7 @@ export function createAgentRuntime(
     }
     // A local route is checked against what the capability probe found (AI-9).
     if (route.provider === 'local') {
-      const gate = localGate(host.localModel?.(), task);
+      const gate = localGate(localOf(route), task);
       if (gate === 'no-vision') {
         return { ok: false, reason: 'no-route', message: MESSAGES.noVision, route, cloud };
       }
@@ -612,7 +713,8 @@ export function createAgentRuntime(
 
   /** The local model settings when `route` runs on the local model. */
   function localOf(route: ModelRoute): LocalModelSettings | undefined {
-    return route.provider === 'local' ? host.localModel?.() : undefined;
+    const cfg = route.provider === 'local' ? host.localModel?.() : undefined;
+    return cfg ? effectiveLocal(cfg) : undefined;
   }
 
   /** A provider failure for the person; a local server that is down gets its own message. */
@@ -629,6 +731,7 @@ export function createAgentRuntime(
     });
     const cause = RetryError.isInstance(e) ? e.lastError : e;
     if (route.provider === 'local' && isNetworkError(cause)) {
+      if (bundledRoute(route)) return { ...described, message: MESSAGES.bundledDown };
       const cfg = host.localModel?.();
       return {
         ...described,
@@ -646,8 +749,22 @@ export function createAgentRuntime(
     answerOnlyAtStart: boolean,
   ) {
     const { runId } = req;
-    const key = await keyFor(provider, route.provider);
-    const model = provider.languageModel(route.model, key);
+    // the bundled model is taken for the whole run and released at its end (A3)
+    let taken: Awaited<ReturnType<typeof modelFor>>;
+    try {
+      taken = await modelFor(route, provider, run.controller.signal);
+    } catch (e) {
+      taken = { error: e instanceof Error ? e.message : MESSAGES.failed };
+    }
+    if (taken.error !== undefined) {
+      host.emit({
+        type: 'error',
+        runId,
+        message: run.controller.signal.aborted ? MESSAGES.stopped : taken.error,
+      });
+      return;
+    }
+    const { model, key, release } = taken;
     const local = localOf(route);
     const watchdog = local ? idleWatchdog(local.timeoutMs ?? DEFAULT_LOCAL_TIMEOUT_MS) : undefined;
     const firstReply = !req.messages.some((m) => m.role === 'assistant');
@@ -703,6 +820,7 @@ export function createAgentRuntime(
       });
     } finally {
       watchdog?.stop();
+      release?.();
     }
   }
 
@@ -1801,7 +1919,9 @@ export function createAgentRuntime(
       if (runs.has(req.runId)) return { ok: false, error: MESSAGES.busy };
       const run: Run = { controller: new AbortController(), pending: new Map() };
       runs.set(req.runId, run);
-      const gate = await check(req.task ?? (req.image ? 'vision' : 'chat'), req.projectId);
+      const gate = await check(req.task ?? (req.image ? 'vision' : 'chat'), req.projectId, {
+        bundled: true,
+      });
       if (!gate.ok) {
         runs.delete(req.runId);
         return { ok: false, error: gate.message };
@@ -1824,7 +1944,10 @@ export function createAgentRuntime(
       }
     },
     status: async (req) => {
-      const gate = await check(req.task ?? 'chat', req.projectId);
+      // the engineer step never runs on the bundled model
+      const gate = await check(req.task ?? 'chat', req.projectId, {
+        bundled: req.task !== 'engineer',
+      });
       if (gate.ok) {
         return {
           ready: true,
@@ -1857,6 +1980,9 @@ export function createAgentRuntime(
       if (!provider) {
         return { ok: false, message: id === 'local' ? MESSAGES.localOff : MESSAGES.noProvider };
       }
+      // the bundled model has its own check (Settings, Local model, Check tool calling)
+      if (id === 'local' && host.localModel?.()?.source === 'bundled')
+        return { ok: false, message: MESSAGES.bundledAgentOnly };
       if (provider.cloud && offlineOnly()) return { ok: false, message: MESSAGES.offlineOnly };
       if (provider.cloud && !host.cloudAllowed()) return { ok: false, message: MESSAGES.cloudOff };
       const routes = host.routes?.() ?? defaultRoutes();
@@ -1901,13 +2027,15 @@ export function createAgentRuntime(
       const run: Run = { controller: new AbortController(), pending: new Map() };
       runs.set(req.runId, run);
       try {
-        const gate = await check(req.task, req.projectId);
+        const gate = await check(req.task, req.projectId, { bundled: true });
         if (!gate.ok) return { ok: false, error: gate.message };
         const { route, provider } = gate;
-        const key = await keyFor(provider, route.provider);
+        const taken = await modelFor(route, provider, run.controller.signal);
+        if (taken.error !== undefined) return { ok: false, error: taken.error };
+        const { model, key, release } = taken;
         try {
           const result = await generateText({
-            model: provider.languageModel(route.model, key),
+            model,
             instructions: req.system,
             prompt: req.prompt,
             maxOutputTokens: 8_000,
@@ -1930,6 +2058,8 @@ export function createAgentRuntime(
           const described = describeFailure(e, provider, route, key);
           console.warn(`draft failed: ${described.log}`);
           return { ok: false, error: described.message };
+        } finally {
+          release?.();
         }
       } finally {
         runs.delete(req.runId);

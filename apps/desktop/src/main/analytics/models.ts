@@ -30,7 +30,7 @@ export function localVlmModel(id: string): LocalVlmModel {
     return {
       family: 'qwen3',
       serverArgs: ['--reasoning', 'off'],
-      minFreeMb: 7400,
+      minFreeMb: 7650,
       thinkingOff: true,
     };
   }
