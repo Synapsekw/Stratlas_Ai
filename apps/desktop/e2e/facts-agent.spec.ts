@@ -33,10 +33,15 @@ const historySteps = (win: Page) =>
 const replies = (win: Page) => agent(win).getByText(/^Tool \w+ returned/);
 const turnErrors = (win: Page) => agent(win).locator('.ag-err');
 
-/** Show the agent column when it is folded. */
+/**
+ * Show the agent: the Scene has its own agent pane in the right column; a page with a header has
+ * the Agent toggle that unfolds the dock instead.
+ */
 async function unfoldAgent(win: Page): Promise<void> {
+  if (await agent(win).isVisible()) return;
   if ((await toggle(win).getAttribute('aria-expanded')) !== 'true') await toggle(win).click();
   await expect(dock(win)).toBeVisible();
+  await expect(agent(win)).toBeVisible();
 }
 
 /** The Project tab search, once the index answers: the count line replaces the state line. */
