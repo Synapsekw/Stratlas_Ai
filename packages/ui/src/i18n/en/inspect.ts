@@ -290,6 +290,8 @@ export const enInspect = {
   'detect.preset.pack.outOfRange':
     'Analytics pack {version} does not work with this version of AIO ({range}).',
   'detect.preset.pack.damaged': 'Analytics pack {version} is missing {file}. Install it again.',
+  'detect.preset.pack.modelMismatch':
+    'Analytics pack {version} names a model checksum that its file list does not match. Install it again.',
   'detect.preset.pack.otherPlatform':
     'Analytics pack {version} is built for another kind of computer ({platform}). Install the one for this computer.',
   'detect.preset.server.stopped': 'The detector model stopped. Run the remaining photos again.',

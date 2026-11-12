@@ -120,6 +120,21 @@ describe('findAnalyticsPack', () => {
     ]);
   });
 
+  it('a pack whose model checksum is not the one its file list checked is unusable (A3)', async () => {
+    await writeAnalyticsPack('0.1.0', {
+      manifest: (m) => {
+        (m.model as { sha256: string }).sha256 = 'c'.repeat(64);
+      },
+    });
+    expect(await findAnalyticsPack({ dataRoot, env: {}, ...HERE })).toBeNull();
+    expect(await unusablePacks({ dataRoot, env: {}, ...HERE })).toEqual([
+      {
+        version: '0.1.0',
+        reason: fill(en['detect.preset.pack.modelMismatch'], { version: '0.1.0' }),
+      },
+    ]);
+  });
+
   it('a pack missing its mmproj is unusable', async () => {
     const dir = await writeAnalyticsPack('0.1.0');
     await rm(join(dir, ...FAKE_ANALYTICS_MMPROJ.split('/')));

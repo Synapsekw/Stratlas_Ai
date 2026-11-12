@@ -89,6 +89,11 @@ async function checkAnalyticsPack(
     version,
     reason: presetText('detect.preset.pack.damaged', { version, file }),
   });
+  // the model's SHA-256 is the one install checked the file against (`files`): the offline
+  // agent's tool-calling check and detector examples are kept per this SHA (A3)
+  const listed = manifest.files[manifest.model.gguf.replace(/\\/g, '/')];
+  if (listed?.sha256.toLowerCase() !== manifest.model.sha256.toLowerCase())
+    return { version, reason: presetText('detect.preset.pack.modelMismatch', { version }) };
   const server = await located(dir, manifest.runtime.executable);
   if (server === null) return damaged(manifest.runtime.executable);
   const gguf = await located(dir, manifest.model.gguf);
