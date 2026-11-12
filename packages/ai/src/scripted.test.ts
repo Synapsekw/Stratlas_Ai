@@ -10,6 +10,8 @@ import {
   SCRIPTED_ENGINEER,
   scriptedCorrectionTurn,
   scriptedTurn,
+  scriptInput,
+  wordsAfter,
 } from './scripted';
 import { getToolSpec } from './tools';
 
@@ -89,9 +91,61 @@ describe('scripted corrections', () => {
     });
   });
   it('the inputs pass the tools own checks', () => {
-    for (const s of SCRIPT.slice(0, 2)) {
+    for (const s of SCRIPT.filter((r) => r.tool === 'set_count' || r.tool === 'set_levels')) {
       const spec = getToolSpec(s.tool);
-      expect(spec?.input.safeParse(s.input).success, s.tool).toBe(true);
+      expect(spec?.input.safeParse(scriptInput(s.input, s.when)).success, s.tool).toBe(true);
+    }
+  });
+});
+
+describe('scripted fact index questions', () => {
+  const user = (text: string) => [
+    { role: 'user' as const, content: [{ type: 'text' as const, text }] },
+  ];
+  it('reads the words after a keyword, in the message case', () => {
+    expect(wordsAfter('What happened to Stockpile SP1 over time?', 'what happened to')).toBe(
+      'Stockpile SP1',
+    );
+    expect(wordsAfter('What happened to "Pile B"?', 'what happened to')).toBe('Pile B');
+    expect(wordsAfter('Show me the history of Crack D012.', 'history of')).toBe('Crack D012');
+    expect(wordsAfter('Search the project for concrete', 'search the project for')).toBe(
+      'concrete',
+    );
+    expect(wordsAfter('nothing here', 'history of')).toBe('');
+  });
+
+  it('asks history_of about the subject the question names', () => {
+    expect(scriptedTurn(user('What happened to Stockpile SP2 over time?'))).toEqual({
+      kind: 'tool',
+      tool: 'history_of',
+      input: { subject: 'Stockpile SP2' },
+    });
+    expect(scriptedTurn(user('Give me the history of Crack D012'))).toEqual({
+      kind: 'tool',
+      tool: 'history_of',
+      input: { subject: 'Crack D012' },
+    });
+  });
+
+  it('searches for the words the question gives', () => {
+    expect(scriptedTurn(user('Search the project for cracked concrete?'))).toEqual({
+      kind: 'tool',
+      tool: 'query_facts',
+      input: { text: 'cracked concrete' },
+    });
+    expect(scriptedTurn(user('What do we know about Tank T1?'))).toEqual({
+      kind: 'tool',
+      tool: 'query_facts',
+      input: { text: 'Tank T1' },
+    });
+  });
+
+  it('sends inputs the fact tools accept', () => {
+    const history = scriptedTurn(user('What happened to Stockpile SP1 over time?'));
+    const search = scriptedTurn(user('Find everything about the north wall'));
+    for (const t of [history, search]) {
+      if (t.kind !== 'tool') throw new Error('expected a tool call');
+      expect(getToolSpec(t.tool)?.input.safeParse(t.input).success, t.tool).toBe(true);
     }
   });
 });

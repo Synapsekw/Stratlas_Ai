@@ -3,7 +3,13 @@
  * (`@aio/facts`, SQLite with FTS5); this side asks for it through `window.aio` (`facts:query`,
  * `facts:history`) and hands the model a compact view. Specs in fact-tool-specs.ts.
  */
-import { FACT_KINDS, type AioBridge, type Fact, type FactQuery } from '@aio/schema';
+import {
+  FACT_KINDS,
+  type AioBridge,
+  type Fact,
+  type FactQuery,
+  type FactsUnavailable,
+} from '@aio/schema';
 import { factToolInputs, type FactToolInput, type FactToolName } from './fact-tool-specs';
 import { captureRef } from './survey-tools';
 import {
@@ -56,9 +62,23 @@ const eventRow = (f: Fact) => ({
   ...(f.source ? { source: f.source } : {}),
 });
 
+/** Main's failure in the model's words: why the index cannot answer, and what to do. */
+export function unavailable(r: {
+  error: string;
+  reason?: FactsUnavailable | undefined;
+}): ToolError {
+  if (r.reason === 'not-built')
+    return new ToolError(
+      'The fact index is still being built for this project. Try again shortly.',
+    );
+  if (r.reason === 'package')
+    return new ToolError('Packages have no fact index: open the project itself to search it.');
+  return new ToolError(r.error);
+}
+
 async function query(projectId: string, q: FactQuery) {
   const r = await bridge().invoke('facts:query', { projectId, query: q });
-  if (!r.ok) throw new ToolError(r.error);
+  if (!r.ok) throw unavailable(r);
   return r;
 }
 
@@ -100,15 +120,23 @@ export function isSubjectId(ref: string): boolean {
   return !!m?.[1] && KINDS.has(m[1]);
 }
 
+/** Hits read to find which subject a name means, and candidates listed when it fits several. */
+const RESOLVE_HITS = 50;
+const RESOLVE_LISTED = 8;
+
 /**
- * The one subject a name means, from a text search of the index: the subject every hit shares,
- * else the one whose name is exactly the name. Several subjects: refused, each listed with its
- * id, so nothing is read on a guess.
+ * The one subject a name means, from a text search of the index, judged on distinct subjects:
+ * the subject every hit shares, else the one whose name is exactly the name. Several subjects:
+ * refused, each listed with its id, so nothing is read on a guess.
  */
 export async function resolveSubject(projectId: string, name: string): Promise<string> {
-  const r = await query(projectId, { text: name, limit: 10 });
-  const subjects = new Map<string, Fact>();
-  for (const f of r.facts) if (!subjects.has(f.subject)) subjects.set(f.subject, f);
+  const r = await query(projectId, { text: name, limit: RESOLVE_HITS });
+  const subjects = new Map<string, Fact[]>();
+  for (const f of r.facts) {
+    const hits = subjects.get(f.subject);
+    if (hits) hits.push(f);
+    else subjects.set(f.subject, [f]);
+  }
   if (subjects.size === 0)
     throw new ToolError(
       `Nothing in the fact index is called "${name}". Use query_facts to find its subject id.`,
@@ -116,47 +144,61 @@ export async function resolveSubject(projectId: string, name: string): Promise<s
   const [only] = subjects.keys();
   if (subjects.size === 1 && only) return only;
   const q = name.trim().toLowerCase();
-  const exact = [...subjects.values()].filter((f) =>
-    r.facts.some((h) => h.subject === f.subject && h.label.trim().toLowerCase() === q),
+  const exact = [...subjects.entries()].filter(([, hits]) =>
+    hits.some((h) => h.label.trim().toLowerCase() === q),
   );
-  if (exact.length === 1 && exact[0]) return exact[0].subject;
-  const list = [...subjects.values()].map((f) => `${f.subject} (${f.kind} "${f.label}")`);
+  if (exact.length === 1 && exact[0]) return exact[0][0];
+  const all = [...subjects.values()];
+  const list = all
+    .slice(0, RESOLVE_LISTED)
+    .map(([f]) => (f ? `${f.subject} (${f.kind} "${f.label}")` : ''));
+  const more = all.length - RESOLVE_LISTED;
   throw new ToolError(
-    `"${name}" fits several things: ${list.join(', ')}. Ask history_of again with one subject id.`,
+    `"${name}" fits ${String(all.length)} things: ${list.join(', ')}` +
+      (more > 0 ? ` and ${String(more)} more` : '') +
+      '. Ask history_of again with one subject id.',
   );
 }
 
 /** At most this many of each list reach the model; the most recent are kept. */
 const HISTORY_ROWS = 60;
 
+const LISTS = { facts: 'facts', linked: 'linked facts', events: 'events' } as const;
+
 define('history_of', async (input, ctx) => {
   const projectId = project(ctx).id;
   const ref = input.subject.trim();
   const subject = isSubjectId(ref) ? ref : await resolveSubject(projectId, ref);
   const r = await bridge().invoke('facts:history', { projectId, subject });
-  if (!r.ok) throw new ToolError(r.error);
+  if (!r.ok) throw unavailable(r);
   const h = r.history;
-  const n = h.facts.length + h.linked.length + h.events.length;
+  const n = h.totals.facts + h.totals.linked + h.totals.events;
   if (n === 0)
     throw new ToolError(
       `The fact index has nothing about "${subject}". Use query_facts to find a subject id.`,
     );
   const keep = <T>(xs: readonly T[]) => xs.slice(-HISTORY_ROWS);
+  const facts = keep(h.facts);
+  const linked = keep(h.linked);
+  const events = keep(h.events);
   const omitted = {
-    facts: Math.max(0, h.facts.length - HISTORY_ROWS),
-    linked: Math.max(0, h.linked.length - HISTORY_ROWS),
-    events: Math.max(0, h.events.length - HISTORY_ROWS),
+    facts: Math.max(0, h.totals.facts - facts.length),
+    linked: Math.max(0, h.totals.linked - linked.length),
+    events: Math.max(0, h.totals.events - events.length),
   };
+  const left = (Object.keys(LISTS) as (keyof typeof LISTS)[])
+    .filter((k) => omitted[k] > 0)
+    .map((k) => `${String(omitted[k])} older ${LISTS[k]}`);
   const label = h.facts.find((f) => f.label)?.label ?? subject;
   return {
     result: {
       subject: h.subject,
       label,
-      facts: keep(h.facts).map(factRow),
-      linked: keep(h.linked).map((l) => ({ rel: l.rel, ...factRow(l.fact) })),
-      events: keep(h.events).map(eventRow),
-      ...(omitted.facts + omitted.linked + omitted.events > 0
-        ? { omitted, note: 'The oldest entries are left out; the newest are shown.' }
+      facts: facts.map(factRow),
+      linked: linked.map((l) => ({ rel: l.rel, ...factRow(l.fact) })),
+      events: events.map(eventRow),
+      ...(left.length > 0
+        ? { omitted, note: `Left out: ${left.join(', ')}. The newest of each list are shown.` }
         : {}),
     },
     summary: say(

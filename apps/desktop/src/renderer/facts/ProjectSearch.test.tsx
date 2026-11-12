@@ -5,7 +5,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { factIndex } from './factStore';
-import { ProjectSearch, SEARCH_DEBOUNCE_MS, SEARCH_LIMIT } from './ProjectSearch';
+import { ProjectSearch, SEARCH_DEBOUNCE_MS, SEARCH_LIMIT, SEARCH_MAX_CHARS } from './ProjectSearch';
 
 /** A fake bridge: each channel's answer, and every call made. */
 type Answer = (req: Record<string, unknown>) => unknown;
@@ -87,6 +87,7 @@ const history: FactHistory = {
       at: '2026-07-02T09:00:00.000Z',
     }),
   ],
+  totals: { facts: 1, linked: 2, events: 2 },
 };
 
 let host: HTMLDivElement;
@@ -173,8 +174,75 @@ describe('ProjectSearch', () => {
     expect(text).toContain('Measure');
     expect(text).toContain('North stockpile');
     expect(text).toContain('m³');
-    expect(text).toContain('accepted');
+    expect(text).toContain('Accepted');
     expect(q('project-search-count')?.textContent).toBe('1 result');
+  });
+
+  it('shows a status in the user language, and an unknown one as stored', async () => {
+    fake.answers['facts:query'] = () => ({
+      ok: true,
+      facts: [crack, { ...pile, status: 'mystery' }],
+      total: 2,
+    });
+    render();
+    await type('a');
+    const statuses = [...host.querySelectorAll('.fs-status')].map((e) => e.textContent);
+    expect(statuses).toEqual(['Reviewed', 'mystery']);
+  });
+
+  it('caps the words at the length main accepts', async () => {
+    render();
+    const input = q('project-search-field') as HTMLInputElement;
+    expect(input.maxLength).toBe(SEARCH_MAX_CHARS);
+    // a pasted or scripted value can still be longer than the field allows
+    await type('x'.repeat(SEARCH_MAX_CHARS + 50));
+    const sent = fake.calls.find((c) => c.channel === 'facts:query')?.request as {
+      query: { text: string };
+    };
+    expect(sent.query.text).toHaveLength(SEARCH_MAX_CHARS);
+  });
+
+  it('says why main cannot answer in its own words, not main text', async () => {
+    fake.answers['facts:query'] = () => ({
+      ok: false,
+      error: 'Fact index not built (internal).',
+      reason: 'not-built',
+    });
+    render();
+    await type('stock');
+    expect(host.textContent).toContain(
+      'The search index is still being built. Try again in a moment.',
+    );
+    expect(host.textContent).not.toContain('internal');
+    act(() => {
+      root?.unmount();
+    });
+    host.remove();
+    fake.answers['facts:query'] = () => ({ ok: false, error: 'pkg', reason: 'package' });
+    render();
+    await type('stock');
+    expect(host.textContent).toContain('Packages have no search index.');
+    act(() => {
+      root?.unmount();
+    });
+    host.remove();
+    fake.answers['facts:query'] = () => ({ ok: false, error: 'disk read failed' });
+    render();
+    await type('stock');
+    expect(host.textContent).toContain('Search failed: disk read failed');
+  });
+
+  it('maps a history failure reason too', async () => {
+    fake.answers['facts:history'] = () => ({ ok: false, error: 'closed', reason: 'not-open' });
+    render();
+    await type('corrosion');
+    act(() => {
+      host
+        .querySelector<HTMLButtonElement>('[data-testid="project-search-result"] button')
+        ?.click();
+    });
+    await settle();
+    expect(q('project-search-history')?.textContent).toBe('Open a project to search it.');
   });
 
   it('says so when nothing matches', async () => {

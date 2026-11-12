@@ -7,7 +7,13 @@
  * only: nothing here changes project data.
  */
 import { formatQuantity, localeOf, type Quantity } from '@aio/geo';
-import type { Fact, FactHistory, FactIndexStatus, SurveySettings } from '@aio/schema';
+import type {
+  Fact,
+  FactHistory,
+  FactIndexStatus,
+  FactsUnavailable,
+  SurveySettings,
+} from '@aio/schema';
 import { Button, formatDate, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useId, useState, type ReactElement } from 'react';
@@ -20,13 +26,65 @@ import './projectSearch.css';
 export const SEARCH_DEBOUNCE_MS = 200;
 /** Results asked for at once. */
 export const SEARCH_LIMIT = 30;
+/** The longest search main is asked (main refuses longer text). */
+export const SEARCH_MAX_CHARS = 200;
+
+/** The status words the index stores, each with its own string; others show as stored. */
+const STATUS_WORDS = [
+  'accepted',
+  'draft',
+  'rejected',
+  'reviewed',
+  'approved',
+  'closed',
+  'pass',
+  'fail',
+  'hold',
+  'released',
+  'unchecked',
+  'ok',
+  'partial',
+  'refused',
+  'stale',
+  'warning',
+  'proposed',
+  'confirmed',
+  'dismissed',
+  'open',
+  'candidate',
+] as const;
+type StatusWord = (typeof STATUS_WORDS)[number];
+const isStatusWord = (s: string): s is StatusWord =>
+  (STATUS_WORDS as readonly string[]).includes(s);
+
+/** A fact's status in the user's language, or the stored word when it has no string. */
+export function statusText(status: string, t: ReturnType<typeof useT>): string {
+  return isStatusWord(status) ? t(`facts.status.${status}`) : status;
+}
+
+/** Why main could not answer, in the user's language; main's own text when it gives no reason. */
+interface Failed {
+  error: string;
+  reason?: FactsUnavailable;
+}
+const failedOf = (v: { error: string; reason?: FactsUnavailable | undefined }): Failed => ({
+  error: v.error,
+  ...(v.reason ? { reason: v.reason } : {}),
+});
+function failureText(
+  f: Failed,
+  t: ReturnType<typeof useT>,
+  otherwise: (error: string) => string,
+): string {
+  return f.reason ? t(`facts.unavailable.${f.reason}`) : otherwise(f.error);
+}
 
 const QUANTITY: Readonly<Record<string, Quantity>> = {
   m: 'distance',
   m2: 'area',
-  'm²': 'area',
+  'mÂ²': 'area',
   m3: 'volume',
-  'm³': 'volume',
+  'mÂ³': 'volume',
 };
 
 /** The site's units, precision and number style, as the cards format with them. */
@@ -58,12 +116,10 @@ type Results =
   | { state: 'idle' }
   | { state: 'searching' }
   | { state: 'done'; facts: Fact[]; total: number }
-  | { state: 'failed'; error: string };
+  | ({ state: 'failed' } & Failed);
 
 type History =
-  | { state: 'loading' }
-  | { state: 'done'; history: FactHistory }
-  | { state: 'failed'; error: string };
+  { state: 'loading' } | { state: 'done'; history: FactHistory } | ({ state: 'failed' } & Failed);
 
 function HistoryBody({
   id,
@@ -81,7 +137,7 @@ function HistoryBody({
   else if (history.state === 'failed')
     body = (
       <p className="fs-note" data-tone="error">
-        {t('facts.history.failed', { error: history.error })}
+        {failureText(history, t, (error) => t('facts.history.failed', { error }))}
       </p>
     );
   else {
@@ -91,7 +147,7 @@ function HistoryBody({
       ...own.map((f) => ({ key: f.id, tag: kind(f), fact: f })),
       ...linked.map((l) => ({
         key: `${l.rel}:${l.fact.id}`,
-        tag: `${t(`facts.rel.${l.rel}`)} · ${kind(l.fact)}`,
+        tag: `${t(`facts.rel.${l.rel}`)} Â· ${kind(l.fact)}`,
         fact: l.fact,
       })),
     ];
@@ -173,7 +229,7 @@ function ResultRow({
         <span className="fs-meta">
           {day && <span>{day}</span>}
           {value && <span className="fs-value">{value}</span>}
-          {fact.status && <span className="fs-status">{fact.status}</span>}
+          {fact.status && <span className="fs-status">{statusText(fact.status, t)}</span>}
         </span>
       </button>
       {open && history && <HistoryBody id={historyId} fact={fact} history={history} />}
@@ -214,7 +270,7 @@ export function ProjectSearch(): ReactElement | null {
   // the field settles before main is asked
   useEffect(() => {
     const id = setTimeout(() => {
-      setQuery(text.trim());
+      setQuery(text.trim().slice(0, SEARCH_MAX_CHARS));
     }, SEARCH_DEBOUNCE_MS);
     return () => {
       clearTimeout(id);
@@ -232,7 +288,7 @@ export function ProjectSearch(): ReactElement | null {
         const result: Results = !r.ok
           ? { state: 'failed', error: r.error }
           : !r.value.ok
-            ? { state: 'failed', error: r.value.error }
+            ? { state: 'failed', ...failedOf(r.value) }
             : { state: 'done', facts: r.value.facts, total: r.value.total };
         setAnswer({ words, result });
       });
@@ -271,7 +327,7 @@ export function ProjectSearch(): ReactElement | null {
         !r.ok
           ? { state: 'failed', error: r.error }
           : !r.value.ok
-            ? { state: 'failed', error: r.value.error }
+            ? { state: 'failed', ...failedOf(r.value) }
             : { state: 'done', history: r.value.history },
       );
     });
@@ -284,8 +340,11 @@ export function ProjectSearch(): ReactElement | null {
     // main reports `building` and then the new status (`facts:changed`); its answer is the last
     void bridge.call('facts:rebuild', { projectId }).then((r) => {
       setRebuilding(false);
-      if (!r.ok) setRebuildError(r.error);
-      else if (!r.value.ok) setRebuildError(r.value.error);
+      if (!r.ok) setRebuildError(t('facts.rebuildFailed', { error: r.error }));
+      else if (!r.value.ok)
+        setRebuildError(
+          failureText(failedOf(r.value), t, (error) => t('facts.rebuildFailed', { error })),
+        );
       else if (factIndex.getState().projectId === projectId)
         factIndex.setState({ status: r.value.status });
     });
@@ -313,6 +372,7 @@ export function ProjectSearch(): ReactElement | null {
         type="search"
         autoComplete="off"
         spellCheck={false}
+        maxLength={SEARCH_MAX_CHARS}
         placeholder={t('facts.placeholder')}
         value={text}
         data-testid="project-search-field"
@@ -344,7 +404,7 @@ export function ProjectSearch(): ReactElement | null {
         {results.state === 'searching' && <p className="fs-note">{t('facts.searching')}</p>}
         {results.state === 'failed' && (
           <p className="fs-note" data-tone="error">
-            {t('facts.queryFailed', { error: results.error })}
+            {failureText(results, t, (error) => t('facts.queryFailed', { error }))}
           </p>
         )}
         {results.state === 'done' && results.facts.length === 0 && (
@@ -354,7 +414,7 @@ export function ProjectSearch(): ReactElement | null {
         )}
         {rebuildError !== null && (
           <p className="fs-note" data-tone="error">
-            {t('facts.rebuildFailed', { error: rebuildError })}
+            {rebuildError}
           </p>
         )}
       </div>

@@ -63,21 +63,39 @@ function ctx(): RendererToolContext {
   };
 }
 
-const emptyHistory = (subject: string): FactHistory => ({
-  subject,
-  facts: [],
-  linked: [],
-  events: [],
-});
+/** A history whose totals are its list lengths, unless given. */
+const hist = (subject: string, parts: Partial<Omit<FactHistory, 'subject'>> = {}): FactHistory => {
+  const facts = parts.facts ?? [];
+  const linked = parts.linked ?? [];
+  const events = parts.events ?? [];
+  return {
+    subject,
+    facts,
+    linked,
+    events,
+    totals: parts.totals ?? {
+      facts: facts.length,
+      linked: linked.length,
+      events: events.length,
+    },
+  };
+};
+const emptyHistory = (subject: string): FactHistory => hist(subject);
 
 function bridge(opts: {
   hits?: Fact[];
   total?: number;
   history?: (subject: string) => FactHistory;
   fail?: string;
+  reason?: 'not-built' | 'package' | 'not-open';
 }) {
   const invoke = vi.fn((channel: string, arg: unknown) => {
-    if (opts.fail) return Promise.resolve({ ok: false, error: opts.fail });
+    if (opts.fail)
+      return Promise.resolve({
+        ok: false,
+        error: opts.fail,
+        ...(opts.reason ? { reason: opts.reason } : {}),
+      });
     if (channel === 'facts:query') {
       const hits = opts.hits ?? [];
       return Promise.resolve({ ok: true, facts: hits, total: opts.total ?? hits.length });
@@ -211,34 +229,47 @@ describe('query_facts', () => {
     await expect(runRendererTool('query_facts', {}, ctx())).rejects.toThrow(/still building/);
   });
 
+  it('says the index is still being built, and that packages have none', async () => {
+    bridge({ fail: 'Fact index not built yet.', reason: 'not-built' });
+    await expect(runRendererTool('query_facts', {}, ctx())).rejects.toThrow(
+      /still being built.*Try again shortly/,
+    );
+    bridge({ fail: 'Not a project.', reason: 'package' });
+    await expect(runRendererTool('query_facts', {}, ctx())).rejects.toThrow(
+      /Packages have no fact index/,
+    );
+    bridge({ fail: 'No project is open.', reason: 'not-open' });
+    await expect(runRendererTool('query_facts', {}, ctx())).rejects.toThrow(/No project is open/);
+  });
+
   it('needs the desktop app', async () => {
     await expect(runRendererTool('query_facts', {}, ctx())).rejects.toThrow(/desktop app/);
   });
 });
 
 describe('history_of', () => {
-  const sp1History = (subject: string): FactHistory => ({
-    subject,
-    facts: [sp1, sp1Volume],
-    linked: [
-      {
-        rel: 'inside',
-        fact: { ...crack, date: '2021-01-10', status: 'open' },
-      },
-    ],
-    events: [
-      fact({
-        id: 'e1',
-        kind: 'event',
-        subject,
-        label: 'Measurement edited',
-        at: '2021-01-11T09:00:00Z',
-        source: 'human',
-        op: 'op-1',
-        evidence: 'journal/2021-01.jsonl',
-      }),
-    ],
-  });
+  const sp1History = (subject: string): FactHistory =>
+    hist(subject, {
+      facts: [sp1, sp1Volume],
+      linked: [
+        {
+          rel: 'inside',
+          fact: { ...crack, date: '2021-01-10', status: 'open' },
+        },
+      ],
+      events: [
+        fact({
+          id: 'e1',
+          kind: 'event',
+          subject,
+          label: 'Measurement edited',
+          at: '2021-01-11T09:00:00Z',
+          source: 'human',
+          op: 'op-1',
+          evidence: 'journal/2021-01.jsonl',
+        }),
+      ],
+    });
 
   it('reads a subject id straight away, oldest first and compact', async () => {
     const invoke = bridge({ history: sp1History });
@@ -282,7 +313,7 @@ describe('history_of', () => {
     await runRendererTool('history_of', { subject: 'Stockpile SP1' }, ctx());
     expect(invoke).toHaveBeenNthCalledWith(1, 'facts:query', {
       projectId: 'p1',
-      query: { text: 'Stockpile SP1', limit: 10 },
+      query: { text: 'Stockpile SP1', limit: 50 },
     });
     expect(invoke).toHaveBeenNthCalledWith(2, 'facts:history', {
       projectId: 'p1',
@@ -302,9 +333,61 @@ describe('history_of', () => {
   it('refuses a name that fits several things, listing them', async () => {
     const invoke = bridge({ hits: [sp1, sp10, crack] });
     await expect(runRendererTool('history_of', { subject: 'SP' }, ctx())).rejects.toThrow(
-      /"SP" fits several things: measurement:sp1 \(measurement "Stockpile SP1"\), measurement:sp10 \(measurement "SP10"\), issue:I1 \(issue "Crack D012"\)/,
+      /"SP" fits 3 things: measurement:sp1 \(measurement "Stockpile SP1"\), measurement:sp10 \(measurement "SP10"\), issue:I1 \(issue "Crack D012"\)/,
     );
     expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('judges on distinct subjects, not the first ten hits', async () => {
+    // a pile with many facts fills the first hits; one other subject further down still counts
+    const volumes = Array.from({ length: 12 }, (_, i) => ({ ...sp1Volume, id: `v${String(i)}` }));
+    bridge({ hits: [...volumes, sp10], history: sp1History });
+    await expect(runRendererTool('history_of', { subject: 'SP' }, ctx())).rejects.toThrow(
+      /"SP" fits 2 things: measurement:sp1 .*measurement:sp10/,
+    );
+    // many hits of one subject: that subject
+    const one = bridge({ hits: volumes, history: sp1History });
+    await runRendererTool('history_of', { subject: 'SP' }, ctx());
+    expect(one).toHaveBeenLastCalledWith('facts:history', {
+      projectId: 'p1',
+      subject: 'measurement:sp1',
+    });
+    // the exact name among many hits of another subject
+    const exact = bridge({ hits: [...volumes, sp10], history: sp1History });
+    await runRendererTool('history_of', { subject: 'sp10' }, ctx());
+    expect(exact).toHaveBeenLastCalledWith('facts:history', {
+      projectId: 'p1',
+      subject: 'measurement:sp10',
+    });
+  });
+
+  it('lists at most eight candidates and says how many more', async () => {
+    const piles = Array.from({ length: 11 }, (_, i) =>
+      fact({
+        id: `m${String(i)}`,
+        kind: 'measurement',
+        subject: `measurement:p${String(i)}`,
+        label: `Pile ${String(i)}`,
+      }),
+    );
+    bridge({ hits: piles });
+    const err = await runRendererTool('history_of', { subject: 'Pile' }, ctx()).then(
+      () => new Error('resolved'),
+      (e: unknown) => e as Error,
+    );
+    expect(err.message).toMatch(/"Pile" fits 11 things: .*measurement:p7 .* and 3 more\./);
+    expect(err.message).not.toMatch(/measurement:p8/);
+  });
+
+  it('passes the index state on', async () => {
+    bridge({ fail: 'x', reason: 'not-built' });
+    await expect(
+      runRendererTool('history_of', { subject: 'Stockpile SP1' }, ctx()),
+    ).rejects.toThrow(/still being built/);
+    bridge({ fail: 'x', reason: 'package' });
+    await expect(runRendererTool('history_of', { subject: 'issue:I1' }, ctx())).rejects.toThrow(
+      /Packages have no fact index/,
+    );
   });
 
   it('refuses a name nothing matches and a subject with no history', async () => {
@@ -328,11 +411,45 @@ describe('history_of', () => {
         value: i,
       }),
     );
-    bridge({ history: (subject) => ({ ...emptyHistory(subject), facts: many }) });
+    bridge({ history: (subject) => hist(subject, { facts: many }) });
     const r = await runRendererTool('history_of', { subject: 'measurement:sp1' }, ctx());
-    const out = r.result as { facts: { value: number }[]; omitted: { facts: number } };
+    const out = r.result as {
+      facts: { value: number }[];
+      omitted: { facts: number; linked: number; events: number };
+      note: string;
+    };
     expect(out.facts).toHaveLength(60);
     expect(out.facts[0]?.value).toBe(10);
-    expect(out.omitted.facts).toBe(10);
+    expect(out.omitted).toEqual({ facts: 10, linked: 0, events: 0 });
+    expect(out.note).toBe('Left out: 10 older facts. The newest of each list are shown.');
+  });
+
+  it('counts what main left out from its totals', async () => {
+    // main sent the newest 3 facts and 2 events of 500 and 250; nothing linked
+    const vols = Array.from({ length: 3 }, (_, i) => ({ ...sp1Volume, id: `v${String(i)}` }));
+    const evs = Array.from({ length: 2 }, (_, i) =>
+      fact({ id: `e${String(i)}`, kind: 'event', subject: 'measurement:sp1', label: 'Edited' }),
+    );
+    bridge({
+      history: (subject) =>
+        hist(subject, {
+          facts: vols,
+          events: evs,
+          totals: { facts: 500, linked: 0, events: 250 },
+        }),
+    });
+    const r = await runRendererTool('history_of', { subject: 'measurement:sp1' }, ctx());
+    expect(r.result).toMatchObject({
+      omitted: { facts: 497, linked: 0, events: 248 },
+      note: 'Left out: 497 older facts, 248 older events. The newest of each list are shown.',
+    });
+    expect(r.summary).toBe('Stockpile SP1: 750 entries');
+  });
+
+  it('shows no note when nothing is left out', async () => {
+    bridge({ history: (s) => hist(s, { facts: [sp1] }) });
+    const r = await runRendererTool('history_of', { subject: 'measurement:sp1' }, ctx());
+    expect(r.result).not.toHaveProperty('note');
+    expect(r.result).not.toHaveProperty('omitted');
   });
 });

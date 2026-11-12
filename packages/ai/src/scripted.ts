@@ -18,16 +18,67 @@ import { DETECT_MARKER } from './detect';
 import { ENGINEER_SYSTEM_LEAD } from './engineerPrompt';
 import type { ModelProvider } from './providers';
 
+/**
+ * The words of a message after a keyword, up to " over time", "?" or the end, trimmed of quotes
+ * and end punctuation, in the message's own case: "What happened to Stockpile SP1 over time?"
+ * after "what happened to" is "Stockpile SP1". Empty when the keyword is not there.
+ */
+export function wordsAfter(text: string, keyword: string): string {
+  const at = text.toLowerCase().indexOf(keyword);
+  if (at < 0) return '';
+  let rest = text.slice(at + keyword.length);
+  const end = /\s+over time\b|\?/i.exec(rest);
+  if (end) rest = rest.slice(0, end.index);
+  return rest
+    .trim()
+    .replace(/[.!,;:]+$/, '')
+    .replace(/^["'\u201c\u2018]+|["'\u201d\u2019]+$/g, '')
+    .trim();
+}
+
+/** A tool input the script sends: fixed, or read from the user's message. */
+export type ScriptInput = Record<string, unknown> | ((text: string) => Record<string, unknown>);
+
+/** The input a rule sends for a message. */
+export function scriptInput(input: ScriptInput, text: string): Record<string, unknown> {
+  return typeof input === 'function' ? input(text) : input;
+}
+
+const subjectAfter =
+  (keyword: string) =>
+  (text: string): Record<string, unknown> => {
+    const subject = wordsAfter(text, keyword);
+    return subject ? { subject } : {};
+  };
+const searchAfter =
+  (keyword: string) =>
+  (text: string): Record<string, unknown> => {
+    const words = wordsAfter(text, keyword);
+    return words ? { text: words } : {};
+  };
+
 /** Keyword (lower case, in the user's message) to the tool call the script makes. */
-export const SCRIPT: readonly { when: string; tool: string; input: Record<string, unknown> }[] = [
+export const SCRIPT: readonly { when: string; tool: string; input: ScriptInput }[] = [
   // A2 read tools and menu actions, for the eval suite (agent-eval.suites.ts). Long phrases,
   // first, so they never catch another spec's request and win over the short keywords below.
-  // M1 fact index: a fixed subject (the quarry's first pile) and a search with no words
-  { when: 'what happened to', tool: 'history_of', input: { subject: 'Stockpile SP1' } },
-  { when: 'history of', tool: 'history_of', input: { subject: 'Stockpile SP1' } },
-  { when: 'search the project for', tool: 'query_facts', input: {} },
-  { when: 'what do we know about', tool: 'query_facts', input: {} },
-  { when: 'find everything about', tool: 'query_facts', input: {} },
+  // M1 fact index: the subject or the search words come from the question itself
+  { when: 'what happened to', tool: 'history_of', input: subjectAfter('what happened to') },
+  { when: 'history of', tool: 'history_of', input: subjectAfter('history of') },
+  {
+    when: 'search the project for',
+    tool: 'query_facts',
+    input: searchAfter('search the project for'),
+  },
+  {
+    when: 'what do we know about',
+    tool: 'query_facts',
+    input: searchAfter('what do we know about'),
+  },
+  {
+    when: 'find everything about',
+    tool: 'query_facts',
+    input: searchAfter('find everything about'),
+  },
   { when: 'list the survey dates', tool: 'list_surveys', input: {} },
   { when: 'earliest survey into view', tool: 'set_survey_date', input: { date: 'earliest' } },
   { when: 'detections were accepted', tool: 'list_detections', input: { status: 'accepted' } },
@@ -198,7 +249,7 @@ export function scriptedTurn(
   if (result) return { kind: 'text', text: `Tool ${result.name} returned ${result.output}` };
   const text = lastUserText(prompt);
   const hit = SCRIPT.find((s) => text.toLowerCase().includes(s.when));
-  if (hit) return { kind: 'tool', tool: hit.tool, input: hit.input };
+  if (hit) return { kind: 'tool', tool: hit.tool, input: scriptInput(hit.input, text) };
   return { kind: 'text', text: `Scripted reply to: ${text.slice(0, 120)}` };
 }
 
