@@ -53,6 +53,7 @@ export const enAgentTools = {
   'agentTool.card.reopen_one': 'Reopen {count} detection',
   'agentTool.card.reopen_other': 'Reopen {count} detections',
   'agentTool.card.remember': 'Remember: {text}',
+  'agentTool.card.rememberAbout': 'Remember about {about}: {text}',
   'agentTool.card.forget': 'Forget: {text}',
   // what an action acts on, on the card
   'agentTool.target.project': 'the project',

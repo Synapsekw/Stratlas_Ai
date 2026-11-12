@@ -1,4 +1,12 @@
-import type { AiTask, AioBridge, ConversationSummary, WindowKind } from '@aio/schema';
+import {
+  AGENT_MEMORY_MAX_NOTES,
+  AGENT_NOTE_MAX_CHARS,
+  type AgentNote,
+  type AiTask,
+  type AioBridge,
+  type ConversationSummary,
+  type WindowKind,
+} from '@aio/schema';
 import { useWorkspace } from '@aio/workspace';
 import {
   useEffect,
@@ -126,6 +134,8 @@ export function AgentPanel({
   const [draft, setDraft] = useState('');
   const [attach, setAttach] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  // A3: the project panel (notes, view capture, sending without the preview)
+  const [showProject, setShowProject] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const log = useRef<HTMLDivElement>(null);
 
@@ -158,6 +168,7 @@ export function AgentPanel({
   useEffect(() => {
     if (!shared) session.reset();
     setShowHistory(false);
+    setShowProject(false);
     void session.refresh();
   }, [session, shared, projectId]);
 
@@ -190,7 +201,13 @@ export function AgentPanel({
   const answerOnly = state.availability.status === 'ready' ? state.availability.notice : undefined;
   const openHistory = () => {
     setShowHistory((v) => !v);
+    setShowProject(false);
     void session.listHistory();
+  };
+  const openProject = () => {
+    setShowProject((v) => !v);
+    setShowHistory(false);
+    void session.loadNotes();
   };
   const exportChat = async () => {
     const r = await session.exportMarkdown();
@@ -229,6 +246,17 @@ export function AgentPanel({
           <button
             type="button"
             className="ag-btn ghost icon"
+            title="This project: notes and permissions"
+            aria-label="This project: notes and permissions"
+            aria-pressed={showProject}
+            disabled={!projectId}
+            onClick={openProject}
+          >
+            <Icon name="note" />
+          </button>
+          <button
+            type="button"
+            className="ag-btn ghost icon"
             title="Export this conversation as Markdown"
             aria-label="Export this conversation as Markdown"
             disabled={state.turns.length === 0}
@@ -245,6 +273,7 @@ export function AgentPanel({
             onClick={() => {
               session.reset();
               setShowHistory(false);
+              setShowProject(false);
             }}
           >
             <Icon name="new" />
@@ -263,7 +292,19 @@ export function AgentPanel({
         aria-busy={state.busy}
         aria-label="Ask AI conversation"
       >
-        {showHistory ? (
+        {showProject && projectId ? (
+          <ProjectPanel
+            notes={state.notes}
+            readOnly={state.notesReadOnly}
+            problem={state.notesProblem}
+            viewCapture={state.viewCapture}
+            alwaysAllow={state.alwaysAllow}
+            onAdd={(text) => session.addNote(text)}
+            onDelete={(id) => session.deleteNote(id)}
+            onViewCapture={(allow) => void session.setViewCapture(allow)}
+            onRevoke={() => void session.revokeConsent()}
+          />
+        ) : showHistory ? (
           <History
             items={state.history}
             current={state.id}
@@ -572,6 +613,140 @@ function History({
   );
 }
 
+/**
+ * A3: what the agent keeps and may do in this project: the notes it follows (each deletable,
+ * and the person can add one), view capture without asking, and sending without the preview.
+ */
+function ProjectPanel({
+  notes,
+  readOnly,
+  problem,
+  viewCapture,
+  alwaysAllow,
+  onAdd,
+  onDelete,
+  onViewCapture,
+  onRevoke,
+}: {
+  notes: AgentNote[];
+  readOnly: boolean;
+  problem: string | null;
+  viewCapture: boolean;
+  alwaysAllow: boolean;
+  onAdd: (text: string) => Promise<string | null>;
+  onDelete: (id: string) => Promise<string | null>;
+  onViewCapture: (allow: boolean) => void;
+  onRevoke: () => void;
+}) {
+  const [text, setText] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const full = notes.length >= AGENT_MEMORY_MAX_NOTES;
+  const add = async () => {
+    if (!text.trim()) return;
+    const e = await onAdd(text);
+    setError(e);
+    if (!e) setText('');
+  };
+  return (
+    <div className="ag-pp" aria-label="This project">
+      <section className="ag-pp-sec" aria-label="Project notes">
+        <div className="ag-pp-head">
+          <b>Notes the agent follows</b>
+          <span className="ag-mono">
+            {String(notes.length)} of {String(AGENT_MEMORY_MAX_NOTES)}
+          </span>
+        </div>
+        {readOnly && (
+          <p className="ag-faint">
+            {problem ??
+              'These notes cannot be changed here: the project is a read-only package or its folder is read only.'}
+          </p>
+        )}
+        {notes.length === 0 ? (
+          <p className="ag-faint">
+            No notes yet. Ask the agent to remember something, or add a note here.
+          </p>
+        ) : (
+          <ul className="ag-notes" aria-label="Notes">
+            {notes.map((n) => (
+              <li key={n.id}>
+                <span className="ag-notes-text">{n.text}</span>
+                <span className="ag-mono">
+                  {n.by === 'agent' ? 'Saved by the agent' : 'Added by you'} ·{' '}
+                  {n.createdAt.slice(0, 10)}
+                </span>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    className="ag-btn ghost icon"
+                    title="Delete this note"
+                    aria-label={`Delete note: ${n.text}`}
+                    onClick={() => {
+                      void onDelete(n.id).then(setError);
+                    }}
+                  >
+                    <Icon name="x" />
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {!readOnly && (
+          <form
+            className="ag-pp-add"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void add();
+            }}
+          >
+            <input
+              type="text"
+              aria-label="Add a note"
+              placeholder={full ? 'Delete a note to add another' : 'Add a note'}
+              maxLength={AGENT_NOTE_MAX_CHARS}
+              value={text}
+              disabled={full}
+              onChange={(e) => {
+                setText(e.target.value);
+              }}
+            />
+            <button type="submit" className="ag-btn sm" disabled={full || !text.trim()}>
+              Add
+            </button>
+          </form>
+        )}
+        {error && (
+          <p className="ag-err" role="alert">
+            {error}
+          </p>
+        )}
+      </section>
+      <section className="ag-pp-sec" aria-label="Permissions">
+        <label className="ag-pp-switch">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={viewCapture}
+            onChange={(e) => {
+              onViewCapture(e.target.checked);
+            }}
+          />
+          <span>Let the agent look at the view without asking</span>
+        </label>
+        {alwaysAllow && (
+          <div className="ag-pp-row">
+            <span className="ag-faint">Messages go to the cloud without the send preview.</span>
+            <button type="button" className="ag-btn sm" onClick={onRevoke}>
+              Stop sending without the preview
+            </button>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 const OFF_HELP: Partial<Record<string, string[]>> = {
   'cloud-off': [
     'Open Settings, Privacy and cloud.',
@@ -738,6 +913,9 @@ function BatchCard({ steps, session }: { steps: Step[]; session: AgentSession })
   const [left, setLeft] = useState<ReadonlySet<string>>(() => new Set());
   const ticked = steps.filter((s) => !left.has(s.callId)).map((s) => s.callId);
   const unticked = steps.filter((s) => left.has(s.callId)).map((s) => s.callId);
+  // while the batch runs (an item already running), the card waits: no second "Approve N"
+  const batching = useSyncExternalStore(session.subscribe, () => session.getState().batching);
+  const busy = batching || steps.some((s) => s.status === 'running');
   return (
     <div className="approve batch" role="group" aria-label="Actions waiting for approval">
       <b className="batch-head">{steps.length} actions waiting for you</b>
@@ -747,6 +925,7 @@ function BatchCard({ steps, session }: { steps: Step[]; session: AgentSession })
             <label>
               <input
                 type="checkbox"
+                disabled={busy}
                 checked={!left.has(s.callId)}
                 onChange={() => {
                   setLeft((prev) => {
@@ -766,6 +945,7 @@ function BatchCard({ steps, session }: { steps: Step[]; session: AgentSession })
         <button
           type="button"
           className="ag-btn sm"
+          disabled={busy}
           onClick={() =>
             void session.approveBatch(
               [],
@@ -778,7 +958,7 @@ function BatchCard({ steps, session }: { steps: Step[]; session: AgentSession })
         <button
           type="button"
           className="ag-btn sm primary"
-          disabled={ticked.length === 0}
+          disabled={busy || ticked.length === 0}
           onClick={() => void session.approveBatch(ticked, unticked)}
         >
           <Icon name="check" size={12} />
@@ -859,7 +1039,7 @@ function StepRow({
                 <button
                   type="button"
                   className="ag-btn sm primary"
-                  title="Later captures in this project run without asking. Turn it off in the agent's project panel."
+                  title="Later captures in this project run without asking. Turn it off under This project (the note button at the top of the agent)."
                   onClick={() => void session.approve(step.callId, { allowViewCapture: true })}
                 >
                   <Icon name="check" size={12} />
@@ -926,6 +1106,7 @@ type IconName =
   | 'camera'
   | 'new'
   | 'history'
+  | 'note'
   | 'download';
 
 const PATHS: Record<IconName, string> = {
@@ -941,6 +1122,7 @@ const PATHS: Record<IconName, string> = {
   new: 'M10 4v12M4 10h12',
   history: 'M3.5 10a6.5 6.5 0 1 0 2-4.7M3 3v3h3M10 6.5V10l2.5 1.5',
   download: 'M10 3v9M6 8.5l4 4 4-4M4 15.5h12',
+  note: 'M5 3h10v14l-5-3.5L5 17z',
 };
 
 function Icon({ name, size = 14 }: { name: IconName; size?: number }) {

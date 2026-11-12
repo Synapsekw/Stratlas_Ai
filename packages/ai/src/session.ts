@@ -13,6 +13,7 @@ import {
   CHAT_MESSAGES_MAX,
   needsApproval,
   type AgentFacts,
+  type AgentNote,
   type AiProvider,
   type AiErrorCode,
   type AiPolicy,
@@ -103,6 +104,14 @@ export interface SessionState {
   alwaysAllow: boolean;
   /** A3: the person let the agent capture the view in this project without a card each time. */
   viewCapture: boolean;
+  /** A3: the open project's notes (`ai/memory.json`), sent with each message as projectNotes. */
+  notes: AgentNote[];
+  /** The notes cannot be changed here (a package, or a read-only folder). */
+  notesReadOnly: boolean;
+  /** Why the notes cannot be read or changed (a file from a newer version...), or null. */
+  notesProblem: string | null;
+  /** A batch of approvals is running: the batch card waits, a second "Approve N" is ignored. */
+  batching: boolean;
   policy: AiPolicy;
   preview: SendPreview | null;
   /** Saved conversations of the project, newest first; null until listed. */
@@ -139,6 +148,16 @@ export const SESSION_TEXT = {
   viewCaptureAllowed: 'Ran without asking: view capture is allowed for this project.',
 } as const;
 
+/** The tools that change the project notes: the notes are read again after them. */
+const NOTE_TOOLS: ReadonlySet<string> = new Set(['remember_note', 'forget_note']);
+
+/** A note as the model sees it in the window context. */
+const noteForContext = (n: AgentNote) => ({
+  id: n.id,
+  text: n.text,
+  ...(n.about ? { about: n.about } : {}),
+});
+
 /** The tool that sends the view to the model; once allowed for a project it runs without a card. */
 const VIEW_CAPTURE_TOOL = 'capture_frame';
 
@@ -170,6 +189,8 @@ export class AgentSession {
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private saving: Promise<void> = Promise.resolve();
   private closing = false;
+  /** The project `viewCapture` was read or stored for: it never carries over to another one. */
+  private viewCaptureFor: string | null = null;
 
   constructor(private readonly deps: SessionDeps) {
     this.newId = deps.newId ?? (() => globalThis.crypto.randomUUID());
@@ -186,6 +207,10 @@ export class AgentSession {
       availability: { status: 'checking' },
       alwaysAllow: false,
       viewCapture: false,
+      notes: [],
+      notesReadOnly: false,
+      notesProblem: null,
+      batching: false,
       policy: 'allow',
       preview: null,
       history: null,
@@ -245,6 +270,8 @@ export class AgentSession {
       return;
     }
     const projectId = this.projectId();
+    // another project's choice is dropped at once, even if the reads below fail
+    this.dropViewCaptureOf(projectId);
     try {
       const task = this.deps.task?.();
       const status = await bridge.invoke('ai:status', {
@@ -269,13 +296,19 @@ export class AgentSession {
       this.set({ availability });
       if (projectId) {
         const p = await bridge.invoke('ai:project', { projectId });
+        if (this.projectId() !== projectId) return;
+        this.viewCaptureFor = projectId;
         this.set({
           alwaysAllow: p.alwaysAllow,
           viewCapture: p.viewCapture ?? false,
           policy: p.policy,
           projectUsage: p.usage,
         });
-      } else if (this.state.viewCapture) this.set({ viewCapture: false });
+        await this.loadNotes();
+      } else {
+        if (this.state.viewCapture) this.set({ viewCapture: false });
+        if (this.state.notes.length) this.set({ notes: [], notesReadOnly: false });
+      }
     } catch (e) {
       this.set({
         availability: {
@@ -317,11 +350,13 @@ export class AgentSession {
       }
       a = { status: 'ready', route: status.route, cloud: status.cloud };
     }
+    const notes = await this.loadNotes();
     const ctx = this.deps.toolContext();
     const context = {
       ...assembleContext(ctx.workspace.getState(), this.window),
       ...spatialContext(ctx, this.window),
       ...viewContext(ctx),
+      ...(notes.length ? { projectNotes: notes.map(noteForContext) } : {}),
     };
     let image: string | undefined;
     if (opts.attachFrame) image = (await ctx.captureFrame(this.window)) ?? undefined;
@@ -393,6 +428,67 @@ export class AgentSession {
     if (r.ok) this.set({ alwaysAllow: false });
   }
 
+  /**
+   * Read the open project's notes into the state (A3); answers them. A project that cannot be
+   * read, or no project, has none.
+   */
+  async loadNotes(): Promise<AgentNote[]> {
+    const projectId = this.projectId();
+    const bridge = this.deps.bridge;
+    if (!projectId || !bridge) {
+      if (this.state.notes.length) this.set({ notes: [], notesReadOnly: false });
+      return [];
+    }
+    try {
+      // an answer without a notes list (an older main, a test bridge) is no notes
+      const r = (await bridge.invoke('ai:memory', { projectId })) as
+        Partial<IpcResponse<'ai:memory'>> | undefined;
+      if (this.projectId() !== projectId) return [];
+      const notes = r?.ok && Array.isArray(r.notes) ? r.notes : [];
+      this.set({
+        notes,
+        notesReadOnly: r?.readOnly ?? false,
+        notesProblem: r?.error ?? null,
+      });
+      return notes;
+    } catch {
+      return this.state.notes;
+    }
+  }
+
+  /** The person adds a note in the project panel. Null when saved, else why not. */
+  async addNote(text: string): Promise<string | null> {
+    const projectId = this.projectId();
+    const bridge = this.deps.bridge;
+    if (!projectId || !bridge) return SESSION_TEXT.noProject;
+    try {
+      const r = await bridge.invoke('ai:remember', { projectId, text, by: 'person' });
+      await this.loadNotes();
+      return r.ok ? null : (r.error ?? SESSION_TEXT.failed);
+    } catch {
+      return SESSION_TEXT.failed;
+    }
+  }
+
+  /** The person deletes a note in the project panel. Null when deleted, else why not. */
+  async deleteNote(id: string): Promise<string | null> {
+    const projectId = this.projectId();
+    const bridge = this.deps.bridge;
+    if (!projectId || !bridge) return SESSION_TEXT.noProject;
+    try {
+      const r = await bridge.invoke('ai:forget', { projectId, id });
+      await this.loadNotes();
+      return r.ok ? null : (r.error ?? SESSION_TEXT.failed);
+    } catch {
+      return SESSION_TEXT.failed;
+    }
+  }
+
+  /** After a note tool ran or was undone, the panel and the next message see the notes as they are. */
+  private notesTouched(name: string | undefined): void {
+    if (name && NOTE_TOOLS.has(name)) void this.loadNotes();
+  }
+
   /** Whether a project is open, so a choice can be stored for it. */
   hasProject(): boolean {
     return this.projectId() !== null;
@@ -408,7 +504,10 @@ export class AgentSession {
     if (!projectId || !bridge) return false;
     try {
       const r = await bridge.invoke('ai:setViewCapture', { projectId, allow });
-      if (r.ok) this.set({ viewCapture: allow });
+      if (r.ok && this.projectId() === projectId) {
+        this.viewCaptureFor = projectId;
+        this.set({ viewCapture: allow });
+      }
       return r.ok;
     } catch {
       return false;
@@ -490,14 +589,21 @@ export class AgentSession {
    * alone. Each step keeps its own status and Undo.
    */
   async approveBatch(callIds: readonly string[], skip: readonly string[] = []): Promise<void> {
-    for (const id of skip) this.reject(id);
-    const order = this.modelOrder();
-    const run = [...new Set(callIds)]
-      .filter((id) => !skip.includes(id) && this.state.steps[id]?.status === 'awaiting')
-      .sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
-    for (const id of run) {
-      if (this.state.steps[id]?.status !== 'awaiting') continue;
-      if (!(await this.approve(id))) break;
+    // one batch at a time: a second click while the first runs must not start a second loop
+    if (this.state.batching) return;
+    this.set({ batching: true }, false);
+    try {
+      for (const id of skip) this.reject(id);
+      const order = this.modelOrder();
+      const run = [...new Set(callIds)]
+        .filter((id) => !skip.includes(id) && this.state.steps[id]?.status === 'awaiting')
+        .sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+      for (const id of run) {
+        if (this.state.steps[id]?.status !== 'awaiting') continue;
+        if (!(await this.approve(id))) break;
+      }
+    } finally {
+      this.set({ batching: false }, false);
     }
   }
 
@@ -538,6 +644,7 @@ export class AgentSession {
           summary: summary ? `${summary} · ${refused}` : refused,
         });
       } else this.patchStep(callId, { status: 'undone', canUndo: false });
+      this.notesTouched(this.state.steps[callId]?.name);
     };
     const fail = (e: unknown) => {
       settle(e instanceof ToolError ? e.message : SESSION_TEXT.failed);
@@ -573,7 +680,17 @@ export class AgentSession {
       preview: null,
       saveError: null,
       fix: null,
+      batching: false,
     });
+    // a new conversation in the same project keeps its choice; a project switch drops it
+    this.dropViewCaptureOf(this.projectId());
+  }
+
+  /** Forget the view-capture choice when it belongs to a project other than `projectId`. */
+  private dropViewCaptureOf(projectId: string | null): void {
+    if (this.viewCaptureFor === projectId) return;
+    this.viewCaptureFor = null;
+    if (this.state.viewCapture) this.set({ viewCapture: false });
   }
 
   // History (AI-8) -----------------------------------------------------------------------------
@@ -831,6 +948,8 @@ export class AgentSession {
       needsApproval(e.risk) &&
       e.name === VIEW_CAPTURE_TOOL &&
       this.state.viewCapture &&
+      this.viewCaptureFor !== null &&
+      this.viewCaptureFor === this.projectId() &&
       e.runId === this.runId;
     const step: Step = {
       callId: e.callId,
@@ -868,6 +987,7 @@ export class AgentSession {
         canUndo: this.undos.has(step.callId),
         result: compactValue(r.result),
       });
+      this.notesTouched(step.name);
       await this.deps.bridge?.invoke('ai:toolResult', {
         runId,
         callId: step.callId,
@@ -906,6 +1026,7 @@ export class AgentSession {
         canUndo: this.undos.has(step.callId),
         result: compactValue(r.result),
       });
+      this.notesTouched(step.name);
       note = `Approved later and run: ${step.name}, ${r.summary}.`;
       ok = true;
     } catch (e) {

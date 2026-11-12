@@ -57,10 +57,20 @@ const searchAfter =
     return words ? { text: words } : {};
   };
 
+/** A3: "remember that the piles are named SP-1 to SP-9" saves "The piles are named SP-1 to SP-9". */
+const noteAfter =
+  (keyword: string) =>
+  (text: string): Record<string, unknown> => {
+    const words = wordsAfter(text, keyword);
+    return { text: words ? `${words.charAt(0).toUpperCase()}${words.slice(1)}` : text.trim() };
+  };
+
 /** Keyword (lower case, in the user's message) to the tool call the script makes. */
 export const SCRIPT: readonly { when: string; tool: string; input: ScriptInput }[] = [
   // A2 read tools and menu actions, for the eval suite (agent-eval.suites.ts). Long phrases,
   // first, so they never catch another spec's request and win over the short keywords below.
+  // A3 project notes: the note is the rest of the message
+  { when: 'remember that', tool: 'remember_note', input: noteAfter('remember that') },
   // M1 fact index: the subject or the search words come from the question itself
   { when: 'what happened to', tool: 'history_of', input: subjectAfter('what happened to') },
   { when: 'history of', tool: 'history_of', input: subjectAfter('history of') },

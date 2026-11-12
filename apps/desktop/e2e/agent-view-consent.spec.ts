@@ -3,8 +3,8 @@
  * (QUADRION_AI_TEST_PROVIDER, isolated profile, no network) on the tiny project's 3D view. The
  * first `capture_frame` asks with "Allow for this project", "Just this once" and "Reject";
  * "Allow for this project" stores the choice on this computer (`ai:project` says so) and runs
- * the capture. The next capture runs without a card and says why. Turned off again through
- * `ai:setViewCapture` (the dock's project panel does the same), the card comes back.
+ * the capture. The next capture runs without a card and says why. Turned off again with the
+ * switch in the dock's project panel, the card comes back.
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { rm } from 'node:fs/promises';
@@ -86,18 +86,18 @@ test('agent: view capture asks once per project, then runs without a card until 
   await expect(agent(win).locator('.step-note')).toHaveText(NOTE);
   if (SHOTS) await win.screenshot({ path: join(SHOTS, 'agent-view-consent-auto.png') });
 
-  // turned off (the dock's project panel calls the same channel), the card comes back; the dock
-  // reads the project's choices again when the window gets focus
+  // turned off in the dock's project panel, the card comes back
   await expect(agent(win).getByText(/^Tool capture_frame returned/)).toHaveCount(2);
-  const off = await win.evaluate(
-    (id) => window.aio.invoke('ai:setViewCapture', { projectId: id, allow: false }),
-    projectId,
-  );
-  expect(off).toEqual({ ok: true });
-  expect(await viewCapture()).toBe(false);
-  await win.evaluate(() => window.dispatchEvent(new Event('focus')));
-  // the re-read is two quick IPC calls; nothing on screen says when it is over
-  await win.waitForTimeout(1000);
+  const panel = agent(win).getByRole('button', { name: 'This project: notes and permissions' });
+  await panel.click();
+  const allow = agent(win).getByRole('switch', {
+    name: 'Let the agent look at the view without asking',
+  });
+  await expect(allow).toBeChecked();
+  await allow.click();
+  await expect(allow).not.toBeChecked();
+  await expect.poll(viewCapture).toBe(false);
+  await panel.click();
   await ask(win, CAPTURE);
   await expect(captures(win)).toHaveCount(3);
   await expect(captures(win).nth(2)).toHaveClass(/\bawaiting\b/);

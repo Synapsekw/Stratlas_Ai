@@ -142,7 +142,12 @@ async function runForget(input: unknown, ctx: RendererToolContext) {
 /** The approval card of a save: the note as it will be kept. */
 export function describeRemember(input: unknown): string | null {
   const p = memoryToolInputs.remember_note.safeParse(input);
-  return p.success ? t('agentTool.card.remember', { text: p.data.text.trim() }) : null;
+  if (!p.success) return null;
+  const text = p.data.text.trim();
+  // the subject is on the card too: a note about one thing steers answers about it
+  return p.data.about
+    ? t('agentTool.card.rememberAbout', { text, about: p.data.about })
+    : t('agentTool.card.remember', { text });
 }
 
 /** The approval card of a delete: the note's text when the panel has read it, else its id. */

@@ -76,6 +76,14 @@ describe('scripted corrections', () => {
   const user = (text: string) => [
     { role: 'user' as const, content: [{ type: 'text' as const, text }] },
   ];
+  it('saves "remember that ..." as a project note, the rest of the message as its text', () => {
+    expect(scriptedTurn(user('Remember that the piles here are named SP-1 to SP-9.'))).toEqual({
+      kind: 'tool',
+      tool: 'remember_note',
+      input: { text: 'The piles here are named SP-1 to SP-9' },
+    });
+  });
+
   it('"there are four flues, not three" sets the flue count', () => {
     expect(scriptedTurn(user('There are four flues, not three.'))).toEqual({
       kind: 'tool',

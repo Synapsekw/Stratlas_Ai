@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type {
+  AgentNote,
   AioBridge,
   IpcChannel,
   IpcEvent,
@@ -591,6 +592,135 @@ describe('batch approvals and view capture in the panel (A3)', () => {
     expect(el.querySelector('.step-note')?.textContent).toBe(
       'Ran without asking: view capture is allowed for this project.',
     );
+  });
+});
+
+describe('the project panel (A3)', () => {
+  const pile = {
+    id: 'n-pile1',
+    text: 'The piles here are named SP-1 to SP-9',
+    by: 'agent' as const,
+    createdAt: '2026-11-01T09:00:00.000Z',
+  };
+
+  /** Main's note store and the A3 switches, in memory, over the panel test bridge. */
+  function projectBridge(opts: { readOnly?: boolean; alwaysAllow?: boolean } = {}) {
+    const base = bridge(true, opts.alwaysAllow ?? false);
+    let notes: AgentNote[] = [pile];
+    const calls: { channel: IpcChannel; req: unknown }[] = [];
+    const b: AioBridge = {
+      invoke: <C extends IpcChannel>(channel: C, req: IpcRequest<C>) => {
+        calls.push({ channel, req });
+        const answer = (v: unknown) => Promise.resolve(v as IpcResponse<C>);
+        if (channel === 'ai:memory')
+          return answer({ ok: true, notes, readOnly: opts.readOnly ?? false });
+        if (channel === 'ai:remember') {
+          const r = req as IpcRequest<'ai:remember'>;
+          if (r.text.trim() === pile.text) return answer({ ok: false, error: 'Already there.' });
+          const note = { id: 'n-mine1', text: r.text, by: r.by, createdAt: pile.createdAt };
+          notes = [...notes, note];
+          return answer({ ok: true, note });
+        }
+        if (channel === 'ai:forget') {
+          const id = (req as IpcRequest<'ai:forget'>).id;
+          notes = notes.filter((n) => n.id !== id);
+          return answer({ ok: true, note: pile });
+        }
+        return base.b.invoke(channel, req);
+      },
+      on: (event, listener) => base.b.on(event, listener),
+    };
+    return { b, calls };
+  }
+
+  async function openPanel(opts: { readOnly?: boolean; alwaysAllow?: boolean } = {}) {
+    workspace.getState().openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, []);
+    const t = projectBridge(opts);
+    const el = await render(t.b);
+    const toggle = el.querySelector<HTMLButtonElement>(
+      'button[aria-label="This project: notes and permissions"]',
+    );
+    if (!toggle) throw new Error('no project panel button');
+    await act(async () => {
+      toggle.click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    return { el, t, toggle };
+  }
+
+  const buttonNamed = (el: HTMLElement, name: string) =>
+    [...el.querySelectorAll('button')].find((b) => b.textContent.trim() === name);
+
+  it('opens from the header like the history, and lists the notes with who saved them', async () => {
+    const { el, toggle } = await openPanel();
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    const list = el.querySelector('[aria-label="Notes"]');
+    expect(list?.textContent).toContain('The piles here are named SP-1 to SP-9');
+    expect(list?.textContent).toContain('Saved by the agent');
+    expect(el.textContent).toContain('1 of 30');
+  });
+
+  it('adds a note for the person and deletes one', async () => {
+    const { el, t } = await openPanel();
+    const input = el.querySelector<HTMLInputElement>('input[aria-label="Add a note"]');
+    if (!input) throw new Error('no add field');
+    await act(async () => {
+      // React reads the value through the prototype's setter
+      Reflect.set(HTMLInputElement.prototype, 'value', 'Units are feet', input);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      buttonNamed(el, 'Add')?.click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(t.calls.find((c) => c.channel === 'ai:remember')?.req).toMatchObject({
+      projectId: 'p1',
+      text: 'Units are feet',
+      by: 'person',
+    });
+    expect(el.textContent).toContain('Added by you');
+    expect(input.value).toBe('');
+    const del = el.querySelector<HTMLButtonElement>(
+      'button[aria-label="Delete note: The piles here are named SP-1 to SP-9"]',
+    );
+    await act(async () => {
+      del?.click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(t.calls.find((c) => c.channel === 'ai:forget')?.req).toMatchObject({ id: 'n-pile1' });
+    expect(el.textContent).not.toContain('SP-1 to SP-9');
+  });
+
+  it('shows the notes of a read-only package without delete or add, and says why', async () => {
+    const { el } = await openPanel({ readOnly: true });
+    expect(el.textContent).toContain('SP-1 to SP-9');
+    expect(el.textContent).toContain('cannot be changed here');
+    expect(el.querySelector('button[aria-label^="Delete note"]')).toBeNull();
+    expect(el.querySelector('input[aria-label="Add a note"]')).toBeNull();
+  });
+
+  it('turns view capture on and off, and stops sending without the preview', async () => {
+    const { el, t } = await openPanel({ alwaysAllow: true });
+    const sw = el.querySelector<HTMLInputElement>('input[role="switch"]');
+    expect(sw?.checked).toBe(false);
+    await act(async () => {
+      sw?.click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(t.calls.find((c) => c.channel === 'ai:setViewCapture')?.req).toEqual({
+      projectId: 'p1',
+      allow: true,
+    });
+    await act(async () => {
+      buttonNamed(el, 'Stop sending without the preview')?.click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(t.calls.find((c) => c.channel === 'ai:setConsent')?.req).toEqual({
+      projectId: 'p1',
+      alwaysAllow: false,
+    });
+    expect(buttonNamed(el, 'Stop sending without the preview')).toBeUndefined();
   });
 });
 

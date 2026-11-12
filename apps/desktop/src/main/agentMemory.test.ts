@@ -119,6 +119,42 @@ describe('agent memory', () => {
     expect(changed).toEqual([]);
   });
 
+  it('never writes over a notes file it cannot fully read, and says why', async () => {
+    const s = store();
+    const file = join(dir, MEMORY_FILE);
+    await mkdir(join(dir, 'ai'), { recursive: true });
+    const good = {
+      id: 'n-good1',
+      text: 'kept',
+      by: 'person',
+      createdAt: '2026-11-01T00:00:00.000Z',
+    };
+    const cases: [string, RegExp][] = [
+      [
+        JSON.stringify({ schema: 'aio.agent-memory/1', notes: [good, { id: 'bad', text: '' }] }),
+        /Some of these notes could not be read/,
+      ],
+      [JSON.stringify({ schema: 'aio.agent-memory/2', notes: [good] }), /newer version/],
+      ['{ not json', /could not be read/],
+      [JSON.stringify({ schema: 'something-else' }), /not a notes file/],
+    ];
+    for (const [body, why] of cases) {
+      await writeFile(file, body);
+      const m = await s.memory('p1');
+      expect(m.readOnly, body).toBe(true);
+      expect(m.error, body).toMatch(why);
+      const r = await s.remember({ projectId: 'p1', text: 'new one', by: 'person' });
+      expect(r.ok, body).toBe(false);
+      expect(r.error, body).toMatch(why);
+      expect((await s.forget({ projectId: 'p1', id: 'n-good1' })).ok, body).toBe(false);
+      expect(await readFile(file, 'utf8'), body).toBe(body);
+    }
+    // the readable notes still show
+    await writeFile(file, cases[1]?.[0] ?? '');
+    expect((await s.memory('p1')).notes.map((n) => n.id)).toEqual(['n-good1']);
+    expect(changed).toEqual([]);
+  });
+
   it('answers plainly for a project that is not open', async () => {
     expect(await store().memory('nope')).toMatchObject({ ok: false, notes: [], readOnly: true });
   });

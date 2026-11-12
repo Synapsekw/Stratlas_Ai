@@ -35,16 +35,55 @@ function why(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/** The notes of a project folder; a missing or unreadable file is no notes. */
-export async function readNotes(root: string): Promise<AgentNote[]> {
+/**
+ * The notes of a project folder, and why they must not be written when the file is not one this
+ * build fully reads. Only a missing file is no notes: a file that is too large, not JSON, from a
+ * newer version or with notes this build cannot read is shown as far as it can be read and is
+ * never written over, so a save never drops the notes it could not read.
+ */
+export async function readMemory(
+  root: string,
+): Promise<{ notes: AgentNote[]; problem: string | null }> {
   const file = join(root, MEMORY_FILE);
+  const unreadable = (what: string) => ({
+    notes: [],
+    problem: `The notes file ${what}, so the notes cannot be changed here.`,
+  });
+  let raw: unknown;
   try {
-    if ((await stat(file)).size > MAX_BYTES) return [];
-    const r = AgentMemoryFile.safeParse(await readJson(file));
-    return r.success ? r.data.notes : [];
-  } catch {
-    return [];
+    if ((await stat(file)).size > MAX_BYTES) return unreadable('is too large to read');
+    raw = await readJson(file);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { notes: [], problem: null };
+    return unreadable(`could not be read (${why(e)})`);
   }
+  if (raw === undefined) return { notes: [], problem: null };
+  const strict = AgentMemoryFile.safeParse(raw);
+  if (strict.success) return { notes: strict.data.notes, problem: null };
+  const head: Record<string, unknown> =
+    raw !== null && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const schema: string = typeof head.schema === 'string' ? head.schema : '';
+  const version: string | undefined = /^aio\.agent-memory\/(\d+)$/.exec(schema)?.[1];
+  if (version === undefined) return unreadable('is not a notes file');
+  // the notes this build can read, for the panel and the agent
+  const listed: unknown[] = Array.isArray(head.notes) ? (head.notes as unknown[]) : [];
+  const notes: AgentNote[] = [];
+  for (const n of listed) {
+    const one = AgentNote.safeParse(n);
+    if (one.success) notes.push(one.data);
+  }
+  return {
+    notes,
+    problem:
+      Number(version) > 1
+        ? 'These notes were saved by a newer version of the app. Update the app to change them.'
+        : 'Some of these notes could not be read, so the notes cannot be changed here.',
+  };
+}
+
+/** The notes of a project folder that can be read (see `readMemory`). */
+export async function readNotes(root: string): Promise<AgentNote[]> {
+  return (await readMemory(root)).notes;
 }
 
 async function writable(root: string): Promise<boolean> {
@@ -121,8 +160,13 @@ export function createAgentMemory({ projects, changed, now = () => new Date() }:
   async function memory(projectId: string): Promise<IpcResponse<'ai:memory'>> {
     const r = open(projectId);
     if ('error' in r) return { ok: false, notes: [], readOnly: true, error: r.error };
-    const [notes, refused] = await Promise.all([readNotes(r.root), refusal(projectId, r.root)]);
-    return { ok: true, notes, readOnly: refused !== null };
+    const [read, refused] = await Promise.all([readMemory(r.root), refusal(projectId, r.root)]);
+    return {
+      ok: true,
+      notes: read.notes,
+      readOnly: refused !== null || read.problem !== null,
+      ...(read.problem ? { error: read.problem } : {}),
+    };
   }
 
   async function remember(req: {
@@ -154,7 +198,8 @@ export function createAgentMemory({ projects, changed, now = () => new Date() }:
       };
     }
     const result = await serial(root, async (): Promise<IpcResponse<'ai:remember'>> => {
-      const notes = await readNotes(root);
+      const { notes, problem } = await readMemory(root);
+      if (problem) return { ok: false, error: problem };
       if (req.restore && notes.some((n) => n.id === req.restore?.id)) {
         return { ok: true, note: notes.find((n) => n.id === req.restore?.id) };
       }
@@ -194,7 +239,8 @@ export function createAgentMemory({ projects, changed, now = () => new Date() }:
     const refused = await refusal(req.projectId, root);
     if (refused) return { ok: false, error: refused };
     const result = await serial(root, async (): Promise<IpcResponse<'ai:forget'>> => {
-      const notes = await readNotes(root);
+      const { notes, problem } = await readMemory(root);
+      if (problem) return { ok: false, error: problem };
       const note = notes.find((n) => n.id === req.id);
       if (!note) return { ok: false, error: `There is no note ${req.id} in this project.` };
       const failed = await save(

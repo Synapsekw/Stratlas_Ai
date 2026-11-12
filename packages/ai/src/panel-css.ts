@@ -78,6 +78,24 @@ export const PANEL_CSS = `
 .aio-agent .ag-hist button[aria-current='true'] { border-color: var(--acc); }
 .aio-agent .ag-hist b { color: var(--fg-0); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .aio-agent .ag-hist .ag-mono { font-size: var(--t-11); color: var(--fg-3); }
+.aio-agent .ag-pp { display: grid; gap: 16px; align-content: start; }
+.aio-agent .ag-pp-sec { display: grid; gap: 8px; }
+.aio-agent .ag-pp-sec + .ag-pp-sec { padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.aio-agent .ag-pp-head { display: flex; align-items: baseline; gap: 8px; font-size: var(--t-12); }
+.aio-agent .ag-pp-head b { color: var(--fg-0); font-weight: 600; margin-right: auto; }
+.aio-agent .ag-pp-head .ag-mono { font-size: var(--t-11); color: var(--fg-3); }
+.aio-agent .ag-notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.aio-agent .ag-notes li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 6px; align-items: start; padding: 6px 4px 6px 10px; border: 1px solid var(--line-soft); border-radius: var(--r-4); }
+.aio-agent .ag-notes-text { color: var(--fg-0); font-size: var(--t-12); overflow-wrap: anywhere; }
+.aio-agent .ag-notes .ag-mono { grid-column: 1; font-size: var(--t-11); color: var(--fg-3); }
+.aio-agent .ag-notes .ag-btn { grid-column: 2; grid-row: 1 / span 2; }
+.aio-agent .ag-pp-add { display: flex; gap: 6px; }
+.aio-agent .ag-pp-add input { flex: 1; min-width: 0; height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-4); background: var(--bg-2); color: var(--fg-0); font: 400 var(--t-12)/1 var(--f-ui); }
+.aio-agent .ag-pp-add input::placeholder { color: var(--fg-3); }
+.aio-agent .ag-pp-add input:focus-visible, .aio-agent .ag-pp-switch input:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+.aio-agent .ag-pp-switch { display: flex; align-items: center; gap: 8px; font-size: var(--t-12); color: var(--fg-1); cursor: pointer; }
+.aio-agent .ag-pp-switch input { margin: 0; accent-color: var(--acc); flex: none; }
+.aio-agent .ag-pp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .aio-agent .ag-pending { font-size: var(--t-11); color: var(--warn-ink); }
 .aio-agent .ag-modal-back { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; background: oklch(0.1 0.01 250 / 0.6); }
 .aio-agent .ag-modal { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow-y: auto; background: var(--bg-1); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 10px; box-shadow: 0 12px 40px oklch(0 0 0 / 0.4); }

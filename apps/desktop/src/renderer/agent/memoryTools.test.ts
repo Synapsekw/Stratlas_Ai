@@ -105,6 +105,9 @@ describe('remember_note', () => {
 
   it('shows the note on the approval card', () => {
     expect(describeRemember({ text: ' Units are feet ' })).toBe('Remember: Units are feet');
+    expect(describeRemember({ text: 'Weighed as granite', about: 'measurement:m-3' })).toBe(
+      'Remember about measurement:m-3: Weighed as granite',
+    );
   });
 });
 

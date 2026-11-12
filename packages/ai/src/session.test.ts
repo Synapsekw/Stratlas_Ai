@@ -1,4 +1,5 @@
 import type {
+  AgentNote,
   AioBridge,
   AiTask,
   Conversation,
@@ -31,6 +32,9 @@ interface BridgeOpts {
   answerOnly?: string;
   /** The project lets the agent capture the view without asking (A3). */
   viewCapture?: boolean;
+  /** The project's notes (A3); absent: main answers no notes list at all. */
+  notes?: AgentNote[];
+  notesReadOnly?: boolean;
 }
 
 function fakeBridge(opts: BridgeOpts = {}) {
@@ -51,10 +55,33 @@ function fakeBridge(opts: BridgeOpts = {}) {
         : opts.answerOnly
           ? { ready: true, route, cloud: false, reason: 'answer-only', message: opts.answerOnly }
           : { ready: true, route, cloud: opts.cloud ?? true };
+  let notes = opts.notes;
   const bridge: AioBridge = {
     invoke: <C extends IpcChannel>(channel: C, req: IpcRequest<C>) => {
       calls.push({ channel, req });
+      if (channel === 'ai:remember' && notes) {
+        const r = req as IpcRequest<'ai:remember'>;
+        const note: AgentNote = {
+          id: `n-new${String(notes.length + 1)}`,
+          text: r.text,
+          by: r.by,
+          createdAt: '2026-10-04T10:00:00.000Z',
+        };
+        notes = [...notes, note];
+        return Promise.resolve({ ok: true, note } as IpcResponse<C>);
+      }
+      if (channel === 'ai:forget' && notes) {
+        const id = (req as IpcRequest<'ai:forget'>).id;
+        const note = notes.find((n) => n.id === id);
+        notes = notes.filter((n) => n.id !== id);
+        return Promise.resolve(
+          (note ? { ok: true, note } : { ok: false, error: 'No such note.' }) as IpcResponse<C>,
+        );
+      }
       const answer: Partial<Record<IpcChannel, unknown>> = {
+        ...(notes
+          ? { 'ai:memory': { ok: true, notes, readOnly: opts.notesReadOnly ?? false } }
+          : {}),
         'ai:status': {
           ...status,
           route: { ...route, task: (req as IpcRequest<'ai:status'>).task ?? 'chat' },
@@ -1017,6 +1044,21 @@ describe('batch approvals (A3)', () => {
     expect(t.ws.getState().issues.map((i) => i.title)).not.toContain('One');
   });
 
+  it('runs a batch once when "Approve N" is pressed twice', async () => {
+    const t = setup();
+    await threeWrites(t);
+    const first = t.session.approveBatch(['b1', 'b2', 'b3']);
+    expect(t.session.getState().batching).toBe(true);
+    const second = t.session.approveBatch(['b1', 'b2', 'b3']);
+    await Promise.all([first, second]);
+    expect(t.session.getState().batching).toBe(false);
+    const results = t
+      .sent('ai:toolResult')
+      .map((c) => (c.req as IpcRequest<'ai:toolResult'>).callId);
+    expect(results).toEqual(['b1', 'b2', 'b3']);
+    expect(t.ws.getState().issues.filter((i) => i.title === 'One')).toHaveLength(1);
+  });
+
   it('stops at a call that fails: the rest stay waiting and can be approved one by one', async () => {
     const t = setup();
     await threeWrites(t, true);
@@ -1131,5 +1173,130 @@ describe('view capture consent (A3)', () => {
     await flush();
     await flush();
     expect(t.session.getState().steps.f2?.status).toBe('done');
+  });
+});
+
+describe('project notes in the session (A3)', () => {
+  const pile: AgentNote = {
+    id: 'n-pile1',
+    text: 'The piles here are named SP-1 to SP-9',
+    about: 'measurement:m-3',
+    by: 'agent',
+    createdAt: '2026-10-01T09:00:00.000Z',
+  };
+
+  it('reads the notes with the project and sends them with each message as projectNotes', async () => {
+    const t = setup({ notes: [pile] });
+    await t.session.refresh();
+    expect(t.session.getState().notes).toEqual([pile]);
+    await t.session.send('how many piles?');
+    const req = t.sent('ai:send')[0]?.req as IpcRequest<'ai:send'>;
+    expect(req.context.projectNotes).toEqual([
+      { id: 'n-pile1', text: 'The piles here are named SP-1 to SP-9', about: 'measurement:m-3' },
+    ]);
+  });
+
+  it('sends no projectNotes when the project has none, or main answers none', async () => {
+    for (const opts of [{ notes: [] }, {}]) {
+      const t = setup(opts);
+      await t.session.send('hello');
+      const req = t.sent('ai:send')[0]?.req as IpcRequest<'ai:send'>;
+      expect(req.context).not.toHaveProperty('projectNotes');
+      expect(t.session.getState().notes).toEqual([]);
+    }
+  });
+
+  it('adds and deletes a note for the person and reads the notes again', async () => {
+    const t = setup({ notes: [pile] });
+    await t.session.refresh();
+    expect(await t.session.addNote('Units are feet')).toBeNull();
+    expect(t.sent('ai:remember')[0]?.req).toMatchObject({ text: 'Units are feet', by: 'person' });
+    expect(t.session.getState().notes.map((n) => n.text)).toEqual([pile.text, 'Units are feet']);
+    expect(await t.session.deleteNote('n-pile1')).toBeNull();
+    expect(t.session.getState().notes.map((n) => n.id)).toEqual(['n-new2']);
+    expect(await t.session.deleteNote('n-gone1')).toBe('No such note.');
+  });
+
+  it('says the notes are read-only in a package', async () => {
+    const t = setup({ notes: [pile], notesReadOnly: true });
+    await t.session.refresh();
+    expect(t.session.getState().notesReadOnly).toBe(true);
+  });
+
+  it('reads the notes again after remember_note runs and after its undo', async () => {
+    let undone = false;
+    // the spec comes with this package; the executor stands in for the desktop one
+    registerRendererTool('remember_note', () =>
+      Promise.resolve({
+        result: { saved: { id: 'n-x1' } },
+        summary: 'Noted',
+        undo: () => {
+          undone = true;
+          return null;
+        },
+      }),
+    );
+    const t = setup({ notes: [] });
+    await t.session.send('remember that units are feet');
+    const before = t.sent('ai:memory').length;
+    t.emit({
+      type: 'tool-call',
+      runId: 'id1',
+      callId: 'r1',
+      name: 'remember_note',
+      input: { text: 'Units are feet' },
+      risk: 'write',
+    });
+    await flush();
+    expect(t.session.getState().steps.r1?.status).toBe('awaiting');
+    await t.session.approve('r1');
+    await flush();
+    expect(t.sent('ai:memory').length).toBe(before + 1);
+    t.session.undo('r1');
+    await flush();
+    expect(undone).toBe(true);
+    expect(t.sent('ai:memory').length).toBe(before + 2);
+  });
+});
+
+describe('view capture belongs to one project (A3)', () => {
+  const capture: IpcEvent<'ai:event'> = {
+    type: 'tool-call',
+    runId: 'id1',
+    callId: 'f1',
+    name: 'capture_frame',
+    input: {},
+    risk: 'send',
+  };
+
+  it("never auto-runs a capture with another project's choice, even when the refresh fails", async () => {
+    const t = setup({ viewCapture: true });
+    await t.session.refresh();
+    expect(t.session.getState().viewCapture).toBe(true);
+    // another project opens; its refresh fails before ai:project answers
+    const p = t.ws.getState().project;
+    if (!p) throw new Error('fixture project');
+    t.ws.setState({ project: { ...p, id: 'other' } });
+    const invoke = t.bridge.invoke.bind(t.bridge);
+    t.bridge.invoke = () => Promise.reject(new Error('main is busy'));
+    await t.session.refresh();
+    t.bridge.invoke = invoke;
+    expect(t.session.getState().viewCapture).toBe(false);
+    await t.session.send('look');
+    t.emit(capture);
+    await flush();
+    expect(t.session.getState().steps.f1?.status).toBe('awaiting');
+  });
+
+  it('keeps the choice for a new conversation in the same project, drops it on a switch', async () => {
+    const t = setup({ viewCapture: true });
+    await t.session.refresh();
+    t.session.reset();
+    expect(t.session.getState().viewCapture).toBe(true);
+    const p = t.ws.getState().project;
+    if (!p) throw new Error('fixture project');
+    t.ws.setState({ project: { ...p, id: 'other' } });
+    t.session.reset();
+    expect(t.session.getState().viewCapture).toBe(false);
   });
 });
