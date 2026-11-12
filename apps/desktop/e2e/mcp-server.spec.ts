@@ -20,6 +20,8 @@ import { openDemo } from './surveyJobs';
 test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x720' } });
 
 const PILE = 'Stockpile SP1';
+/** The tools outside apps get (MCP_TOOL_CLASS, after the purity audit). */
+const MCP_TOOLS = 24;
 const INDEXED = { timeout: 120_000 };
 
 const block = (win: Page) => win.getByTestId('mcp-server');
@@ -50,6 +52,14 @@ async function connect(url: string, token: string): Promise<Client> {
   return client;
 }
 
+/** Show the token (main hands it over only on Show or Copy) and read it. */
+async function reveal(mcp: Locator): Promise<string> {
+  await mcp.getByRole('button', { name: 'Show' }).click();
+  const field = mcp.getByTestId('mcp-token');
+  await expect(field).not.toHaveText('Hidden');
+  return field.innerText();
+}
+
 const textOf = (r: unknown) => (r as { content: { text: string }[] }).content[0]?.text ?? '';
 
 test('an outside agent reads the open project over the local MCP server', async ({
@@ -57,8 +67,10 @@ test('an outside agent reads the open project over the local MCP server', async 
   win,
 }) => {
   test.setTimeout(360_000);
-  // cloud AI off: outside apps are treated like cloud AI, so the project is not served at first
-  await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: false }));
+  // cloud AI on does not serve a project to outside apps: only the per-project switch does
+  await win.evaluate(() =>
+    window.aio.invoke('settings:set', { cloudAi: true, offlineOnly: false }),
+  );
   await openDemo(win, quarryProject.name, quarryProject.id);
   await indexReady(win);
 
@@ -68,13 +80,13 @@ test('an outside agent reads the open project over the local MCP server', async 
   await expect(toggle).toHaveAttribute('aria-checked', 'false');
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(mcp.getByTestId('mcp-state')).toHaveText(`On, ${String(MCP_TOOLS)} read-only tools`);
   const urlText = mcp.getByTestId('mcp-url');
   await expect(urlText).toHaveText(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
   const url = await urlText.innerText();
   // the token is hidden until shown; the setup snippets name the address
   await expect(mcp.getByTestId('mcp-token')).toHaveText('Hidden');
-  await mcp.getByRole('button', { name: 'Show' }).click();
-  const token = await mcp.getByTestId('mcp-token').innerText();
+  const token = await reveal(mcp);
   expect(token.length).toBeGreaterThan(40);
   await expect(mcp.locator('.mcp-setup pre').first()).toContainText(
     `claude mcp add --transport http`,
@@ -97,7 +109,7 @@ test('an outside agent reads the open project over the local MCP server', async 
   for (const write of ['create_issue_draft', 'run_action', 'capture_frame', 'fly_to'])
     expect(names).not.toContain(write);
 
-  // Step 3: not served while cloud AI is off for the project
+  // Step 3: not served until the person allows this project, even with cloud AI on
   await expect(mcp.getByTestId('mcp-access')).toContainText('Not served');
   const blocked = await client.callTool({ name: 'query_facts', arguments: { text: PILE } });
   expect(blocked.isError).toBe(true);
@@ -110,6 +122,16 @@ test('an outside agent reads the open project over the local MCP server', async 
   expect(answer.isError, textOf(answer)).toBeFalsy();
   const body = JSON.parse(textOf(answer)) as { facts: { label: string; subject: string }[] };
   expect(body.facts.some((f) => f.label.includes(PILE))).toBe(true);
+  // the excluded modeller tool is not there to call
+  const parts = await client.callTool({ name: 'list_model_parts', arguments: {} });
+  expect(parts.isError).toBe(true);
+  // offline only refuses every call, even for the allowed project, and Settings says so
+  await win.evaluate(() => window.aio.invoke('settings:set', { offlineOnly: true }));
+  await win.evaluate(() => window.dispatchEvent(new Event('focus')));
+  const offline = await client.callTool({ name: 'query_facts', arguments: { text: PILE } });
+  expect(offline.isError).toBe(true);
+  expect(textOf(offline)).toContain('offline only');
+  await win.evaluate(() => window.aio.invoke('settings:set', { offlineOnly: false }));
   // a write tool is refused even now, and never runs
   const write = await client.callTool({ name: 'create_issue_draft', arguments: {} });
   expect(write.isError).toBe(true);
@@ -125,9 +147,11 @@ test('an outside agent reads the open project over the local MCP server', async 
 
   // Step 6: a new token shuts the old one out
   await mcp.getByRole('button', { name: 'New token' }).click();
-  await expect(mcp.getByTestId('mcp-token')).not.toHaveText(token);
+  // a new token hides the token again; Show asks main for the new one
+  await expect(mcp.getByTestId('mcp-token')).toHaveText('Hidden');
   await expect(connect(url, token)).rejects.toThrow();
-  const next = await mcp.getByTestId('mcp-token').innerText();
+  const next = await reveal(mcp);
+  expect(next).not.toBe(token);
   const again = await connect(url, next);
   expect((await again.listTools()).tools.length).toBeGreaterThan(10);
   await again.close();

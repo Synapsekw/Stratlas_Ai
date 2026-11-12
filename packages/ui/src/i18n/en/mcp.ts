@@ -21,6 +21,11 @@ export const enMcp = {
   'mcp.copyLabel': 'Copy the {what}',
   'mcp.newToken': 'New token',
   'mcp.newTokenDone': 'New token made. Every app was disconnected: paste the new setup into each.',
+  'mcp.newPort': 'Use a new port',
+  'mcp.newPortDone':
+    'The server moved to a new port with a new token: paste the new setup into each app.',
+  'mcp.offline':
+    'Offline only is on, so the server answers no app: outside apps usually pass what they read to a cloud model.',
   'mcp.setup': 'Set up an app',
   'mcp.setup.code': 'Claude Code: run in a terminal',
   'mcp.setup.desktop': 'Claude Desktop: add to claude_desktop_config.json (needs Node.js)',
@@ -34,9 +39,9 @@ export const enMcp = {
   'mcp.project': 'This project',
   'mcp.allow': 'Let outside apps read this project',
   'mcp.noProject': 'Open a project to choose whether outside apps may read it.',
-  'mcp.access.cloud': 'Served: cloud AI may read this project, so outside apps may too.',
   'mcp.access.allowed': 'Served: you let outside apps read this project.',
+  'mcp.access.notAllowed':
+    'Not served: outside apps read a project only once you turn on the switch above for it.',
   'mcp.access.policy': 'Not served: this project forbids AI outside the app.',
-  'mcp.access.cloudOff':
-    'Not served: cloud AI is off for this project, and outside apps are treated like cloud AI. Turn on the switch above to let them read it anyway.',
+  'mcp.access.offline': 'Not served: offline only is on.',
 } as const satisfies Record<string, string>;

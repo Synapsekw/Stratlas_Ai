@@ -36,6 +36,28 @@ describe('MCP tool parity with the agent registry', () => {
       expect(isMcpTool(name)).toBe(false);
   });
 
+  it('exposes a tool only with a reviewed purity note, and excludes with a reason', () => {
+    for (const [name, c] of Object.entries(MCP_TOOL_CLASS)) {
+      if ('pure' in c) expect(c.pure.trim().length, name).toBeGreaterThan(10);
+      else expect(c.exclude.trim().length, name).toBeGreaterThan(10);
+    }
+    for (const t of mcpToolList())
+      expect('pure' in (MCP_TOOL_CLASS[t.name] ?? {}), t.name).toBe(true);
+  });
+
+  it('leaves out the tools the purity audit found impure or drawing-derived', () => {
+    for (const name of [
+      'list_model_parts',
+      'list_components',
+      'list_model_corrections',
+      'list_changes',
+      'compare_captures',
+      'list_sites',
+    ])
+      expect(isMcpTool(name), name).toBe(false);
+    expect(mcpToolList()).toHaveLength(24);
+  });
+
   it('offers the fact index tools and leaves out the library-wide site list', () => {
     const names = mcpToolList().map((t) => t.name);
     expect(names).toContain('query_facts');

@@ -1,9 +1,10 @@
 /**
  * Settings > AI providers > Outside apps (MCP) (intelligence review Wave 3, X1): the switch for
  * the local MCP server (off by default), its address and token, the setup to paste into Claude
- * Code or Claude Desktop, the apps connected now with Disconnect, a new token, and whether the
- * open project is served (outside apps are treated like cloud AI unless the person lets them
- * read this project). Main owns the server (`mcp:*`); this reads and changes it.
+ * Code or Claude Desktop, the apps connected now with Disconnect, a new token or port, and
+ * whether the open project is served (only once the person lets outside apps read it, never
+ * while offline-only is on). Main owns the server (`mcp:*`); the token comes from main only when
+ * the person presses Show or Copy (`mcp:revealToken`), never with the status.
  */
 import { brand } from '@aio/brand';
 import type { AioBridge, McpStatus } from '@aio/schema';
@@ -16,17 +17,20 @@ import {
   claudeCodeSetup,
   claudeDesktopSetup,
   mcpServerName,
+  TOKEN_PLACEHOLDER,
 } from './mcpView';
 import './mcpServer.css';
-
-/** The setup text with the token left out, while the token is hidden. */
-const hideToken = (text: string, token: string | null) =>
-  token ? text.split(token).join('...') : text;
 
 const time = (iso: string) =>
   new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-function CopyButton({ text, what }: { text: string; what: string }) {
+/** The token, asked for when the person wants to see or copy it. */
+async function revealToken(): Promise<string | null> {
+  const r = await bridge.call('mcp:revealToken', {});
+  return r.ok ? r.value.token : null;
+}
+
+function CopyButton({ text, what }: { text: () => Promise<string | null>; what: string }) {
   const [done, setDone] = useState(false);
   return (
     <button
@@ -34,15 +38,17 @@ function CopyButton({ text, what }: { text: string; what: string }) {
       className="btn sm ghost"
       aria-label={t('mcp.copyLabel', { what })}
       onClick={() => {
-        void navigator.clipboard.writeText(text).then(
-          () => {
-            setDone(true);
-            setTimeout(() => {
-              setDone(false);
-            }, 1500);
-          },
-          () => undefined,
-        );
+        void text()
+          .then((value) => (value === null ? undefined : navigator.clipboard.writeText(value)))
+          .then(
+            () => {
+              setDone(true);
+              setTimeout(() => {
+                setDone(false);
+              }, 1500);
+            },
+            () => undefined,
+          );
       }}
     >
       {t(done ? 'mcp.copied' : 'mcp.copy')}
@@ -54,10 +60,11 @@ export function McpServerSettings() {
   const [status, setStatus] = useState<McpStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [showToken, setShowToken] = useState(false);
+  /** The token while shown; null while hidden. */
+  const [shown, setShown] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // cloud AI and offline-only decide whether the open project is served
-  const cloud = useShell((s) => `${String(s.settings.cloudAi)}/${String(s.settings.offlineOnly)}`);
+  // offline-only decides whether anything is served
+  const offline = useShell((s) => s.settings.offlineOnly === true);
 
   useEffect(() => {
     let live = true;
@@ -74,7 +81,7 @@ export function McpServerSettings() {
       live = false;
       off?.();
     };
-  }, [cloud]);
+  }, [offline]);
 
   const run = async (p: Promise<{ ok: true; value: McpStatus } | { ok: false; error: string }>) => {
     setBusy(true);
@@ -88,8 +95,18 @@ export function McpServerSettings() {
 
   if (!status) return null;
   const name = mcpServerName(brand.productName);
-  const live = status.running && status.url !== null && status.token !== null;
+  const url = status.running ? status.url : null;
   const project = status.project;
+  const setups = (token: string) =>
+    url
+      ? ([
+          ['mcp.setup.code', claudeCodeSetup(name, url, token)],
+          ['mcp.setup.desktop', claudeDesktopSetup(name, url, token)],
+        ] as const)
+      : [];
+  const rotated = () => {
+    setShown(null);
+  };
 
   return (
     <div className="sblock mcp-server" data-testid="mcp-server">
@@ -99,21 +116,45 @@ export function McpServerSettings() {
       <p className="faint mcp-note">{t('mcp.intro')}</p>
       <div className="opt" data-testid="mcp-switch">
         <b>{t('mcp.switch')}</b>
-        <span>{status.running ? t('mcp.on', { count: status.tools }) : t('mcp.off')}</span>
+        <span data-testid="mcp-state">
+          {status.running ? t('mcp.on', { count: status.tools }) : t('mcp.off')}
+        </span>
         <Switch
           checked={status.enabled}
           label={t('mcp.switch')}
           disabled={busy}
           onChange={(v) => {
             setNotice(null);
+            rotated();
             void run(bridge.call('mcp:setEnabled', { enabled: v }));
           }}
         />
       </div>
+      {status.enabled && status.offlineOnly && (
+        <p className="notice warn mcp-note" role="status" data-testid="mcp-offline">
+          <Icon name="warn" size={14} />
+          <span>{t('mcp.offline')}</span>
+        </p>
+      )}
       {(status.error ?? error) && (
-        <p className="notice warn mcp-note" role="status">
+        <p className="notice warn mcp-note" role="status" data-testid="mcp-error">
           <Icon name="warn" size={14} />
           <span>{status.error ?? error}</span>
+          {status.portInUse && (
+            <button
+              type="button"
+              className="btn sm"
+              disabled={busy}
+              onClick={() => {
+                rotated();
+                void run(bridge.call('mcp:newPort', {})).then((ok) => {
+                  if (ok) setNotice(t('mcp.newPortDone'));
+                });
+              }}
+            >
+              {t('mcp.newPort')}
+            </button>
+          )}
         </p>
       )}
       {notice && (
@@ -122,37 +163,39 @@ export function McpServerSettings() {
         </p>
       )}
 
-      {live && status.url && status.token && (
+      {url && status.hasToken && (
         <>
           <dl className="mcp-fields">
             <dt>{t('mcp.address')}</dt>
             <dd>
               <code className="mono" data-testid="mcp-url">
-                {status.url}
+                {url}
               </code>
-              <CopyButton text={status.url} what={t('mcp.address')} />
+              <CopyButton text={() => Promise.resolve(url)} what={t('mcp.address')} />
             </dd>
             <dt>{t('mcp.token')}</dt>
             <dd>
               <code className="mono" data-testid="mcp-token">
-                {showToken ? status.token : t('mcp.tokenHidden')}
+                {shown ?? t('mcp.tokenHidden')}
               </code>
               <button
                 type="button"
                 className="btn sm ghost"
-                aria-pressed={showToken}
+                aria-pressed={shown !== null}
                 onClick={() => {
-                  setShowToken((v) => !v);
+                  if (shown !== null) setShown(null);
+                  else void revealToken().then(setShown);
                 }}
               >
-                {t(showToken ? 'mcp.hide' : 'mcp.show')}
+                {t(shown !== null ? 'mcp.hide' : 'mcp.show')}
               </button>
-              <CopyButton text={status.token} what={t('mcp.token')} />
+              <CopyButton text={revealToken} what={t('mcp.token')} />
               <button
                 type="button"
                 className="btn sm ghost"
                 disabled={busy}
                 onClick={() => {
+                  rotated();
                   void run(bridge.call('mcp:newToken', {})).then((ok) => {
                     if (ok) setNotice(t('mcp.newTokenDone'));
                   });
@@ -164,18 +207,19 @@ export function McpServerSettings() {
           </dl>
 
           <h3 className="mcp-h">{t('mcp.setup')}</h3>
-          {(
-            [
-              ['mcp.setup.code', claudeCodeSetup(name, status.url, status.token)],
-              ['mcp.setup.desktop', claudeDesktopSetup(name, status.url, status.token)],
-            ] as const
-          ).map(([key, text]) => (
+          {setups(shown ?? TOKEN_PLACEHOLDER).map(([key, text], i) => (
             <div key={key} className="mcp-setup">
               <div className="mcp-setup-head">
                 <span className="faint">{t(key)}</span>
-                <CopyButton text={text} what={t(key)} />
+                <CopyButton
+                  text={async () => {
+                    const token = await revealToken();
+                    return token === null ? null : (setups(token)[i]?.[1] ?? null);
+                  }}
+                  what={t(key)}
+                />
               </div>
-              <pre className="mono">{showToken ? text : hideToken(text, status.token)}</pre>
+              <pre className="mono">{text}</pre>
             </div>
           ))}
 

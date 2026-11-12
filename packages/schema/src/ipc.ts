@@ -2507,6 +2507,16 @@ export const ipc = {
     request: z.object({}).strict(),
     response: McpStatus,
   },
+  /** The token, for Show and Copy only; never broadcast. */
+  'mcp:revealToken': {
+    request: z.object({}).strict(),
+    response: z.object({ token: z.string().nullable() }),
+  },
+  /** A new port (and with it a new token), when the kept one is taken. */
+  'mcp:newPort': {
+    request: z.object({}).strict(),
+    response: McpStatus,
+  },
   /** The renderer's answer to an `mcp:call` event. */
   'mcp:result': {
     request: McpCallResult,

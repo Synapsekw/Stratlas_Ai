@@ -823,15 +823,17 @@ const mcp = createMcpHost({
       : { id, root, name: projectNames.get(id) ?? id };
   },
   gate: async (p) => {
+    const offlineOnly = settings.current().offlineOnly === true;
+    if (!p) return { policyForbids: false, offlineOnly };
     const header = registry.package(p.id)?.header;
     const manifest = await readAiPolicy(p.root).catch(() => 'forbid' as const);
-    const s = settings.current();
     return {
       policyForbids: (header !== undefined && header.aiPolicy !== 'allow') || manifest === 'forbid',
-      cloudAi: s.cloudAi,
-      offlineOnly: s.offlineOnly === true,
+      offlineOnly,
     };
   },
+  // the token never reaches a log or a diagnostics bundle
+  secret: registerSecret,
   send: (call) => {
     const parsed = ipcEvents['mcp:call'].safeParse(call);
     const win = mainWindow;
@@ -1503,6 +1505,8 @@ function registerIpc(): void {
   );
   handle('mcp:disconnect', ({ clientId }) => mcp.disconnect(clientId));
   handle('mcp:newToken', () => mcp.newToken());
+  handle('mcp:newPort', () => mcp.newPort());
+  handle('mcp:revealToken', async () => ({ token: await mcp.revealToken() }));
   handle('mcp:result', (r) => ({ ok: mcp.result(r) }));
   // Properties, Export and Reveal in folder of one dataset
   const layerJobs = registerLayerIpc({

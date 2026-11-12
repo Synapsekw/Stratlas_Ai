@@ -22,9 +22,20 @@ export function claudeCodeSetup(name: string, url: string, token: string): strin
 }
 
 /**
+ * The `mcp-remote` release the Claude Desktop setup runs: pinned, so a later release cannot change
+ * what the pasted setup starts. The newest release at least two weeks old on 12 Nov 2026.
+ */
+export const MCP_REMOTE = 'mcp-remote@0.15.2';
+
+/** Shown in a setup in place of the token while the token is hidden. */
+export const TOKEN_PLACEHOLDER = '<token>';
+
+/**
  * The `mcpServers` entry for Claude Desktop, which starts local servers as commands: `mcp-remote`
- * bridges it to the HTTP server. No space after the colon in the header, so Windows keeps the
- * argument whole.
+ * bridges it to the HTTP server. Claude Desktop on Windows mangles a command argument that holds
+ * a space, so the header argument is `Authorization:${AUTH_HEADER}` (no space) and the value
+ * `Bearer <token>` goes in the `AUTH_HEADER` environment variable, which mcp-remote expands
+ * itself (the workaround its README gives).
  */
 export function claudeDesktopSetup(name: string, url: string, token: string): string {
   return JSON.stringify(
@@ -32,7 +43,8 @@ export function claudeDesktopSetup(name: string, url: string, token: string): st
       mcpServers: {
         [name]: {
           command: 'npx',
-          args: ['-y', 'mcp-remote', url, '--header', `Authorization:Bearer ${token}`],
+          args: ['-y', MCP_REMOTE, url, '--header', 'Authorization:${AUTH_HEADER}'],
+          env: { AUTH_HEADER: `Bearer ${token}` },
         },
       },
     },
@@ -42,10 +54,10 @@ export function claudeDesktopSetup(name: string, url: string, token: string): st
 }
 
 export const ACCESS_KEY: Record<McpProjectAccess, MessageKey> = {
-  cloud: 'mcp.access.cloud',
   allowed: 'mcp.access.allowed',
+  'not-allowed': 'mcp.access.notAllowed',
   policy: 'mcp.access.policy',
-  'cloud-off': 'mcp.access.cloudOff',
+  offline: 'mcp.access.offline',
 };
 
-export const accessServed = (a: McpProjectAccess) => a === 'cloud' || a === 'allowed';
+export const accessServed = (a: McpProjectAccess) => a === 'allowed';

@@ -361,6 +361,8 @@ const CHANNELS = {
   'mcp:setProjectAllowed': true,
   'mcp:disconnect': true,
   'mcp:newToken': true,
+  'mcp:revealToken': true,
+  'mcp:newPort': true,
   'mcp:result': true,
 } as const satisfies Record<IpcChannel, true>;
 

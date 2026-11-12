@@ -17,12 +17,12 @@ export const McpClientInfo = z.object({
 export type McpClientInfo = z.infer<typeof McpClientInfo>;
 
 /**
- * Whether outside agents may read the open project. `cloud`: served, as a cloud provider would
- * be (cloud AI on, not offline-only, the policy allows). `allowed`: served, the person allowed
- * outside apps for this project. `policy`: never, the package or manifest forbids cloud AI.
- * `cloud-off`: not served, cloud AI is off or offline-only is on and the project is not allowed.
+ * Whether outside agents may read the open project. `allowed`: served, the person let outside
+ * apps read this project. `not-allowed`: not served until they do (the default). `policy`: never,
+ * the package or manifest forbids cloud AI. `offline`: not served, offline-only is on (outside
+ * apps usually pass what they read to a cloud model).
  */
-export const McpProjectAccess = z.enum(['cloud', 'allowed', 'policy', 'cloud-off']);
+export const McpProjectAccess = z.enum(['allowed', 'not-allowed', 'policy', 'offline']);
 export type McpProjectAccess = z.infer<typeof McpProjectAccess>;
 
 export const McpStatus = z.object({
@@ -32,10 +32,14 @@ export const McpStatus = z.object({
   running: z.boolean(),
   /** `http://127.0.0.1:<port>/mcp` while running. */
   url: z.string().nullable(),
-  /** The bearer token, once the server was first switched on. */
-  token: z.string().nullable(),
+  /** A token exists; the token itself only comes through `mcp:revealToken`. */
+  hasToken: z.boolean(),
   /** Why the server could not start. */
   error: z.string().optional(),
+  /** The kept port is taken by another program: "Use a new port" (`mcp:newPort`) moves it. */
+  portInUse: z.boolean().optional(),
+  /** Offline-only is on: every call is refused. */
+  offlineOnly: z.boolean(),
   clients: z.array(McpClientInfo),
   /** How many tools outside agents get. */
   tools: z.number().int().nonnegative(),

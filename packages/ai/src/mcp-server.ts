@@ -44,7 +44,10 @@ export interface McpClient {
 }
 
 export interface McpHttpServerOptions {
-  /** The port to try first; taken or absent: any free port. */
+  /**
+   * The port to listen on; absent: any free port. A taken port fails the start with
+   * `McpPortInUseError` (the host asks the person before moving: a pasted setup names it).
+   */
   port?: number;
   token: string;
   serverInfo: { name: string; version: string };
@@ -59,7 +62,19 @@ export interface McpHttpServerOptions {
   maxSessions?: number;
   /** A session unseen this long is ended (default 30 minutes): many clients never say goodbye. */
   idleMs?: number;
+  /** Tool calls running at once, across all sessions (default 4); more are refused as busy. */
+  maxInFlight?: number;
 }
+
+/** The kept port is taken by another program. */
+export class McpPortInUseError extends Error {
+  override name = 'McpPortInUseError';
+  constructor(readonly port: number) {
+    super(`Port ${String(port)} is in use by another program.`);
+  }
+}
+
+export const MCP_BUSY = 'The app is busy with other calls. Try again in a moment.';
 
 export interface McpHttpServer {
   readonly port: number;
@@ -125,6 +140,7 @@ export async function startMcpHttpServer(opts: McpHttpServerOptions): Promise<Mc
   const sessions = new Map<string, Session>();
   let port = 0;
   const changed = () => opts.onChange?.();
+  let inFlight = 0;
 
   function mcpFor(client: McpClient): McpServer {
     const mcp = new McpServer(opts.serverInfo, {
@@ -146,12 +162,22 @@ export async function startMcpHttpServer(opts: McpHttpServerOptions): Promise<Mc
       client.lastSeenAt = now().toISOString();
       changed();
       const parsed = parseMcpInput(req.params.name, req.params.arguments);
-      const outcome = parsed.ok
-        ? await opts.call(req.params.name, parsed.input).catch((e: unknown): McpCallOutcome => ({
-            ok: false,
-            error: e instanceof Error ? e.message : String(e),
-          }))
-        : parsed;
+      let outcome: McpCallOutcome;
+      if (!parsed.ok) outcome = parsed;
+      else if (inFlight >= (opts.maxInFlight ?? 4)) outcome = { ok: false, error: MCP_BUSY };
+      else {
+        inFlight += 1;
+        try {
+          outcome = await opts
+            .call(req.params.name, parsed.input)
+            .catch((e: unknown): McpCallOutcome => ({
+              ok: false,
+              error: e instanceof Error ? e.message : String(e),
+            }));
+        } finally {
+          inFlight -= 1;
+        }
+      }
       return outcome.ok
         ? { content: [{ type: 'text' as const, text: outcome.text }] }
         : { content: [{ type: 'text' as const, text: outcome.error }], isError: true };
@@ -247,8 +273,9 @@ export async function startMcpHttpServer(opts: McpHttpServerOptions): Promise<Mc
   try {
     port = await listen(http, opts.port ?? 0);
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== 'EADDRINUSE' || !opts.port) throw e;
-    port = await listen(http, 0);
+    if ((e as NodeJS.ErrnoException).code === 'EADDRINUSE' && opts.port)
+      throw new McpPortInUseError(opts.port);
+    throw e;
   }
 
   async function end(s: Session): Promise<void> {

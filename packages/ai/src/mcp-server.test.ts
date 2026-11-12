@@ -2,7 +2,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  MCP_BUSY,
   MCP_HOST,
+  McpPortInUseError,
   newMcpToken,
   startMcpHttpServer,
   tokenMatches,
@@ -223,15 +225,37 @@ describe('the local MCP server', () => {
     await expect.poll(() => s.clients().length, { timeout: 2000 }).toBe(0);
   });
 
-  it('takes a free port when the one asked for is taken', async () => {
+  it('fails the start when the port asked for is taken, rather than move silently', async () => {
     const first = await start();
-    const second = await startMcpHttpServer({
-      port: first.server.port,
-      token: 't',
-      serverInfo: { name: 'x', version: '1' },
-      call: () => Promise.resolve({ ok: true as const, text: '' }),
+    await expect(
+      startMcpHttpServer({
+        port: first.server.port,
+        token: 't',
+        serverInfo: { name: 'x', version: '1' },
+        call: () => Promise.resolve({ ok: true as const, text: '' }),
+      }),
+    ).rejects.toBeInstanceOf(McpPortInUseError);
+  });
+
+  it('runs at most maxInFlight calls at once and answers the rest busy', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => {
+      release = r;
     });
-    expect(second.port).not.toBe(first.server.port);
-    await second.close();
+    const call = vi.fn<McpHttpServerOptions['call']>(async () => {
+      await gate;
+      return { ok: true as const, text: 'done' };
+    });
+    const { server: s, token } = await start({ call, maxInFlight: 2 });
+    const client = await connect(s.url, token);
+    const slow = [1, 2].map(() => client.callTool({ name: 'list_layers', arguments: {} }));
+    await expect.poll(() => call.mock.calls.length).toBe(2);
+    const third = await client.callTool({ name: 'list_layers', arguments: {} });
+    expect(third.isError).toBe(true);
+    expect((third.content as { text: string }[])[0]?.text).toBe(MCP_BUSY);
+    release();
+    for (const r of await Promise.all(slow)) expect(r.isError).toBeFalsy();
+    const after = await client.callTool({ name: 'list_layers', arguments: {} });
+    expect(after.isError).toBeFalsy();
   });
 });
