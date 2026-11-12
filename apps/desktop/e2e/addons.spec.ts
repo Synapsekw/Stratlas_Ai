@@ -167,35 +167,44 @@ test('refuses an archive whose file does not match its manifest, and installs no
   expect(listed.addons.find((a) => a.id === 'road-defects')?.installed).toBeNull();
 });
 
-test('offline only: no catalogue read, Choose file installs the Ground classifier', async ({
-  app,
-  win,
-  dataRoot,
-  addonServer,
-  network,
-}) => {
-  addonServer.offer.push(GROUND());
-  await writeNoisyProject(dataRoot.projectDir);
-  await win.evaluate(() => window.aio.invoke('settings:set', { offlineOnly: true }));
-  await openModels(win);
-  await expect(win.getByTestId('addons-catalogue')).toContainText('Offline only');
-  await expect(win.getByTestId('addon-ground-classifier-download')).toHaveCount(0);
-
-  const file = join(dataRoot.base, GROUND().fileName);
-  await writeFile(file, GROUND().bytes);
-  await nextOpenDialog(app, file);
-  await win.getByTestId('addons-choose').click();
-  await expect(win.getByTestId('addon-ground-classifier-state')).toHaveText('Version 1.0.0', {
-    timeout: 30_000,
+// Offline only is on before the app starts, so not even its first read of the list goes out
+test.describe('offline', () => {
+  test.beforeEach(async ({ dataRoot }) => {
+    await writeNoisyProject(dataRoot.projectDir);
+    await writeFile(
+      join(dataRoot.userData, 'settings.json'),
+      JSON.stringify({ offlineOnly: true }),
+    );
   });
-  expect(addonServer.hits).toEqual([]);
-  expect(await network.allowed()).toEqual([]);
 
-  // the Clean up panel of a COPC cloud offers ground marking, off by default
-  await win.locator('.nav-item', { hasText: 'Projects' }).first().click();
-  await openNoisyProject(win);
-  await openCleanupFromMenu(win);
-  const ground = win.getByTestId('cleanup-noise-ground');
-  await expect(ground).toBeVisible();
-  await expect(ground).not.toBeChecked();
+  test('offline only: no catalogue read, Choose file installs the Ground classifier', async ({
+    app,
+    win,
+    dataRoot,
+    addonServer,
+    network,
+  }) => {
+    addonServer.offer.push(GROUND());
+    await openModels(win);
+    await expect(win.getByTestId('addons-catalogue')).toContainText('Offline only');
+    await expect(win.getByTestId('addon-ground-classifier-download')).toHaveCount(0);
+
+    const file = join(dataRoot.base, GROUND().fileName);
+    await writeFile(file, GROUND().bytes);
+    await nextOpenDialog(app, file);
+    await win.getByTestId('addons-choose').click();
+    await expect(win.getByTestId('addon-ground-classifier-state')).toHaveText('Version 1.0.0', {
+      timeout: 30_000,
+    });
+    expect(addonServer.hits).toEqual([]);
+    expect(await network.allowed()).toEqual([]);
+
+    // the Clean up panel of a COPC cloud offers ground marking, off by default
+    await win.locator('.nav-item', { hasText: 'Projects' }).first().click();
+    await openNoisyProject(win);
+    await openCleanupFromMenu(win);
+    const ground = win.getByTestId('cleanup-noise-ground');
+    await expect(ground).toBeVisible();
+    await expect(ground).not.toBeChecked();
+  });
 });
