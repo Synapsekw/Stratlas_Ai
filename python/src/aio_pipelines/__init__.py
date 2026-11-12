@@ -37,7 +37,10 @@ PROTOCOL = "aio.pipelines/1"
 # check from behind the camera, stable cloud names for unnamed flights, flight clouds hidden first;
 # and every job that adds layers writes manifest.json under the manifest lock, so two jobs finishing
 # together no longer lose a layer) and pack 0.35.0 (telecom.antennas keeps a copy of the inventory
-# per survey date in telecom/history/, so an antenna can be followed across dates; older apps ignore it).
+# per survey date in telecom/history/, so an antenna can be followed across dates; older apps ignore it;
+# adds walk.track, one placed draft per object seen across a 360 walk's frames; detect.vlm reads walk
+# frames through perspective faces, a frames param only an app with detectors on walks sends; a change
+# recompute keeps each region's aiLabel).
 # Each keeps the floor.
 # The app refuses a pack outside the range; the syntax is read by `appRangeAllows` in packages/schema/src/versions.ts
 # (space-separated >=, >, <=, <, =).

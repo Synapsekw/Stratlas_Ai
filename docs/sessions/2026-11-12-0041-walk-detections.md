@@ -26,7 +26,7 @@ related: [../plans/2026-11-11-walk-detections.md, ../plans/2026-10-30-intelligen
   - A project that keeps its images local uses the local model.
   - A change recompute keeps each region's label (`changeset.merge_reviews`).
   - `packages/change` only gained an `itemTools` slot and the chip.
-- Contract rows for `Detection.track`, `walk.track`, `DetectVlmParams.frames` and `RegionChange.aiLabel`. Pipeline pack 0.35.0 (this PR's last commit).
+- Contract rows for `Detection.track`, `walk.track`, `DetectVlmParams.frames` and `RegionChange.aiLabel`. Pipeline pack 0.35.0 (the number the site tracks branch took; this PR adds its lines to the pack notes and the settings guide).
 - Decisions made by the session:
   - Confidence stays the lead's own score: frames of one walk are not independent views.
   - Up and down faces are left out (the walker and the sky).
