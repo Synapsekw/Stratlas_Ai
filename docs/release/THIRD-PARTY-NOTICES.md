@@ -6,7 +6,7 @@ The full licence texts ship with the software: the app lists every package with 
 
 ## Desktop app and Team Server (npm)
 
-175 packages: MIT (114), Apache-2.0 (19), ISC (15), BSD-3-Clause (11), BlueOak-1.0.0 (4), BSD-2-Clause (3), OFL-1.1 (3), (AFL-2.1 OR BSD-3-Clause) (1), (MIT AND Zlib) (1), (MIT OR Apache-2.0) (1), (MIT OR CC0-1.0) (1), (MPL-2.0 OR Apache-2.0) (1), 0BSD (1).
+253 packages: MIT (183), ISC (22), Apache-2.0 (19), BSD-3-Clause (12), BlueOak-1.0.0 (4), BSD-2-Clause (4), OFL-1.1 (3), (AFL-2.1 OR BSD-3-Clause) (1), (MIT AND Zlib) (1), (MIT OR Apache-2.0) (1), (MIT OR CC0-1.0) (1), (MPL-2.0 OR Apache-2.0) (1), 0BSD (1).
 
 | Package                               | Version        | Licence                   |
 | ------------------------------------- | -------------- | ------------------------- |
@@ -28,6 +28,7 @@ The full licence texts ship with the software: the app lists every package with 
 | @fontsource/ibm-plex-mono             | 5.3.0          | OFL-1.1                   |
 | @fontsource/ibm-plex-sans             | 5.3.0          | OFL-1.1                   |
 | @fontsource/ibm-plex-sans-condensed   | 5.3.0          | OFL-1.1                   |
+| @hono/node-server                     | 2.1.7          | MIT                       |
 | @isaacs/fs-minipass                   | 4.0.1          | ISC                       |
 | @mapbox/jsonlint-lines-primitives     | 2.0.3          | MIT                       |
 | @mapbox/point-geometry                | 1.1.0          | ISC                       |
@@ -38,6 +39,7 @@ The full licence texts ship with the software: the app lists every package with 
 | @maplibre/maplibre-gl-style-spec      | 26.4.4         | ISC                       |
 | @maplibre/mlt                         | 1.3.0          | (MIT OR Apache-2.0)       |
 | @maplibre/vt-pbf                      | 4.3.2          | MIT                       |
+| @modelcontextprotocol/sdk             | 1.32.2         | MIT                       |
 | @napi-rs/keyring                      | 2.1.0          | MIT                       |
 | @napi-rs/keyring-darwin-arm64         | 2.1.0          | MIT                       |
 | @napi-rs/keyring-darwin-x64           | 2.1.0          | MIT                       |
@@ -56,6 +58,7 @@ The full licence texts ship with the software: the app lists every package with 
 | @zip.js/zip.js                        | 2.23.0         | BSD-3-Clause              |
 | 3d-tiles-renderer                     | 0.5.3          | Apache-2.0                |
 | abstract-logging                      | 2.0.1          | MIT                       |
+| accepts                               | 2.0.0          | MIT                       |
 | adm-zip                               | 0.6.1          | MIT                       |
 | ai                                    | 7.0.127        | Apache-2.0                |
 | ajv                                   | 8.20.0         | MIT                       |
@@ -65,22 +68,42 @@ The full licence texts ship with the software: the app lists every package with 
 | avvio                                 | 9.3.0          | MIT                       |
 | bidi-js                               | 1.1.0          | MIT                       |
 | bitmap-sdf                            | 1.0.4          | MIT                       |
+| body-parser                           | 2.4.0          | MIT                       |
+| bytes                                 | 3.1.2          | MIT                       |
+| call-bind-apply-helpers               | 1.0.2          | MIT                       |
+| call-bound                            | 1.0.4          | MIT                       |
 | chownr                                | 3.0.0          | BlueOak-1.0.0             |
 | commander                             | 2.20.3         | MIT                       |
-| cookie                                | 1.1.1          | MIT                       |
+| content-disposition                   | 2.0.1          | MIT                       |
+| content-type                          | 1.0.5, 2.1.0   | MIT                       |
+| cookie                                | 0.7.2, 1.1.1   | MIT                       |
+| cookie-signature                      | 1.2.2          | MIT                       |
 | copc                                  | 0.0.9          | MIT                       |
+| cors                                  | 2.8.6          | MIT                       |
 | cross-fetch                           | 4.1.0          | MIT                       |
+| cross-spawn                           | 7.0.6          | MIT                       |
 | csstype                               | 3.2.3          | MIT                       |
+| debug                                 | 4.4.3          | MIT                       |
 | define-data-property                  | 1.1.4          | MIT                       |
 | define-properties                     | 1.2.1          | MIT                       |
+| depd                                  | 2.0.0          | MIT                       |
 | dequal                                | 2.0.3          | MIT                       |
 | dompurify                             | 3.4.16         | (MPL-2.0 OR Apache-2.0)   |
 | draco3d                               | 1.5.7          | Apache-2.0                |
+| dunder-proto                          | 1.0.1          | MIT                       |
 | earcut                                | 3.0.2, 3.2.4   | ISC                       |
+| ee-first                              | 1.1.1          | MIT                       |
+| encodeurl                             | 2.0.2          | MIT                       |
 | es-define-property                    | 1.0.1          | MIT                       |
 | es-errors                             | 1.3.0          | MIT                       |
+| es-object-atoms                       | 1.1.2          | MIT                       |
+| escape-html                           | 1.0.3          | MIT                       |
 | escape-string-regexp                  | 4.0.0          | MIT                       |
+| etag                                  | 1.8.1          | MIT                       |
+| eventsource                           | 3.0.7          | MIT                       |
 | eventsource-parser                    | 3.1.1          | MIT                       |
+| express                               | 5.3.0          | MIT                       |
+| express-rate-limit                    | 8.7.4          | MIT                       |
 | fast-decode-uri-component             | 1.0.1          | MIT                       |
 | fast-deep-equal                       | 3.1.3          | MIT                       |
 | fast-json-stringify                   | 7.0.1          | MIT                       |
@@ -89,7 +112,13 @@ The full licence texts ship with the software: the app lists every package with 
 | fastify                               | 5.12.5         | MIT                       |
 | fastq                                 | 1.20.3         | ISC                       |
 | fflate                                | 0.8.3          | MIT                       |
+| finalhandler                          | 2.1.1          | MIT                       |
 | find-my-way                           | 9.9.0          | MIT                       |
+| forwarded                             | 0.2.0          | MIT                       |
+| fresh                                 | 2.0.0          | MIT                       |
+| function-bind                         | 1.1.2          | MIT                       |
+| get-intrinsic                         | 1.3.0          | MIT                       |
+| get-proto                             | 1.0.1          | MIT                       |
 | gl-matrix                             | 3.4.4          | MIT                       |
 | global-agent                          | 4.1.3          | BSD-3-Clause              |
 | globalthis                            | 1.0.4          | MIT                       |
@@ -97,11 +126,22 @@ The full licence texts ship with the software: the app lists every package with 
 | gopd                                  | 1.2.0          | MIT                       |
 | grapheme-splitter                     | 1.0.4          | MIT                       |
 | has-property-descriptors              | 1.0.2          | MIT                       |
-| ipaddr.js                             | 2.5.0          | MIT                       |
+| has-symbols                           | 1.1.0          | MIT                       |
+| hasown                                | 2.0.4          | MIT                       |
+| hono                                  | 4.13.18        | MIT                       |
+| http-errors                           | 2.0.1          | MIT                       |
+| iconv-lite                            | 0.7.3          | MIT                       |
+| inherits                              | 2.0.4          | ISC                       |
+| ip-address                            | 10.7.6         | MIT                       |
+| ipaddr.js                             | 1.9.1, 2.5.0   | MIT                       |
+| is-promise                            | 4.0.0          | MIT                       |
+| isexe                                 | 2.0.0          | ISC                       |
+| jose                                  | 6.2.17         | MIT                       |
 | jsep                                  | 1.4.0          | MIT                       |
 | json-schema                           | 0.4.0          | (AFL-2.1 OR BSD-3-Clause) |
 | json-schema-ref-resolver              | 3.0.0          | MIT                       |
 | json-schema-traverse                  | 1.0.0          | MIT                       |
+| json-schema-typed                     | 8.0.2          | BSD-2-Clause              |
 | json-stringify-pretty-compact         | 4.0.0          | MIT                       |
 | kdbush                                | 4.1.0          | ISC                       |
 | ktx-parse                             | 2.0.0          | MIT                       |
@@ -111,19 +151,33 @@ The full licence texts ship with the software: the app lists every package with 
 | long                                  | 5.3.2          | Apache-2.0                |
 | maplibre-gl                           | 6.11.2         | BSD-3-Clause              |
 | matcher                               | 4.0.0          | MIT                       |
+| math-intrinsics                       | 1.1.0          | MIT                       |
+| media-typer                           | 1.1.1          | MIT                       |
+| merge-descriptors                     | 2.0.0          | MIT                       |
 | mersenne-twister                      | 1.1.0          | MIT                       |
 | meshoptimizer                         | 1.3.0          | MIT                       |
 | mgrs                                  | 1.0.0          | MIT                       |
+| mime-db                               | 1.54.0         | MIT                       |
+| mime-types                            | 3.0.2          | MIT                       |
 | minimist                              | 1.2.8          | MIT                       |
 | minipass                              | 7.1.3          | BlueOak-1.0.0             |
 | minizlib                              | 3.1.0          | MIT                       |
+| ms                                    | 2.1.3          | MIT                       |
 | murmurhash-js                         | 1.0.0          | MIT                       |
+| negotiator                            | 1.1.0          | MIT                       |
 | node-fetch                            | 2.7.0          | MIT                       |
+| object-assign                         | 4.1.1          | MIT                       |
+| object-inspect                        | 1.13.4         | MIT                       |
 | object-keys                           | 1.1.1          | MIT                       |
 | on-exit-leak-free                     | 2.1.2          | MIT                       |
+| on-finished                           | 2.4.2          | MIT                       |
+| once                                  | 1.4.0          | ISC                       |
 | onnxruntime-common                    | 1.30.0         | MIT                       |
 | onnxruntime-node                      | 1.30.0         | MIT                       |
 | pako                                  | 3.0.2          | (MIT AND Zlib)            |
+| parseurl                              | 1.3.3          | MIT                       |
+| path-key                              | 3.1.1          | MIT                       |
+| path-to-regexp                        | 8.4.2          | MIT                       |
 | pbf                                   | 4.0.2, 5.1.2   | BSD-3-Clause              |
 | pg                                    | 8.23.1         | MIT                       |
 | pg-cloudflare                         | 1.4.1          | MIT                       |
@@ -136,6 +190,7 @@ The full licence texts ship with the software: the app lists every package with 
 | pino                                  | 10.4.0         | MIT                       |
 | pino-abstract-transport               | 3.0.0          | MIT                       |
 | pino-std-serializers                  | 7.1.0          | MIT                       |
+| pkce-challenge                        | 5.0.1          | MIT                       |
 | pmtiles                               | 4.5.0          | BSD-3-Clause              |
 | postgres-array                        | 2.0.0          | MIT                       |
 | postgres-bytea                        | 1.0.1          | MIT                       |
@@ -146,8 +201,12 @@ The full licence texts ship with the software: the app lists every package with 
 | proj4                                 | 2.22.0         | MIT                       |
 | protobufjs                            | 8.8.0          | BSD-3-Clause              |
 | protocol-buffers-schema               | 3.6.1          | MIT                       |
+| proxy-addr                            | 2.0.8          | MIT                       |
+| qs                                    | 6.17.1         | BSD-3-Clause              |
 | quick-format-unescaped                | 4.0.4          | MIT                       |
 | quickselect                           | 3.0.0          | ISC                       |
+| range-parser                          | 1.3.0          | MIT                       |
+| raw-body                              | 3.0.2          | MIT                       |
 | rbush                                 | 4.0.1          | MIT                       |
 | react                                 | 19.3.0         | MIT                       |
 | react-dom                             | 19.3.0         | MIT                       |
@@ -157,33 +216,52 @@ The full licence texts ship with the software: the app lists every package with 
 | ret                                   | 0.5.0          | MIT                       |
 | reusify                               | 1.1.0          | MIT                       |
 | rfdc                                  | 1.4.1          | MIT                       |
+| router                                | 2.2.0          | MIT                       |
 | safe-regex2                           | 5.1.1          | MIT                       |
 | safe-stable-stringify                 | 2.5.0          | MIT                       |
+| safer-buffer                          | 2.1.2          | MIT                       |
 | scheduler                             | 0.28.0         | MIT                       |
 | secure-json-parse                     | 4.1.0          | BSD-3-Clause              |
 | semver                                | 7.8.5          | ISC                       |
+| send                                  | 1.2.1          | MIT                       |
 | serialize-error                       | 8.1.0          | MIT                       |
+| serve-static                          | 2.2.1          | MIT                       |
 | set-cookie-parser                     | 2.7.2          | MIT                       |
+| setprototypeof                        | 1.2.0          | ISC                       |
+| shebang-command                       | 2.0.0          | MIT                       |
+| shebang-regex                         | 3.0.0          | MIT                       |
+| side-channel                          | 1.1.1          | MIT                       |
+| side-channel-list                     | 1.0.1          | MIT                       |
+| side-channel-map                      | 1.0.1          | MIT                       |
+| side-channel-weakmap                  | 1.0.2          | MIT                       |
 | sonic-boom                            | 4.2.1          | MIT                       |
 | split2                                | 4.2.0          | ISC                       |
+| statuses                              | 2.0.2          | MIT                       |
 | tar                                   | 7.5.22         | BlueOak-1.0.0             |
 | thread-stream                         | 4.2.0          | MIT                       |
 | three                                 | 0.186.1        | MIT                       |
 | tinyqueue                             | 3.0.0          | ISC                       |
 | toad-cache                            | 3.7.4          | MIT                       |
+| toidentifier                          | 1.0.1          | MIT                       |
 | topojson-client                       | 3.1.0          | ISC                       |
 | tr46                                  | 0.0.3          | MIT                       |
 | tslib                                 | 2.8.1          | 0BSD                      |
 | type-fest                             | 0.20.2         | (MIT OR CC0-1.0)          |
+| type-is                               | 2.1.0          | MIT                       |
 | undici                                | 7.30.0         | MIT                       |
+| unpipe                                | 1.0.0          | MIT                       |
 | urijs                                 | 1.19.11        | MIT                       |
+| vary                                  | 1.1.2          | MIT                       |
 | webidl-conversions                    | 3.0.1          | BSD-2-Clause              |
 | whatwg-url                            | 5.0.0          | MIT                       |
+| which                                 | 2.0.2          | ISC                       |
 | wkt-parser                            | 1.5.6          | MIT                       |
 | world-atlas                           | 2.0.2          | ISC                       |
+| wrappy                                | 1.0.2          | ISC                       |
 | xtend                                 | 4.0.2          | MIT                       |
 | yallist                               | 5.0.0          | BlueOak-1.0.0             |
 | zod                                   | 4.6.5          | MIT                       |
+| zod-to-json-schema                    | 3.25.2         | ISC                       |
 | zustand                               | 5.0.15         | MIT                       |
 
 ## Pipeline pack (Python)

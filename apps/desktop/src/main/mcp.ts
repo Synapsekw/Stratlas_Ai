@@ -154,12 +154,11 @@ export function createMcpHost(deps: McpHostDeps): McpHost {
   }
 
   const notify = () => {
-    void status().then(
-      (s) => {
+    void status()
+      .then((s) => {
         deps.emit(s);
-      },
-      () => undefined,
-    );
+      })
+      .catch(() => undefined);
   };
 
   async function call(name: string, input: unknown) {
@@ -182,7 +181,13 @@ export function createMcpHost(deps: McpHostDeps): McpHost {
       pending.set(callId, (r) => {
         clearTimeout(timer);
         pending.delete(callId);
-        resolve(r.ok ? { ok: true, text: r.text } : { ok: false, error: r.error });
+        // another project opened meanwhile: its data must not go out under this one's gate
+        if (deps.openProject()?.id !== p.id)
+          resolve({
+            ok: false,
+            error: 'The project in the app changed during the call. Ask again.',
+          });
+        else resolve(r.ok ? { ok: true, text: r.text } : { ok: false, error: r.error });
       });
       if (!deps.send({ callId, projectId: p.id, name, input })) {
         pending.get(callId)?.({ callId, ok: false, error: 'The app window is not open.' });
@@ -205,8 +210,17 @@ export function createMcpHost(deps: McpHostDeps): McpHost {
         onChange: notify,
       });
       startError = undefined;
-      if (f.token !== token || f.port !== server.port)
-        await save({ ...f, token, port: server.port });
+      // read again: the switch, the token or a project choice may have changed while starting
+      const now = await load();
+      if (!now.enabled) {
+        const s = server;
+        server = null;
+        await s.close();
+        return;
+      }
+      if (now.token === null || now.port !== server.port)
+        await save({ ...now, token: now.token ?? token, port: server.port });
+      if (now.token !== null && now.token !== token) await server.setToken(now.token);
     } catch (e) {
       startError = `The server could not start: ${e instanceof Error ? e.message : String(e)}`;
       warn(startError);
@@ -221,6 +235,8 @@ export function createMcpHost(deps: McpHostDeps): McpHost {
   }
 
   async function halt(): Promise<void> {
+    // a start under way finishes first, so the server it makes is closed too
+    await starting?.catch(() => undefined);
     const s = server;
     server = null;
     for (const resolve of [...pending.values()])

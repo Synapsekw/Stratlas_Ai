@@ -1,23 +1,23 @@
 /* Settings, AI providers, Outside apps (MCP) (X1). Laid out like the Team server block. */
 .mcp-server .mcp-note {
-  margin-top: 6px;
+  margin-top: var(--sp-3);
   font-size: var(--t-12);
 }
 .mcp-server .notice.mcp-note {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-4);
 }
 .mcp-server .mcp-h {
-  margin: 14px 0 4px;
+  margin: var(--sp-6) 0 var(--sp-2);
   font-size: var(--t-12);
   font-weight: 600;
 }
 .mcp-server .mcp-fields {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 6px 12px;
-  margin: 10px 0 0;
+  gap: var(--sp-3) var(--sp-5);
+  margin: var(--sp-5) 0 0;
   align-items: center;
   font-size: var(--t-12);
 }
@@ -27,7 +27,7 @@
 .mcp-server .mcp-fields dd {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--sp-3);
   align-items: center;
   margin: 0;
   min-width: 0;
@@ -37,7 +37,7 @@
   color: var(--fg-0);
 }
 .mcp-server .mcp-setup {
-  margin-top: 6px;
+  margin-top: var(--sp-3);
   border: 1px solid var(--line-soft);
   border-radius: var(--r-4);
   background: var(--bg-1);
@@ -46,13 +46,13 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  padding: 4px 4px 0 10px;
+  gap: var(--sp-4);
+  padding: var(--sp-2) var(--sp-2) 0 var(--sp-5);
   font-size: var(--t-12);
 }
 .mcp-server .mcp-setup pre {
   margin: 0;
-  padding: 6px 10px 8px;
+  padding: var(--sp-3) var(--sp-5) var(--sp-4);
   font-size: var(--t-11, 11px);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -60,18 +60,18 @@
 }
 .mcp-server .mcp-list {
   list-style: none;
-  margin: 6px 0 0;
+  margin: var(--sp-3) 0 0;
   padding: 0;
   display: grid;
-  gap: 6px;
+  gap: var(--sp-3);
   font-size: var(--t-12);
 }
 .mcp-server .mcp-client {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: var(--sp-5);
   align-items: center;
-  padding: 8px 10px;
+  padding: var(--sp-4) var(--sp-5);
   border: 1px solid var(--line-soft);
   border-radius: var(--r-4);
   background: var(--bg-1);
@@ -84,7 +84,7 @@
 }
 .mcp-server .mcp-what {
   display: grid;
-  gap: 2px;
+  gap: var(--sp-1);
   min-width: 0;
   overflow-wrap: anywhere;
 }

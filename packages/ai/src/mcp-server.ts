@@ -55,6 +55,10 @@ export interface McpHttpServerOptions {
   /** A client connected, called, or went away. */
   onChange?(): void;
   now?(): Date;
+  /** Sessions kept at most; a new one ends the least recently seen (default 16). */
+  maxSessions?: number;
+  /** A session unseen this long is ended (default 30 minutes): many clients never say goodbye. */
+  idleMs?: number;
 }
 
 export interface McpHttpServer {
@@ -172,6 +176,11 @@ export async function startMcpHttpServer(opts: McpHttpServerOptions): Promise<Mc
       allowedHosts: hosts,
       onsessioninitialized: (id) => {
         client.id = id;
+        const oldest = [...sessions.values()].sort((a, b) =>
+          a.client.lastSeenAt.localeCompare(b.client.lastSeenAt),
+        );
+        const over = sessions.size + 1 - (opts.maxSessions ?? 16);
+        for (const s of oldest.slice(0, Math.max(0, over))) void end(s);
         sessions.set(id, { transport, server, client });
       },
     });
@@ -248,6 +257,17 @@ export async function startMcpHttpServer(opts: McpHttpServerOptions): Promise<Mc
     await s.server.close().catch(() => undefined);
   }
 
+  const idleMs = opts.idleMs ?? 30 * 60_000;
+  const sweep = setInterval(
+    () => {
+      const cutoff = now().getTime() - idleMs;
+      const idle = [...sessions.values()].filter((s) => Date.parse(s.client.lastSeenAt) < cutoff);
+      if (idle.length) void Promise.all(idle.map(end)).then(changed);
+    },
+    Math.min(60_000, idleMs),
+  );
+  sweep.unref();
+
   return {
     get port() {
       return port;
@@ -269,6 +289,7 @@ export async function startMcpHttpServer(opts: McpHttpServerOptions): Promise<Mc
       changed();
     },
     async close() {
+      clearInterval(sweep);
       await Promise.all([...sessions.values()].map(end));
       http.closeAllConnections();
       await new Promise<void>((resolve) =>

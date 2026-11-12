@@ -841,7 +841,9 @@ const mcp = createMcpHost({
   },
   emit: (status) => {
     const parsed = ipcEvents['mcp:changed'].safeParse(status);
-    if (parsed.success) mainWindow?.webContents.send('mcp:changed', parsed.data);
+    const win = mainWindow;
+    if (parsed.success && win && !win.isDestroyed())
+      win.webContents.send('mcp:changed', parsed.data);
   },
 });
 /** Names of opened projects by id, for the usage list in Settings. */

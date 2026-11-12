@@ -187,6 +187,32 @@ describe('the MCP host', () => {
     await expect(connect(s)).rejects.toThrow();
   });
 
+  it('switched off while starting: the server it was starting closes too', async () => {
+    const { host } = make();
+    const on = host.setEnabled(true);
+    const off = host.setEnabled(false);
+    await on;
+    const s = await off;
+    expect(s).toMatchObject({ enabled: false, running: false, url: null });
+  });
+
+  it('refuses a result when another project opened during the call', async () => {
+    let open = project;
+    const { host } = make({
+      openProject: () => open,
+      gate: () => Promise.resolve({ policyForbids: false, cloudAi: true, offlineOnly: false }),
+      send: (c) => {
+        open = { ...project, id: 'p2' };
+        queueMicrotask(() => host.result({ callId: c.callId, ok: true, text: '{}' }));
+        return true;
+      },
+    });
+    const client = await connect(await host.setEnabled(true));
+    const r = await client.callTool({ name: 'list_layers', arguments: {} });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toMatch(/project in the app changed/);
+  });
+
   it('switched off: stops listening', async () => {
     const { host } = make();
     const s = await host.setEnabled(true);

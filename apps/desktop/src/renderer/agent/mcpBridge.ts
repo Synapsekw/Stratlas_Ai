@@ -28,10 +28,12 @@ export async function runMcpCall(
 ): Promise<McpCallResult> {
   const fail = (error: string): McpCallResult => ({ callId: call.callId, ok: false, error });
   if (!isMcpTool(call.name)) return fail(`Unknown tool "${call.name}".`);
-  if (workspace.getState().project?.id !== call.projectId)
-    return fail('That project is no longer open in the app.');
+  const gone = () => workspace.getState().project?.id !== call.projectId;
+  if (gone()) return fail('That project is no longer open in the app.');
   try {
     const r = await runRendererTool(call.name, call.input, context(mcpWindow(call.name)));
+    // another project opened during the call: drop the result rather than mix the two
+    if (gone()) return fail('That project is no longer open in the app.');
     return { callId: call.callId, ok: true, text: mcpOutput(r.result, r.summary) };
   } catch (e) {
     return fail(e instanceof Error ? e.message : String(e));

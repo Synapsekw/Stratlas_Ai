@@ -47,6 +47,17 @@ describe('runMcpCall', () => {
     expect(r).toMatchObject({ ok: false, error: 'That project is no longer open in the app.' });
   });
 
+  it('drops the result when another project opened during the call', async () => {
+    const r = await runMcpCall(call('list_layers'), (window) => {
+      const ctx = defaultToolContext(window);
+      workspace.setState({
+        project: { id: 'p2', root: 'C:/q', manifest },
+      } as unknown as Partial<ReturnType<typeof workspace.getState>>);
+      return ctx;
+    });
+    expect(r).toMatchObject({ ok: false, error: 'That project is no longer open in the app.' });
+  });
+
   it('answers a tool failure as an error', async () => {
     const r = await runMcpCall(call('list_issues', { status: 'nope' }));
     expect(r.ok).toBe(false);

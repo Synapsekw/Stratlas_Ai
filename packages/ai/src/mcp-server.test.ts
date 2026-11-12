@@ -195,6 +195,34 @@ describe('the local MCP server', () => {
     expect((await again.listTools()).tools.length).toBeGreaterThan(0);
   });
 
+  it('keeps at most maxSessions, ending the least recently seen', async () => {
+    const { server: s, token } = await start({ maxSessions: 2 });
+    const a = await connect(s.url, token, 'a');
+    await a.listTools();
+    const b = await connect(s.url, token, 'b');
+    await b.listTools();
+    const c = await connect(s.url, token, 'c');
+    await c.listTools();
+    await expect
+      .poll(() =>
+        s
+          .clients()
+          .map((x) => x.name)
+          .sort(),
+      )
+      .toEqual(['b', 'c']);
+  });
+
+  it('ends a session left idle', async () => {
+    let t = Date.parse('2026-11-12T10:00:00Z');
+    const { server: s, token } = await start({ idleMs: 50, now: () => new Date(t) });
+    const a = await connect(s.url, token);
+    await a.listTools();
+    expect(s.clients()).toHaveLength(1);
+    t += 60_000;
+    await expect.poll(() => s.clients().length, { timeout: 2000 }).toBe(0);
+  });
+
   it('takes a free port when the one asked for is taken', async () => {
     const first = await start();
     const second = await startMcpHttpServer({

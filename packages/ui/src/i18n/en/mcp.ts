@@ -7,7 +7,7 @@ export const enMcp = {
   'mcp.title': 'Outside apps (MCP)',
   'mcp.sub': 'Other AI apps on this computer can read the open project',
   'mcp.intro':
-    'Claude Code, Claude Desktop and other MCP apps on this computer can ask the open project what the agent can read: issues, measurements, volumes, survey dates, detections and the project search. They cannot change anything, move the view or see photos. Only apps on this computer that have the token can connect.',
+    'Claude Code, Claude Desktop and other MCP apps on this computer can ask the open project what Ask AI can read: issues, measurements, volumes, survey dates, detections and the project search. They cannot change anything, move the view or see photos. Only apps on this computer that have the token can connect.',
   'mcp.switch': 'Outside apps server',
   'mcp.on': 'On, {count} read-only tools',
   'mcp.off': 'Off',

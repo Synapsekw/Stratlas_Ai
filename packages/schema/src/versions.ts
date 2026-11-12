@@ -192,6 +192,13 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     since: '0.4',
   },
   {
+    family: 'aio.mcp',
+    version: 1,
+    home: 'userData',
+    where: 'mcp.json (local MCP server: switch, token, port, allowed projects)',
+    since: '0.31',
+  },
+  {
     family: 'aio.pmextract',
     version: 1,
     home: 'userData',
