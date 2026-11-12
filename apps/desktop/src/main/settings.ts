@@ -132,6 +132,19 @@ function merge(defaults: Settings, raw: unknown): Settings {
   return Settings.parse(out);
 }
 
+/**
+ * Settings only main writes: the bundled model's tool-calling check (A3) gates the offline agent,
+ * so the page may not store one of its own (`ai:bundledAgentCheck` writes it).
+ */
+export const MAIN_ONLY_SETTINGS = ['bundledAgentCheck'] as const;
+
+/** A `settings:set` patch from the page without the settings only main writes. */
+export function fromPage(patch: IpcRequest<'settings:set'>): IpcRequest<'settings:set'> {
+  const out = { ...patch };
+  for (const key of MAIN_ONLY_SETTINGS) Reflect.deleteProperty(out, key);
+  return out;
+}
+
 export interface SettingsStore {
   /** The settings with every update asked for so far written. */
   get(): Promise<Settings>;

@@ -340,7 +340,7 @@ import { checkDataRootChange, createPickedFolders, dataRootError } from './dataR
 import { saveFile } from './saveFile';
 import { savePath } from './exports/savePath';
 import { aiGates } from './aiGates';
-import { createSettingsStore, defaultDataRoot, defaultSettings } from './settings';
+import { createSettingsStore, defaultDataRoot, defaultSettings, fromPage } from './settings';
 import { assertWritable, installRealDataGuard } from './realDataGuard';
 import { migrateLegacyUserData } from './userDataMigration';
 
@@ -1370,7 +1370,9 @@ function registerIpc(): void {
   }));
 
   handle('settings:get', () => settings.get());
-  handle('settings:set', async (patch) => {
+  handle('settings:set', async (asked) => {
+    // the bundled model's tool-calling check is written by its own handler only (A3)
+    const patch = fromPage(asked);
     if (patch.dataRoot !== undefined) {
       const refused = await checkDataRootChange(
         patch.dataRoot,
@@ -3117,6 +3119,14 @@ function createWindow(): BrowserWindow {
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null;
   });
+  // A3: a page that reloads, navigates or dies cannot answer an agent's approval cards: its runs
+  // stop, so a run on the bundled model gives the graphics card back
+  const stopAgentRuns = () => {
+    agent.cancelAll();
+  };
+  win.webContents.on('did-navigate', stopAgentRuns);
+  win.webContents.on('render-process-gone', stopAgentRuns);
+  win.webContents.on('destroyed', stopAgentRuns);
 
   // Release smoke check: the packaged app must load its UI and exit 0 (tools/release/smoke-packaged.mjs).
   if (process.env.QUADRION_SMOKE === '1') {

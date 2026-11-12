@@ -7,7 +7,31 @@ import {
   createSettingsStore,
   defaultDataRoot,
   defaultSettings,
+  fromPage,
 } from './settings';
+
+describe('fromPage (A3)', () => {
+  it('drops a tool-calling check the page sends, keeps the rest', () => {
+    const forged = {
+      theme: 'dark' as const,
+      bundledAgentCheck: {
+        modelSha256: 'a'.repeat(64),
+        modelId: 'm',
+        packVersion: '0.2.0',
+        passed: true,
+        correct: 12,
+        total: 12,
+        needed: 10,
+        invalidCalls: 0,
+        meanLatencyMs: 1,
+        checkedAt: '2026-11-12T00:00:00.000Z',
+        cases: [],
+      },
+    };
+    expect(fromPage(forged)).toEqual({ theme: 'dark' });
+    expect(forged.bundledAgentCheck.passed).toBe(true);
+  });
+});
 
 describe('defaultDataRoot', () => {
   const base = { platform: 'win32', documents: 'C:\\Users\\me\\Documents', exists: () => false };

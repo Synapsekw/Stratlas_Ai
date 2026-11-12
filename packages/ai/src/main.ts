@@ -278,6 +278,11 @@ export interface AgentRuntime {
   send(req: IpcRequest<'ai:send'>): Promise<{ ok: boolean; error?: string }>;
   toolResult(req: IpcRequest<'ai:toolResult'>): void;
   cancel(runId: string): void;
+  /**
+   * Stop every run: the window that would answer their approval cards reloaded, navigated or
+   * died (A3: a bundled run then gives the graphics card back).
+   */
+  cancelAll(): void;
   /** Whether the chat route can answer now, and why not. Never calls a provider. */
   status(req: IpcRequest<'ai:status'>): Promise<IpcResponse<'ai:status'>>;
   /**
@@ -412,8 +417,19 @@ export const MESSAGES = {
 
 /** The context the bundled model's server is started with (A3; `VLM_CONTEXT_TOKENS` in main). */
 export const BUNDLED_CONTEXT_TOKENS = 16_384;
-/** A loopback address for the bundled model's provider before a run takes the real one. */
-const BUNDLED_STAND_IN = 'http://127.0.0.1/';
+/**
+ * What a bundled route's gate answers as its provider: on this machine, no key, and no model of
+ * its own (the address and key are known per run only, `modelFor`), so nothing can call it.
+ */
+const BUNDLED_PROVIDER: ModelProvider = {
+  id: 'local',
+  label: 'Bundled model',
+  cloud: false,
+  needsKey: false,
+  languageModel: () => {
+    throw new Error('The bundled model is taken per run; this call did not take it.');
+  },
+};
 
 /** The bundled model taken for one run: its server's address, per-launch key and model. */
 export type BundledLease =
@@ -576,10 +592,9 @@ export function createAgentRuntime(
     if (id !== 'local') return undefined;
     const cfg = host.localModel?.();
     if (!cfg?.enabled) return undefined;
-    // the bundled model's address is known per run only (`modelFor`); this one stands in for it
-    return localProvider(cfg.source === 'bundled' ? { baseUrl: BUNDLED_STAND_IN } : cfg, {
-      offlineOnly,
-    });
+    // the bundled model's address is known per run only: `gateRoute` and `modelFor` handle it
+    if (cfg.source === 'bundled') return undefined;
+    return localProvider(cfg, { offlineOnly });
   }
 
   /** The route runs on the bundled model (A3). */
@@ -648,7 +663,7 @@ export function createAgentRuntime(
     projectId: string | undefined,
     o: { bundled?: boolean } = {},
   ): Promise<Check> {
-    const provider = resolveProvider(route.provider);
+    const provider = bundledRoute(route) ? BUNDLED_PROVIDER : resolveProvider(route.provider);
     if (!provider) {
       return route.provider === 'local'
         ? { ok: false, reason: 'local-off', message: MESSAGES.localOff, route, cloud: false }
@@ -1121,7 +1136,9 @@ export function createAgentRuntime(
 
   function engineerRoute(): ModelRoute | { error: string } {
     try {
-      return routeFor(host.routes?.() ?? defaultRoutes(), 'engineer');
+      const route = routeFor(host.routes?.() ?? defaultRoutes(), 'engineer');
+      // the engineer step never runs on the bundled model (A3)
+      return bundledRoute(route) ? { error: MESSAGES.bundledAgentOnly } : route;
     } catch (e) {
       return { error: e instanceof Error ? e.message : MESSAGES.failed };
     }
@@ -1976,13 +1993,14 @@ export function createAgentRuntime(
       };
     },
     testConnection: async ({ provider: id }) => {
+      // the bundled model has its own check (Settings, Local model, Check tool calling)
+      const cfg = host.localModel?.();
+      if (id === 'local' && cfg?.enabled === true && cfg.source === 'bundled')
+        return { ok: false, message: MESSAGES.bundledAgentOnly };
       const provider = resolveProvider(id);
       if (!provider) {
         return { ok: false, message: id === 'local' ? MESSAGES.localOff : MESSAGES.noProvider };
       }
-      // the bundled model has its own check (Settings, Local model, Check tool calling)
-      if (id === 'local' && host.localModel?.()?.source === 'bundled')
-        return { ok: false, message: MESSAGES.bundledAgentOnly };
       if (provider.cloud && offlineOnly()) return { ok: false, message: MESSAGES.offlineOnly };
       if (provider.cloud && !host.cloudAllowed()) return { ok: false, message: MESSAGES.cloudOff };
       const routes = host.routes?.() ?? defaultRoutes();
@@ -2074,6 +2092,9 @@ export function createAgentRuntime(
     },
     cancel: (runId) => {
       runs.get(runId)?.controller.abort();
+    },
+    cancelAll: () => {
+      for (const run of runs.values()) run.controller.abort();
     },
     ask: async (req) => {
       if (req.backend.kind === 'local') return { ok: false, error: LOCAL_ASK_IN_APP };

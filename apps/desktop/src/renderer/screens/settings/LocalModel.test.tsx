@@ -31,6 +31,7 @@ const h = vi.hoisted(() => ({
   updates: [] as Record<string, unknown>[],
   calls: [] as string[],
   checkAnswer: null as Record<string, unknown> | null,
+  duringCheck: null as Record<string, unknown> | null,
 }));
 
 vi.mock('../../shell', () => ({
@@ -42,11 +43,14 @@ vi.mock('../../shell', () => ({
   bridge: {
     call: (channel: string) => {
       h.calls.push(channel);
+      // the person changes another setting while the check runs
+      if (h.duringCheck) Object.assign(h.settings, h.duringCheck);
       return Promise.resolve({ ok: true, value: h.checkAnswer });
     },
   },
   shell: {
     getState: () => ({
+      settings: h.settings,
       updateSettings: (patch: Record<string, unknown>) => {
         h.updates.push(patch);
         Object.assign(h.settings, patch);
@@ -92,6 +96,7 @@ beforeEach(() => {
   h.status = { pack: PACK, check: null, blocked: 'Check first.' };
   h.updates = [];
   h.calls = [];
+  h.duringCheck = null;
 });
 afterEach(() => {
   act(() => {
@@ -154,6 +159,9 @@ describe('Local model: the bundled Analytics model (A3)', () => {
     const button = checkButton();
     if (!button) throw new Error('no check button');
     h.status = { pack: PACK, check: CHECK, blocked: null };
+    h.duringCheck = {
+      localModel: { ...h.settings.localModel, timeoutMs: 300_000 },
+    };
     await act(async () => {
       button.click();
       await Promise.resolve();
@@ -164,7 +172,9 @@ describe('Local model: the bundled Analytics model (A3)', () => {
       'Passed: 12 of 12 right, 0.4 s per request. Offline AI can run on this model.',
     );
     expect(offlineSwitch()?.disabled).toBe(false);
+    // the change made during the check stays: only the capabilities are written
     expect(h.updates.at(-1)?.localModel).toMatchObject({
+      timeoutMs: 300_000,
       capabilities: { tools: true, vision: true },
     });
   });

@@ -233,6 +233,7 @@ export async function runToolCheck(opts: ToolCheckOptions): Promise<ToolCheckRes
   const results: ToolCheckCaseResult[] = [];
   let invalidCalls = 0;
   let promptTokens: number | undefined;
+  let lastFailed = false;
   for (const [index, c] of cases.entries()) {
     const timeout = AbortSignal.timeout(opts.timeoutMs ?? CASE_TIMEOUT_MS);
     const signal = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;
@@ -259,8 +260,10 @@ export async function runToolCheck(opts: ToolCheckOptions): Promise<ToolCheckRes
         abortSignal: signal,
       });
     } catch (e) {
-      // nothing answered: not a verdict on the model
-      if (results.length === 0) throw e;
+      // nothing answered, or the server went away (two failed requests in a row): not a verdict
+      // on the model, so no failed check is recorded that would block it
+      if (results.length === 0 || lastFailed) throw e;
+      lastFailed = true;
       const result: ToolCheckCaseResult = {
         id: c.id,
         ok: false,
@@ -272,6 +275,7 @@ export async function runToolCheck(opts: ToolCheckOptions): Promise<ToolCheckRes
       opts.onCase?.(result, index, cases.length);
       continue;
     }
+    lastFailed = false;
     promptTokens ??= r.usage.inputTokens;
     const first = r.toolCalls[0];
     if (first && 'invalid' in first && first.invalid) invalidCalls += 1;

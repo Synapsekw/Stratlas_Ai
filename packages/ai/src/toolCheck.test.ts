@@ -139,6 +139,25 @@ describe('the tool-calling check', () => {
     await expect(runToolCheck({ model })).rejects.toThrow(/ECONNREFUSED/);
   });
 
+  it('throws when the server dies part way (two failed requests in a row), records one', async () => {
+    const down = new APICallError({
+      message: 'connect ECONNREFUSED',
+      url: 'http://127.0.0.1:1/v1/chat/completions',
+      requestBodyValues: {},
+      isRetryable: true,
+    });
+    // the third and fourth requests fail: no verdict, the server went away
+    let n = 0;
+    const dies = scripted((ask) => (++n >= 3 && n <= 4 ? down : (byAsk(ask) ?? '')));
+    await expect(runToolCheck({ model: dies.model })).rejects.toThrow(/ECONNREFUSED/);
+    // one failed request alone is that case's failure
+    let m = 0;
+    const once = scripted((ask) => (++m === 3 ? down : (byAsk(ask) ?? '')));
+    const r = await runToolCheck({ model: once.model });
+    expect(r.cases[2]).toMatchObject({ ok: false, outcome: 'text-only' });
+    expect(r.correct).toBe(11);
+  });
+
   it('needs four in five right', () => {
     expect(neededFor(12)).toBe(10);
     expect(neededFor(10)).toBe(8);

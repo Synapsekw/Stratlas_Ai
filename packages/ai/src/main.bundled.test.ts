@@ -31,9 +31,12 @@ interface Seen {
 let server: Server;
 let origin: string;
 let seen: Seen[];
+/** `tool`: the streamed answer is a call of list_layers, else text. */
+let replyWith: 'text' | 'tool';
 
 beforeEach(async () => {
   seen = [];
+  replyWith = 'text';
   server = createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on('data', (c: Buffer) => chunks.push(c));
@@ -75,6 +78,19 @@ beforeEach(async () => {
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       const base = { id: 'c1', object: 'chat.completion.chunk', created: 1, model: body.model };
       const send = (v: unknown) => res.write(`data: ${JSON.stringify(v)}\n\n`);
+      if (replyWith === 'tool') {
+        const call = { index: 0, id: 'call_1', type: 'function' };
+        const fn = { name: 'list_layers', arguments: '{}' };
+        send({
+          ...base,
+          choices: [
+            { index: 0, delta: { role: 'assistant', tool_calls: [{ ...call, function: fn }] } },
+          ],
+        });
+        send({ ...base, choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] });
+        res.end('data: [DONE]\n\n');
+        return;
+      }
       send({ ...base, choices: [{ index: 0, delta: { role: 'assistant', content: 'Bundled.' } }] });
       send({ ...base, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
       res.end('data: [DONE]\n\n');
@@ -250,6 +266,48 @@ describe('the bundled model as the offline agent', () => {
     });
     expect(r).toMatchObject({ ok: true, text: 'Bundled.' });
     expect(t.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('a run waiting on an approval stops when the window goes, and gives the model back', async () => {
+    replyWith = 'tool';
+    const t = setup({});
+    expect(await t.runtime.send(req())).toEqual({ ok: true });
+    await vi.waitFor(() => {
+      expect(t.events.some((e) => e.type === 'tool-call')).toBe(true);
+    });
+    expect(t.release).not.toHaveBeenCalled();
+    t.runtime.cancelAll();
+    expect(await t.end).toMatchObject({ type: 'error', message: MESSAGES.stopped });
+    expect(t.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('the engineer step never reaches a stand-in address on a bundled route', async () => {
+    const t = setup({});
+    const host = { policy: () => Promise.resolve(null) };
+    const runtime = createAgentRuntime(
+      {
+        getKey: () => Promise.resolve(null),
+        cloudAllowed: () => false,
+        emit: () => undefined,
+        routes,
+        localModel: () => BUNDLED,
+        bundled: { ready: () => null, acquire: t.acquire },
+        engineer: host,
+      },
+      { maxRetries: 0 },
+    );
+    const preview = await runtime.engineerPreview(
+      {} as unknown as IpcRequest<'ai:engineerPreview'>,
+    );
+    expect(preview).toEqual({ ok: false, error: MESSAGES.bundledAgentOnly });
+    const run = await runtime.engineer({
+      runId: 'e1',
+      projectId: 'p1',
+      engineerRun: 'r1',
+    } as unknown as IpcRequest<'ai:engineer'>);
+    expect(run).toMatchObject({ kind: 'refused', reason: MESSAGES.bundledAgentOnly });
+    expect(t.acquire).not.toHaveBeenCalled();
+    expect(seen).toHaveLength(0);
   });
 
   it('effectiveLocal: compact, 16k context and vision unless the settings say otherwise', () => {

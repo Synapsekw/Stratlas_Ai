@@ -165,10 +165,12 @@ export function LocalModel() {
       return;
     }
     // the runtime answers in text only while the stored capabilities say no tools
-    if (bundled) {
+    // the settings as they are now, after a check of a minute or more, not as they were before
+    const now = shell.getState().settings.localModel;
+    if (now?.source === 'bundled') {
       await save({
-        ...cfg,
-        capabilities: { tools: r.value.check.passed, vision: cfg.capabilities?.vision ?? true },
+        ...now,
+        capabilities: { tools: r.value.check.passed, vision: now.capabilities?.vision ?? true },
       });
     }
   };
