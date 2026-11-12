@@ -246,17 +246,6 @@ export function AgentPanel({
           <button
             type="button"
             className="ag-btn ghost icon"
-            title="This project: notes and permissions"
-            aria-label="This project: notes and permissions"
-            aria-pressed={showProject}
-            disabled={!projectId}
-            onClick={openProject}
-          >
-            <Icon name="note" />
-          </button>
-          <button
-            type="button"
-            className="ag-btn ghost icon"
             title="Export this conversation as Markdown"
             aria-label="Export this conversation as Markdown"
             disabled={state.turns.length === 0}
@@ -397,6 +386,17 @@ export function AgentPanel({
           <div className="ag-row">
             <span className="ag-tag">{WINDOW_LABELS[win]}</span>
             <span className="sp" />
+            <button
+              type="button"
+              className="ag-btn ghost icon"
+              title="This project: notes and permissions"
+              aria-label="This project: notes and permissions"
+              aria-pressed={showProject}
+              disabled={!projectId}
+              onClick={openProject}
+            >
+              <Icon name="note" />
+            </button>
             {canCapture && (
               <button
                 type="button"
@@ -1039,7 +1039,7 @@ function StepRow({
                 <button
                   type="button"
                   className="ag-btn sm primary"
-                  title="Later captures in this project run without asking. Turn it off under This project (the note button at the top of the agent)."
+                  title="Later captures in this project run without asking. Turn it off under This project (the note button beside the message field)."
                   onClick={() => void session.approve(step.callId, { allowViewCapture: true })}
                 >
                   <Icon name="check" size={12} />
