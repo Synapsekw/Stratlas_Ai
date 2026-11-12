@@ -4877,6 +4877,12 @@ export const ipcEvents = {
       name: z.string(),
       input: z.unknown(),
       risk: ToolRisk,
+      /**
+       * A3: the route main really used for this step sends data off this machine (an attached
+       * frame goes to the vision route, a cloud failure may fall back to the local model).
+       * Absent: counts as cloud.
+       */
+      cloud: z.boolean().optional(),
     }),
     z.object({
       type: z.literal('usage'),

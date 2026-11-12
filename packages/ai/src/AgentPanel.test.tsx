@@ -465,7 +465,9 @@ describe('batch approvals and view capture in the panel (A3)', () => {
     at: { kind: 'point', p: [0, 0, 0] },
   });
 
-  async function withCalls(calls: { callId: string; name: string; input: unknown }[]) {
+  async function withCalls(
+    calls: { callId: string; name: string; input: unknown; cloud?: boolean }[],
+  ) {
     workspace.getState().openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, []);
     const t = bridge(true);
     const session = await ownedSession(t.b);
@@ -480,6 +482,7 @@ describe('batch approvals and view capture in the panel (A3)', () => {
           name: c.name,
           input: c.input,
           risk: c.name === 'capture_frame' ? 'send' : 'write',
+          ...(c.cloud !== undefined ? { cloud: c.cloud } : {}),
         });
       }
       await Promise.resolve();
@@ -550,23 +553,31 @@ describe('batch approvals and view capture in the panel (A3)', () => {
     expect(button(cards[0] as HTMLElement, 'Approve')).toBeTruthy();
   });
 
-  it('offers to allow view capture for the project on the capture card', async () => {
+  it('offers to allow view capture with cloud AI on a cloud capture card', async () => {
+    // no route from main counts as cloud
     const { el, session } = await withCalls([{ callId: 'f1', name: 'capture_frame', input: {} }]);
     const card = only(el, '.approve');
     expect([...card.querySelectorAll('button')].map((b) => b.textContent.trim())).toEqual([
       'Reject',
       'Just this once',
-      'Allow for this project',
+      'Allow with cloud AI',
     ]);
     const spy = vi.spyOn(session, 'approve').mockResolvedValue(true);
     act(() => {
-      button(card, 'Allow for this project')?.click();
+      button(card, 'Allow with cloud AI')?.click();
     });
     expect(spy).toHaveBeenCalledWith('f1', { allowViewCapture: true });
     act(() => {
       button(card, 'Just this once')?.click();
     });
     expect(spy).toHaveBeenLastCalledWith('f1');
+  });
+
+  it('offers to allow it on this computer when main says the capture stays here', async () => {
+    const { el } = await withCalls([
+      { callId: 'f1', name: 'capture_frame', input: {}, cloud: false },
+    ]);
+    expect(button(only(el, '.approve'), 'Allow on this computer')).toBeTruthy();
   });
 
   it('says under a capture that it ran because the project allows it', async () => {

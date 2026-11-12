@@ -204,8 +204,12 @@ export class AgentSession {
   private closing = false;
   /** The project `viewCapture` was read or stored for: it never carries over to another one. */
   private viewCaptureFor: string | null = null;
-  /** The running reply goes to cloud AI (unknown: yes), for the view-capture choice it may use. */
-  private runCloud = true;
+  /**
+   * Per tool call, whether the route main really used for it sends data off this machine (the
+   * `tool-call` event's `cloud`; absent: yes). The renderer's own route guess is never used: an
+   * attached frame goes to the vision route, which may be cloud while chat is local.
+   */
+  private readonly callCloud = new Map<string, boolean>();
   /** The project the notes in the state belong to, and the newest notes read asked (A3). */
   private notesFor: string | null = null;
   private notesAsked = 0;
@@ -589,7 +593,6 @@ export class AgentSession {
       status: 'streaming',
     };
     this.runId = runId;
-    this.runCloud = target?.cloud ?? true;
     this.batch = 0;
     this.stepCalls = [];
     this.live.clear();
@@ -622,8 +625,8 @@ export class AgentSession {
     const step = this.state.steps[callId];
     if (step?.status !== 'awaiting') return false;
     if (opts.allowViewCapture && step.name === VIEW_CAPTURE_TOOL) {
-      // the choice is for the route the capture would go to: the run's, else the one in use now
-      await this.setViewCapture(true, this.live.has(callId) ? this.runCloud : this.routeCloud());
+      // the choice is for the route the capture goes to, as main said; unknown counts as cloud
+      await this.setViewCapture(true, this.captureCloud(callId));
     }
     const now = this.state.steps[callId];
     if (now?.status !== 'awaiting') return false;
@@ -720,6 +723,7 @@ export class AgentSession {
     this.flushSave();
     this.undos.clear();
     this.live.clear();
+    this.callCloud.clear();
     this.set({
       id: '',
       createdAt: this.now().toISOString(),
@@ -1015,12 +1019,20 @@ export class AgentSession {
     this.set({ steps });
   }
 
+  /** Whether a waiting call goes to cloud AI, as main reported it (unknown: yes). */
+  captureCloud(callId: string): boolean {
+    return this.callCloud.get(callId) ?? true;
+  }
+
   private onToolCall(e: Extract<IpcEvent<'ai:event'>, { type: 'tool-call' }>): void {
-    // A view capture in a project that allows it runs without its card; nothing else ever does.
+    const cloud = e.cloud ?? true;
+    this.callCloud.set(e.callId, cloud);
+    // A view capture in a project that allows it on this call's route runs without its card;
+    // nothing else ever does.
     const allowed =
       needsApproval(e.risk) &&
       e.name === VIEW_CAPTURE_TOOL &&
-      (this.runCloud ? this.state.viewCaptureCloud : this.state.viewCapture) &&
+      (cloud ? this.state.viewCaptureCloud : this.state.viewCapture) &&
       this.viewCaptureFor !== null &&
       this.viewCaptureFor === this.projectId() &&
       e.runId === this.runId;

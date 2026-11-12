@@ -1,9 +1,10 @@
 /**
  * A3 view-capture consent per project end to end with the scripted test model
  * (QUADRION_AI_TEST_PROVIDER, isolated profile, no network) on the tiny project's 3D view. The
- * first `capture_frame` asks with "Allow for this project", "Just this once" and "Reject";
- * "Allow for this project" stores the choice on this computer (`ai:project` says so) and runs
- * the capture. The next capture runs without a card and says why. Turned off again with the
+ * first `capture_frame` asks with "Allow with cloud AI", "Just this once" and "Reject";
+ * "Allow with cloud AI" (the scripted model is a cloud route, as main reports on each call)
+ * stores the cloud choice for this project on this computer (`ai:project` says so) and runs the
+ * capture. The next capture runs without a card and says why. Turned off again with the
  * switch in the dock's project panel, the card comes back. The choice for this computer is its
  * own: on all the while, it never lets a cloud capture run without its card.
  */
@@ -82,10 +83,10 @@ test('agent: view capture asks once per project, then runs without a card until 
   await expect(card.getByRole('button')).toHaveText([
     'Reject',
     'Just this once',
-    'Allow for this project',
+    'Allow with cloud AI',
   ]);
   if (SHOTS) await win.screenshot({ path: join(SHOTS, 'agent-view-consent-card.png') });
-  await card.getByRole('button', { name: 'Allow for this project' }).click();
+  await card.getByRole('button', { name: 'Allow with cloud AI' }).click();
   await expect(captures(win).first()).toHaveClass(/\bdone\b/);
   await expect(captures(win).first()).toContainText(/Frame at \d\d:\d\d:\d\d/);
   await expect(agent(win).getByText(/^Tool capture_frame returned/)).toBeVisible();
@@ -115,7 +116,7 @@ test('agent: view capture asks once per project, then runs without a card until 
   await expect(captures(win)).toHaveCount(3);
   await expect(captures(win).nth(2)).toHaveClass(/\bawaiting\b/);
   await expect(agent(win).locator('.approve')).toHaveCount(1);
-  await expect(agent(win).locator('.approve')).toContainText('Allow for this project');
+  await expect(agent(win).locator('.approve')).toContainText('Allow with cloud AI');
   await agent(win).locator('.approve').getByRole('button', { name: 'Reject' }).click();
   await expect(captures(win).nth(2)).toHaveClass(/\brejected\b/);
 

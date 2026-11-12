@@ -1061,11 +1061,18 @@ function StepRow({
                 <button
                   type="button"
                   className="ag-btn sm primary"
-                  title="Later captures in this project run without asking on this route: this computer and cloud AI are asked apart. Turn it off under This project (the note button beside the message field)."
+                  title={
+                    session.captureCloud(step.callId)
+                      ? 'Later captures in this project that go to cloud AI run without asking. Captures on this computer are asked apart. Turn it off under This project (the note button beside the message field).'
+                      : 'Later captures in this project that stay on this computer run without asking. Cloud AI still asks. Turn it off under This project (the note button beside the message field).'
+                  }
                   onClick={() => void session.approve(step.callId, { allowViewCapture: true })}
                 >
                   <Icon name="check" size={12} />
-                  Allow for this project
+                  {/* the route main used for this call (A3): a local choice never covers cloud AI */}
+                  {session.captureCloud(step.callId)
+                    ? 'Allow with cloud AI'
+                    : 'Allow on this computer'}
                 </button>
               )}
             </>

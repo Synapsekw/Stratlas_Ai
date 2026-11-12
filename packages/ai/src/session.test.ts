@@ -1113,13 +1113,15 @@ describe('batch approvals (A3)', () => {
 });
 
 describe('view capture consent (A3)', () => {
-  const capture = (callId: string): IpcEvent<'ai:event'> => ({
+  /** A capture call; `cloud` is the route main used for it (absent: counts as cloud). */
+  const capture = (callId: string, cloud?: boolean): IpcEvent<'ai:event'> => ({
     type: 'tool-call',
     runId: 'id1',
     callId,
     name: 'capture_frame',
     input: {},
     risk: 'send',
+    ...(cloud !== undefined ? { cloud } : {}),
   });
 
   it('asks before a capture while the project has not allowed it', async () => {
@@ -1196,17 +1198,37 @@ describe('view capture consent (A3)', () => {
     const t = setup({ viewCapture: true, cloud: false });
     await t.session.refresh();
     await t.session.send('look');
-    t.emit(capture('f1'));
+    t.emit(capture('f1', false));
     await flush();
     await flush();
     expect(t.session.getState().steps.f1?.status).toBe('done');
   });
 
-  it('"Allow for this project" on a local route never covers cloud AI', async () => {
+  it('follows the route main used, not the chat route: local chat, cloud vision still asks', async () => {
+    // chat is local and allowed on this computer; the attached frame sent the run to a cloud
+    // vision route, so main reports cloud on each call, and the capture shows its card
+    const t = setup({ viewCapture: true, viewCaptureCloud: false, cloud: false });
+    await t.session.refresh();
+    await t.session.send('what is this?', { attachFrame: true });
+    t.emit(capture('f1', true));
+    await flush();
+    await flush();
+    expect(t.session.getState().steps.f1?.status).toBe('awaiting');
+    expect(t.session.captureCloud('f1')).toBe(true);
+    // a call main does not label counts as cloud too
+    t.emit(capture('f2'));
+    await flush();
+    expect(t.session.getState().steps.f2?.status).toBe('awaiting');
+    // "Allow" on that card is the cloud choice, never the local one
+    await t.session.approve('f1', { allowViewCapture: true });
+    expect(t.sent('ai:setViewCapture').at(-1)?.req).toMatchObject({ allow: true, cloud: true });
+  });
+
+  it('"Allow on this computer" on a local route never covers cloud AI', async () => {
     const t = setup({ cloud: false });
     await t.session.refresh();
     await t.session.send('look');
-    t.emit(capture('f1'));
+    t.emit(capture('f1', false));
     await flush();
     await t.session.approve('f1', { allowViewCapture: true });
     expect(t.session.getState().viewCapture).toBe(true);
