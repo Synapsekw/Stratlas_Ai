@@ -25,7 +25,7 @@ export const enMcp = {
   'mcp.newPortDone':
     'The server moved to a new port with a new token: paste the new setup into each app.',
   'mcp.offline':
-    'Offline only is on, so the server answers no app: outside apps usually pass what they read to a cloud model.',
+    'Offline only is on, so the server answers no app: outside apps usually pass what they read to cloud AI.',
   'mcp.setup': 'Set up an app',
   'mcp.setup.code': 'Claude Code: run in a terminal',
   'mcp.setup.desktop': 'Claude Desktop: add to claude_desktop_config.json (needs Node.js)',
