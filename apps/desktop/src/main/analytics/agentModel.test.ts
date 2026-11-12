@@ -10,7 +10,10 @@ const SHA = 'b'.repeat(64);
 const pack = {
   version: '0.2.0',
   dir: 'D:/pack',
-  manifest: { model: { id: 'qwen3.5-9b-q4_k_m', sha256: SHA } },
+  manifest: {
+    model: { id: 'qwen3.5-9b-q4_k_m', sha256: SHA },
+    runtime: { name: 'llama.cpp', release: 'b11489', executable: 'llama-server.exe' },
+  },
   server: 's',
   gguf: 'g',
   mmproj: 'm',
@@ -18,6 +21,7 @@ const pack = {
 
 const check = (over: Partial<BundledAgentCheck> = {}): BundledAgentCheck => ({
   modelSha256: SHA,
+  runtimeRelease: 'b11489',
   modelId: 'qwen3.5-9b-q4_k_m',
   packVersion: '0.2.0',
   passed: true,
@@ -65,6 +69,7 @@ describe('the bundled agent model', () => {
       version: '0.2.0',
       modelId: 'qwen3.5-9b-q4_k_m',
       modelSha256: SHA,
+      runtimeRelease: 'b11489',
       contextTokens: VLM_CONTEXT_TOKENS,
     });
     expect(s.blocked).toBeNull();
@@ -82,6 +87,14 @@ describe('the bundled agent model', () => {
     expect(await other.agent.ready()).toBe(en['localAi.bundled.checkFirst']);
     // the stored check is still shown, whatever model it ran on
     expect((await other.agent.status()).check?.modelSha256).toBe('c'.repeat(64));
+  });
+
+  it('blocks again after a llama.cpp update, and for a check stored before the release was kept', async () => {
+    const updated = setup({ check: check({ runtimeRelease: 'b10000' }) });
+    expect(await updated.agent.ready()).toBe(en['localAi.bundled.checkFirst']);
+    const old = check();
+    delete old.runtimeRelease;
+    expect(await setup({ check: old }).agent.ready()).toBe(en['localAi.bundled.checkFirst']);
   });
 
   it('blocks after a failed check with the score and what to use instead', async () => {
@@ -109,9 +122,14 @@ describe('the bundled agent model', () => {
     expect(await t.agent.acquire()).toEqual({
       ok: false,
       message: en['localAi.bundled.gpuBusy'],
+      busy: true,
     });
     const busy = setup({ acquire: { ok: false, code: 'busy', error: 'x' } });
-    expect(await busy.agent.acquire()).toEqual({ ok: false, message: en['localAi.bundled.busy'] });
+    expect(await busy.agent.acquire()).toEqual({
+      ok: false,
+      message: en['localAi.bundled.busy'],
+      busy: true,
+    });
     const card = setup({ acquire: { ok: false, code: 'no-card', error: 'Not enough memory.' } });
     expect(await card.agent.acquire()).toEqual({ ok: false, message: 'Not enough memory.' });
   });

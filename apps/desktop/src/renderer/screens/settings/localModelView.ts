@@ -4,6 +4,7 @@
  */
 import { isLoopbackUrl, LOCAL_SERVERS, serverRoot, type ModelRoute } from '@aio/ai/routes';
 import {
+  bundledCheckFits,
   LocalModelSettings as LocalModelSettingsSchema,
   type BundledAgentStatus,
   type LocalModelInfo,
@@ -76,10 +77,7 @@ export function checkLine(
   }
   if (status.blocked === null) return null;
   const failed =
-    status.pack !== null &&
-    status.check !== null &&
-    !status.check.passed &&
-    status.check.modelSha256 === status.pack.modelSha256;
+    status.pack !== null && bundledCheckFits(status.pack, status.check) && !status.check.passed;
   return { tone: failed ? 'err' : 'faint', text: status.blocked };
 }
 

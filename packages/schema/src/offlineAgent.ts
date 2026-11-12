@@ -27,6 +27,11 @@ export const BundledAgentCheck = z
   .object({
     /** The model file's SHA-256 (the pack manifest's `model.sha256`): a new model checks again. */
     modelSha256: Sha256Hex,
+    /**
+     * The llama.cpp release the check ran on (the manifest's `runtime.release`): a server update
+     * checks again. Absent in checks stored before it was kept: such a check counts as stale.
+     */
+    runtimeRelease: z.string().min(1).max(80).optional(),
     modelId: z.string().min(1).max(200),
     packVersion: z.string().min(1).max(40),
     passed: z.boolean(),
@@ -63,6 +68,8 @@ export const BundledAgentStatus = z.object({
       version: z.string(),
       modelId: z.string(),
       modelSha256: Sha256Hex,
+      /** The pack's llama.cpp release (`runtime.release`); a stored check must name the same. */
+      runtimeRelease: z.string().optional(),
       /** The context the server is started with, tokens. */
       contextTokens: z.number().int().positive(),
     })
@@ -73,6 +80,21 @@ export const BundledAgentStatus = z.object({
   blocked: z.string().nullable(),
 });
 export type BundledAgentStatus = z.infer<typeof BundledAgentStatus>;
+
+/**
+ * The stored check is about the pack installed now: the same model file and the same llama.cpp
+ * release (a check without a release, stored before it was kept, is stale).
+ */
+export function bundledCheckFits(
+  pack: NonNullable<BundledAgentStatus['pack']>,
+  check: BundledAgentCheck | null | undefined,
+): check is BundledAgentCheck {
+  return (
+    check?.modelSha256.toLowerCase() === pack.modelSha256.toLowerCase() &&
+    check.runtimeRelease !== undefined &&
+    check.runtimeRelease === pack.runtimeRelease
+  );
+}
 
 // ---------------------------------------------------------------- project memory
 

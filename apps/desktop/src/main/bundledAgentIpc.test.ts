@@ -17,7 +17,10 @@ const SHA = 'B'.repeat(64);
 const pack = {
   version: '0.2.0',
   dir: 'D:/pack',
-  manifest: { model: { id: 'qwen3.5-9b-q4_k_m', sha256: SHA } },
+  manifest: {
+    model: { id: 'qwen3.5-9b-q4_k_m', sha256: SHA },
+    runtime: { name: 'llama.cpp', release: 'b11489', executable: 'llama-server.exe' },
+  },
 } as unknown as AnalyticsPack;
 
 const result = (over: Partial<ToolCheckResult> = {}): ToolCheckResult => ({
@@ -88,6 +91,7 @@ describe('bundled agent IPC', () => {
     if (!r.ok) return;
     expect(r.check).toEqual({
       modelSha256: SHA.toLowerCase(),
+      runtimeRelease: 'b11489',
       modelId: 'qwen3.5-9b-q4_k_m',
       packVersion: '0.2.0',
       passed: true,

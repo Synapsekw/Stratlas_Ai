@@ -7,7 +7,7 @@
 import { ASK_PROMPT_VERSION, CHANGE_FIELDS, askMaxTokens, askPrompt, parseAskReply } from '@aio/ai';
 import type { HardwareCheck, IpcRequest, IpcResponse } from '@aio/schema';
 import { en } from '@aio/ui/i18n/en';
-import { localVlmModel } from './models';
+import { AGENT_EXTRA_FREE_MB, localVlmModel } from './models';
 import type { AnalyticsPack, UnusablePack } from './pack';
 import type { VlmServer } from './server';
 
@@ -90,7 +90,9 @@ export function createLocalAsk(d: LocalAskDeps): LocalAsk {
   const seamModel = d.env.QUADRION_VLM_MODEL ?? DEFAULT_MODEL;
 
   /** The server to talk to: the model, its family and the url and key. */
-  async function resolve(): Promise<
+  async function resolve(
+    extraMb = 0,
+  ): Promise<
     { model: string; url: string; key: string; error?: undefined } | { error: AskResponse }
   > {
     if (seamUrl) {
@@ -110,7 +112,7 @@ export function createLocalAsk(d: LocalAskDeps): LocalAsk {
     let gpuIndex: number | null = null;
     // a server already loaded holds the memory the check looks for
     if (!d.server.serves(pack.dir)) {
-      const hw = await d.hardware(localVlmModel(model).minFreeMb);
+      const hw = await d.hardware(localVlmModel(model).minFreeMb + extraMb);
       if (!hw.ok) return { error: fail(hw.reason, 'no-card') };
       gpuIndex = hw.gpuIndex;
     }
@@ -312,7 +314,7 @@ export function createLocalAsk(d: LocalAskDeps): LocalAsk {
       };
       try {
         lease = d.server.lease();
-        const r = await resolve();
+        const r = await resolve(AGENT_EXTRA_FREE_MB);
         if ('error' in r && r.error) {
           release();
           const e = r.error;

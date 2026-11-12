@@ -128,7 +128,14 @@ import {
   TEST_MODELS,
   type ModelRoute,
 } from './routes';
-import { allToolSpecs, riskOf, toolsForWindow, type ToolFit, type ToolProfile } from './tools';
+import {
+  allToolSpecs,
+  approvalFor,
+  riskOf,
+  toolsForWindow,
+  type ToolFit,
+  type ToolProfile,
+} from './tools';
 
 export {
   BudgetReachedError,
@@ -408,7 +415,7 @@ export const MESSAGES = {
   failed: 'Something went wrong in the agent. Try again.',
   noTestModel: 'No model is set for this provider. Choose one in Settings, AI providers.',
   bundledAgentOnly:
-    'The bundled model runs the agent and its drafts only. Use your own local model server or cloud AI for this.',
+    'The bundled model runs Ask AI chat and its drafts only. Use your own local model server or cloud AI for this.',
   bundledMissing:
     'The bundled model is not available in this window. Use your own local model server or cloud AI.',
   bundledDown:
@@ -434,7 +441,8 @@ const BUNDLED_PROVIDER: ModelProvider = {
 /** The bundled model taken for one run: its server's address, per-launch key and model. */
 export type BundledLease =
   | { ok: true; baseUrl: string; apiKey: string; modelId: string; release: () => void }
-  | { ok: false; message: string };
+  /** `busy`: a detector run, a GPU job or another request holds the model now; try again. */
+  | { ok: false; message: string; busy?: boolean };
 
 /**
  * The local model settings a run uses: the bundled model always runs the compact profile, with
@@ -465,7 +473,24 @@ type Outcome =
 interface Run {
   controller: AbortController;
   pending: Map<string, (o: Outcome) => void>;
+  /** A3: the bundled model, given back while an approval waits and taken again after it. */
+  hold?: ModelHold;
+  /** Why the run stopped when the bundled model could not be taken again. */
+  failure?: string;
 }
+
+/** The bundled model of one run: held, given back (`pause`) and taken again (`resume`). */
+interface ModelHold {
+  pause: () => void;
+  /** Take the model again before the next step; waits while it is busy. Throws when it cannot. */
+  resume: (runId: string, signal: AbortSignal) => Promise<void>;
+  release: () => void;
+}
+
+/** The line the person sees while the next step waits for the bundled model (A3). */
+export const WAITING_FOR_MODEL = 'Offline AI is waiting for the model.';
+/** Between two tries to take the bundled model back. */
+const RETAKE_EVERY_MS = 2000;
 
 class Cancelled extends Error {}
 
@@ -573,8 +598,26 @@ export function createAgentRuntime(
           });
           // The person may take their time to approve: that is not the model being slow.
           watchdog?.pause();
+          // A3: the bundled model goes back while the person decides (a detector run may use
+          // the card meanwhile), and is taken again before the next step
+          const waits = run.hold !== undefined && approvalFor(name, input);
+          if (waits) run.hold?.pause();
           try {
-            return await outcome;
+            const answered = await outcome;
+            if (waits) {
+              try {
+                await run.hold?.resume(runId, run.controller.signal);
+              } catch (e) {
+                // the model cannot be taken again (the pack went, the card is too full): the run
+                // stops with why
+                if (!(e instanceof Cancelled)) {
+                  run.failure = e instanceof Error ? e.message : MESSAGES.failed;
+                  run.controller.abort();
+                }
+                throw e;
+              }
+            }
+            return answered;
           } finally {
             watchdog?.resume();
           }
@@ -612,21 +655,81 @@ export function createAgentRuntime(
     provider: ModelProvider,
     signal: AbortSignal,
   ): Promise<
-    | { model: LanguageModel; key: string | null; release?: () => void; error?: undefined }
+    | {
+        model: LanguageModel;
+        key: string | null;
+        release?: () => void;
+        hold?: ModelHold;
+        error?: undefined;
+      }
     | { error: string }
   > {
     if (!bundledRoute(route)) {
       const key = await keyFor(provider, route.provider);
       return { model: provider.languageModel(route.model, key), key };
     }
-    if (!host.bundled) return { error: MESSAGES.bundledMissing };
-    const got = await host.bundled.acquire(signal);
-    if (!got.ok) return { error: got.message };
-    const model = localProvider({ baseUrl: got.baseUrl }, { offlineOnly }).languageModel(
-      got.modelId,
-      got.apiKey,
-    );
-    return { model, key: got.apiKey, release: got.release };
+    const bundled = host.bundled;
+    if (!bundled) return { error: MESSAGES.bundledMissing };
+    const first = await bundled.acquire(signal);
+    if (!first.ok) return { error: first.message };
+    // the server may have been restarted (a new port and key) when the model is taken again:
+    // every request goes to the address and key of the lease held now
+    let held: Extract<BundledLease, { ok: true }> | null = first;
+    const origin = first.baseUrl.replace(/\/+$/, '');
+    const via: typeof globalThis.fetch = (input, init) => {
+      const lease = held;
+      if (!lease)
+        return Promise.reject(new TypeError('fetch failed: the bundled model is not held'));
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const to = url.startsWith(origin)
+        ? `${lease.baseUrl.replace(/\/+$/, '')}${url.slice(origin.length)}`
+        : url;
+      const headers = new Headers(init?.headers);
+      headers.set('authorization', `Bearer ${lease.apiKey}`);
+      return globalThis.fetch(to, { ...init, headers });
+    };
+    const model = localProvider(
+      { baseUrl: first.baseUrl },
+      { offlineOnly, fetch: via },
+    ).languageModel(first.modelId, first.apiKey);
+    const hold: ModelHold = {
+      pause: () => {
+        held?.release();
+        held = null;
+      },
+      resume: async (runId, stop) => {
+        let told = false;
+        while (!held) {
+          if (stop.aborted) throw new Cancelled();
+          const got = await bundled.acquire(stop);
+          if (got.ok) {
+            held = got;
+            return;
+          }
+          if (!got.busy) throw new Error(got.message);
+          if (!told) {
+            told = true;
+            host.emit({ type: 'text', runId, delta: `\n\n${WAITING_FOR_MODEL}\n\n` });
+          }
+          await new Promise<void>((done) => {
+            const timer = setTimeout(done, RETAKE_EVERY_MS);
+            stop.addEventListener(
+              'abort',
+              () => {
+                clearTimeout(timer);
+                done();
+              },
+              { once: true },
+            );
+          });
+        }
+      },
+      release: () => {
+        held?.release();
+        held = null;
+      },
+    };
+    return { model, key: first.apiKey, release: hold.release, hold };
   }
 
   /**
@@ -779,7 +882,8 @@ export function createAgentRuntime(
       });
       return;
     }
-    const { model, key, release } = taken;
+    const { model, key, release, hold } = taken;
+    if (hold) run.hold = hold;
     const local = localOf(route);
     const watchdog = local ? idleWatchdog(local.timeoutMs ?? DEFAULT_LOCAL_TIMEOUT_MS) : undefined;
     const firstReply = !req.messages.some((m) => m.role === 'assistant');
@@ -822,7 +926,7 @@ export function createAgentRuntime(
         return;
       }
       if (e instanceof Cancelled || run.controller.signal.aborted) {
-        host.emit({ type: 'error', runId, message: MESSAGES.stopped });
+        host.emit({ type: 'error', runId, message: run.failure ?? MESSAGES.stopped });
         return;
       }
       const described = describeFailure(e, provider, route, key);

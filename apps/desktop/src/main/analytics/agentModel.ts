@@ -6,7 +6,7 @@
  * through `localAsk.active()`, with no second lock). The model may run the agent only while the
  * stored tool-calling check passed for the model file installed now (its SHA-256).
  */
-import type { BundledAgentCheck, BundledAgentStatus } from '@aio/schema';
+import { bundledCheckFits, type BundledAgentCheck, type BundledAgentStatus } from '@aio/schema';
 import { en } from '@aio/ui/i18n/en';
 import type { LocalAsk } from './ask';
 import type { AnalyticsPack } from './pack';
@@ -22,7 +22,8 @@ export interface BundledAgentDeps {
 
 export type BundledAcquire =
   | { ok: true; baseUrl: string; apiKey: string; modelId: string; release: () => void }
-  | { ok: false; message: string };
+  /** `busy`: a detector run, a GPU job or another request holds the model now. */
+  | { ok: false; message: string; busy?: boolean };
 
 export interface BundledAgent {
   /** The model for one agent run (or the check): release it in a `finally`. */
@@ -37,14 +38,19 @@ export interface BundledAgent {
 const fill = (text: string, vars: Record<string, string | number>) =>
   text.replace(/\{(\w+)\}/g, (whole, n: string) => (n in vars ? String(vars[n]) : whole));
 
+/** The llama.cpp release a check is kept for: the manifest's, else the pack version. */
+export function runtimeReleaseOf(pack: Pick<AnalyticsPack, 'version' | 'manifest'>): string {
+  const release = (pack.manifest.runtime as { release?: string } | undefined)?.release;
+  return release && release.length > 0 ? release : pack.version;
+}
+
 /** Why the bundled model may not run the agent, for the person; null when it may. */
 export function blockedBy(
   pack: BundledAgentStatus['pack'],
   check: BundledAgentCheck | null,
 ): string | null {
   if (!pack) return en['localAi.bundled.noPack'];
-  if (check?.modelSha256.toLowerCase() !== pack.modelSha256.toLowerCase())
-    return en['localAi.bundled.checkFirst'];
+  if (!bundledCheckFits(pack, check)) return en['localAi.bundled.checkFirst'];
   if (!check.passed) {
     return fill(en['localAi.bundled.failed'], {
       correct: check.correct,
@@ -65,6 +71,7 @@ export function createBundledAgent(d: BundledAgentDeps): BundledAgent {
           version: found.version,
           modelId: found.manifest.model.id,
           modelSha256: found.manifest.model.sha256.toLowerCase(),
+          runtimeRelease: runtimeReleaseOf(found),
           contextTokens: VLM_CONTEXT_TOKENS,
         }
       : null;
@@ -85,8 +92,10 @@ export function createBundledAgent(d: BundledAgentDeps): BundledAgent {
           release: got.release,
         };
       }
-      if (got.code === 'gpu') return { ok: false, message: en['localAi.bundled.gpuBusy'] };
-      if (got.code === 'busy') return { ok: false, message: en['localAi.bundled.busy'] };
+      if (got.code === 'gpu')
+        return { ok: false, message: en['localAi.bundled.gpuBusy'], busy: true };
+      if (got.code === 'busy')
+        return { ok: false, message: en['localAi.bundled.busy'], busy: true };
       return { ok: false, message: got.error };
     },
     active: () => d.localAsk.active(),

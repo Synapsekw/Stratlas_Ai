@@ -8,7 +8,7 @@
 import { localProvider, runToolCheck, type ToolCheckResult } from '@aio/ai/main';
 import type { BundledAgentCheck, IpcChannel } from '@aio/schema';
 import { en } from '@aio/ui/i18n/en';
-import type { BundledAgent } from './analytics/agentModel';
+import { runtimeReleaseOf, type BundledAgent } from './analytics/agentModel';
 import type { AnalyticsPack } from './analytics/pack';
 import type { Handler } from './ipc';
 
@@ -35,6 +35,7 @@ export function toStoredCheck(
 ): BundledAgentCheck {
   return {
     modelSha256: pack.manifest.model.sha256.toLowerCase(),
+    runtimeRelease: runtimeReleaseOf(pack),
     modelId: pack.manifest.model.id,
     packVersion: pack.version,
     passed: r.passed,

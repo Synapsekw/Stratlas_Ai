@@ -15,8 +15,9 @@ import {
   MESSAGES,
   type AgentRuntimeHost,
   type BundledLease,
+  WAITING_FOR_MODEL,
 } from './main';
-import { toolsForWindow } from './tools';
+import { approvalFor, toolsForWindow } from './tools';
 
 type AiEvent = IpcEvent<'ai:event'>;
 
@@ -31,8 +32,20 @@ interface Seen {
 let server: Server;
 let origin: string;
 let seen: Seen[];
-/** `tool`: the streamed answer is a call of list_layers, else text. */
-let replyWith: 'text' | 'tool';
+/**
+ * `tool`: the streamed answer is a call of list_layers; `write`: a call of a tool that needs the
+ * person's approval, then text after its result; else text.
+ */
+let replyWith: 'text' | 'tool' | 'write';
+
+/** A compact 3D tool that waits for approval and takes no arguments. */
+const WRITE_TOOL =
+  toolsForWindow('scene3d', 'compact', { task: 'chat' }).find(
+    (s) =>
+      approvalFor(s.meta.name) &&
+      (s.input as { safeParse?: (v: unknown) => { success: boolean } }).safeParse?.({}).success ===
+        true,
+  )?.meta.name ?? 'none';
 
 beforeEach(async () => {
   seen = [];
@@ -47,6 +60,7 @@ beforeEach(async () => {
         max_tokens?: number;
         max_completion_tokens?: number;
         stream?: boolean;
+        messages?: { role: string }[];
       };
       seen.push({
         path: req.url ?? '',
@@ -78,9 +92,10 @@ beforeEach(async () => {
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       const base = { id: 'c1', object: 'chat.completion.chunk', created: 1, model: body.model };
       const send = (v: unknown) => res.write(`data: ${JSON.stringify(v)}\n\n`);
-      if (replyWith === 'tool') {
+      const answered = body.messages?.at(-1)?.role === 'tool';
+      if (replyWith === 'tool' || (replyWith === 'write' && !answered)) {
         const call = { index: 0, id: 'call_1', type: 'function' };
-        const fn = { name: 'list_layers', arguments: '{}' };
+        const fn = { name: replyWith === 'write' ? WRITE_TOOL : 'list_layers', arguments: '{}' };
         send({
           ...base,
           choices: [
@@ -279,6 +294,72 @@ describe('the bundled model as the offline agent', () => {
     t.runtime.cancelAll();
     expect(await t.end).toMatchObject({ type: 'error', message: MESSAGES.stopped });
     expect(t.release).toHaveBeenCalledTimes(1);
+  });
+
+  describe('while the person decides on an approval card', () => {
+    const callOf = async (t: ReturnType<typeof setup>) => {
+      await vi.waitFor(() => {
+        expect(t.events.some((e) => e.type === 'tool-call')).toBe(true);
+      });
+      const e = t.events.find((x) => x.type === 'tool-call');
+      if (e?.type !== 'tool-call') throw new Error('no tool call');
+      return e;
+    };
+
+    it('the model goes back (a detector run can start), and is taken again after', async () => {
+      expect(WRITE_TOOL).not.toBe('none');
+      replyWith = 'write';
+      const t = setup({});
+      expect(await t.runtime.send(req())).toEqual({ ok: true });
+      const call = await callOf(t);
+      // given back while the card is open: the detector queue sees the card free
+      expect(t.release).toHaveBeenCalledTimes(1);
+      expect(t.acquire).toHaveBeenCalledTimes(1);
+      t.runtime.toolResult({ runId: 'r1', callId: call.callId, approved: true, result: {} });
+      expect(await t.end).toMatchObject({ type: 'done' });
+      // taken again for the next step, then released at the end
+      expect(t.acquire).toHaveBeenCalledTimes(2);
+      expect(t.release).toHaveBeenCalledTimes(2);
+      expect(seen).toHaveLength(2);
+      expect(seen.every((s) => s.authorization === `Bearer ${KEY}`)).toBe(true);
+    });
+
+    it('waits, with a line for the person, while a detector run holds the model', async () => {
+      replyWith = 'write';
+      let n = 0;
+      const t = setup({
+        lease: () =>
+          ++n === 2
+            ? { ok: false, busy: true, message: 'The card is busy.' }
+            : { ok: true, baseUrl: origin, apiKey: KEY, modelId: 'served-model', release: vi.fn() },
+      });
+      await t.runtime.send(req());
+      const call = await callOf(t);
+      t.runtime.toolResult({ runId: 'r1', callId: call.callId, approved: true, result: {} });
+      expect(await t.end).toMatchObject({ type: 'done' });
+      const text = t.events.flatMap((e) => (e.type === 'text' ? [e.delta] : [])).join('');
+      expect(text).toContain(WAITING_FOR_MODEL);
+      expect(t.acquire).toHaveBeenCalledTimes(3);
+    });
+
+    it('stops with why when the model cannot be taken again', async () => {
+      replyWith = 'write';
+      let n = 0;
+      const t = setup({
+        lease: () =>
+          ++n === 2
+            ? { ok: false, message: 'The Analytics pack is gone.' }
+            : { ok: true, baseUrl: origin, apiKey: KEY, modelId: 'served-model', release: vi.fn() },
+      });
+      await t.runtime.send(req());
+      const call = await callOf(t);
+      t.runtime.toolResult({ runId: 'r1', callId: call.callId, approved: true, result: {} });
+      expect(await t.end).toMatchObject({
+        type: 'error',
+        message: 'The Analytics pack is gone.',
+      });
+      expect(seen).toHaveLength(1);
+    });
   });
 
   it('the engineer step never reaches a stand-in address on a bundled route', async () => {

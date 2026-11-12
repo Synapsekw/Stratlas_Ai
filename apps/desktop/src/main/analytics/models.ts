@@ -24,13 +24,19 @@ export interface LocalVlmModel {
  */
 export const QWEN3_FAMILY = /^qwen[-_ ]?3(?:\.\d+)?(?![\d.])/i;
 
+/**
+ * More free graphics memory the offline agent asks for than a detector run or a photo ask (A3):
+ * its compact profile fills the 16 384 token context, about 250 MB more of the KV cache.
+ */
+export const AGENT_EXTRA_FREE_MB = 250;
+
 export function localVlmModel(id: string): LocalVlmModel {
   const lower = id.toLowerCase();
   if (lower.startsWith('qwen3.5-')) {
     return {
       family: 'qwen3',
       serverArgs: ['--reasoning', 'off'],
-      minFreeMb: 7650,
+      minFreeMb: 7400,
       thinkingOff: true,
     };
   }

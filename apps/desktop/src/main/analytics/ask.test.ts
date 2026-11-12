@@ -75,12 +75,17 @@ function setup(o: {
   const findPack = vi.fn(() =>
     Promise.resolve(o.pack === undefined ? pack(o.model ?? 'qwen3.5-9b-q4_k_m') : o.pack),
   );
+  const asked: number[] = [];
   const d: LocalAskDeps = {
     env: o.env ?? {},
     findPack,
     unusable: () => Promise.resolve([{ version: '0.1.0', reason: 'Too old for this app.' }]),
-    hardware: () =>
-      Promise.resolve(o.hw ?? { ok: true, gpu: 'x', gpuIndex: 0, totalMb: 16000, freeMb: 12000 }),
+    hardware: (mb) => {
+      asked.push(mb);
+      return Promise.resolve(
+        o.hw ?? { ok: true, gpu: 'x', gpuIndex: 0, totalMb: 16000, freeMb: 12000 },
+      );
+    },
     server,
     gpuBusy: () => o.gpuBusy ?? null,
     idleIfUnused,
@@ -88,7 +93,7 @@ function setup(o: {
     fetch: fetch as unknown as typeof globalThis.fetch,
     now: () => 0,
   };
-  return { ask: createLocalAsk(d), fetch, release, server, idleIfUnused, started, findPack };
+  return { ask: createLocalAsk(d), fetch, release, server, idleIfUnused, started, findPack, asked };
 }
 
 const body = (f: ReturnType<typeof vi.fn>, n = 0) =>
@@ -398,6 +403,14 @@ describe('acquire (the offline agent, A3)', () => {
     expect(t.release).toHaveBeenCalledTimes(1);
     expect(t.idleIfUnused).toHaveBeenCalledTimes(1);
     expect(t.ask.active()).toBe(false);
+  });
+
+  it('the agent asks for 7650 MB free, a photo ask for 7400 MB (Qwen3.5)', async () => {
+    const t = setup({});
+    await t.ask.run(findReq());
+    const got = await t.ask.acquire('a');
+    if (got.ok) got.release();
+    expect(t.asked).toEqual([7400, 7650]);
   });
 
   it('refuses while the card is taken, and while another request runs', async () => {

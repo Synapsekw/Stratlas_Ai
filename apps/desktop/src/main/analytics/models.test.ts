@@ -1,15 +1,18 @@
 import { VLM_MIN_FREE_VRAM_MB } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { localVlmModel } from './models';
+import { AGENT_EXTRA_FREE_MB, localVlmModel } from './models';
 
 describe('localVlmModel', () => {
-  it('Qwen3.5 runs with reasoning off and needs 7650 MB (16k context, A3)', () => {
+  it('Qwen3.5 runs with reasoning off and needs 7400 MB', () => {
     expect(localVlmModel('qwen3.5-9b-q4_k_m')).toEqual({
       family: 'qwen3',
       serverArgs: ['--reasoning', 'off'],
-      minFreeMb: 7650,
+      minFreeMb: 7400,
       thinkingOff: true,
     });
+  });
+  it('the offline agent asks for 250 MB more: 7650 MB for Qwen3.5 (A3)', () => {
+    expect(localVlmModel('qwen3.5-9b-q4_k_m').minFreeMb + AGENT_EXTRA_FREE_MB).toBe(7650);
   });
   it('Qwen3-VL needs 5600 MB and no extra arguments', () => {
     expect(localVlmModel('qwen3-vl-4b-q4_k_m')).toEqual({
