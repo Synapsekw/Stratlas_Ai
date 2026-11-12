@@ -440,6 +440,22 @@ describe('acquire (the offline agent, A3)', () => {
     expect(t.ask.active()).toBe(false);
   });
 
+  it('a card too full gets the offline agent its own words, a photo ask the shared ones', async () => {
+    const tooBusy: HardwareCheck = {
+      ok: false,
+      code: 'tooBusy',
+      reason: 'Only 6.0 GB of graphics memory is free; detectors need about 6.5 GB.',
+    };
+    const t = setup({ hw: tooBusy });
+    expect(await t.ask.acquire('a')).toEqual({
+      ok: false,
+      code: 'no-card',
+      error:
+        'Not enough graphics memory is free: Offline AI needs about 7.5 GB. Close the 3D view or other programs that use the graphics card, then try again.',
+    });
+    expect(await t.ask.run(findReq())).toMatchObject({ ok: false, error: tooBusy.reason });
+  });
+
   it('answers no-pack without a pack', async () => {
     const t = setup({ pack: null });
     expect(await t.ask.acquire('a')).toMatchObject({ ok: false, code: 'no-pack' });

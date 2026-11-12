@@ -281,6 +281,8 @@ export const enInspect = {
     'This computer has {total} GB of graphics memory; detectors need 8 GB.',
   'detect.preset.hw.tooBusy':
     'Only {free} GB of graphics memory is free; detectors need about 6.5 GB. Close the 3D view or other programs that use the graphics card and run again.',
+  'detect.preset.hw.agentTooBusy':
+    'Not enough graphics memory is free: Offline AI needs about {need} GB. Close the 3D view or other programs that use the graphics card, then try again.',
   'detect.preset.hw.mac': 'Not available on this computer yet.',
   'detect.preset.hw.oldGpu':
     'This graphics card ({gpu}) is too old for detectors. They need an NVIDIA card from the RTX 20 series or newer.',

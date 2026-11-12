@@ -10,6 +10,7 @@ import { en } from '@aio/ui/i18n/en';
 import { AGENT_EXTRA_FREE_MB, localVlmModel } from './models';
 import type { AnalyticsPack, UnusablePack } from './pack';
 import type { VlmServer } from './server';
+import { presetText } from './text';
 
 type AskRequest = IpcRequest<'ai:ask'>;
 type AskResponse = IpcResponse<'ai:ask'>;
@@ -112,8 +113,16 @@ export function createLocalAsk(d: LocalAskDeps): LocalAsk {
     let gpuIndex: number | null = null;
     // a server already loaded holds the memory the check looks for
     if (!d.server.serves(pack.dir)) {
-      const hw = await d.hardware(localVlmModel(model).minFreeMb + extraMb);
-      if (!hw.ok) return { error: fail(hw.reason, 'no-card') };
+      const need = localVlmModel(model).minFreeMb + extraMb;
+      const hw = await d.hardware(need);
+      if (!hw.ok) {
+        // the offline agent's own words for a card too full: the shared text names detectors
+        const reason =
+          extraMb > 0 && hw.code === 'tooBusy'
+            ? presetText('detect.preset.hw.agentTooBusy', { need: (need / 1024).toFixed(1) })
+            : hw.reason;
+        return { error: fail(reason, 'no-card') };
+      }
       gpuIndex = hw.gpuIndex;
     }
     const up = await d.server.ensure(pack, gpuIndex);
