@@ -56,8 +56,12 @@ export const MCP_TOOL_CLASS: Readonly<Record<string, McpClass>> = {
   list_measurements: { pure: 'The measure store.' },
   get_volume: { pure: 'Volume, boundary and measurement files of the project; the compare store.' },
   rank_locations: { pure: 'Issues and the in-memory asset index.' },
-  query_facts: { pure: 'facts:query on an index already built; never starts a build.' },
-  history_of: { pure: 'facts:query and facts:history.' },
+  query_facts: {
+    pure: 'facts:query on an index already built; never starts a build. Project notes (A3) are left out: they stay in the app.',
+  },
+  history_of: {
+    pure: 'facts:query and facts:history, without project notes (A3): a note subject is refused, linked notes are left out.',
+  },
   list_model_parts: {
     exclude:
       'Not a pure read: it can save a new model and switch the modeller view, and it shares drawing content by the in-app route instead of the drawing consent.',

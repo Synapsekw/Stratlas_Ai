@@ -7,6 +7,7 @@ import {
   FACT_KINDS,
   type AioBridge,
   type Fact,
+  type FactHistory,
   type FactQuery,
   type FactsUnavailable,
 } from '@aio/schema';
@@ -76,8 +77,21 @@ export function unavailable(r: {
   return new ToolError(r.error);
 }
 
-async function query(projectId: string, q: FactQuery) {
-  const r = await bridge().invoke('facts:query', { projectId, query: q });
+/** Why an outside app gets no project notes (the founder's call, 12 Nov 2026). */
+export const NOTES_STAY_IN_APP =
+  'The notes saved for this project stay in the app: outside apps cannot read them.';
+
+/** Every kind but the project's notes (A3), for a call from an outside app. */
+const OUTSIDE_KINDS = FACT_KINDS.filter((k) => k !== 'note');
+
+async function query(projectId: string, q: FactQuery, outside = false) {
+  let sent = q;
+  if (outside) {
+    const kinds = (q.kinds ?? OUTSIDE_KINDS).filter((k) => k !== 'note');
+    if (kinds.length === 0) throw new ToolError(NOTES_STAY_IN_APP);
+    sent = { ...q, kinds };
+  }
+  const r = await bridge().invoke('facts:query', { projectId, query: sent });
   if (!r.ok) throw unavailable(r);
   return r;
 }
@@ -95,7 +109,7 @@ define('query_facts', async (input, ctx) => {
     ...(input.status ? { status: input.status } : {}),
     limit: input.limit,
   };
-  const r = await query(projectId, q);
+  const r = await query(projectId, q, ctx.outside);
   const rows = r.facts.slice(0, input.limit).map(factRow);
   return {
     result: {
@@ -129,8 +143,12 @@ const RESOLVE_LISTED = 8;
  * the subject every hit shares, else the one whose name is exactly the name. Several subjects:
  * refused, each listed with its id, so nothing is read on a guess.
  */
-export async function resolveSubject(projectId: string, name: string): Promise<string> {
-  const r = await query(projectId, { text: name, limit: RESOLVE_HITS });
+export async function resolveSubject(
+  projectId: string,
+  name: string,
+  outside = false,
+): Promise<string> {
+  const r = await query(projectId, { text: name, limit: RESOLVE_HITS }, outside);
   const subjects = new Map<string, Fact[]>();
   for (const f of r.facts) {
     const hits = subjects.get(f.subject);
@@ -160,6 +178,13 @@ export async function resolveSubject(projectId: string, name: string): Promise<s
   );
 }
 
+/** A history with the project's notes linked to it left out, for an outside app. */
+function withoutNotes(h: FactHistory): FactHistory {
+  const linked = h.linked.filter((l) => l.fact.kind !== 'note');
+  const dropped = h.linked.length - linked.length;
+  return { ...h, linked, totals: { ...h.totals, linked: Math.max(0, h.totals.linked - dropped) } };
+}
+
 /** At most this many of each list reach the model; the most recent are kept. */
 const HISTORY_ROWS = 60;
 
@@ -168,10 +193,11 @@ const LISTS = { facts: 'facts', linked: 'linked facts', events: 'events' } as co
 define('history_of', async (input, ctx) => {
   const projectId = project(ctx).id;
   const ref = input.subject.trim();
-  const subject = isSubjectId(ref) ? ref : await resolveSubject(projectId, ref);
+  const subject = isSubjectId(ref) ? ref : await resolveSubject(projectId, ref, ctx.outside);
+  if (ctx.outside && subject.startsWith('note:')) throw new ToolError(NOTES_STAY_IN_APP);
   const r = await bridge().invoke('facts:history', { projectId, subject });
   if (!r.ok) throw unavailable(r);
-  const h = r.history;
+  const h = ctx.outside ? withoutNotes(r.history) : r.history;
   const n = h.totals.facts + h.totals.linked + h.totals.events;
   if (n === 0)
     throw new ToolError(

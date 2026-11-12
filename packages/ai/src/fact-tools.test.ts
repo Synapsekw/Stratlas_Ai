@@ -453,3 +453,53 @@ describe('history_of', () => {
     expect(r.result).not.toHaveProperty('omitted');
   });
 });
+
+describe('the fact tools for an outside app (X1 with A3)', () => {
+  const note = fact({
+    id: 'f9',
+    kind: 'note',
+    subject: 'note:n-abcd',
+    label: 'The piles here are named SP-1 to SP-9',
+    evidence: 'ai/memory.json',
+  });
+  const outside = (): RendererToolContext => ({ ...ctx(), outside: true });
+
+  it('asks for every kind but notes, and refuses a search of notes only', async () => {
+    const invoke = bridge({ hits: [sp1] });
+    await runRendererTool('query_facts', { text: 'SP1' }, outside());
+    const sent = (invoke.mock.calls[0]?.[1] as { query: { kinds?: string[] } }).query;
+    expect(sent.kinds).not.toContain('note');
+    expect(sent.kinds).toContain('measurement');
+    await expect(runRendererTool('query_facts', { kinds: ['note'] }, outside())).rejects.toThrow(
+      /stay in the app/,
+    );
+  });
+
+  it('keeps notes for the in-app agent', async () => {
+    const invoke = bridge({ hits: [note] });
+    await runRendererTool('query_facts', { text: 'piles' }, ctx());
+    const sent = (invoke.mock.calls[0]?.[1] as { query: { kinds?: string[] } }).query;
+    expect(sent.kinds).toBeUndefined();
+  });
+
+  it('refuses the history of a note and leaves notes out of a linked list', async () => {
+    bridge({
+      history: (subject) =>
+        hist(subject, {
+          facts: [sp1],
+          linked: [
+            { rel: 'about', fact: note },
+            { rel: 'inside', fact: crack },
+          ],
+        }),
+    });
+    await expect(
+      runRendererTool('history_of', { subject: 'note:n-abcd' }, outside()),
+    ).rejects.toThrow(/stay in the app/);
+    const r = await runRendererTool('history_of', { subject: 'measurement:sp1' }, outside());
+    const linked = (r.result as { linked: { kind: string }[] }).linked;
+    expect(linked.map((l) => l.kind)).toEqual(['issue']);
+    const inApp = await runRendererTool('history_of', { subject: 'measurement:sp1' }, ctx());
+    expect((inApp.result as { linked: unknown[] }).linked).toHaveLength(2);
+  });
+});

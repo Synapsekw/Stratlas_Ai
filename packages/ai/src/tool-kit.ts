@@ -38,6 +38,11 @@ export interface RendererToolContext {
   saveFile?(defaultName: string, data: string): Promise<SaveResult>;
   /** Actions the host app provides: open a screen, use a dedicated exporter. */
   app?: AppHooks;
+  /**
+   * The call comes from an outside app over the local MCP server (X1), not the in-app agent: the
+   * project's notes (A3) stay in the app, so the fact tools leave them out.
+   */
+  outside?: boolean;
 }
 
 export interface SaveResult {

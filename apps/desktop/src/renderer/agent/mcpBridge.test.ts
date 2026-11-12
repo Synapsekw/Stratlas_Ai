@@ -42,6 +42,21 @@ describe('runMcpCall', () => {
     expect(context).not.toHaveBeenCalled();
   });
 
+  it('marks the call as from an outside app, so the fact tools leave project notes out', async () => {
+    const invoke = vi.fn(() => Promise.resolve({ ok: true, facts: [], total: 0 }));
+    (globalThis as { aio?: unknown }).aio = { invoke, on: () => () => undefined };
+    try {
+      const r = await runMcpCall(call('query_facts', { text: 'piles' }));
+      expect(r.ok).toBe(true);
+      const sent = (invoke.mock.calls[0] as unknown[] | undefined)?.[1] as {
+        query: { kinds?: string[] };
+      };
+      expect(sent.query.kinds).not.toContain('note');
+    } finally {
+      delete (globalThis as { aio?: unknown }).aio;
+    }
+  });
+
   it('refuses when another project is open than the one main checked', async () => {
     const r = await runMcpCall(call('list_layers', {}, 'p2'));
     expect(r).toMatchObject({ ok: false, error: 'That project is no longer open in the app.' });

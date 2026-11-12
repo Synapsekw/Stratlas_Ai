@@ -31,7 +31,11 @@ export async function runMcpCall(
   const gone = () => workspace.getState().project?.id !== call.projectId;
   if (gone()) return fail('That project is no longer open in the app.');
   try {
-    const r = await runRendererTool(call.name, call.input, context(mcpWindow(call.name)));
+    // `outside`: the project's notes stay in the app (A3)
+    const r = await runRendererTool(call.name, call.input, {
+      ...context(mcpWindow(call.name)),
+      outside: true,
+    });
     // another project opened during the call: drop the result rather than mix the two
     if (gone()) return fail('That project is no longer open in the app.');
     return { callId: call.callId, ok: true, text: mcpOutput(r.result, r.summary) };
