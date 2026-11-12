@@ -125,6 +125,7 @@ import {
 } from './panos';
 import { registerChangeIpc } from './change';
 import { createFactService, registerFactIpc, runInProcess } from './facts';
+import { createMcpHost } from './mcp';
 import { createWorkerRunner } from './factsWorkerRunner';
 import { registerInferenceIpc } from './inference';
 import {
@@ -807,6 +808,42 @@ function emitAiEvent(event: IpcEvent<'ai:event'>): void {
 }
 
 const aiProjects = createAiProjectStore(join(app.getPath('userData'), 'ai-projects.json'));
+/**
+ * X1: the local MCP server (off by default, 127.0.0.1 only). It answers for the project opened
+ * last, gated like a cloud provider (src/main/mcp.ts); the renderer runs each read tool.
+ */
+const mcp = createMcpHost({
+  file: join(app.getPath('userData'), 'mcp.json'),
+  serverInfo: { name: brand.productName, version: app.getVersion() },
+  openProject: () => {
+    const id = policy.activeId();
+    const root = id === null ? undefined : registry.root(id);
+    return id === null || root === undefined
+      ? null
+      : { id, root, name: projectNames.get(id) ?? id };
+  },
+  gate: async (p) => {
+    const header = registry.package(p.id)?.header;
+    const manifest = await readAiPolicy(p.root).catch(() => 'forbid' as const);
+    const s = settings.current();
+    return {
+      policyForbids: (header !== undefined && header.aiPolicy !== 'allow') || manifest === 'forbid',
+      cloudAi: s.cloudAi,
+      offlineOnly: s.offlineOnly === true,
+    };
+  },
+  send: (call) => {
+    const parsed = ipcEvents['mcp:call'].safeParse(call);
+    const win = mainWindow;
+    if (!parsed.success || !win || win.isDestroyed()) return false;
+    win.webContents.send('mcp:call', parsed.data);
+    return true;
+  },
+  emit: (status) => {
+    const parsed = ipcEvents['mcp:changed'].safeParse(status);
+    if (parsed.success) mainWindow?.webContents.send('mcp:changed', parsed.data);
+  },
+});
 /** Names of opened projects by id, for the usage list in Settings. */
 const projectNames = new Map<string, string>();
 
@@ -1456,6 +1493,15 @@ function registerIpc(): void {
     },
   });
   registerFactIpc(handle, facts);
+  // X1 local MCP server
+  handle('mcp:status', () => mcp.status());
+  handle('mcp:setEnabled', ({ enabled }) => mcp.setEnabled(enabled));
+  handle('mcp:setProjectAllowed', ({ projectId, allowed }) =>
+    mcp.setProjectAllowed(projectId, allowed),
+  );
+  handle('mcp:disconnect', ({ clientId }) => mcp.disconnect(clientId));
+  handle('mcp:newToken', () => mcp.newToken());
+  handle('mcp:result', (r) => ({ ok: mcp.result(r) }));
   // Properties, Export and Reveal in folder of one dataset
   const layerJobs = registerLayerIpc({
     handle,
@@ -1476,6 +1522,7 @@ function registerIpc(): void {
       policy.opened(r.id);
       if (!r.package) facts.opened(r.id);
       projectNames.set(r.id, r.manifest.name);
+      mcp.projectChanged();
       // Packages opened by double-click or File > Open stay in the library.
       if (r.package) {
         await library.add(r.package.file).catch(() => undefined);
@@ -3183,6 +3230,8 @@ if (restore) {
     await websiteUpdater.startup(true);
     mainWindow = createWindow();
     updates.watchWindow(mainWindow);
+    // the local MCP server, when the person left it on (off by default)
+    void mcp.start();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();
     });
@@ -3230,6 +3279,7 @@ app.on('will-quit', () => {
   void journal.closeAll();
   facts.closeAll();
   void factsWorker.stop();
+  void mcp.stop();
 });
 
 app.on('window-all-closed', () => {

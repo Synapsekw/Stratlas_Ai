@@ -40,6 +40,7 @@ import { IdentitySettings } from './settings/Identity';
 import { Appearance } from './settings/Appearance';
 import { Keyboard } from './settings/Keyboard';
 import { LocalModel } from './settings/LocalModel';
+import { McpServerSettings } from './settings/McpServer';
 import { MapPacks } from './settings/MapPacks';
 import { MapSources } from './settings/MapSources';
 import { Classes } from './settings/Classes';
@@ -932,6 +933,8 @@ export function SettingsScreen() {
               {/* general AI switches (the agent, Ask AI) sit here, after routing */}
               <AgentThinking />
               <AskAiSettings />
+              {/* X1: outside agents read the open project over a local MCP server */}
+              <McpServerSettings />
             </>
           )}
           {page === 'local-model' && <LocalModel />}

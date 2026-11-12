@@ -34,9 +34,9 @@
     "@aio/brand": "workspace:*",
     "@aio/change": "workspace:*",
     "@aio/engine": "workspace:*",
+    "@aio/facts": "workspace:*",
     "@aio/geo": "workspace:*",
     "@aio/globe": "workspace:*",
-    "@aio/facts": "workspace:*",
     "@aio/insights": "workspace:*",
     "@aio/maps": "workspace:*",
     "@aio/modelling": "workspace:*",
@@ -51,6 +51,7 @@
     "@aio/volumetric": "workspace:*",
     "@aio/workspace": "workspace:*",
     "@axe-core/playwright": "^4.13.0",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "pdfjs-dist": "^6.4.299"
   }
 }

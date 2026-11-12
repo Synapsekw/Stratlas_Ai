@@ -194,3 +194,5 @@ export {
   type IssueDetail,
 } from './asset-index';
 export { compareCodes } from './tool-kit';
+// X1: the local MCP server's tool list (the agent's read tools); the server is in ./mcp
+export { isMcpTool, mcpOutput, MCP_TOOL_CLASS } from './mcp-tools';

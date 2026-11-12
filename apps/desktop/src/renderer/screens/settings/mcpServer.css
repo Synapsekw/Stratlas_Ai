@@ -1,0 +1,90 @@
+/* Settings, AI providers, Outside apps (MCP) (X1). Laid out like the Team server block. */
+.mcp-server .mcp-note {
+  margin-top: 6px;
+  font-size: var(--t-12);
+}
+.mcp-server .notice.mcp-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mcp-server .mcp-h {
+  margin: 14px 0 4px;
+  font-size: var(--t-12);
+  font-weight: 600;
+}
+.mcp-server .mcp-fields {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 12px;
+  margin: 10px 0 0;
+  align-items: center;
+  font-size: var(--t-12);
+}
+.mcp-server .mcp-fields dt {
+  color: var(--fg-2);
+}
+.mcp-server .mcp-fields dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 0;
+  min-width: 0;
+}
+.mcp-server .mcp-fields code {
+  overflow-wrap: anywhere;
+  color: var(--fg-0);
+}
+.mcp-server .mcp-setup {
+  margin-top: 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+  background: var(--bg-1);
+}
+.mcp-server .mcp-setup-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 0 10px;
+  font-size: var(--t-12);
+}
+.mcp-server .mcp-setup pre {
+  margin: 0;
+  padding: 6px 10px 8px;
+  font-size: var(--t-11, 11px);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--fg-0);
+}
+.mcp-server .mcp-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: var(--t-12);
+}
+.mcp-server .mcp-client {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+  background: var(--bg-1);
+}
+.mcp-server .mcp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.mcp-server .mcp-what {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

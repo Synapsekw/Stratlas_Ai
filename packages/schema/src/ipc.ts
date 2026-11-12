@@ -94,6 +94,7 @@ import { Id, Sha256Hex } from './common';
 import { ExchangeKind, ExchangePreview, Heads, TeamProjectId } from './exchange';
 import { ActorId, DeviceId, Identity, Initials, Member, PersonName, Role } from './identity';
 import { LaunchSettings } from './launch';
+import { McpCall, McpCallResult, McpStatus } from './mcp';
 import { LayerExportResult, LayerInfo } from './layerInfo';
 import {
   MapKeyProvider,
@@ -2481,6 +2482,36 @@ export const ipc = {
       FactsFailure,
     ]),
   },
+  /** X1: the local MCP server as Settings shows it. */
+  'mcp:status': {
+    request: z.object({}).strict(),
+    response: McpStatus,
+  },
+  /** Switch the local MCP server on or off (off by default); the answer carries any start error. */
+  'mcp:setEnabled': {
+    request: z.object({ enabled: z.boolean() }).strict(),
+    response: McpStatus,
+  },
+  /** Let outside apps read this project even while cloud AI would not be allowed to. */
+  'mcp:setProjectAllowed': {
+    request: z.object({ projectId: ProjectId, allowed: z.boolean() }).strict(),
+    response: McpStatus,
+  },
+  /** End one outside agent's session. */
+  'mcp:disconnect': {
+    request: z.object({ clientId: z.string().min(1) }).strict(),
+    response: McpStatus,
+  },
+  /** A new token: every session ends and the old token stops working. */
+  'mcp:newToken': {
+    request: z.object({}).strict(),
+    response: McpStatus,
+  },
+  /** The renderer's answer to an `mcp:call` event. */
+  'mcp:result': {
+    request: McpCallResult,
+    response: z.object({ ok: z.boolean() }),
+  },
   'change:list': {
     request: z.object({ projectId: ProjectId }).strict(),
     response: z.discriminatedUnion('ok', [
@@ -4842,6 +4873,10 @@ export const ipcEvents = {
   }),
   /** M1: a project's fact index was built, updated or failed. */
   'facts:changed': z.object({ projectId: z.string(), status: FactIndexStatus }),
+  /** X1: run one read tool for an outside agent (answered with `mcp:result`). */
+  'mcp:call': McpCall,
+  /** X1: the local MCP server's status changed (a client came or went, a call, the switch). */
+  'mcp:changed': McpStatus,
   /** Progress of a hub or server sync (M9). */
   'sync:progress': z.object({
     projectId: z.string(),

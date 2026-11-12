@@ -112,6 +112,7 @@ import { registerAppChangeProducers } from './change/producers/register';
 import { startCardFocus } from './issueCard/state';
 import { AgentDock, useAgentDockOpen } from './agent/AgentDock';
 import { isDockScreen } from './agent/dockScreens';
+import { startMcpBridge } from './agent/mcpBridge';
 import { startAgentSession } from './agent/session';
 import { startAgentPaneFollow } from './agent/agentPaneStore';
 import { startActivityFollow } from './workspace/workbench/activityFollow';
@@ -634,6 +635,8 @@ export function App() {
     void initAuthor(bridge);
     // the agent's one conversation: it listens for as long as the app runs, whatever screen shows
     const stopAgent = startAgentSession();
+    // X1: outside agents' read tool calls, run by the agent's executors (off unless switched on)
+    const stopMcp = startMcpBridge();
     window.addEventListener('keydown', onKeyDown);
     // a control that disappears hands focus to its neighbours, else to the screen heading
     const stopFocus = keepFocusAlive(
@@ -729,6 +732,7 @@ export function App() {
       stopRoad();
       stopRoadMode();
       stopAgent();
+      stopMcp();
       window.removeEventListener('keydown', onKeyDown);
       stopFocus();
       stopJobAnnounce();

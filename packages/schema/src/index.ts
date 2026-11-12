@@ -82,3 +82,4 @@ export * from './analytics';
 export * from './csv';
 // M1 project fact index (derived, never the truth)
 export * from './facts';
+export * from './mcp';

@@ -355,6 +355,13 @@ const CHANNELS = {
   'facts:query': true,
   'facts:history': true,
   'facts:rebuild': true,
+  // X1 local MCP server
+  'mcp:status': true,
+  'mcp:setEnabled': true,
+  'mcp:setProjectAllowed': true,
+  'mcp:disconnect': true,
+  'mcp:newToken': true,
+  'mcp:result': true,
 } as const satisfies Record<IpcChannel, true>;
 
 const EVENTS = {
@@ -385,6 +392,8 @@ const EVENTS = {
   'odm:progress': true,
   'detect:queue': true,
   'facts:changed': true,
+  'mcp:call': true,
+  'mcp:changed': true,
 } as const satisfies Record<IpcEventName, true>;
 
 const known = <K extends string>(table: Record<K, true>, key: string): key is K =>

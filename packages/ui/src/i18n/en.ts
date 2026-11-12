@@ -36,6 +36,7 @@ import { enInsights } from './en/insights';
 import { enFlyability } from './en/flyability';
 import { enToolReg } from './en/toolReg';
 import { enFacts } from './en/facts';
+import { enMcp } from './en/mcp';
 
 /**
  * English UI strings for the main shell (title bar, sidebar, settings). The source catalogue:
@@ -80,6 +81,7 @@ import { enFacts } from './en/facts';
  *   en/flyability.ts: fly
  *   en/toolReg.ts: toolReg
  *   en/facts.ts: facts
+ *   en/mcp.ts: mcp
  *   en/askAi*.ts: custom analytics, one module per UI task (askAi, askPanel, fields, house, report, settings keys)
  */
 export const en = {
@@ -122,6 +124,7 @@ export const en = {
   ...enFlyability,
   ...enToolReg,
   ...enFacts,
+  ...enMcp,
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

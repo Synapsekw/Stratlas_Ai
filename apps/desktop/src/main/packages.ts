@@ -116,6 +116,11 @@ export class ProjectPolicy {
     this.active = projectId;
   }
 
+  /** The project opened last (the local MCP server answers for it). */
+  activeId(): string | null {
+    return this.active;
+  }
+
   header(): PackageHeader | undefined {
     return this.active === null ? undefined : this.registry.package(this.active)?.header;
   }
