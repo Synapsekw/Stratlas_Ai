@@ -42,6 +42,8 @@ export const enAgentTools = {
     '{action}: {count} layer kept its date (from its name or the volumes)',
   'agentTool.summary.kept_other':
     '{action}: {count} layers kept their date (from their names or the volumes)',
+  'agentTool.summary.remembered': 'Noted: {text}',
+  'agentTool.summary.forgot': 'Note deleted: {text}',
   // approval cards
   'agentTool.card.run': '{action}: {target}',
   'agentTool.card.accept_one': 'Accept {count} detection as a draft issue',
@@ -50,6 +52,8 @@ export const enAgentTools = {
   'agentTool.card.reject_other': 'Reject {count} detections',
   'agentTool.card.reopen_one': 'Reopen {count} detection',
   'agentTool.card.reopen_other': 'Reopen {count} detections',
+  'agentTool.card.remember': 'Remember: {text}',
+  'agentTool.card.forget': 'Forget: {text}',
   // what an action acts on, on the card
   'agentTool.target.project': 'the project',
   'agentTool.target.everyDate': 'No date',
@@ -66,4 +70,5 @@ export const enAgentTools = {
   'agentTool.undo.reviewBlocked': 'Not undone: the review could not step back.',
   'agentTool.undo.otherProject': 'Not undone: another project is open.',
   'agentTool.undo.dateMovedSince': 'Not undone: the survey date in view changed since.',
+  'agentTool.undo.noteFailed': 'Not undone: {error}',
 } as const;

@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { IsoDate, IsoTime } from './common';
 
 /** Bumped when the table layout or the extraction rules change: an older index is rebuilt. */
-export const FACT_INDEX_VERSION = 1;
+export const FACT_INDEX_VERSION = 2;
 
 /** What a fact is about. */
 export const FACT_KINDS = [
@@ -45,6 +45,8 @@ export const FACT_KINDS = [
   'antenna',
   /** A journal op: who changed what, when. */
   'event',
+  /** A note the person keeps about the project for the agent (`ai/memory.json`, A3). */
+  'note',
 ] as const;
 export const FactKind = z.enum(FACT_KINDS);
 export type FactKind = z.infer<typeof FactKind>;
@@ -98,7 +100,7 @@ export const FACT_RELATIONS = [
   'issue',
   /** A change item of a change set; a change set's two dates. */
   'in-set',
-  /** A change item about an issue or detection. */
+  /** A change item about an issue or detection; a project note about the subject it names. */
   'about',
   /** A volume's QA result (the QA of its survey date). */
   'qa',

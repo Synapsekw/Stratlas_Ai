@@ -43,6 +43,26 @@ describe('reading a project', () => {
     expect(s.walks).toHaveLength(1);
     expect(s.antennas).toHaveLength(2);
     expect(s.events.length).toBeGreaterThan(0);
+    expect(s.notes.map((n) => n.id)).toEqual(['n-pile1', 'n-units']);
+  });
+
+  it('reads the notes tolerantly: a bad note is left out, a bad file is no notes', async () => {
+    const file = join(root, 'ai', 'memory.json');
+    writeFileSync(
+      file,
+      JSON.stringify({
+        schema: 'aio.agent-memory/1',
+        notes: [
+          { id: 'bad id', text: 'x', by: 'agent', createdAt: '2026-08-03T09:00:00.000Z' },
+          { id: 'n-good', text: 'kept', by: 'person', createdAt: '2026-08-03T09:00:00.000Z' },
+        ],
+      }),
+    );
+    expect((await readProjectSources(root)).notes.map((n) => n.id)).toEqual(['n-good']);
+    writeFileSync(file, '{ not json');
+    expect((await readProjectSources(root)).notes).toEqual([]);
+    rmSync(file);
+    expect((await readProjectSources(root)).notes).toEqual([]);
   });
 
   it('leaves out an unreadable file and reads the rest', async () => {
@@ -72,6 +92,7 @@ describe('extracting facts', () => {
       'walk',
       'antenna',
       'event',
+      'note',
     ]) {
       expect(kinds, k).toContain(k);
     }
@@ -280,6 +301,23 @@ describe('the index', () => {
     expect(rels).toContain('inside issue:i1');
     const issue = ix.historyOf('issue:i1');
     expect(issue.linked.map((l) => l.fact.subject)).toContain('detection:d1');
+  });
+
+  it('finds a project note by its words and in the history of the subject it is about', async () => {
+    const ix = await build();
+    const hit = ix.query({ text: 'granite' }).facts[0];
+    expect(hit).toMatchObject({
+      id: 'note:n-pile1',
+      kind: 'note',
+      subject: 'note:n-pile1',
+      source: 'agent',
+      evidence: 'ai/memory.json',
+      date: '2026-08-03',
+    });
+    expect(ix.query({ kinds: ['note'] }).total).toBe(2);
+    const h = ix.historyOf('measurement:pile-north');
+    expect(h.linked.some((l) => l.rel === 'about' && l.fact.id === 'note:n-pile1')).toBe(true);
+    expect(ix.historyOf('note:n-units').linked).toEqual([]);
   });
 
   it('gives journal ops as events of their subject', async () => {

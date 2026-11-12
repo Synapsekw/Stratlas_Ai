@@ -293,6 +293,25 @@ export function writeFixtureProject(root: string, opts: { journal?: boolean } = 
       ],
     });
   }
+  // the agent's project notes (A3): one about the pile, one about the whole project
+  put(root, 'ai/memory.json', {
+    schema: 'aio.agent-memory/1',
+    notes: [
+      {
+        id: 'n-pile1',
+        text: 'The north pile is weighed as crushed granite',
+        about: 'measurement:pile-north',
+        by: 'agent',
+        createdAt: '2026-08-03T09:00:00.000Z',
+      },
+      {
+        id: 'n-units',
+        text: 'Report volumes in cubic yards',
+        by: 'person',
+        createdAt: '2026-08-04T09:00:00.000Z',
+      },
+    ],
+  });
   if (opts.journal)
     cpSync(join(JOURNAL_FIXTURE, 'journal'), join(root, 'journal'), { recursive: true });
 }

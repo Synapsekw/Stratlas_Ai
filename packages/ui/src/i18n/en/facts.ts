@@ -51,6 +51,7 @@ export const enFacts = {
   'facts.kind.walk': 'Walk',
   'facts.kind.antenna': 'Antenna',
   'facts.kind.event': 'Edit',
+  'facts.kind.note': 'Note',
   // A fact's status, as the index stores it
   'facts.status.accepted': 'Accepted',
   'facts.status.draft': 'Draft',

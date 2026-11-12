@@ -6,7 +6,7 @@ The binding is `node:sqlite`, which is built into Node 24 and Electron 44, with 
 
 ## Pieces
 
-- `readProjectSources(root)` (`sources.ts`) reads a folder tolerantly: a missing or unreadable file, or an unreadable record, is left out. It reads `manifest.json`, `survey/measurements.json`, `survey/qa/*.json`, `photogrammetry/*/report/accuracy.json`, `detections/*.json`, `issues.json`, `change/*.json`, `thermal/thermal.json`, `thermal/candidates.json`, `walks/*/walk.json`, `telecom/history/*.json` (the antennas each survey date measured), and the journal as audit entries.
+- `readProjectSources(root)` (`sources.ts`) reads a folder tolerantly: a missing or unreadable file, or an unreadable record, is left out. It reads `manifest.json`, `survey/measurements.json`, `survey/qa/*.json`, `photogrammetry/*/report/accuracy.json`, `detections/*.json`, `issues.json`, `change/*.json`, `thermal/thermal.json`, `thermal/candidates.json`, `walks/*/walk.json`, `telecom/history/*.json` (the antennas each survey date measured), `ai/memory.json` (the agent's project notes, A3; a bad note is left out), and the journal as audit entries.
 - `extractFacts(sources)` (`extract.ts`) is pure and deterministic. It returns `{ facts, links }`, both sorted.
 - `openFactIndex(file)` (`store.ts`) opens or creates an index. Pass `':memory:'` in tests. An index of another `FACT_INDEX_VERSION` is dropped and made again. A file that is not a database throws, and the caller deletes it and opens again.
 
@@ -60,17 +60,18 @@ A subject names the thing a fact is about as `<record kind>:<id>`. Where the jou
 - `change-set:<id>`, `change-item:<set>/<item>`;
 - `hotspot:<id>` and `hotspot:candidate/<n>`;
 - `walk:<id>`;
-- `antenna:<id>` (its `antenna` facts share it, one per survey date that measured it, from `telecom/history/<capture>.json`).
+- `antenna:<id>` (its `antenna` facts share it, one per survey date that measured it, from `telecom/history/<capture>.json`);
+- `note:<id>`: a note the person keeps about the project for the agent (`ai/memory.json`).
 
 ### Kinds and links
 
-- **Kinds** (`FACT_KINDS`): `survey`, `layer`, `photo`, `measurement`, `volume`, `detection`, `issue`, `qa`, `accuracy`, `change-set`, `change`, `hotspot`, `walk`, `antenna`, `event`.
+- **Kinds** (`FACT_KINDS`): `survey`, `layer`, `photo`, `measurement`, `volume`, `detection`, `issue`, `qa`, `accuracy`, `change-set`, `change`, `hotspot`, `walk`, `antenna`, `event`, `note` (since `FACT_INDEX_VERSION` 2).
 - **Positions:** `e` and `n` are project CRS easting and northing. Photo positions convert from the local frame (X east, Z south) with the manifest origin. Detections, issues on photos and hot spots take their photo's position.
 - **Links** (`FACT_RELATIONS`), made at index time:
   - `on-photo`, `on-survey`, `in-layer`;
   - `issue`: a detection or hot spot that became an issue, and the next issue of the same track;
   - `in-set`: a change item to its set, and a set to its two dates;
-  - `about`: a change item to its issue or detections;
+  - `about`: a change item to its issue or detections, and a note to the subject it is about (so it shows in that subject's `historyOf`);
   - `qa`: a measurement to the QA of each date it has a volume on;
   - `inside`: a detection, issue, hot spot or change item inside a polygon measurement's outline on the same date ("an issue on a pile").
 

@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { auditEntries, loadJournal } from '@aio/journal';
 import {
   AccuracyReport,
+  AgentNote,
   ANTENNA_DELETIONS_FILE,
   AntennaDeletionsFile,
   AntennaHistoryFile,
@@ -65,6 +66,8 @@ export interface ProjectSources {
   } | null;
   /** The journal's ops as audit entries (newest first, as `auditEntries` gives them). */
   events: AuditEntry[];
+  /** The project's notes for the agent (`ai/memory.json`, A3), in the file's order. */
+  notes: AgentNote[];
 }
 
 export const emptySources = (): ProjectSources => ({
@@ -81,6 +84,7 @@ export const emptySources = (): ProjectSources => ({
   antennas: [],
   antennaInventory: null,
   events: [],
+  notes: [],
 });
 
 async function text(file: string): Promise<string | null> {
@@ -249,6 +253,15 @@ export async function readProjectSources(root: string): Promise<ProjectSources> 
         .filter((u) => !deleted.has(u.id))
         .map((u) => ({ id: u.id, name: u.name, status: u.status })),
     };
+  }
+
+  // the agent's project notes: read one by one, so a bad note leaves the others in
+  const memory = await json(join(root, 'ai', 'memory.json'));
+  if (isObj(memory) && memory.schema === 'aio.agent-memory/1') {
+    out.notes = items(memory, 'notes', (v) => {
+      const n = AgentNote.safeParse(v);
+      return n.success ? n.data : null;
+    });
   }
 
   const files = await journalFiles(root);

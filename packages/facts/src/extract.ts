@@ -715,6 +715,28 @@ function eventFacts(b: Builder, events: readonly AuditEntry[]): void {
   }
 }
 
+/**
+ * The project's notes for the agent (`ai/memory.json`, A3): one fact per note, its text searchable,
+ * and an `about` link to the subject it names, so the note shows in that subject's history.
+ */
+function noteFacts(b: Builder, src: ProjectSources): void {
+  for (const n of src.notes) {
+    const s = `note:${n.id}`;
+    b.add({
+      id: s,
+      kind: 'note',
+      subject: s,
+      label: fit(n.text, 80),
+      text: words('project note', n.text),
+      date: n.createdAt.slice(0, 10),
+      at: n.createdAt,
+      source: n.by === 'agent' ? 'agent' : 'human',
+      evidence: 'ai/memory.json',
+    });
+    if (n.about) b.link(s, n.about, 'about');
+  }
+}
+
 /** Point things inside a polygon measurement on the same date (or any date for a site one). */
 function spatialLinks(b: Builder, measurements: readonly SurveyMeasurement[]): void {
   const POINT_KINDS: ReadonlySet<FactKind> = new Set(['detection', 'issue', 'hotspot', 'change']);
@@ -776,6 +798,7 @@ export function extractFacts(src: ProjectSources): Extracted {
   walkFacts(b, ctx, src);
   antennaFacts(b, ctx, src);
   eventFacts(b, src.events);
+  noteFacts(b, src);
   spatialLinks(b, src.measurements);
   return b.done();
 }

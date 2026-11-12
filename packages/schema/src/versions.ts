@@ -185,6 +185,14 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     since: '0.4',
   },
   {
+    // the agent's notes about a project (A3), next to its conversations
+    family: 'aio.agent-memory',
+    version: 1,
+    home: 'project',
+    where: 'ai/memory.json',
+    since: '0.31',
+  },
+  {
     family: 'aio.ai-projects',
     version: 1,
     home: 'userData',

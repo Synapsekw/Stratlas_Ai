@@ -40,6 +40,7 @@ import { stagePrefs } from '../workspace/stagePrefs';
 import { isDockScreen } from './dockScreens';
 import { registerActionTools } from './actionBridge';
 import { agentFacts, registerDataTools } from './dataTools';
+import { registerMemoryTools } from './memoryTools';
 
 const APP_SCREENS: readonly AppScreen[] = ['scene', 'issues', 'inspect', 'reports'];
 
@@ -210,6 +211,8 @@ export function registerAgentHooks(): () => void {
   // A2: the survey, detection, job, thermal and walk read tools and the menu actions
   registerDataTools();
   registerActionTools();
+  // A3: the project notes (remember_note, forget_note)
+  registerMemoryTools();
   const unregister = registerAppHooks({
     agentFacts,
     // the step summaries of the agent's tools, through the catalogue

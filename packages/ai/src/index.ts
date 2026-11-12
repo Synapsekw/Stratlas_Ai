@@ -72,6 +72,7 @@ export {
 export { surveyToolInputs, type SurveyToolInput, type SurveyToolName } from './survey-tool-specs';
 export { captureRef, capturesOf, resolveCapture, resolveLayer } from './survey-tools';
 export { factToolInputs, type FactToolInput, type FactToolName } from './fact-tool-specs';
+export { memoryToolInputs, type MemoryToolInput, type MemoryToolName } from './memory-tool-specs';
 export { factRow, isSubjectId, resolveSubject } from './fact-tools';
 export {
   allToolSpecs,
