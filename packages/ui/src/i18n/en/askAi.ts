@@ -61,7 +61,7 @@ export const enAskAi = {
   'localAi.offlineRemote': 'Every task runs on {model}, on another machine: data leaves this one.',
   'localAi.guide.title': 'Set up a local model',
   'localAi.guide.intro':
-    'No model comes with the app. Install one of these free servers yourself, then download a model with tool calling. A model that also has vision can look at photos.',
+    'With the Analytics pack installed, its own model can run Offline AI: choose "The bundled Analytics model" above. Or install one of these free servers yourself, then download a model with tool calling. A model that also has vision can look at photos.',
   'localAi.guide.ollama':
     'Ollama: install it from ollama.com, then download a model marked tools in its library with ollama pull and the model name. It listens on port 11434.',
   'localAi.guide.lmstudio':
