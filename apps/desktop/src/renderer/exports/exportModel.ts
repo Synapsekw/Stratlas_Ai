@@ -80,23 +80,23 @@ export const EXPORT_ACTIONS: readonly ExportAction[] = [
   // M11 G9: survey reports, computed with the survey engine as the measurement panel computes
   {
     id: 'survey-report-pdf',
-    label: 'Survey report (PDF)',
-    title: 'Export the survey report (measurements, stockpiles, earthworks, landfill) as PDF',
-    hint: 'Stockpiles, earthworks, landfill',
+    label: t('reports.action.surveyPdf'),
+    title: t('reports.action.surveyPdf.title'),
+    hint: t('reports.action.surveyPdf.hint'),
     icon: 'report',
   },
   {
     id: 'stockpile-csv',
-    label: 'Stockpile inventory (CSV)',
-    title: 'Export the stockpile inventory with materials and tonnes as CSV',
-    hint: 'Every survey, by material',
+    label: t('reports.action.stockpileCsv'),
+    title: t('reports.action.stockpileCsv.title'),
+    hint: t('reports.action.stockpileCsv.hint'),
     icon: 'download',
   },
   {
     id: 'measurements-csv',
-    label: 'Survey measurements (CSV)',
-    title: 'Export every survey measurement as CSV, as displayed and in SI units',
-    hint: 'Every item',
+    label: t('reports.action.measurementsCsv'),
+    title: t('reports.action.measurementsCsv.title'),
+    hint: t('reports.action.measurementsCsv.hint'),
     icon: 'download',
   },
   // the volumetric customer report (Reports, Customer reports), under the package kind report-pdf

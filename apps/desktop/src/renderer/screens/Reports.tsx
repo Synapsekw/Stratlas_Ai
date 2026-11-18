@@ -60,6 +60,8 @@ function ProjectReport(props: {
   empty: boolean;
   /** The issue page rule when none is chosen (it follows the project kind). */
   defaultPages: IssuePagesRule;
+  /** The volumetric report is offered too: say which of the two reports with piles is for what. */
+  besideVolumetric: boolean;
   onText: () => void;
 }) {
   const contents = useShell((s) => s.settings.reportContents);
@@ -75,6 +77,7 @@ function ProjectReport(props: {
         {t('reports.house.title')}
       </h2>
       <p className="muted rep-note">{t('reports.house.text')}</p>
+      {props.besideVolumetric && <p className="muted rep-note">{t('reports.house.forWhat')}</p>}
       <p className="faint small rep-note">{t('reports.brandingHint')}</p>
       <fieldset className="rep-sections">
         <legend className="caps">{t('reports.house.sections')}</legend>
@@ -278,6 +281,7 @@ export function ReportsScreen() {
             defaultPages={defaultIssuePages(
               houseKind(project.manifest, issues, roadOpen ? { road: true } : {}),
             )}
+            besideVolumetric={volumetricOffered}
             onText={() => {
               closeAuditTrail();
               closeVolumetricEditor();

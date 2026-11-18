@@ -138,4 +138,22 @@ describe('Reports screen', () => {
     expect(host.querySelector('[data-testid="volumetric-editor"]')).not.toBeNull();
     expect(volumetricView.getState().openFor).toBe('tank');
   });
+
+  it('says which of the two reports with piles is for what', async () => {
+    const house = () => host.querySelector('[data-testid="house-report"]')?.textContent ?? '';
+    // no stockpile volumes: one report, nothing to tell apart
+    expect(house()).not.toContain('The full survey record');
+    REPLIES['survey:readMeasurements'] = {
+      ok: true,
+      file: { version: 1, measurements: [stockpile] },
+      readOnly: false,
+    };
+    await remount();
+    expect(house()).toContain(
+      'The full survey record: every survey measurement and the processing accuracy, with Stockpile inventory and Volume over time inside. To hand the piles over to a customer, use the Volumetric report below.',
+    );
+    expect(host.querySelector('[data-testid="customer-reports"]')?.textContent).toContain(
+      'The hand-over for a customer: the piles with their figures and pictures, and texts you can edit. Export it as a PDF or as one HTML file that opens offline. The full survey record is the Project report above.',
+    );
+  });
 });

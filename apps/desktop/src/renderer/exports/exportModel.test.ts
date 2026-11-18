@@ -1,7 +1,9 @@
 import type { Issue, PackageInfo, ProjectManifest } from '@aio/schema';
+import { t } from '@aio/ui';
 import { describe, expect, it } from 'vitest';
 import {
   actionAllowed,
+  actionLabel,
   createToastStore,
   doneMessage,
   EXPORT_ACTIONS,
@@ -59,6 +61,37 @@ describe('export actions', () => {
     expect(actionAllowed('volumetric-html', pkg(['report-pdf']))).toBe(true);
     expect(actionAllowed('volumetric-html', pkg(['issues-csv']))).toBe(false);
     expect(actionAllowed('volumetric-pdf', null)).toBe(true);
+  });
+
+  it('reads the survey files from the catalogue, in the words they always had', () => {
+    const words = {
+      'survey-report-pdf': [
+        'reports.action.surveyPdf',
+        'Survey report (PDF)',
+        'Export the survey report (measurements, stockpiles, earthworks, landfill) as PDF',
+        'Stockpiles, earthworks, landfill',
+      ],
+      'stockpile-csv': [
+        'reports.action.stockpileCsv',
+        'Stockpile inventory (CSV)',
+        'Export the stockpile inventory with materials and tonnes as CSV',
+        'Every survey, by material',
+      ],
+      'measurements-csv': [
+        'reports.action.measurementsCsv',
+        'Survey measurements (CSV)',
+        'Export every survey measurement as CSV, as displayed and in SI units',
+        'Every item',
+      ],
+    } as const;
+    for (const [id, [key, label, title, hint]] of Object.entries(words)) {
+      const action = EXPORT_ACTIONS.find((a) => a.id === id);
+      expect(action).toMatchObject({ label, title, hint });
+      expect(t(key)).toBe(label);
+      expect(t(`${key}.title`)).toBe(title);
+      expect(t(`${key}.hint`)).toBe(hint);
+    }
+    expect(actionLabel('stockpile-csv')).toBe('Stockpile inventory (CSV)');
   });
 
   it('builds the legend worst first, with counts, skipping empty levels', () => {
