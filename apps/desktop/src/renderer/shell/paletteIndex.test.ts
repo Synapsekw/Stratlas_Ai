@@ -2,6 +2,7 @@
 import { rankCommands } from '@aio/ui';
 import { describe, expect, it, vi } from 'vitest';
 import { EMPTY_CTX, TOOLS } from '../tools/registry';
+import { ALL_SETS, type ToolSet } from '../tools/toolSets';
 import {
   paletteIndex,
   registryTools,
@@ -102,6 +103,25 @@ describe('paletteIndex', () => {
     expect(titles).not.toContain('Go to Project tab');
   });
 
+  it('lists only the tools that are part of the project', () => {
+    const ids = (...sets: ToolSet[]) =>
+      paletteIndex(input({ tools: registryTools({ ...EMPTY_CTX, sets: new Set(sets) }) })).map(
+        (c) => c.id,
+      );
+    const niche = /azimuth|antenna-tilt|clearance|road\.|volumes\./;
+    // a confined space project: no telecom, road or stockpile tool to find
+    expect(ids().filter((id) => niche.test(id))).toEqual([]);
+    expect(ids()).toContain('tool:measure.distance');
+    expect(ids('telecom')).toEqual(
+      expect.arrayContaining([
+        'tool:measure.azimuth',
+        'tool:measure.antenna-tilt',
+        'tool:measure.clearance',
+      ]),
+    );
+    expect(ids('telecom').filter((id) => id.startsWith('tool:road.'))).toEqual([]);
+  });
+
   it('Settings pages are listed, Processing tools keeps its own command', () => {
     const titles = paletteIndex(input()).map((c) => c.title);
     expect(titles).toContain('Settings: AI providers');
@@ -110,7 +130,7 @@ describe('paletteIndex', () => {
   });
 
   it('takes its tools from the registry: every one once, those that cannot start with why', () => {
-    const tools = registryTools(EMPTY_CTX);
+    const tools = registryTools({ ...EMPTY_CTX, sets: ALL_SETS });
     expect(tools.map((x) => x.id)).toEqual(TOOLS.map((d) => d.id));
     const distance = tools.find((x) => x.id === 'measure.distance');
     expect(distance).toMatchObject({ group: 'Measure', label: 'Distance', available: true });

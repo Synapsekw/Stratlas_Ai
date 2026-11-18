@@ -2,14 +2,15 @@
  * The command palette's index of the workspace's tools, island modes, workbench tabs and Settings
  * pages (UI revision W5). Pure: the caller resolves every name in the language in use and hands
  * in what each entry does, so the index is the same in a test as in the app. The tools come from
- * the tool registry (W8, `registryTools`): every registered tool, each once.
+ * the tool registry (W8, `registryTools`): every registered tool that is part of the project
+ * (`tools/toolSets.ts`), each once.
  */
 import { shortcutHint, t, type IconName, type PaletteCommand, type ShortcutId } from '@aio/ui';
 import {
   availability,
   GROUPS,
   runTool,
-  TOOLS,
+  toolsShown,
   type ToolCtx,
   type ToolDef,
 } from '../tools/registry';
@@ -135,9 +136,12 @@ export function paletteIndex(input: PaletteIndexInput): PaletteCommand[] {
 
 /**
  * The registry's tools as the palette lists them, in the language in use: "Measure: Distance",
- * every one of them, those that cannot start here with their reason.
+ * every one that is part of the project, those that cannot start here with their reason.
  */
-export function registryTools(ctx: ToolCtx, tools: readonly ToolDef[] = TOOLS): PaletteTool[] {
+export function registryTools(
+  ctx: ToolCtx,
+  tools: readonly ToolDef[] = toolsShown(ctx),
+): PaletteTool[] {
   return tools.map((d) => {
     const can = availability(d, ctx);
     return {
