@@ -25,7 +25,7 @@ Cloud AI still needs its key and the switch (see [Switch cloud AI on](07-ai-agen
 
 ## Project settings
 
-**Project settings** holds what belongs to the open project. **Keep this project's images on this PC** stops every cloud request for the project, whatever **Cloud AI** says in **Privacy and cloud**. **Street map** says whether a detailed street map covers the site; **Maps for your projects** opens that panel in **Offline maps**, which plans street maps for every project in your library.
+**Project settings** holds what belongs to the open project. **Tool sets** lists the tools that are part of the project, one switch each for **Earthworks**, **Road**, **Telecom** and **Thermal**; the project type sets them at the start (see [Tools by project type](08-building-projects.md#tools-by-project-type)). **Keep this project's images on this PC** stops every cloud request for the project, whatever **Cloud AI** says in **Privacy and cloud**. **Street map** says whether a detailed street map covers the site; **Maps for your projects** opens that panel in **Offline maps**, which plans street maps for every project in your library.
 
 ## Data folder
 

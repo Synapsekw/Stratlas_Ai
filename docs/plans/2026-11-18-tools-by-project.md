@@ -1,4 +1,4 @@
-# Tools shown by project type
+all four|# Tools shown by project type
 
 |          |                                                                                                                                              |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -22,30 +22,28 @@ The same data test is also written twice: once per right-panel section (`SECTION
 
 ### Tool sets
 
-Everything that is not core belongs to one of five **tool sets**. A set is either part of a project or it is not; there is no "More" menu and nothing is tucked away.
+Everything that is not core belongs to one of four **tool sets**. A set is either part of a project or it is not; there is no "More" menu and nothing is tucked away.
 
-| Tool set    | What is in it                                                                                                                                                                                                                                                                          |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Earthworks  | Tools: Volumes, Survey checks. Project: Volumes. Layers: Show (surface and pile overlays). Stage tools mode: Volumes. Bottom strip: volume over time.                                                                                                                                  |
-| Road        | Tools: Road. Project: Road. Stage tools mode: Road. Bottom strip: chainage.                                                                                                                                                                                                            |
-| Engineering | Tools: Engineering (model review). Right-click: "Create engineering model". The same offer in the import summary.                                                                                                                                                                      |
-| Telecom     | Measure family Telecom (Azimuth, Antenna tilt, Clearance, Find antennas). Tools: Coverage. "In this project": Antennas, Sectors, Coverage plan. Right-click: every antenna action (fly to, hide, show, edit azimuth, edit downtilt, accept, reject, redraw, delete) and "RF coverage". |
-| Thermal     | Tools: Thermal. Right-click on photos: "Analyse thermal".                                                                                                                                                                                                                              |
+| Tool set   | What is in it                                                                                                                                                                                                                                                                          |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Earthworks | Tools: Volumes, Survey checks. Project: Volumes. Layers: Show (surface and pile overlays). Stage tools mode: Volumes. Bottom strip: volume over time.                                                                                                                                  |
+| Road       | Tools: Road. Project: Road. Stage tools mode: Road. Bottom strip: chainage.                                                                                                                                                                                                            |
+| Telecom    | Measure family Telecom (Azimuth, Antenna tilt, Clearance, Find antennas). Tools: Coverage. "In this project": Antennas, Sectors, Coverage plan. Right-click: every antenna action (fly to, hide, show, edit azimuth, edit downtilt, accept, reject, redraw, delete) and "RF coverage". |
+| Thermal    | Tools: Thermal. Right-click on photos: "Analyse thermal".                                                                                                                                                                                                                              |
 
-**Core, in every project:** View, Measure (the Point, Line, Polygon, Markup and Section families), Annotate, Terrain analysis, Environment, Compare and the dates, Issues, Search, Digest, Processing, Reports, every Layers and display section, and all six rail screens. Point cloud, Video and Terrain analysis tools are core too: they keep showing only when the project holds a point cloud, a video, or a model or raster, as today.
+**Core, in every project:** View, Measure (the Point, Line, Polygon, Markup and Section families), Annotate, Terrain analysis, Engineering (the model review and "Create engineering model"), Environment, Compare and the dates, Issues, Search, Digest, Processing, Reports, every Layers and display section, and all six rail screens. Point cloud, Video, Terrain analysis and Engineering are core too: they keep showing only when the project holds a point cloud, a video, a model or raster, or a point cloud or mesh, as today.
 
 ### Which project gets which set
 
 "on" means part of the project from the start. "data" means it joins by itself as soon as the project holds that set's own records (section 2). A blank cell means not shown, until someone switches it on in project settings (section 3).
 
-| Tool set    | Survey | Construction | Vertical asset | Confined space | Data fusion | Road | Telecom towers | Today                                              |
-| ----------- | ------ | ------------ | -------------- | -------------- | ----------- | ---- | -------------- | -------------------------------------------------- |
-| Core        | on     | on           | on             | on             | on          | on   | on             | on everywhere                                      |
-| Earthworks  | on     | on           | data           | data           | on          | data | data           | every project with a model, a raster or piles      |
-| Road        | data   | data         | data           | data           | on          | on   | data           | every project with a road model (unchanged)        |
-| Engineering | data   | data         | on             | data           | on          | data | on             | every project with a point cloud or mesh           |
-| Telecom     | data   | data         | data           | data           | on          | data | on             | measure family everywhere; Coverage with any model |
-| Thermal     | data   | data         | on             | data           | on          | data | data           | every project with photos                          |
+| Tool set   | Survey | Construction | Vertical asset | Confined space | Data fusion | Road | Telecom towers | Today                                              |
+| ---------- | ------ | ------------ | -------------- | -------------- | ----------- | ---- | -------------- | -------------------------------------------------- |
+| Core       | on     | on           | on             | on             | on          | on   | on             | on everywhere                                      |
+| Earthworks | on     | on           | data           | data           | on          | data | data           | every project with a model, a raster or piles      |
+| Road       | data   | data         | data           | data           | on          | on   | data           | every project with a road model (unchanged)        |
+| Telecom    | data   | data         | data           | data           | on          | data | on             | measure family everywhere; Coverage with any model |
+| Thermal    | data   | data         | on             | data           | on          | data | data           | every project with photos                          |
 
 ### Every surface, row by row
 
@@ -62,7 +60,7 @@ Columns: Su survey, Co construction, VA vertical asset, CS confined space, DF da
 | Tools tab group            | Survey checks                                                                                                           | Y                      | Y   | .   | .   | Y   | .   | .   | any model or raster                                           | a model or raster             |
 | Tools tab group            | Video                                                                                                                   | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | a video                                                       | a video                       |
 | Tools tab group            | Road                                                                                                                    | .                      | .   | .   | .   | Y   | Y   | .   | a road model                                                  | a road model                  |
-| Tools tab group            | Engineering                                                                                                             | .                      | .   | Y   | .   | Y   | .   | Y   | any point cloud or mesh                                       | a point cloud or mesh         |
+| Tools tab group            | Engineering                                                                                                             | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | any point cloud or mesh                                       | a point cloud or mesh         |
 | Tools tab group            | Coverage                                                                                                                | .                      | .   | .   | .   | Y   | .   | Y   | any point cloud or mesh                                       | a point cloud or mesh         |
 | Tools tab group            | Thermal                                                                                                                 | .                      | .   | Y   | .   | Y   | .   | .   | any photos                                                    | photos                        |
 | Tools tab group            | Environment                                                                                                             | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | always                                                        | none                          |
@@ -86,7 +84,7 @@ Columns: Su survey, Co construction, VA vertical asset, CS confined space, DF da
 | Right-click actions        | Project, dates, layers, point cloud, mesh, drawing, pins, photo position, measurements, reports, findings, area compare | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | by what was clicked                                           | unchanged                     |
 | Right-click actions        | Antenna actions, "RF coverage"                                                                                          | .                      | .   | .   | .   | Y   | .   | Y   | an antenna row; an inventory                                  | unchanged                     |
 | Right-click actions        | "Analyse thermal"                                                                                                       | .                      | .   | Y   | .   | Y   | .   | .   | a thermal photo was clicked                                   | unchanged                     |
-| Right-click actions        | "Create engineering model"                                                                                              | .                      | .   | Y   | .   | Y   | .   | Y   | a point cloud or mesh was clicked                             | unchanged                     |
+| Right-click actions        | "Create engineering model"                                                                                              | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | a point cloud or mesh was clicked                             | unchanged                     |
 | Command palette            | Tools, tool groups and panel names                                                                                      | follows the rows above |     |     |     |     |     |     | every tool, in every project                                  | follows the rows above        |
 
 What does not change: the six rail screens, the Settings pages (they are per computer, not per project), the space switcher in the title bar (it shows when the project has more than one space), the import toolbar (every data kind can still be added to every project) and the layout presets (they keep deciding what a project opens on).
@@ -110,25 +108,26 @@ A tool set is **part of the project** when any of these is true:
 
 "Its own records" means things only that set makes, not data it could run on:
 
-| Tool set    | Joins by itself when the project holds                                                              |
-| ----------- | --------------------------------------------------------------------------------------------------- |
-| Earthworks  | piles, volume measurements or the stockpile kit                                                     |
-| Road        | a road model                                                                                        |
-| Engineering | an engineering model                                                                                |
-| Telecom     | an antenna inventory, an RF plan, or a saved Azimuth, Antenna tilt or Clearance measurement         |
-| Thermal     | at least one thermal photo (the check the app already runs on every photo set when a project opens) |
+| Tool set   | Joins by itself when the project holds                                                              |
+| ---------- | --------------------------------------------------------------------------------------------------- |
+| Earthworks | piles, volume measurements or the stockpile kit                                                     |
+| Road       | a road model                                                                                        |
+| Telecom    | an antenna inventory, an RF plan, or a saved Azimuth, Antenna tilt or Clearance measurement         |
+| Thermal    | at least one thermal photo (the check the app already runs on every photo set when a project opens) |
 
-A mesh alone no longer brings Engineering or Coverage, and photos alone no longer bring Thermal. Importing thermal photos does bring Thermal, with no step for the user.
+A mesh alone no longer brings Coverage, and photos alone no longer bring Thermal. Importing thermal photos does bring Thermal, with no step for the user.
 
 **How the two tests combine.** They are both required, and each answers a different question. The tool set answers "does this belong in this project at all": if not, the thing is absent everywhere, including the palette. The data test answers "is there anything to run it on yet": it stays exactly as today, including the tools that are greyed with a reason ("Needs the 3D view", "Read only"). So a telecom project with no point cloud yet still has no Coverage section, and a vertical asset project never has one unless it gains antennas or the switch.
 
+**Right-click actions need no rule of their own.** Each action of a set already asks for that set's own record before it shows: an antenna row, an antenna inventory for "RF coverage", a thermal photo for "Analyse thermal". A project that holds the record has the set, so the menus already follow.
+
 **One place in the code.** A new pure module, `apps/desktop/src/renderer/tools/toolSets.ts`, holds:
 
-- the five set names and the type table (`PURPOSE_SETS`),
-- one table saying which set each group, section, measure family, stage tools mode, "In this project" group and right-click action belongs to (anything not listed is core),
+- the four set names and the type table (`PURPOSE_SETS`),
+- one table saying which set each group, section, measure family, stage tools mode and "In this project" group belongs to (every id is listed, as core or in a set, so a new one cannot land without a decision),
 - `toolSetsFor(project)`: the sets that are part of the project, from the three conditions above.
 
-Everything else asks it: the panel sections (`sectionsOf`), the tool registry (`toolsFor`, `islandModes`, and through them the palette), the measure families (`familiesFor`), the "In this project" list (`orderGroups`) and the right-click actions (`appliesTo`).
+Everything else asks it: the panel sections (`sectionsOf`), the tool registry (`toolsFor`, `islandModes`, and through them the palette), the measure families (`familiesFor`), and the "In this project" list (`orderGroups`).
 
 **What it replaces.** The data tests are real and stay, but they stop being asked to stand in for the project type:
 
@@ -139,7 +138,7 @@ Everything else asks it: the panel sections (`sectionsOf`), the tool registry (`
 
 ## 3. Mixed and changing projects
 
-**Adding a set to a project.** Settings, "This project", gets a short list titled **Tool sets**: five switches (Earthworks, Road, Engineering, Telecom, Thermal), each with one line saying what it brings. The switches start as the project type gives them. Turning one on makes its tools part of the project at once, everywhere. This is a project setting, like the project's privacy switches on the same page, not a menu: nothing is hidden behind it while a set is on, and a set that is off is simply not part of the project. The palette already lists "This project (Settings)", so the list is one search away.
+**Adding a set to a project.** Settings, "This project", gets a short list titled **Tool sets**: four switches (Earthworks, Road, Telecom, Thermal), each with one line saying what it brings. The switches start as the project type gives them. Turning one on makes its tools part of the project at once, everywhere. This is a project setting, like the project's privacy switches on the same page, not a menu: nothing is hidden behind it while a set is on, and a set that is off is simply not part of the project. The palette already lists "This project (Settings)", so the list is one search away.
 
 - A set whose records the project holds is shown on and locked, with the reason ("This project holds antennas"). It cannot be switched off, so no record can ever lose its tools.
 - A switch that is turned off only removes the tools from view. It deletes nothing.
@@ -148,19 +147,19 @@ Everything else asks it: the panel sections (`sectionsOf`), the tool registry (`
 **Existing projects, first open after the update.** Nothing is migrated and nothing is written. On open, the app works out the sets from the project type plus the records the project holds:
 
 - A project that already holds antennas, an RF plan or telecom measurements keeps every telecom tool, whatever its type.
-- A project with piles keeps Volumes; one with an engineering model keeps Engineering; one with thermal photos keeps Thermal; one with a road model keeps Road.
-- What disappears is only the empty offer: Engineering and Coverage on a survey that merely has a point cloud, Thermal on a project whose photos are ordinary, the Telecom family where no antenna was ever measured.
+- A project with piles keeps Volumes; one with thermal photos keeps Thermal; one with a road model keeps Road.
+- What disappears is only the empty offer: Coverage on a survey that merely has a point cloud, Survey checks on an inspection, Thermal on a project whose photos are ordinary, the Telecom family where no antenna was ever measured.
 - All data stays reachable in any case: layers, measurements and issues are core and never depend on a set.
 
 **The five older project types.** Projects from before the seven wizard types have only the older type. They map the way the layout presets already map them (`purposeOf`), so a project's tools and its layout always agree:
 
-| Older type          | Counts as      | Sets on              |
-| ------------------- | -------------- | -------------------- |
-| volumetric          | Survey         | Earthworks           |
-| road                | Road           | Road                 |
-| inspection          | Vertical asset | Engineering, Thermal |
-| fusion, twin        | Data fusion    | all five             |
-| none (imported kit) | Vertical asset | Engineering, Thermal |
+| Older type          | Counts as      | Sets on    |
+| ------------------- | -------------- | ---------- |
+| volumetric          | Survey         | Earthworks |
+| road                | Road           | Road       |
+| inspection          | Vertical asset | Thermal    |
+| fusion, twin        | Data fusion    | all four   |
+| none (imported kit) | Vertical asset | Thermal    |
 
 A fusion, twin or untyped project that holds piles counts as a Survey for its layout today; its Earthworks set comes on through its records either way. An older inspection project that was really a tower job keeps its telecom tools because it holds antennas.
 
@@ -247,14 +246,22 @@ One, additive: `ProjectManifest.toolSets?` in `@aio/schema`, a list of plain nam
 
 ## 7. Founder decisions, 18 Nov 2026
 
-1. **Data fusion gets all five tool sets** (Earthworks, Road, Engineering, Telecom, Thermal). It is the type for a site with any mix of data, so nothing is left out of it. The older fusion and twin types count as Data fusion and get the same.
-2. **Terrain analysis is core.** It shows in every project that holds a model or a raster.
-3. **A set that the project type includes may be switched off.** Only a set with records is locked on.
+1. **Data fusion gets every tool set** (Earthworks, Road, Telecom, Thermal). It is the type for a site with any mix of data, so nothing is left out of it. The older fusion and twin types count as Data fusion and get the same.
+2. **Engineering is core.** The Engineering section (the engineering model, exported as GLB) and "Create engineering model" are in every project type, subject only to the data test (a point cloud or mesh). It is not a tool set and has no switch. That leaves four sets: Earthworks, Road, Telecom, Thermal.
+3. **Terrain analysis is core.** It shows in every project that holds a model or a raster.
+4. **A set that the project type includes may be switched off.** Only a set with records is locked on.
 
-### Still open
-
-- **Engineering in Construction projects.** Not answered yet. It is built **off by default** as a provisional value: a construction project does not show Engineering until someone turns the switch on or the project holds an engineering model. Changing the answer is one line in `toolSets.ts` (`PURPOSE_SETS.construction`).
+The resulting defaults: Survey and Construction have Earthworks; Vertical asset has Thermal; Confined space has none; Data fusion has all four; Road has Road; Telecom towers has Telecom.
 
 ### Assumption to confirm
 
-- **Survey checks stays in Earthworks.** The founder moved Terrain analysis to core and did not mention Survey checks, so it shows in survey, construction and data fusion projects, and elsewhere through the switch.
+- **Survey checks stays in Earthworks.** The founder moved Terrain analysis to core and did not mention Survey checks, so its section shows in survey, construction and data fusion projects, and elsewhere through the switch. Its other way in is unchanged in every project: Tools, Measure, Site data, "Survey QA and cleanup".
+
+## 8. What the build changed from this plan
+
+- **Four sets, not five** (decision 2), so there is no engineering record to look for and no engineering switch.
+- **T8 (right-click actions) needed no code**, for the reason in section 2. The one piece of it that was built is the fact the Thermal set needs: the photo probe now says whether the project holds a thermal photo.
+- **A new channel was needed** to save the switches, `project:setToolSets`: each project setting has its own channel, there is no shared one. It is in the contract row.
+- **A section whose tool is open always shows**, whatever the sets. This rule was there before and is kept, so nothing that opens a panel (the site digest's "check the survey" action, a sector row) can lead nowhere.
+- **The kit's Swipe tile** in the Compare mode belongs to Earthworks and leaves projects without the stockpile kit, where it could never start.
+- **A survey or construction project that holds an antenna inventory now lists it** under "In this project". Before, those two types left the tower groups out even with antennas on disk.

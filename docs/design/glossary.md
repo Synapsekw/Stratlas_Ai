@@ -20,6 +20,7 @@ The app speaks the user's language: surveying words (UTM, toe, chainage, PCI) an
 | Datasets that belong to no survey date (they show with every date) | **No date** | The tree group and the move target. A prompt says "datasets with no date". |
 | The prompt that files undated datasets under their survey days | **File by date**, **Leave for now** | Buttons say what they do. "Not now" stays fine as a plain dismiss on an offer. |
 | The right panel's parts | **panel**, **tab**, **section** | The right panel holds tabs; the groups inside a tab are sections. |
+| The tools of one line of work that are part of a project or not (founder, 18 Nov 2026) | **tool set**; the four are **Earthworks**, **Road**, **Telecom**, **Thermal** | The switches are "Tool sets" in Project settings. A set "is part of the project" or is not: never "hidden", "advanced" or "more tools". A locked switch says "On: this project holds ...". |
 | The bar at the top centre of the stage (modes, view and tools) | **stage tools** | Matches its accessible name, "Stage tools". |
 | The point shading that brings out the shape of a point cloud | **depth shading** | The renderer calls it eye-dome lighting; the UI does not. |
 | The volume base fitted through the pile's toe | **Toe surface** | The standard base. "Toe" is a surveying word and stays. |

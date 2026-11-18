@@ -13,7 +13,7 @@ Build a project from raw data: photos, video with its flight log, models, orthos
    - **Data fusion**: a large site with many sensors, any mix of data in one scene.
    - **Road**: corridor orthomosaic, distress mapping, PCI.
 
-   The type sets the starting point: the severity model proposed in step 4, the **Survey data** block of a survey (see [Volumes and roads](09-volumes-and-roads.md)), the road workspace of a road, and the list of what to add first in the empty project. Every tool works in every type, and any kind of data can be added to any project.
+   The type sets the starting point: the severity model proposed in step 4, the **Survey data** block of a survey (see [Volumes and roads](09-volumes-and-roads.md)), the road workspace of a road, and the list of what to add first in the empty project. It also decides which tool sets are part of the project (see [Tools by project type](#tools-by-project-type)). Any kind of data can be added to any project.
 
    Click **Next**.
 
@@ -30,6 +30,27 @@ Build a project from raw data: photos, video with its flight log, models, orthos
 Projects made before the types above keep working as they are. An empty one shows what its older type says: **Inspection**, **Survey** (was Volumetric), **Road**, **Digital twin** or **Data fusion** (was Free fusion).
 
 ![The new project wizard](images/new-project.png)
+
+## Tools by project type
+
+Most tools are in every project: **View**, **Measure**, **Annotate**, **Point cloud**, **Terrain analysis**, **Video**, **Engineering** and **Environment**, the survey dates and their comparison, issues and reports. Some of them show only once the project holds the data they work on (a point cloud, a video, a model).
+
+Four **tool sets** belong to one line of work, and a project has them or not:
+
+| Tool set       | What it brings                                                                                                                          | Part of these project types            |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| **Earthworks** | **Volumes**, piles and **Survey checks**                                                                                                | Survey, Construction, Data fusion      |
+| **Road**       | The road workspace: defects, condition and chainage                                                                                     | Road, Data fusion                      |
+| **Telecom**    | The **Telecom** measuring tools (**Azimuth**, **Antenna tilt**, **Clearance**), **Detect antennas**, **Coverage** and the antenna lists | Telecom towers, Data fusion            |
+| **Thermal**    | The **Thermal** section for thermal photos                                                                                              | Vertical asset inspection, Data fusion |
+
+A **Confined space inspection** starts with none of the four. A project made before the types counts as what its older type stands for: Inspection as a vertical asset, Digital twin and Free fusion as Data fusion.
+
+A tool set that is not part of a project is not shown anywhere in it: not in the **Tools** tab, not in **Ctrl K**, not in the stage tools.
+
+**A project keeps the tools of what it already holds.** A project with piles has Earthworks, one with a road has Road, one with antennas, an RF plan or a telecom measurement has Telecom, and one with thermal photos has Thermal, whatever its type. Adding thermal photos to any project brings the **Thermal** section by itself.
+
+**To add a tool set to a project**, open **Settings**, **Project settings**, **Tool sets**, and turn its switch on. Turning a switch off only takes those tools out of view: nothing is deleted. A switch that reads "On: this project holds ..." cannot be turned off. The choice is saved in the project, so it is the same on every computer and in a package.
 
 ## Import raw data
 

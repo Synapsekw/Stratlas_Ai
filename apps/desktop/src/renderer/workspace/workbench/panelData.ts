@@ -1,7 +1,7 @@
 /**
- * What the project holds, as the right panel's sections read it (D2): a section shows when its
- * data is there, never because of the project type. Small on purpose, so the panel's tabs and the
- * palette can read it without the benches.
+ * What the project holds, as the right panel's sections read it (D2): the data test of a section.
+ * Whether a section belongs in the project at all is its tool set's (`tools/toolSets.ts`). Small
+ * on purpose, so the panel's tabs and the palette can read it without the benches.
  */
 import { canCompare, useWorkspace } from '@aio/workspace';
 import { useMemo } from 'react';

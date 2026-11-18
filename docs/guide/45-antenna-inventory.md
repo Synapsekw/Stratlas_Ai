@@ -2,11 +2,13 @@
 
 **Detect antennas** finds the antennas on a telecom tower in its point cloud and measures each one: direction, tilt, lean, size and position. The result is an inventory you review, correct and export as a CSV file.
 
-Use it on a tower project that has a point cloud. The tower must be a monopole or a lattice tower. The button is hidden while the project has no point cloud, and in read-only packages. It sits in the right sidebar's **Project** tab, under **Tools**, in the **Telecom** section.
+Use it on a tower project that has a point cloud. The tower must be a monopole or a lattice tower. The button is hidden while the project has no point cloud, and in read-only packages. It sits in the right sidebar's **Tools** tab, in **Measure**, under **Telecom**.
+
+The Telecom tools are part of **Telecom towers** and **Data fusion** projects, and of any project that already holds antennas. In another project, turn **Telecom** on in **Settings**, **Project settings**, **Tool sets** (see [Tools by project type](08-building-projects.md#tools-by-project-type)).
 
 ## Run a detection
 
-1. Open the project and the right sidebar's **Project** tab, then find **Telecom** under **Tools**.
+1. Open the project and the right sidebar's **Tools** tab, open **Measure**, then find **Telecom**.
 2. Click **Detect antennas**. If the project has several point clouds, open **Detection options** and choose the **Point cloud**, or leave it on **Automatic**.
 3. Follow the progress in the jobs indicator (**Detecting antennas**). The button is disabled while a run is going and while the point cloud is still loading.
 4. If the app cannot tell which structure is the tower, it asks **Which one is the tower?** Click the tower once in the 3D view. Detection then runs again. **Cancel** stops it.

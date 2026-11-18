@@ -2,8 +2,8 @@
  * Layout presets per project type (UI revision D7, W13). A preset is code, not data: it says what
  * the workspace opens on (the right panel's tab, Project's first sections, the bottom strip, the
  * island's mode, Map or 3D, the Layers column in a wide window, the Tools tab's first groups) and
- * nothing more. It never decides what exists: the project's data does (`applyPreset`), and every
- * tool, section, mode and import stays reachable in every project.
+ * nothing more. It never decides what exists: the project's tool sets and its data do
+ * (`tools/toolSets.ts`, `applyPreset`), and every import stays reachable in every project.
  */
 import {
   projectPurpose,
