@@ -9,14 +9,17 @@
  * up 5 m east (past the polygon's 3 m margin), so the mask must follow the polygon where its date
  * draws it. After that line-up the area's set reads stale, and its Run again replays the area
  * (still scoped, still chosen, cut where the polygon is drawn now) while the whole-map set stays
- * as it was. The pipelines run as jobs with the
+ * as it was. With "Include volumes" ticked the area still gets exactly one row, with its cut and
+ * fill set beside the imagery one; while the area is being compared (again, so its row is there
+ * and its job is live) deleting that row is refused with the job named and "Cancel it first", and
+ * once the jobs have ended the delete puts the layer list back. The pipelines run as jobs with the
  * development Python (`uv sync` in python/, or QUADRION_E2E_PYTHON); skipped without it.
  */
 import { fromWgs84 } from '@aio/geo';
 import { MeasurementsFile } from '@aio/schema';
 import type { Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { box, inside, meets, type Item, type RasterTruth } from './changeRaster';
 import {
@@ -36,8 +39,22 @@ test.use({ appEnv: PIPELINE_ENV });
 interface Win {
   __stratlas: {
     workspace: { getState(): { project: { manifest: { layers: { id: string }[] } } | null } };
+    jobs: { getState(): { jobs: { pipeline: string; status: string }[] } };
   };
 }
+
+/** The comparison jobs (imagery, surfaces) that have not ended yet, as the Jobs store holds them. */
+const liveChangeJobs = (win: Page) =>
+  win.evaluate(() =>
+    (window as unknown as Win).__stratlas.jobs
+      .getState()
+      .jobs.filter(
+        (j) =>
+          (j.pipeline === 'change.raster' || j.pipeline === 'change.surface') &&
+          ['starting', 'running', 'cancelling'].includes(j.status),
+      )
+      .map((j) => j.pipeline),
+  );
 
 const layerIds = (win: Page) =>
   win.evaluate(() =>
@@ -149,10 +166,10 @@ async function areaLayerOf(win: Page, pair: string, setId: string): Promise<void
 }
 
 /**
- * Right-click a layer's row in its survey date's Maps and rasters group, Delete…, and confirm:
- * the row and everything made with it go to the project trash.
+ * Right-click a layer's row in its survey date's Maps and rasters group, Delete…: the dialog that
+ * asks, or says why it cannot be deleted.
  */
-async function deleteRow(win: Page, layer: string, capture: string): Promise<void> {
+async function askDeleteRow(win: Page, layer: string, capture: string) {
   const handle = win.getByTestId('panel-handle-left');
   if ((await handle.getAttribute('aria-expanded')) !== 'true') await handle.click();
   const folder = win.getByTestId(`date-folder-${capture}`);
@@ -169,6 +186,15 @@ async function deleteRow(win: Page, layer: string, capture: string): Promise<voi
   await win.getByTestId('menu-delete').click();
   const confirm = win.getByTestId('remove-dialog');
   await expect(confirm).toBeVisible();
+  return confirm;
+}
+
+/**
+ * Delete a layer's row from the tree and confirm: the row and everything made with it go to the
+ * project trash.
+ */
+async function deleteRow(win: Page, layer: string, capture: string): Promise<void> {
+  const confirm = await askDeleteRow(win, layer, capture);
   await confirm.getByTestId('remove-dialog-confirm').click();
   await expect(confirm).toHaveCount(0, { timeout: 30_000 });
 }
@@ -301,6 +327,72 @@ test('compare one area with the previous survey', async ({ demoProject }, testIn
   await expect.poll(() => layerIds(win), { timeout: 30_000 }).toEqual(before);
   expect(existsSync(join(root, 'change', `${setId}.json`))).toBe(false);
   expect(existsSync(join(root, 'change', setId))).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+test('with Include volumes the area gets one row; deleting it while its comparison runs is refused, and after the jobs it puts the list back', async ({
+  demoProject,
+}) => {
+  test.setTimeout(600_000);
+  const { win, root, truth } = demoProject;
+  const { from, to } = truth.captures;
+  const errors: string[] = [];
+  win.on('pageerror', (e) => errors.push(e.message));
+  const pair = `${from}-${to}`;
+  const setId = `${pair}-raster-area-area-a`;
+  const row = areaLayerId(pair, 'area-a');
+  await seedArea(win, root, truth);
+  const before = await layerIds(win);
+  const setsBefore = (await readdir(join(root, 'change')).catch(() => [])).sort();
+
+  // Compare with previous survey, Include volumes ticked
+  const first = await askCompare(win);
+  const volumes = first.getByTestId('area-compare-volumes');
+  await expect(volumes).toBeEnabled();
+  await volumes.check();
+  await first.getByTestId('area-compare-run').click();
+  await areaLayerOf(win, pair, setId);
+  await expect(first).toHaveCount(0);
+  await expect.poll(() => liveChangeJobs(win), { timeout: 360_000 }).toEqual([]);
+
+  // exactly one new row, and behind it the imagery set and the cut and fill set of the area, the
+  // volumes not missing from it
+  expect([...(await layerIds(win))].sort()).toEqual([...before, row].sort());
+  const made = (await readdir(join(root, 'change'))).filter((f) => !setsBefore.includes(f));
+  expect(made).toEqual(expect.arrayContaining([`${setId}.json`]));
+  expect(
+    made.filter((f) => /surface.*area-a.*\.json$/.test(f)),
+    made.join(', '),
+  ).toHaveLength(1);
+  expect((await readSet(root, setId)) as { volumesMissing?: unknown }).not.toHaveProperty(
+    'volumesMissing',
+  );
+
+  // The area compared again: its row is there and its jobs are live. Deleting the row now is
+  // refused, the job named, with what to do
+  const again = await askCompare(win);
+  await expect(again.getByTestId('area-compare-volumes')).toBeChecked();
+  await again.getByTestId('area-compare-run').click();
+  await expect.poll(() => liveChangeJobs(win), { timeout: 30_000 }).not.toEqual([]);
+  const refusal = await askDeleteRow(win, row, to);
+  const why = refusal.getByTestId('remove-dialog-refused');
+  await expect(why).toBeVisible();
+  await expect(why).toContainText(
+    /Comparing the (imagery|surfaces) uses ".+" and is still running\. Cancel it first\./,
+  );
+  // only Close: nothing to confirm, and nothing was deleted
+  await expect(refusal.getByTestId('remove-dialog-confirm')).toHaveCount(0);
+  await refusal.getByTestId('remove-dialog-close').click();
+  await expect(refusal).toHaveCount(0);
+  expect(await layerIds(win)).toContain(row);
+  expect(existsSync(join(root, 'change', `${setId}.json`))).toBe(true);
+
+  // once the jobs have ended the same delete goes through and the layer list is as it was
+  await expect.poll(() => liveChangeJobs(win), { timeout: 360_000 }).toEqual([]);
+  await expect.poll(() => layerIds(win), { timeout: 60_000 }).toContain(row);
+  await deleteRow(win, row, to);
+  await expect.poll(() => layerIds(win), { timeout: 30_000 }).toEqual(before);
+  expect(existsSync(join(root, 'change', `${setId}.json`))).toBe(false);
   expect(errors).toEqual([]);
 });
 

@@ -17,7 +17,8 @@
  * - The figures the app shows are recorded (a JSON attachment and the log): per pile and survey
  *   date the volume, the pile's base, and the site total per date. With a reference file
  *   (QUADRION_E2E_VOLUME_REFERENCE, a CSV `pile,date,volume_m3`, see `volumeReference.ts`) they are
- *   compared: each pile within 5 %, each total within 1 %.
+ *   compared: each pile within 5 %, each total within 1 %; a pile the reference names and the app
+ *   has no figure for fails, and a figure carried from an earlier version is not compared.
  *
  * Runs only where the real data holds the project (realData.ts); skipped elsewhere. The project is
  * copied to a temporary data root (@realdata), so nothing written here touches the real data.
@@ -416,8 +417,8 @@ test('@realdata the stockpile project: every pile in the inventory, a pile in Se
   await expect(selectedPile(win)).toHaveAttribute('data-id', other.id, { timeout: 30_000 });
   await expect(panelTab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
   await expect(selectedPile(win).getByTestId('pile-name')).toHaveText(other.label);
-  // opened on the view, it has no list to go back to
-  await expect(selectedPile(win).getByTestId('pile-back')).toHaveCount(0);
+  // opened on the view, it has its link to the inventory too
+  await expect(selectedPile(win).getByTestId('pile-back')).toHaveText('Back to inventory');
   await expect(pileLook(win, other.id)).toHaveCount(1, { timeout: 120_000 });
 
   expect(errors).toEqual([]);
@@ -552,6 +553,7 @@ test('@realdata the stockpile project: the figures per pile and survey date are 
       ok: boolean;
       rows: ReturnType<typeof compareVolumes>['rows'];
       missingInApp: ReturnType<typeof compareVolumes>['missingInOurs'];
+      fromAnEarlierVersion: ReturnType<typeof compareVolumes>['carried'];
       missingInReference: ReturnType<typeof compareVolumes>['missingInReference'];
       duplicates: string[];
     },
@@ -586,6 +588,7 @@ test('@realdata the stockpile project: the figures per pile and survey date are 
       ok: comparison.ok,
       rows: comparison.rows,
       missingInApp: comparison.missingInOurs,
+      fromAnEarlierVersion: comparison.carried,
       missingInReference: comparison.missingInReference,
       duplicates: comparison.duplicates,
     };
@@ -600,6 +603,10 @@ test('@realdata the stockpile project: the figures per pile and survey date are 
 
   if (comparison) {
     expect(comparison.rows.length, `nothing to compare\n${report}`).toBeGreaterThan(0);
+    expect(
+      comparison.missingInOurs,
+      `the reference names figures the app does not have\n${report}`,
+    ).toEqual([]);
     expect(comparison.ok, `figures outside their limits\n${report}`).toBe(true);
   }
 });

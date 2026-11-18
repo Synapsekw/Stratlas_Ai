@@ -13,9 +13,10 @@
  *   with the survey date's measurements and in Project > Volumes, with a volume once Recompute is
  *   pressed; the number beside "Volumes" is the list's.
  * - A pile's base switched to Lowest point and back to Toe surface: the figure follows, the base
- *   has one name in the panel, the inventory and the inventory CSV, and the figure is kept, not
- *   stale, after the project is closed and opened again. The weight calculator says its figure
- *   is not saved; the History CSV and the header's Export are named for volume over time.
+ *   has one name in the panel, the inventory and the inventory CSV. Left on Lowest point and
+ *   saved, the base and its figure are kept, not stale, after the project is closed and opened
+ *   again. The weight calculator says its figure is not saved, and its field is empty after the
+ *   reopen; the History CSV and the header's Export are named for volume over time.
  * - Tools > Volumes holds Draw volume and Swipe only; the Reports screen says what each of its two
  *   reports is for.
  *
@@ -317,11 +318,11 @@ test('with one pile open on the Map, the cut and fill legend names the pile and 
   await expect(title).not.toContainText('Height change');
   await expect(legend).toHaveAttribute('aria-label', new RegExp(`^${SP1}: `));
 
-  // the pile let go (opened by a click in 3D, it has no link back: Esc on its panel): the whole
-  // site between the compare pair again
+  // the pile let go (opened by a click in 3D it has its link to the inventory too; here Esc on
+  // its panel): the whole site between the compare pair again
   await openSection(win, 'selection');
   await expect(panel).toBeVisible();
-  await expect(panel.getByTestId('pile-back')).toHaveCount(0);
+  await expect(panel.getByTestId('pile-back')).toHaveText('Back to inventory');
   await panel.getByTestId('pile-tab-overview').focus();
   await win.keyboard.press('Escape');
   await expect(selectedPile(win)).toHaveCount(0);
@@ -552,7 +553,7 @@ const figure = (text: string): number => {
   return Number((m?.[0] ?? 'NaN').replace(/[ ,+]/g, '').replace('−', '-'));
 };
 
-test('a pile on Lowest point and back on Toe surface: one base name in the panel, the inventory and the CSV, kept across a reopen; the calculator note and the export names', async ({
+test('a pile on Lowest point and back on Toe surface: one base name in the panel, the inventory and the CSV; a switched base is kept across a reopen and the weighed tonnage is not; the export names', async ({
   app,
   dataRoot,
   quarryProject,
@@ -665,7 +666,20 @@ test('a pile on Lowest point and back on Toe surface: one base name in the panel
       name,
     ).toEqual(DAYS);
 
-  // saved, then closed and opened again: the base, the figure, nothing stale
+  // The base switched once more, to Lowest point, so that what the reopen shows is not what the
+  // demo came with: the name and the figure it had on that base before
+  await openSection(win, 'selection');
+  await panel.getByTestId('pile-tab-overview').click();
+  await pickBase(panel, 'lowest');
+  await expect(chip).toHaveText('Base: Lowest point');
+  await expect(volume).toHaveText(onLowest, { timeout: 120_000 });
+  await expect(panel.getByTestId('pile-status')).toHaveCount(0, { timeout: 120_000 });
+  await expect(method).toContainText('Lowest point');
+  await expect(method).not.toContainText('Toe surface');
+  // the weighed tonnage is still in its field while the project stays open
+  await expect(panel.getByTestId('survey-weight')).toHaveValue(WEIGHED);
+
+  // saved, then closed and opened again: the switched base, its figure, nothing stale
   await saveMeasurements();
   await win.locator('.proj-switch').focus();
   await win.keyboard.press('Enter');
@@ -675,11 +689,23 @@ test('a pile on Lowest point and back on Toe surface: one base name in the panel
     .click();
   await expect(win.getByTestId('project-card').first()).toBeVisible({ timeout: 60_000 });
   const again = await pileOpened(win, quarryProject);
-  await expect(again.getByTestId('survey-from')).toHaveText('Base: Toe surface');
-  await expect(again.getByTestId('pile-kpi-volume').locator('b')).toHaveText(onToe);
+  await expect(again.getByTestId('survey-from')).toHaveText('Base: Lowest point');
+  await expect(again.getByTestId('pile-kpi-volume').locator('b')).toHaveText(onLowest);
   await expect(again.getByTestId('pile-status')).toHaveCount(0);
   await again.getByTestId('pile-tab-overview').click();
-  await expect(again.locator('.pp-method')).toContainText('Toe surface');
+  await expect(again.locator('.pp-method')).toContainText('Lowest point');
+  await expect(again.locator('.pp-method')).not.toContainText('Toe surface');
+  // the weighed tonnage went with the closed project: its field is empty, no density from it
+  const more = again.getByTestId('pile-more');
+  if (!(await more.evaluate((el) => (el as HTMLDetailsElement).open)))
+    await more.locator('summary').first().click();
+  const weighedAgain = again.getByTestId('survey-weight');
+  await weighedAgain.scrollIntoViewIfNeeded();
+  await expect(weighedAgain).toHaveValue('');
+  await expect(again.getByTestId('survey-achieved-density')).toHaveCount(0);
+  await expect(again.getByTestId('survey-weight-note')).toHaveText(
+    'The weighed tonnage is not saved with the project.',
+  );
   // as its note says, the weighed tonnage is not in the project's files
   for (const file of ['survey/measurements.json', 'manifest.json'])
     expect(await readFile(join(quarryProject.dir, ...file.split('/')), 'utf8'), file).not.toContain(

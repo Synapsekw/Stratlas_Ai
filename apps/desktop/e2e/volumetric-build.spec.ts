@@ -7,7 +7,8 @@
  * base maths are retired; a new project's piles carry no kit figure), and a pile can be selected.
  * Then Compare dates: both 3D views show the surface colours, the selected pile and the legend,
  * each for its own survey. Last, a pile the person deleted stays gone when the piles are detected
- * again, and the pile kept is not doubled. Needs the development
+ * again, the pile kept is not doubled, and a notice says how many deleted piles were left out (on
+ * both routes that detect piles). Needs the development
  * Python with aio_pipelines (`uv sync` in python/) or QUADRION_E2E_PYTHON; skipped without it.
  */
 import { MeasurementsFile } from '@aio/schema';
@@ -142,6 +143,17 @@ async function detectPilesAgain(win: Page, project: string): Promise<void> {
   await expect(detail.locator('.jd-h .job-state')).toHaveText('Done', { timeout: 180_000 });
   await win.locator('.sb-nav .nav-item', { hasText: 'Scene' }).click();
   await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible();
+}
+
+/**
+ * The notice a detection leaves when it left out piles the person deleted: its wording, then
+ * dismissed, as a person does (it stays until then).
+ */
+async function expectSkippedNotice(win: Page, wording: string): Promise<void> {
+  const notice = win.getByTestId('kit-piles-skipped');
+  await expect(notice).toContainText(wording, { timeout: 30_000 });
+  await win.getByTestId('kit-piles-skipped-dismiss').click();
+  await expect(notice).toHaveCount(0);
 }
 
 /** The project's kit pile measurements on disk (id and pile), and the piles listed as converted. */
@@ -419,6 +431,8 @@ test('a volumetric project from two raw survey dates: wizard, Processing drawer,
     // the build found both piles again
     const again = JSON.parse(await readFile(join(root, 'volumes.json'), 'utf8')) as VolumesJson;
     expect(again.piles).toHaveLength(2);
+    // the person is told why one of them did not come back
+    await expectSkippedNotice(win, '1 pile you deleted was not added again');
     // adding a pile back would follow the job within moments: nothing may change while it could
     const after = {
       converted: all,
@@ -435,7 +449,8 @@ test('a volumetric project from two raw survey dates: wizard, Processing drawer,
     expect(await kitPilesOnDisk(root)).toEqual(after);
 
     // 6. with no pile left the Volumes view says so and offers Detect piles itself: the same
-    // build, started from its own dialog, and the pile deleted last stays gone as well
+    // build, started from its own dialog, and the pile deleted last stays gone as well, with
+    // the notice counting both
     await stockpileTree(win);
     await measureRow(win, kept?.label ?? '').press('Delete');
     await expect(win.getByTestId('measure-row')).toHaveCount(0);
@@ -458,6 +473,8 @@ test('a volumetric project from two raw survey dates: wizard, Processing drawer,
     await expect(detail.locator('.jd-h h2')).toHaveText('Volumetric survey', { timeout: 30_000 });
     await expect(detail.locator('.jd-h .job-state')).toHaveText('Done', { timeout: 180_000 });
     await closeProcessing(win);
+    // nothing comes back, and the notice says why: both piles were deleted by the person
+    await expectSkippedNotice(win, '2 piles you deleted were not added again');
     const none = { converted: all, piles: [] };
     for (let i = 0; i < 10; i++) {
       expect(await kitPilesOnDisk(root)).toEqual(none);

@@ -108,7 +108,10 @@ describe('parseReference', () => {
 });
 
 describe('compareVolumes', () => {
-  const ours = parseSeriesCsv(SERIES).rows;
+  /** The app's rows as the CSV has them: South, lower on 2026-01-01 is a carried figure. */
+  const asExported = parseSeriesCsv(SERIES).rows;
+  /** The same rows with every figure worked out by this version. */
+  const ours = asExported.map((r) => ({ ...r, carried: false }));
 
   it('uses 5 % per pile and 1 % per total by default', () => {
     expect(PILE_TOLERANCE_PCT).toBe(5);
@@ -138,6 +141,7 @@ describe('compareVolumes', () => {
     expect(c.rows[0]?.diffPct).toBeCloseTo(-3.846, 2);
     expect(c.rows[3]?.diffPct).toBeCloseTo(-0.662, 2);
     expect(c.missingInOurs).toEqual([]);
+    expect(c.carried).toEqual([]);
     // the refused date has no figure and no reference: listed, not compared
     expect(c.missingInReference).toEqual([
       { pile: 'South, lower', date: '2026-02-01' },
@@ -160,7 +164,7 @@ describe('compareVolumes', () => {
     ]);
   });
 
-  it('lists what the reference names and the app has no figure for, without failing on it', () => {
+  it('fails when the reference names a pile or date the app has no figure for, and lists it', () => {
     const c = compareVolumes(
       ours,
       parseReference(
@@ -174,8 +178,9 @@ describe('compareVolumes', () => {
         ].join('\n'),
       ),
     );
-    expect(c.ok).toBe(true);
-    expect(c.rows).toHaveLength(1);
+    // the one figure compared is within its limit; the missing ones fail the comparison
+    expect(c.rows.map((r) => r.ok)).toEqual([true]);
+    expect(c.ok).toBe(false);
     expect(c.missingInOurs).toEqual([
       { pile: 'East pile', date: '2026-01-01', why: 'no pile of this name' },
       {
@@ -186,6 +191,56 @@ describe('compareVolumes', () => {
       { pile: 'North pile', date: '2026-03-01', why: 'no such date' },
       { pile: 'TOTAL', date: '2026-03-01', why: 'no such date' },
     ]);
+  });
+
+  it('fails on one pile of the reference missing from the app, the rest within limits', () => {
+    const c = compareVolumes(
+      ours,
+      parseReference(
+        'pile,date,volume_m3\nNorth pile,2026-01-01,100\nNorth pile,2026-02-01,110.5\nEast pile,2026-01-01,10\n',
+      ),
+    );
+    expect(c.rows.every((r) => r.ok)).toBe(true);
+    expect(c.missingInOurs).toEqual([
+      { pile: 'East pile', date: '2026-01-01', why: 'no pile of this name' },
+    ]);
+    expect(c.ok).toBe(false);
+  });
+
+  it('does not compare a figure carried from an earlier version: it is listed apart', () => {
+    const c = compareVolumes(
+      asExported,
+      parseReference(
+        [
+          'pile,date,volume_m3',
+          'North pile,2026-01-01,100',
+          // far off, yet carried: not ours, so neither compared nor failed
+          '"South, lower",2026-01-01,500',
+          // the total of a date that holds a carried figure is not ours either
+          'TOTAL,2026-01-01,600',
+          'TOTAL,2026-02-01,110.5',
+        ].join('\n'),
+      ),
+    );
+    expect(c.rows.map((r) => [r.pile, r.date])).toEqual([
+      ['North pile', '2026-01-01'],
+      ['TOTAL', '2026-02-01'],
+    ]);
+    expect(c.carried).toEqual([
+      { pile: 'South, lower', date: '2026-01-01' },
+      { pile: 'TOTAL', date: '2026-01-01' },
+    ]);
+    expect(c.missingInOurs).toEqual([]);
+    expect(c.ok).toBe(true);
+  });
+
+  it('a reference whose figures are all carried in the app compares nothing', () => {
+    const c = compareVolumes(
+      asExported,
+      parseReference('pile,date,volume_m3\n"South, lower",2026-01-01,50\n'),
+    );
+    expect(c.rows).toEqual([]);
+    expect(c.carried).toEqual([{ pile: 'South, lower', date: '2026-01-01' }]);
   });
 
   it('names piles that share a name, and compares none of them', () => {
@@ -202,6 +257,7 @@ describe('compareVolumes', () => {
     expect(c.missingInOurs).toEqual([
       { pile: 'North pile', date: '2026-01-01', why: 'several piles of this name' },
     ]);
+    expect(c.ok).toBe(false);
     // the total still counts both
     expect(siteTotals(twice)[0]).toEqual({ date: '2026-01-01', volume: 157, piles: 3 });
   });
@@ -224,7 +280,7 @@ describe('compareVolumes', () => {
 describe('formatComparison', () => {
   it('writes a table of pile, date, ours, reference and the difference in %, then what is missing', () => {
     const c = compareVolumes(
-      parseSeriesCsv(SERIES).rows,
+      parseSeriesCsv(SERIES).rows.map((r) => ({ ...r, carried: false })),
       parseReference(
         [
           'pile,date,volume_m3',
@@ -252,6 +308,25 @@ describe('formatComparison', () => {
     expect(text).toContain('In the app, not in the reference:');
     expect(text).toContain('South, lower 2026-01-01');
     expect(text).toContain('1 of 3 compared figures outside its limit');
+    expect(text).toContain(
+      '1 figure of the reference has no figure in the app: the comparison fails.',
+    );
+  });
+
+  it('lists the figures carried from an earlier version apart, as not compared', () => {
+    const c = compareVolumes(
+      parseSeriesCsv(SERIES).rows,
+      parseReference(
+        'pile,date,volume_m3\nNorth pile,2026-01-01,100\n"South, lower",2026-01-01,50\n',
+      ),
+    );
+    const text = formatComparison(c);
+    expect(text).toContain(
+      'From an earlier version (not worked out by this version, not compared):',
+    );
+    expect(text).toContain('  South, lower 2026-01-01');
+    expect(text).toContain('All 1 compared figures within their limits.');
+    expect(text.split('\n').filter((l) => l.startsWith('South, lower'))).toEqual([]);
   });
 
   it('says so when nothing was compared', () => {

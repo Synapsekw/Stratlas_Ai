@@ -1,13 +1,15 @@
 /**
  * The pile panel (volumetrics redesign, spec section 3, Stage B) in the real app, on the synthetic
  * quarry demo: three monthly surveys, prepared quietly on open (`autoPrepareSurfaces`). A pile
- * opens in its panel in the right panel's Selection tab wherever it is picked: an Inventory row
- * (with "Back to inventory" there, which returns to Project > Volumes), its body in 3D, its
- * outline on the Map, its sidebar row (none of which has a list to go back to: Esc lets the pile
- * go), with the right workbench folded too.
+ * opens in its panel in the right panel's Selection tab wherever it is picked: an Inventory row,
+ * its body in 3D, its outline on the Map, its sidebar row, each with "Back to inventory" there,
+ * which lets the pile go and shows Project > Volumes (Esc lets it go too), with the right
+ * workbench folded too.
  * The panel shows the pile's volume, tonnes and change against the demo's `truth.json`; Profile
  * has a chip per survey and the chart along the pile's long axis, whose point shows on the line in
- * 3D and whose ends can be moved there; History has one row per survey; Esc lets the pile go. A
+ * 3D and whose ends can be moved and whose line can be turned there with the mouse, the chart
+ * following; Edit boundary from the pile's menu in 3D takes a corner dragged with the mouse, and
+ * the volume follows; History has one row per survey; Esc lets the pile go. A
  * distance line drawn across a pile is picked as the line, the pile's body beside it opens the
  * pile. The panel's floats leave the view free at 1100 x 700. Off-screen, zero network, pipeline
  * Python needed.
@@ -213,14 +215,18 @@ test('an Inventory row opens the pile panel with volume, tonnes and change', asy
   await openSection(win, 'selection');
   await expect(win.getByTestId('selection-empty')).toBeVisible();
 
-  // the link shows only while the pile's latest open came from the inventory: opened from there
-  // and then picked in the left sidebar, the same pile has no way back
+  // the link is there whichever way the pile was opened: from the inventory, then picked in the
+  // left sidebar, the same pile still says "Back to inventory", and it goes there
   await (await volumesView(win)).getByTestId('volumes-pile').filter({ hasText: SP1 }).click();
   await expect(panel.getByTestId('pile-back')).toHaveText('Back to inventory');
   await measureTree(win);
   await selectMeasure(win, SP1);
   await expect(panel).toHaveAttribute('data-id', SP1_ID);
-  await expect(panel.getByTestId('pile-back')).toHaveCount(0);
+  await expect(panel.getByTestId('pile-back')).toHaveText('Back to inventory');
+  await panel.getByTestId('pile-back').click();
+  await expect(win.getByTestId('pile-panel')).toHaveCount(0);
+  await expect(panelTab(win, 'project')).toHaveAttribute('aria-selected', 'true');
+  await expect(win.getByTestId('volumes-view')).toBeVisible();
 });
 
 test('a click on the pile in 3D and on its outline in Map opens the same panel', async ({
@@ -236,9 +242,10 @@ test('a click on the pile in 3D and on its outline in Map opens the same panel',
   const body = await labelAnchor3d(win, SP1_ID);
   await win.mouse.click(body.x, body.y);
   await expect(panel).toHaveAttribute('data-id', SP1_ID);
-  // the same panel in the same place, Selection; opened on the view it has no list to go back to
+  // the same panel in the same place, Selection, with its link to the inventory; Esc on the view
+  // lets the pile go and stays in Selection
   await expect(panelTab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
-  await expect(panel.getByTestId('pile-back')).toHaveCount(0);
+  await expect(panel.getByTestId('pile-back')).toHaveText('Back to inventory');
   await win.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
 
@@ -258,9 +265,13 @@ test('a click on the pile in 3D and on its outline in Map opens the same panel',
   const edge = await mapPoint(win, epsg, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
   await win.mouse.click(edge.x, edge.y);
   await expect(panel).toHaveAttribute('data-id', SP1_ID);
-  // from the Map too: Selection, and no link back
+  // from the Map too: Selection, and the link, which lets the pile go and shows Project > Volumes
   await expect(panelTab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
-  await expect(panel.getByTestId('pile-back')).toHaveCount(0);
+  await expect(panel.getByTestId('pile-back')).toHaveText('Back to inventory');
+  await panel.getByTestId('pile-back').click();
+  await expect(panel).toHaveCount(0);
+  await expect(panelTab(win, 'project')).toHaveAttribute('aria-selected', 'true');
+  await expect(win.getByTestId('volumes-view').getByTestId('volumes-pile')).toHaveCount(4);
 });
 
 /** Where the pile look's screenshots go (`PILE_SHOTS`); none taken without it. */
@@ -365,6 +376,233 @@ test('an opened pile shows as its glass box, framed, Solid or Height, and Edit b
     await win.waitForTimeout(2_500);
     await win.screenshot({ path: join(SHOTS, 'final-wide.png') });
   }
+});
+
+/** The live 3D view, as the app hands it to the specs (`bootstrap.ts`, `__stratlas`). */
+interface Probe {
+  __stratlas: {
+    stage(): {
+      camera: {
+        updateMatrixWorld(): void;
+        position: {
+          clone(): {
+            set(
+              x: number,
+              y: number,
+              z: number,
+            ): { project(c: unknown): { x: number; y: number; z: number } };
+          };
+        };
+      };
+      renderer: { domElement: HTMLCanvasElement };
+    } | null;
+  };
+}
+
+/**
+ * The page point of a site point (E, N, Z) in the 3D view, and whether the view's own canvas is
+ * what a pointer meets there. The scene's frame is the project's origin (`projectToLocal`).
+ */
+async function scenePoint(
+  win: Page,
+  origin: readonly number[],
+  p: readonly [number, number, number],
+): Promise<Pt & { onCanvas: boolean }> {
+  const local: [number, number, number] = [
+    p[0] - (origin[0] ?? 0),
+    p[2] - (origin[2] ?? 0),
+    (origin[1] ?? 0) - p[1],
+  ];
+  return win.evaluate((l) => {
+    const st = (window as unknown as Probe).__stratlas.stage();
+    if (!st) throw new Error('no stage');
+    st.camera.updateMatrixWorld();
+    const v = st.camera.position.clone().set(l[0], l[1], l[2]).project(st.camera);
+    const canvas = st.renderer.domElement;
+    const r = canvas.getBoundingClientRect();
+    const at = { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+    return { ...at, onCanvas: v.z <= 1 && document.elementFromPoint(at.x, at.y) === canvas };
+  }, local);
+}
+
+async function originOf(p: SurveyDemoProject): Promise<number[]> {
+  const m = ProjectManifest.parse(JSON.parse(await readFile(join(p.dir, 'manifest.json'), 'utf8')));
+  return [...m.origin];
+}
+
+/** Press on `from`, move to `to` in small steps as a hand does, and let go. */
+async function drag(win: Page, from: Pt, to: Pt): Promise<void> {
+  await win.mouse.move(from.x, from.y);
+  await win.mouse.down();
+  await win.mouse.move(to.x, to.y, { steps: 10 });
+  await win.mouse.up();
+}
+
+test('Edit boundary from the menu in 3D: a corner dragged with the mouse changes the volume, and Done brings the glass box back', async ({
+  quarryProject,
+  win,
+}) => {
+  test.setTimeout(720_000);
+  const view = await opened(win, quarryProject);
+  await view.getByTestId('volumes-pile').filter({ hasText: SP1 }).click();
+  const panel = win.getByTestId('pile-panel');
+  await expect(panel).toHaveAttribute('data-id', SP1_ID);
+  await figuresIn(panel);
+  const box = win.locator(`[data-pile-look="${SP1_ID}"]`);
+  await expect(box).toHaveCount(1, { timeout: 60_000 });
+  const volume = panel.getByTestId('pile-kpi-volume').locator('b');
+  await expect(panel.getByTestId('pile-status')).toHaveCount(0, { timeout: 120_000 });
+  const before = figure(await volume.innerText());
+  const footprint = figure(await panel.getByTestId('pile-footprint').innerText());
+
+  // right-click the pile in 3D, Edit boundary: its outline with a handle on every corner
+  const middle = await settled(win, SP1_ID);
+  await win.mouse.click(middle.x, middle.y, { button: 'right' });
+  const menu = win.getByTestId('measure-menu');
+  await expect(menu).toBeVisible();
+  await menu.getByRole('menuitem', { name: 'Edit boundary' }).click();
+  await expect(panel.getByTestId('pile-editing')).toBeVisible();
+  await expect(box).toHaveCount(0);
+
+  // a corner that is free in the view, and the point 45 % of the way to the pile's middle: the
+  // drag cuts that corner of the pile off
+  const ring = await outline(quarryProject, SP1_ID);
+  const origin = await originOf(quarryProject);
+  const centre = await settled(win, SP1_ID);
+  let grab: { from: Pt; to: Pt } | null = null;
+  for (const corner of ring) {
+    const from = await scenePoint(win, origin, corner);
+    const to = {
+      x: from.x + (centre.x - from.x) * 0.45,
+      y: from.y + (centre.y - from.y) * 0.45,
+    };
+    const free = await win.evaluate(
+      ([x, y]) => document.elementFromPoint(x, y)?.tagName === 'CANVAS',
+      [to.x, to.y] as const,
+    );
+    if (from.onCanvas && free && Math.hypot(to.x - from.x, to.y - from.y) > 12) {
+      grab = { from, to };
+      break;
+    }
+  }
+  if (!grab) throw new Error('no corner of the pile is free in the view');
+  await drag(win, grab.from, grab.to);
+  // the drag was the corner's, not the camera's: the pile's middle is where it was on screen,
+  // give or take the moved corner's pull on the centroid
+  const after = await settled(win, SP1_ID);
+  expect(Math.hypot(after.x - centre.x, after.y - centre.y)).toBeLessThan(
+    Math.hypot(grab.to.x - grab.from.x, grab.to.y - grab.from.y),
+  );
+
+  // Done: the box is back, and the pile's figures are the smaller outline's
+  await panel.getByTestId('pile-edit-done').click();
+  await expect(panel.getByTestId('pile-editing')).toHaveCount(0);
+  await expect(box).toHaveCount(1, { timeout: 30_000 });
+  await expect
+    .poll(async () => figure(await panel.getByTestId('pile-footprint').innerText()), {
+      timeout: 60_000,
+    })
+    .toBeLessThan(footprint - 1);
+  await expect
+    .poll(async () => figure(await volume.innerText()), { timeout: 240_000 })
+    .toBeLessThan(before - 1);
+  await expect(panel.getByTestId('pile-status')).toHaveCount(0, { timeout: 240_000 });
+  expect(figure(await volume.innerText())).toBeLessThan(before - 1);
+});
+
+test('the A, B and turn handles dragged in the scene with the mouse: the chart follows each', async ({
+  quarryProject,
+  win,
+}) => {
+  test.setTimeout(720_000);
+  const view = await opened(win, quarryProject);
+  await view.getByTestId('volumes-pile').filter({ hasText: SP1 }).click();
+  const panel = win.getByTestId('pile-panel');
+  await figuresIn(panel);
+  await panel.getByTestId('pile-tab-profile').click();
+  const profile = panel.getByTestId('pile-profile');
+  const chart = profile.getByTestId('pile-profile-chart');
+  await expect(chart).toBeVisible({ timeout: 120_000 });
+  const series = chart.locator('polyline[data-series]').first();
+  await expect(series).toBeAttached({ timeout: 120_000 });
+  await settled(win, SP1_ID);
+
+  const handle = (h: 'a' | 'b' | 'turn'): Locator =>
+    win.locator(`[data-scene-view] [data-testid="pile-axis-${h}"]`).first();
+  const centreOf = async (h: 'a' | 'b' | 'turn'): Promise<Pt> => {
+    await expect(handle(h)).toBeVisible();
+    const b = await handle(h).boundingBox();
+    if (!b) throw new Error(`no ${h} handle`);
+    return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+  };
+  const lengthM = async (): Promise<number> =>
+    figure(await profile.getByTestId('pile-line').innerText());
+  const drawn = (): Promise<string | null> => series.getAttribute('points');
+  /** The chart has taken the line as it is now: its length said, its profile drawn anew. */
+  const chartMoved = async (was: { length: number; points: string | null }, grew: boolean) => {
+    if (grew) await expect.poll(lengthM, { timeout: 30_000 }).toBeGreaterThan(was.length + 1);
+    await expect.poll(drawn, { timeout: 60_000 }).not.toBe(was.points);
+  };
+
+  // A dragged out along the line, away from B: the line is longer, and the chart is of that line
+  let was = { length: await lengthM(), points: await drawn() };
+  let a = await centreOf('a');
+  let b = await centreOf('b');
+  let len = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+  await drag(win, a, { x: a.x + ((a.x - b.x) / len) * 40, y: a.y + ((a.y - b.y) / len) * 40 });
+  await chartMoved(was, true);
+  // the handle stands where it was let go, not where it was grabbed
+  const a0 = a;
+  await expect
+    .poll(async () => {
+      const now = await centreOf('a');
+      return Math.hypot(now.x - a0.x, now.y - a0.y);
+    })
+    .toBeGreaterThan(20);
+
+  // B dragged out the other way: longer again
+  was = { length: await lengthM(), points: await drawn() };
+  a = await centreOf('a');
+  b = await centreOf('b');
+  len = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+  await drag(win, b, { x: b.x + ((b.x - a.x) / len) * 40, y: b.y + ((b.y - a.y) / len) * 40 });
+  await chartMoved(was, true);
+  const b0 = b;
+  await expect
+    .poll(async () => {
+      const now = await centreOf('b');
+      return Math.hypot(now.x - b0.x, now.y - b0.y);
+    })
+    .toBeGreaterThan(20);
+
+  // the turn handle, grabbed at the line's middle, taken out towards B and swept a sixth of a
+  // turn about the middle: the line turns with it (its ends leave where they stood) and the
+  // chart is the profile along the turned line
+  was = { length: await lengthM(), points: await drawn() };
+  const a1 = await centreOf('a');
+  const b1 = await centreOf('b');
+  const c = await centreOf('turn');
+  const reach = Math.max(60, Math.hypot(b1.x - c.x, b1.y - c.y) * 0.5);
+  const start = Math.atan2(b1.y - c.y, b1.x - c.x);
+  await win.mouse.move(c.x, c.y);
+  await win.mouse.down();
+  for (let k = 0; k <= 6; k += 1) {
+    const angle = start + (k * Math.PI) / 18;
+    await win.mouse.move(c.x + reach * Math.cos(angle), c.y + reach * Math.sin(angle), {
+      steps: 4,
+    });
+  }
+  await win.mouse.up();
+  await chartMoved(was, false);
+  await expect
+    .poll(async () => {
+      const [na, nb] = [await centreOf('a'), await centreOf('b')];
+      return Math.min(Math.hypot(na.x - a1.x, na.y - a1.y), Math.hypot(nb.x - b1.x, nb.y - b1.y));
+    })
+    .toBeGreaterThan(10);
+  // the pile is still the open one, on its Profile: no drag fell through to the view
+  await expect(panel).toHaveAttribute('data-id', SP1_ID);
+  await expect(chart).toBeVisible();
 });
 
 test('a pile picked with the right workbench folded opens it with its panel', async ({

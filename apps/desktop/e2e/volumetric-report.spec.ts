@@ -312,6 +312,106 @@ test('the volumetric report shows the Volumes tab figures, prints them to PDF an
         .locator('.vr-d-card .vr-d-facts > div')
         .filter({ has: d.locator('dt', { hasText: 'Base' }) }),
     ).toContainText(shown[0]?.cells[1] ?? 'no base');
+    // a row of the list selects its pile too: the card and the marker follow
+    const otherPile = shown[1]?.label ?? pile;
+    const listRow = d.locator('.vr-d-list-row').filter({ hasText: otherPile });
+    await listRow.click();
+    await expect(listRow).toHaveAttribute('aria-pressed', 'true');
+    await expect(d.locator('.vr-d-card h2')).toContainText(otherPile);
+    await expect(d.getByRole('button', { name: `Select ${otherPile}` })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    if (otherPile !== pile) await expect(marker).toHaveAttribute('aria-pressed', 'false');
+
+    // the Date switch: the other survey date's stock, picture and caption, and back
+    const viewer = d.locator('.vr-d');
+    const caption = d.locator('.vr-d-caption');
+    const totalLabel = d.locator('.vr-d-kpi-total .vr-d-kpi-label');
+    const totalShown = d.locator('.vr-d-kpi-total .vr-d-kpi-value');
+    const cardVolume = d.locator('.vr-d-card .vr-d-facts > div').first().locator('dd');
+    const dateButtons = d.getByRole('group', { name: 'Date', exact: true }).getByRole('button');
+    await expect.poll(() => dateButtons.count()).toBeGreaterThan(1);
+    const onDate = d
+      .getByRole('group', { name: 'Date', exact: true })
+      .locator('button[aria-pressed="true"]');
+    await expect(onDate).toHaveCount(1);
+    const dateWas = (await onDate.innerText()).trim();
+    const offDate = d
+      .getByRole('group', { name: 'Date', exact: true })
+      .locator('button[aria-pressed="false"]')
+      .first();
+    const dateNext = (await offDate.innerText()).trim();
+    expect(dateNext).not.toBe(dateWas);
+    await expect(totalLabel).toContainText(dateWas);
+    await expect(caption).toContainText(dateWas);
+    const was = {
+      total: await totalShown.innerText(),
+      card: await cardVolume.innerText(),
+      photo: await mapImg.getAttribute('src'),
+    };
+    const nextDate = d
+      .getByRole('group', { name: 'Date', exact: true })
+      .getByRole('button', { name: dateNext, exact: true });
+    await nextDate.click();
+    await expect(nextDate).toHaveAttribute('aria-pressed', 'true');
+    await expect(onDate).toHaveCount(1);
+    await expect(totalLabel).toContainText(dateNext);
+    await expect(caption).toContainText(dateNext);
+    await expect(totalShown).not.toHaveText(was.total);
+    await expect(cardVolume).not.toHaveText(was.card);
+    // that date's own picture, drawn from the file itself
+    await expect(mapImg).not.toHaveAttribute('src', was.photo ?? '');
+    await expect
+      .poll(async () => mapImg.evaluate((img: HTMLImageElement) => img.naturalWidth), {
+        timeout: 30_000,
+      })
+      .toBeGreaterThan(0);
+    await d
+      .getByRole('group', { name: 'Date', exact: true })
+      .getByRole('button', { name: dateWas, exact: true })
+      .click();
+    await expect(totalShown).toHaveText(was.total);
+    await expect(cardVolume).toHaveText(was.card);
+    await expect(mapImg).toHaveAttribute('src', was.photo ?? '');
+
+    // the View switch: each view draws its own picture, named in the caption; Cut & fill brings
+    // its legend, 3D hides the markers; Photo puts the first picture back
+    const views = d.getByRole('group', { name: 'View', exact: true });
+    await expect(views.getByRole('button', { name: 'Photo', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    const drawnViews = new Set<string>([was.photo ?? '']);
+    for (const [name, kind] of [
+      ['Cut & fill', 'cutfill'],
+      ['Elevation', 'elevation'],
+      ['3D', '3d'],
+    ] as const) {
+      await views.getByRole('button', { name, exact: true }).click();
+      await expect(views.getByRole('button', { name, exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      await expect(views.locator('button[aria-pressed="true"]')).toHaveCount(1);
+      await expect(viewer).toHaveAttribute('data-view', kind);
+      await expect(caption).toContainText(name);
+      await expect
+        .poll(async () => mapImg.evaluate((img: HTMLImageElement) => img.naturalWidth), {
+          timeout: 30_000,
+        })
+        .toBeGreaterThan(0);
+      const src = (await mapImg.getAttribute('src')) ?? '';
+      expect(drawnViews.has(src), `${name} draws a picture of its own`).toBe(false);
+      drawnViews.add(src);
+      await expect(d.locator('.vr-d-legend')).toBeVisible({ visible: kind === 'cutfill' });
+      await expect(d.locator('.vr-d-markers')).toBeVisible({ visible: kind !== '3d' });
+    }
+    await views.getByRole('button', { name: 'Photo', exact: true }).click();
+    await expect(viewer).toHaveAttribute('data-view', 'photo');
+    await expect(mapImg).toHaveAttribute('src', was.photo ?? '');
+    // the pile picked in the list is still the one on the card
+    await expect(d.locator('.vr-d-card h2')).toContainText(otherPile);
     // the units toggle shows tonnes
     const totalValue = d.locator('.vr-d-kpi-total .vr-d-kpi-value');
     await expect(totalValue).toContainText('m³');

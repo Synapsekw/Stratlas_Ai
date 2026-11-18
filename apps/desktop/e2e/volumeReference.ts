@@ -6,8 +6,11 @@
  * pile and survey date. The reference is a CSV a person writes, with the header
  * `pile,date,volume_m3`: the pile's name as the app lists it, the survey date as YYYY-MM-DD and
  * the volume in cubic metres; a row whose pile is `TOTAL` is the site total of that date. Names
- * match whatever their case and spacing. A pile or date that only one side has is listed, never
- * failed. Pure: no file, no app (`src/e2eVolumeReference.test.ts`).
+ * match whatever their case and spacing. A pile or date the reference names and the app has no
+ * figure for fails the comparison; one only the app has is listed. A figure the app carried from
+ * an earlier version ("From an earlier version") is not ours: it is listed apart and not compared,
+ * and neither is the site total of a date that holds one. Pure: no file, no app
+ * (`src/e2eVolumeReference.test.ts`).
  */
 
 /** How far a pile's figure may be from its reference, in % of the reference. */
@@ -182,13 +185,18 @@ export interface ComparedRow {
 export interface Comparison {
   /** The figures both sides have, in the reference's order. */
   rows: ComparedRow[];
-  /** What the reference names and the app has no figure for, with why. */
+  /** What the reference names and the app has no figure for, with why: each fails. */
   missingInOurs: { pile: string; date: string; why: string }[];
+  /**
+   * What the reference names and the app only carried from an earlier version (a pile's figure,
+   * or the total of a date that holds one): not ours, so not compared.
+   */
+  carried: { pile: string; date: string }[];
   /** The app's piles and totals the reference does not name. */
   missingInReference: { pile: string; date: string }[];
   /** Names several of the app's piles share: none of them is compared. */
   duplicates: string[];
-  /** Every compared figure is within its limit. */
+  /** Every compared figure is within its limit and the app lacks nothing the reference names. */
   ok: boolean;
 }
 
@@ -216,9 +224,14 @@ export function compareVolumes(
     dates.add(r.date);
   }
   const totals = new Map(siteTotals(ours).map((t) => [t.date, t]));
+  // a date with a carried figure has no total of ours
+  const carriedDates = new Set(
+    ours.filter((r) => r.carried && r.volume !== null).map((r) => r.date),
+  );
 
   const rows: ComparedRow[] = [];
   const missingInOurs: Comparison['missingInOurs'] = [];
+  const carried: Comparison['carried'] = [];
   const named = new Set<string>();
   const compare = (pile: string, date: string, mine: number, ref: number, limitPct: number) => {
     const diffPct =
@@ -245,7 +258,8 @@ export function compareVolumes(
     };
     if (ref.total) {
       const t = totals.get(ref.date);
-      if (t) compare(TOTAL, ref.date, t.volume, ref.volume, totalPct);
+      if (carriedDates.has(ref.date)) carried.push({ pile: TOTAL, date: ref.date });
+      else if (t) compare(TOTAL, ref.date, t.volume, ref.volume, totalPct);
       else lacks(dates.has(ref.date) ? 'no pile has a figure on this date' : 'no such date');
       continue;
     }
@@ -255,6 +269,7 @@ export function compareVolumes(
       const mine = byKey.get(`${n}|${ref.date}`);
       if (!mine) lacks('no such date');
       else if (mine.volume === null) lacks(`no figure: ${mine.status || 'no status'}`);
+      else if (mine.carried) carried.push({ pile: mine.pile, date: ref.date });
       else compare(mine.pile, ref.date, mine.volume, ref.volume, pilePct);
     }
   }
@@ -269,9 +284,10 @@ export function compareVolumes(
   return {
     rows,
     missingInOurs,
+    carried,
     missingInReference,
     duplicates: [...shared].map((n) => names.get(n) ?? n),
-    ok: rows.every((r) => r.ok),
+    ok: rows.every((r) => r.ok) && missingInOurs.length === 0,
   };
 }
 
@@ -307,7 +323,7 @@ export function formatComparison(c: Comparison): string {
   out.push(
     '',
     c.rows.length === 0
-      ? 'No figure could be compared: no pile and date of the reference has a figure in the app.'
+      ? 'No figure could be compared: no pile and date of the reference has a figure of this version in the app.'
       : failed === 0
         ? `All ${String(c.rows.length)} compared figures within their limits.`
         : `${String(failed)} of ${String(c.rows.length)} compared figures outside its limit.`,
@@ -321,8 +337,15 @@ export function formatComparison(c: Comparison): string {
   if (c.missingInOurs.length > 0)
     out.push(
       '',
+      `${String(c.missingInOurs.length)} ${c.missingInOurs.length === 1 ? 'figure of the reference has' : 'figures of the reference have'} no figure in the app: the comparison fails.`,
       'In the reference, not in the app:',
       ...c.missingInOurs.map((m) => `  ${m.pile} ${m.date} (${m.why})`),
+    );
+  if (c.carried.length > 0)
+    out.push(
+      '',
+      'From an earlier version (not worked out by this version, not compared):',
+      ...c.carried.map((m) => `  ${m.pile} ${m.date}`),
     );
   if (c.missingInReference.length > 0)
     out.push(

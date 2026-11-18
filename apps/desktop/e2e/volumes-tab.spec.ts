@@ -164,7 +164,7 @@ test('Inventory groups the piles by material with subtotals and a site total tha
   await expect((await volumesView(win)).getByTestId('volumes-inventory')).toBeVisible();
 });
 
-test('Cut & fill: totals and a bar per pile for the pair; Inside piles and Whole site; the threshold changes the totals; a bar opens its pile', async ({
+test('Cut & fill: totals and a bar per pile for the pair; another From and another To picked; Inside piles and Whole site; the threshold changes the totals; a bar opens its pile', async ({
   quarryProject,
   win,
 }) => {
@@ -191,6 +191,48 @@ test('Cut & fill: totals and a bar per pile for the pair; Inside piles and Whole
   const bars = pane.locator('.cf-bar');
   await expect(bars.filter({ hasText: SP1 })).toHaveAttribute('data-sign', 'fill');
   await expect(bars.filter({ hasText: 'Stockpile SP2' })).toHaveAttribute('data-sign', 'cut');
+
+  // Another From picked in its picker (the first survey, January): the totals and the bars are
+  // those of January to March. The demo has three survey dates, so both pickers have a pair
+  // other than the one the pane opens on.
+  const from = pane.getByRole('combobox', { name: 'From' });
+  const to = pane.getByRole('combobox', { name: 'To' });
+  /** How far the totals shown are from `other`'s, cut and fill together. */
+  const apart = async (other: { cut: number; fill: number }) => {
+    const t = await totals();
+    return Math.abs(t.cut - other.cut) + Math.abs(t.fill - other.fill);
+  };
+  await from.selectOption('m1');
+  await expect(from).toHaveValue('m1');
+  await expect(to).toHaveValue('m3');
+  await expect.poll(() => apart(piles), { timeout: 240_000 }).toBeGreaterThan(1);
+  await expect(pane).toHaveAttribute('aria-busy', 'false', { timeout: 240_000 });
+  const wide = await totals();
+  close(wide.net, wide.fill - wide.cut, 1);
+  // the third pile is new in March: it is all fill against January too, with its bar
+  await expect(bars.filter({ hasText: 'Stockpile SP3' })).toHaveAttribute('data-sign', 'fill');
+  await expect(bars.filter({ hasText: SP1 })).toHaveCount(1);
+
+  // another To (February): January to February, a third set of totals
+  await to.selectOption('m2');
+  await expect(from).toHaveValue('m1');
+  await expect(to).toHaveValue('m2');
+  await expect.poll(() => apart(wide), { timeout: 240_000 }).toBeGreaterThan(1);
+  await expect(pane).toHaveAttribute('aria-busy', 'false', { timeout: 240_000 });
+  const early = await totals();
+  close(early.net, early.fill - early.cut, 1);
+  expect(Math.abs(early.cut - piles.cut) + Math.abs(early.fill - piles.fill)).toBeGreaterThan(1);
+  await expect(bars.filter({ hasText: SP1 })).toHaveCount(1);
+
+  // and back to February to March, the To first (a pair is never one date twice): the totals
+  // the pane opened on
+  await to.selectOption('m3');
+  await from.selectOption('m2');
+  await expect(from).toHaveValue('m2');
+  await expect(to).toHaveValue('m3');
+  await expect.poll(() => apart(piles), { timeout: 240_000 }).toBeLessThan(1);
+  await expect(pane).toHaveAttribute('aria-busy', 'false', { timeout: 240_000 });
+  await expect(bars.filter({ hasText: SP1 })).toHaveAttribute('data-sign', 'fill');
 
   // Whole site: the pit's sump cut counts too
   await pane.getByRole('button', { name: 'Whole site', exact: true }).click();
