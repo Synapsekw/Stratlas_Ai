@@ -21,6 +21,8 @@ const known = new Map<string, readonly string[]>();
 const keyOf = (projectId: string, layerId: string) => `${projectId}\n${layerId}`;
 /** How many photos each set held when it was last probed: a set that grows is probed again. */
 const probedCount = new Map<string, number>();
+/** The sets whose probe failed: their photos could not be looked at, so they may be thermal. */
+const unread = new Set<string>();
 
 /** The thermal photos of a set as last probed; empty when none, or not probed yet. */
 export function thermalPhotosOf(projectId: string, layerId: string): readonly string[] {
@@ -32,11 +34,14 @@ export function thermalPhotosOf(projectId: string, layerId: string): readonly st
  * Thermal set is part of any project that does.
  */
 function noteHeld(): void {
-  const projectId = workspace.getState().project?.id;
-  const prefix = `${projectId ?? ''}\n`;
+  const project = workspace.getState().project;
+  // only the photo sets the project has now: a removed set's photos are not held any more
   const thermal =
-    projectId !== undefined &&
-    [...known].some(([key, ids]) => key.startsWith(prefix) && ids.length > 0);
+    project?.manifest.layers.some((l) => {
+      if (l.kind !== 'photos') return false;
+      const key = keyOf(project.id, l.id);
+      return unread.has(key) || (known.get(key)?.length ?? 0) > 0;
+    }) === true;
   if (heldFacts.getState().thermal !== thermal) heldFacts.setState({ thermal });
 }
 
@@ -44,6 +49,7 @@ function noteHeld(): void {
 export function forgetThermal(): void {
   known.clear();
   probedCount.clear();
+  unread.clear();
   noteHeld();
 }
 
@@ -57,6 +63,8 @@ export async function primeThermal(
   pkg: boolean,
 ): Promise<readonly string[]> {
   let ids: string[] = [];
+  // the answer could not be had: the menu offers nothing, the Thermal tools stay (held)
+  let failed = false;
   try {
     if (pkg) {
       const index = await loadRasterIndex(projectId, layerId);
@@ -65,11 +73,16 @@ export async function primeThermal(
       const r = await bridge.call('thermal:probe', { projectId, layerId });
       if (r.ok && r.value.ok)
         ids = r.value.photos.filter((p) => p.family !== null).map((p) => p.photoId);
+      else failed = true;
     }
   } catch {
     ids = [];
+    failed = true;
   }
-  known.set(keyOf(projectId, layerId), ids);
+  const key = keyOf(projectId, layerId);
+  known.set(key, ids);
+  if (failed) unread.add(key);
+  else unread.delete(key);
   noteHeld();
   return ids;
 }
@@ -89,6 +102,8 @@ function primeProject(): void {
 
 async function primeSets(): Promise<void> {
   const project = workspace.getState().project;
+  // a photo set that was removed may have been the one with the thermal photos
+  noteHeld();
   if (!project) return;
   const pkg = shell.getState().pkg !== null;
   for (const l of project.manifest.layers) {

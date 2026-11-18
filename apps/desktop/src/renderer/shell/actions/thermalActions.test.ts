@@ -86,6 +86,38 @@ describe('the Thermal tool set', () => {
   });
 });
 
+describe('the Thermal tool set, as the project changes', () => {
+  const open = (layers: unknown[]) => {
+    workspace.setState({
+      project: { id: 'p', root: 'C:/p', manifest: { ...manifest, layers } },
+    } as never);
+  };
+
+  it('a removed photo set no longer holds its thermal photos', async () => {
+    await primeThermal('p', 'th', false);
+    expect(heldFacts.getState().thermal).toBe(true);
+    open(manifest.layers.filter((l) => l.id !== 'th'));
+    await thermalPrimed();
+    expect(heldFacts.getState().thermal).toBe(false);
+    // and it holds them again when the set is back
+    open(manifest.layers);
+    await thermalPrimed();
+    expect(heldFacts.getState().thermal).toBe(true);
+  });
+
+  it('a photo set that could not be looked at counts as held, until it can', async () => {
+    workspace.setState({ project: { id: 'p', root: 'C:/p', manifest } } as never);
+    call.mockImplementation((() =>
+      Promise.resolve({ ok: true, value: { ok: false, error: 'x' } })) as never);
+    await primeThermal('p', 'vis', false);
+    expect(heldFacts.getState().thermal).toBe(true);
+    call.mockImplementation((() =>
+      Promise.resolve({ ok: true, value: { ok: true, photos: probe.vis } })) as never);
+    await primeThermal('p', 'vis', false);
+    expect(heldFacts.getState().thermal).toBe(false);
+  });
+});
+
 describe('thermal.analyse', () => {
   it('probes a set again when its photo count changes', async () => {
     workspace.setState({ project: null } as never);

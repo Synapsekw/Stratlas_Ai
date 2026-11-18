@@ -2,6 +2,9 @@
  * The open project's tool sets, read from the stores (tools by project type, 18 Nov 2026): its
  * type and the list a person chose (the manifest), and the records it holds (`Held`). The rule is
  * `toolSets.ts`; this module only gathers the facts.
+ *
+ * A record that is there but could not be read counts as held: a project whose antenna file is
+ * damaged keeps its Telecom tools, and with them the place that shows the error.
  */
 import { inventoryPiles, isTelecomTool } from '@aio/survey';
 import { useVolumetric } from '@aio/volumetric';
@@ -24,21 +27,30 @@ const hasTelecom = (list: readonly SurveyMeasurement[]): boolean =>
 /** The records the open project holds, per tool set (React). */
 export function useHeld(): Held {
   const projectId = useWorkspace((s) => s.project?.id ?? null);
+  // the kit while it is read, read, or unreadable (`error`)
   const kit = useVolumetric((s) => kitShown(s.status));
   const piles = useMeasure((s) => hasPiles(s.file.measurements));
-  const road = useRoad((s) => s.status === 'ready');
+  // the measurements could not be read: they may hold piles and telecom measurements
+  const unread = useMeasure((s) => s.status === 'error');
+  // a road model, read or unreadable; a road survey still in setup holds none yet
+  const road = useRoad((s) => s.status === 'ready' || s.status === 'error');
   const telecomMeasured = useMeasure((s) => hasTelecom(s.file.measurements));
-  const inventory = useAntennas((s) => s.file !== null);
-  const plan = useRf((s) => (s.hasFile || s.antennas !== null) && s.projectId === projectId);
+  const inventory = useAntennas(
+    (s) => s.file !== null || (s.status === 'error' && s.projectId === projectId),
+  );
+  // the inventory as the coverage planner read it, saved sectors (an RF plan), or either unreadable
+  const plan = useRf(
+    (s) => (s.hasFile || s.antennas !== null || s.status === 'error') && s.projectId === projectId,
+  );
   const thermal = useStore(heldFacts, (s) => s.thermal);
   return useMemo(
     () => ({
-      earthworks: kit || piles,
+      earthworks: kit || piles || unread,
       road,
-      telecom: telecomMeasured || inventory || plan,
+      telecom: telecomMeasured || inventory || plan || unread,
       thermal,
     }),
-    [kit, piles, road, telecomMeasured, inventory, plan, thermal],
+    [kit, piles, unread, road, telecomMeasured, inventory, plan, thermal],
   );
 }
 
