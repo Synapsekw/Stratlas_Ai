@@ -894,7 +894,7 @@ Most steps use four synthetic demo projects that you generate on this PC. The la
 - [ ] **Survey analytic demo**: each saved measurement's volume (after **Recompute**) matches its shape's volume in `truth.json` within 0.5%.
 - [ ] A polygon drawn half off the survey reads "Partly outside the survey: … The volumes are of the covered part."; drawn mostly off it, the comparison is refused.
 - [ ] Open a stockpile project from 0.10 (your own, or the volumetric demo): every pile's volume on the four kit bases and the register totals are the same as in 0.10.
-- [ ] In a pile's details, open **More bases (survey engine)**: **Smart (Delaunay of the toe)**, **Best-fit plane**, **Mean toe level**, **Lowest toe point** and **Highest toe point**, each with a net m³, and the note that these are extra choices and that the engine's smart base differs from the kit's TIN. Which base the kit should show by default is your decision (see KNOWN-LIMITS).
+- [ ] In a pile's panel, click the **Base** chip: **Toe surface** (the standard base), **Lowest point**, **Best-fit plane**, **Fixed level**, **Average edge level**, **Previous survey or design** and **Custom**, each giving a net m³, with a hint under each base that says when to use it.
 
 ### Measurement tools and templates
 
@@ -912,16 +912,16 @@ Most steps use four synthetic demo projects that you generate on this PC. The la
 
 ### Volumes and comparisons
 
-- [ ] **Quarry demo**, measurement **Stockpile SP1**: **From** **Smart (triangulated perimeter)**, **To** **Current survey**: the volume matches SP1 in `truth.json` within 1%. Switch **From** to **Reference level**, **Set to lowest**: the volume grows; **Set to highest**: it shrinks.
-- [ ] Both sides a base or design (for example **Reference level** to a design layer): the warning "No reference to current terrain".
+- [ ] **Quarry demo**, measurement **Stockpile SP1**: **From** **Toe surface**, **To** **Current survey**: the volume matches SP1 in `truth.json` within 1%. Switch **From** to **Fixed level**, **Set to lowest**: the volume grows; **Set to highest**: it shrinks.
+- [ ] Both sides a base or design (for example **Fixed level** to a design layer): the warning "No reference to current terrain".
 - [ ] **Custom base (edit vertices)**: **Custom base vertices**, set one vertex's level: the volume updates. **Move all by** 0.5 m changes it by about the area times 0.5.
 - [ ] **Colours and stops** ("Heat map colours"): the default stops give a deadband ("Deadband from the stops: ..."). Tick **Use deadband in calculations** in the comparison: cut and fill drop, and the footer reads "Deadband used: changes under ... count as unchanged."
 - [ ] **Heat map of the difference**: **On the terrain (3D)**, **On the map (2D)** and **Contours** each show.
 - [ ] **Landfill demo**, measurement **Cell 1**: add comparisons until it has three (previous survey to current, the oldest survey to current, current survey to the final-cap layer of **Cell 1 design (synthetic)**); each shows **Cut**, **Fill**, **Net** and **Total**.
 - [ ] **Material and calculators**: **Material** **Municipal solid waste**; enter the tonnage of `survey\weighbridge.csv` in **Weighed tonnage (t)**: **Achieved density** equals tonnes over the volume shown (63,000 t over 70,104 m³ would read 0.899 t/m³) and matches `truth.json`. "Calculated for display only; the stored volume does not change."
-- [ ] **Materials** ("Site materials"): **Export CSV**, change a density in the file, **Import CSV**: "n materials read from ... Save to keep them."; **Save materials**.
+- [ ] **Materials**: **Export CSV**, change a density in the file, **Import CSV**: "n materials read from ... Save to keep them."; **Save materials**.
 - [ ] Select **Stockpile SP1** to **SP3** in **Measurements**: the totals show **Cut**, **Fill**, **Net** and **Horizontal area**; **Change for all** sets one surface for all three.
-- [ ] **Whole site cut and fill** between the first and last survey: **Compare**; under **Suggested regions (drafts)** keep two: **Keep 2 as volume measurements**. They appear in the folder "Whole-site regions".
+- [ ] **Find cut and fill regions** between the first and last survey: **Compare**; under **Suggested regions (drafts)** keep two: **Keep 2 as volume measurements**. They appear in the folder "Whole-site regions".
 
 ### Cross-sections and terrain overlays
 
@@ -1040,7 +1040,7 @@ Needs version 0.11.1 or later and the processing tools 0.5.1 or later (0.11.4 wi
 - [ ] The same on the **Map**: **Suggest boundaries**, a click on "Stockpile SP2", **Enter**.
 - [ ] **Volume** instead of **Area**, **Suggest boundaries**, a click on a pile, **Enter**: the volume computes on the accepted outline.
 - [ ] Hide the orthomosaic layer and click with **Suggest boundaries** on: "No ortho is shown here. Show an ortho layer of this survey, then click again."
-- [ ] **Whole site cut and fill** (31 January to 31 March), tick two suggested regions, **Snap to ortho edges**: the note says how many of the ticked regions follow the edge in the ortho, and why any other stayed as it was; snapped ones read "(snapped to the ortho)". **Keep** them.
+- [ ] **Find cut and fill regions** (31 January to 31 March), tick two suggested regions, **Snap to ortho edges**: the note says how many of the ticked regions follow the edge in the ortho, and why any other stayed as it was; snapped ones read "(snapped to the ortho)". **Keep** them.
 - [ ] Wi-Fi is still off, and every step above worked without it.
 - [ ] Optional, with an older pipeline pack (no `models\sam`): **Suggest boundaries** says "The processing tools on this computer have no boundary model. Update them to use Suggest boundaries.", and **Update processing tools** beside it opens Settings, Processing tools.
 - [ ] **Detections**, a box on a photo, **Outline** in its details (key **M**): the same model outlines the object in the box.

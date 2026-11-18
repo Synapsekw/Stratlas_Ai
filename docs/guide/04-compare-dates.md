@@ -78,7 +78,7 @@ Both sides show the same things, each for its own date:
 
 The same rule holds in the ordinary **Split** (the 3D view beside the map) on a project with two or more survey dates: a measurement that belongs to one survey is drawn on the pane that shows that date, so it can show on one side and not on the other when the two sides are set to different dates.
 
-These still work in the left (main) view only: measuring, drawing, editing a pile boundary, picking a section line, the swipe, the AI agent and video. Designs, the haul road and terrain overlays are drawn there only. The right view follows the camera, and a click on it selects.
+These still work in the left (main) view only: measuring, drawing, editing a pile boundary, the swipe, the AI agent and video. Designs, the haul road and terrain overlays are drawn there only. The right view follows the camera, and a click on it selects.
 
 If the graphics card cannot hold the surface colours for the right view, that view keeps the photo and its legend says: "Not enough graphics memory to colour this view. It shows the photo."
 

@@ -1,6 +1,6 @@
 # Volumetrics: finalization plan
 
-Date: 18 Nov 2026. Branch `feat/volumetrics-finalize`. Status: approved by the founder on 18 Nov 2026 with the five answers in section 6; the "Do now" items are being built on this branch.
+Date: 18 Nov 2026. Branch `feat/volumetrics-finalize`. Status: approved by the founder on 18 Nov 2026 with the five answers in section 6; the "Do now" items are built on this branch; section 5 is the final test list.
 
 ## Why this plan exists
 
@@ -158,8 +158,8 @@ Type: bug, loose end, confusing (confusing or duplicate UI), missing (needed to 
 
 Each one makes volumetrics smaller or more consistent without removing anything a person can do today.
 
-1. **One home for the list, one for the tools.** Project > Volumes is the inventory. Tools > Volumes keeps only what acts on the view: Draw volume (a shortcut to the Measure tool), Detect piles, Swipe. Remove the Table tile (the palette entry "Open the volumes table" stays) and the second From and To (they live in the Cut & fill pane and the strip's Compare band). Files: `R/tools/registry.ts`, `R/workspace/island/groups.tsx`, `R/workspace/VolumeTools.tsx`, `R/workspace/workbench/tabsModel.ts`, `R/shell/paletteIndex.ts`.
-2. **A pile always opens in one place.** Selection, as every other object does, with a "Back to inventory" link when the click came from the inventory. Files: `R/workspace/workbench/benches/VolumesBench.tsx`, `R/workspace/workbench/FrontBody.tsx`, `R/survey/pile/PilePanel.tsx`.
+1. **One home for the list, one for the tools.** Project > Volumes is the inventory. Tools > Volumes keeps only what acts on the view: Draw volume (a shortcut to the Measure tool) and Swipe. As built, Detect piles is not a tile there: it stays in the empty Volumes list and in the Processing tools, where it was before. Remove the Table tile (the palette entry "Open the volumes table" stays) and the second From and To (they live in the Cut & fill pane and the strip's Compare band). Files: `R/tools/registry.ts`, `R/workspace/island/groups.tsx`, `R/workspace/VolumeTools.tsx`, `R/workspace/workbench/tabsModel.ts`, `R/shell/paletteIndex.ts`.
+2. **A pile always opens in one place.** Selection, as every other object does, always with a "Back to inventory" link. Files: `R/workspace/workbench/benches/VolumesBench.tsx`, `R/workspace/workbench/FrontBody.tsx`, `R/survey/pile/PilePanel.tsx`.
 3. **Retire two kit leftovers.** The kit's Section tile goes (Cross-section does the same for every date and every project), and the Volume bodies control goes: the new pile look replaces it. Files: `R/tools/registry.ts`, `R/workspace/VolumeSection.tsx`, `R/workspace/island/groups.tsx`, `packages/volumetric/src/components/`, e2e `kit-migration.spec.ts`.
 4. **One name per base, from one function.** Toe surface, Lowest point, Best-fit plane, Fixed level, Average edge level, Previous survey or design, Custom. Every place a person reads a base goes through `R/survey/card/baseNames.ts`: the bulk picker, saved result labels as shown, the volume-over-time and inventory CSV, the report. The engine's stored words do not change, so no saved file, fixture or pipeline pack changes. Files: `R/survey/card/baseNames.ts`, `R/survey/BulkTotals.tsx`, `packages/project/src/export/surveyCsv.ts`, `packages/project/src/export/volumetric.ts`.
 5. **One word for each idea**, recorded in `docs/design/glossary.md` and guarded by `glossary.test.ts`:
@@ -218,77 +218,203 @@ Batch 2 (in order):   T8  ->  T9  ->  T10
 
 ## 5. The founder's test list
 
-One list for the whole section. It replaces the "How to test" lists of the notes of 21, 24, 25 (three), 26 and 27 Oct. It is written for the app after the "Do now" items land; steps marked **new** test something this plan changes.
+One list for the whole section. It replaces the "How to test" lists of the notes of 21, 24, 25 (three), 26 and 27 Oct. It describes the app as built on this branch; every click path below is the one a test drove, with the labels the app shows.
 
-**Data:**
+**Data**
 
-- **Q** = the Quarry demo (built by `pnpm demo:build`; in a build it is in the demo projects).
-- **S** = the stockpile sample from `docs/TESTING.md` P2, made with the wizard. It is an "older style" project with detected piles.
-- **F** = the founder's own two-date stockpile project.
-- **C** = the change demo.
+- **Q** = the Quarry demo (four piles, three survey dates). Its piles sit in the left sidebar under each survey date's **Measurements** group (the demo also holds a fifth measurement that is not a pile, so that group reads 5 while Project > Volumes lists 4).
+- **S** = the stockpile sample of `docs/TESTING.md` P2, made with the wizard. Its piles sit under **Stockpiles** in the left sidebar.
+- **E** = the Earthworks demo. **T** = the Tank farm demo. **C** = the change demo.
+- **F** = the founder's own two-date stockpile project (part E only).
 
-**e2e column:** the spec that already drives the step, or "by hand" where only a person can judge. Before hand-over, task T10 drives every step once on its exact route, including the "by hand" ones.
+**How to read "Checked by"**
+
+- A spec name means an automated test in `apps/desktop/e2e/` drove that route the way CI runs it (1100 x 720 window, display scale 1, software renderer) and passed.
+- **Partly** names what the test did not do; that part is by hand.
+- **By eye** means a person has to judge it; no test can.
+
+Things that hold for many steps:
+
+- A pile opens in the right panel's **Selection** tab, always with a **Back to inventory** link that goes to Project > Volumes.
+- Wait until every survey date reads "ready" before measuring.
 
 ### A. From data to piles
 
-| #   | Do this                                                                                        | Expect                                                                                                                             | Data | e2e                                   |
-| --- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------------- |
-| 1   | New project, type Survey, add the two survey dates of the sample, Create project               | The Processing drawer runs Volumetric survey to Done; the project opens with two piles under Stockpiles in the left sidebar        | S    | `volumetric-build`                    |
-| 2   | Open a project whose surfaces were never prepared                                              | A "Preparing survey surfaces" card; date rows read "preparing N %" then "ready"; Cancel in Processing stops it                     | F    | `surfaces-auto`                       |
-| 3   | Settings > Processing tools: switch off "Prepare survey surfaces when a project opens", reopen | Nothing starts; cards offer Prepare                                                                                                | F    | `surfaces-auto`                       |
-| 4   | Tools > Measure > Volume: click around a pile's toe, finish                                    | A new pile under Stockpiles with a volume; Project > Volumes counts it, and the number beside "Volumes" matches the list (**new**) | Q    | `volumes-general`, `volumes-finalize` |
-| 5   | Delete a detected pile, then run Detect piles again                                            | The deleted pile stays gone; no pile is doubled (**new**)                                                                          | S    | `volumetric-build`                    |
-| 6   | In 3D, tilt the view in an older project                                                       | Pile outlines sit on the piles, not under the ground                                                                               | S, F | `kit-migration`                       |
+1. **Build a stockpile project.** Data: S.
+   - Do: **New project** > name > **Survey** > **Next** > **Typed coordinate**, type the origin > **Next** > **Next** > for each date: **Survey date**, **DSM GeoTIFF**, **Pick orthomosaic** > **Add a second survey date** > **Create project**.
+   - Expect: the Processing drawer shows **Volumetric survey** running to **Done**; two piles under **Stockpiles**. A second date without a DSM or point cloud shows "Every survey needs a DSM or a point cloud." and **Create project** stays greyed.
+   - Checked by: `volumetric-build.spec.ts` ("a volumetric project from two raw survey dates: wizard, Processing drawer, volumetric workspace"), on a synthetic two-pile yard made by the test, not on the sample files.
+2. **Surfaces prepare by themselves.** Data: a freshly built E.
+   - Do: open the project; click the Jobs chip to open the Processing drawer.
+   - Expect: one "Preparing survey surfaces" job in the Processing drawer; a distance line's card lists both dates, preparing then ready; cancelling the job stops it and it does not restart until the project is reopened.
+   - Checked by: `surfaces-auto.spec.ts` ("opening a project with unprepared dates starts one quiet prepare job..." and "a cancelled prepare is not restarted until the project reopens"). Partly: the "preparing N %" text is not read, and the test cancels the job directly, not with the Cancel button.
+3. **The switch that turns that off.** Data: a freshly built E.
+   - Do: **Settings** > **Processing tools** > switch off "Prepare survey surfaces when a project opens"; open the project.
+   - Expect: nothing starts; the date chips offer **Prepare**, which starts it.
+   - Checked by: `surfaces-auto.spec.ts` ("with the setting off nothing starts and the chip offers Prepare, which starts it"). Partly: the test sets the switch before the first open; clicking it in Settings is by hand.
+4. **Draw a pile.** Data: Q.
+   - Do: right panel > **Tools** > **Measure** > **Volume**; click four points around a pile's toe; **Save** (Enter) in the live card; **Stop** (Esc), because the tool stays up for the next volume; in the card click **Recompute**.
+   - Expect: the new measurement first reads "Not computed yet" with **Base: Toe surface**; after **Recompute** it has a volume; Project > Volumes lists one row more and the number beside "Volumes" equals the number of rows. On Q the new row is under the date's Measurements.
+   - Checked by: `volumes-finalize.spec.ts` ("a volume drawn in the view is a new pile with a volume, and the number beside Volumes counts the list").
+5. **A deleted pile stays gone when piles are detected again.** Data: S.
+   - Do, with one pile left: left sidebar > **Stockpiles** > select a pile > **Delete**; **Tools** > **Measure** > **Save**; **Settings** > **Processing tools** > **Advanced: run a pipeline directly** > **Pipeline**: "Volumetric survey" (group "Stockpiles and volumes"); leave **Project folder** and **Survey job file** as they are > **Start job**; wait for "Done"; back to **Scene**.
+   - Do, with no pile left: delete the last pile and **Save**; Project > Volumes reads "No piles yet" > **Detect piles** > **Start**; wait for "Done".
+   - Expect: the deleted piles stay gone and a note says so ("1 pile you deleted was not added again", or "N piles you deleted were not added again"; it stays until dismissed); a kept pile is there once. **Detect piles** shows only while the list is empty, and works only in a project made with the wizard's Survey data page.
+   - Checked by: `volumetric-build.spec.ts` (same test, both routes).
+6. **Piles sit on the ground in an older project.** Data: S (or any project made before October).
+   - Do: switch to 3D and tilt the view.
+   - Expect: pile outlines lie on the piles, not under the ground.
+   - Checked by: `kit-migration.spec.ts` ("converted piles sit on the kit DSM: every vertex within 0.05 m") checks the stored heights. By eye: the tilted view.
 
 ### B. One pile
 
-| #   | Do this                                                                                       | Expect                                                                                                                                     | Data | e2e                                    |
-| --- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---- | -------------------------------------- |
-| 7   | Click a pile in 3D, then on the Map, in the left sidebar and in the inventory                 | The same pile panel opens in the same place each time (**new**), with Volume, Tonnes and the change since the previous survey              | Q    | `pile-panel`                           |
-| 8   | Look at the open pile in 3D; press the next pile arrow                                        | Red pile over a blue base in a glass box; the camera flies to the next pile; other piles' outlines are easy to see from far (**new**)      | Q, F | `pile-panel` (the look itself by hand) |
-| 9   | Surface: Height, then Solid                                                                   | Blue to red by height with a legend that names this pile (**new**); back to solid                                                          | Q    | `pile-panel`, `volumes-finalize`       |
-| 10  | Right-click the pile, Edit boundary, drag a corner, Done                                      | The volume updates; the box returns                                                                                                        | Q    | `pile-panel`                           |
-| 11  | Base: switch to Lowest point, then back to Toe surface; close and reopen the project          | The figure follows each time and is kept; the pile is not stale; the base reads the same in the panel, the inventory and the CSV (**new**) | Q    | unit tests; `volumes-general`          |
-| 12  | Base: Custom. Select two corners, Interpolate between; right-click a row, Use ground here     | The corners move onto the line; the row reads 0; the volume updates                                                                        | Q    | `volumes-general`                      |
-| 13  | Profile tab: hover the chart; drag the A, B and turn handles; click to pin; Esc; double-click | A marker follows on the pile in 3D and on the Map; the pin clears with Esc; double-click flies there                                       | Q    | `linked-hover`                         |
-| 14  | Zoom out and click a pile that lies near another pile's profile line                          | The pile opens; the line does not take the click (**new**)                                                                                 | Q    | `volumes-finalize`                     |
-| 15  | Open larger on the Profile; with the window open, fly to a point on the Map                   | The window leaves the view usable; the point is not hidden under it (**new**)                                                              | Q    | `linked-hover`, `volumes-finalize`     |
-| 16  | History tab; Export CSV                                                                       | One row per survey date with density and tonnes; the CSV has each date's own density                                                       | Q    | `pile-panel`, unit test                |
-| 17  | Weight calculator: type a weighed tonnage                                                     | The note says the figure is not saved (**new**)                                                                                            | Q    | unit test                              |
+7. **The same panel from every route.** Data: Q.
+   - Do: click a pile in 3D; on its outline on the Map; on its row in the left sidebar; on its row in Project > Volumes.
+   - Expect: the pile panel in **Selection** each time, with Volume, Tonnes, the change since the previous survey and **Back to inventory**. With the right panel folded the panel shows in a drawer: one Esc closes the drawer, a second lets the pile go.
+   - Checked by: `pile-panel.spec.ts` ("an Inventory row opens the pile panel with volume, tonnes and change", "a click on the pile in 3D and on its outline in Map opens the same panel", "a pile picked with the right workbench folded opens it with its panel").
+8. **The pile look.** Data: Q.
+   - Do: open a pile in 3D; press the next pile arrow at the top of the panel.
+   - Expect: a red pile over a blue base in a glass box; the next pile opens and the camera moves to it.
+   - Checked by: `pile-panel.spec.ts` ("an opened pile shows as its glass box, framed, Solid or Height, and Edit boundary from its menu"; the arrows in "an Inventory row opens..."). By eye: the look and the camera move.
+9. **Height colours.** Data: Q.
+   - Do: in the panel, **Surface** > **Height**, then **Solid**.
+   - Expect: the pile shades blue to red with a "Height above base" legend; back to solid red.
+   - Checked by: `pile-panel.spec.ts` (same test as 8).
+10. **Edit the boundary.** Data: Q.
+    - Do: right-click the pile in 3D > **Edit boundary**; drag a corner; **Done**.
+    - Expect: the volume changes; the glass box returns.
+    - Checked by: `pile-panel.spec.ts` ("Edit boundary from the menu in 3D: a corner dragged with the mouse changes the volume, and Done brings the glass box back").
+11. **Change the base, and it is kept.** Data: Q.
+    - Do: in the panel click the chip **Base: Toe surface** > **Lowest point**; wait for the figure; **Tools** > **Measure** > **Save**; the **Export** menu > **Stockpile inventory (CSV)**; switch back to **Toe surface**; **Save**; project switcher > **Close project**; open it again.
+    - Expect: the figure follows each change (larger on Lowest point); the panel, the inventory caption and the CSV's base column all say the same base name; after reopening, the same base and figure, nothing stale.
+    - Checked by: `volumes-finalize.spec.ts` ("a pile on Lowest point and back on Toe surface: one base name in the panel, the inventory and the CSV, kept across a reopen; the calculator note and the export names"). Mind: **Stockpile inventory (CSV)** in the **Export** menu prints the project as saved, so save first; without Save it still shows the old base. The Volumes header's own **Export** (step 19) reads what is on screen.
+12. **A custom base.** Data: E (the borrow pit measurement, in the Tools > Measure card).
+    - Do: **Base** > **Custom**; select two corner rows > **Interpolate between**; select a corner > **Use ground here**.
+    - Expect: the corners move onto the line; the row reads an offset of 0; the volume updates.
+    - Checked by: `volumes-general.spec.ts` ("a polygon with three comparisons, the deadband, Lowest point, a custom base and bulk totals"). Partly: not driven on a Q pile in the pile panel.
+13. **The profile and the linked marker.** Data: Q.
+    - Do: **Profile** tab; hover the chart; drag the A, B and turn handles in the view; click the chart to pin; Esc; double-click the chart.
+    - Expect: a marker follows on the pile in 3D and on the Map; the chart follows the handles; the pin clears with Esc; double-click flies there.
+    - Checked by: `pile-panel.spec.ts` ("the A, B and turn handles dragged in the scene with the mouse: the chart follows each", "Profile shows a chip per survey and the chart, its point on the line in 3D; History has one row per survey"), `linked-hover.spec.ts` (pin, Esc and double-click, on a distance line of E), `volumes-finalize.spec.ts` (double-click on the pile's chart). Partly: pin and Esc are not driven on the pile's own Profile.
+14. **A click near another pile's profile line opens the pile.** Data: Q.
+    - Do: with one pile open on the Map, zoom out and click a neighbouring pile close to the open pile's line.
+    - Expect: the neighbouring pile opens; the line does not take the click.
+    - Checked by: `volumes-finalize.spec.ts` ("a click on another pile within reach of the open pile's line opens that pile"). The test sets the zoom itself; the click is a real click.
+15. **The larger chart window.** Data: Q.
+    - Do: **Profile** > **Open larger**; double-click the chart in the window while the Map is showing.
+    - Expect: the window leaves the view usable; the point lands in the visible part above the window.
+    - Checked by: `volumes-finalize.spec.ts` ("with the larger chart window open, a fly on the Map lands the point above the window").
+16. **History and its file.** Data: Q.
+    - Do: **History** tab > **Export CSV**.
+    - Expect: one row per survey date; the file is `<pile name>-Volume-over-time.csv` with Volume, Change and Tonnage per date (each date's tonnage at that date's density; there is no density column).
+    - Checked by: `volumes-finalize.spec.ts` (same test as 11).
+17. **The weighed tonnage note.** Data: Q.
+    - Do: **Overview** tab > **More** > **Material and calculators** > type a figure in **Weighed tonnage (t)**.
+    - Expect: the note "The weighed tonnage is not saved with the project." and an "Achieved density". The figure is gone after closing and reopening the project (it used to stay in the field for the rest of the session; fixed on this branch).
+    - Checked by: `volumes-finalize.spec.ts` (same test as 11).
 
 ### C. The site and time
 
-| #   | Do this                                                                                             | Expect                                                                                                                                                | Data | e2e                               |
-| --- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --------------------------------- |
-| 18  | Project > Volumes > Inventory                                                                       | Piles by material with subtotals and a site total; "Not counted" names what is left out and why; nothing scrolls sideways at a small window (**new**) | Q    | `volumes-tab`, `volumes-finalize` |
-| 19  | Header: Export                                                                                      | A file named for volume over time (**new**), one row per pile and date                                                                                | Q    | `volume-over-time`                |
-| 20  | Cut & fill: pick From and To, Inside piles then Whole site, change Ignore under; click a pile's bar | Totals and bars follow; the pile opens                                                                                                                | Q    | `volumes-tab`, `volumes-cut-fill` |
-| 21  | Materials: change a density from the later survey date, Save                                        | Earlier dates keep their tonnes; History lists both densities                                                                                         | Q    | `volumes-tab`                     |
-| 22  | Layers and display > Surface and piles: Photo, Elevation, Cut & fill; Outlines; Labels              | The terrain recolours; with no pile open, Cut & fill colours the whole site with a legend and does not hide a 3D model (**new**)                      | Q, F | `volumes-tab` (models by hand)    |
-| 23  | Dates strip: click a marker; switch Volume, Tonnes, Cut & fill; drag the playhead                   | The date, the Stockpiles rows, the 3D labels and the Volumes header all follow                                                                        | Q    | `dates-strip`                     |
-| 24  | Compare: drag the brackets. Play; then Esc                                                          | The band shows the change; the Map crossfades the photos, 3D swaps halfway, figures change only at survey dates; Esc stops                            | Q    | `dates-strip`                     |
-| 25  | In a project with video and dates, use Dates and Footage at the left of the bar                     | The bar switches between the dates strip and the footage timeline                                                                                     | any  | `dates-strip`                     |
-| 26  | Tools > Volumes                                                                                     | Only tools that act on the view; no second list and no second From and To (**new**)                                                                   | Q, S | `island`                          |
-| 27  | Draw a polygon, right-click, Compare with previous survey, tick Include volumes                     | Exactly one new layer row with the cut and fill heat map; delete is refused while a job runs; deleting it restores the list                           | C    | `change-area`                     |
+18. **The inventory.** Data: Q.
+    - Do: right panel > **Project** > **Volumes** > **Inventory**.
+    - Expect: piles by material with subtotals and a site total that is their sum; nothing scrolls sideways at the smallest window.
+    - Checked by: `volumes-tab.spec.ts` ("Inventory groups the piles by material..." and "the Inventory fits the panel at its default width: nothing scrolls sideways and every figure is whole"). Partly: the "Not counted" list is not shown on Q (nothing is left out there); by hand on a project with a stale pile.
+19. **The header's export.** Data: Q.
+    - Do: Project > Volumes header > **Export**.
+    - Expect: `Volume-over-time.csv`, one row per pile and survey date. (This is not "Stockpile inventory (CSV)", which is in the Export menu.)
+    - Checked by: `volumes-finalize.spec.ts` (same test as 11).
+20. **Cut & fill between two surveys.** Data: Q.
+    - Do: **Cut & fill**; pick **From** and **To**; **Inside piles** then **Whole site**; change **Ignore under**; click a pile's bar.
+    - Expect: totals and bars follow; the pile opens.
+    - Checked by: `volumes-tab.spec.ts` ("Cut & fill: totals and a bar per pile for the pair; another From and another To picked; Inside piles and Whole site; the threshold changes the totals; a bar opens its pile").
+21. **A density that changes from a date.** Data: Q.
+    - Do: **Materials**; click a material; set its density from the latest survey date; **Save**.
+    - Expect: earlier dates keep their tonnes; the material's **History** lists both densities.
+    - Checked by: `volumes-tab.spec.ts` ("Materials: a density from the latest survey changes only its tonnes; History keeps both densities; piles are assigned from the editor").
+22. **What the view shows.** Data: Q.
+    - Do: right panel > **Layers & display** > **Surface and piles**: **Photo**, **Elevation**, **Cut & fill**; **Outlines**; **Labels**.
+    - Expect: the terrain recolours; with no pile open, Cut & fill colours the whole site with a legend.
+    - Checked by: `volumes-tab.spec.ts` ("the Show control switches Photo, Elevation and Cut & fill, and hides the piles' outlines and labels", "Show → Cut & fill with no pile picked draws the whole site between the compare pair, its legend on the stage"). By eye: the colours themselves, and that the whole-site colouring does not hide a 3D model (no test).
+23. **The dates strip.** Data: Q.
+    - Do: click a survey marker; switch **Volume**, **Tonnes**, **Cut & fill**; drag the playhead.
+    - Expect: the date, the pile labels and the Volumes header follow. With a pile open the strip shows that pile's line; the chip's "Clear the pile and show the site" brings the site back.
+    - Checked by: `dates-strip.spec.ts` ("two or more dates show the strip...", "a marker click and a playhead drag move the date in focus: the notch, the scene and the Volumes tab follow"). Partly: the sidebar's pile rows following the date is checked on a small older project (`kit-migration.spec.ts`), not on Q.
+24. **Compare and play.** Data: Q.
+    - Do: **Compare**, drag the brackets; **Play**; **Esc**.
+    - Expect: the band shows the change; play steps through every date and the notch reads "Playing"; Esc stops.
+    - Checked by: `dates-strip.spec.ts` ("Compare shows the band with its change...", "play steps through every date and stops at the end; the notch says Playing; Esc stops; loop wraps"). By eye, not machine-checked: the Map crossfading the photos and 3D swapping halfway.
+25. **Dates or footage.** Data: T.
+    - Do: at the left of the bottom bar switch **Dates** and **Footage**.
+    - Expect: the bar switches between the dates strip and the footage timeline and remembers the choice.
+    - Checked by: `dates-strip.spec.ts` ("the bottom bar offers Dates and Footage, opens on the dates with piles, and remembers the choice").
+26. **Tools > Volumes.** Data: Q.
+    - Do: right panel > **Tools** > **Volumes**.
+    - Expect: exactly **Draw volume** and **Swipe**; no Table, no From and To.
+    - Checked by: `volumes-finalize.spec.ts` ("Tools > Volumes holds Draw volume and Swipe only, and the Reports screen says what each report is for"), `palette-tools.spec.ts`.
+27. **Compare one area.** Data: C.
+    - Do: right-click a polygon > **Compare with previous survey**; tick **Include volumes**; run it. While the comparison still runs, try to delete its layer row. When it has ended, delete the row.
+    - Expect: exactly one new layer row for that area; the originals stay in their date folders; the delete is refused with a "Cancel it first" message while a job runs; afterwards deleting the row puts the layer list back as it was.
+    - Checked by: `change-area.spec.ts` ("compare one area with the previous survey"). `change-area.spec.ts` also ("with Include volumes the area gets one row; deleting it while its comparison runs is refused, and after the jobs it puts the list back"; the refusal is driven on a second Compare of the same area). Partly: the tests write the polygon into the project instead of drawing it. The delete refusal is driven in its own test, see below.
 
 ### D. Reports and exports
 
-| #   | Do this                                                                            | Expect                                                                                           | Data | e2e                                     |
-| --- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ---- | --------------------------------------- |
-| 28  | Reports: read the two report entries                                               | Each says in one line what it is for (**new**)                                                   | Q    | `survey-reports`                        |
-| 29  | Open volumetric report; Take pictures                                              | The preview shows the photo with numbered markers that match the table                           | Q    | `volumetric-report`                     |
-| 30  | Edit the title and the In short text; Reset to generated; switch page B off and on | The preview follows as you type                                                                  | Q    | `volumetric-report-edit`                |
-| 31  | Export PDF                                                                         | Three branded pages with the figures and base names of Project > Volumes                         | Q    | `volumetric-report`                     |
-| 32  | Export HTML; open the file with Wi-Fi off                                          | The viewer works (date, view and unit switches, click a pile); Download CSV and Save as PDF work | Q    | `volumetric-report` (Wi-Fi off by hand) |
-| 33  | Close and reopen the project                                                       | The report edits are still there                                                                 | Q    | `volumetric-report-edit`                |
+28. **Which report is for what.** Data: Q.
+    - Do: open **Reports**.
+    - Expect: under **Project report**, a few sentences saying it is the full survey record with Stockpile inventory and Volume over time inside; under **Customer reports** > **Volumetric report**, that it is the hand-over for a customer, as PDF or one offline HTML file.
+    - Checked by: `volumes-finalize.spec.ts` (same test as 26).
+29. **Pictures for the report.** Data: Q.
+    - Do: **Open volumetric report** > **Take pictures**.
+    - Expect: the preview shows the photo with numbered markers.
+    - Checked by: `volumetric-report.spec.ts` ("the volumetric report shows the Volumes tab figures, prints them to PDF and exports an offline HTML file"). By eye: that each marker's number matches its table row.
+30. **Edit the report.** Data: Q.
+    - Do: edit the title and the In short text; **Reset to generated**; switch page B off and on.
+    - Expect: the preview follows as you type.
+    - Checked by: `volumetric-report-edit.spec.ts` (both tests).
+31. **Export PDF.** Data: Q.
+    - Do: **Export PDF**.
+    - Expect: three pages with the figures and base names of Project > Volumes.
+    - Checked by: `volumetric-report.spec.ts`. By eye: the branding.
+32. **Export HTML and open it offline.** Data: Q.
+    - Do: **Export HTML**; open the file with Wi-Fi off; use the date, view and unit switches; click a pile; **Download CSV**; **Save as PDF**.
+    - Expect: everything works without a network.
+    - Checked by: `volumetric-report.spec.ts` ("the volumetric report shows the Volumes tab figures, prints them to PDF and exports an offline HTML file"): the file is opened from disk with every network request blocked; the date switch, the four views, the unit switch, a pile picked from the list and on the picture, and Download CSV are driven. Partly: **Save as PDF** is not clicked (the test prints the PDF itself). By eye: Wi-Fi really off.
+33. **The edits are kept.** Data: Q.
+    - Do: project switcher > **Close project**; open it again; open the report.
+    - Expect: the edits are still in the editor.
+    - Checked by: `volumetric-report-edit.spec.ts` ("edits show in the preview and the HTML, persist across a reopen, and reset").
 
-### E. On real data (by hand, once)
+### E. On real data (once, by the founder)
 
-| #   | Do this                                                                                                      | Expect                                                                | Data |
-| --- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- | ---- |
-| 34  | Open the project; compare the site totals and three piles with the reference figures (section 6, decision 4) | Within the agreed margin; the comparison table is in the session note | F    |
-| 35  | Judge the pile look on a pile with a tight toe, and the 3D labels where piles sit close together             | Readable; say if all labels should show without hover                 | F    |
-| 36  | Read ADR 0013                                                                                                | Approve it, or say what to change                                     | none |
+No test has run on real data since the rebuild; this part is a real run on the founder's PC.
+
+34. **The figures are right** (decision 4 of section 6: site totals within 1 %, each pile within 5 %).
+    - Prepare a reference file, plain CSV, with this header and one row per pile and survey date; a row with pile `TOTAL` is the site total of that date:
+
+      ```
+      pile,date,volume_m3
+      Pile A,2026-01-10,1446.7
+      TOTAL,2026-01-10,63402
+      ```
+
+      Pile names must match the names in the project; dates are YYYY-MM-DD; volumes in cubic metres. The figures come from the old kit's report or from another tool.
+
+    - Run, in PowerShell, from `apps/desktop` (about 15 minutes; the project is copied to a temporary folder and the real one is never written):
+
+      ```powershell
+      $env:QUADRION_WINDOW_SIZE = '1100x720'
+      $env:QUADRION_E2E_SCALE = '1'
+      $env:QUADRION_E2E_SWGL = 'warp'
+      $env:QUADRION_E2E_VOLUME_REFERENCE = 'C:\path\to\reference.csv'
+      npx playwright test e2e/<the real-data stockpile spec> --workers=1
+      ```
+
+      The spec is the one in `apps/desktop/e2e/` whose tests are titled "@realdata the stockpile project". Without the reference variable it only records the app's figures (attached to the run as `volume-figures.json`).
+
+    - Expect: the run passes, or it prints a table of pile, date, ours, reference and the difference in per cent for everything outside the margin. Piles found on one side only are listed, not failed.
+    - State: the spec was rewritten for the project as it is now (it reads the piles from the project instead of expecting 19) but has never been run. Its first run may need fixes to the spec itself.
+
+35. **By eye:** the pile look on a pile with a tight toe, and the 3D labels where piles sit close together (say if all labels should show without hover).
+36. **Read ADR 0013** (`docs/architecture/adr/0013-one-volume-engine.md`, with its notes of 18 Nov) and approve it or say what to change.
 
 ## 6. Decided by the founder (18 Nov 2026)
 

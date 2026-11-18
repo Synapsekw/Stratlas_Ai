@@ -15,7 +15,7 @@ In the **Measure** workbench (the **Measure** section of the right panel's **Too
 
 ### The profile and section chart
 
-A cross-section, a line's profile on its card and the section line of a stockpile project are drawn on one chart:
+A cross-section, a line's profile on its card and a pile's profile are drawn on one chart:
 
 - **Chips** above the chart (on a cross-section and on a line's card) switch each survey and design on and off; **+ Add survey or design** adds one. The current survey is a solid line, earlier surveys are grey and designs dashed.
 - **Shade vs** shades the cut and fill between the current survey and the line you pick, and prints the cut and fill areas under the chart. **None** turns the shading off.
