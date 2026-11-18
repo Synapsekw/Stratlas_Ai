@@ -118,4 +118,28 @@ describe('Calculators', () => {
     expect(tonnes).toContain('150');
     expect(tonnes).toContain('1.5');
   });
+
+  it('the button to the materials list says Materials, the one name for that screen', () => {
+    root = createRoot(host);
+    act(() => {
+      root?.render(<Calculators m={pile('d1')} />);
+    });
+    expect(host.querySelector('[data-testid="survey-materials-open"]')?.textContent).toBe(
+      'Materials',
+    );
+  });
+
+  it('says beside the weighed tonnage that it is not saved with the project', () => {
+    root = createRoot(host);
+    act(() => {
+      root?.render(<Calculators m={pile('d1')} />);
+    });
+    const note = host.querySelector('[data-testid="survey-weight-note"]');
+    expect(note?.textContent).toBe('The weighed tonnage is not saved with the project.');
+    expect(note?.className).toContain('faint');
+    // the field is described by it
+    const field = host.querySelector('[data-testid="survey-weight"]');
+    expect(field?.getAttribute('aria-describedby')).toBe(note?.id);
+    expect(note?.id).toBeTruthy();
+  });
 });

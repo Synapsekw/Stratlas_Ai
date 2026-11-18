@@ -295,7 +295,8 @@ describe('the Cut & fill pane', () => {
     });
     const arg = (engine.save.mock.calls[0] as unknown[] | undefined)?.[1] as
       { defaultName: string; data: string } | undefined;
-    expect(arg?.defaultName).toMatch(/\.csv$/);
+    // named after what it holds: the pane and the pair of dates
+    expect(arg?.defaultName).toMatch(/^Cut-fill-.+\.csv$/);
     expect(arg?.data.split('\n')[1]).toBe('P01,5115.90,0.00,-5115.90');
   });
 });

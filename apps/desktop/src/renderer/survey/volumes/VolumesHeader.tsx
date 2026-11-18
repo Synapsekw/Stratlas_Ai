@@ -68,7 +68,8 @@ export function VolumesHeader({ model, piles }: VolumesHeaderProps): ReactElemen
       isStale: staleRow,
     });
     const r = await bridge.call('dialog:saveFile', {
-      defaultName: `${fileBase(t('volumes.title'))}.csv`,
+      // named after what it holds ("Stockpile inventory (CSV)" is another file, on Exports)
+      defaultName: `${fileBase(t('vol.overTime'))}.csv`,
       data,
     });
     if (!r.ok) setCsvError(r.error);

@@ -268,7 +268,10 @@ describe('the Volumes tab without a pile', () => {
     await flush();
     const empty = q('.empty-state');
     expect(empty?.textContent).toContain('No piles yet');
-    expect(empty?.textContent).toContain('stockpile pipeline');
+    // what to do, and where Detect piles works (it reads the wizard's job file, two dates at most)
+    expect(empty?.textContent).toContain(
+      'Draw the piles with Draw volume. Detect piles works in a project made with the Survey data page of the new project wizard, and reads the one or two survey dates entered there.',
+    );
     expect(q('[data-testid="volumes-inventory"]')).toBeNull();
     expect(q('[data-testid="volumes-header"]')).toBeNull();
     click(button('Draw volume'));
@@ -300,6 +303,11 @@ describe('the Volumes tab without a pile', () => {
     await flush();
     const detect = q('[data-testid="volumes-detect"]');
     expect(detect?.getAttribute('aria-disabled')).toBe('true');
+    // the reason says it plainly: no file name, what the project lacks and what to do instead
+    expect(detect?.textContent).toContain(
+      'This project was not made with the Survey data page of the new project wizard, which Detect piles needs. Draw the piles with Draw volume.',
+    );
+    expect(detect?.textContent).not.toContain('job.json');
     click(detect);
     expect(calls.openDialog).not.toHaveBeenCalled();
   });
@@ -352,6 +360,10 @@ describe('Inventory', () => {
     click(button('+ 2 more'));
     expect(qa('[data-testid="volumes-pile"]:not([hidden])')).toHaveLength(8);
     expect(button('+ 2 more')).toBeUndefined();
+    // a name wraps inside its column and the density stays whole (volumes.css, no sideways
+    // scroll at the panel's default width): each has its own element
+    expect(agg?.querySelector('.vi-label')?.textContent).toBe('Aggregate');
+    expect(agg?.querySelector('.vi-dens')?.textContent).toBe('2.00 t/m³');
     // No material has no tonnes; the site total adds every counted pile
     expect(pileRow('n')).toEqual(['Pile n', num(5), '-', '']);
     expect(total()).toEqual(['Site total', num(615), '1 020', '']);
@@ -497,7 +509,8 @@ describe('Inventory', () => {
     expect(q('.vi-table thead')?.textContent).toContain('yd³');
   });
 
-  it('a row opens the pile panel in place of the tab, stepping in the table order', () => {
+  it('a row opens the pile in Selection, noted with the table order; the tab keeps the list', async () => {
+    const { pileOrigin } = await import('../pile/pileOrigin');
     s.measure.settings = { ...settings, materials: MATERIALS };
     s.measure.file.measurements = [
       pile('a', { results: [result(5, 'c2')] }),
@@ -507,19 +520,17 @@ describe('Inventory', () => {
     render();
     click(q('[data-testid="volumes-pile"][data-id="b"]'));
     expect(calls.openPile).toHaveBeenCalledWith('b');
+    // opened from the inventory: its panel (in Selection) steps in the table's order and offers
+    // "Back to inventory"
+    expect(pileOrigin.getState()).toEqual({ id: 'b', order: ['c', 'b', 'a'] });
     s.measure.focus = 'b';
     s.measure.selected = ['b'];
     render();
-    const panel = q('[data-testid="pile-panel"]');
-    expect(panel?.getAttribute('data-id')).toBe('b');
-    expect(panel?.getAttribute('data-order')).toBe('c,b,a');
-    expect(q('[data-testid="volumes-pile"]')).toBeNull();
-    expect(q('[data-testid="volumes-header"]')).toBeNull();
-    expect(q('[data-testid="volumes-segment"]')).toBeNull();
-    // back (the panel's "‹ Inventory" clears the focus): the inventory again
-    s.measure.focus = null;
-    render();
+    // the pile panel never shows here (founder, 18 Nov 2026): the inventory stays as it was
+    expect(q('[data-testid="pile-panel"]')).toBeNull();
     expect(qa('[data-testid="volumes-pile"]')).toHaveLength(3);
+    expect(q('[data-testid="volumes-segment"]')).not.toBeNull();
+    pileOrigin.setState({ id: null, order: null });
   });
 
   it('Enter on a row opens it too', () => {

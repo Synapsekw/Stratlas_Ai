@@ -182,7 +182,9 @@ describe('VolumesHeader', () => {
     });
     expect(s.saveFile).toHaveBeenCalledTimes(1);
     const req = s.saveFile.mock.calls[0]?.[1];
-    expect(req?.defaultName).toMatch(/\.csv$/);
+    // named after what it holds, not after the tab's title (the Exports screen has its own
+    // "Stockpile inventory (CSV)", a different file)
+    expect(req?.defaultName).toBe('Volume-over-time.csv');
     const lines = req?.data.split(/\r?\n/) ?? [];
     expect(lines[0]).toContain('Tonnage');
     expect(lines.find((l) => l.includes('2021-01-10'))).toMatch(/,20(\.0+)?,/);

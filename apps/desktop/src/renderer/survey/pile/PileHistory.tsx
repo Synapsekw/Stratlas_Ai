@@ -94,7 +94,8 @@ export function PileHistory({ data }: { data: PileData }): ReactElement {
       },
     );
     const r = await bridge.call('dialog:saveFile', {
-      defaultName: `${fileBase(m.label)}.csv`,
+      // the pile and what the file holds
+      defaultName: `${fileBase(`${m.label} ${t('vol.overTime')}`)}.csv`,
       data: csv,
     });
     if (!r.ok) setDone({ text: r.error, warn: true });

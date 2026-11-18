@@ -418,6 +418,79 @@ test('the Show control switches Photo, Elevation and Cut & fill, and hides the p
   await expect.poll(outlined).toBe(true);
 });
 
+test.describe('at the smallest window width', () => {
+  // CI's window is this wide already; a wider local window must not hide a table that overflows
+  test.use({ appEnv: { ...PIPELINE_ENV, QUADRION_WINDOW_SIZE: '1100x720' } });
+
+  test('the Inventory fits the panel at its default width: nothing scrolls sideways and every figure is whole', async ({
+    quarryProject,
+    win,
+  }) => {
+    test.setTimeout(600_000);
+    const view = await opened(win, quarryProject);
+    const box = view.getByTestId('volumes-inventory');
+    await expect(box).toBeVisible();
+    // the panel was not widened: this is the narrow case (360 px by default)
+    expect(await box.evaluate((el) => el.clientWidth)).toBeLessThanOrEqual(420);
+
+    const fit = () =>
+      box.evaluate((el) => {
+        const within = el.getBoundingClientRect();
+        const table = el.querySelector('table');
+        // the inventory's box, then every box around it up to the Volumes view
+        const boxes: { name: string; scroll: number; client: number }[] = [];
+        for (let at: Element | null = el; at; at = at.parentElement) {
+          boxes.push({
+            name: at.getAttribute('data-testid') ?? at.className,
+            scroll: at.scrollWidth,
+            client: at.clientWidth,
+          });
+          if (at.getAttribute('data-testid') === 'volumes-view') break;
+        }
+        // a cell cut short, or ending outside the box
+        const cut = [...el.querySelectorAll<HTMLElement>('tbody td, tbody th, thead th')]
+          .filter((c) => c.closest('tr')?.hidden !== true)
+          .filter(
+            (c) =>
+              c.scrollWidth > c.clientWidth + 1 ||
+              c.getBoundingClientRect().right > within.right + 1 ||
+              c.getBoundingClientRect().left < within.left - 1,
+          )
+          .map((c) => c.textContent);
+        return {
+          boxes,
+          cut,
+          tableWidth: table?.getBoundingClientRect().width ?? 0,
+          boxWidth: within.width,
+        };
+      });
+    const assertFits = async () => {
+      const got = await fit();
+      for (const b of got.boxes)
+        expect(b.scroll, `${b.name} scrolls sideways`).toBeLessThanOrEqual(b.client + 1);
+      expect(got.tableWidth).toBeLessThanOrEqual(got.boxWidth + 1);
+      expect(got.cut, 'cells cut short or outside the box').toEqual([]);
+    };
+    await assertFits();
+    // the same figures as ever: each group the sum of its piles, the total theirs
+    const march = await inventory(view);
+    expect(march.groups.length).toBeGreaterThanOrEqual(3);
+    for (const g of march.groups) {
+      expect(Number.isFinite(g.volume), `volume of ${g.key}`).toBe(true);
+      close(g.volume, sum(g.piles));
+    }
+    close(march.total.volume, sum(march.groups.map((g) => g.volume)));
+    // a group's name and its density are both there in full
+    const crushed = view.locator(`[data-testid="volumes-group"][data-material="${CRUSHED.id}"]`);
+    await expect(crushed).toContainText(CRUSHED.name);
+    await expect(crushed).toContainText('1.60 t/m³');
+    // another date, with its change column filled: still no sideways scroll
+    await focusOn(win, 'm2');
+    await expect(view.getByTestId('volumes-date')).toContainText('28 Feb');
+    await assertFits();
+  });
+});
+
 /** Whether the stage's map has a layer. */
 const mapHasLayer = (win: Page, id: string): Promise<boolean> =>
   win.evaluate((layer) => {

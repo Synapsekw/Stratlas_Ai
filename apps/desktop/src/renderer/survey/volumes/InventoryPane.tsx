@@ -4,7 +4,8 @@
  * name, its density on that date and its subtotals; its piles follow, largest first, four shown
  * then "+ 2 more", which opens the rest. The piles the inventory leaves out (stale, no survey data,
  * not computed yet, could not compute) are named under "Not counted" with why, never added as
- * zero; "Site total" closes it. A row opens the pile in the pile panel.
+ * zero; "Site total" closes it. A row opens the pile in the pile panel. A figure never breaks and
+ * a name wraps inside its column, so the table fits the panel at its default width (volumes.css).
  *
  * Also what the whole tab needs before any pane: the piles' figures per survey date, worked out
  * when shown (`useSeriesRun`), the figures on the date in focus (`useInventoryModel`) and the
@@ -136,8 +137,10 @@ export function VolumesEmpty(): ReactElement {
   const root = useWorkspace((s) => s.project?.root ?? null);
   const projectId = useWorkspace((s) => s.project?.id ?? null);
   const pkg = useShell((s) => s.pkg !== null);
-  // Detect piles runs from the stockpile job file: offered only when the project has one, looked
-  // for once the measurements are read
+  // Detect piles runs from the stockpile job file, which only the new project wizard's Survey data
+  // page writes, with the one or two survey dates entered there (the job reads no more, and a date
+  // added later is not in the file): offered only when the project has one, looked for once the
+  // measurements are read
   const [hasJob, setHasJob] = useState<boolean | null>(null);
   useEffect(() => {
     if (projectId === null || !read) return;
@@ -319,12 +322,20 @@ export function InventoryPane({ model, piles, onPile }: InventoryPaneProps): Rea
                 <tr className="vi-group" data-testid="volumes-group" data-material={key}>
                   <th scope="rowgroup" className="vi-name">
                     <span className="vi-sq" style={{ background: g.colour }} aria-hidden="true" />
-                    {g.material?.id === 'kit' && g.material.name === KIT_MATERIAL_NAME
-                      ? t('volumes.kitSiteDensity')
-                      : (g.material?.name ?? t('volumes.noMaterial'))}
-                    {g.densityTPerM3 !== null && (
-                      <span className="vi-dens">{dens(g.densityTPerM3)}</span>
-                    )}
+                    {/* the name wraps in its column; the density follows it or goes under it */}
+                    <span className="vi-gname">
+                      <span className="vi-label">
+                        {g.material?.id === 'kit' && g.material.name === KIT_MATERIAL_NAME
+                          ? t('volumes.kitSiteDensity')
+                          : (g.material?.name ?? t('volumes.noMaterial'))}
+                      </span>
+                      {g.densityTPerM3 !== null && (
+                        <>
+                          {' '}
+                          <span className="vi-dens">{dens(g.densityTPerM3)}</span>
+                        </>
+                      )}
+                    </span>
                   </th>
                   <td>{vol(g.volumeM3)}</td>
                   <td>{mass(g.tonnes)}</td>

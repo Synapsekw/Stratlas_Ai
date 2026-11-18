@@ -63,7 +63,7 @@ test('site materials from CSV, a material on a measurement, and the weight calcu
   await expect(dlg.getByTestId('survey-mat-row')).toHaveCount(2);
   await expect(dlg.getByTestId('survey-mat-note')).toContainText('2 materials read');
   await expect(dlg.getByTestId('survey-mat-error')).toContainText('Line 4');
-  await expectAccessible(win, 'Site materials', { include: '[data-testid="materials-pane"]' });
+  await expectAccessible(win, 'Materials', { include: '[data-testid="materials-pane"]' });
   const save = dlg.getByTestId('survey-mat-save');
   await save.click();
   // saved: nothing left to save (Save goes with the unsaved mark), the pane stays with the list
@@ -129,9 +129,18 @@ test('site materials from CSV, a material on a measurement, and the weight calcu
   await expect(calc.getByTestId('survey-calc')).toContainText(
     formatQuantity(volume * 1.25, 'volume', settings.units, settings.precision),
   );
+  // the button to the list has the screen's one name
+  await expect(calc.getByTestId('survey-materials-open')).toHaveText('Materials');
   await calc.getByTestId('survey-weight').fill('63000');
   await expect(calc.getByTestId('survey-achieved-density')).toContainText(
     formatQuantity(63_000 / volume, 'density', settings.units, 3),
+  );
+  // the weighed tonnage is for display only, and the field says so
+  await expect(calc.getByTestId('survey-weight-note')).toHaveText(
+    'The weighed tonnage is not saved with the project.',
+  );
+  await expect(calc.getByTestId('survey-weight')).toHaveAccessibleDescription(
+    'The weighed tonnage is not saved with the project.',
   );
   await expectAccessible(win, 'Survey calculators', { include: '[data-testid="survey-panel"]' });
 

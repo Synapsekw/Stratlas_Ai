@@ -152,11 +152,13 @@
 /* ---------- Inventory ---------- */
 .vi {
   display: grid;
-  /* the column is the panel's width, not the table's: in a narrow panel the caption wraps inside
-     it and the table scrolls sideways in the view, never pushing the caption past the edge */
+  /* the column is the panel's width, not the table's: the caption wraps inside it, and so do the
+     names in the table (below), so nothing scrolls sideways at the panel's default width */
   grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-3);
   min-width: 0;
+  /* the table sits closer by this box's own width (the narrow rule below) */
+  container: vinv / inline-size;
 }
 .vi-cap {
   display: flex;
@@ -183,6 +185,7 @@
   font-size: var(--t-11);
   font-weight: 500;
   color: var(--fg-3);
+  white-space: normal;
 }
 .vi-table th:first-child,
 .vi-table td:first-child {
@@ -202,6 +205,13 @@
   font-weight: 400;
   color: var(--fg-1);
 }
+/* a figure never breaks; a name does, inside its column: the three figure columns take what they
+   need and the name has the rest, on two lines when the panel is narrow (a 1100 px window, the
+   panel at its default width), so the table is never wider than its box */
+.vi-table .vi-name {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .vi-group th,
 .vi-group td {
   background: var(--bg-2);
@@ -219,10 +229,17 @@
   block-size: 9px;
   border-radius: var(--r-2);
 }
+/* the material's name, then its density after it or under it, never cut in two */
+.vi-gname {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .vi-dens {
+  display: inline-block;
   font-size: var(--t-11);
   font-weight: 400;
   color: var(--fg-3);
+  white-space: nowrap;
 }
 .vi-pile {
   cursor: pointer;
@@ -273,6 +290,21 @@
   border-block-end: 0;
   font-weight: 600;
   color: var(--fg-0);
+}
+/* in the docked panel (360 px by default, less its padding and scroll bar) the cells sit closer
+   and a pile's name is indented less, which leaves the names the room of a line */
+@container vinv (max-width: 400px) {
+  .vi-table th,
+  .vi-table td {
+    padding-inline: var(--sp-2);
+  }
+  /* about the swatch's width and its gap in the group's row above */
+  .vi-pile .vi-name {
+    padding-inline-start: calc(var(--sp-2) + var(--sp-4) + var(--sp-2));
+  }
+  .vi-group .vi-name {
+    gap: var(--sp-2);
+  }
 }
 /* a figure partly outside the survey: marked, the header names the piles */
 .vi-partial {

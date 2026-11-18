@@ -200,7 +200,8 @@ describe('PileHistory', () => {
     });
     expect(calls.saveFile).toHaveBeenCalledTimes(1);
     const req = calls.saveFile.mock.calls[0]?.[1];
-    expect(req?.defaultName).toBe('Pile-02.csv');
+    // the pile and what the file holds (the profile's PNG is named after the pile too)
+    expect(req?.defaultName).toBe('Pile-02-Volume-over-time.csv');
     expect(req?.data).toContain('Pile 02');
     expect(req?.data.split('\n').filter((l) => l.includes('Pile 02')).length).toBe(2);
     await act(async () => {
@@ -211,5 +212,38 @@ describe('PileHistory', () => {
     });
     expect(calls.addToReport).toHaveBeenCalledWith('02');
     expect(q('[data-testid="pile-history-done"]')?.textContent).toBe('Added to the report');
+  });
+
+  it('the CSV weighs each date at its own density when the density changed from a later date', async () => {
+    // 1.5 t/m³ from the first survey, 2 t/m³ from the second (Materials, "from" a survey date)
+    const material = {
+      id: 'agg',
+      name: 'Aggregate 20 mm',
+      densityTPerM3: 2,
+      densityHistory: [
+        { fromCapture: 'c1', tPerM3: 1.5 },
+        { fromCapture: 'c2', tPerM3: 2 },
+      ],
+    };
+    const dates = new Map(CAPTURES.map((c) => [c.id, Date.parse(c.date)]));
+    const data = dataOf({ results: [result(100, 'c2')], series: [result(200, 'c1')] });
+    render({ ...data, material, dateOf: (id: string) => dates.get(id) ?? null });
+    await act(async () => {
+      q('[data-testid="pile-history-csv"]')?.dispatchEvent(
+        new MouseEvent('click', { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+    const lines = calls.saveFile.mock.calls[0]?.[1].data.split(/\r?\n/) ?? [];
+    const head = lines[0]?.split(',') ?? [];
+    const tonnage = head.findIndex((h) => h.startsWith('Tonnage'));
+    expect(tonnage).toBeGreaterThanOrEqual(0);
+    const tonnesOn = (date: string) =>
+      Number(lines.find((l) => l.includes(date))?.split(',')[tonnage]);
+    // 200 m³ at 1.5 on the first date, 100 m³ at 2 on the second: never 400 and 200
+    expect(tonnesOn('2020-12-31')).toBe(300);
+    expect(tonnesOn('2021-01-10')).toBe(200);
+    // the table beside it names each date's density (newest first)
+    expect(cells().map((r) => r[2])).toEqual(['2.00', '1.50']);
   });
 });

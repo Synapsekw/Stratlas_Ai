@@ -3,7 +3,11 @@
  * (`survey.compare` in site mode, a job: the difference grid, its heat map pyramid and contours),
  * its totals and heat map, and draft cut and fill regions (Propeller's volume breakdown without a
  * model) that a person ticks and accepts as polygon measurements. A draft is only a suggestion:
- * the accepted measurement computes its own exact volumes.
+ * the accepted measurement computes its own exact volumes. The dialog is named for the one thing
+ * only it does, "Find cut and fill regions": the totals between two surveys are in Project >
+ * Volumes > Cut & fill, and a line here says so. Its text is in the catalogue (`siteRegions`);
+ * the names written into the measurements it keeps (label, folder, comparison) are stored data
+ * and stay as they were.
  */
 import { formatQuantity } from '@aio/geo';
 import {
@@ -13,8 +17,8 @@ import {
   type SurfaceRef,
   type SurveyMeasurement,
 } from '@aio/schema';
-import { deadbandFromStops, draftRegions, sideKey, sideOptions, TOOL_LABELS } from '@aio/survey';
-import { Dialog, EmptyState, t } from '@aio/ui';
+import { deadbandFromStops, draftRegions, sideKey, sideOptions } from '@aio/survey';
+import { Dialog, EmptyState, t as say, useT } from '@aio/ui';
 import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useState } from 'react';
 import { authorName } from '../author';
@@ -44,11 +48,12 @@ function siteOut(): string {
 
 async function readJson(projectId: string, path: string): Promise<unknown> {
   const r = await fetch(assetUrl(projectId, { path }));
-  if (!r.ok) throw new Error(`${path} could not be read (${String(r.status)}).`);
+  if (!r.ok) throw new Error(say('siteRegions.unreadable', { path, status: r.status }));
   return (await r.json()) as unknown;
 }
 
 export function WholeSite() {
+  const t = useT();
   const project = useWorkspace((s) => s.project);
   const settings = useMeasure((s) => s.settings);
   const readOnly = useMeasure((s) => s.readOnly);
@@ -117,7 +122,7 @@ export function WholeSite() {
       if (e.type !== 'update' || e.job.id !== job) return;
       patchSite({ progress: e.job.progress });
       if (e.job.status === 'failed' || e.job.status === 'cancelled') {
-        patchSite({ job: null, error: e.job.error ?? 'The whole-site comparison stopped.' });
+        patchSite({ job: null, error: e.job.error ?? t('siteRegions.stopped') });
         return;
       }
       if (e.job.status !== 'done') return;
@@ -188,7 +193,7 @@ export function WholeSite() {
       const status = await magicStatus();
       if (!status.available) {
         setSnapNote(
-          unavailableText(status).replaceAll('Suggest boundaries', 'Snapping to the ortho'),
+          unavailableText(status).replaceAll('Suggest boundaries', t('siteRegions.snapName')),
         );
         return;
       }
@@ -202,17 +207,18 @@ export function WholeSite() {
         if (r.snapped) {
           drafts[k] = { ...d, ring: r.ring };
           done.add(k);
-        } else kept.push(`Region ${String(k + 1)}: ${r.reason ?? 'kept as it was.'}`);
+        } else
+          kept.push(
+            t('siteRegions.snapKept', {
+              n: k + 1,
+              reason: r.reason ?? t('siteRegions.snapKeptAsWas'),
+            }),
+          );
       }
       patchSite({ drafts });
       setSnapped(done);
       const n = [...picked].filter((k) => done.has(k)).length;
-      setSnapNote(
-        [
-          `${String(n)} of ${String(picked.size)} ticked regions follow the edge in the ortho.`,
-          ...kept,
-        ].join(' '),
-      );
+      setSnapNote([t('siteRegions.snapNote', { done: n, picked: picked.size }), ...kept].join(' '));
     } finally {
       setSnapping(false);
     }
@@ -278,13 +284,13 @@ export function WholeSite() {
     }
   };
 
-  const pick = (label: string, value: SurfaceRef, set: (r: SurfaceRef) => void) => (
+  const pick = (side: 'from' | 'to', value: SurfaceRef, set: (r: SurfaceRef) => void) => (
     <label className="sv-field">
-      <span>{label}</span>
+      <span>{t(side === 'from' ? 'siteRegions.from' : 'siteRegions.to')}</span>
       <select
         className="sv-input"
         value={sideKey(value)}
-        data-testid={`survey-site-${label.toLowerCase()}`}
+        data-testid={`survey-site-${side}`}
         onChange={(e) => {
           const o = options.find((x) => x.key === e.target.value);
           if (o) set(o.ref);
@@ -304,16 +310,20 @@ export function WholeSite() {
     <Dialog
       open
       onClose={close}
-      title="Whole site cut and fill"
+      title={t('siteRegions.title')}
       testId="survey-site"
-      description="Compares two surfaces over their overlap in a background job, then suggests cut and fill regions you can keep as measurements."
+      description={t('siteRegions.description')}
     >
+      {/* the totals have their own home: this dialog is for the regions */}
+      <p className="small faint" data-testid="survey-site-totals-hint">
+        {t('siteRegions.totalsHint')}
+      </p>
       {surfaces.length === 0 && (
-        <p className="notice warn small">Prepare the survey surfaces first (in a comparison).</p>
+        <p className="notice warn small">{t('siteRegions.needSurfaces')}</p>
       )}
       <div className="sv-row sv-wrap">
-        {pick('From', from, setFrom)}
-        {pick('To', to, setTo)}
+        {pick('from', from, setFrom)}
+        {pick('to', to, setTo)}
       </div>
       <label className="sv-check">
         <input
@@ -324,8 +334,9 @@ export function WholeSite() {
             setUseDb(e.target.checked);
           }}
         />
-        Use deadband in calculations (
-        {formatQuantity(stopsDb, 'distance', units, settings.precision)} from the heat map stops)
+        {t('siteRegions.deadband', {
+          value: formatQuantity(stopsDb, 'distance', units, settings.precision),
+        })}
       </label>
       <div className="sv-row">
         <button
@@ -337,7 +348,9 @@ export function WholeSite() {
             void run();
           }}
         >
-          {job ? `Comparing… ${String(Math.round((site?.progress ?? 0) * 100))}%` : 'Compare'}
+          {job
+            ? t('siteRegions.comparing', { percent: Math.round((site?.progress ?? 0) * 100) })
+            : t('siteRegions.compare')}
         </button>
       </div>
       {(error ?? site?.error) && (
@@ -347,25 +360,25 @@ export function WholeSite() {
       )}
       {res && (
         <table className="sv-readout" data-testid="survey-site-result">
-          <caption className="sr-only">Whole-site result</caption>
+          <caption className="sr-only">{t('siteRegions.result')}</caption>
           <tbody>
             <tr>
-              <th scope="row">Cut</th>
+              <th scope="row">{t('siteRegions.cut')}</th>
               <td className="mono">{v(res.cutM3)}</td>
               <td className="mono faint">{a(res.areaCutM2)}</td>
             </tr>
             <tr>
-              <th scope="row">Fill</th>
+              <th scope="row">{t('siteRegions.fill')}</th>
               <td className="mono">{v(res.fillM3)}</td>
               <td className="mono faint">{a(res.areaFillM2)}</td>
             </tr>
             <tr>
-              <th scope="row">Net</th>
+              <th scope="row">{t('siteRegions.net')}</th>
               <td className="mono">{v(res.netM3)}</td>
               <td />
             </tr>
             <tr>
-              <th scope="row">Total</th>
+              <th scope="row">{t('siteRegions.total')}</th>
               <td className="mono">{v(res.totalM3)}</td>
               <td className="mono faint">{a(res.areaM2)}</td>
             </tr>
@@ -373,11 +386,13 @@ export function WholeSite() {
         </table>
       )}
       {res?.status === 'partial' && (
-        <p className="notice warn small">Partly outside the survey: {res.reason}</p>
+        <p className="notice warn small">
+          {t('siteRegions.partial', { reason: res.reason ?? '' })}
+        </p>
       )}
       {site && site.drafts.length > 0 && (
         <fieldset className="sv-sub" data-testid="survey-site-drafts">
-          <legend>Suggested regions (drafts)</legend>
+          <legend>{t('siteRegions.drafts')}</legend>
           <ul className="sv-items">
             {site.drafts.map((d, k) => (
               <li key={k}>
@@ -393,9 +408,12 @@ export function WholeSite() {
                       setPicked(next);
                     }}
                   />
-                  {d.kind === 'cut' ? 'Cut' : 'Fill'} region {k + 1}: about {v(d.volumeM3)} over{' '}
-                  {a(d.areaM2)}
-                  {snapped.has(k) && <span className="faint"> (snapped to the ortho)</span>}
+                  {t(d.kind === 'cut' ? 'siteRegions.draftCut' : 'siteRegions.draftFill', {
+                    n: k + 1,
+                    volume: v(d.volumeM3),
+                    area: a(d.areaM2),
+                  })}
+                  {snapped.has(k) && <span className="faint"> {t('siteRegions.snapped')}</span>}
                 </label>
               </li>
             ))}
@@ -408,19 +426,21 @@ export function WholeSite() {
               data-testid="survey-site-accept"
               onClick={accept}
             >
-              Keep {picked.size || ''} as {TOOL_LABELS.volume.toLowerCase()} measurements
+              {picked.size > 0
+                ? t('siteRegions.keep', { count: picked.size })
+                : t('siteRegions.keepNone')}
             </button>
             <button
               type="button"
               className="btn sm ghost"
               disabled={picked.size === 0 || snapping}
               data-testid="survey-site-snap"
-              title="The local model moves the ticked regions' boundaries to the edges seen in the ortho. They stay drafts."
+              title={t('siteRegions.snapTip')}
               onClick={() => {
                 void snap();
               }}
             >
-              {snapping ? 'Snapping...' : 'Snap to ortho edges'}
+              {snapping ? t('siteRegions.snapping') : t('siteRegions.snap')}
             </button>
           </div>
           {snapNote && (

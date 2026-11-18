@@ -16,8 +16,9 @@ import {
   pileMaterial,
   seriesDate,
 } from '@aio/survey';
+import { useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { openCompareDialog, setTonnes, useCompare } from './compareStore';
 import { updateMeasurement, useMeasure } from './measureStore';
 import { captureDateOf } from './volumes/surveyDates';
@@ -37,6 +38,8 @@ export function Calculators({ m }: { m: SurveyMeasurement }) {
   const [basis, setBasis] = useState<Basis>('net');
   const [text, setText] = useState(typed === null ? '' : String(typed));
   const surveys = useWorkspace((s) => s.project?.manifest.captures);
+  const t = useT();
+  const noteId = useId();
   if (m.family !== 'polygon') return null;
   // material, swell and weighed tonnage are for volumes: an area shows them once it is compared
   // to a date or a design (it then has a volume), never on its own
@@ -55,7 +58,7 @@ export function Calculators({ m }: { m: SurveyMeasurement }) {
   const out = bank !== null ? materialReadout(bank, material, tonnesTyped) : null;
   const vol = (x: number) => formatQuantity(x, 'volume', units, settings.precision);
   // mass is SI kilograms in @aio/geo
-  const mass = (t: number) => formatQuantity(t * 1000, 'mass', units, settings.precision);
+  const mass = (tn: number) => formatQuantity(tn * 1000, 'mass', units, settings.precision);
   const density = (d: number) => formatQuantity(d, 'density', units, DENSITY_DECIMALS);
   return (
     <details className="sv-sec" open data-testid="survey-calculators">
@@ -94,7 +97,7 @@ export function Calculators({ m }: { m: SurveyMeasurement }) {
             openCompareDialog('materials');
           }}
         >
-          Site materials
+          {t('materials.title')}
         </button>
       </div>
       {m.items.length > 1 && (
@@ -172,6 +175,7 @@ export function Calculators({ m }: { m: SurveyMeasurement }) {
           step="1"
           value={text}
           aria-label={`Weighed tonnage (${unitLabel(units.mass)})`}
+          aria-describedby={noteId}
           data-testid="survey-weight"
           onChange={(e) => {
             setText(e.target.value);
@@ -185,6 +189,11 @@ export function Calculators({ m }: { m: SurveyMeasurement }) {
           }}
         />
       </label>
+      {/* the typed tonnage lives in memory only (compareStore `tonnes`): say so at the field
+          (outside the label, whose spans are set as captions) */}
+      <p id={noteId} className="small faint" data-testid="survey-weight-note">
+        {t('vol.weighedNotSaved')}
+      </p>
       {out?.achievedTPerM3 !== null && out?.achievedTPerM3 !== undefined && (
         <p className="small" data-testid="survey-achieved-density">
           Achieved density <b className="mono">{density(out.achievedTPerM3)}</b>
