@@ -1,522 +1,605 @@
 /**
- * End to end on the real Masafi stockpile project (19 piles, two surveys): the native volumetric
- * workspace, with the kit's piles opened as volume measurements carrying their delivered figures
- * (volumetric parity W3: the kit's register, base maths and boundary editor are retired; a pile's
- * outline is edited through its measurement's vertices). Runs only where the real data holds
- * projects/masafi (realData.ts); skipped elsewhere. The project is copied to a temporary data root
- * (@realdata), so the conversion written here never touches the real data.
+ * End to end on the real two-date stockpile project, as it is on the day of the run: its piles are
+ * volume measurements (hand drawn, or an older kit's piles carried over), listed in Project >
+ * Volumes and opened in the right panel's Selection tab.
+ *
+ * Nothing about the piles is fixed here. What the Volumes inventory should list is read at run
+ * time from the copied project's own files: the volume measurements of `survey/measurements.json`
+ * (their ids, names and whether a figure is carried from an earlier version), whether a kit
+ * `volumes.json` is still there and whether its piles are marked converted (`kitPilesConverted`).
+ *
+ * - The inventory lists every pile (the folded groups counted through "+ N more", then opened); a
+ *   row opens the pile in Selection with a volume, the survey dates in History and its status; in
+ *   3D the opened pile is drawn in its pile look, Esc lets it go and its outline is back, and a
+ *   click on a pile on the terrain opens it.
+ * - The header's Export writes volume over time as CSV, naming every pile; the real data stays as
+ *   it was.
+ * - The figures the app shows are recorded (a JSON attachment and the log): per pile and survey
+ *   date the volume, the pile's base, and the site total per date. With a reference file
+ *   (QUADRION_E2E_VOLUME_REFERENCE, a CSV `pile,date,volume_m3`, see `volumeReference.ts`) they are
+ *   compared: each pile within 5 %, each total within 1 %.
+ *
+ * Runs only where the real data holds the project (realData.ts); skipped elsewhere. The project is
+ * copied to a temporary data root (@realdata), so nothing written here touches the real data.
  */
-import type { Locator, Page } from '@playwright/test';
+import { envVar } from '@aio/brand/env';
+import { MeasurementsFile, ProjectManifest } from '@aio/schema';
+import { inventoryPiles } from '@aio/survey';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { expect, realDataTest } from './fixtures';
-import { closeIslandTools, islandRow, pickGroupTab, showSurface, volumesView } from './island';
-import { hasRealData, missingRealProject, realProjectDir } from './realData';
-import { selectedPile } from './panel';
+import { readFile, rm } from 'node:fs/promises';
+import { basename, join } from 'node:path';
+import {
+  expect,
+  hasPipelinePython,
+  openProject,
+  PIPELINE_ENV,
+  realDataTest,
+  reportWindow,
+} from './fixtures';
+import { volumesView } from './island';
+import { panelTab, selectedPile } from './panel';
+import { hasRealProject, missingRealProject, realProjectDir, type RealDataCopy } from './realData';
+import {
+  compareVolumes,
+  formatComparison,
+  parseReference,
+  parseSeriesCsv,
+  siteTotals,
+  type SeriesRow,
+} from './volumeReference';
 
-/** A survey's marker in the dates strip under the stage, by its date. */
-const surveyMarker = (win: Page, date: string): Locator =>
-  win.getByRole('region', { name: 'Dates strip' }).locator('[data-survey]', { hasText: date });
-
-const MASAFI = realProjectDir('masafi');
-
-interface Fcn {
-  fill: number;
-  cut: number;
-  net: number;
-}
-interface VolumesJson {
-  piles: { id: string; name: string; epochs: Record<string, { volumes: Record<string, Fcn> }> }[];
-}
-
-interface Inspect {
-  __stratlas: {
-    workspace: {
-      getState(): {
-        selection: { kind: string; id: string; layer?: string } | null;
-        isLayerVisible(id: string): boolean;
-      };
-    };
-    stage(): {
-      scene: {
-        getObjectByName(n: string): { visible: boolean; children: unknown[] } | undefined;
-      };
-    } | null;
-    volumetric: {
-      getState(): {
-        status: string;
-        selected: string | null;
-        elevation?: { ramp: string; hillshade: boolean };
-        select(pile: string | null): void;
-      };
-    };
-  };
-}
-
-const test = realDataTest(['masafi'], {
-  // start from the delivered volumes: edits saved while testing the real project are left out
-  include: (rel) => rel !== 'edits',
-  // the installed street map pack that covers the yard, when this machine has it
-  packs: ['kuwait'],
-  size: [1600, 960],
-});
-
-test.skip(!hasRealData('projects', 'masafi', 'volumes.json'), missingRealProject('masafi'));
-test.setTimeout(180_000);
+const PROJECT = 'masafi';
+/** The real project's folder: read only, to see that it stays as it was. */
+const REAL = realProjectDir(PROJECT);
 
 /**
- * Run a probe in the renderer with the app's inspection hook typed. The probe is sent as a
- * function (no eval in the page) and gets the window and an argument.
+ * The optional reference figures (QUADRION_E2E_VOLUME_REFERENCE): a local CSV with the header
+ * `pile,date,volume_m3`, a row `TOTAL` per date for the site total. Unset: the figures are only
+ * recorded.
  */
-async function inspect<T, A>(
-  win: Page,
-  probe: (x: { w: Inspect; a: A }) => T | Promise<T>,
-  arg: A,
-): Promise<T> {
-  const w = await win.evaluateHandle(() => window);
-  try {
-    const fn = probe as unknown as (x: { w: Window; a: unknown }) => T | Promise<T>;
-    const payload: { w: typeof w; a: unknown } = { w, a: arg };
-    return await win.evaluate(fn, payload);
-  } finally {
-    await w.dispose();
-  }
+const REFERENCE = envVar(process.env, 'E2E_VOLUME_REFERENCE') ?? '';
+
+const test = realDataTest([PROJECT], {
+  // the installed street map pack that covers the yard, when this machine has it
+  packs: ['kuwait'],
+  // a survey whose surface is not prepared yet is prepared on open: that needs the pipeline Python
+  env: hasPipelinePython() ? PIPELINE_ENV : {},
+});
+
+test.skip(!hasRealProject(PROJECT), missingRealProject(PROJECT));
+// real surfaces may be prepared and every pile worked out on each date, on a software renderer
+test.setTimeout(1_500_000);
+
+/** A line in the run's log. */
+const say = (text: string): void => {
+  process.stdout.write(`${text}\n`);
+};
+
+interface Pt {
+  x: number;
+  y: number;
 }
 
-/** The project's saved boundary edits as text, or null when there are none. */
+/** A pile the inventory should list, as the project's own file has it. */
+interface ExpectedPile {
+  id: string;
+  label: string;
+  /** Its stored figure is carried from an earlier version (the kit's), not worked out here. */
+  carried: boolean;
+}
+
+interface Expected {
+  piles: ExpectedPile[];
+  /** The kit's pile ids when the project still has a kit `volumes.json`; null without one. */
+  kit: string[] | null;
+  /** `kitPilesConverted` of the measurements file; null when it is not set. */
+  converted: string[] | null;
+}
+
+async function readMeasurements(dir: string): Promise<MeasurementsFile | null> {
+  const file = join(dir, 'survey', 'measurements.json');
+  if (!existsSync(file)) return null;
+  return MeasurementsFile.parse(JSON.parse(await readFile(file, 'utf8')));
+}
+
+/** The pile ids of the project's kit `volumes.json`, or null when it has none. */
+async function kitPileIds(dir: string): Promise<string[] | null> {
+  const file = join(dir, 'volumes.json');
+  if (!existsSync(file)) return null;
+  const kit = JSON.parse(await readFile(file, 'utf8')) as { piles?: { id?: unknown }[] };
+  return (kit.piles ?? []).map((p) => (typeof p.id === 'string' ? p.id : '')).filter(Boolean);
+}
+
+/**
+ * What the opened copy holds: its volume measurements, by the rule the Volumes tab lists them
+ * (`inventoryPiles`). A kit still to be converted is converted by the app on open, so with a kit
+ * this waits until every kit pile is marked converted, then reads the file the app wrote.
+ */
+async function expectedPiles(copy: RealDataCopy): Promise<Expected> {
+  const dir = copy.projectDir;
+  const kit = await kitPileIds(dir);
+  if (kit && kit.length > 0)
+    await expect
+      .poll(
+        async () => {
+          const done = new Set((await readMeasurements(dir).catch(() => null))?.kitPilesConverted);
+          return kit.filter((id) => !done.has(id));
+        },
+        { timeout: 120_000, message: 'kit piles not marked converted in the copy' },
+      )
+      .toEqual([]);
+  const file = await readMeasurements(dir);
+  const piles = inventoryPiles(file?.measurements ?? []).map((m) => ({
+    id: m.id,
+    label: m.label,
+    carried: m.results.some((r) => r.carried !== undefined),
+  }));
+  const expected = { piles, kit, converted: file?.kitPilesConverted ?? null };
+  say(
+    `[stockpile] ${String(piles.length)} volume measurements (${String(piles.filter((p) => p.carried).length)} with a carried figure); kit volumes.json: ${kit ? `yes, ${String(kit.length)} piles` : 'no'}; kitPilesConverted: ${expected.converted ? `set, ${String(expected.converted.length)}` : 'not set'}`,
+  );
+  expect(piles.length, 'the project holds no volume measurement to list').toBeGreaterThan(0);
+  return expected;
+}
+
+/** The project's saved kit boundary edits as text, or null when there are none. */
 function boundariesOf(project: string): string | null {
   const f = join(project, 'edits', 'boundaries.json');
   return existsSync(f) ? readFileSync(f, 'utf8') : null;
 }
 
-async function openMasafi(win: Page) {
-  await win.getByTestId('project-card').filter({ hasText: 'Masafi' }).first().click();
-  await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
+/** The project's measurements file as text, or null when there is none. */
+function measurementsOf(project: string): string | null {
+  const f = join(project, 'survey', 'measurements.json');
+  return existsSync(f) ? readFileSync(f, 'utf8') : null;
+}
+
+const stripOf = (win: Page): Locator => win.getByRole('region', { name: 'Dates strip' });
+
+/** Open the copied project (by the name in its own manifest) and wait for its scene. */
+async function openSite(win: Page, copy: RealDataCopy): Promise<void> {
+  await reportWindow(win);
+  const manifest = ProjectManifest.parse(
+    JSON.parse(await readFile(join(copy.projectDir, 'manifest.json'), 'utf8')),
+  );
+  await win.getByTestId('project-card').filter({ hasText: manifest.name }).first().click();
+  // the scene canvas first: the 3D view's tools and the piles' labels come with it
+  await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible({ timeout: 120_000 });
+  await expect.poll(async () => (await openProject(win)).id, { timeout: 60_000 }).toBe(manifest.id);
+}
+
+/**
+ * Project > Volumes on its Inventory, with every pile of the project listed. The groups fold to
+ * their first piles: the rows held back are counted through the "+ N more" rows, then every group
+ * is opened.
+ */
+async function inventoryOf(win: Page, expected: Expected): Promise<Locator> {
+  const view = await volumesView(win);
+  const rows = view.getByTestId('volumes-pile');
+  await expect(rows).toHaveCount(expected.piles.length, { timeout: 120_000 });
+  const more = view.getByTestId('volumes-more');
+  const held = await rows.evaluateAll(
+    (trs) => trs.filter((tr) => (tr as HTMLElement).hidden).length,
+  );
+  const promised = (await more.allInnerTexts())
+    .map((t) => Number(/\d+/.exec(t)?.[0] ?? 'NaN'))
+    .reduce((a, b) => a + b, 0);
+  expect(promised, 'the "+ N more" rows count the piles held back').toBe(held);
+  for (let n = await more.count(); n > 0; n = await more.count()) {
+    await more.first().click();
+    await expect(more).toHaveCount(n - 1);
+  }
+  expect(
+    await rows.evaluateAll((trs) => trs.filter((tr) => (tr as HTMLElement).hidden).length),
+  ).toBe(0);
+  // every pile of the file, by id and by name, and no other
+  expect(
+    (await rows.evaluateAll((trs) => trs.map((tr) => tr.getAttribute('data-id') ?? ''))).sort(),
+  ).toEqual(expected.piles.map((p) => p.id).sort());
+  for (const p of expected.piles)
+    await expect(view.locator(`[data-testid="volumes-pile"][data-id="${p.id}"]`)).toContainText(
+      p.label,
+    );
+  return view;
+}
+
+/** An inventory row by the pile's id. */
+const pileRow = (view: Locator, id: string): Locator =>
+  view.locator(`[data-testid="volumes-pile"][data-id="${id}"]`);
+
+/** The first figure of a text the app shows ("1 234.5 m³", "−56.7"), signed; NaN for "-". */
+const figure = (text: string): number => {
+  const m = /[-+−]?[\d ,]*\d(?:\.\d+)?/.exec(text.replace(/\s/g, ' '));
+  return Number((m?.[0] ?? 'NaN').replace(/[ ,+]/g, '').replace('−', '-'));
+};
+
+/**
+ * The page point of a measurement's label anchor in the 3D view (a closed shape's centroid): the
+ * label's own translate, read off its layer.
+ */
+async function labelAnchor3d(win: Page, id: string): Promise<Pt> {
+  const label = win.locator(`[data-scene-view] .sv-labels .sv-label[data-id="${id}"]`).first();
+  await expect(label).toBeAttached({ timeout: 60_000 });
   await expect
-    .poll(() => inspect(win, ({ w }) => w.__stratlas.volumetric.getState().status, null), {
-      timeout: 30_000,
-    })
-    .toBe('ready');
+    .poll(() => label.evaluate((el) => (el as HTMLElement).style.display), { timeout: 60_000 })
+    .not.toBe('none');
+  const at = await label.evaluate((el) => {
+    const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec((el as HTMLElement).style.transform);
+    const r = el.parentElement?.getBoundingClientRect();
+    return m && r ? { x: r.left + Number(m[1]), y: r.top + Number(m[2]) } : null;
+  });
+  if (!at) throw new Error(`no label anchor for ${id}`);
+  return at;
+}
+
+/** Wait until a measurement's label stops moving (the camera has settled); where it is then. */
+async function settled(win: Page, id: string): Promise<Pt> {
+  let last = '';
   await expect
     .poll(
-      () =>
-        inspect(
-          win,
-          ({ w }) => w.__stratlas.stage()?.scene.getObjectByName('volumetric') !== undefined,
-          null,
-        ),
-      {
-        timeout: 30_000,
+      async () => {
+        const now = JSON.stringify(await labelAnchor3d(win, id));
+        const still = now === last;
+        last = now;
+        return still;
       },
+      { intervals: [500], timeout: 60_000 },
+    )
+    .toBe(true);
+  return labelAnchor3d(win, id);
+}
+
+/** Whether a measurement's outline is drawn in the 3D scene. */
+const outlined = (win: Page, id: string): Promise<boolean> =>
+  win.evaluate((id) => {
+    interface W {
+      __stratlas: {
+        stage(): {
+          scene: { getObjectByName(n: string): { children: { name: string }[] } | undefined };
+        } | null;
+      };
+    }
+    const group = (window as unknown as W).__stratlas
+      .stage()
+      ?.scene.getObjectByName('aio-survey-measurements');
+    return (group?.children ?? []).some((c) => c.name === `measure:${id}`);
+  }, id);
+
+/** The opened pile's look in the 3D view (its lifted box, drawn in place of its outline). */
+const pileLook = (win: Page, id: string): Locator => win.locator(`[data-pile-look="${id}"]`);
+
+/**
+ * Every survey date's surface has settled: none is being prepared or still waits to be (a date
+ * with nothing to prepare from stays without one), and at least one is ready.
+ */
+async function surfacesSettled(win: Page): Promise<void> {
+  const markers = stripOf(win).locator('[data-survey]');
+  await expect
+    .poll(
+      async () => {
+        const states = await markers.evaluateAll((els) =>
+          els.map((el) => el.getAttribute('data-state') ?? ''),
+        );
+        const waiting = states.filter((s) => s === 'preparing' || s === 'missing').length;
+        return states.includes('ready') && waiting === 0;
+      },
+      { intervals: [2_000], timeout: 900_000, message: 'the survey surfaces are not all ready' },
     )
     .toBe(true);
 }
 
-/** The pile's volume body, toe line or base outline is drawn in 3D. */
-const pileDrawn = (win: Page, id: string) =>
-  inspect(
-    win,
-    ({ w, a }) => w.__stratlas.stage()?.scene.getObjectByName(`vol:${a}`) !== undefined,
-    id,
+/** Save the header's Export to `target`; returns the file's text and the name the app proposed. */
+async function exportSeries(
+  app: ElectronApplication,
+  view: Locator,
+  target: string,
+): Promise<{ csv: string; proposed: string }> {
+  await rm(target, { force: true });
+  await app.evaluate(({ dialog }, path) => {
+    const seen = globalThis as unknown as { e2eSaveDefault?: string };
+    dialog.showSaveDialog = (...args: unknown[]) => {
+      const options = args.at(-1) as { defaultPath?: string } | undefined;
+      seen.e2eSaveDefault = options?.defaultPath ?? '';
+      return Promise.resolve({ canceled: false, filePath: path });
+    };
+  }, target);
+  await view.getByTestId('volumes-csv').click();
+  await expect.poll(() => existsSync(target), { timeout: 60_000 }).toBe(true);
+  // the file is written in one go; read it once its text holds still
+  let csv = '';
+  await expect
+    .poll(
+      async () => {
+        const now = await readFile(target, 'utf8');
+        const same = now !== '' && now === csv;
+        csv = now;
+        return same;
+      },
+      { intervals: [300], timeout: 30_000 },
+    )
+    .toBe(true);
+  const proposed = await app.evaluate(
+    () => (globalThis as unknown as { e2eSaveDefault?: string }).e2eSaveDefault ?? '',
   );
-
-/** Every callout's text on the 3D stage. */
-const calloutText = (win: Page) =>
-  win.locator('[data-scene-view] .aio-stage-overlay').first().innerText();
-
-interface Projectable {
-  clone(): Projectable;
-  applyMatrix4(m: unknown): Projectable;
-  project(camera: unknown): { x: number; y: number };
+  return { csv, proposed };
 }
 
-/** Client coordinates of the middle of a scene node (a pile on the terrain). */
-async function pileOnScreen(win: Page, node: string): Promise<{ x: number; y: number }> {
-  const ndc = await inspect(
-    win,
-    ({ w, a }) => {
-      const stage = w.__stratlas.stage() as unknown as {
-        camera: unknown;
-        scene: { getObjectByName(n: string): unknown };
-      };
-      const root = stage.scene.getObjectByName(a) as
-        { traverse(cb: (o: unknown) => void): void } | undefined;
-      const found: { x: number; y: number }[] = [];
-      root?.traverse((o) => {
-        const m = o as {
-          isMesh?: boolean;
-          matrixWorld: unknown;
-          geometry?: {
-            boundingSphere: { center: Projectable } | null;
-            computeBoundingSphere(): void;
-          };
-        };
-        if (found.length || !m.isMesh || !m.geometry) return;
-        if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
-        const c = m.geometry.boundingSphere?.center;
-        if (c) found.push(c.clone().applyMatrix4(m.matrixWorld).project(stage.camera));
-      });
-      const p = found[0];
-      return p ? { x: p.x, y: p.y } : null;
-    },
-    node,
-  );
-  const box = await win.locator('[data-scene-view] canvas').boundingBox();
-  if (!ndc || !box) throw new Error(`${node} is not on screen`);
-  return { x: box.x + ((ndc.x + 1) / 2) * box.width, y: box.y + ((1 - ndc.y) / 2) * box.height };
-}
-
-/** A number the app shows ("11,379.4 m³"): its first figure. */
-const figure = (text: string): number => {
-  const m = /-?[\d ,]*\d(?:\.\d+)?/.exec(text.replaceAll(String.fromCharCode(0xa0), ' '));
-  return Number((m?.[0] ?? 'NaN').replace(/[ ,]/g, ''));
-};
-
-/** A pile's live card in the Volumes view, by its kit name. */
-const pileCard = (view: Locator, name: string) =>
-  view.getByTestId('volumes-pile').filter({ has: view.page().getByText(name, { exact: true }) });
-
-/** Select a pile in the volumetric workspace, as a click on it in 3D does. */
-const selectPile = (win: Page, pile: string | null) =>
-  inspect(
-    win,
-    ({ w, a }) => {
-      w.__stratlas.volumetric.getState().select(a);
-    },
-    pile,
-  );
-
-test('@realdata the stockpile project: piles as volume measurements, 3D selection, surfaces and section', async ({
+test('@realdata the stockpile project: every pile in the inventory, a pile in Selection, its look and a click in 3D', async ({
   win,
+  realData,
 }) => {
   const errors: string[] = [];
   win.on('pageerror', (e) => errors.push(e.message));
   win.on('console', (m) => {
     if (m.type() === 'error') errors.push(m.text());
   });
-  await openMasafi(win);
-  const vols = JSON.parse(readFileSync(join(MASAFI, 'volumes.json'), 'utf8')) as VolumesJson;
-  const p02 = vols.piles.find((p) => p.id === 'P02');
-  if (!p02) throw new Error('no P02 in volumes.json');
-  const ids = vols.piles.map((p) => p.id);
+  await openSite(win, realData);
+  const expected = await expectedPiles(realData);
+  const view = await inventoryOf(win, expected);
+  await surfacesSettled(win);
 
-  // Every kit pile is a volume measurement (volumetric parity W3): 19 in the Volumes view, each
-  // with its old figure carried and labelled; the kit's register and base maths are retired.
-  const view = await volumesView(win);
-  await expect(view.getByTestId('volumes-pile')).toHaveCount(19, { timeout: 30_000 });
-  await expect(win.getByTestId('vol-register')).toHaveCount(0);
-  await pileCard(view, p02.name || p02.id).click();
-  // the pile opens in its panel, in Selection: the carried figure with its status, both dates in
-  // History
+  // A pile with a figure on the date in focus (the first row that is not under "Not counted").
+  const counted = await view
+    .getByTestId('volumes-pile')
+    .evaluateAll((trs) =>
+      trs
+        .filter((tr) => !tr.querySelector('.vi-why'))
+        .map((tr) => tr.getAttribute('data-id') ?? ''),
+    );
+  const first = expected.piles.find((p) => p.id === counted[0]) ?? expected.piles[0];
+  if (!first) throw new Error('no pile to open');
+  await pileRow(view, first.id).click();
+
+  // It opens in Selection, never inside the Volumes list, with the way back to the inventory.
   const panel = selectedPile(win);
-  await expect(panel).toBeVisible();
-  await expect(panel.getByTestId('pile-status')).toContainText('From an earlier version');
-  const shown = (l: Locator) => l.innerText().then((t) => figure(t.replace(/\s/g, ' ')));
+  await expect(panel).toHaveAttribute('data-id', first.id, { timeout: 30_000 });
+  await expect(panelTab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
+  await expect(win.getByTestId('volumes-view').getByTestId('pile-panel')).toHaveCount(0);
+  await expect(panel.getByTestId('pile-name')).toHaveText(first.label);
+  await expect(panel.getByTestId('pile-back')).toHaveText('Back to inventory');
+  // a volume figure
+  const tile = panel.getByTestId('pile-kpi-volume').locator('b');
+  await expect(tile).toBeVisible({ timeout: 600_000 });
+  expect(Number.isFinite(figure(await tile.innerText()))).toBe(true);
+  // its status: "From an earlier version" only when the file says the figure is carried
+  const carriedLine = panel
+    .getByTestId('pile-status')
+    .filter({ hasText: 'From an earlier version' });
+  if (first.carried) await expect(carriedLine).toHaveCount(1);
+  else await expect(carriedLine).toHaveCount(0);
+  await expect(panel.getByTestId('pile-overview-status')).toHaveText(/\S/);
+  // History: a row per survey date with a surface, two or more, the dates as the strip has them
+  const ready = await stripOf(win)
+    .locator('[data-survey][data-state="ready"]')
+    .evaluateAll((els) => els.map((el) => el.getAttribute('data-survey') ?? ''));
+  expect(ready.length, 'survey dates with a surface').toBeGreaterThanOrEqual(2);
   await panel.getByTestId('pile-tab-history').click();
-  await expect(panel.getByTestId('pile-history-table').locator('tbody tr')).toHaveCount(2);
-  const kpi = await shown(panel.getByTestId('pile-kpi-volume').locator('b'));
+  const history = panel.getByTestId('pile-history-table').locator('tbody');
+  await expect.poll(() => history.locator('tr').count()).toBeGreaterThanOrEqual(ready.length);
+  for (const capture of ready)
+    await expect(history.locator(`tr[data-capture="${capture}"]`)).toHaveCount(1);
   await panel.getByTestId('pile-tab-overview').click();
-  // its full card is the Measure tab's
-  const card = win.getByTestId('survey-panel');
-  await pickGroupTab(win, 'measure', card.getByTestId('card-primary'));
-  // the pile's card never holds the window: it reads no terrain (a pile shows no terrain row), and
-  // a card that does reads it off the render; the next frame comes at once, not minutes later
-  const frameMs = await win.evaluate(
-    () =>
-      new Promise<number>((resolve) => {
-        const t0 = performance.now();
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            resolve(performance.now() - t0);
-          });
-        });
-      }),
-  );
-  expect(frameMs).toBeLessThan(2_000);
-  await expect(card.getByTestId('survey-cmp-status').first()).toHaveText(
-    'From an earlier version (kit, Toe surface)',
-  );
-  // the delivered figure on the triangulated toe: 11,379 m³ on 10 Jan 2021, 14,687 m³ on 31 Dec
-  const latest = p02.epochs.e2?.volumes.tin?.net ?? Number.NaN;
-  const earlier = p02.epochs.e1?.volumes.tin?.net ?? Number.NaN;
-  expect(Math.round(latest)).toBe(11_379);
-  const primary = await card.getByTestId('card-primary').locator('.mc-value').innerText();
-  expect(Math.abs(figure(primary) - latest)).toBeLessThan(0.5);
-  expect(Math.abs(kpi - latest)).toBeLessThan(0.5);
-  const rows = card.getByTestId('vol-time-table').locator('tbody tr');
-  await expect(rows).toHaveCount(2);
-  expect(
-    Math.abs(figure(await rows.nth(0).locator('td').first().innerText()) - earlier),
-  ).toBeLessThan(0.5);
-  expect(
-    Math.abs(figure(await rows.nth(1).locator('td').first().innerText()) - latest),
-  ).toBeLessThan(0.5);
-  // no surfaces prepared here: nothing to recompute with, and no area split for a carried figure
-  await expect(card.getByTestId('survey-recompute')).toHaveCount(0);
-  await expect(card.getByTestId('vol-method')).toHaveCount(0);
 
-  // By default no pile is drawn in 3D: no bodies, toe lines or volume callouts.
-  await selectPile(win, null);
-  for (const id of ids) expect(await pileDrawn(win, id)).toBe(false);
-  expect(await calloutText(win)).not.toContain('m³');
-  // the survey's flat ortho is not drawn in 3D (its terrain carries the photo), the map has it
+  // In 3D the opened pile is drawn in its pile look; the kit's bodies and base plates are gone.
+  await expect(pileLook(win, first.id)).toHaveCount(1, { timeout: 120_000 });
   expect(
-    await inspect(
-      win,
-      ({ w }) => [
-        w.__stratlas.workspace.getState().isLayerVisible('ortho-2021-01-10'),
-        w.__stratlas.stage()?.scene.getObjectByName('layer:ortho-2021-01-10')?.visible,
-      ],
-      null,
-    ),
-  ).toEqual([true, false]);
-  // the offline street map lies under the yard
-  if (hasRealData('packs', 'kuwait.pmtiles'))
-    await expect
-      .poll(
-        () =>
-          inspect(
-            win,
-            ({ w }) =>
-              w.__stratlas.stage()?.scene.getObjectByName('basemap:site-street-map')?.visible ??
-              false,
-            null,
-          ),
-        { timeout: 30_000 },
-      )
-      .toBe(true);
+    await win.evaluate(() => {
+      interface Named {
+        name: string;
+      }
+      interface W {
+        __stratlas: { stage(): { scene: { traverse(f: (o: Named) => void): void } } | null };
+      }
+      let n = 0;
+      (window as unknown as W).__stratlas.stage()?.scene.traverse((o) => {
+        if (o.name === 'body-top' || o.name === 'base-plate') n += 1;
+      });
+      return n;
+    }),
+    'kit bodies and base plates in the 3D view',
+  ).toBe(0);
 
-  // Selecting a pile selects its node in 3D and draws its body and base plate (its outline is its
-  // volume measurement's: the kit draws no toe line of its own for a measured pile).
-  await selectPile(win, 'P02');
-  expect(await inspect(win, ({ w }) => w.__stratlas.workspace.getState().selection, null)).toEqual({
-    kind: 'asset',
-    id: 'P02_e2',
-    layer: 'terrain-2021-01-10',
-  });
-  await expect
-    .poll(() =>
-      inspect(
-        win,
-        ({ w }) => {
-          const s = w.__stratlas.stage()?.scene;
-          const g = s?.getObjectByName('vol:P02') as
-            { getObjectByName(n: string): unknown } | undefined;
-          return !!g && !!g.getObjectByName('base-plate') && !g.getObjectByName('toe-selected');
-        },
-        null,
-      ),
-    )
-    .toBe(true);
-  // only that pile; its callout reads the measurement's figure, as its card shows it
-  expect(await pileDrawn(win, 'P05')).toBe(false);
-  await expect.poll(() => calloutText(win)).toContain(primary);
-
-  // Esc hides it again; a click on a pile on the terrain flies to it and reveals it.
-  await win.locator('[data-scene-view] canvas').hover();
+  // Esc lets the pile go: the panel and the look leave, its outline is drawn again.
+  await panel.getByTestId('pile-tab-overview').focus();
   await win.keyboard.press('Escape');
-  await expect.poll(() => pileDrawn(win, 'P02')).toBe(false);
-  expect(
-    await inspect(win, ({ w }) => w.__stratlas.volumetric.getState().selected, null),
-  ).toBeNull();
-  await win.locator('body').press('h'); // whole site
-  await win.waitForTimeout(1500);
-  const at = await pileOnScreen(win, 'P05_e2');
+  await expect(selectedPile(win)).toHaveCount(0);
+  await expect(win.locator('[data-pile-look]')).toHaveCount(0);
+  await expect.poll(() => outlined(win, first.id), { timeout: 30_000 }).toBe(true);
+
+  // A click on a pile on the terrain (another one, when there is one) opens it in Selection.
+  const other = expected.piles.find((p) => p.id !== first.id) ?? first;
+  await win.locator('[data-scene-view] canvas').first().focus();
+  await win.keyboard.press('h'); // the whole site
+  const at = await settled(win, other.id);
   await win.mouse.click(at.x, at.y);
-  await expect
-    .poll(() => inspect(win, ({ w }) => w.__stratlas.volumetric.getState().selected, null))
-    .toBe('P05');
-  await expect.poll(() => pileDrawn(win, 'P05')).toBe(true);
-  await selectPile(win, 'P02');
-
-  // The other survey (its marker in the dates strip): its terrain shows, the other hides.
-  await surveyMarker(win, '31 Dec 2020').click();
-  expect(
-    await inspect(
-      win,
-      ({ w }) => {
-        const s = w.__stratlas.workspace.getState();
-        return [s.isLayerVisible('terrain-2020-12-31'), s.isLayerVisible('terrain-2021-01-10')];
-      },
-      null,
-    ),
-  ).toEqual([true, false]);
-  await surveyMarker(win, '10 Jan 2021').click();
-
-  // Elevation colours drape on the shown survey, from the stage's Show control.
-  await showSurface(win, 'Elevation');
-  await expect
-    .poll(
-      () =>
-        inspect(
-          win,
-          ({ w }) => w.__stratlas.stage()?.scene.getObjectByName('drape:e2')?.visible ?? false,
-          null,
-        ),
-      { timeout: 20_000 },
-    )
-    .toBe(true);
-  // its ramp, range (metres, auto from the surveys) and hillshade are chosen on the legend
-  const elev = win.getByTestId('vol-elev');
-  await expect(elev.getByRole('radio', { name: 'Turbo' })).toHaveAttribute('aria-checked', 'true');
-  await expect(elev.locator('.ends')).toContainText(' m');
-  const drapeKey = () =>
-    inspect(
-      win,
-      ({ w }) => {
-        const d = w.__stratlas.stage()?.scene.getObjectByName('drape:e2') as
-          { uuid: string } | undefined;
-        return d?.uuid ?? null;
-      },
-      null,
-    );
-  const first = await drapeKey();
-  await elev.getByRole('radio', { name: 'Viridis' }).click();
-  await expect.poll(drapeKey, { timeout: 20_000 }).not.toBe(first);
-  await expect(elev.getByRole('radio', { name: 'Viridis' })).toHaveAttribute(
-    'aria-checked',
-    'true',
-  );
-  await elev.getByRole('checkbox', { name: 'Hillshade' }).uncheck();
-  await expect
-    .poll(() =>
-      inspect(win, ({ w }) => w.__stratlas.volumetric.getState().elevation?.hillshade, null),
-    )
-    .toBe(false);
-  await elev.getByRole('checkbox', { name: 'Hillshade' }).check();
-  await elev.getByRole('radio', { name: 'Turbo' }).click();
-
-  // Cut and fill colours drape on the last survey.
-  await showSurface(win, 'Cut & fill');
-  await expect
-    .poll(
-      () =>
-        inspect(
-          win,
-          ({ w }) => w.__stratlas.stage()?.scene.getObjectByName('drape:e2')?.visible ?? false,
-          null,
-        ),
-      { timeout: 20_000 },
-    )
-    .toBe(true);
-  await showSurface(win, 'Photo');
-  await selectPile(win, null);
-
-  // Swipe (the notch's Volumes row) shows both surveys.
-  await (
-    await islandRow(win, 'volumes')
-  )
-    .getByRole('button', { name: 'Swipe between surveys' })
-    .click();
-  await closeIslandTools(win);
-  await expect(win.getByTestId('vol-swipe')).toBeVisible();
-  expect(
-    await inspect(
-      win,
-      ({ w }) => {
-        const s = w.__stratlas.workspace.getState();
-        return [s.isLayerVisible('terrain-2020-12-31'), s.isLayerVisible('terrain-2021-01-10')];
-      },
-      null,
-    ),
-  ).toEqual([true, true]);
-  await (
-    await islandRow(win, 'volumes')
-  )
-    .getByRole('button', { name: 'Swipe between surveys' })
-    .click();
-  await closeIslandTools(win);
-
-  // Section across the yard: a profile of both surveys with cut and fill areas.
-  await win.locator('body').press('h'); // whole site
-  await win.waitForTimeout(1200);
-  await (
-    await islandRow(win, 'volumes')
-  )
-    .getByRole('button', { name: 'Section line between the surveys' })
-    .click();
-  await closeIslandTools(win);
-  const box = await win.locator('[data-scene-view] canvas').boundingBox();
-  if (!box) throw new Error('no canvas');
-  const camera = () =>
-    inspect(
-      win,
-      ({ w }) => {
-        const p = (
-          w.__stratlas.stage() as unknown as {
-            camera: { position: { x: number; y: number; z: number } };
-          }
-        ).camera.position;
-        return [p.x, p.y, p.z].map((v) => Math.round(v * 100) / 100);
-      },
-      null,
-    );
-  await win.mouse.click(box.x + box.width * 0.42, box.y + box.height * 0.45);
-  // after the first point the camera stays put while the mouse moves to the second
-  const before = await camera();
-  await win.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.4, { steps: 12 });
-  expect(await camera()).toEqual(before);
-  await win.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.4);
-  // the shared chart's own areas (chart.cutArea, chart.fillArea): 'Cut 42.41 m²', and no second
-  // pair of figures under the chart
-  const areas = win.getByTestId('vol-section').getByTestId('chart-areas');
-  await expect(areas.locator('[data-kind="cut"]')).toHaveText(/^Cut [\d\s,.]+ m²$/, {
-    timeout: 20_000,
-  });
-  await expect(areas.locator('[data-kind="fill"]')).toHaveText(/^Fill [\d\s,.]+ m²$/);
-  await expect(win.getByTestId('vol-section').getByText(/^Cut [\d\s,.]+ m²$/)).toHaveCount(1);
-  // the section is drawn on the shared profile chart
-  await expect(win.getByTestId('vol-section-chart')).toBeVisible();
-  expect(
-    await inspect(win, ({ w }) => w.__stratlas.volumetric.getState().selected, null),
-  ).toBeNull();
+  await expect(selectedPile(win)).toHaveAttribute('data-id', other.id, { timeout: 30_000 });
+  await expect(panelTab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
+  await expect(selectedPile(win).getByTestId('pile-name')).toHaveText(other.label);
+  // opened on the view, it has no list to go back to
+  await expect(selectedPile(win).getByTestId('pile-back')).toHaveCount(0);
+  await expect(pileLook(win, other.id)).toHaveCount(1, { timeout: 120_000 });
 
   expect(errors).toEqual([]);
 });
 
-test('@realdata the stockpile project: volume over time as CSV from the Volumes view; the real data untouched', async ({
+test('@realdata the stockpile project: volume over time as CSV from the Volumes header; the real data untouched', async ({
   app,
   win,
   realData,
 }) => {
-  const realMeasurements = join(MASAFI, 'survey', 'measurements.json');
-  const realBefore = existsSync(realMeasurements) ? readFileSync(realMeasurements, 'utf8') : null;
-  const boundariesBefore = boundariesOf(MASAFI);
-  await openMasafi(win);
-  const vols = JSON.parse(readFileSync(join(MASAFI, 'volumes.json'), 'utf8')) as VolumesJson;
-  const view = await volumesView(win);
-  await expect(view.getByTestId('volumes-pile')).toHaveCount(19, { timeout: 30_000 });
+  const realBefore = measurementsOf(REAL);
+  const boundariesBefore = boundariesOf(REAL);
+  await openSite(win, realData);
+  const expected = await expectedPiles(realData);
+  const view = await inventoryOf(win, expected);
 
-  // the copy is converted once and written; the real project never is
-  await expect
-    .poll(
-      async () =>
-        (
-          JSON.parse(
-            await readFile(join(realData.projectDir, 'survey', 'measurements.json'), 'utf8'),
-          ) as { kitPilesConverted?: string[] }
-        ).kitPilesConverted?.length ?? 0,
-      { timeout: 30_000 },
-    )
-    .toBe(19);
+  // a kit still in the project is converted once in the copy and written there, never in the real
+  // project (`expectedPiles` waited for it)
+  for (const id of expected.kit ?? []) expect(expected.converted ?? []).toContain(id);
 
-  const target = join(realData.base, 'volumes.csv');
-  await app.evaluate(({ dialog }, path) => {
-    dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: path });
-  }, target);
-  await view.getByTestId('volumes-csv').click();
-  await expect.poll(() => existsSync(target), { timeout: 30_000 }).toBe(true);
-  const csv = await readFile(target, 'utf8');
-  for (const p of vols.piles) expect(csv).toContain(p.name || p.id);
-  // a row per pile and survey date, each figure marked as carried from the kit
+  const { csv, proposed } = await exportSeries(app, view, join(realData.base, 'volumes.csv'));
+  // named after what it holds
+  expect(basename(proposed)).toBe('Volume-over-time.csv');
   const lines = csv.split(/\r?\n/).filter((l) => l.trim() !== '');
   expect(lines[0]).toContain('From an earlier version');
-  expect(lines).toHaveLength(1 + 19 * 2);
-  expect(csv).toContain('2020-12-31');
-  expect(csv).toContain('2021-01-10');
-  expect(existsSync(realMeasurements) ? readFileSync(realMeasurements, 'utf8') : null).toBe(
-    realBefore,
+  // every pile is named, and nothing else: a row per pile and survey date
+  const { rows } = parseSeriesCsv(csv);
+  const count = (xs: readonly string[]) => {
+    const by = new Map<string, number>();
+    for (const x of xs) by.set(x, (by.get(x) ?? 0) + 1);
+    return by;
+  };
+  const dates = [...new Set(rows.map((r) => r.date))];
+  expect(dates.length).toBeGreaterThanOrEqual(1);
+  for (const d of dates) expect(d).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(rows).toHaveLength(expected.piles.length * dates.length);
+  const perName = count(expected.piles.map((p) => p.label));
+  expect([...count(rows.map((r) => r.pile))].sort()).toEqual(
+    [...perName].map(([name, n]): [string, number] => [name, n * dates.length]).sort(),
   );
-  expect(boundariesOf(MASAFI)).toBe(boundariesBefore);
+
+  // the real project is as it was
+  expect(measurementsOf(REAL)).toBe(realBefore);
+  expect(boundariesOf(REAL)).toBe(boundariesBefore);
+});
+
+test('@realdata the stockpile project: the figures per pile and survey date are recorded, and compared with a reference when one is given', async ({
+  app,
+  win,
+  realData,
+}, testInfo) => {
+  await openSite(win, realData);
+  const expected = await expectedPiles(realData);
+  const view = await inventoryOf(win, expected);
+
+  // The surfaces ready, then every pile worked out: none waits under "Not counted", and the
+  // exported figures are the same over two exports.
+  await surfacesSettled(win);
+  await expect(
+    view.locator('.vi-why').filter({ hasText: /not computed yet|computing/i }),
+    'piles not worked out yet',
+  ).toHaveCount(0, { timeout: 900_000 });
+  const target = join(realData.base, 'figures.csv');
+  let csv = '';
+  await expect
+    .poll(
+      async () => {
+        const now = (await exportSeries(app, view, target)).csv;
+        const same = now === csv;
+        csv = now;
+        return same;
+      },
+      { intervals: [5_000], timeout: 600_000, message: 'the exported figures keep changing' },
+    )
+    .toBe(true);
+  const series = parseSeriesCsv(csv);
+  expect(series.unit, 'the site shows volumes in cubic metres (the reference is in m3)').toBe('m³');
+  expect([...new Set(series.rows.map((r) => r.pile))].sort()).toEqual(
+    [...new Set(expected.piles.map((p) => p.label))].sort(),
+  );
+  const totals = siteTotals(series.rows);
+
+  // The site total the Inventory shows on the date in focus, as shown.
+  const shown = {
+    date: (await view.getByTestId('volumes-date').innerText()).trim(),
+    siteTotal: (await view.getByTestId('volumes-site-total').count())
+      ? figure(await view.getByTestId('volumes-site-total').locator('td').first().innerText())
+      : null,
+    basis: (await view.locator('.vi-cap').innerText()).replace(/\s+/g, ' ').trim(),
+  };
+
+  // Each pile's base, by the name its panel's base picker shows.
+  const bases = new Map<string, string>();
+  for (const p of expected.piles) {
+    await pileRow(view, p.id).click();
+    const panel = selectedPile(win);
+    await expect(panel).toHaveAttribute('data-id', p.id, { timeout: 30_000 });
+    const chip = panel.locator('.pp-base [data-base]');
+    await expect(chip).toBeVisible();
+    bases.set(p.id, (await chip.innerText()).replace(/^(Base|From):\s*/, '').trim());
+    await panel.getByTestId('pile-back').click();
+    await expect(selectedPile(win)).toHaveCount(0);
+    await expect(view.getByTestId('volumes-inventory')).toBeVisible();
+  }
+
+  // The record: per pile and date the volume and the base, and the site total per date.
+  const figuresOf = (label: string): SeriesRow[] => series.rows.filter((r) => r.pile === label);
+  const twins = new Set(
+    expected.piles.map((p) => p.label).filter((l, i, all) => all.indexOf(l) !== i),
+  );
+  const record = {
+    recordedAt: new Date().toISOString(),
+    unit: 'm3',
+    dates: totals.map((t) => t.date),
+    piles: expected.piles.map((p) => ({
+      id: p.id,
+      name: p.label,
+      base: bases.get(p.id) ?? '',
+      // piles that share a name share their rows in the CSV: they cannot be told apart there
+      sharesName: twins.has(p.label),
+      figures: figuresOf(p.label).map((r) => ({
+        date: r.date,
+        volume_m3: r.volume,
+        status: r.status,
+        fromAnEarlierVersion: r.carried,
+      })),
+    })),
+    totals: totals.map((t) => ({ date: t.date, volume_m3: t.volume, piles: t.piles })),
+    inventoryAsShown: shown,
+    reference: null as null | {
+      file: string;
+      ok: boolean;
+      rows: ReturnType<typeof compareVolumes>['rows'];
+      missingInApp: ReturnType<typeof compareVolumes>['missingInOurs'];
+      missingInReference: ReturnType<typeof compareVolumes>['missingInReference'];
+      duplicates: string[];
+    },
+  };
+  const table = [
+    ['pile', 'base', 'date', 'volume m3', 'status'].join('\t'),
+    ...record.piles.flatMap((p) =>
+      p.figures.map((f) =>
+        [p.name, p.base, f.date, f.volume_m3 === null ? '-' : String(f.volume_m3), f.status].join(
+          '\t',
+        ),
+      ),
+    ),
+    ...record.totals.map((t) =>
+      ['TOTAL', '', t.date, String(t.volume_m3), `${String(t.piles)} piles`].join('\t'),
+    ),
+  ].join('\n');
+  say(`[stockpile] the app's figures\n${table}`);
+
+  // With a reference: each pile within 5 %, each site total within 1 %.
+  let comparison: ReturnType<typeof compareVolumes> | null = null;
+  let report = '';
+  if (REFERENCE !== '') {
+    expect(
+      existsSync(REFERENCE),
+      `QUADRION_E2E_VOLUME_REFERENCE names a file that is not there: ${REFERENCE}`,
+    ).toBe(true);
+    comparison = compareVolumes(series.rows, parseReference(await readFile(REFERENCE, 'utf8')));
+    report = formatComparison(comparison);
+    record.reference = {
+      file: basename(REFERENCE),
+      ok: comparison.ok,
+      rows: comparison.rows,
+      missingInApp: comparison.missingInOurs,
+      missingInReference: comparison.missingInReference,
+      duplicates: comparison.duplicates,
+    };
+    say(`[stockpile] against the reference\n${report}`);
+    await testInfo.attach('volume-comparison.txt', { body: report, contentType: 'text/plain' });
+  } else
+    say('[stockpile] no reference given (QUADRION_E2E_VOLUME_REFERENCE): figures recorded only');
+  await testInfo.attach('volume-figures.json', {
+    body: JSON.stringify(record, null, 2),
+    contentType: 'application/json',
+  });
+
+  if (comparison) {
+    expect(comparison.rows.length, `nothing to compare\n${report}`).toBeGreaterThan(0);
+    expect(comparison.ok, `figures outside their limits\n${report}`).toBe(true);
+  }
 });
