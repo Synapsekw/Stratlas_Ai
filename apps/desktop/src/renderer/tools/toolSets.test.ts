@@ -1,7 +1,6 @@
 import { ProjectPurpose, ProjectType, ToolSet } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
-  actionSet,
   FAMILY_SET,
   GROUP_SET,
   inSets,
@@ -27,12 +26,12 @@ describe('the sets a project type gives', () => {
   it('the table, one row per type', () => {
     expect(PURPOSE_SETS).toEqual({
       survey: ['earthworks'],
-      construction: ['earthworks', 'engineering'],
-      'vertical-asset': ['engineering', 'thermal'],
+      construction: ['earthworks'],
+      'vertical-asset': ['thermal'],
       'confined-space': [],
-      'data-fusion': ['earthworks', 'road', 'engineering', 'telecom', 'thermal'],
+      'data-fusion': ['earthworks', 'road', 'telecom', 'thermal'],
       road: ['road'],
-      telecom: ['telecom', 'engineering'],
+      telecom: ['telecom'],
     });
   });
 
@@ -58,7 +57,7 @@ describe('the sets a project type gives', () => {
   });
 
   it('a project with neither opens as a vertical asset; a type of a later build falls back', () => {
-    expect(of({})).toEqual(['engineering', 'thermal']);
+    expect(of({})).toEqual(['thermal']);
     expect(of({ purpose: 'tunnel', type: 'volumetric' })).toEqual(['earthworks']);
   });
 
@@ -87,7 +86,6 @@ describe('records and switches', () => {
     expect(switchesFor({ purpose: 'vertical-asset' }, held('telecom'))).toEqual([
       { set: 'earthworks', on: false, locked: false },
       { set: 'road', on: false, locked: false },
-      { set: 'engineering', on: true, locked: false },
       { set: 'telecom', on: true, locked: true },
       { set: 'thermal', on: true, locked: false },
     ]);
@@ -95,12 +93,8 @@ describe('records and switches', () => {
 
   it('a switch saves the whole list: a set of the type can go off, a locked one cannot', () => {
     const m = { purpose: 'vertical-asset' };
-    expect(toggled(m, NOTHING_HELD, 'telecom', true)).toEqual([
-      'engineering',
-      'telecom',
-      'thermal',
-    ]);
-    expect(toggled(m, NOTHING_HELD, 'thermal', false)).toEqual(['engineering']);
+    expect(toggled(m, NOTHING_HELD, 'telecom', true)).toEqual(['telecom', 'thermal']);
+    expect(toggled(m, NOTHING_HELD, 'thermal', false)).toEqual([]);
     expect(toggled(m, held('thermal'), 'thermal', false)).toBeNull();
     expect(toggled(m, NOTHING_HELD, 'thermal', true)).toBeNull();
   });
@@ -115,12 +109,12 @@ describe('what belongs to which set', () => {
       volumes: 'earthworks',
       checks: 'earthworks',
       road: 'road',
-      engineering: 'engineering',
       coverage: 'telecom',
       thermal: 'thermal',
     });
-    // founder, 18 Nov 2026: Terrain analysis is in every project
+    // founder, 18 Nov 2026: Terrain analysis and the engineering model are in every project
     expect(GROUP_SET.terrain).toBeNull();
+    expect(GROUP_SET.engineering).toBeNull();
   });
 
   it('the right panel sections', () => {
@@ -131,7 +125,6 @@ describe('what belongs to which set', () => {
       'project.volumes': 'earthworks',
       'tools.road': 'road',
       'project.road': 'road',
-      'tools.engineering': 'engineering',
       'tools.coverage': 'telecom',
       'tools.thermal': 'thermal',
     });
@@ -146,15 +139,6 @@ describe('what belongs to which set', () => {
       coverage: 'telecom',
       stockpiles: 'earthworks',
     });
-  });
-
-  it('the right-click actions, by the first part of their id', () => {
-    expect(actionSet('antenna.editAzimuth')).toBe('telecom');
-    expect(actionSet('rf.coverage')).toBe('telecom');
-    expect(actionSet('thermal.analyse')).toBe('thermal');
-    expect(actionSet('engineering.create')).toBe('engineering');
-    expect(actionSet('cloud.settings')).toBeNull();
-    expect(actionSet('layer.dropToGround')).toBeNull();
   });
 
   it('a thing outside every set always passes; one in a set only with that set', () => {

@@ -5,6 +5,7 @@ import { workspace } from '@aio/workspace';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { bridge } from '../../shell';
 import { loadRasterIndex } from '../../thermal/raster';
+import { heldFacts } from '../../tools/heldFacts';
 import { workbench } from '../../workspace/workbench/workbenchStore';
 import {
   forgetThermal,
@@ -69,6 +70,21 @@ afterEach(() => {
 
 const ids = (target: MenuTarget, over = {}) =>
   actionsFor(target, makeActionCtx({ manifest, ...over })).map((i) => i.id);
+
+describe('the Thermal tool set', () => {
+  it('knows the project holds a thermal photo once a probe finds one', async () => {
+    expect(heldFacts.getState().thermal).toBe(false);
+    await primeThermal('p', 'vis', false);
+    expect(heldFacts.getState().thermal).toBe(false);
+    await primeThermal('p', 'th', false);
+    expect(heldFacts.getState().thermal).toBe(true);
+    // another project's photos are not this project's
+    forgetThermal();
+    expect(heldFacts.getState().thermal).toBe(false);
+    await primeThermal('other', 'th', false);
+    expect(heldFacts.getState().thermal).toBe(false);
+  });
+});
 
 describe('thermal.analyse', () => {
   it('probes a set again when its photo count changes', async () => {

@@ -3,6 +3,7 @@ import { workspace } from '@aio/workspace';
 import { bridge, shell } from '../../shell';
 import { loadRasterIndex } from '../../thermal/raster';
 import { useThermal } from '../../thermal/thermalStore';
+import { heldFacts } from '../../tools/heldFacts';
 import { workbench } from '../../workspace/workbench/workbenchStore';
 
 /*
@@ -26,10 +27,24 @@ export function thermalPhotosOf(projectId: string, layerId: string): readonly st
   return known.get(keyOf(projectId, layerId)) ?? [];
 }
 
+/**
+ * Tell the tool sets whether the open project holds a thermal photo (`tools/toolSets.ts`): the
+ * Thermal set is part of any project that does.
+ */
+function noteHeld(): void {
+  const projectId = workspace.getState().project?.id;
+  const prefix = `${projectId ?? ''}\n`;
+  const thermal =
+    projectId !== undefined &&
+    [...known].some(([key, ids]) => key.startsWith(prefix) && ids.length > 0);
+  if (heldFacts.getState().thermal !== thermal) heldFacts.setState({ thermal });
+}
+
 /** Forget every probe answer (another project, or a test). */
 export function forgetThermal(): void {
   known.clear();
   probedCount.clear();
+  noteHeld();
 }
 
 /**
@@ -55,6 +70,7 @@ export async function primeThermal(
     ids = [];
   }
   known.set(keyOf(projectId, layerId), ids);
+  noteHeld();
   return ids;
 }
 

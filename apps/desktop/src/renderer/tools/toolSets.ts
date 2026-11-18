@@ -2,7 +2,7 @@
  * Tools shown by project type (founder, 18 Nov 2026; `docs/plans/2026-11-18-tools-by-project.md`).
  * The one place that says which tool sets are part of a project and what belongs to each set. The
  * Tools tab, the right panel's sections, the measure families, the stage tools' modes, the "In
- * this project" list, the right-click menus and the command palette all ask it.
+ * this project" list and the command palette all ask it.
  *
  * The rule: a thing shows when its tool set is part of the project and the data it works on is
  * there. A thing outside every set (`null` in the tables) is in every project and has only the
@@ -24,31 +24,32 @@ export type { ToolSet };
 /** The sets, in the order the switches list them. */
 export const TOOL_SETS: readonly ToolSet[] = ToolSet.options;
 
+/** Every set: what a Data fusion project has. */
+export const ALL_SETS: ReadonlySet<ToolSet> = new Set(TOOL_SETS);
+
 /** The sets each project type starts with. One line per type: change a type's tools here. */
 export const PURPOSE_SETS: Readonly<Record<ProjectPurpose, readonly ToolSet[]>> = {
   survey: ['earthworks'],
-  // founder, 18 Nov 2026: a construction project has the engineering tools too
-  construction: ['earthworks', 'engineering'],
-  'vertical-asset': ['engineering', 'thermal'],
+  construction: ['earthworks'],
+  'vertical-asset': ['thermal'],
   'confined-space': [],
   // founder, 18 Nov 2026: the type for any mix of data gets every set
-  'data-fusion': ['earthworks', 'road', 'engineering', 'telecom', 'thermal'],
+  'data-fusion': ['earthworks', 'road', 'telecom', 'thermal'],
   road: ['road'],
-  telecom: ['telecom', 'engineering'],
+  telecom: ['telecom'],
 };
 
 /**
  * The records of its own a project holds, per set: piles, volume measurements or the stockpile kit
- * (earthworks), a road model (road), an engineering model (engineering), an antenna inventory, an
- * RF plan or a telecom measurement (telecom), a thermal photo (thermal). Data a set could merely
- * run on (any mesh, any photo) is not a record of it.
+ * (earthworks), a road model (road), an antenna inventory, an RF plan or a telecom measurement
+ * (telecom), a thermal photo (thermal). Data a set could merely run on (any mesh, any photo) is
+ * not a record of it.
  */
 export type Held = Readonly<Record<ToolSet, boolean>>;
 
 export const NOTHING_HELD: Held = {
   earthworks: false,
   road: false,
-  engineering: false,
   telecom: false,
   thermal: false,
 };
@@ -116,7 +117,8 @@ export const GROUP_SET: Readonly<Record<ToolGroup, ToolSet | null>> = {
   checks: 'earthworks',
   video: null,
   road: 'road',
-  engineering: 'engineering',
+  // founder, 18 Nov 2026: the engineering model is in every project
+  engineering: null,
   coverage: 'telecom',
   thermal: 'thermal',
   environment: null,
@@ -133,7 +135,7 @@ export const SECTION_SET: Readonly<Record<SectionId, ToolSet | null>> = {
   'tools.checks': 'earthworks',
   'tools.video': null,
   'tools.road': 'road',
-  'tools.engineering': 'engineering',
+  'tools.engineering': null,
   'tools.coverage': 'telecom',
   'tools.thermal': 'thermal',
   'tools.environment': null,
@@ -183,15 +185,6 @@ export const PROJECT_GROUP_SET: Readonly<Record<GroupId, ToolSet | null>> = {
   photos: null,
 };
 
-/** The first part of a right-click action's id that puts it in a set (`antenna.flyTo`). */
-const ACTION_PREFIX_SET: Readonly<Record<string, ToolSet>> = {
-  antenna: 'telecom',
-  rf: 'telecom',
-  thermal: 'thermal',
-  engineering: 'engineering',
-};
-
-/** The set a right-click action belongs to, by its id; null: it is in every project. */
-export function actionSet(actionId: string): ToolSet | null {
-  return ACTION_PREFIX_SET[actionId.slice(0, Math.max(0, actionId.indexOf('.')))] ?? null;
-}
+// The right-click actions need no table. Every action of a set already asks for that set's own
+// record before it shows (an antenna row, an antenna inventory for "RF coverage", a thermal photo
+// for "Analyse thermal"), and a project that holds the record has the set (`Held`).

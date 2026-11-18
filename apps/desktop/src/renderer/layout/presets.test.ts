@@ -2,6 +2,7 @@
 import { ProjectPurpose, type ProjectManifest } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { EMPTY_CTX, islandModes, toolsFor, TOOLS, type ToolCtx } from '../tools/registry';
+import { ALL_SETS } from '../tools/toolSets';
 import { applyPreset, gainedChanges, type LayoutOverrides } from './applyPreset';
 import { PRESETS, presetFor } from './presets';
 import {
@@ -35,7 +36,12 @@ const DATA_SETS: Readonly<Record<string, ProjectData>> = {
   roadWithPiles: data({ road: true, ortho: true, piles: true, photos: true }),
 };
 
-const ctxOf = (d: ProjectData): ToolCtx => ({ ...EMPTY_CTX, data: panelDataOf(d) });
+/** A project with every tool set: the presets order what a project has, they never add to it. */
+const ctxOf = (d: ProjectData): ToolCtx => ({
+  ...EMPTY_CTX,
+  sets: ALL_SETS,
+  data: panelDataOf(d),
+});
 
 describe('presets', () => {
   it('every purpose has a preset', () => {
@@ -113,7 +119,7 @@ describe('presets', () => {
     );
   });
 
-  it('reachable tools are the same for every preset', () => {
+  it('a preset never changes what the project shows, only the order', () => {
     for (const [name, d] of Object.entries(DATA_SETS)) {
       const ctx = ctxOf(d);
       const reach = (order: readonly (typeof PRESETS)['survey']['toolOrder'][number][]) =>
@@ -131,7 +137,7 @@ describe('presets', () => {
           layout.islandMode,
         );
       }
-      // the palette lists every tool, whatever the preset (each registry tool once)
+      // each registry tool once, whatever the preset
       expect(new Set(TOOLS.map((x) => x.id)).size).toBe(TOOLS.length);
     }
   });

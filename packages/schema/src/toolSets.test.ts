@@ -20,8 +20,8 @@ const parse = (toolSets: unknown) => {
 };
 
 describe('project tool sets', () => {
-  it('names the five sets', () => {
-    expect(ToolSet.options).toEqual(['earthworks', 'road', 'engineering', 'telecom', 'thermal']);
+  it('names the four sets', () => {
+    expect(ToolSet.options).toEqual(['earthworks', 'road', 'telecom', 'thermal']);
   });
 
   it('is optional: a manifest without it parses to what it was, and reads as not chosen', () => {

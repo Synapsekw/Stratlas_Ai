@@ -73,7 +73,7 @@ function ToolList({ order }: { order?: readonly ToolGroup[] }) {
   // a tool's body opened (not the fixed bodies): its section shows even without the data
   const opened = useMemo(() => new Set(tabs.filter((x) => !x.fixed).map((x) => x.id)), [tabs]);
   const groups = toolsFor(ctx, order);
-  const shown = sectionsOf('tools', data, opened);
+  const shown = sectionsOf('tools', data, ctx.sets, opened);
   const listed = new Set(groups.map((g) => GROUPS[g.group].section));
   const rows: { def: SectionDef; group: ToolGroup | null }[] = [
     ...groups.flatMap((g) => {

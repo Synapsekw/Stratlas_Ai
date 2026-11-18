@@ -4,9 +4,10 @@
  * why not, and how it starts. The Tools tab, the island's modes and the command palette all read
  * it; none keeps a list of its own.
  *
- * Availability depends on the data the project holds and the view in use, never on the project
- * type or purpose (founder, 30 Oct 2026): a layout preset may reorder the groups, it never removes
- * one, and a tool that cannot start says why instead of vanishing.
+ * What is offered follows the project (founder, 18 Nov 2026, `toolSets.ts`): a group, a mode or
+ * a tool shows when its tool set is part of the project and the data it works on is there. Within
+ * that, availability depends on the data and the view in use: a layout preset may reorder the
+ * groups, it never removes one, and a tool that cannot start says why instead of vanishing.
  */
 import { pinDisplay, usePinDisplay } from '@aio/annotate';
 import type { EngineStage } from '@aio/engine';
@@ -44,6 +45,7 @@ import {
   useAnnotateStage,
 } from '../workspace/workbench/benches/annotateStage';
 import { showBench, showSection } from '../workspace/workbench/followTool';
+import { FAMILY_SET, GROUP_SET, inSets, MODE_SET, type ToolSet } from './toolSets';
 import {
   sectionDef,
   type PanelData,
@@ -123,11 +125,13 @@ export const GROUPS: Readonly<Record<ToolGroup, GroupDef>> = {
 // ---------------------------------------------------------------- the context
 
 /**
- * What a tool's availability reads: the data the project holds and the view in use. There is no
- * project type or purpose in it, on purpose. `stage` and `compare` are what `start` acts on.
+ * What a tool's availability reads: the tool sets that are part of the project, the data it holds
+ * and the view in use. `stage` and `compare` are what `start` acts on.
  */
 export interface ToolCtx {
   data: PanelData;
+  /** The tool sets that are part of the project (`toolSets.ts`). */
+  sets: ReadonlySet<ToolSet>;
   /** The stage view. */
   mode: StageMode;
   /** The panes the tools work on: `map` when the map is all there is. */
@@ -172,6 +176,7 @@ export const NO_DATA: PanelData = {
 
 export const EMPTY_CTX: ToolCtx = {
   data: NO_DATA,
+  sets: new Set(),
   mode: '3d',
   tools: '3d',
   stage3d: false,
@@ -212,6 +217,8 @@ export interface ToolDef {
   testId?: string;
   /** The tool writes something: off in a read-only package. */
   saves?: boolean;
+  /** Its own tool set, where it differs from its group's (the Telecom measuring family). */
+  set?: ToolSet | null;
   /** Starting it opens its panel in the right sidebar (the island goes back to rest). */
   opens?: true;
   /** Listed by the command palette only: no tile on the island, no row in the Tools tab. */
@@ -289,6 +296,7 @@ const MEASURE_TOOLS: readonly ToolDef[] = ALL_TOOLS.map((e) => ({
   ...(e.key ? { shortcutId: e.key } : {}),
   keywords: [e.hintKey, `measureCat.family.${familyOf(e.tool) ?? 'line'}`],
   saves: e.saves,
+  set: FAMILY_SET[familyOf(e.tool) ?? 'line'],
   available: (c) =>
     e.tool === 'section-plane'
       ? in3d(c)
@@ -782,28 +790,24 @@ export const toolById = (id: string): ToolDef | undefined => TOOLS.find((d) => d
 // ---------------------------------------------------------------- what is offered
 
 /**
- * When a group's section shows in the Tools tab: the data its tools work on is there (a group
- * whose tools could start nowhere in this project). Never the project type.
+ * When a group's section shows in the Tools tab: its tool set is part of the project, and the
+ * data its tools work on is there (the data test of its section, `tabsModel.ts` `SECTIONS`).
  */
-const GROUP_NEEDS: Partial<Record<ToolGroup, (d: PanelData) => boolean>> = {
-  volumes: (d) => d.volumes,
-  pointcloud: (d) => d.pointcloud,
-  terrain: (d) => d.surface,
-  checks: (d) => d.surface,
-  video: (d) => d.video,
-  road: (d) => d.road,
-  engineering: (d) => d.model3d,
-  coverage: (d) => d.model3d,
-  thermal: (d) => d.photos,
-};
+export const groupShown = (g: ToolGroup, ctx: Pick<ToolCtx, 'data' | 'sets'>): boolean =>
+  inSets(ctx.sets, GROUP_SET[g]) && (sectionDef(GROUPS[g].section)?.needs?.(ctx.data) ?? true);
 
-export const groupShown = (g: ToolGroup, data: PanelData): boolean =>
-  GROUP_NEEDS[g]?.(data) ?? true;
+/** A tool is part of the project: its own tool set, else its group's. */
+export const toolShown = (def: ToolDef, ctx: Pick<ToolCtx, 'sets'>): boolean =>
+  inSets(ctx.sets, def.set === undefined ? GROUP_SET[def.group] : def.set);
+
+/** Every registered tool that is part of the project, in registry order (the palette's list). */
+export const toolsShown = (ctx: Pick<ToolCtx, 'sets'>): ToolDef[] =>
+  TOOLS.filter((d) => toolShown(d, ctx));
 
 /**
  * The groups to offer, each with its tools, in registry order, or `order` first and then the rest
  * in registry order (a preset leads with some groups, it never removes one). A group shows when
- * the project holds its data.
+ * its tool set is part of the project and the project holds its data.
  */
 export function toolsFor(
   ctx: ToolCtx,
@@ -812,10 +816,10 @@ export function toolsFor(
   const lead = order.filter((g, i) => TOOL_GROUPS.includes(g) && order.indexOf(g) === i);
   const groups = [...lead, ...TOOL_GROUPS.filter((g) => !lead.includes(g))];
   return groups
-    .filter((g) => groupShown(g, ctx.data))
+    .filter((g) => groupShown(g, ctx))
     .map((group) => ({
       group,
-      tools: TOOLS.filter((d) => d.group === group && !d.paletteOnly),
+      tools: TOOLS.filter((d) => d.group === group && !d.paletteOnly && toolShown(d, ctx)),
     }));
 }
 
@@ -958,7 +962,9 @@ export function stageModeAvailable(mode: StageMode, ctx: ToolCtx): Availability 
 
 /** The island's modes for this project and view, in their order. */
 export function islandModes(ctx: ToolCtx): IslandModeDef[] {
-  return ISLAND_MODES.map((m) => MODE_DEFS[m]).filter((m) => m.shows(ctx));
+  return ISLAND_MODES.map((m) => MODE_DEFS[m]).filter(
+    (m) => inSets(ctx.sets, MODE_SET[m.id]) && m.shows(ctx),
+  );
 }
 
 /** A mode's tools, in its own order. */
@@ -982,7 +988,7 @@ export function topTools(
   preferred: readonly string[] = [],
   max = TOP_TOOLS,
 ): ToolDef[] {
-  let own = modeTools(mode);
+  let own = modeTools(mode).filter((d) => toolShown(d, ctx));
   // with the map on the stage (Map or Split) Annotate leads with the map's tools
   if (mode === 'annotate' && ctx.mode !== '3d')
     own = [

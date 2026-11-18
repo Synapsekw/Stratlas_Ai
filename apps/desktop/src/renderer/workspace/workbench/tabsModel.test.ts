@@ -18,6 +18,7 @@ import {
   type Tab,
   type TabId,
 } from './tabsModel';
+import { ALL_SETS, type ToolSet } from '../../tools/toolSets';
 
 const tab = (id: TabId, over: Partial<Tab> = {}): Tab => ({
   id,
@@ -312,9 +313,38 @@ describe('the four panel tabs (D2)', () => {
     expect(new Set(bodies).size).toBe(bodies.length);
   });
 
-  it('shows a section for its data or its open tool, never for the project type', () => {
+  it('shows a section of a tool set only when the set is part of the project', () => {
+    const all = { ...NO_PANEL_DATA, model3d: true, surface: true, photos: true, pointcloud: true };
+    const tools = (...sets: ToolSet[]) => sectionsOf('tools', all, new Set(sets)).map((s) => s.id);
+    // a mesh alone does not show Coverage, photos alone do not show Thermal
+    expect(tools()).toEqual([
+      'tools.view',
+      'tools.measure',
+      'tools.annotate',
+      'tools.pointcloud',
+      'tools.terrain',
+      'tools.engineering',
+      'tools.environment',
+    ]);
+    expect(tools('telecom')).toContain('tools.coverage');
+    expect(tools('thermal')).toContain('tools.thermal');
+    expect(tools('earthworks')).toContain('tools.checks');
+    // a set that is on still needs its data
+    expect(sectionsOf('tools', NO_PANEL_DATA, ALL_SETS).map((s) => s.id)).toEqual([
+      'tools.view',
+      'tools.measure',
+      'tools.annotate',
+      'tools.environment',
+    ]);
+    // an open tool keeps its section, whatever the sets
+    expect(
+      sectionsOf('tools', NO_PANEL_DATA, new Set(), new Set<TabId>(['thermal'])).map((s) => s.id),
+    ).toContain('tools.thermal');
+  });
+
+  it('shows a section for its data or its open tool', () => {
     const project = (d = NO_PANEL_DATA, opened = new Set<TabId>()) =>
-      sectionsOf('project', d, opened).map((s) => s.id);
+      sectionsOf('project', d, ALL_SETS, opened).map((s) => s.id);
     expect(project()).toEqual([
       'project.inThisProject',
       'project.search',
@@ -333,14 +363,16 @@ describe('the four panel tabs (D2)', () => {
       'project.jobs',
     ]);
     // a tool opened without its data (Coverage from its chip) still shows its section
-    expect(sectionsOf('tools', NO_PANEL_DATA, new Set<TabId>(['rf'])).map((s) => s.id)).toContain(
+    expect(
+      sectionsOf('tools', NO_PANEL_DATA, ALL_SETS, new Set<TabId>(['rf'])).map((s) => s.id),
+    ).toContain('tools.coverage');
+    expect(sectionsOf('tools', NO_PANEL_DATA, ALL_SETS).map((s) => s.id)).not.toContain(
       'tools.coverage',
     );
-    expect(sectionsOf('tools', NO_PANEL_DATA).map((s) => s.id)).not.toContain('tools.coverage');
   });
 
   it('the flight lines row shows only with flight lines', () => {
-    const layers = (d = NO_PANEL_DATA) => sectionsOf('layers', d).map((s) => s.id);
+    const layers = (d = NO_PANEL_DATA) => sectionsOf('layers', d, ALL_SETS).map((s) => s.id);
     expect(layers()).not.toContain('layers.flightlines');
     // after the display options, whatever the project type
     expect(layers({ ...NO_PANEL_DATA, flightlines: true })).toEqual([

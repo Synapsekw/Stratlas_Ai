@@ -11,6 +11,7 @@ import { measureStore, stopTool } from '../../survey/measureStore';
 import { timelinePref } from '../timelinePref';
 import { annotateStage } from '../workbench/benches/annotateStage';
 import { EMPTY_CTX, type IslandMode, type ToolCtx, type ToolGroup } from '../../tools/registry';
+import { ALL_SETS } from '../../tools/toolSets';
 import { GroupControls, ModeRow, type GroupCtx } from './groups';
 import { IslandModes } from './IslandTools';
 
@@ -33,6 +34,7 @@ const DATA = {
 /** The registry's context: everything shown in 3D unless a test says otherwise. */
 const toolCtx = (over: Partial<ToolCtx> = {}): ToolCtx => ({
   ...EMPTY_CTX,
+  sets: ALL_SETS,
   data: DATA,
   stage3d: true,
   ...over,

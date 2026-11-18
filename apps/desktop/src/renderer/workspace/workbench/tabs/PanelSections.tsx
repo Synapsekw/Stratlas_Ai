@@ -14,6 +14,7 @@ import { useIsRoad } from '../../../road/useRoadMap';
 import { useMeasure } from '../../../survey/measureStore';
 import { FrontBody } from '../FrontBody';
 import { usePanelData } from '../panelData';
+import { useToolSets } from '../../../tools/useToolSets';
 import { ProjectList } from '../project/ProjectList';
 import { useLayout } from '../../../layout/useApplyPreset';
 import { StageShow } from '../../StageShow';
@@ -131,14 +132,15 @@ export function PanelSections({
   foot?: ReactNode;
 }) {
   const data = usePanelData();
+  const sets = useToolSets();
   const tabs = useWorkbench((s) => s.tabs);
   // a tool's body opened (not the fixed bodies, always in the store: Volumes, Changes)
   const opened = useMemo(() => new Set(tabs.filter((x) => !x.fixed).map((x) => x.id)), [tabs]);
   // Project's sections: the project type's lead, the rest in the tab's order (D7)
   const lead = useLayout()?.layout.projectSections;
   const defs = useMemo(
-    () => leadWith(sectionsOf(tab, data, opened), tab === 'project' ? lead : undefined),
-    [tab, data, opened, lead],
+    () => leadWith(sectionsOf(tab, data, sets, opened), tab === 'project' ? lead : undefined),
+    [tab, data, sets, opened, lead],
   );
   return (
     <div className="wb-sections" data-testid={`panel-sections-${tab}`}>

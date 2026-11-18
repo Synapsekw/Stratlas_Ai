@@ -14,6 +14,7 @@ import {
   TOOL_GROUPS,
   TOOLS,
   toolsFor,
+  toolsShown,
   topTools,
   type ToolCtx,
 } from './registry';
@@ -89,21 +90,86 @@ describe('one tool registry', () => {
     }
   });
 
-  it('availability depends on data, never on purpose', () => {
-    // the same layers and view, every project type and purpose: the same tools, the same reasons
-    const layers = [layer('pointcloud'), layer('video'), layer('photos')] as never;
+  describe('what is offered follows the project (founder, 18 Nov 2026)', () => {
+    const layers = [layer('pointcloud'), layer('mesh'), layer('video'), layer('photos')] as never;
     const view = { stage3d: true, measuresReady: true };
-    const base = offer(toolCtxOf(input({ ...view, manifest: { layers } })));
-    for (const purpose of ProjectPurpose.options) {
-      const m = { layers, purpose, type: 'inspection' } as never;
-      expect(offer(toolCtxOf(input({ ...view, manifest: m })))).toEqual(base);
-    }
-    for (const type of ProjectType.options) {
-      const m = { layers, type } as never;
-      expect(offer(toolCtxOf(input({ ...view, manifest: m })))).toEqual(base);
-    }
-    // the telecom tools are offered with a point cloud, whatever the project is for
-    expect(base['measure.azimuth']).toBe(true);
+    const ctxFor = (m: object, over: Partial<ToolCtxInput> = {}) =>
+      toolCtxOf(input({ ...view, manifest: { layers, ...m }, ...over }));
+    const groupsOf = (ctx: ToolCtx) => toolsFor(ctx).map((g) => g.group);
+
+    it('a mesh alone does not show Coverage, photos alone do not show Thermal', () => {
+      const confined = ctxFor({ purpose: 'confined-space', type: 'inspection' });
+      expect(groupsOf(confined)).toEqual([
+        'view',
+        'measure',
+        'annotate',
+        'pointcloud',
+        'terrain',
+        'video',
+        'engineering',
+        'environment',
+      ]);
+      // no telecom measuring tool in a confined space project
+      const ids = Object.keys(offer(confined));
+      expect(ids.filter((id) => /azimuth|antenna-tilt|clearance/.test(id))).toEqual([]);
+      expect(ids).toContain('measure.distance');
+    });
+
+    it('each project type brings its own groups', () => {
+      const of = (purpose: string) => groupsOf(ctxFor({ purpose }));
+      expect(of('telecom')).toContain('coverage');
+      expect(of('telecom')).not.toContain('thermal');
+      expect(of('vertical-asset')).toContain('thermal');
+      expect(of('vertical-asset')).not.toContain('coverage');
+      expect(of('survey')).toContain('checks');
+      expect(of('road')).not.toContain('checks');
+      // Terrain analysis and Engineering are in every project
+      for (const purpose of ProjectPurpose.options) {
+        expect(of(purpose)).toContain('terrain');
+        expect(of(purpose)).toContain('engineering');
+      }
+      expect(of('data-fusion')).toEqual(expect.arrayContaining(['checks', 'coverage', 'thermal']));
+      // the telecom tools start in a telecom project with a 3D view
+      expect(offer(ctxFor({ purpose: 'telecom' }))['measure.azimuth']).toBe(true);
+    });
+
+    it('an older project follows what its type stands for', () => {
+      const byType: Record<ProjectType, boolean> = {
+        volumetric: false,
+        road: false,
+        inspection: true,
+        fusion: true,
+        twin: true,
+      };
+      for (const type of ProjectType.options)
+        expect(groupsOf(ctxFor({ type })).includes('thermal'), type).toBe(byType[type]);
+    });
+
+    it('a set that is on still needs its data', () => {
+      const bare = toolCtxOf(input({ ...view, manifest: { layers: [], purpose: 'telecom' } }));
+      expect(groupsOf(bare)).not.toContain('coverage');
+      // its measuring family has no data test: it is there, and says why a tool cannot start
+      expect(Object.keys(offer(bare))).toContain('measure.azimuth');
+    });
+
+    it('records and the list a person chose bring a set into any project', () => {
+      const held = { earthworks: false, road: false, telecom: true, thermal: false };
+      const withAntennas = ctxFor({ purpose: 'survey' }, { held });
+      expect(groupsOf(withAntennas)).toContain('coverage');
+      expect(Object.keys(offer(withAntennas))).toContain('measure.azimuth');
+      const chosen = ctxFor({ purpose: 'survey', toolSets: ['thermal'] });
+      expect(groupsOf(chosen)).toContain('thermal');
+      expect(groupsOf(chosen)).not.toContain('checks');
+    });
+
+    it('the palette list is the tools that are part of the project', () => {
+      const ids = (m: object) => toolsShown(ctxFor(m)).map((d) => d.id);
+      expect(ids({ purpose: 'data-fusion' })).toEqual(TOOLS.map((d) => d.id));
+      expect(ids({ purpose: 'confined-space' })).not.toContain('measure.azimuth');
+      expect(ids({ purpose: 'confined-space' })).toContain('view.compare');
+      // the kit's swipe is an Earthworks tool: it comes with the kit, in any project
+      expect(ids({ purpose: 'confined-space' })).not.toContain('volumes.swipe');
+    });
   });
 
   it('order puts preset groups first and keeps the rest', () => {
@@ -192,7 +258,7 @@ describe("the island's modes", () => {
     expect(islandModes(plain).map((m) => m.id)).toEqual(['view', 'measure', 'annotate']);
     const all = toolCtxOf(
       input({
-        manifest: { layers: [layer('video')] as never },
+        manifest: { layers: [layer('video')] as never, purpose: 'data-fusion' },
         dated: true,
         volumes: true,
         road: true,
@@ -205,6 +271,9 @@ describe("the island's modes", () => {
     expect(islandModes({ ...all, mode: '3d', tools: '3d' }).map((m) => m.id)).not.toContain('road');
     const noRoad = { ...all, data: { ...all.data, road: false } };
     expect(islandModes(noRoad).map((m) => m.id)).toEqual(ISLAND_MODES.filter((m) => m !== 'road'));
+    // a mode of a tool set that is not part of the project is not listed
+    const noSets = { ...all, sets: new Set<never>() };
+    expect(islandModes(noSets).map((m) => m.id)).toEqual(['view', 'measure', 'annotate', 'video']);
   });
 
   it('every mode can say why it cannot be picked', () => {

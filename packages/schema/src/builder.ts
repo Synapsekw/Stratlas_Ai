@@ -40,7 +40,7 @@ export const PURPOSE_TYPE = {
  * project type gives a project its sets, its own records add theirs, and a person may choose the
  * list (`ProjectManifest.toolSets`). Everything outside a set is in every project.
  */
-export const ToolSet = z.enum(['earthworks', 'road', 'engineering', 'telecom', 'thermal']);
+export const ToolSet = z.enum(['earthworks', 'road', 'telecom', 'thermal']);
 export type ToolSet = z.infer<typeof ToolSet>;
 
 /** A severity model (with its classes) offered by the new project wizard. */

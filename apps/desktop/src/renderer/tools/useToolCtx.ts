@@ -1,6 +1,6 @@
 /**
  * The tool registry's context, read from the stores (`useToolCtx`), and the pure step under it
- * (`toolCtxOf`): what the project holds and the view in use, never its type or purpose.
+ * (`toolCtxOf`): the project's tool sets (`toolSets.ts`), what it holds and the view in use.
  */
 import { useVolumetric } from '@aio/volumetric';
 import { useWorkspace } from '@aio/workspace';
@@ -20,6 +20,8 @@ import { useStreetMap3d } from '../workspace/streetMap3d';
 import { layerData, usePanelData } from '../workspace/workbench/panelData';
 import type { PanelData } from '../workspace/workbench/tabsModel';
 import type { ToolCtx } from './registry';
+import { NOTHING_HELD, toolSetsFor, type Held } from './toolSets';
+import { useToolSets } from './useToolSets';
 
 /**
  * The stage's comparison of dates, as the island (which has the split) publishes it, so the Tools
@@ -57,8 +59,10 @@ export function usePublishCompare(compare: CompareDates): void {
 }
 
 /** What the context is built from, besides the stage and the comparison. */
-export interface ToolCtxInput extends Omit<ToolCtx, 'data' | 'stage' | 'compare'> {
-  /** The project's layers: the data kinds it holds. Only the layers are read. */
+export interface ToolCtxInput extends Omit<ToolCtx, 'data' | 'sets' | 'stage' | 'compare'> {
+  /** The records the project holds, per tool set; none unless given. */
+  held?: Held;
+  /** The project: its layers (the data kinds it holds), its type and the tool sets chosen. */
   manifest: Pick<ProjectManifest, 'layers'> & Partial<ProjectManifest>;
   /** The data the stores know beside the layers. */
   dated: boolean;
@@ -67,12 +71,13 @@ export interface ToolCtxInput extends Omit<ToolCtx, 'data' | 'stage' | 'compare'
   flightlines: boolean;
 }
 
-/** The context from what the project holds (pure): the manifest's layers, never its type. */
+/** The context from the project (pure): its tool sets, and the data its layers hold. */
 export function toolCtxOf(
   input: ToolCtxInput,
   extra: Pick<ToolCtx, 'stage' | 'compare'> = { stage: null, compare: null },
 ): ToolCtx {
-  const { manifest, dated, volumes, road, flightlines, ...rest } = input;
+  const { manifest, dated, volumes, road, flightlines, held, ...rest } = input;
+  const sets = toolSetsFor(manifest, held ?? NOTHING_HELD);
   const data: PanelData = {
     ...layerData(new Set(manifest.layers.map((l) => l.kind))),
     dated,
@@ -80,7 +85,7 @@ export function toolCtxOf(
     road,
     flightlines,
   };
-  return { ...rest, data, ...extra };
+  return { ...rest, data, sets, ...extra };
 }
 
 /**
@@ -101,6 +106,7 @@ export function useToolCtx(
   const compare = opts.compare ?? published;
   const tools = opts.tools;
   const data = usePanelData();
+  const sets = useToolSets();
   const mode = useShell((s) => s.stageMode);
   const pkg = useShell((s) => s.pkg !== null);
   const readOnly = useMeasure((s) => s.readOnly) || pkg;
@@ -124,6 +130,7 @@ export function useToolCtx(
   return useMemo(
     () => ({
       data,
+      sets,
       mode,
       // the tools work on the map alone only when the map is all the stage shows
       tools: tools ?? mode,
@@ -144,6 +151,7 @@ export function useToolCtx(
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `streetKey` stands for `streetMap`
     [
       data,
+      sets,
       mode,
       tools,
       stage,

@@ -2,6 +2,7 @@
 // under them the workbench's old tab ids (stage island D11, D13-D15), which still say which body
 // a tool brings forward. No React, no DOM: the panel renders what this decides.
 import type { MessageKey } from '@aio/ui';
+import { inSets, SECTION_SET, type ToolSet } from '../../tools/toolSets';
 
 /** Every workbench tab, in no particular order (the row's order is decided below). */
 export const TAB_IDS = [
@@ -209,7 +210,7 @@ export type SectionId =
   | 'project.road'
   | 'project.jobs';
 
-/** What the project holds, as far as the panel's sections care (never the project type). */
+/** What the project holds, as far as the panel's sections care (the data test of each). */
 export interface PanelData {
   pointcloud: boolean;
   /** A point cloud or mesh: a 3D model to review, cut or plan coverage on. */
@@ -245,8 +246,9 @@ export interface SectionDef {
   /** The old tab id whose body the section shows; null: a body of its own. */
   body: TabId | null;
   /**
-   * Shown when the project holds this data, or while its tool is open (its old tab is in the
-   * store); absent: always. Never decided by the project type.
+   * The data test: shown when the project holds this data, or while its tool is open (its old
+   * tab is in the store); absent: always. Whether the section belongs in the project at all is
+   * its tool set's (`tools/toolSets.ts` `SECTION_SET`).
    */
   needs?: (d: PanelData) => boolean;
   /** A wide tool: its header offers "Expand panel". */
@@ -378,18 +380,21 @@ export function sectionFor(old: TabId): { tab: PanelTab; section: SectionId } {
 }
 
 /**
- * The sections a tab shows: those whose data the project holds, and those whose tool is open (its
- * old id in `opened`), in the tab's order.
+ * The sections a tab shows, in the tab's order: those whose tool set is part of the project
+ * (`sets`) and whose data the project holds, and those whose tool is open (its old id in
+ * `opened`), whatever the sets and the data: an open tool is never without its place.
  */
 export function sectionsOf(
   tab: PanelTab,
   data: PanelData,
+  sets: ReadonlySet<ToolSet>,
   opened: ReadonlySet<TabId> = new Set(),
 ): SectionDef[] {
   return SECTIONS.filter(
     (s) =>
       tabOfSection(s.id) === tab &&
-      (s.needs === undefined || s.needs(data) || (s.body !== null && opened.has(s.body))),
+      ((inSets(sets, SECTION_SET[s.id]) && (s.needs === undefined || s.needs(data))) ||
+        (s.body !== null && opened.has(s.body))),
   );
 }
 
