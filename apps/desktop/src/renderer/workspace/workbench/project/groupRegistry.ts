@@ -7,6 +7,7 @@ import type { ComponentType } from 'react';
 import { projectKind } from '../../../builder/model';
 import { useRf } from '../../../rf/rfStore';
 import { useAntennas } from '../../../telecom/antennaStore';
+import { useToolSets } from '../../../tools/useToolSets';
 import { antennasGroup } from '../../../telecom/AntennasGroup';
 import { useHasVolumeMeasurements } from '../view';
 import { coveragePlanGroup } from './groups/CoveragePlanGroup';
@@ -55,6 +56,7 @@ export function useOrderedGroups(
   const hasAntennas = useAntennas((s) => s.file !== null);
   const hasRfPlan = useRf((s) => s.hasFile);
   const hasVolumes = useHasVolumeMeasurements();
+  const sets = useToolSets();
   // every group's hooks run on every render (the registry never changes while mounted)
   const facts = groups.map((def) => ({
     id: def.id,
@@ -62,7 +64,7 @@ export function useOrderedGroups(
     applies: def.useApplies(),
   }));
   const category = projectCategory({ kind, hasAntennas, hasRfPlan, hasVolumes });
-  return orderGroups(category, facts).flatMap((id, i) => {
+  return orderGroups(category, facts, sets).flatMap((id, i) => {
     const def = groups.find((g) => g.id === id);
     return def ? [{ ...def, defaultOpen: i === 0 }] : [];
   });

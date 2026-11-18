@@ -1,5 +1,6 @@
 // The "In this project" list's content groups (right sidebar, Project tab). Pure: no React.
 import type { ProjectKind } from '../../../builder/model';
+import { inSets, PROJECT_GROUP_SET, type ToolSet } from '../../../tools/toolSets';
 
 /** Every content group the list knows; groups with no registered body are skipped. */
 export type GroupId =
@@ -14,14 +15,11 @@ export const groupSectionId = (group: GroupId): string => `project-${group}`;
  */
 export const GROUP_DEFAULT_OPEN = false;
 
-/** The tower groups: only a telecom or vertical asset project names them. */
-const TELECOM_GROUPS: ReadonlySet<GroupId> = new Set(['antennas', 'sectors', 'coverage']);
-
 /** What the project is mainly about; it orders the list. */
 export type Category = 'telecom' | 'survey' | 'construction' | 'vertical-asset' | 'default';
 
-/** A category's groups in order; an `onlyIfAny` one shows only once it has items. */
-export const CATEGORY_ORDER: Record<Category, readonly { id: GroupId; onlyIfAny?: true }[]> = {
+/** A category's groups in order. */
+export const CATEGORY_ORDER: Record<Category, readonly { id: GroupId }[]> = {
   telecom: [
     { id: 'antennas' },
     { id: 'sectors' },
@@ -31,12 +29,7 @@ export const CATEGORY_ORDER: Record<Category, readonly { id: GroupId; onlyIfAny?
   ],
   survey: [{ id: 'measurements' }, { id: 'issues' }],
   construction: [{ id: 'changes' }, { id: 'measurements' }, { id: 'issues' }, { id: 'photos' }],
-  'vertical-asset': [
-    { id: 'issues' },
-    { id: 'measurements' },
-    { id: 'photos' },
-    { id: 'antennas', onlyIfAny: true },
-  ],
+  'vertical-asset': [{ id: 'issues' }, { id: 'measurements' }, { id: 'photos' }],
   default: [{ id: 'measurements' }, { id: 'issues' }],
 };
 
@@ -68,29 +61,22 @@ export function projectCategory(input: {
 }
 
 /**
- * The ids to show, in order: the category's registered groups that apply (an `onlyIfAny` one only
- * with items), then every other registered group that has items, in registry order, except the
- * tower groups in a survey or construction project (an inventory left from another project, or
- * one a survey never asked for, is not part of it). `groups` is
- * the registered groups in registry order; an id the category names but nobody registered is
- * skipped.
+ * The ids to show, in order: the category's registered groups that apply, then every other
+ * registered group that has items, in registry order. A group of a tool set shows only where that
+ * set is part of the project (`sets`, `tools/toolSets.ts`): the tower groups with Telecom, which
+ * the project type brings, or a switch, or an antenna inventory the project already holds.
+ * `groups` is the registered groups in registry order; an id the category names but nobody
+ * registered is skipped.
  */
 export function orderGroups(
   category: Category,
   groups: readonly { id: GroupId; count: number; applies: boolean }[],
+  sets: ReadonlySet<ToolSet>,
 ): GroupId[] {
-  const byId = new Map(groups.map((g) => [g.id, g]));
+  const shown = groups.filter((g) => g.applies && inSets(sets, PROJECT_GROUP_SET[g.id]));
+  const byId = new Map(shown.map((g) => [g.id, g]));
   const out: GroupId[] = [];
-  for (const entry of CATEGORY_ORDER[category]) {
-    const g = byId.get(entry.id);
-    if (!g?.applies) continue;
-    if (entry.onlyIfAny && g.count <= 0) continue;
-    out.push(entry.id);
-  }
-  const towerless = category === 'survey' || category === 'construction';
-  for (const g of groups) {
-    if (towerless && TELECOM_GROUPS.has(g.id)) continue;
-    if (g.applies && g.count > 0 && !out.includes(g.id)) out.push(g.id);
-  }
+  for (const entry of CATEGORY_ORDER[category]) if (byId.has(entry.id)) out.push(entry.id);
+  for (const g of shown) if (g.count > 0 && !out.includes(g.id)) out.push(g.id);
   return out;
 }

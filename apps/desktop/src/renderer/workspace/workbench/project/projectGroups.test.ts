@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { projectKind } from '../../../builder/model';
+import { ALL_SETS, type ToolSet } from '../../../tools/toolSets';
 import { CATEGORY_ORDER, orderGroups, projectCategory, type GroupId } from './projectGroups';
 
 const all = (over: Partial<Record<GroupId, { count?: number; applies?: boolean }>> = {}) =>
@@ -11,7 +12,7 @@ const all = (over: Partial<Record<GroupId, { count?: number; applies?: boolean }
 
 describe('orderGroups', () => {
   it('orders a telecom project: antennas, sectors, coverage, measurements, issues', () => {
-    expect(orderGroups('telecom', all())).toEqual([
+    expect(orderGroups('telecom', all(), ALL_SETS)).toEqual([
       'antennas',
       'sectors',
       'coverage',
@@ -21,25 +22,25 @@ describe('orderGroups', () => {
   });
 
   it('orders a survey project and skips groups that are not built yet', () => {
-    expect(orderGroups('survey', all())).toEqual(['measurements', 'issues']);
+    expect(orderGroups('survey', all(), ALL_SETS)).toEqual(['measurements', 'issues']);
   });
 
   it('orders a construction project, skipping the unbuilt Changes and Photos', () => {
-    expect(orderGroups('construction', all())).toEqual(['measurements', 'issues']);
+    expect(orderGroups('construction', all(), ALL_SETS)).toEqual(['measurements', 'issues']);
   });
 
   it('puts a group outside the list at the end once it has items', () => {
-    expect(orderGroups('default', all({ antennas: { count: 3 } }))).toEqual([
+    expect(orderGroups('default', all({ antennas: { count: 3 } }), ALL_SETS)).toEqual([
       'measurements',
       'issues',
       'antennas',
     ]);
-    expect(orderGroups('default', all())).toEqual(['measurements', 'issues']);
+    expect(orderGroups('default', all(), ALL_SETS)).toEqual(['measurements', 'issues']);
   });
 
-  it('vertical-asset shows Antennas only with antennas', () => {
-    expect(orderGroups('vertical-asset', all())).toEqual(['issues', 'measurements']);
-    expect(orderGroups('vertical-asset', all({ antennas: { count: 2 } }))).toEqual([
+  it('vertical-asset shows Antennas only with antennas, after its own groups', () => {
+    expect(orderGroups('vertical-asset', all(), ALL_SETS)).toEqual(['issues', 'measurements']);
+    expect(orderGroups('vertical-asset', all({ antennas: { count: 2 } }), ALL_SETS)).toEqual([
       'issues',
       'measurements',
       'antennas',
@@ -47,7 +48,7 @@ describe('orderGroups', () => {
   });
 
   it('leaves out a group that does not apply, even in its category', () => {
-    expect(orderGroups('telecom', all({ sectors: { applies: false } }))).toEqual([
+    expect(orderGroups('telecom', all({ sectors: { applies: false } }), ALL_SETS)).toEqual([
       'antennas',
       'coverage',
       'measurements',
@@ -56,17 +57,32 @@ describe('orderGroups', () => {
   });
 
   it('puts a group with items that the category does not name after the named ones', () => {
-    expect(orderGroups('default', all({ sectors: { count: 1 } }))).toEqual([
+    expect(orderGroups('default', all({ sectors: { count: 1 } }), ALL_SETS)).toEqual([
       'measurements',
       'issues',
       'sectors',
     ]);
   });
 
-  it('never shows the telecom groups in a survey or construction project, items or not', () => {
+  it('shows the tower groups only where Telecom is part of the project', () => {
     const items = all({ antennas: { count: 3 }, sectors: { count: 2 }, coverage: { count: 1 } });
-    expect(orderGroups('survey', items)).toEqual(['measurements', 'issues']);
-    expect(orderGroups('construction', items)).toEqual(['measurements', 'issues']);
+    const none = new Set<ToolSet>(['earthworks', 'road', 'thermal']);
+    for (const category of ['telecom', 'survey', 'construction', 'default'] as const)
+      expect(orderGroups(category, items, none), category).toEqual(['measurements', 'issues']);
+    expect(orderGroups('telecom', all(), none)).toEqual(['measurements', 'issues']);
+  });
+
+  it('a survey that holds antennas lists them: its records bring Telecom', () => {
+    const items = all({ antennas: { count: 3 }, sectors: { count: 2 }, coverage: { count: 1 } });
+    const telecom = new Set<ToolSet>(['earthworks', 'telecom']);
+    expect(orderGroups('survey', items, telecom)).toEqual([
+      'measurements',
+      'issues',
+      'antennas',
+      'sectors',
+      'coverage',
+    ]);
+    expect(orderGroups('construction', items, telecom)).toContain('antennas');
   });
 });
 
