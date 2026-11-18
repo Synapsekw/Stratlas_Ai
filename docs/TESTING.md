@@ -166,8 +166,12 @@ Two survey dates (DSM and ortho GeoTIFFs) of a corner of a stockpile yard with t
 - [ ] **Add a second survey date** without a surface: "Every survey needs a DSM or a point cloud." and **Create project** stays greyed out. The same date twice: "Two surveys have the same date."
 - [ ] Second date `2021-01-10` with `2021-01-10_dsm.tif` and `2021-01-10_ortho.tif`. The summary reads "2 survey dates, built after creating (see Processing)". **Create project**.
 - [ ] The **Processing** drawer opens by itself on **Volumetric survey** (about 20 s): Read the surveys and set the grid, DSM of survey 1 and 2, Ortho tiles of survey 1 and 2, Detect piles, toe lines, bases and volumes, Package the kit grids, Terrain meshes, ortho pyramids and volumes, Write to the project. **Done**.
-- [ ] **Scene**: two textured terrains and the **Volumes** register with 2 piles (P06 and P07 of the delivered stockpile project, numbered P01 and P02 here). Triangulated toe: P01 1,612.6 m³ (31 Dec) and 1,446.7 m³ (10 Jan), P02 262.4 and 309.7 m³; change -342.3 and +89.2 m³. These are the delivered figures; the README lists all four bases.
-- [ ] Switch dates and bases, click a pile, **Swipe** between the dates.
+- [ ] **Scene**: two textured terrains, and 2 piles under **Stockpiles** in the left sidebar and in the right panel under **Project**, **Volumes**, **Inventory** (P06 and P07 of the delivered stockpile project, numbered P01 and P02 here). The number beside **Volumes** is 2.
+- [ ] Reference figures of the delivered project, on its triangulated toe base: P01 1,612.6 m³ (31 Dec) and 1,446.7 m³ (10 Jan), P02 262.4 and 309.7 m³; change -342.3 and +89.2 m³; the README lists all four of its bases. The app computes each pile on **Toe surface**, a triangulation of the toe line, so its figures can differ a little from these.
+- [ ] Switch dates (the dates strip under the view, or **Alt+Left** and **Alt+Right**): the **Volumes** header and the pile rows follow.
+- [ ] Click a pile's row in **Inventory**: the pile panel opens in the **Selection** tab with **Back to inventory**; in 3D the pile is red over a blue base in a glass box. Click a pile in the 3D view: the same panel, without the link.
+- [ ] In the pile panel, click the **Base** chip and pick **Lowest point**, then **Toe surface** again: the volume follows each time, and the inventory names the same base.
+- [ ] **Tools**, **Volumes** holds **Draw volume** and **Swipe** only. **Swipe** (3D view) slides between the first and the last survey.
 - [ ] Quit Stratlas during a run and reopen: the **Processing** chip reads "1 needs attention", and in the drawer, under **Finished**, the job shows **Interrupted** with **Resume**. Once the drawer has been opened the chip goes back to **Processing** and stays so at the next start. Resume carries on from the next step.
 
 ### P3 Road survey from raw data (the road sample)

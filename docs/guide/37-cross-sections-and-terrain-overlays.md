@@ -2,7 +2,7 @@
 
 ## Cross-sections
 
-In the **Measure** workbench, draw a line with **Line**, **Cross-section**. The section opens docked under the view.
+In the **Measure** workbench (the **Measure** section of the right panel's **Tools** tab), draw a line with **Line**, **Cross-section**. The section opens docked under the view.
 
 - Under **Surfaces**, tick the surveys and design surfaces to show; each gets its own coloured line.
 - Click the chart to add a pin. Each pin lists every surface's elevation at that chainage, the difference ("Δ") to the surface you click, and the grade in degrees, percent and ratio.

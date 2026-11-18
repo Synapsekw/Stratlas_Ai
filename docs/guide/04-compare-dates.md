@@ -72,7 +72,7 @@ With two maps or two orthos of different dates, a bar at the top of the views of
 
 Both sides show the same things, each for its own date:
 
-- On a stockpile project: the surface colours (**Photo**, **Elevation**, **Cut & fill**), the pile bodies, the toe lines and the callouts. One switch, the stage's **Show** control while the **Volumes** tab is open, sets both sides. The legend on the left sets the elevation ramp and range for both sides; the right view shows the same legend without the controls.
+- On a stockpile project: the surface colours (**Photo**, **Elevation**, **Cut & fill**), the toe lines and the callouts. One switch, **Surface and piles** in the right panel's **Layers & display** tab, sets both sides. The legend on the left sets the elevation ramp and range for both sides; the right view shows the same legend without the controls.
 - The point cloud legends (elevation, classification, change), on each side that shows the colouring.
 - Saved survey measurements. A measurement of the whole site is drawn on both sides, a measurement of one survey date on the side that shows that date. This also holds for two maps.
 

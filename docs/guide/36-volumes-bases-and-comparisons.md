@@ -6,52 +6,47 @@ Every polygon can hold one or more comparisons, each from one surface to another
 
 A comparison takes the height difference **To** minus **From** over the polygon. Where **To** is higher it is fill, where it is lower it is cut. **Net** is fill minus cut and **Total** is fill plus cut. Cells at the polygon's edge count by the share of the cell inside it. Where either surface has no data, the area shows as **Not covered**: a comparison that is partly outside the survey says so, and one mostly outside it is refused.
 
-Surveys are prepared once as height tiles. If a comparison says "No survey surface is prepared yet", click **Prepare surfaces** and wait for the job: the island shows its progress beside the date, and the **Jobs** tab of the right panel lists it.
+Surveys are prepared once as height tiles. If a comparison says "No survey surface is prepared yet", click **Prepare surfaces** and wait for the job: the island shows its progress beside the date, and the **Jobs** section of the right panel's **Project** tab lists it.
 
 ## Add a comparison
 
-In a polygon's panel, open **Comparisons** and pick **From** and **To**:
+In a polygon's panel, **Comparisons** holds the volume card. Each comparison has a chip for what it is measured from and, unless it is a volume on a base under the current survey, a **To** chip:
 
-- **Surveys**: **Current survey** (the date you are viewing), **Previous survey**, or any prepared survey;
-- **Designs**: any design surface layer, with its vertical offset;
-- **Bases**, computed from the polygon:
-  - **Reference level**: a typed level, or **Set to highest** and **Set to lowest** along the perimeter;
-  - **Smart (triangulated perimeter)**: a triangulated surface through the perimeter;
-  - **Best-fit plane**: a plane fitted to the perimeter;
-  - **Mean perimeter level**: a flat level at the mean perimeter height;
-  - **Custom base (edit vertices)**: your own level or offset at each vertex, in **Custom base vertices**; select several and move them together, or set them all to one level.
+- The first chip reads "Base: ..." or "From: ...". Click it for the seven bases, computed from the polygon (see [The base](#the-base)); **Previous survey or design** in that list opens the prepared surveys and the design surface layers, each design with its vertical offset.
+- **To** lists the **Surveys** (**Current survey**, the date you are viewing, **Previous survey**, or any prepared survey) and the **Designs**.
+- **Fixed level** shows its level field under the chips. **Custom** shows **Custom base vertices**: your own level or offset at each vertex; select several and move them together, or set them all to one level.
 
-The swap button exchanges **From** and **To**. At least one side must be a surface; with no survey on either side the panel warns "No reference to current terrain". **Add a comparison** adds another item: a landfill lift, for example, against the previous survey, an older survey and the cell design at once.
+The swap button (**Swap From and To**) exchanges the two sides. One side must be a survey or a design, never a base on both; with no survey on either side the card warns "Neither side reads a survey". **+ Compare date** adds another comparison: a landfill lift, for example, against the previous survey, an older survey and the cell design at once.
 
-Results show **Cut**, **Fill**, **Net**, **Total** and the area of each. They update live while you edit the polygon. When a surface, offset, base, deadband or calibration changes, the result shows **Stale, recompute** until you click **Recompute**.
+Results show **Cut**, **Fill**, **Net**, **Cut and fill together** and the area of each. They update live while you edit the polygon. When a surface, offset, base, deadband or calibration changes, the result shows **Stale, recompute** until you click **Recompute**.
 
 ## Heat maps and the deadband
 
 **Heat map of the difference** shows the change **On the terrain (3D)**, **On the map (2D)** or as **Contours**. **Colours and stops** sets the colour stops, smooth or **Stepped colours**, and **Invert colours**.
 
-Stops either side of zero make a deadband: small changes inside it are left clear. They still count in the volumes unless you tick **Use deadband in calculations** in the comparison, and the result then says "Deadband used".
+Stops either side of zero make a deadband: small changes inside it are left clear. They still count in the volumes unless you tick **Ignore changes smaller than** in the comparison; the line under the result then names it with its value.
 
 ## Materials and calculators
 
-**Materials**, under **Site data** in the **Measure** workbench, opens the **Volumes** tab on its **Materials** pane: each material's name, density in t/m³ (from a survey date, with its history), its loose factor, its piles and tonnes, with **Import CSV** and **Export CSV** (see [The Volumes view](09-volumes-and-roads.md#the-volumes-view)).
+**Materials**, under **Site data** in the **Measure** section of the right panel's **Tools** tab, opens the **Volumes** section of the **Project** tab on its **Materials** pane: each material's name, density in t/m³ (from a survey date, with its history), its loose factor, its piles and tonnes, with **Import CSV** and **Export CSV** (see [The Volumes view](09-volumes-and-roads.md#the-volumes-view)).
 
-In a polygon's **Material and calculators**, pick the material and which volume to use (net, fill or cut). The panel shows the volume as bank, loose and compacted, and the weight. Type a **Weighed tonnage (t)** to get the **Achieved density**: 63,000 t over 70,104 m³ is 0.899 t/m³. Calculators are for display only; the stored volume never changes.
+In a polygon's **Material and calculators**, pick the material and which volume to use (net, fill or cut). The panel shows the volume as bank, loose and compacted, and the weight. Type a **Weighed tonnage (t)** to get the **Achieved density**: 63,000 t over 70,104 m³ is 0.899 t/m³. Calculators are for display only; the stored volume never changes, and a note under the field says "The weighed tonnage is not saved with the project."
 
 ## Several measurements at once
 
-Select several measurements in the list: the totals add their comparisons up. **Change for all** sets one surface or base on every selected measurement, and the unit choices apply to all of them.
+Select several measurements in the list: the totals add their comparisons up. **Change for all** sets one surface or base on every selected measurement, with the bases under the same names as on the card, and the unit choices apply to all of them.
 
 ## Whole site cut and fill
 
-**Whole site cut and fill**, under **Site data** in the **Measure** workbench, compares two surveys or designs over their whole overlap in a background job. It then suggests cut and fill regions as drafts. **Keep** the ones you want: they become volume measurements in the folder "Whole-site regions".
+**Find cut and fill regions** ("Whole site cut and fill" until November 2026), under **Site data** in the **Measure** section of the **Tools** tab, compares two surveys or designs over their whole overlap in a background job. It then suggests cut and fill regions as drafts. **Keep** the ones you want: they become volume measurements in the folder "Whole-site regions". For the cut and fill totals between two surveys, use **Cut & fill** in the Volumes view ([The Volumes view](09-volumes-and-roads.md#the-volumes-view)).
 
 **Snap to ortho edges** moves the ticked regions' boundaries to the edges seen in the ortho, with the same local model as **Suggest boundaries** ([Measuring and templates](35-measuring-and-templates.md)). A region is snapped only when the edge in the ortho matches it; otherwise it stays as it was, and the panel says why. Snapped regions are still drafts.
 
 ## The base
 
-A volume's card names its base in a chip, for example "Base: Triangulated toe". Click it to pick another:
+A volume's card names its base in a chip, for example "Base: Toe surface". Click it to pick another. A base has one name everywhere it is read: the card, the pile panel, **Change for all**, the inventory, the CSV files and the reports.
 
-- **Triangulated toe**, the default: the surveying norm for piles on uneven ground. Where a pile's edge runs along another pile's, that stretch is the saddle between the two heaps, not the ground, so the base stands on the rest of the toe there (the edge-based bases below do the same);
+- **Toe surface**, the default, a surface triangulated through the toe line: the surveying norm for piles on uneven ground. Where a pile's edge runs along another pile's, that stretch is the saddle between the two heaps, not the ground, so the base stands on the rest of the toe there (the edge-based bases below do the same);
 - **Lowest point**: bins, bunkers, piles against walls;
 - **Best-fit plane**: a flat, level pad;
 - **Fixed level**: a known floor height;
@@ -70,7 +65,7 @@ A volume measurement with **Current survey** on one side has a volume on every s
 - **The card**: **Volume over time**, a chart and a table with the volume, the change since the previous date and, with a material, the tonnage. A date without survey data is left blank, never 0; a stale figure is drawn hollow and marked.
 - **The dates strip**: the site's volume or tonnes stacked by material on every survey date, under the stage (see [The dates strip](09-volumes-and-roads.md#the-dates-strip)).
 - **The report**: the **Volume over time** section prints each pile's dates and the totals.
-- **The CSV**: **Export** in the Volumes tab saves one row per pile and date, in the site's units, with its status ("ok", "stale", "partial", "refused" or "missing") and whether the figure came from an earlier version.
+- **The CSV**: **Export** in the header of the Volumes view saves "Volume-over-time.csv", one row per pile and date, in the site's units, with its status ("ok", "stale", "partial", "refused" or "missing") and whether the figure came from an earlier version.
 
 A total adds current figures only: a stale, refused or missing figure is named, never added. A pile whose figures were carried from an earlier version keeps them on their own dates until **Recompute with the standard base**.
 

@@ -4,7 +4,7 @@ Survey measurements are points, lines and polygons saved with the project, each 
 
 ## The Measure workbench
 
-Open the island's tools (click the island at the top of the view, or press **T**) and click the **Measure** tab. The **Measure** workbench opens as a tab of the right panel; with the panel folded, it slides in over the right edge of the view as a drawer. **M** starts **Distance** straight away. From the top, the workbench holds:
+Open the island's tools (click the island at the top of the view, or press **T**) and click the **Measure** tab. The **Measure** workbench opens as the **Measure** section of the right panel's **Tools** tab; with the panel folded, it slides in over the right edge of the view as a drawer. **M** starts **Distance** straight away. From the top, the workbench holds:
 
 - **Search tools**: type part of a name, for example "slope", to keep only what matches.
 - **Favourites and recent**: the tools you starred, and the ones you used last.
@@ -14,7 +14,7 @@ Open the island's tools (click the island at the top of the view, or press **T**
   - **Polygon**: **Area** (horizontal, terrain and slope area) and **Volume** (see [Volumes, bases and comparisons](36-volumes-bases-and-comparisons.md)).
   - **Markup**: **Freehand**.
   - **Section plane** (key **X**).
-- **Site data**: **Designs**, **Survey QA and cleanup**, **Terrain overlays**, **Hydrology**, **Haul road** and **Export survey data**, then **Materials**, **Whole site cut and fill** and **Units**.
+- **Site data**: **Designs**, **Survey QA and cleanup**, **Terrain overlays**, **Hydrology**, **Haul road** and **Export survey data**, then **Materials**, **Find cut and fill regions** and **Units**.
 - **Drawing aids**: snapping, and a note of the drawing keys.
 - **Templates**: your bookmarked templates, and **Templates** to edit them.
 - **Saved in this project**: the measurements list.
@@ -66,7 +66,7 @@ Click a measurement, in the view or in the list, to open its panel under **Selec
 Every measurement shows as one card: while you draw it, in the measurement panel, in the **Volumes** view and in the printed report. The card has:
 
 - its name (click it to rename) and its main figure in large type, with the other figures under it;
-- **chips** under the figures that say what it is measured against: for a volume, "Base: Triangulated toe" or "From: ..." and **To**, with **+ Compare date** to add a comparison; for a line, the surveys and designs its profile shows. Click a chip to change it;
+- **chips** under the figures that say what it is measured against: for a volume, "Base: Toe surface" or "From: ..." and **To**, with **+ Compare date** to add a comparison; for a line, the surveys and designs its profile shows. Click a chip to change it;
 - a status line when there is something to say: "Stale, recompute", "Partly outside the survey", "From an earlier version (kit, ...)", or why it could not be computed;
 - a chart, for a line's profile or a volume's volume over time;
 - a foot row: **Notes**, **Export** and **Fly to**;
