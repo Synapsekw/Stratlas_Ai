@@ -80,6 +80,7 @@ import {
   TelecomTools,
   useTelecomUnavailable,
 } from '../../../survey/TelecomTools';
+import { useToolSets } from '../../../tools/useToolSets';
 import { AntennaCsvTool } from '../../../telecom/AntennaCsvTool';
 import { Tool, useEngineStage } from '../../StageTools';
 import { SectionPanel, toggleMeasure, toggleSection } from '../../tools/measure';
@@ -847,7 +848,8 @@ export function MeasureBench() {
   const stage = useEngineStage();
   const readOnly = useReadOnly();
   const live = useMeasure((s) => s.tool !== null && s.draw !== null);
-  const families = useMemo(() => familiesFor(readOnly), [readOnly]);
+  const sets = useToolSets();
+  const families = useMemo(() => familiesFor(readOnly, sets), [readOnly, sets]);
   const [query, setQuery] = useState('');
   const searching = !live && query.trim() !== '';
   useCollapseEndsSearch(setQuery);

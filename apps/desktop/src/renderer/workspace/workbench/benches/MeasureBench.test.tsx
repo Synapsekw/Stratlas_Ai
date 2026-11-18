@@ -20,6 +20,10 @@ import { createFavouritesStore } from '../../../survey/measureCatalogue';
 import { MeasureBench } from './MeasureBench';
 import { UnsavedBar } from '../../../survey/MeasureToolbar';
 
+// the tool sets of the open project (tools by project type): Telecom unless a test says otherwise
+const toolSets = vi.hoisted(() => ({ now: new Set<string>(['telecom']) }));
+vi.mock('../../../tools/useToolSets', () => ({ useToolSets: () => toolSets.now }));
+
 // the site data tools are their own screens: here only that the bench lists them
 vi.mock('../../../survey/Designs', () => ({
   DesignsTool: () => <button type="button">Designs</button>,
@@ -106,6 +110,7 @@ beforeEach(() => {
   host = document.createElement('div');
   document.body.append(host);
   localStorage.clear();
+  toolSets.now = new Set(['telecom']);
   sectionStore.setState({ byBench: {} });
   shell.setState({ pkg: null, stageMode: '3d' });
   measureStore.setState({
@@ -212,6 +217,23 @@ describe('the Measure workbench', () => {
     expect(src).toContain("from '../../../survey/card'");
     expect(src).not.toContain('FAMILY_ICON');
     expect(src).toMatch(/'section-plane': 'section'/);
+  });
+
+  it('the Telecom family is listed only where Telecom is part of the project', () => {
+    toolSets.now = new Set();
+    render();
+    expect(shownSections()).toEqual(expect.arrayContaining(['point', 'line', 'polygon']));
+    expect(shownSections()).not.toContain('telecom');
+    expect(host.querySelector('[data-testid^="telecom-tool-"]')).toBeNull();
+    expect(host.querySelector('[data-testid="detect-antennas"]')).toBeNull();
+  });
+
+  it('a starred telecom tool is not offered where Telecom is not part of the project', () => {
+    localStorage.setItem('quadrion.measure.favourites', JSON.stringify(['azimuth', 'distance']));
+    toolSets.now = new Set(['earthworks']);
+    render();
+    expect(host.querySelector('[data-testid^="telecom-tool-"]')).toBeNull();
+    expect(host.querySelector('[data-testid="survey-tool-distance"]')).not.toBeNull();
   });
 
   it('search "slope" leaves only Line with Grade and slope', () => {

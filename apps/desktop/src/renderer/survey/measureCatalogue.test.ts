@@ -10,6 +10,7 @@ import {
   favouritesAndRecent,
   matchesQuery,
 } from './measureCatalogue';
+import { ALL_SETS, type ToolSet } from '../tools/toolSets';
 
 function memoryStorage(seed: Record<string, string> = {}): Storage {
   const data = new Map(Object.entries(seed));
@@ -72,15 +73,23 @@ describe('measure catalogue', () => {
   });
 
   it('a read-only package offers only the tools that read without saving', () => {
-    expect(familiesFor(true).map((f) => [f.id, f.tools.map((e) => e.tool)])).toEqual([
+    expect(familiesFor(true, ALL_SETS).map((f) => [f.id, f.tools.map((e) => e.tool)])).toEqual([
       ['line', ['distance']],
       ['section', ['section-plane']],
     ]);
-    expect(familiesFor(false).flatMap((f) => f.tools)).toHaveLength(15);
+    expect(familiesFor(false, ALL_SETS).flatMap((f) => f.tools)).toHaveLength(15);
   });
 
-  it('every project keeps the Telecom family: the project type never gates a tool', () => {
-    expect(familiesFor(false).map((f) => f.id)).toContain('telecom');
+  it('the Telecom family is there only where Telecom is part of the project', () => {
+    const ids = (...sets: ToolSet[]) => familiesFor(false, new Set(sets)).map((f) => f.id);
+    expect(ids()).toEqual(['point', 'line', 'polygon', 'markup', 'section']);
+    expect(ids('earthworks', 'road', 'thermal')).not.toContain('telecom');
+    expect(ids('telecom')).toEqual(['point', 'line', 'polygon', 'telecom', 'markup', 'section']);
+    expect(
+      familiesFor(false, new Set<ToolSet>(['telecom']))
+        .find((f) => f.id === 'telecom')
+        ?.tools.map((e) => e.tool),
+    ).toEqual(['azimuth', 'antenna-tilt', 'clearance']);
   });
 
   it('searches the tool names, not their hints', () => {

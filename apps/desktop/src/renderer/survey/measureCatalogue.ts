@@ -8,6 +8,7 @@ import type { MeasurementTool } from '@aio/schema';
 import { t, type ShortcutId } from '@aio/ui';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import { FAMILY_SET, inSets, type ToolSet } from '../tools/toolSets';
 import { browserStorage } from '../workspace/stagePrefs';
 
 /**
@@ -117,15 +118,17 @@ export const familyOf = (tool: CatalogueTool): FamilyId | undefined =>
   FAMILIES.find((f) => f.tools.some((e) => e.tool === tool))?.id;
 
 /**
- * The families the open project offers: a read-only package only the tools that read without
- * saving (D6). Never decided by the project type (founder, 30 Oct 2026): a survey project reaches
- * the Telecom family too, and its tools say why they cannot start where they cannot.
+ * The families the open project offers: those whose tool set is part of the project (founder,
+ * 18 Nov 2026: the Telecom family only where Telecom is, `tools/toolSets.ts`), and in a
+ * read-only package only the tools that read without saving (D6).
  */
-export function familiesFor(readOnly: boolean): Family[] {
-  return FAMILIES.map((f) => ({
-    ...f,
-    tools: readOnly ? f.tools.filter((e) => !e.saves) : [...f.tools],
-  })).filter((f) => f.tools.length > 0);
+export function familiesFor(readOnly: boolean, sets: ReadonlySet<ToolSet>): Family[] {
+  return FAMILIES.filter((f) => inSets(sets, FAMILY_SET[f.id]))
+    .map((f) => ({
+      ...f,
+      tools: readOnly ? f.tools.filter((e) => !e.saves) : [...f.tools],
+    }))
+    .filter((f) => f.tools.length > 0);
 }
 
 /** A tool's name matches the search (case-insensitive, on the name only, not the hint). */
