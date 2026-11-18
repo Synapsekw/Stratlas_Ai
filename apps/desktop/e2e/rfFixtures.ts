@@ -111,7 +111,8 @@ export function rfAntennas(opts: RfFixtureOptions = {}): AntennasFile {
 
 /**
  * Turn the tiny project (it has a CRS, `tinyManifest`) into the RF fixture by adding
- * `telecom/antennas.json`. No `rf/` folder is written.
+ * `telecom/antennas.json` and making it a Telecom towers project (its type brings the Telecom
+ * tools; a spec that wants another type writes it afterwards). No `rf/` folder is written.
  */
 export async function writeRfProject(
   projectDir: string,
@@ -120,6 +121,9 @@ export async function writeRfProject(
   await mkdir(join(projectDir, 'telecom'), { recursive: true });
   await writeFile(join(projectDir, 'telecom', 'antennas.json'), JSON.stringify(rfAntennas(opts)));
   if (opts.cloud) await writeTowerCloud(projectDir);
+  const file = join(projectDir, 'manifest.json');
+  const manifest = ProjectManifest.parse(JSON.parse(await readFile(file, 'utf8')));
+  await writeFile(file, JSON.stringify(ProjectManifest.parse({ ...manifest, purpose: 'telecom' })));
 }
 
 /**

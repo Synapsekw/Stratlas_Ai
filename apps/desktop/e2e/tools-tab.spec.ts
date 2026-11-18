@@ -34,6 +34,9 @@ test("the preset's groups first, then registry order; Escape returns from the to
       'tools.view',
       'tools.annotate',
     ]);
+  // tools by project type: a survey has no Coverage or Thermal section, model and photos or not
+  expect(await sections()).not.toContain('tools.coverage');
+  expect(await sections()).not.toContain('tools.thermal');
   // a group opened lists its tools as rows
   const view = await openSection(win, 'tools', 'tools.view');
   await expect(view.getByTestId('tool-view.wholeSite')).toBeVisible();

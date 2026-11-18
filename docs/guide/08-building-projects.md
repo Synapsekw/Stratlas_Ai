@@ -37,12 +37,12 @@ Most tools are in every project: **View**, **Measure**, **Annotate**, **Point cl
 
 Four **tool sets** belong to one line of work, and a project has them or not:
 
-| Tool set       | What it brings                                                                                                                          | Part of these project types            |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| **Earthworks** | **Volumes**, piles and **Survey checks**                                                                                                | Survey, Construction, Data fusion      |
-| **Road**       | The road workspace: defects, condition and chainage                                                                                     | Road, Data fusion                      |
-| **Telecom**    | The **Telecom** measuring tools (**Azimuth**, **Antenna tilt**, **Clearance**), **Detect antennas**, **Coverage** and the antenna lists | Telecom towers, Data fusion            |
-| **Thermal**    | The **Thermal** section for thermal photos                                                                                              | Vertical asset inspection, Data fusion |
+| Tool set       | What it brings                                                                                                                                   | Part of these project types            |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- |
+| **Earthworks** | **Volumes**, piles and **Survey checks**                                                                                                         | Survey, Construction, Data fusion      |
+| **Road**       | The road workspace: defects, condition and chainage                                                                                              | Road, Data fusion                      |
+| **Telecom**    | The **Telecom** measuring tools (**Antenna azimuth**, **Physical tilt**, **Clearance**), **Detect antennas**, **Coverage** and the antenna lists | Telecom towers, Data fusion            |
+| **Thermal**    | The **Thermal** section for thermal photos                                                                                                       | Vertical asset inspection, Data fusion |
 
 A **Confined space inspection** starts with none of the four. A project made before the types counts as what its older type stands for: Inspection as a vertical asset, Digital twin and Free fusion as Data fusion.
 

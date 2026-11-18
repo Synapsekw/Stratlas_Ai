@@ -28,6 +28,13 @@ test('"measure" finds Distance first and Enter starts it', async ({ win }) => {
   await expect(palette.getByRole('option', { name: /^Measure: Volume/ })).toHaveCount(1);
   await expect(palette.getByRole('option', { name: /^Measure: Elevation/ })).not.toHaveCount(0);
   await expect(palette.getByRole('option', { name: /^Measure tools/ })).toHaveCount(1);
+  // tools by project type: a survey project has no telecom tool to find
+  await win.keyboard.press('Control+A');
+  await win.keyboard.type('azimuth');
+  await expect(palette.getByRole('option', { name: /azimuth/i })).toHaveCount(0);
+  await win.keyboard.press('Control+A');
+  await win.keyboard.type('measure');
+  await expect(options.first()).toHaveText(/^Measure: Distance/);
 
   await win.keyboard.press('Enter');
   await expect(palette).toBeHidden();
@@ -55,16 +62,22 @@ test('an island mode opens its section and a Settings page opens by name', async
   await expect(win.locator('.set-page h1')).toHaveText('Keyboard');
 });
 
-test('every registered tool is listed: one that cannot start here says why', async ({ win }) => {
+test('every tool of the project is listed: one that cannot start here says why', async ({
+  win,
+}) => {
   await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
   const palette = win.getByRole('dialog', { name: 'Command search' });
   await win.keyboard.press('Control+K');
-  // the demo has no road: the road's tools are there, greyed with the reason
+  // nothing is selected: Fly to selection is there, greyed with the reason
+  await palette.getByRole('combobox').fill('fly to selection');
+  const fly = palette.getByRole('option', { name: /^View: Fly to selection/ });
+  await expect(fly).toHaveCount(1);
+  await expect(fly).toContainText('Select something first');
+  await expect(fly).toHaveAttribute('aria-disabled', 'true');
+  // tools by project type (18 Nov 2026): a survey is not a road project, so the road's tools are
+  // not part of it and are not listed
   await palette.getByRole('combobox').fill('pci grid');
-  const pci = palette.getByRole('option', { name: /^Road: PCI grid/ });
-  await expect(pci).toHaveCount(1);
-  await expect(pci).toContainText('Needs a road survey');
-  await expect(pci).toHaveAttribute('aria-disabled', 'true');
+  await expect(palette.getByRole('option', { name: /^Road: / })).toHaveCount(0);
   await win.keyboard.press('Escape');
 });
 

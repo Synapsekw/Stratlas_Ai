@@ -24,12 +24,12 @@ The same data test is also written twice: once per right-panel section (`SECTION
 
 Everything that is not core belongs to one of four **tool sets**. A set is either part of a project or it is not; there is no "More" menu and nothing is tucked away.
 
-| Tool set   | What is in it                                                                                                                                                                                                                                                                          |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Earthworks | Tools: Volumes, Survey checks. Project: Volumes. Layers: Show (surface and pile overlays). Stage tools mode: Volumes. Bottom strip: volume over time.                                                                                                                                  |
-| Road       | Tools: Road. Project: Road. Stage tools mode: Road. Bottom strip: chainage.                                                                                                                                                                                                            |
-| Telecom    | Measure family Telecom (Azimuth, Antenna tilt, Clearance, Find antennas). Tools: Coverage. "In this project": Antennas, Sectors, Coverage plan. Right-click: every antenna action (fly to, hide, show, edit azimuth, edit downtilt, accept, reject, redraw, delete) and "RF coverage". |
-| Thermal    | Tools: Thermal. Right-click on photos: "Analyse thermal".                                                                                                                                                                                                                              |
+| Tool set   | What is in it                                                                                                                                                                                                                                                                                     |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Earthworks | Tools: Volumes, Survey checks. Project: Volumes. Layers: Show (surface and pile overlays). Stage tools mode: Volumes. Bottom strip: volume over time.                                                                                                                                             |
+| Road       | Tools: Road. Project: Road. Stage tools mode: Road. Bottom strip: chainage.                                                                                                                                                                                                                       |
+| Telecom    | Measure family Telecom (Antenna azimuth, Physical tilt, Clearance, Detect antennas). Tools: Coverage. "In this project": Antennas, Sectors, Coverage plan. Right-click: every antenna action (fly to, hide, show, edit azimuth, edit downtilt, accept, reject, redraw, delete) and "RF coverage". |
+| Thermal    | Tools: Thermal. Right-click on photos: "Analyse thermal".                                                                                                                                                                                                                                         |
 
 **Core, in every project:** View, Measure (the Point, Line, Polygon, Markup and Section families), Annotate, Terrain analysis, Engineering (the model review and "Create engineering model"), Environment, Compare and the dates, Issues, Search, Digest, Processing, Reports, every Layers and display section, and all six rail screens. Point cloud, Video, Terrain analysis and Engineering are core too: they keep showing only when the project holds a point cloud, a video, a model or raster, or a point cloud or mesh, as today.
 
@@ -233,16 +233,20 @@ One, additive: `ProjectManifest.toolSets?` in `@aio/schema`, a list of plain nam
 
 `@aio/schema` (T1), `@aio/ui` (strings only, T4), `apps/desktop` (everything else). Nothing in the pipeline, the engine or the other packages.
 
-## 6. How to test (once built)
+## 6. How to test
 
-1. Open the demo tank farm (a survey). In the right panel, Tools tab: Volumes, Terrain analysis and Survey checks are there. Engineering, Coverage and Thermal are not. Open Measure: there is no Telecom family.
-2. Press Ctrl+K and type "azimuth", then "coverage", then "thermal". None is listed.
-3. Create a project, type "Confined space inspection", and add a point cloud and some ordinary photos. Tools shows View, Measure, Annotate, Point cloud and Environment only. Right-click the point cloud: there is no "Create engineering model".
-4. Create a project, type "Telecom towers", and add a point cloud. Measure now has the Telecom family with "Find antennas"; Tools has Coverage and Engineering.
-5. Back in the tank farm: Settings, This project, Tool sets. Switch Telecom on. Return to the scene: the Telecom family and Coverage are there, with no restart. Switch it off again: they are gone, and nothing else changed.
-6. Open an existing project that already holds an antenna inventory but is not a telecom project. Its antennas, sectors and telecom tools are all there, and in Tool sets the Telecom switch is on and locked with "This project holds antennas".
-7. Add thermal photos to the confined space project from step 3. The Thermal section appears by itself once the import finishes.
-8. Open a read-only package: the tools match the project it was made from, and the Tool sets switches cannot be changed.
+Each step is a route an end to end spec drives, named in brackets.
+
+1. Open **Demo tank farm** (a survey). In the right panel open the **Tools** tab. The list starts with **Volumes**, **Measure**, **Terrain analysis**, **Survey checks**. There is no **Coverage** and no **Thermal** section. (`tools-tab.spec.ts`)
+2. Still there, press **Ctrl K** and type "azimuth": nothing with azimuth is listed. Clear it and type "measure": **Measure: Distance** is first. (`palette-tools.spec.ts`)
+3. On **Projects**, click **New project**, pick **Confined space inspection**, **Next**, **Typed coordinate**, type `25.1000, 55.2000, 12`, **Next**, **Next**, **Create project**. In the right panel open **Tools**, then **Measure**: the Point, Line and Polygon families are there and there is no **Telecom** family. (`project-types.spec.ts`)
+4. Do the same with **Telecom towers**. In **Tools**, **Measure**, the **Telecom** family is there. (`project-list-groups.spec.ts`)
+5. Open a survey project that holds a 3D model. Go to **Settings**, **Project settings**. Under **Tool sets**, **Earthworks** is on and **Road**, **Telecom** and **Thermal** are off. Turn **Telecom** on and go back to the scene (the **Scene** button on the left rail): **Tools** now has a **Coverage** section and **Measure** has the **Telecom** family, with no restart. Turn **Telecom** off again in the same place: both are gone, and **Survey checks** is still there. (`tools-by-project.spec.ts`)
+6. Open a survey project that already holds an antenna inventory and a point cloud. **Tools** has **Coverage**, **Measure** has the **Telecom** family, and **Project**, **In this project** lists **Antennas** after Measurements and Issues. In **Settings**, **Project settings**, **Tool sets**, the **Telecom** switch is on, cannot be turned, and reads "On: this project holds antennas or telecom measurements." (`tools-by-project.spec.ts`, `project-list-groups.spec.ts`)
+7. Open a confined space project that holds thermal photos. Within a few seconds of opening, **Tools** has a **Thermal** section and no **Coverage**. In **Tool sets** the **Thermal** switch is on, cannot be turned, and reads "On: this project holds thermal photos." (`tools-by-project.spec.ts`)
+8. Open a confined space project that holds a 3D model and nothing else. **Tools** has **View**, **Measure**, **Annotate**, **Terrain analysis**, **Engineering** and **Environment**, and no **Coverage**, **Thermal**, **Survey checks**, **Volumes** or **Road**. **Ctrl K**, "clearance", lists no **Measure: Clearance**. (`tools-by-project.spec.ts`)
+
+Not driven end to end: the switches in a read-only package (covered by a unit test of the switch list and of the save, which a package refuses).
 
 ## 7. Founder decisions, 18 Nov 2026
 

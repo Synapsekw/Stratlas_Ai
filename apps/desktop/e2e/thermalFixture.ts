@@ -33,9 +33,13 @@ export interface ThermalTruth {
   backgroundC: number;
 }
 
-/** Write `projects/e2e-thermal/` into `root` (a data root); returns its folder and the truth. */
+/**
+ * Write `projects/e2e-thermal/` into `root` (a data root); returns its folder and the truth. A
+ * vertical asset inspection unless `purpose` says otherwise (the project type).
+ */
 export async function createThermalProject(
   root: string,
+  purpose = 'vertical-asset',
 ): Promise<{ dir: string; truth: ThermalTruth }> {
   const dir = join(root, 'projects', THERMAL_PROJECT.id);
   await mkdir(join(dir, 'models'), { recursive: true });
@@ -48,6 +52,8 @@ export async function createThermalProject(
     schema: SCHEMA_VERSION,
     id: THERMAL_PROJECT.id,
     name: THERMAL_PROJECT.name,
+    type: 'inspection',
+    purpose,
     customer: 'E2E',
     site: 'Synthetic site, thermal photos',
     crs: { wkt: 'LOCAL_CS["Site grid",UNIT["metre",1]]' },

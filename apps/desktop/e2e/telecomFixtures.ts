@@ -84,7 +84,8 @@ export async function packPngCloud(
 }
 
 export async function writeTelecomFace(dir: string, kind: 'mesh' | 'cloud'): Promise<void> {
-  const manifest = tinyManifest();
+  // a tower project: its type brings the Telecom tools (tools by project type)
+  const manifest = { ...tinyManifest(), purpose: 'telecom' };
   if (kind === 'mesh') {
     const layer = manifest.layers[0];
     if (layer?.kind !== 'mesh') throw new Error('expected tiny mesh fixture');
@@ -164,7 +165,8 @@ export async function writeTelecomTower(dir: string, pointsPerM2 = 1500): Promis
     const truth = JSON.parse(await readFile(`${out}.json`, 'utf8')) as TowerTruth;
     const xyz = new Float32Array(raw.buffer, raw.byteOffset, raw.byteLength / 4);
     const count = await packPngCloud(dir, 'tower', xyz, [170, 178, 186], 0.03);
-    const manifest = tinyManifest();
+    // a tower project: its type brings the Telecom tools (tools by project type)
+    const manifest = { ...tinyManifest(), purpose: 'telecom' };
     manifest.crs = { wkt: 'LOCAL_CS["Site grid",UNIT["metre",1]]' };
     manifest.origin = [0, 0, 0];
     manifest.layers = [

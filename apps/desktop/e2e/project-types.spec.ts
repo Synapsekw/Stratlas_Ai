@@ -8,6 +8,7 @@ import type { Page, TestInfo } from '@playwright/test';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createDataRoot, expect, openProject, test as base } from './fixtures';
+import { openSection } from './panel';
 
 const CARDS = [
   'Survey',
@@ -148,6 +149,12 @@ test('the wizard offers seven types, and the project keeps the one picked', asyn
   });
   expect(reached, 'Import files is covered or outside the window').toBe(true);
   await shot(win, info, 'project-types-empty.png');
+
+  // tools by project type (18 Nov 2026): a confined space project has the measuring families of
+  // every project and no Telecom family
+  await openSection(win, 'tools', 'tools.measure');
+  await expect(win.getByTestId('wb-section-polygon')).toHaveCount(1);
+  await expect(win.getByTestId('wb-section-telecom')).toHaveCount(0);
 });
 
 test('a survey project still starts from its survey data', async ({ win, dataRoot }) => {

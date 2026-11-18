@@ -1,8 +1,8 @@
 /** Antenna detection in the real app: a synthetic tower cloud, the real pipeline job, a reload. */
 import type { EngineStage } from '@aio/engine';
-import { AntennasFile } from '@aio/schema';
+import { AntennasFile, ProjectManifest } from '@aio/schema';
 import type { Locator, Page } from '@playwright/test';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { PIPELINE_ENV, expect, hasPipelinePython, processingChip, test } from './fixtures';
@@ -157,7 +157,11 @@ const sceneHas = (win: Page, name: string) =>
     name,
   );
 
-test('hides Detect antennas in a project without a point cloud', async ({ win }) => {
+test('hides Detect antennas in a project without a point cloud', async ({ win, dataRoot }) => {
+  // a tower project (its type brings the Telecom tools) that holds no point cloud yet
+  const file = join(dataRoot.projectDir, 'manifest.json');
+  const manifest = ProjectManifest.parse(JSON.parse(await readFile(file, 'utf8')));
+  await writeFile(file, JSON.stringify(ProjectManifest.parse({ ...manifest, purpose: 'telecom' })));
   await openTiny(win);
   await expect(win.getByTestId('telecom-tools')).toBeVisible();
   await expect(win.getByTestId('detect-antennas')).toHaveCount(0);

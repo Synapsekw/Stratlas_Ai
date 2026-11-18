@@ -1,9 +1,9 @@
 /**
  * The groups of the right panel's Project > In this project list in the real app, and the order a
  * project's category gives them: a telecom project lists Antennas, Sectors, Coverage plan,
- * Measurements, Issues; a survey project Measurements then Issues, with no tower group even with
- * an antenna inventory and an RF plan on disk, its Telecom tools still reachable (folded, below
- * Polygon: a project type sets defaults, never gates a tool). A measurement picked in the
+ * Measurements, Issues; a survey project Measurements then Issues, and after them the antennas it
+ * already holds, with its Telecom tools (folded, below Polygon): tools are shown by project type
+ * (founder, 18 Nov 2026), and a project keeps the tools of what it holds. A measurement picked in the
  * left tree opens its card in Selection and is the selected row in Measurements, an issue row
  * opens the issue's card in Selection, a saved sector shows its bearing and opens in Coverage, and
  * the new project wizard offers Telecom towers. The inventory is the synthetic RF fixture; nothing
@@ -151,7 +151,7 @@ test.describe('project list: groups and category order', () => {
     await evidence(win, 'a-telecom-order', true);
   });
 
-  test('a survey project lists Measurements then Issues and keeps the Telecom tools reachable, folded below Polygon', async ({
+  test('a survey project that holds antennas lists Measurements, Issues, then Antennas, with the Telecom tools folded below Polygon', async ({
     win,
     dataRoot,
   }) => {
@@ -159,10 +159,11 @@ test.describe('project list: groups and category order', () => {
     await setPurpose(dataRoot.projectDir, 'survey');
     await openTiny(win);
     const { order, open } = await groups(win);
-    expect(order).toEqual(['Measurements', 'Issues']);
+    // its own groups first, then the inventory it holds (a survey's type has no tower groups)
+    expect(order).toEqual(['Measurements', 'Issues', 'Antennas']);
     expect(open).toEqual(['Measurements']);
-    // the catalogue is whole (Tools > Measure): the project type never gates a tool (founder,
-    // 30 Oct 2026), so the Telecom family is there, folded by default and below Polygon
+    // the antennas it holds bring the Telecom tools (Tools > Measure): the family is there,
+    // folded by default and below Polygon
     const bench = await measureBench(win);
     await expect(win.getByTestId('wb-section-polygon')).toHaveCount(1);
     const telecom = win.getByTestId('wb-section-telecom');
@@ -261,7 +262,9 @@ test.describe('project list: groups and category order', () => {
     await expectBench(win, 'rf');
   });
 
-  test('the new project wizard offers Telecom towers', async ({ win }) => {
+  test('the new project wizard offers Telecom towers, and the project it makes has the Telecom tools', async ({
+    win,
+  }) => {
     await win.getByTestId('new-project').first().click();
     const wiz = win.getByTestId('new-project-wizard');
     const cards = wiz.getByRole('group', { name: 'Project type' }).getByRole('button');
@@ -271,5 +274,18 @@ test.describe('project list: groups and category order', () => {
       wiz.getByRole('group', { name: 'Project type' }).locator('[aria-pressed="true"] b'),
     ).toHaveText('Telecom towers');
     await evidence(win, 'f-wizard-telecom');
+
+    // create it: the type brings the Telecom measuring family (tools by project type)
+    await wiz.getByLabel('Project name').fill('Groups e2e tower');
+    await wiz.getByRole('button', { name: 'Next' }).click();
+    await wiz.getByRole('button', { name: 'Typed coordinate' }).click();
+    await wiz.getByLabel('Origin coordinate').fill('25.1000, 55.2000, 12');
+    await expect(wiz.getByTestId('origin-readout')).toContainText('E 3');
+    await wiz.getByRole('button', { name: 'Next' }).click();
+    await wiz.getByRole('button', { name: 'Next' }).click();
+    await wiz.getByRole('button', { name: 'Create project' }).click();
+    await expect(wiz).toBeHidden({ timeout: 30_000 });
+    await openSection(win, 'tools', 'tools.measure');
+    await expect(win.getByTestId('wb-section-telecom')).toHaveCount(1);
   });
 });
