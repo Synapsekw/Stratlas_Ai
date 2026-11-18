@@ -153,7 +153,13 @@ test('the site inventory stacks the materials in the dates strip, each date its 
   const pit = (d: string) => (d === 'm3' ? -truth.pit.sumpCutM3 : 0);
   await prepared(win, quarryProject.name, quarryProject.id);
 
-  // Project > Volumes: the inventory (the pile picked to prepare stays open in Selection)
+  // the pile picked to prepare is still open in Selection, and the dates strip draws that pile's
+  // own line: its chip lets the pile go, and the strip is the site's again
+  const stripChip = win.locator('[aria-label="Dates strip"]').getByTestId('strip-clear-pile');
+  await stripChip.click();
+  await expect(stripChip).toHaveCount(0);
+  await expect(selectedPile(win)).toHaveCount(0);
+  // Project > Volumes: the inventory
   const view = await volumesView(win);
   await expect(view.getByTestId('volumes-pile')).toHaveCount(4);
   await expect(view.getByTestId('volumes-inventory')).toBeVisible({ timeout: 180_000 });

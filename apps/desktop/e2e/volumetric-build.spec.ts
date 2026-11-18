@@ -16,8 +16,9 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { closeProcessing, expect, launchApp, test } from './fixtures';
+import { closeProcessing, expect, launchApp, openPipelineForm, test } from './fixtures';
 import {
+  islandGroup,
   measureRow,
   measureSaved,
   showSurface,
@@ -105,54 +106,42 @@ async function selectPile(win: Page, pile: string): Promise<void> {
     .toBe(pile);
 }
 
-interface JobsProbe {
-  __stratlas: {
-    jobs: {
-      getState(): {
-        selected: string | null;
-        jobs: { id: string; status: string }[];
-        start(req: {
-          pipeline: 'volumetric.build';
-          project: string;
-          params: Record<string, unknown>;
-        }): Promise<string | null>;
-      };
-    };
-  };
-}
-
 /**
- * Detect the piles again: the stockpile build run from the job file the first build kept, the job
- * the Volumes view's Detect piles button asks for. That button shows only while the project has
- * no pile, so with a pile left the job is started through the Jobs store. Waits for it to finish.
+ * Detect the piles again, the way a person does with a pile left. The Volumes view's Detect piles
+ * button shows only while the project has no pile, so the stockpile build is started from
+ * Settings, Processing tools, Advanced: run a pipeline directly: the pipeline "Volumetric survey"
+ * of the area "Stockpiles and volumes", the open project as its folder, the job file left to its
+ * default (the one the first build kept), Start job. Waits for the new job to finish and returns
+ * to the Scene.
  */
 async function detectPilesAgain(win: Page, project: string): Promise<void> {
-  const started = await win.evaluate(async (folder) => {
-    const jobs = (window as unknown as JobsProbe).__stratlas.jobs;
-    const before = new Set(jobs.getState().jobs.map((j) => j.id));
-    const error = await jobs.getState().start({
-      pipeline: 'volumetric.build',
-      project: folder,
-      params: { job: 'volumetric/job.json' },
-    });
-    const id = jobs.getState().selected;
-    return { error, id: id !== null && !before.has(id) ? id : null };
-  }, project);
-  expect(started.error).toBeNull();
-  expect(started.id, 'the job that was started').not.toBeNull();
+  await openPipelineForm(win);
+  const advanced = win.getByTestId('job-advanced');
+  const before = await advanced
+    .locator('.job-row')
+    .evaluateAll((els) => els.map((e) => e.getAttribute('data-job')));
+  const pick = win.getByLabel('Pipeline', { exact: true });
+  await expect(
+    pick.locator('optgroup[label="Stockpiles and volumes"] option[value="volumetric.build"]'),
+  ).toHaveText('Volumetric survey');
+  await pick.selectOption('volumetric.build');
+  // the open project is the folder the job writes into
+  const slashes = (path: string) => path.replace(/\\/g, '/').toLowerCase();
+  expect(slashes(await win.getByLabel(/^Project folder/).inputValue())).toBe(slashes(project));
+  await expect(win.getByLabel(/^Survey job file/)).toHaveValue('');
+  await win.getByTestId('job-start').click();
+  // the job just started is the one shown below the list
+  const detail = advanced.locator('.job-detail');
   await expect
-    .poll(
-      () =>
-        win.evaluate(
-          (id) =>
-            (window as unknown as JobsProbe).__stratlas.jobs
-              .getState()
-              .jobs.find((j) => j.id === id)?.status ?? null,
-          started.id,
-        ),
-      { timeout: 180_000 },
-    )
-    .toBe('done');
+    .poll(async () => {
+      const id = await detail.getAttribute('data-job');
+      return id !== null && !before.includes(id);
+    })
+    .toBe(true);
+  await expect(detail.locator('.jd-h h2')).toHaveText('Volumetric survey');
+  await expect(detail.locator('.jd-h .job-state')).toHaveText('Done', { timeout: 180_000 });
+  await win.locator('.sb-nav .nav-item', { hasText: 'Scene' }).click();
+  await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible();
 }
 
 /** The project's kit pile measurements on disk (id and pile), and the piles listed as converted. */
@@ -444,6 +433,38 @@ test('a volumetric project from two raw survey dates: wizard, Processing drawer,
     await expect(view2.getByTestId('volumes-pile')).toHaveCount(1);
     await expect(win.getByTestId('measure-row')).toHaveCount(1);
     expect(await kitPilesOnDisk(root)).toEqual(after);
+
+    // 6. with no pile left the Volumes view says so and offers Detect piles itself: the same
+    // build, started from its own dialog, and the pile deleted last stays gone as well
+    await stockpileTree(win);
+    await measureRow(win, kept?.label ?? '').press('Delete');
+    await expect(win.getByTestId('measure-row')).toHaveCount(0);
+    await (await measureSaved(win)).getByTestId('survey-list-save').click();
+    await expect(win.getByTestId('survey-saved')).toContainText('Measurements saved.');
+    await expect.poll(async () => (await kitPilesOnDisk(root)).piles).toEqual([]);
+    const bench = await islandGroup(win, 'volumes');
+    await expect(bench).toContainText('No piles yet');
+    await expect(bench.getByTestId('volumes-draw')).toHaveText('Draw volume');
+    const detect = bench.getByTestId('volumes-detect');
+    await expect(detect).toHaveText('Detect piles');
+    await expect(detect).toBeEnabled();
+    await detect.click();
+    const dialog = win.getByTestId('pipeline-dialog');
+    await expect(dialog).toContainText('Volumetric survey');
+    await expect(dialog).toContainText('Runs in Yard surveys.');
+    await expect(dialog.getByLabel(/^Survey job file/)).toHaveValue('volumetric/job.json');
+    await dialog.getByTestId('job-start').click();
+    // the Processing drawer opens on the job
+    await expect(detail.locator('.jd-h h2')).toHaveText('Volumetric survey', { timeout: 30_000 });
+    await expect(detail.locator('.jd-h .job-state')).toHaveText('Done', { timeout: 180_000 });
+    await closeProcessing(win);
+    const none = { converted: all, piles: [] };
+    for (let i = 0; i < 10; i++) {
+      expect(await kitPilesOnDisk(root)).toEqual(none);
+      await win.waitForTimeout(500);
+    }
+    await expect(bench.getByTestId('volumes-detect')).toBeVisible();
+    await expect(bench.getByTestId('volumes-pile')).toHaveCount(0);
     expect(errors).toEqual([]);
     expect(await network.outbound()).toEqual([]);
   } finally {

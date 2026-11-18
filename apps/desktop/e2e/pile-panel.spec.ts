@@ -382,10 +382,17 @@ test('a pile picked with the right workbench folded opens it with its panel', as
   const panel = win.getByTestId('pile-panel');
   await expect(panel).toBeVisible();
   await expect(panel).toHaveAttribute('data-id', SP1_ID);
-  // from the sidebar's row too (Esc on the panel lets the pile go first)
+  // The folded workbench shows the panel in its drawer, and one Esc does one thing: on the panel
+  // it closes the drawer and hands the focus to the island, the pile still picked; the next Esc
+  // lets the pile go. Then from the sidebar's row too
+  await expect(win.locator('.ws.right-off')).toHaveCount(1);
   await panel.getByTestId('pile-tab-overview').focus();
   await win.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  await expect(win.getByTestId('stage-hint')).toHaveAttribute('data-kind', 'pile');
+  await win.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
+  await expect(win.getByTestId('stage-hint')).toHaveCount(0);
   await measureTree(win);
   const again = await focusPile(win, SP1);
   await expect(again).toHaveAttribute('data-id', SP1_ID);
