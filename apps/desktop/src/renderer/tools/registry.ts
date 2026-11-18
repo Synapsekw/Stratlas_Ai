@@ -914,7 +914,8 @@ export const MODE_DEFS: Readonly<Record<IslandMode, IslandModeDef>> = {
     tab: 'project',
     section: 'project.volumes',
     group: 'volumes',
-    shows: (c) => c.data.volumes,
+    // with Earthworks (`MODE_SET`), before the first pile too
+    shows: () => true,
     available: () => OK,
   },
   compare: {

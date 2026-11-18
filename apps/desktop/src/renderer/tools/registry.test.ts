@@ -274,6 +274,9 @@ describe("the island's modes", () => {
     // a mode of a tool set that is not part of the project is not listed
     const noSets = { ...all, sets: new Set<never>() };
     expect(islandModes(noSets).map((m) => m.id)).toEqual(['view', 'measure', 'annotate', 'video']);
+    // Volumes comes with Earthworks, before the first pile; Road waits for its road model
+    const fresh = toolCtxOf(input({ manifest: { layers: [], purpose: 'data-fusion' } }));
+    expect(islandModes(fresh).map((m) => m.id)).toEqual(['view', 'measure', 'annotate', 'volumes']);
   });
 
   it('every mode can say why it cannot be picked', () => {

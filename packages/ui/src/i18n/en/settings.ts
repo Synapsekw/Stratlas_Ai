@@ -74,10 +74,12 @@ export const enSettings = {
   'settings.toolSets.package':
     'The tools that are part of this project. A package is read only, so they cannot be changed here.',
   'settings.toolSets.earthworks': 'Earthworks',
-  'settings.toolSets.earthworks.what': 'Volumes, piles and survey checks.',
+  'settings.toolSets.earthworks.what':
+    'Volumes, with its pile list (empty until the first pile is drawn), and survey checks.',
   'settings.toolSets.earthworks.held': 'On: this project holds piles or volumes.',
   'settings.toolSets.road': 'Road',
-  'settings.toolSets.road.what': 'Defects, condition and chainage along a road.',
+  'settings.toolSets.road.what':
+    'Defects, condition and chainage along a road. They show once the project has a road, and a road is built only in a Road project.',
   'settings.toolSets.road.held': 'On: this project holds a road.',
   'settings.toolSets.telecom': 'Telecom',
   'settings.toolSets.telecom.what': 'Antennas, azimuth, tilt, clearance and RF coverage.',

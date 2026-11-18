@@ -7,6 +7,7 @@ import {
   MODE_SET,
   NOTHING_HELD,
   PROJECT_GROUP_SET,
+  projectGroupSet,
   PURPOSE_SETS,
   SECTION_SET,
   switchesFor,
@@ -133,12 +134,15 @@ describe('what belongs to which set', () => {
   it('the measure families, the stage tools modes and the project list groups', () => {
     expect(inSet(FAMILY_SET)).toEqual({ telecom: 'telecom' });
     expect(inSet(MODE_SET)).toEqual({ volumes: 'earthworks', road: 'road' });
-    expect(inSet(PROJECT_GROUP_SET)).toEqual({
+    // only the groups of a set are named: a list group that comes or goes needs no entry
+    expect(PROJECT_GROUP_SET).toEqual({
       antennas: 'telecom',
       sectors: 'telecom',
       coverage: 'telecom',
-      stockpiles: 'earthworks',
     });
+    expect(projectGroupSet('antennas')).toBe('telecom');
+    expect(projectGroupSet('measurements')).toBeNull();
+    expect(projectGroupSet('a-group-of-a-later-build')).toBeNull();
   });
 
   it('a thing outside every set always passes; one in a set only with that set', () => {

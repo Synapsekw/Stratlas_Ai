@@ -329,13 +329,25 @@ describe('the four panel tabs (D2)', () => {
     expect(tools('telecom')).toContain('tools.coverage');
     expect(tools('thermal')).toContain('tools.thermal');
     expect(tools('earthworks')).toContain('tools.checks');
-    // a set that is on still needs its data
+    // a set that is on still needs what its tools work on (a model for Coverage, photos for
+    // Thermal, a surface for Survey checks), but never a record of its own: Volumes shows with
+    // Earthworks before the first pile, so the first pile has a place to start from
     expect(sectionsOf('tools', NO_PANEL_DATA, ALL_SETS).map((s) => s.id)).toEqual([
       'tools.view',
       'tools.measure',
       'tools.annotate',
+      'tools.volumes',
       'tools.environment',
     ]);
+    expect(sectionsOf('tools', NO_PANEL_DATA, new Set()).map((s) => s.id)).not.toContain(
+      'tools.volumes',
+    );
+    const projectOf = (...sets: ToolSet[]) =>
+      sectionsOf('project', NO_PANEL_DATA, new Set(sets)).map((s) => s.id);
+    expect(projectOf('earthworks')).toContain('project.volumes');
+    expect(projectOf('road', 'telecom', 'thermal')).not.toContain('project.volumes');
+    // the road's panel reads the road model: no model, nothing to show, switch or not
+    expect(projectOf('road')).not.toContain('project.road');
     // an open tool keeps its section, whatever the sets
     expect(
       sectionsOf('tools', NO_PANEL_DATA, new Set(), new Set<TabId>(['thermal'])).map((s) => s.id),
@@ -348,6 +360,7 @@ describe('the four panel tabs (D2)', () => {
     expect(project()).toEqual([
       'project.inThisProject',
       'project.search',
+      'project.volumes',
       'project.issues',
       'project.jobs',
     ]);

@@ -1,6 +1,6 @@
 // The "In this project" list's content groups (right sidebar, Project tab). Pure: no React.
 import type { ProjectKind } from '../../../builder/model';
-import { inSets, PROJECT_GROUP_SET, type ToolSet } from '../../../tools/toolSets';
+import { inSets, projectGroupSet, type ToolSet } from '../../../tools/toolSets';
 
 /** Every content group the list knows; groups with no registered body are skipped. */
 export type GroupId =
@@ -73,7 +73,7 @@ export function orderGroups(
   groups: readonly { id: GroupId; count: number; applies: boolean }[],
   sets: ReadonlySet<ToolSet>,
 ): GroupId[] {
-  const shown = groups.filter((g) => g.applies && inSets(sets, PROJECT_GROUP_SET[g.id]));
+  const shown = groups.filter((g) => g.applies && inSets(sets, projectGroupSet(g.id)));
   const byId = new Map(shown.map((g) => [g.id, g]));
   const out: GroupId[] = [];
   for (const entry of CATEGORY_ORDER[category]) if (byId.has(entry.id)) out.push(entry.id);

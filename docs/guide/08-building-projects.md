@@ -50,7 +50,13 @@ A tool set that is not part of a project is not shown anywhere in it: not in the
 
 **A project keeps the tools of what it already holds.** A project with piles has Earthworks, one with a road has Road, one with antennas, an RF plan or a telecom measurement has Telecom, and one with thermal photos has Thermal, whatever its type. Adding thermal photos to any project brings the **Thermal** section by itself.
 
-**To add a tool set to a project**, open **Settings**, **Project settings**, **Tool sets**, and turn its switch on. Turning a switch off only takes those tools out of view: nothing is deleted. A switch that reads "On: this project holds ..." cannot be turned off. The choice is saved in the project, so it is the same on every computer and in a package.
+**To add a tool set to a project**, open **Settings**, **Project settings**, **Tool sets**, and turn its switch on. What each switch shows at once:
+
+- **Earthworks**: **Volumes** in the **Tools** and **Project** tabs and in the stage tools, empty until the first pile (**Draw volume** starts one), and **Survey checks** once the project has a model or a raster.
+- **Telecom**: the **Telecom** measuring tools with **Detect antennas**, and **Coverage** once the project has a point cloud or a model.
+- **Thermal**: the **Thermal** section once the project has photos.
+- **Road**: nothing until the project has a road, and a road is built only in a **Road** project. In another type of project this switch has no effect yet.
+  Turning a switch off only takes those tools out of view: nothing is deleted. A switch that reads "On: this project holds ..." cannot be turned off. The choice is saved in the project, so it is the same on every computer and in a package.
 
 ## Import raw data
 

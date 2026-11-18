@@ -248,7 +248,10 @@ export interface SectionDef {
   /**
    * The data test: shown when the project holds this data, or while its tool is open (its old
    * tab is in the store); absent: always. Whether the section belongs in the project at all is
-   * its tool set's (`tools/toolSets.ts` `SECTION_SET`).
+   * its tool set's (`tools/toolSets.ts` `SECTION_SET`). A section of a set has a data test
+   * only for what its tools work on (a model, photos, the road model its panel reads), never one
+   * that repeats "the project holds this set's records": a set switched on must show where its
+   * first record is made.
    */
   needs?: (d: PanelData) => boolean;
   /** A wide tool: its header offers "Expand panel". */
@@ -263,7 +266,8 @@ export const SECTIONS: readonly SectionDef[] = [
   { id: 'tools.view', label: 'wb.sec.view', body: null },
   { id: 'tools.measure', label: 'wb.sec.measure', body: 'measure' },
   { id: 'tools.annotate', label: 'wb.sec.annotate', body: 'annotate' },
-  { id: 'tools.volumes', label: 'wb.sec.volumes', body: null, needs: (d) => d.volumes },
+  // with Earthworks, piles or not: a data test here would only repeat "the project holds piles"
+  { id: 'tools.volumes', label: 'wb.sec.volumes', body: null },
   {
     id: 'tools.pointcloud',
     label: 'wb.sec.pointcloud',
@@ -313,13 +317,8 @@ export const SECTIONS: readonly SectionDef[] = [
   { id: 'project.inThisProject', label: 'wb.sec.inThisProject', body: null },
   // the project fact index (M1): find any record of the project by a word, and its history
   { id: 'project.search', label: 'facts.section', body: null },
-  {
-    id: 'project.volumes',
-    label: 'wb.sec.volumes',
-    body: 'volumes',
-    needs: (d) => d.volumes,
-    wide: true,
-  },
+  // with Earthworks, piles or not: before the first pile it shows its own empty state
+  { id: 'project.volumes', label: 'wb.sec.volumes', body: 'volumes', wide: true },
   {
     id: 'project.changes',
     label: 'wb.sec.changes',

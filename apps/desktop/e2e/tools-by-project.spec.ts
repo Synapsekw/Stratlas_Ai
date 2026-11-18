@@ -49,15 +49,22 @@ async function toolSections(win: Page): Promise<(string | null)[]> {
 }
 
 /**
- * Search the command palette for a word and expect `count` options whose name matches `name`
- * (the expectation waits for the list to follow the word), then close the palette.
+ * Search the command palette for a word. `there` is a row the word must list (the expectation
+ * waits for it, so the list has settled on the word), and only then are the `gone` rows checked
+ * to be absent from that same list. Closes the palette.
  */
-async function paletteOffers(win: Page, word: string, name: RegExp, count: number): Promise<void> {
+async function paletteLists(
+  win: Page,
+  word: string,
+  there: readonly RegExp[],
+  gone: readonly RegExp[] = [],
+): Promise<void> {
   const palette = win.getByRole('dialog', { name: 'Command search' });
   await win.keyboard.press('Control+K');
   await expect(palette).toBeVisible();
-  await win.keyboard.type(word);
-  await expect(palette.getByRole('option', { name })).toHaveCount(count);
+  await palette.getByRole('combobox').fill(word);
+  for (const name of there) await expect(palette.getByRole('option', { name })).toHaveCount(1);
+  for (const name of gone) await expect(palette.getByRole('option', { name })).toHaveCount(0);
   await win.keyboard.press('Escape');
   await expect(palette).toBeHidden();
 }
@@ -118,10 +125,23 @@ test('a confined space project has no telecom, coverage or survey check tools', 
   await expect(win.getByTestId('wb-section-telecom')).toHaveCount(0);
   await expect(win.locator('[data-testid^="telecom-tool-"]')).toHaveCount(0);
 
-  // the palette does not find them either
-  await paletteOffers(win, 'distance', /^Measure: Distance/, 1);
-  await paletteOffers(win, 'azimuth', /azimuth/i, 0);
-  await paletteOffers(win, 'clearance', /^Measure: Clearance/, 0);
+  // the palette does not find them either: "measure" lists the measuring tools of the project
+  // (the telecom test below sees the three telecom tools in this same list)
+  await paletteLists(
+    win,
+    'measure',
+    [/^Measure: Distance/, /^Measure: Area/],
+    [/^Measure: Antenna azimuth/, /^Measure: Physical tilt/, /^Measure: Clearance/],
+  );
+
+  // right-click the model: the engineering model is in every project, and no action of a tool
+  // set that is not part of this one is offered
+  await win.getByTestId('tree-row-quad').first().click({ button: 'right' });
+  const menu = win.getByRole('menu').first();
+  await expect(menu.getByTestId('menu-create-engineering')).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: /Coverage|thermal|antenna/i })).toHaveCount(0);
+  await win.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
 });
 
 test('a telecom project has the Telecom family and Coverage', async ({ win, dataRoot }) => {
@@ -144,7 +164,12 @@ test('a telecom project has the Telecom family and Coverage', async ({ win, data
   for (const tool of ['azimuth', 'antenna-tilt', 'clearance'])
     await expect(win.getByTestId(`telecom-tool-${tool}`)).toBeVisible();
 
-  await paletteOffers(win, 'azimuth', /^Measure: Antenna azimuth/, 1);
+  await paletteLists(win, 'measure', [
+    /^Measure: Distance/,
+    /^Measure: Antenna azimuth/,
+    /^Measure: Physical tilt/,
+    /^Measure: Clearance/,
+  ]);
 });
 
 test('Tool sets in Project settings adds a set to a project and takes it away again', async ({
@@ -187,6 +212,41 @@ test('Tool sets in Project settings adds a set to a project and takes it away ag
   expect(after).toContain('tools.checks');
   await measureBench(win);
   await expect(win.getByTestId('wb-section-telecom')).toHaveCount(0);
+});
+
+test('Earthworks shows Volumes before the first pile; Road shows nothing without a road', async ({
+  win,
+  dataRoot,
+}) => {
+  await setPurpose(dataRoot.projectDir, 'confined-space');
+  await openTiny(win);
+  expect(await toolSections(win)).not.toContain('tools.volumes');
+  await openSection(win, 'project');
+  await expect(panelSection(win, 'project.volumes')).toHaveCount(0);
+
+  // Earthworks on: Volumes is there, with its empty state, though the project holds no pile
+  const block = await openToolSets(win);
+  await expect(block).toContainText('empty until the first pile is drawn');
+  await toolSwitch(win, 'earthworks').click();
+  await expect(toolSwitch(win, 'earthworks')).toHaveAttribute('aria-checked', 'true');
+  await backToScene(win);
+  const sections = await toolSections(win);
+  expect(sections).toContain('tools.volumes');
+  expect(sections).toContain('tools.checks');
+  const volumes = await openSection(win, 'project', 'project.volumes');
+  await expect(volumes.getByTestId('volumes-bench')).toBeVisible();
+  // its empty state offers the way to the first pile
+  await expect(volumes.getByTestId('volumes-draw')).toBeVisible();
+
+  // Road on: the switch says what happens, and nothing shows, because this is not a road project
+  await openToolSets(win);
+  await expect(block).toContainText('a road is built only in a Road project');
+  await toolSwitch(win, 'road').click();
+  await expect(toolSwitch(win, 'road')).toHaveAttribute('aria-checked', 'true');
+  await backToScene(win);
+  expect(await toolSections(win)).not.toContain('tools.road');
+  await openSection(win, 'project');
+  await expect(panelSection(win, 'project.road')).toHaveCount(0);
 });
 
 test('a survey project that holds an antenna inventory keeps its telecom tools, switch locked on', async ({

@@ -15,7 +15,6 @@
 import { projectToolSets, ToolSet, type ProjectManifest, type ProjectPurpose } from '@aio/schema';
 import { purposeOf } from '../layout/presets';
 import type { FamilyId } from '../survey/measureCatalogue';
-import type { GroupId } from '../workspace/workbench/project/projectGroups';
 import type { SectionId } from '../workspace/workbench/tabsModel';
 import type { IslandMode, ToolGroup } from './registry';
 
@@ -103,8 +102,8 @@ export function toggled(
 }
 
 // ---------------------------------------------------------------- what belongs to which set
-// Every table names every id, so a new group, section, family, mode or list group cannot land
-// without saying whether it is in every project (`null`) or in a set.
+// Each table names every id, so a new group, section, family or mode cannot land without saying
+// whether it is in every project (`null`) or in a set.
 
 export const GROUP_SET: Readonly<Record<ToolGroup, ToolSet | null>> = {
   view: null,
@@ -174,16 +173,19 @@ export const MODE_SET: Readonly<Record<IslandMode, ToolSet | null>> = {
   road: 'road',
 };
 
-export const PROJECT_GROUP_SET: Readonly<Record<GroupId, ToolSet | null>> = {
+/**
+ * The "In this project" groups that belong to a set. Unlike the tables above it names only
+ * those: the list's group ids come and go with the groups that are built, and a group that is
+ * not named is in every project.
+ */
+export const PROJECT_GROUP_SET: Readonly<Partial<Record<string, ToolSet>>> = {
   antennas: 'telecom',
   sectors: 'telecom',
   coverage: 'telecom',
-  measurements: null,
-  issues: null,
-  stockpiles: 'earthworks',
-  changes: null,
-  photos: null,
 };
+
+/** The set an "In this project" group belongs to; null: it is in every project. */
+export const projectGroupSet = (group: string): ToolSet | null => PROJECT_GROUP_SET[group] ?? null;
 
 // The right-click actions need no table. Every action of a set already asks for that set's own
 // record before it shows (an antenna row, an antenna inventory for "RF coverage", a thermal photo

@@ -1,4 +1,4 @@
-all four|# Tools shown by project type
+# Tools shown by project type
 
 |          |                                                                                                                                              |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -26,7 +26,7 @@ Everything that is not core belongs to one of four **tool sets**. A set is eithe
 
 | Tool set   | What is in it                                                                                                                                                                                                                                                                                     |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Earthworks | Tools: Volumes, Survey checks. Project: Volumes. Layers: Show (surface and pile overlays). Stage tools mode: Volumes. Bottom strip: volume over time.                                                                                                                                             |
+| Earthworks | Tools: Volumes, Survey checks. Project: Volumes (with its empty state before the first pile). Layers: Show (surface and pile overlays). Stage tools mode: Volumes. Bottom strip: volume over time.                                                                                                |
 | Road       | Tools: Road. Project: Road. Stage tools mode: Road. Bottom strip: chainage.                                                                                                                                                                                                                       |
 | Telecom    | Measure family Telecom (Antenna azimuth, Physical tilt, Clearance, Detect antennas). Tools: Coverage. "In this project": Antennas, Sectors, Coverage plan. Right-click: every antenna action (fly to, hide, show, edit azimuth, edit downtilt, accept, reject, redraw, delete) and "RF coverage". |
 | Thermal    | Tools: Thermal. Right-click on photos: "Analyse thermal".                                                                                                                                                                                                                                         |
@@ -254,12 +254,9 @@ Not driven end to end: the switches in a read-only package (covered by a unit te
 2. **Engineering is core.** The Engineering section (the engineering model, exported as GLB) and "Create engineering model" are in every project type, subject only to the data test (a point cloud or mesh). It is not a tool set and has no switch. That leaves four sets: Earthworks, Road, Telecom, Thermal.
 3. **Terrain analysis is core.** It shows in every project that holds a model or a raster.
 4. **A set that the project type includes may be switched off.** Only a set with records is locked on.
+5. **Survey checks stays in Earthworks.** It shows in Survey, Construction and Data fusion projects, and elsewhere through the switch. Its other way in is unchanged in every project: Tools, Measure, Site data, "Survey QA and cleanup".
 
 The resulting defaults: Survey and Construction have Earthworks; Vertical asset has Thermal; Confined space has none; Data fusion has all four; Road has Road; Telecom towers has Telecom.
-
-### Assumption to confirm
-
-- **Survey checks stays in Earthworks.** The founder moved Terrain analysis to core and did not mention Survey checks, so its section shows in survey, construction and data fusion projects, and elsewhere through the switch. Its other way in is unchanged in every project: Tools, Measure, Site data, "Survey QA and cleanup".
 
 ## 8. What the build changed from this plan
 
@@ -267,5 +264,9 @@ The resulting defaults: Survey and Construction have Earthworks; Vertical asset 
 - **T8 (right-click actions) needed no code**, for the reason in section 2. The one piece of it that was built is the fact the Thermal set needs: the photo probe now says whether the project holds a thermal photo.
 - **A new channel was needed** to save the switches, `project:setToolSets`: each project setting has its own channel, there is no shared one. It is in the contract row.
 - **A section whose tool is open always shows**, whatever the sets. This rule was there before and is kept, so nothing that opens a panel (the site digest's "check the survey" action, a sector row) can lead nowhere.
-- **The kit's Swipe tile** in the Compare mode belongs to Earthworks and leaves projects without the stockpile kit, where it could never start.
+- **The kit's Swipe tile** in the Compare mode belongs to Earthworks: it shows where Earthworks is part of the project (greyed with its reason in a survey that has no stockpile kit, as before) and is no longer offered in a project without Earthworks.
+- **A set that is switched on shows where its first record is made** (review, 18 Nov). Tools > Volumes, Project > Volumes and the Volumes mode no longer wait for a pile: they come with Earthworks, and Project > Volumes shows its existing empty state with "Draw volume". Data tests stay only where a tool needs something to work on (a model for Coverage, photos for Thermal, a surface for Survey checks, piles for the Show control).
+- **Road is the exception, and it is not solved here.** The road's sections read the road model, and a road model is built only in a road project (the centreline card shows for those alone). So the Road switch in a project of another type shows nothing; its text says so. Giving other project types a way to build a road would be new capability.
+- **A record that cannot be read counts as held** (review, 18 Nov): a damaged antenna file, RF plan, measurements file, stockpile kit or road model, or a photo set that could not be looked at, keeps its tool set on.
+- **The "In this project" table names only the groups of a set** (the three tower groups), so a list group that is added or removed elsewhere needs no change here.
 - **A survey or construction project that holds an antenna inventory now lists it** under "In this project". Before, those two types left the tower groups out even with antennas on disk.
