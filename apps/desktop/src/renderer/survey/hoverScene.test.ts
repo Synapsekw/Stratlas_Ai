@@ -2,13 +2,20 @@
 import type { EngineStage } from '@aio/engine';
 import { toWgs84 } from '@aio/geo';
 import type { MapController } from '@aio/maps';
-import { emptyMeasurements, type SitePoint } from '@aio/schema';
+import { emptyMeasurements, type SitePoint, type SurveyMeasurement } from '@aio/schema';
 import type { ChartSeries } from '@aio/survey';
 import { workspace } from '@aio/workspace';
 import { PerspectiveCamera, Scene, Vector3, type Points, type PointsMaterial } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { linkedHover, type HoverLine } from './linkedHover';
-import { attachHover3d, attachHoverFly, attachHoverMap, LINK_LAYERS } from './hoverScene';
+import {
+  attachHover3d,
+  attachHoverFly,
+  attachHoverMap,
+  flyOffsetAbove,
+  LINK_LAYERS,
+  pointFlyZoom,
+} from './hoverScene';
 import { frameOf } from './measureScene';
 import { measureStore } from './measureStore';
 import { sectionStore } from './sectionStore';
@@ -55,7 +62,15 @@ const flush = () => {
 
 beforeEach(() => {
   linkedHover.setState({ lines: new Map(), hover: null, pin: null, fly: null });
-  measureStore.setState({ file: emptyMeasurements(), tool: null, draw: null, editing: null });
+  // the lines' owners are open: the measurement `m` selected, the pile `p` opened
+  measureStore.setState({
+    file: emptyMeasurements(),
+    tool: null,
+    draw: null,
+    editing: null,
+    selected: ['m', 'p'],
+    focus: 'p',
+  });
   frames = [];
   vi.stubGlobal('requestAnimationFrame', (f: FrameRequestCallback) => {
     frames.push(f);
@@ -214,6 +229,66 @@ describe('3D', () => {
     expect(pin?.source).toBe('3d');
     expect(pin?.chainageM).toBeCloseTo(60, 0);
     expect(s.pin()?.hidden).toBe(false);
+    s.detach();
+  });
+
+  it("a line that is not the open pile's never takes the click", () => {
+    const s = fakeStage();
+    linkedHover.getState().register({ ...line(TWO), key: 'pile:a' });
+    const [x, y] = s.screenOf([60, 0, 8.37]);
+    // another pile is open: the click is left to the view (the pile under the pointer)
+    measureStore.setState({ selected: ['b'], focus: 'b' });
+    expect(s.click(x, y)).toBe(false);
+    expect(linkedHover.getState().pin).toBeNull();
+    s.dbl(x, y);
+    expect(linkedHover.getState().fly).toBeNull();
+    // the hover still snaps
+    s.move(x, y);
+    expect(linkedHover.getState().hover?.key).toBe('pile:a');
+    // its own pile open: the line takes it
+    measureStore.setState({ selected: ['a'], focus: 'a' });
+    expect(s.click(x, y)).toBe(true);
+    expect(linkedHover.getState().pin?.key).toBe('pile:a');
+    s.detach();
+  });
+
+  it("a click on another pile within reach of the open pile's line is that pile's", () => {
+    const s = fakeStage();
+    linkedHover.getState().register({ ...line(TWO), key: 'pile:a' });
+    // pile b lies beside the line of the open pile a, 8.37 m up like the line's surface
+    const ring: SitePoint[] = [
+      [55, -5, 8.37],
+      [65, -5, 8.37],
+      [65, -0.5, 8.37],
+      [55, -0.5, 8.37],
+    ];
+    const pile = (id: string, points: SitePoint[]): SurveyMeasurement => ({
+      id,
+      family: 'polygon',
+      tool: 'volume',
+      label: id,
+      scope: { kind: 'site' },
+      points,
+      items: [],
+      results: [],
+      createdAt: '2026-11-18T00:00:00Z',
+    });
+    measureStore.setState({
+      file: { ...emptyMeasurements(), measurements: [pile('b', ring)] },
+      selected: ['a'],
+      focus: 'a',
+    });
+    const onLine = s.screenOf([60, 0, 8.37]);
+    const inB = s.screenOf([60, -3, 8.37]);
+    // within the line's 12 px, and inside b
+    expect(Math.hypot(inB[0] - onLine[0], inB[1] - onLine[1])).toBeLessThan(12);
+    expect(Math.hypot(inB[0] - onLine[0], inB[1] - onLine[1])).toBeGreaterThan(6);
+    expect(s.click(...inB)).toBe(false);
+    expect(linkedHover.getState().pin).toBeNull();
+    // on the line itself, beside b: still the line's
+    const beside = s.screenOf([30, 0, 8.37]);
+    expect(s.click(...beside)).toBe(true);
+    expect(linkedHover.getState().pin?.key).toBe('pile:a');
     s.detach();
   });
 
@@ -418,6 +493,7 @@ function fakeMap() {
       y: 150 - (ll[1] - lat0) * 100_000,
     })),
     isStyleLoaded: () => true,
+    easeTo: vi.fn(),
     getSource: (id: string) =>
       id === 'aio-link' && added
         ? {
@@ -499,6 +575,54 @@ describe('map', () => {
     expect(linkedHover.getState().pin?.source).toBe('map');
     detach();
   });
+  it('with the section window open a fly lands the point above the window on the map', async () => {
+    const m = fakeMap();
+    const detach = attachHoverMap(m.ctl, mapFrame);
+    linkedHover.getState().register(mapLine);
+    // closed: the workspace's point fly is the map's, nothing of its own
+    linkedHover.getState().flyTo('pile:p', 50);
+    await Promise.resolve();
+    expect(m.map.easeTo).not.toHaveBeenCalled();
+    // open over the lower 40 % of the 400 x 300 view
+    const big = document.createElement('section');
+    big.className = 'sec-window';
+    big.getBoundingClientRect = () =>
+      ({ left: 8, right: 392, top: 180, bottom: 292, width: 384, height: 112 }) as DOMRect;
+    document.body.append(big);
+    sectionStore.setState({ window: true });
+    try {
+      linkedHover.getState().flyTo('pile:p', 50);
+      await Promise.resolve();
+      expect(m.map.easeTo).toHaveBeenCalledTimes(1);
+      const [to] = m.map.easeTo.mock.calls[0] as [
+        { center: [number, number]; zoom: number; offset: [number, number] },
+      ];
+      const want = toWgs84([500_050, 2_700_000, 0], 32640);
+      expect(to.center[0]).toBeCloseTo(want[0], 6);
+      expect(to.center[1]).toBeCloseTo(want[1], 6);
+      // the free part runs from 0 to 180 px: its middle is 60 px above the view's
+      expect(to.offset).toEqual([0, -60]);
+      expect(to.zoom).toBeCloseTo(pointFlyZoom(40, want[1], 0), 6);
+    } finally {
+      sectionStore.setState({ window: false });
+      detach();
+    }
+    // detached: no fly of its own any more
+    linkedHover.getState().flyTo('pile:p', 10);
+    await Promise.resolve();
+    expect(m.map.easeTo).toHaveBeenCalledTimes(1);
+  });
+
+  it('the landing offset is the middle of what the window leaves free, 0 off the view', () => {
+    const view = { left: 0, right: 400, top: 100, bottom: 500 };
+    expect(flyOffsetAbove(view, null)).toBe(0);
+    expect(flyOffsetAbove(view, { left: 0, right: 400, top: 340, bottom: 500 })).toBe(-80);
+    // beside the view (the other pane of a Split), below it, or over all of it
+    expect(flyOffsetAbove(view, { left: 400, right: 800, top: 340, bottom: 500 })).toBe(0);
+    expect(flyOffsetAbove(view, { left: 0, right: 400, top: 500, bottom: 600 })).toBe(0);
+    expect(flyOffsetAbove(view, { left: 0, right: 400, top: 90, bottom: 500 })).toBe(0);
+  });
+
   it('a click off the map canvas (a control, a marker, a line handle) is not taken', () => {
     const m = fakeMap();
     const detach = attachHoverMap(m.ctl, mapFrame);

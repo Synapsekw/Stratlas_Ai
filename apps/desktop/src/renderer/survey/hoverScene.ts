@@ -6,8 +6,12 @@
  * "42.3 m · −1.63". The other way, a pointer within 12 px of a registered line snaps to it and
  * drives the chart; a click pins, a double-click flies there. Everything is drawn on top of the
  * scene (no depth test, like the measurement lines) and never takes a raycast.
+ *
+ * The click and the double-click are the line's only while its pile is open or its measurement
+ * selected, and never when they land on another measurement: that one is picked or opened
+ * instead (`lineTakesClick`). The hover snaps either way.
  */
-import { getActiveStage, type EngineStage } from '@aio/engine';
+import { getActiveStage, reducedMotion, type EngineStage } from '@aio/engine';
 import { formatNumber, localeOf, toWgs84, unitFactor, unitLabel } from '@aio/geo';
 import type { MapController } from '@aio/maps';
 import type { SitePoint, Vec3 } from '@aio/schema';
@@ -32,10 +36,13 @@ import {
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { primaryMap, primaryScene } from '../workspace/compare';
 import { linkedHover, type HoverLine, type HoverPoint, type LinkedHoverState } from './linkedHover';
 import { markerAt, pointAt, snapScreen, tagText, type TagFormat } from './linkedHoverGeom';
-import type { Frame } from './measureScene';
-import { measureStore } from './measureStore';
+import { measureAt, type HitShape } from './measureHits';
+import { shapesOf, type Frame } from './measureScene';
+import { measureStore, type MeasureState } from './measureStore';
+import { openPileHits } from './pile/pileLookState';
 import { pointerBusy } from './pointerBusy';
 import { sectionStore } from './sectionStore';
 
@@ -230,14 +237,59 @@ export function vertexLine(line: HoverLine, project: Project): ScreenLine {
   return { screen, cumul };
 }
 
-/** The registered line a screen point snaps to: the one hovered now first, then in order. */
+/** The measurement a line was drawn for, or null (a station's section, the old kit's line). */
+function ownerOf(key: string): string | null {
+  if (key === 'section') {
+    const src = sectionStore.getState().source;
+    return src?.kind === 'measurement' ? src.id : null;
+  }
+  if (key.startsWith('pile:')) return key.slice('pile:'.length);
+  if (key.startsWith('measure:')) return key.slice('measure:'.length);
+  return null;
+}
+
+/**
+ * Whether a click near the line `key` is the line's. A pile's or a measurement's line takes it
+ * only while that pile is open or that measurement selected (a section's line is its open
+ * section's for as long as it is registered). No line takes a click that lands on another
+ * measurement (`under`, as the view's pick reads it): zoomed out the 12 px around a line reach
+ * over the piles beside it, and the click is then theirs.
+ */
+export function lineTakesClick(
+  key: string,
+  under: string | null,
+  s: Pick<MeasureState, 'focus' | 'selected'> = measureStore.getState(),
+): boolean {
+  const own = ownerOf(key);
+  if (key !== 'section' && own !== null && s.focus !== own && !s.selected.includes(own))
+    return false;
+  return under === null || under === own;
+}
+
+/** The measurement shapes a view draws, as the pick's hit test reads them. */
+function hitShapes(view: 'scene' | 'map', frame: Frame): HitShape[] {
+  const dates = (view === 'scene' ? primaryScene : primaryMap).getState();
+  const manifest = workspace.getState().project?.manifest ?? null;
+  return shapesOf(
+    measureStore.getState(),
+    dates,
+    manifest,
+    frame.epsg === null ? 'project north' : 'grid north',
+  ).map((sh) => ({ id: sh.id, points: sh.points, closed: sh.closed }));
+}
+
+/**
+ * The registered line a screen point snaps to: the one hovered now first, then in order. With
+ * `takes`, only among the lines it lets through.
+ */
 function snapAt(
   s: LinkedHoverState,
   screenOf: (line: HoverLine) => ScreenLine,
   x: number,
   y: number,
+  takes?: (key: string) => boolean,
 ): { key: string; chainageM: number } | null {
-  const lines = [...s.lines.values()];
+  const lines = [...s.lines.values()].filter((l) => !takes || takes(l.key));
   const first = s.hover?.key ?? s.pin?.key;
   lines.sort((a, b) => Number(b.key === first) - Number(a.key === first));
   for (const line of lines) {
@@ -269,6 +321,8 @@ interface InputView {
   screen(line: HoverLine, project: Project): ScreenLine;
   /** Another tool owns the pointer now. */
   busy(): boolean;
+  /** The measurement the view's pick finds at a client point, or null. */
+  under(x: number, y: number): string | null;
 }
 
 /**
@@ -306,12 +360,21 @@ function pointerInput(source: '3d' | 'map', view: InputView) {
     };
     return { project: f.project, screenOf };
   };
-  const snap = (x: number, y: number) => {
+  const snap = (x: number, y: number, takes?: (key: string) => boolean) => {
     if (view.busy()) return null;
     const s = linkedHover.getState();
     if (s.lines.size === 0) return null;
     const { screenOf } = onScreen();
-    return snapAt(s, screenOf, x, y);
+    return snapAt(s, screenOf, x, y, takes);
+  };
+  /** The line a click or double-click at the point is for (`lineTakesClick`), if any. */
+  const clickSnap = (x: number, y: number) => {
+    // read once, and only when a line is in reach
+    let under: { id: string | null } | null = null;
+    return snap(x, y, (key) => {
+      under ??= { id: view.under(x, y) };
+      return lineTakesClick(key, under.id);
+    });
   };
   const moveNow = (x: number, y: number) => {
     const hit = snap(x, y);
@@ -348,7 +411,7 @@ function pointerInput(source: '3d' | 'map', view: InputView) {
     },
     /** True when the click was on a line and is taken. */
     click(x: number, y: number): boolean {
-      const hit = snap(x, y);
+      const hit = clickSnap(x, y);
       if (!hit) return false;
       const t = performance.now();
       const repeat =
@@ -375,7 +438,7 @@ function pointerInput(source: '3d' | 'map', view: InputView) {
     },
     /** True when the double-click was on a line and asked for the fly. */
     dbl(x: number, y: number): boolean {
-      const hit = snap(x, y);
+      const hit = clickSnap(x, y);
       if (!hit) return false;
       linkedHover.getState().flyTo(hit.key, hit.chainageM);
       return true;
@@ -678,6 +741,19 @@ export function attachHover3d(stage: EngineStage, frame: Frame): () => void {
     },
     screen: screenLine,
     busy: () => pointerBusy(canvas, stage),
+    // as the 3D pick reads it: the drawn shapes and the opened pile's lifted top and sides
+    under: (x, y) => {
+      const project = projectIn(canvasRect());
+      return measureAt(
+        [...hitShapes('scene', frame), ...openPileHits()],
+        (p) => {
+          const at = project(p[0], p[1], p[2]);
+          return at ? { x: at[0], y: at[1] } : null;
+        },
+        x,
+        y,
+      );
+    },
   });
   const onMove = (e: PointerEvent) => {
     // an orbit drag is not a hover
@@ -870,6 +946,18 @@ export function attachHoverMap(ctl: MapController, frame: Frame): () => void {
     // on a flat map the heights do not move the line: its vertices are enough
     screen: vertexLine,
     busy: () => pointerBusy(canvas),
+    under: (x, y) => {
+      const project = projectIn(canvasRect());
+      return measureAt(
+        hitShapes('map', frame),
+        (p) => {
+          const at = project(p[0], p[1], null);
+          return at ? { x: at[0], y: at[1] } : null;
+        },
+        x,
+        y,
+      );
+    },
   });
   // only the map's own surface: controls, DOM markers and the pile line's handles over it keep
   // their pointer
@@ -900,6 +988,31 @@ export function attachHoverMap(ctl: MapController, frame: Frame): () => void {
     viewSeq++;
     place();
   };
+  // A fly the chart or a line asks for while the section window is open. The workspace's point
+  // fly (`attachHoverFly`) centres the point on the map, at the window's upper edge or behind it,
+  // and in a Split it carries the 3D view's own shifted target. This map then lands the point
+  // itself, in the middle of the part the window leaves free. Asked for after the workspace's
+  // fly of the same turn: the later ease is the one the map carries out.
+  let detached = false;
+  const offFly = linkedHover.subscribe((s, prev) => {
+    const fly = s.fly;
+    if (!fly || fly === prev.fly || !sectionStore.getState().window) return;
+    const line = s.lines.get(fly.key);
+    if (!line) return;
+    const m = markerAt(line, fly.chainageM);
+    queueMicrotask(() => {
+      if (detached || !sectionStore.getState().window) return;
+      const at = lngLat(m.e, m.n);
+      const box = canvas.getBoundingClientRect();
+      const cover = document.querySelector('.sec-window')?.getBoundingClientRect() ?? null;
+      map.easeTo({
+        center: at,
+        zoom: pointFlyZoom(LINK_FLY_DISTANCE_M, at[1], canvas.clientWidth),
+        offset: [0, flyOffsetAbove(box, cover)],
+        duration: reducedMotion() ? 0 : MAP_FLY_MS,
+      });
+    });
+  });
   const onResize = () => {
     viewSeq++;
   };
@@ -916,6 +1029,8 @@ export function attachHoverMap(ctl: MapController, frame: Frame): () => void {
   rebuild();
 
   return () => {
+    detached = true;
+    offFly();
     offStore();
     container.removeEventListener('pointermove', onMove);
     container.removeEventListener('pointerleave', onLeave);
@@ -937,6 +1052,35 @@ export function attachHoverMap(ctl: MapController, frame: Frame): () => void {
 }
 
 // ---------------------------------------------------------------- fly
+
+/** The map's fly length, as its own point fly's (`@aio/maps`, `followCamera`). */
+const MAP_FLY_MS = 500;
+
+/**
+ * The zoom at which a map `widthPx` wide shows a point from `distanceM`: the map controller's
+ * rule for the workspace's point fly (`followCamera` in `@aio/maps`), so a fly this file carries
+ * out itself ends as far out as any other.
+ */
+export function pointFlyZoom(distanceM: number, lat: number, widthPx: number): number {
+  const wantMpp = (distanceM * 1.5) / Math.max(200, widthPx);
+  const zoom = Math.log2((40_075_016.686 * Math.cos((lat * Math.PI) / 180)) / (512 * wantMpp));
+  return Math.min(22, Math.max(3, zoom));
+}
+
+/**
+ * How far from the view's centre a fly lands its point, in px down the screen (negative: up), so
+ * it stands in the middle of what `cover` (the section window, over the view's lower part) leaves
+ * free above it. 0 where the window is not over this view, or leaves nothing above it.
+ */
+export function flyOffsetAbove(
+  view: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'>,
+  cover: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'> | null,
+): number {
+  if (!cover) return 0;
+  const beside = cover.right <= view.left || cover.left >= view.right;
+  if (beside || cover.top >= view.bottom || cover.top <= view.top) return 0;
+  return (view.top + cover.top) / 2 - (view.top + view.bottom) / 2;
+}
 
 /** Where the point lands while the section window covers the stage's lower part: from the top. */
 export const LINK_FLY_UNDER_WINDOW = 0.25;
@@ -974,7 +1118,8 @@ export function flyLandingHigh(
  * Carry out the flies the chart or a line asks for (`linkedHover.flyTo`): the camera in 3D and the
  * map in Map view both follow the workspace's point fly. Attach once, not per view. While the
  * section window is open (it covers the lower part of the stage) the 3D fly lands the point in the
- * upper quarter of the view (`camera`: the active 3D stage's).
+ * upper quarter of the view (`camera`: the active 3D stage's), and each map lands it in the part
+ * the window leaves free (`attachHoverMap`).
  */
 export function attachHoverFly(
   frame: Frame,

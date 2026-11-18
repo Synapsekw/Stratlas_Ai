@@ -16,10 +16,24 @@ import './volumes/cutFill.css';
 /** The ramp's half span when none is given, metres (the boards' ±2.0 m). */
 export const LEGEND_RANGE_M = 2;
 
+/** One pile's own heat map: the pile and the two sides of its comparison, by their names. */
+export interface OwnHeat {
+  /** The pile's measurement id. */
+  id: string;
+  name: string;
+  from: string;
+  to: string;
+}
+
 export interface HeatLegendViewProps {
   /** The compare pair's dates (ISO), From and To. */
   from: string;
   to: string;
+  /**
+   * The views draw one pile's own heat map, not the pair's: the title names the pile and its two
+   * sides instead of the pair's dates.
+   */
+  own?: OwnHeat | null;
   /** "Ignore under", metres; 0 draws no ignored band. */
   thresholdM: number;
   /** The ramp's half span, metres (default 2). */
@@ -54,6 +68,7 @@ function stopsGradient(
 export function HeatLegendView({
   from,
   to,
+  own,
   thresholdM,
   rangeM = LEGEND_RANGE_M,
   style,
@@ -68,10 +83,12 @@ export function HeatLegendView({
   const label = unitLabel(u);
   const len = (m: number, decimals: number) =>
     `${formatNumber(fromSI(m, 'distance', u), decimals, loc)} ${label}`;
-  const title = t('cutfill.legendTitle', {
-    to: formatDate(to, { year: false }),
-    from: formatDate(from, { year: false }),
-  });
+  const title = own
+    ? t('cutfill.legendOwnTitle', { name: own.name, to: own.to, from: own.from })
+    : t('cutfill.legendTitle', {
+        to: formatDate(to, { year: false }),
+        from: formatDate(from, { year: false }),
+      });
   const range = len(rangeM, 1);
   const ramp = useMemo<CSSProperties | undefined>(
     () =>
@@ -87,6 +104,7 @@ export function HeatLegendView({
       aria-label={title}
       aria-describedby={id}
       data-testid="cutfill-legend"
+      {...(own ? { 'data-own': own.id } : {})}
     >
       <span className="cf-legend-title">{title}</span>
       <span className="cf-legend-ramp" style={ramp} aria-hidden="true" />
