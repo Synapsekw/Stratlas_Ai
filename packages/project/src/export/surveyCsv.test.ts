@@ -299,16 +299,28 @@ const lines = (csv: string) => csv.replace(BOM, '').trimEnd().split('\r\n');
 describe('the measurements CSV', () => {
   it('a base reads the same in the picker, the list and the CSV', () => {
     // the engine's stored words stay in the file; a person reads the picker's name
-    const sides: [SurfaceRef, string, string][] = [
+    // a base that is one level keeps its value beside the name (fourth column)
+    const sides: [SurfaceRef, string, string, string?][] = [
       [{ kind: 'smart' }, 'Smart base (triangulated perimeter)', 'Toe surface'],
       [
         { kind: 'reference', mode: 'perimeter-min' },
         'Lowest point on the perimeter (38.000 m)',
         'Lowest point',
+        'Lowest point (38.000 m)',
       ],
       [{ kind: 'fit-plane' }, 'Best-fit plane through the perimeter', 'Best-fit plane'],
-      [{ kind: 'reference', mode: 'level', levelM: 12 }, 'Level 12.000 m', 'Fixed level'],
-      [{ kind: 'perimeter-mean' }, 'Mean perimeter level (100.120 m)', 'Average edge level'],
+      [
+        { kind: 'reference', mode: 'level', levelM: 12.5 },
+        'Level 12.500 m',
+        'Fixed level',
+        'Fixed level (12.500 m)',
+      ],
+      [
+        { kind: 'perimeter-mean' },
+        'Mean perimeter level (100.120 m)',
+        'Average edge level',
+        'Average edge level (100.120 m)',
+      ],
       [
         {
           kind: 'custom',
@@ -322,7 +334,7 @@ describe('the measurements CSV', () => {
         'Custom',
       ],
     ];
-    for (const [from, stored, name] of sides) {
+    for (const [from, stored, name, withLevel] of sides) {
       expect(pickerBaseName(from)).toBe(name);
       const csv = measurementsCsv(
         data({
@@ -343,7 +355,7 @@ describe('the measurements CSV', () => {
         }),
       );
       const net = lines(csv).find((r) => r.includes(',pile.net,'));
-      expect(net).toContain(`,ok,${name} to Current survey (DSM),`);
+      expect(net).toContain(`,ok,${withLevel ?? name} to Current survey (DSM),`);
       expect(csv).not.toContain(stored);
     }
   });
@@ -371,7 +383,7 @@ describe('the measurements CSV', () => {
       }),
     );
     expect(lines(csv).find((r) => r.includes(',pile.net,'))).toContain(
-      ',ok,Previous survey (DSM) to Average edge level,',
+      ',ok,Previous survey (DSM) to Average edge level (100.120 m),',
     );
   });
 

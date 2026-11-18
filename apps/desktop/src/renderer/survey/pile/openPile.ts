@@ -13,6 +13,7 @@ import { workbench, type WorkbenchState } from '../../workspace/workbench/workbe
 import { measureStore, select } from '../measureStore';
 import { pickInVolumesView } from '../volumesPick';
 import { askPileFly, type PileFlyMode } from './pileFly';
+import { forgetPileOrigin } from './pileOrigin';
 
 /** A stockpile: a volume measurement drawn as a polygon. */
 export function isPile(m: Pick<SurveyMeasurement, 'tool' | 'family'>): boolean {
@@ -44,6 +45,10 @@ export interface KitPileSelection {
  * The camera then frames the pile from an oblique view (`askPileFly`, founder 26 Oct 2026): from
  * a list, the map or the panel's arrows always, after a click in 3D only when the pile is not
  * already mostly in view (`fly`).
+ *
+ * Every open through here ends an earlier visit from the inventory: its "Back to inventory" link
+ * shows only while the pile's latest open came from there. The inventory notes its own open
+ * after this call (`openedFromInventory`), and the panel's arrows do not come through here.
  */
 export function openPile(
   id: string,
@@ -51,6 +56,7 @@ export function openPile(
   vol: KitPileSelection = volumetric,
   fly: PileFlyMode = 'always',
 ): void {
+  forgetPileOrigin();
   pickInVolumesView(id);
   select([id], id);
   if (!isIssueEditing()) showBench('selection', bench);

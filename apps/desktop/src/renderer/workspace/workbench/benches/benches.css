@@ -61,24 +61,12 @@
 }
 
 /* ----------------------------------------------------------------------- Volumes */
-/* the controls above the inventory, which scrolls on its own */
+/* the tab is filled by the view (the inventory scrolls on its own) */
 .vol-bench {
   flex: 1 1 auto;
   min-block-size: 0;
   display: flex;
   flex-direction: column;
-}
-.vol-bench-controls {
-  flex: none;
-  display: grid;
-  justify-items: start;
-  gap: var(--sp-4);
-  padding: var(--sp-4) var(--sp-5);
-  border-block-end: 1px solid var(--line);
-}
-.vol-bench-controls .seg {
-  flex-wrap: wrap;
-  max-inline-size: 100%;
 }
 
 /* ----------------------------------------------------------------------- Video and camera */

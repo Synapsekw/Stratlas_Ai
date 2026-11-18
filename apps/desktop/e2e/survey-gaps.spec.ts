@@ -311,7 +311,7 @@ test('a package of a survey project shows its measurements read only, drawn, wit
       .toBeGreaterThan(0);
 
     // the properties are read only: no delete, no vertex editing, the label cannot be typed in
-    // a pile: it opens in its panel in the Volumes tab, its full card is the Measure tab's
+    // a pile: it opens in its panel in Selection, its full card is the Measure tab's
     await selectMeasure(pw, 'Cone (synthetic)');
     await expect(pw.getByTestId('pile-panel')).toHaveAttribute('aria-label', 'Cone (synthetic)');
     const panel = pw.getByTestId('survey-panel');

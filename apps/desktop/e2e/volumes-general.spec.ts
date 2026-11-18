@@ -314,7 +314,7 @@ test.describe('volumes and comparisons', () => {
     expect(await drafts.count()).toBeGreaterThanOrEqual(2);
     await drafts.nth(0).check();
     await drafts.nth(1).check();
-    await expectAccessible(win, 'Whole site cut and fill', {
+    await expectAccessible(win, 'Find cut and fill regions', {
       include: '[data-testid="survey-site"]',
     });
     // snapping to the ortho needs the boundary model (G12): the test pack has none, and says so

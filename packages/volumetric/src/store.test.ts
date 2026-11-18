@@ -278,6 +278,35 @@ describe('volumetric store: dates and selection', () => {
     ws.getState().select(null);
     expect(store.getState().selected).toBeNull();
   });
+
+  it('a click on the selected pile in the scene (its callout) is seen as a pick again', async () => {
+    const { store, ws } = setup();
+    await store.getState().load();
+    ws.getState().select({ kind: 'asset', id: 'P02_e2', layer: 'terrain-2' });
+    const picks: string[] = [];
+    store.subscribe((s, prev) => {
+      if (s.selected !== null && s.selected !== prev.selected) picks.push(s.selected);
+    });
+    // the callout selects the pile's node again: the same pile, a new click
+    ws.getState().select({ kind: 'asset', id: 'P02_e2', layer: 'terrain-2' });
+    expect(picks).toEqual(['P02']);
+    expect(store.getState().selected).toBe('P02');
+  });
+
+  it("the store's own selection of the scene node is not a second pick", async () => {
+    const { store } = setup();
+    await store.getState().load();
+    const picks: string[] = [];
+    store.subscribe((s, prev) => {
+      if (s.selected !== null && s.selected !== prev.selected) picks.push(s.selected);
+    });
+    store.getState().select('P01');
+    expect(picks).toEqual(['P01']);
+    // a change of date selects the pile's node on that survey: no click
+    store.getState().setEpoch('e1');
+    expect(picks).toEqual(['P01']);
+    expect(store.getState().selected).toBe('P01');
+  });
 });
 
 describe('volumetric store: pile visibility', () => {

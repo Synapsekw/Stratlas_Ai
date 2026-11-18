@@ -7,6 +7,7 @@ import { createWorkbenchStore } from '../../workspace/workbench/workbenchStore';
 import { measureStore } from '../measureStore';
 import { isPile, openMeasurement, openPile } from './openPile';
 import { pileFly } from './pileFly';
+import { openedFromInventory, pileOrigin } from './pileOrigin';
 
 const shellState = vi.hoisted(() => ({ rightCollapsed: false }));
 vi.mock('../../shell', () => ({
@@ -179,5 +180,26 @@ describe('openMeasurement (a sidebar row)', () => {
     expect(measureStore.getState().focus).toBe('line1');
     expect(measureStore.getState().selected).toEqual(['line1']);
     expect(bench.getState().panel).toBe('selection');
+  });
+});
+
+describe('the link back to the inventory', () => {
+  afterEach(() => {
+    pileOrigin.setState({ id: null, order: null });
+  });
+
+  it('goes when the same pile is opened again from another route (3D, the Map, the sidebar)', () => {
+    // as the inventory opens a pile: opened, then noted as opened from there
+    openPile('pile1', bench);
+    openedFromInventory('pile1', ['pile1']);
+    expect(pileOrigin.getState().id).toBe('pile1');
+    openPile('pile1', bench, undefined, 'if-out-of-view');
+    expect(pileOrigin.getState()).toEqual({ id: null, order: null });
+  });
+
+  it('a sidebar row forgets it too', () => {
+    openedFromInventory('pile1');
+    openMeasurement('pile1', bench);
+    expect(pileOrigin.getState().id).toBeNull();
   });
 });

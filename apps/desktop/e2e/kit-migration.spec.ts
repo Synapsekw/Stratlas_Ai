@@ -5,8 +5,8 @@
  * measurement in the Stockpiles group showing exactly its old figure, labelled "From an earlier
  * version (kit, Toe surface)", with nothing marked unsaved; the conversion is written once and
  * never again, so a pile deleted afterwards stays deleted; a package of it shows the same figures
- * and writes nothing. A picked pile opens in its pile panel in the Volumes tab (volumetrics
- * redesign B5); its full card stays the Measure tab's. No pipeline Python: nothing is computed.
+ * and writes nothing. A picked pile opens in its pile panel in Selection (founder, 18 Nov
+ * 2026); its full card stays the Measure tab's. No pipeline Python: nothing is computed.
  * Off-screen, zero network.
  *
  * Heights (volumetrics redesign A3): the project's origin is 51 m up and the kit left a DSM per

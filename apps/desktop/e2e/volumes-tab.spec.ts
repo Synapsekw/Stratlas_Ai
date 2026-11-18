@@ -153,7 +153,7 @@ test('Inventory groups the piles by material with subtotals and a site total tha
     include: '[data-testid="volumes-view"]',
   });
 
-  // a row opens the pile panel; ‹ Inventory comes back
+  // a row opens the pile panel; its "Back to inventory" link comes back to the list
   await view.getByTestId('volumes-pile').filter({ hasText: SP1 }).click();
   // (in Selection, where a clicked pile opens)
   const panel = selectedPile(win);

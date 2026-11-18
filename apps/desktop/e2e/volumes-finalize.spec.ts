@@ -296,10 +296,13 @@ test('with one pile open on the Map, the cut and fill legend names the pile and 
   await expect(title).not.toContainText('Height change');
   await expect(legend).toHaveAttribute('aria-label', new RegExp(`^${SP1}: `));
 
-  // the pile let go: the whole site between the compare pair again
+  // the pile let go (opened by a click in 3D, it has no link back: Esc on its panel): the whole
+  // site between the compare pair again
   await openSection(win, 'selection');
   await expect(panel).toBeVisible();
-  await panel.getByTestId('pile-back').click();
+  await expect(panel.getByTestId('pile-back')).toHaveCount(0);
+  await panel.getByTestId('pile-tab-overview').focus();
+  await win.keyboard.press('Escape');
   await expect(selectedPile(win)).toHaveCount(0);
   await expect(legend).not.toHaveAttribute('data-own', /./);
   await expect(title).toContainText(/^Height change .+ minus .+/);

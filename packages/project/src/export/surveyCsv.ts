@@ -509,11 +509,34 @@ export const MEASUREMENTS_CSV_COLUMNS = [
 
 /**
  * A side of a comparison as a person reads it: a base by the base picker's name, decided from the
- * side itself; a survey or design by the name the result was stored with. A figure carried from
+ * side itself, with its level when the base is one level ("Fixed level (12.500 m)"); a survey or
+ * design by the name the result was stored with. A figure carried from
  * an earlier version keeps its stored words, since the engine did not compute it on this base.
  */
-const sideWords = (ref: SurfaceRef | undefined, r: ComparisonResult, stored: string): string =>
-  (ref !== undefined && r.carried === undefined ? pickerBaseName(ref) : null) ?? stored;
+const sideWords = (
+  ref: SurfaceRef | undefined,
+  r: ComparisonResult,
+  stored: string,
+  level: (m: number) => string,
+): string => {
+  const name = ref !== undefined && r.carried === undefined ? pickerBaseName(ref) : null;
+  if (ref === undefined || name === null) return stored;
+  const z = baseLevelM(ref, stored);
+  return z === null ? name : `${name} (${level(z)})`;
+};
+
+/**
+ * The level in metres of a base that is one level (Fixed level, Lowest point, Average edge level
+ * and older files' highest and lowest points): the one the result was computed on, which the
+ * engine wrote into its stored label ("Level 12.500 m", "... (38.000 m)"); a fixed level's own
+ * when the label has none. Null for every other base.
+ */
+function baseLevelM(ref: SurfaceRef, stored: string): number | null {
+  if (ref.kind !== 'reference' && ref.kind !== 'perimeter-mean') return null;
+  const found = /(-?\d+(?:\.\d+)?) m\)?$/.exec(stored)?.[1];
+  if (found !== undefined) return Number(found);
+  return ref.kind === 'reference' && ref.mode === 'level' ? (ref.levelM ?? null) : null;
+}
 
 /**
  * Every item of every measurement, one row each: the readouts in the template's order, then each
@@ -561,6 +584,8 @@ export function measurementsCsv(data: SurveyReportData): string {
     };
     for (const v of m.values)
       value(v.key, v.label, v.si, v.kind, v.display, v.si === null ? 'missing' : 'ok', '');
+    // a base's level, as the row's own distances read (the measurement's units, the precision)
+    const level = (z: number) => formatQuantity(z, 'distance', m.units, data.basis.precision);
     for (const c of m.comparisons) {
       const r = c.result;
       const status = r?.status ?? 'missing';
@@ -568,7 +593,7 @@ export function measurementsCsv(data: SurveyReportData): string {
         ? [
             r.reason ?? '',
             r.usedDeadband ? `deadband ${String(r.deadbandM)} m used` : '',
-            `${sideWords(c.from, r, r.fromLabel)} to ${sideWords(c.to, r, r.toLabel)}`,
+            `${sideWords(c.from, r, r.fromLabel, level)} to ${sideWords(c.to, r, r.toLabel, level)}`,
           ]
             .filter(Boolean)
             .join('; ')

@@ -412,3 +412,62 @@ export function mostlyInView(
   }
   return on / pts.length >= share && Math.max(x1 - x0, y1 - y0) >= minPx;
 }
+
+/* ------------------------------------------------------------------ cut and fill colours */
+
+/** A height difference grid: `dz` per cell from the west and south edges, row 0 the southernmost. */
+export interface ChangeCells {
+  dz: ArrayLike<number>;
+  nx: number;
+  ny: number;
+  x0: number;
+  y0: number;
+  cellM: number;
+}
+
+/** What the open pile reads of the stockpile kit's Cut & fill (the volumetric store). */
+export interface KitChangeState {
+  status: string;
+  surface: string;
+  change: { from: string; to: string } | null;
+  changeGrid: { from: string; to: string; grid: ChangeCells } | null;
+}
+
+/**
+ * The grid the open pile's top takes its cut and fill colours from, or null while none is drawn
+ * (the top is then solid red or by height). A survey project: the whole site's heat map while
+ * Show, Cut & fill draws it in 3D. An older project with the stockpile kit keeps its own Cut &
+ * fill (`volumetric.surface`, the Show control writes it there): the difference grid the kit
+ * drapes on its terrain for the pair it compares, so the top matches the ground around it.
+ */
+export function pileChangeGrid(x: {
+  show: { active: boolean; surface: string };
+  /** The comparison heat map is on in 3D (`compareStore.heat.show3d`). */
+  heat3d: boolean;
+  siteHeat: ChangeCells | null;
+  kit: KitChangeState;
+}): { kind: 'site' | 'kit'; grid: ChangeCells } | null {
+  if (x.show.active && x.show.surface === 'change' && x.heat3d && x.siteHeat)
+    return { kind: 'site', grid: x.siteHeat };
+  const k = x.kit;
+  if (k.status !== 'ready' || k.surface !== 'change' || !k.change || !k.changeGrid) return null;
+  const g = k.changeGrid;
+  return g.from === k.change.from && g.to === k.change.to ? { kind: 'kit', grid: g.grid } : null;
+}
+
+/**
+ * The colour at (e, n) from a difference grid: `colour` of the cell under the point. Null off the
+ * grid, where it has no data and where `colour` leaves the change clear.
+ */
+export function gridColours(
+  g: ChangeCells,
+  colour: (dz: number) => RGB | null,
+): (e: number, n: number) => RGB | null {
+  return (e, n) => {
+    const i = Math.floor((e - g.x0) / g.cellM);
+    const r = Math.floor((n - g.y0) / g.cellM);
+    if (i < 0 || r < 0 || i >= g.nx || r >= g.ny) return null;
+    const dz = g.dz[r * g.nx + i];
+    return dz !== undefined && Number.isFinite(dz) ? colour(dz) : null;
+  };
+}

@@ -4,9 +4,11 @@
  * tonnes, weighed tonnage). Nothing else from the volume card shows by default.
  */
 import { formatQuantity } from '@aio/geo';
+import { sideOptions } from '@aio/survey';
 import { useT } from '@aio/ui';
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { Calculators } from '../Calculators';
+import { baseName } from '../card/baseNames';
 import { HeatControls } from '../Comparison';
 import { useCompare } from '../compareStore';
 import type { PileData } from './PilePanel';
@@ -15,13 +17,25 @@ export function PileOverview({ data }: { data: PileData }): ReactElement {
   const t = useT();
   const { m, settings, units, locale, stored, line } = data;
   const computed = useCompare((s) => s.computed[m.id]);
+  const surfaces = useCompare((s) => s.surfaces);
+  const captures = useCompare((s) => s.captures);
+  const designs = useCompare((s) => s.designs);
+  const capture = m.scope.kind === 'survey' ? m.scope.capture : undefined;
+  const options = useMemo(
+    () =>
+      sideOptions({ surfaces, captures, designs, ...(capture !== undefined ? { capture } : {}) }),
+    [surfaces, captures, designs, capture],
+  );
+  // the base by the picker's name, from the item itself (never the result's stored label)
+  const item = stored ? m.items.find((it) => it.id === stored.item) : undefined;
   const v = (x: number) => formatQuantity(x, 'volume', units, settings.precision, locale);
   const d = (x: number) => formatQuantity(x, 'distance', units, settings.precision, locale);
-  // a figure carried from an earlier version has no method of its own
+  // a figure carried from an earlier version has no method of its own (its status line says
+  // "From an earlier version" with the kit's base)
   const method =
     stored && stored.carried === undefined
       ? [
-          stored.fromLabel,
+          ...(item ? [baseName(item.from, options, t)] : []),
           ...(stored.usedDeadband ? [`${t('vol.ignoreSmaller')} ${d(stored.deadbandM)}`] : []),
           stored.cellM > 0 ? t('vol.gridCell', { cell: d(stored.cellM) }) : t('vol.highPrecision'),
         ].join(' · ')

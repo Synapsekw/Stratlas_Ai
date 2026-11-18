@@ -212,6 +212,15 @@ test('an Inventory row opens the pile panel with volume, tonnes and change', asy
   // nothing is selected any more
   await openSection(win, 'selection');
   await expect(win.getByTestId('selection-empty')).toBeVisible();
+
+  // the link shows only while the pile's latest open came from the inventory: opened from there
+  // and then picked in the left sidebar, the same pile has no way back
+  await (await volumesView(win)).getByTestId('volumes-pile').filter({ hasText: SP1 }).click();
+  await expect(panel.getByTestId('pile-back')).toHaveText('Back to inventory');
+  await measureTree(win);
+  await selectMeasure(win, SP1);
+  await expect(panel).toHaveAttribute('data-id', SP1_ID);
+  await expect(panel.getByTestId('pile-back')).toHaveCount(0);
 });
 
 test('a click on the pile in 3D and on its outline in Map opens the same panel', async ({

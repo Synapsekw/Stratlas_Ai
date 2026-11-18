@@ -87,7 +87,7 @@ test('compliance presets compute cut/fill and remaining to the pad design, with 
   await setAutoPrepare(win, false);
   await open(win, earthworksProject);
   await measureTree(win);
-  // a pile opens in the Volumes tab; its full volume card is the Measure tab's
+  // a pile opens in Selection; its full volume card is the Measure tab's
   const panel = await focusMeasure(win, 'Pad to design');
   // the surveys as height tiles, through the real survey.prepare job
   await panel.getByTestId('survey-prepare').click();

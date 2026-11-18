@@ -15,6 +15,7 @@ import { formatNumber, fromSI, localeOf, unitLabel } from '@aio/geo';
 import { isSurfaceSide, type BaseSpec, type SitePoint, type SurveyMeasurement } from '@aio/schema';
 import { buildBase, densify, effectiveUnits, heatRamp, samplePoints, Tin } from '@aio/survey';
 import { t } from '@aio/ui';
+import { changeColour, volumetric } from '@aio/volumetric';
 import { workspace } from '@aio/workspace';
 import {
   BufferGeometry,
@@ -43,16 +44,19 @@ import { isPile } from './openPile';
 import { flyStep, pileFly, sampleGate, type PileFlyAsk } from './pileFly';
 import {
   buildPrism,
+  gridColours,
   gridPoints,
   HEIGHT_RAMP,
   legendStops,
   loopSegments,
   mostlyInView,
+  pileChangeGrid,
   pileFlyView,
   pileGrid,
   pileLift,
   prismHitShapes,
   ringBase,
+  type ChangeCells,
   type PileGrid,
   type Prism,
   type RGB,
@@ -183,19 +187,39 @@ async function sample(
   return { ring, grid, zs, base };
 }
 
-/** The site's cut and fill colour under (e, n) while Show, Cut & fill draws it; else null. */
-function changeColours(): ((e: number, n: number) => RGB | null) | null {
-  const show = stageShow.getState();
+/**
+ * The cut and fill colours under (e, n) while Show, Cut & fill draws them, with the grid they are
+ * read from; else null. A survey project reads the site's heat map with the heat map's own
+ * colours; an older kit project the kit's own grid, coloured as the kit drapes it on its terrain
+ * (grey inside its deadband), so the box top matches the ground around it.
+ */
+function changeColours(): { at: (e: number, n: number) => RGB | null; grid: ChangeCells } | null {
   const c = compareStore.getState();
-  const h = c.siteHeat;
-  if (!show.active || show.surface !== 'change' || !c.heat.show3d || !h) return null;
+  const kit = volumetric.getState();
+  const src = pileChangeGrid({
+    show: stageShow.getState(),
+    heat3d: c.heat.show3d,
+    siteHeat: c.siteHeat,
+    kit,
+  });
+  if (!src) return null;
+  if (src.kind === 'kit') {
+    const deadband = kit.file?.deadbandM ?? 0.1;
+    return {
+      grid: src.grid,
+      at: gridColours(src.grid, (dz) => {
+        const [r, g, b] = changeColour(dz, deadband);
+        return [r / 255, g / 255, b / 255];
+      }),
+    };
+  }
   const ramp = heatRamp(measureStore.getState().settings.heatmap, 255);
-  return (e, n) => {
-    const i = Math.floor((e - h.x0) / h.cellM);
-    const r = Math.floor((n - h.y0) / h.cellM);
-    if (i < 0 || r < 0 || i >= h.nx || r >= h.ny) return null;
-    const c4 = ramp.colorOf(h.dz[r * h.nx + i] ?? Number.NaN);
-    return c4 ? [c4[0] / 255, c4[1] / 255, c4[2] / 255] : null;
+  return {
+    grid: src.grid,
+    at: gridColours(src.grid, (dz) => {
+      const c4 = ramp.colorOf(dz);
+      return c4 ? [c4[0] / 255, c4[1] / 255, c4[2] / 255] : null;
+    }),
   };
 }
 
@@ -373,8 +397,9 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
     // back on the sampled pile: a sample still in flight for another is no longer wanted
     gate.reuse();
     const mode = pileView.getState().surface;
-    const change = changeColours();
-    const heat = change ? compareStore.getState().siteHeat : null;
+    const colours = changeColours();
+    const change = colours?.at ?? null;
+    const heat = colours?.grid ?? null;
     const dkey = JSON.stringify([key, mode, measureStore.getState().settings]);
     if (dkey === drawnKey && heat === drawnHeat) return;
     const s = sampled;
@@ -558,6 +583,16 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
     if (s.surfaces !== p.surfaces) surfacesSeq += 1;
     if (s.siteHeat !== p.siteHeat || s.heat !== p.heat || s.surfaces !== p.surfaces) draw();
   });
+  // an older kit project keeps its own Cut & fill: its surface and the grid it drapes
+  const offKit = volumetric.subscribe((s, p) => {
+    if (
+      s.status !== p.status ||
+      s.surface !== p.surface ||
+      s.change !== p.change ||
+      s.changeGrid !== p.changeGrid
+    )
+      draw();
+  });
   const offFly = pileFly.subscribe((s, p) => {
     if (s.ask !== p.ask) onFly(s.ask);
   });
@@ -573,6 +608,7 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
     offView();
     offShow();
     offCompare();
+    offKit();
     offFly();
     offFrame();
     if (flyTimer !== null) window.clearTimeout(flyTimer);

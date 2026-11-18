@@ -14,6 +14,7 @@ import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, PIPELINE_ENV, test } from './fixtures';
 import { measureTree, volumesView } from './island';
 import { focusMeasure, volumeSettled } from './measureCard';
+import { openSection, selectedPile } from './panel';
 import { openDemo, setAutoPrepare } from './surveyJobs';
 
 test.use({ appEnv: PIPELINE_ENV });
@@ -118,10 +119,10 @@ test('a volume measurement shows a bar per survey date with the latest highlight
   await expect(chart.getByTestId('time-readout')).toContainText(/31 Mar/);
   await expectAccessible(win, 'Volume over time', { include: '[data-testid="survey-panel"]' });
 
-  // the same figures in the pile's panel (the Volumes tab, where a picked pile opens): the latest
+  // the same figures in the pile's panel (Selection, where a picked pile opens): the latest
   // volume, its tonnes at the material's density (1.6 t/m³) and the change since 28 February
-  const view = await volumesView(win);
-  const panel = view.getByTestId('pile-panel');
+  await openSection(win, 'selection');
+  const panel = selectedPile(win);
   await expect(panel).toHaveAttribute('aria-label', 'Stockpile SP1');
   near(figure(await panel.getByTestId('pile-kpi-volume').innerText()), want('m3'));
   near(figure(await panel.getByTestId('pile-kpi-tonnes').innerText()) / 1.6, want('m3'));
@@ -152,9 +153,8 @@ test('the site inventory stacks the materials in the dates strip, each date its 
   const pit = (d: string) => (d === 'm3' ? -truth.pit.sumpCutM3 : 0);
   await prepared(win, quarryProject.name, quarryProject.id);
 
-  // the Volumes tab (the pile picked to prepare opened in its panel: back to the inventory first)
+  // Project > Volumes: the inventory (the pile picked to prepare stays open in Selection)
   const view = await volumesView(win);
-  await view.getByTestId('pile-back').click();
   await expect(view.getByTestId('volumes-pile')).toHaveCount(4);
   await expect(view.getByTestId('volumes-inventory')).toBeVisible({ timeout: 180_000 });
 

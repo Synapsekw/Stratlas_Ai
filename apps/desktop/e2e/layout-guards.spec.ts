@@ -315,7 +315,7 @@ test.describe('a clicked pile in Selection', () => {
       );
       await expectNoClippedText(win, ['[data-testid="pile-kpi"] b'], 'pile figures cut');
       await shot(win, `${String(w)}x${String(h)}`, 'selection-pile');
-      await pile.getByRole('button', { name: /Inventory/ }).click();
+      await pile.getByTestId('pile-back').click();
       await expect(pile).toHaveCount(0);
     }
   });

@@ -8,7 +8,7 @@ import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 export interface HoverLine {
-  /** 'measure:<id>' | 'pile:<id>' | 'section' | 'kit-section' */
+  /** 'measure:<id>' | 'pile:<id>' | 'section' */
   key: string;
   /** Site E, N. */
   polyline: readonly (readonly [number, number])[];

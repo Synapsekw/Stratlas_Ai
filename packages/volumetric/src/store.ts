@@ -8,7 +8,13 @@
  * pile's volume measurement, which also draws an opened pile.
  */
 import type { AioBridge, BoundaryEdit, DateShift, IpcResponse, VolumesFile } from '@aio/schema';
-import { assetUrl, captureShift, workspace as appWorkspace, type Workspace } from '@aio/workspace';
+import {
+  assetUrl,
+  captureShift,
+  workspace as appWorkspace,
+  type Selection,
+  type Workspace,
+} from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { isRampId, type ChangeGridCells, type RampId, type ReliefStyle } from './model/dsm';
@@ -281,9 +287,20 @@ function pileOfNode(piles: readonly EffectivePile[], id: string): string | null 
 export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric> {
   let unsubscribe: (() => void) | null = null;
   let loadSeq = 0;
+  /** True while the store itself selects a pile's node in the scene (no click to follow). */
+  let own = false;
 
   return createStore<Volumetric>()((set, get) => {
     const ws = () => deps.workspace.getState();
+    /** Select a pile's node in the scene for the store itself, not as a click on the pile. */
+    const selectNode = (a: Selection | null) => {
+      own = true;
+      try {
+        ws().select(a);
+      } finally {
+        own = false;
+      }
+    };
     const epochShift = (epoch: string): DateShift | null => {
       const manifest = ws().project?.manifest;
       const capture = get().file?.captures.find((c) => c.epoch === epoch);
@@ -419,6 +436,11 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
               set({ selected: pile });
               // picked on the terrain or by the agent: fly to the pile it reveals
               if (pile && sel) ws().flyTo({ kind: 'selection', selection: sel });
+            } else if (pile && !own) {
+              // the selected pile clicked again in the scene (its callout): selected again
+              // through none, so a listener to the selection sees the click (as 'reselectPile' does)
+              set({ selected: null });
+              set({ selected: pile });
             }
           });
         } catch (e) {
@@ -443,7 +465,7 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
         const pile = get().selected;
         if (pile) {
           const a = assetFor(pile);
-          if (a) ws().select(a);
+          if (a) selectNode(a);
         }
       },
 
@@ -508,12 +530,12 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
       select(pile, opts = {}) {
         set({ selected: pile });
         if (!pile) {
-          if (ws().selection?.kind === 'asset') ws().select(null);
+          if (ws().selection?.kind === 'asset') selectNode(null);
           return;
         }
         const a = assetFor(pile);
         if (a) {
-          ws().select(a);
+          selectNode(a);
           if (opts.fly !== false) ws().flyTo({ kind: 'selection', selection: a });
         }
       },

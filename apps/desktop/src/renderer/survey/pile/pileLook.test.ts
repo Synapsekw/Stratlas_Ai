@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPrism,
   fitDistance,
+  gridColours,
   gridPoints,
   heightRamp,
   HEIGHT_RAMP,
@@ -10,6 +11,7 @@ import {
   legendStops,
   loopSegments,
   mostlyInView,
+  pileChangeGrid,
   pileFlyView,
   pileGrid,
   pileLift,
@@ -223,5 +225,90 @@ describe('the fly to an opened pile', () => {
         600,
       ),
     ).toBe(false);
+  });
+});
+
+describe('pileChangeGrid: where the open pile takes its cut and fill colours from', () => {
+  const grid = { dz: [1, -1, Number.NaN, 0], nx: 2, ny: 2, x0: 0, y0: 0, cellM: 10 };
+  const off = { status: 'none', surface: 'photo', change: null, changeGrid: null } as const;
+  const show = { active: true, surface: 'change' } as const;
+
+  it("a survey project: the site's heat map while Show, Cut & fill draws it in 3D", () => {
+    expect(pileChangeGrid({ show, heat3d: true, siteHeat: grid, kit: off })).toEqual({
+      kind: 'site',
+      grid,
+    });
+    expect(pileChangeGrid({ show, heat3d: false, siteHeat: grid, kit: off })).toBeNull();
+    expect(
+      pileChangeGrid({
+        show: { active: true, surface: 'photo' },
+        heat3d: true,
+        siteHeat: grid,
+        kit: off,
+      }),
+    ).toBeNull();
+  });
+
+  it('an older kit project: the grid the kit drapes for the pair it compares', () => {
+    const pair = { from: 'e1', to: 'e2' };
+    const kit = {
+      status: 'ready',
+      surface: 'change',
+      change: pair,
+      changeGrid: { ...pair, grid },
+    } as const;
+    // the kit keeps its own surface: the Show control's stays on Photo there
+    const kitShow = { active: true, surface: 'photo' } as const;
+    expect(pileChangeGrid({ show: kitShow, heat3d: false, siteHeat: null, kit })).toEqual({
+      kind: 'kit',
+      grid,
+    });
+    expect(
+      pileChangeGrid({
+        show: kitShow,
+        heat3d: false,
+        siteHeat: null,
+        kit: { ...kit, surface: 'photo' },
+      }),
+    ).toBeNull();
+    // a grid of another pair is not this comparison's
+    expect(
+      pileChangeGrid({
+        show: kitShow,
+        heat3d: false,
+        siteHeat: null,
+        kit: { ...kit, change: { from: 'e0', to: 'e2' } },
+      }),
+    ).toBeNull();
+    expect(
+      pileChangeGrid({
+        show: kitShow,
+        heat3d: false,
+        siteHeat: null,
+        kit: { ...kit, changeGrid: null },
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('gridColours', () => {
+  const grid = { dz: [1, -1, Number.NaN, 0], nx: 2, ny: 2, x0: 100, y0: 200, cellM: 10 };
+  const colour = (d: number): [number, number, number] | null =>
+    d > 0 ? [1, 0, 0] : d < 0 ? [0, 0, 1] : null;
+
+  it('colours a point by the cell under it, row 0 the southernmost', () => {
+    const at = gridColours(grid, colour);
+    expect(at(105, 205)).toEqual([1, 0, 0]);
+    expect(at(115, 205)).toEqual([0, 0, 1]);
+    // no data, and a cell the colours leave clear
+    expect(at(105, 215)).toBeNull();
+    expect(at(115, 215)).toBeNull();
+  });
+
+  it('has no colour off the grid', () => {
+    const at = gridColours(grid, colour);
+    expect(at(99, 205)).toBeNull();
+    expect(at(125, 205)).toBeNull();
+    expect(at(105, 225)).toBeNull();
   });
 });

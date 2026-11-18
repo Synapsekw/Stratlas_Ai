@@ -373,6 +373,30 @@ describe('PilePanel', () => {
     linkedHover.setState({ lines: new Map(), pin: null });
   });
 
+  it("names the base by the picker's name, not the engine's stored words", () => {
+    render();
+    // the result's stored label is 'Triangulated toe'; the item's base is the Toe surface
+    const method = text('.pp-method');
+    expect(method).toContain('Toe surface');
+    expect(method).not.toContain('Triangulated');
+    s.measure.file.measurements = [
+      pile('02', {
+        items: [
+          {
+            id: 'a',
+            from: { kind: 'reference', mode: 'level', levelM: 12.5 },
+            to: { kind: 'current' },
+            useDeadband: false,
+          },
+        ],
+        results: [result(100, 'c2', { fromLabel: 'Reference level 12.50 m' })],
+      }),
+    ];
+    render();
+    expect(text('.pp-method')).toContain('Fixed level');
+    expect(text('.pp-method')).not.toContain('Reference level');
+  });
+
   it('More holds heat map, swell and weighed tonnage', () => {
     render();
     expect(q('[data-testid="pile-overview"]')).not.toBeNull();
