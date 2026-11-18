@@ -1,6 +1,7 @@
 /**
- * Settings, This project, Project settings: what belongs to the open project. Its privacy and AI
- * policy (moved from Privacy and cloud) and its street map, with the way to "Maps for your
+ * Settings, This project, Project settings: what belongs to the open project. Its tool sets (the
+ * tools that are part of it), its privacy and AI policy (moved from Privacy and cloud) and its
+ * street map, with the way to "Maps for your
  * projects" on Offline maps (that panel plans maps for the whole library, so it stays there).
  * Listed in the nav only while a project is open.
  */
@@ -11,6 +12,7 @@ import { useMapCoverage } from '../../mapCoverage/store';
 import { shell } from '../../shell';
 import { ProjectPrivacy } from './ProjectPrivacy';
 import { projectMapKey } from './projectSettingsView';
+import { ToolSets } from './ToolSets';
 
 function ProjectStreetMap({ projectId }: { projectId: string }): ReactElement {
   const { coverage, loaded } = useMapCoverage();
@@ -40,6 +42,7 @@ export function ProjectSettings(): ReactElement {
   if (!project) return <p className="help">{t('settings.project.none')}</p>;
   return (
     <>
+      <ToolSets />
       <div data-settings-focus="project-privacy">
         <ProjectPrivacy />
       </div>
