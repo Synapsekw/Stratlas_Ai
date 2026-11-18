@@ -39,7 +39,7 @@ function close(got: number, want: number, slack = 0.5): void {
   expect(Math.abs(got - want), `${String(got)} against ${String(want)}`).toBeLessThanOrEqual(slack);
 }
 
-const stripOf = (win: Page): Locator => win.getByRole('region', { name: 'Survey dates chart' });
+const stripOf = (win: Page): Locator => win.getByRole('region', { name: 'Dates strip' });
 
 /** Open the quarry in the Volumes tab and wait for every survey's figures. */
 async function opened(win: Page, p: SurveyDemoProject): Promise<Locator> {

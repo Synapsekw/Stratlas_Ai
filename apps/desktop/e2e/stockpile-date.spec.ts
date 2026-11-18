@@ -153,7 +153,7 @@ test.describe('stockpile survey date', () => {
     await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/4 Sep 2024/);
     // two dated surveys and no video: the dates strip shows under the stage from the start, on
     // the date in focus, and the island's View tile reads it as shown
-    const strip = win.getByRole('region', { name: 'Survey dates chart' });
+    const strip = win.getByRole('region', { name: 'Dates strip' });
     await expect(strip).toBeVisible();
     await expect(strip.locator('[data-survey]')).toHaveCount(2);
     await expect(strip.locator('[data-survey="d1"]')).toHaveAttribute('aria-current', 'date');

@@ -63,7 +63,7 @@ function same(report: number, app: number, what: string): void {
 /** Text without spaces, lower case: pdfjs splits the report's runs. */
 const flat = (s: string) => s.replace(/\s+/g, '').toLowerCase();
 
-const stripOf = (win: Page): Locator => win.getByRole('region', { name: 'Survey dates chart' });
+const stripOf = (win: Page): Locator => win.getByRole('region', { name: 'Dates strip' });
 
 async function focusOn(win: Page, capture: string): Promise<void> {
   const marker = stripOf(win).locator(`[data-survey="${capture}"]`);

@@ -54,7 +54,7 @@ const input = (): VolumetricInput => ({
 });
 
 const ctx = {
-  title: 'Stockpile volume report',
+  title: 'Volumetric report',
   customer: 'Yard owner',
   companyName: 'Survey firm',
   t,
@@ -64,7 +64,7 @@ describe('generated texts', () => {
   it('fills title, Prepared for, Prepared by, summary and method from the figures', () => {
     const model = volumetricModel(input());
     const g = generatedTexts(model, ctx);
-    expect(g.title).toBe('Stockpile volume report');
+    expect(g.title).toBe('Volumetric report');
     expect(g.preparedFor).toBe('Yard owner');
     expect(g.preparedBy).toBe('Survey firm');
     expect(g.summary).toContain('vreport.short');

@@ -11,10 +11,9 @@ export const enVreport = {
     'A report for the customer on the stockpiles: cover and summary, pile cards and what changed. Export it as a PDF or as one HTML file that opens offline.',
   'vreport.open': 'Open volumetric report',
   'vreport.close': 'Back to the reports',
-  'vreport.notOffered': 'Measure the stockpile volumes first.',
   // Editor fields
   'vreport.field.title': 'Title',
-  'vreport.field.title.default': 'Stockpile volume report',
+  'vreport.field.title.default': 'Volumetric report',
   'vreport.field.preparedFor': 'Prepared for',
   'vreport.field.preparedFor.hint': "The project's customer unless you change it.",
   'vreport.field.preparedBy': 'Prepared by',

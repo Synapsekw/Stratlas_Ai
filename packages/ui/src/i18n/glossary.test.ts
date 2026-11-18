@@ -20,6 +20,15 @@ const RETIRED: readonly { term: string; pattern: RegExp }[] = [
   { term: 'island', pattern: /\bislands?\b/i },
   { term: 'EDL', pattern: /\bEDL\b/ },
   { term: 'Triangulated toe', pattern: /\btriangulated toe\b/i },
+  // volumetrics, one word per idea (finalization plan, 18 Nov 2026)
+  { term: 'Cut / fill', pattern: /\bcut ?\/ ?fill\b/i }, // "cut/fill" too
+  { term: 'Cut + fill', pattern: /\bcut ?\+ ?fill\b/i },
+  { term: 'Stockpile volume report', pattern: /\bstockpile volume report\b/i },
+  { term: 'Site materials', pattern: /\bsite materials\b/i },
+  { term: 'Materials and density', pattern: /\bmaterials and density\b/i },
+  { term: 'Survey dates chart', pattern: /\bsurvey dates chart\b/i },
+  { term: 'Open in section view', pattern: /\bopen in section view\b/i },
+  { term: 'Volume and tonnes over time', pattern: /\bvolume and tonnes over time\b/i },
 ];
 
 /** The glossary's own uses of a retired word: they mean something else, so they are taken out. */
@@ -83,5 +92,17 @@ describe('glossary', () => {
     expect(uses('Show source point cloud')).toEqual([]);
     expect(uses('Turn cloud AI on in Privacy and cloud')).toEqual([]);
     expect(uses('{clouds} point clouds')).toEqual([]);
+    expect(uses('Cut / fill')).toEqual(['Cut / fill']);
+    expect(uses('the cut/fill shading')).toEqual(['Cut / fill']);
+    expect(uses('Cut + fill')).toEqual(['Cut + fill']);
+    expect(uses('Cut & fill')).toEqual([]);
+    expect(uses('Cut and fill together')).toEqual([]);
+    expect(uses('Stockpile volume report')).toEqual(['Stockpile volume report']);
+    expect(uses('Site materials')).toEqual(['Site materials']);
+    expect(uses('Materials and density')).toEqual(['Materials and density']);
+    expect(uses('Survey dates chart')).toEqual(['Survey dates chart']);
+    expect(uses('Open in section view')).toEqual(['Open in section view']);
+    expect(uses('Volume and tonnes over time')).toEqual(['Volume and tonnes over time']);
+    expect(uses('Volume over time')).toEqual([]);
   });
 });

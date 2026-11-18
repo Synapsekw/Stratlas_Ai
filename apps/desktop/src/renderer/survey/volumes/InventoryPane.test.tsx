@@ -267,7 +267,7 @@ describe('the Volumes tab without a pile', () => {
     render();
     await flush();
     const empty = q('.empty-state');
-    expect(empty?.textContent).toContain('No stockpiles yet');
+    expect(empty?.textContent).toContain('No piles yet');
     expect(empty?.textContent).toContain('stockpile pipeline');
     expect(q('[data-testid="volumes-inventory"]')).toBeNull();
     expect(q('[data-testid="volumes-header"]')).toBeNull();

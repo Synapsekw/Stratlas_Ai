@@ -85,9 +85,7 @@ test('Map mode, Show → Cut & fill: the heat map is drawn above the photos and 
   await openDemo(win, quarryProject.name, quarryProject.id);
   const view = await volumesView(win);
   await expect(
-    win
-      .getByRole('region', { name: 'Survey dates chart' })
-      .locator('[data-survey][data-state="ready"]'),
+    win.getByRole('region', { name: 'Dates strip' }).locator('[data-survey][data-state="ready"]'),
   ).toHaveCount(3, { timeout: 360_000 });
   await expect(view.getByTestId('volumes-site-total')).toBeVisible({ timeout: 120_000 });
 

@@ -17,9 +17,7 @@ import { selectedPile } from './panel';
 
 /** A survey's marker in the dates strip under the stage, by its date. */
 const surveyMarker = (win: Page, date: string): Locator =>
-  win
-    .getByRole('region', { name: 'Survey dates chart' })
-    .locator('[data-survey]', { hasText: date });
+  win.getByRole('region', { name: 'Dates strip' }).locator('[data-survey]', { hasText: date });
 
 const MASAFI = realProjectDir('masafi');
 

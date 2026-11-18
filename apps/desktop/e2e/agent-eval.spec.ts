@@ -1444,7 +1444,7 @@ test('@eval quarry: stockpile volumes over three surveys', async () => {
     await volumesView(page);
     await expect(
       page
-        .getByRole('region', { name: 'Survey dates chart' })
+        .getByRole('region', { name: 'Dates strip' })
         .locator('[data-survey][data-state="ready"]'),
     )
       .toHaveCount(facts.dates.length, { timeout: SURVEYS_MS })

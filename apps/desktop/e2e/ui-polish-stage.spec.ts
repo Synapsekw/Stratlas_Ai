@@ -19,7 +19,7 @@ test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`
 async function opened(win: Page, p: SurveyDemoProject): Promise<void> {
   await openDemo(win, p.name, p.id);
   await volumesView(win);
-  const strip = win.getByRole('region', { name: 'Survey dates chart' });
+  const strip = win.getByRole('region', { name: 'Dates strip' });
   await expect(strip.locator('[data-survey][data-state="ready"]')).toHaveCount(3, {
     timeout: 360_000,
   });
@@ -62,7 +62,7 @@ test('timeline collapse tip is gone after the click, Show control buttons are on
   await collapse.hover();
   // the tip repeats the button's name, so it is aria-hidden: found by its class
   const tip = win.locator('.tip-pop');
-  await expect(tip).toHaveText('Collapse the timeline');
+  await expect(tip).toHaveText('Collapse the dates strip');
   await collapse.click();
   await expect(collapse).toHaveAttribute('aria-expanded', 'false');
   await expect(tip).toHaveCount(0);

@@ -160,7 +160,7 @@ test('the site inventory stacks the materials in the dates strip, each date its 
 
   // the site inventory over time is the dates strip under the stage (volumetrics redesign C4b):
   // the materials stacked, a point on each survey's total
-  const strip = win.locator('[aria-label="Survey dates chart"]');
+  const strip = win.locator('[aria-label="Dates strip"]');
   await expect(strip).toBeVisible();
   await expect(strip.locator('circle.ds-dot')).toHaveCount(DATES.length, { timeout: 180_000 });
   await expect(strip.locator('g[data-stack="crushed-20"]')).toHaveCount(1);

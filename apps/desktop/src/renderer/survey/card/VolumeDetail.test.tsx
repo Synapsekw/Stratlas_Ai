@@ -790,10 +790,10 @@ describe('VolumeDetail', () => {
     expect(byTestId('base-editor')).toHaveLength(1);
   });
 
-  it('the card row reads "Cut + fill", never "Total" (a total is a sum of nets)', () => {
+  it('the card row reads "Cut and fill together", never "Total" (a total is a sum of nets)', () => {
     show(pile({ results: [result({ cutM3: 120, fillM3: 3602, netM3: 3482, totalM3: 3722 })] }));
     const row = host.querySelector('[data-testid="survey-cmp-result"] tr[data-key="total"]');
-    expect(row?.querySelector('th')?.textContent).toBe('Cut + fill');
+    expect(row?.querySelector('th')?.textContent).toBe('Cut and fill together');
     expect(row?.querySelector('td')?.textContent).toBe(v(3722));
     const heads = [...host.querySelectorAll('[data-testid="survey-cmp-result"] th')];
     expect(heads.map((x) => x.textContent)).not.toContain('Total');

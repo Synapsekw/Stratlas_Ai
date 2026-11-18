@@ -115,7 +115,7 @@ describe('page A, the cover and summary', () => {
 
   it('names the title, the customer, the site, both dates and the pile count', () => {
     const d = render(model);
-    expect(text(d, '.vr-title h1')).toBe('Stockpile volume report');
+    expect(text(d, '.vr-title h1')).toBe('Volumetric report');
     expect(text(d, '.vr-for')).toBe('Prepared for Demo customer');
     const meta = text(d, '.vr-title-meta');
     expect(meta).toContain('The demo yard');

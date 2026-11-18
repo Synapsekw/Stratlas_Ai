@@ -432,7 +432,7 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     // right panel folded), so it picks Footage; the strip's own layout is dates-strip.spec.ts's
     await expect(win.getByTestId('bottom-switch-dates')).toHaveAttribute('aria-pressed', 'true');
     await win.getByTestId('bottom-switch-footage').click();
-    await expect(win.getByRole('region', { name: 'Survey dates chart' })).toHaveCount(0);
+    await expect(win.getByRole('region', { name: 'Dates strip' })).toHaveCount(0);
     // the clip is paused, and no PAUSED chip stands on the stage (D30): the island's live line
     // and the Video workbench say what the clip does
     await expect(win.locator('.stage-slot').filter({ hasText: /paused/i })).toHaveCount(0);

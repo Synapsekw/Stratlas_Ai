@@ -249,7 +249,7 @@ describe('PileProfile', () => {
     );
     await render();
     expect(text('[data-testid="pile-building"]')).toBe(
-      'Building the height surface for 31 Dec 2020… The 10 Jan 2021 line is ready; 31 Dec 2020 and the cut/fill shading appear when it finishes.',
+      'Building the height surface for 31 Dec 2020… The 10 Jan 2021 line is ready; 31 Dec 2020 and the cut and fill shading appear when it finishes.',
     );
     expect(q('[data-testid="pile-profile-chart"]')?.getAttribute('data-series')).toBe('c2:current');
   });

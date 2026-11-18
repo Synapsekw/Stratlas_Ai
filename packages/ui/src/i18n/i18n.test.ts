@@ -62,7 +62,6 @@ describe('the English catalogue', () => {
       'chart.direction',
       'mcard.recomputeStandard',
       'mcard.carried',
-      'mcard.allPiles',
       'base.smart',
       'base.mean',
       'vol.ignoreSmaller',
@@ -295,7 +294,7 @@ describe('the English catalogue', () => {
       'mcard.notMeasured': 'Not measured on this date',
       'chart.building': 'Building the height surface for {date}…',
       'chart.buildingRest':
-        'The {ready} line is ready; {waiting} and the cut/fill shading appear when it finishes.',
+        'The {ready} line is ready; {waiting} and the cut and fill shading appear when it finishes.',
       'settings.autoPrepare.label': 'Prepare survey surfaces when a project opens',
       'settings.autoPrepare.hint': 'Runs in the background and shows in Jobs. You can cancel it.',
     };
@@ -543,8 +542,6 @@ describe('pile panel and linked hover strings', () => {
       'cutfill.ignored': ['value'],
       'cutfill.legendFill': ['value'],
       'cutfill.clickPile': [],
-      'cutfill.compareFrom': [],
-      'cutfill.compareTo': [],
       'cutfill.pair': ['from', 'to'],
       'materials.title': [],
       'materials.add': [],
@@ -658,7 +655,7 @@ describe('volumetric report strings', () => {
     // no dashes and no minus signs in front of a number anywhere in the report's text
     for (const [k, v] of Object.entries(en))
       if (k.startsWith('vreport.')) expect(v, k).not.toMatch(/[–—]|-\d|−/);
-    expect(t('vreport.field.title.default')).toBe('Stockpile volume report');
+    expect(t('vreport.field.title.default')).toBe('Volumetric report');
     expect(t('vreport.block')).toBe('Customer reports');
     expect(t('vreport.action.pdf')).toBe('Volumetric report (PDF)');
     expect(t('vreport.action.html')).toBe('Volumetric report (HTML)');

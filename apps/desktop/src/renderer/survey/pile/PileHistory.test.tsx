@@ -145,9 +145,7 @@ afterEach(() => {
 describe('PileHistory', () => {
   it('lists one row per date, newest first, with density, tonnes and "first" on the earliest', () => {
     render(dataOf());
-    expect(q('[data-testid="pile-history-title"]')?.textContent).toBe(
-      'Volume and tonnes over time',
-    );
+    expect(q('[data-testid="pile-history-title"]')?.textContent).toBe('Volume over time');
     expect(cells()).toEqual([
       ['10 Jan 2021', '11 378.7', '1.60', '18 206', '−3 308.0'],
       ['31 Dec 2020', '14 686.7', '1.60', '23 499', 'first'],

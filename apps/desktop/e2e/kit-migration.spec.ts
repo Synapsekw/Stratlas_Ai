@@ -381,7 +381,7 @@ test('the Stockpiles group and its pile rows follow the date in focus', async ({
   await expect.poll(async () => figure(await north.innerText())).toBeCloseTo(NORTH_E2_EDITED, 1);
   await expect(south).not.toContainText('m³');
   // the first survey, from its marker in the dates strip: both piles with their January figures
-  const strip = win.getByRole('region', { name: 'Survey dates chart' });
+  const strip = win.getByRole('region', { name: 'Dates strip' });
   await strip.locator('[data-survey="capture-1"]').click();
   await expect(head).toHaveText('2 · 1 Jan 2026');
   await expect.poll(async () => figure(await north.innerText())).toBeCloseTo(NORTH_E1, 1);

@@ -268,7 +268,7 @@ describe('the Compare mode row: the Timeline tile', () => {
     // a timeline left open in that state reads as closed
     expect(b?.getAttribute('aria-pressed')).toBe('false');
     const reason = document.getElementById(b?.getAttribute('aria-describedby') ?? '');
-    expect(reason?.textContent).toBe('Add a second survey date to see the dates timeline');
+    expect(reason?.textContent).toBe('Add a second survey date to see the dates strip');
     act(() => b?.click());
     expect(timelinePref.getState().byProject.p3).toBe(true);
   });

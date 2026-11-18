@@ -181,7 +181,7 @@ const open = (id: string) => {
 describe('the Materials pane', () => {
   it('the table shows density, swell, piles, m³ and tonnes per material and All materials', () => {
     render();
-    expect(q('materials-pane')?.textContent).toContain('Materials and density');
+    expect(q('materials-pane')?.textContent).toContain('Materials');
     expect(cells(row('agg'))).toEqual(['Aggregate 20 mm', '1.60', '', '1', '2 000.0', '3 200']);
     expect(cells(row('sand'))).toEqual(['Washed sand', '1.50', '1.20', '1', '100.0', '150']);
     expect(cells(q('survey-mat-total'))).toEqual([

@@ -266,7 +266,7 @@ test.describe('a clicked pile in Selection', () => {
       timeout: 120_000,
     });
     // every survey prepared, so the figures are the real ones (pile-panel.spec.ts)
-    const strip = win.getByRole('region', { name: 'Survey dates chart' });
+    const strip = win.getByRole('region', { name: 'Dates strip' });
     await expect(strip.locator('[data-survey][data-state="ready"]')).toHaveCount(3, {
       timeout: 360_000,
     });

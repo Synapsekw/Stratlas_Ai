@@ -23,6 +23,17 @@ The app speaks the user's language: surveying words (UTM, toe, chainage, PCI) an
 | The bar at the top centre of the stage (modes, view and tools) | **stage tools** | Matches its accessible name, "Stage tools". |
 | The point shading that brings out the shape of a point cloud | **depth shading** | The renderer calls it eye-dome lighting; the UI does not. |
 | The volume base fitted through the pile's toe | **Toe surface** | The standard base. "Toe" is a surveying word and stays. |
+| Cut and fill between two surfaces | **Cut & fill**, **cut and fill** | "Cut & fill" on every label, title, button and tab. "cut and fill" inside a sentence or a longer phrase: "Find cut and fill regions", "Cut and fill together" (the row that adds the two). |
+| One heap of material | **pile** | "Pile 2 of 19", "No piles yet", "Detect piles". |
+| The folder and group that hold the piles | **Stockpiles** | The left sidebar group. Never the name of one heap in the volumetrics screens. |
+| The right panel section with the inventory, Cut & fill and Materials | **Volumes** | The section name. |
+| The figure, and the Measure tool that draws it | **volume** | "Draw volume", "Volume above base". |
+| The customer report on the piles | **Volumetric report** | On the button and as the report's default title. |
+| The list of materials and their densities | **Materials** | The only name for that screen, wherever it is opened from. |
+| The strip under the stage with a marker per survey | **Dates strip** | Never "timeline": that is the video footage timeline and the Timeline feature. |
+| One date a site was surveyed on | **Survey date** | "Add survey date", "Play through the survey dates". |
+| Any chart of a volume through time | **Volume over time** | The same title on the measurement card, the pile's History and the report. |
+| The button that opens a chart in the larger chart window | **Open larger** | The same label on every card. |
 
 ## Retired terms
 
@@ -38,6 +49,14 @@ The test reads this table. Each row is a term no UI string may use; the test hol
 | `island` | stage tools | Internal name for the stage's top bar. |
 | `EDL` | depth shading | An unexplained acronym. |
 | `Triangulated toe` | Toe surface | Jargon; the plain words say what the base is. |
+| `Cut / fill` | Cut & fill, cut and fill | One spelling on labels, one in sentences (volumetrics finalization, 18 Nov 2026). "cut/fill" is retired with it. |
+| `Cut + fill` | Cut & fill, cut and fill together | A third spelling of the same idea. |
+| `Stockpile volume report` | Volumetric report | The button and the default title said two things. |
+| `Site materials` | Materials | One name for the screen. |
+| `Materials and density` | Materials | One name for the screen. |
+| `Survey dates chart` | Dates strip | One name for the strip under the stage. |
+| `Open in section view` | Open larger | Two labels opened the same chart window, and "section" already means other things. |
+| `Volume and tonnes over time` | Volume over time | One title for every chart of a volume through time. |
 
 ## Allowed exceptions
 

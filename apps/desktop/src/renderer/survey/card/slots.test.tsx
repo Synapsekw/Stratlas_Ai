@@ -454,7 +454,7 @@ describe('lines on the card', () => {
     ]);
     await render(slotsFor(m, 'detail').detail);
     const open = host.querySelector<HTMLButtonElement>('[data-testid="card-open-section"]');
-    expect(open?.textContent).toBe('Open in section view');
+    expect(open?.textContent).toBe('Open larger');
     act(() => {
       open?.click();
     });

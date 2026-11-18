@@ -457,7 +457,7 @@ test.describe('@realdata DAMAC', () => {
     const toggle = view.getByTestId('tool-view.timeline');
     await expect(toggle).toContainText('Show the timeline');
     await expect(toggle).toBeDisabled();
-    await expect(toggle).toContainText('Add a second survey date to see the dates timeline');
+    await expect(toggle).toContainText('Add a second survey date to see the dates strip');
     await expect(timeline).toHaveCount(0);
   });
 });

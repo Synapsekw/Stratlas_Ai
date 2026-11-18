@@ -4,7 +4,6 @@
  */
 export const enSurvey = {
   // Volumes (stockpile workspace)
-  'vol.shown': '{count} shown in 3D',
   'vol.reveal': 'Click a pile to see its outline and volume. Esc hides it.',
   'vol.elev.title': 'Elevation',
   'vol.elev.ramp': 'Colour ramp',
@@ -41,13 +40,6 @@ export const enSurvey = {
   'vol.detail.fill': 'Fill',
   'vol.detail.cut': 'Cut',
   'vol.detail.net': 'Net',
-  'vol.surfaceColours': 'Surface colours',
-  'vol.surfaceMode.photo': 'Photo',
-  'vol.surfaceMode.photoHint': 'Orthomosaic draped on the terrain',
-  'vol.surfaceMode.elev': 'Elevation',
-  'vol.surfaceMode.elevHint': 'Colour relief of the ground',
-  'vol.surfaceMode.change': 'Cut / fill',
-  'vol.surfaceMode.changeHint': 'Height change between the two surveys picked below',
   'vol.bodies': 'Volume bodies',
   'vol.bodies.lift': 'Lifted',
   'vol.bodies.liftHint': 'Each volume floats above its base',
@@ -55,8 +47,6 @@ export const enSurvey = {
   'vol.bodies.placeHint': 'Volume tinted on the pile itself',
   'vol.bodies.off': 'Hidden',
   'vol.bodies.offHint': 'Terrain and toe lines only',
-  'vol.surveyDate': 'Survey date',
-  'vol.swipeTip': 'Swipe between the first and last survey',
   // Volumetric parity: charts, measurement card, bases, empty states
   'chart.addSurface': '+ Add survey or design',
   'chart.shadeVs': 'Shade vs',
@@ -85,7 +75,7 @@ export const enSurvey = {
   'chart.label': 'Profile from {a} to {b}, vertical exaggeration {n}:1',
   'chart.building': 'Building the height surface for {date}…',
   'chart.buildingRest':
-    'The {ready} line is ready; {waiting} and the cut/fill shading appear when it finishes.',
+    'The {ready} line is ready; {waiting} and the cut and fill shading appear when it finishes.',
   'mcard.more': 'More',
   'mcard.menu': 'Actions for {name}',
   'mcard.notes': 'Notes',
@@ -113,7 +103,6 @@ export const enSurvey = {
   'surface.preparing.pct': '{pct} %',
   'surface.preparing.onOpen': 'Started on its own when the project opened. You can keep working.',
   'mcard.computing': 'Computing',
-  'mcard.allPiles': 'All piles',
   'mcard.drawVolume': 'Draw volume',
   'mcard.detectPiles': 'Detect piles',
   'mcard.styleLabel': 'Style and label',
@@ -139,7 +128,7 @@ export const enSurvey = {
   'mcard.lineAsDrawn': 'Line as drawn',
   'mcard.terrainLength': 'Terrain length',
   'mcard.surface': 'Surface',
-  'mcard.openSection': 'Open in section view',
+  'mcard.openSection': 'Open larger',
   'mcard.endA': 'A',
   'mcard.endB': 'B',
   'mcard.berm.title': 'Berm',
@@ -189,7 +178,6 @@ export const enSurvey = {
   'vol.missing_one': '{count} pile has no survey data on {date}',
   'vol.missing_other': '{count} piles have no survey data on {date}',
   // the volumes view (Volumes bench): the piles, their total and the site inventory over time
-  'vol.view.folder': 'Piles to show',
   'vol.view.emptyHint': 'Draw a volume, or detect the piles with the stockpile pipeline.',
   'vol.view.noJob':
     'Detecting piles needs the stockpile job file (volumetric/job.json). The new project wizard writes it.',
@@ -286,7 +274,7 @@ export const enSurvey = {
   'pile.edit.note':
     'Editing the boundary in the view: drag a corner, drag a midpoint to add one, Alt+click a corner to delete it.',
   'pile.edit.done': 'Done',
-  'pile.history.title': 'Volume and tonnes over time',
+  'pile.history.title': 'Volume over time',
   'pile.history.both': 'Both',
   'pile.history.first': 'first',
   'pile.history.was': 'was {value} · earlier version',
@@ -345,10 +333,8 @@ export const enSurvey = {
   'cutfill.ignored': '±{value} ignored',
   'cutfill.legendFill': '+{value} fill',
   'cutfill.clickPile': 'Click a pile to see its change',
-  'cutfill.compareFrom': 'compare · from',
-  'cutfill.compareTo': 'compare · to',
   'cutfill.pair': '{from} → {to}',
-  'materials.title': 'Materials and density',
+  'materials.title': 'Materials',
   'materials.add': '+ Material',
   'materials.col.material': 'Material',
   'materials.col.density': 't/m³',
@@ -391,5 +377,5 @@ export const enSurvey = {
   'vol.swipe': 'Swipe',
   'vol.sectionLine': 'Section line between the surveys',
   'vol.swipeBetween': 'Swipe between surveys',
-  'mcard.cutPlusFill': 'Cut + fill',
+  'mcard.cutPlusFill': 'Cut and fill together',
 } as const satisfies Record<string, string>;

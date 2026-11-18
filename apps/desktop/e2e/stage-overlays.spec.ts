@@ -47,7 +47,7 @@ async function shot(win: Page, info: TestInfo, name: string): Promise<void> {
 async function openTankFarm(win: Page): Promise<void> {
   await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
   await win.getByTestId('bottom-switch-footage').click();
-  await expect(win.getByRole('region', { name: 'Survey dates chart' })).toHaveCount(0);
+  await expect(win.getByRole('region', { name: 'Dates strip' })).toHaveCount(0);
   await win.evaluate(() => {
     (window as unknown as Hooks).__stratlas.workspace.setState({ hidden: {} });
   });

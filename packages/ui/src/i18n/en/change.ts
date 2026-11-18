@@ -277,7 +277,7 @@ export const enChange = {
   'empty.survey.noSurface.title': 'No survey surface is prepared yet',
   'empty.survey.noSurface.hint': 'Volumes need the surveys as height tiles.',
   'empty.survey.prepare': 'Prepare surfaces',
-  'empty.volumes.title': 'No stockpiles yet',
+  'empty.volumes.title': 'No piles yet',
   'empty.designs.title': 'No designs yet',
   'empty.designs.hint': 'Import a LandXML, DXF, 12da or CSV design.',
   'empty.overlays.title': 'No overlays yet',

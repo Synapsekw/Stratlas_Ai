@@ -2,7 +2,7 @@
  * The dates chart strip and the timelapse (volumetrics redesign, spec section 5, boards 1, 2, 6) in
  * the real app, on the synthetic quarry demo: three monthly surveys, prepared quietly on open
  * (`autoPrepareSurfaces`), three piles of three materials and the pit. Under the stage, labelled
- * "Survey dates chart" (never "Timeline", the footage's): a marker per survey, the site's volume
+ * "Dates strip" (never "Timeline", the footage's): a marker per survey, the site's volume
  * stacked by material, Volume | Tonnes | Cut & fill; a marker click or a playhead drag moves the
  * date in focus, and the notch, the pile labels in 3D and the Volumes tab follow it (the
  * sidebar's Stockpiles group is kit-migration.spec.ts's: the quarry's piles are filed under a date); Compare draws the band with its change and brackets that move it; Fit
@@ -35,7 +35,7 @@ const DATES = ['m1', 'm2', 'm3'] as const;
 const LABEL = { m1: '31 Jan 2026', m2: '28 Feb 2026', m3: '31 Mar 2026' } as const;
 const SP1_ID = 'm-sp1';
 
-const stripOf = (win: Page): Locator => win.getByRole('region', { name: 'Survey dates chart' });
+const stripOf = (win: Page): Locator => win.getByRole('region', { name: 'Dates strip' });
 
 /**
  * Open the quarry with the Volumes tab up (it works out every pile's dates) and wait until every
@@ -407,7 +407,7 @@ test.describe('the smallest window, 1100 x 700', () => {
       const hit = document.elementFromPoint(cx, cy);
       return {
         stage: box(stage),
-        strip: box(document.querySelector('[role="region"][aria-label="Survey dates chart"]')),
+        strip: box(document.querySelector('[role="region"][aria-label="Dates strip"]')),
         blend: box(document.querySelector('[data-testid="timelapse-blend"]')),
         totals: box(document.querySelector('[data-testid="timelapse-totals"]')),
         show: box(document.querySelector('.ws > .stage [data-testid="stage-show"]')),
@@ -473,7 +473,7 @@ test.describe('a project with video', () => {
       };
       const q = (id: string) => box(document.querySelector(`[data-testid="${id}"]`));
       return {
-        strip: box(document.querySelector('[role="region"][aria-label="Survey dates chart"]')),
+        strip: box(document.querySelector('[role="region"][aria-label="Dates strip"]')),
         dates: q('bottom-switch-dates'),
         footage: q('bottom-switch-footage'),
         tools: ['strip-compare', 'strip-fit', 'strip-collapse'].map((id) => ({ id, box: q(id) })),

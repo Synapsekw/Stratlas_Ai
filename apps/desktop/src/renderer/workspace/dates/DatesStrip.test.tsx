@@ -139,10 +139,10 @@ afterEach(() => {
 });
 
 describe('DatesStripView', () => {
-  it('is the "Survey dates chart" region, never "Timeline"', () => {
+  it('is the "Dates strip" region, never "Timeline"', () => {
     render();
     const region = q('[role="region"]');
-    expect(region.getAttribute('aria-label')).toBe('Survey dates chart');
+    expect(region.getAttribute('aria-label')).toBe('Dates strip');
     expect(host?.querySelector('[aria-label="Timeline"]')).toBeNull();
   });
 
@@ -386,11 +386,11 @@ describe('DatesStripView', () => {
   it('collapses to the bar alone', () => {
     render();
     act(() => {
-      button('Collapse the timeline').click();
+      button('Collapse the dates strip').click();
     });
     expect(props.onCollapse).toHaveBeenCalledWith(true);
     render({ collapsed: true });
     expect(host?.querySelector('[data-testid="strip-chart"]')).toBeNull();
-    expect(button('Expand the timeline').getAttribute('aria-expanded')).toBe('false');
+    expect(button('Expand the dates strip').getAttribute('aria-expanded')).toBe('false');
   });
 });

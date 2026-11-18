@@ -155,7 +155,7 @@ afterEach(() => {
 describe('the volumetric report editor', () => {
   it('shows the fields with their defaults and the preview pages', async () => {
     await mount();
-    expect(field('Title')?.value).toBe('Stockpile volume report');
+    expect(field('Title')?.value).toBe('Volumetric report');
     expect(field('Prepared for')?.value).toBe('Yard owner');
     expect(field('Prepared by')?.value).toBe('Survey company');
     expect(field('In short')?.value).not.toBe('');
@@ -166,7 +166,7 @@ describe('the volumetric report editor', () => {
     expect(host.querySelector('[aria-label="Compare with"]')).not.toBeNull();
     const pages = preview()?.querySelectorAll('.vr-page') ?? [];
     expect(pages.length).toBeGreaterThan(0);
-    expect(preview()?.textContent).toContain('Stockpile volume report');
+    expect(preview()?.textContent).toContain('Volumetric report');
   });
 
   it('updates the preview as the person types, and saves the edit', async () => {
