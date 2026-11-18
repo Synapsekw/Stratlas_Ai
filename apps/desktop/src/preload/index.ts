@@ -200,6 +200,7 @@ const CHANNELS = {
   'model:write': true,
   'model:build': true,
   'ai:setCloudDrawings': true,
+  'project:setToolSets': true,
   'model:exportEngineering': true,
   'engineer:runRead': true,
   'engineer:runList': true,

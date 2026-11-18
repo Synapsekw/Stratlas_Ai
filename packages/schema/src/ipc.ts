@@ -28,6 +28,7 @@ import {
   ProjectPurpose,
   ReportBrand,
   SeverityTemplate,
+  ToolSet,
 } from './builder';
 import { SELECTION_MAX_POINTS, SelectionName, selectionByteLength } from './selection';
 import { ProjectManifest } from './manifest';
@@ -2685,6 +2686,16 @@ export const ipc = {
       }),
       Failure,
     ]),
+  },
+  /**
+   * Set the tool sets a person chose for the project (`ProjectManifest.toolSets`, backed up): the
+   * whole list, or null for what the project type gives. Refused for packages.
+   */
+  'project:setToolSets': {
+    request: z
+      .object({ projectId: ProjectId, toolSets: z.array(ToolSet).max(16).nullable() })
+      .strict(),
+    response: OkOrFailure,
   },
   /** Set the project policy `aiCloudDrawings` (manifest, backed up); refused for packages. */
   'ai:setCloudDrawings': {

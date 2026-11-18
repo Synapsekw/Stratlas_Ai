@@ -35,6 +35,14 @@ export const PURPOSE_TYPE = {
   telecom: 'inspection',
 } as const satisfies Record<z.infer<typeof ProjectPurpose>, z.infer<typeof ProjectType>>;
 
+/**
+ * A tool set: the tools of one line of work that are part of a project or not (18 Nov 2026). The
+ * project type gives a project its sets, its own records add theirs, and a person may choose the
+ * list (`ProjectManifest.toolSets`). Everything outside a set is in every project.
+ */
+export const ToolSet = z.enum(['earthworks', 'road', 'engineering', 'telecom', 'thermal']);
+export type ToolSet = z.infer<typeof ToolSet>;
+
 /** A severity model (with its classes) offered by the new project wizard. */
 export const SeverityTemplate = z.object({
   id: z.string().min(1),

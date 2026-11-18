@@ -5,7 +5,7 @@ import { Layer } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
 import { AiPolicy } from './package';
 import { DEFAULT_SPACE_ID } from './spaces';
-import { ProjectPurpose, ProjectType, VerticalDatum } from './builder';
+import { ProjectPurpose, ProjectType, ToolSet, VerticalDatum } from './builder';
 
 export const SCHEMA_VERSION = 'aio.project/1' as const;
 
@@ -108,6 +108,17 @@ export const ProjectManifest = z
       .optional()
       .catch(undefined),
     /**
+     * The tool sets a person chose for the project (18 Nov 2026, additive): the whole list of
+     * `ToolSet` names switched on, kept as plain names so that a name a later build adds never
+     * refuses the project. Read it with `projectToolSets`; a malformed value reads as absent.
+     * Absent: the project type decides. The project's own records add their sets either way.
+     */
+    toolSets: z
+      .array(z.string().regex(/^[a-z0-9-]{1,32}$/))
+      .max(16)
+      .optional()
+      .catch(undefined),
+    /**
      * How drone absolute altitudes become project heights (`H = absolute + absAltOffsetM`); raw
      * imports use absolute altitude when it is set, else relative altitude plus a take-off height.
      */
@@ -162,6 +173,17 @@ export function projectPurpose(
 ): ProjectPurpose | undefined {
   const r = ProjectPurpose.safeParse(manifest.purpose);
   return r.success ? r.data : undefined;
+}
+
+/**
+ * The tool sets a person chose for the project, those this build knows, each once; undefined when
+ * nobody chose (the project type decides). A name it does not know stays in the file.
+ */
+export function projectToolSets(
+  manifest: Pick<ProjectManifest, 'toolSets'>,
+): ToolSet[] | undefined {
+  if (!manifest.toolSets) return undefined;
+  return ToolSet.options.filter((set) => manifest.toolSets?.includes(set));
 }
 
 /** The layer kinds this build reads. */

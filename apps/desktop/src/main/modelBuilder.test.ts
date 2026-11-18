@@ -93,6 +93,7 @@ describe('model builder IPC', () => {
       'model:list',
       'model:read',
       'model:write',
+      'project:setToolSets',
     ]);
   });
 
@@ -407,6 +408,7 @@ describe('model builder IPC', () => {
       await r.call('model:write', { projectId: 'site', model }),
       await r.call('model:build', { projectId: 'site', id: 'plant' }),
       await r.call('ai:setCloudDrawings', { projectId: 'site', allow: true }),
+      await r.call('project:setToolSets', { projectId: 'site', toolSets: ['road'] }),
     ]) {
       expect(res).toMatchObject({ ok: false, code: 'read-only' });
     }
@@ -429,6 +431,22 @@ describe('model builder IPC', () => {
     expect((await readManifestFile(root)).aiCloudDrawings).toBe(true);
     await r.call('ai:setCloudDrawings', { projectId: 'site', allow: false });
     expect((await readManifestFile(root)).aiCloudDrawings).toBeUndefined();
+  });
+
+  it('saves the tool sets a person chose, keeps the name of a later build, and null clears them', async () => {
+    const r = ipc();
+    expect((await readManifestFile(root)).toolSets).toBeUndefined();
+    expect(
+      await r.call('project:setToolSets', { projectId: 'site', toolSets: ['thermal', 'telecom'] }),
+    ).toEqual({ ok: true });
+    expect((await readManifestFile(root)).toolSets).toEqual(['telecom', 'thermal']);
+    await updateManifestFile(root, (m) => ({
+      manifest: { ...m, toolSets: ['telecom', 'marine'] },
+    }));
+    await r.call('project:setToolSets', { projectId: 'site', toolSets: [] });
+    expect((await readManifestFile(root)).toolSets).toEqual(['marine']);
+    await r.call('project:setToolSets', { projectId: 'site', toolSets: null });
+    expect((await readManifestFile(root)).toolSets).toBeUndefined();
   });
 
   it('keeps a built layer, the policy and a save on its way made at the same moment', async () => {

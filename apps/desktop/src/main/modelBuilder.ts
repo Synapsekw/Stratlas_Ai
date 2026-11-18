@@ -22,6 +22,7 @@ import {
 } from '@aio/modelling';
 import {
   PROCMODEL_DIR,
+  ToolSet,
   type GlbBuildReport,
   type Georef,
   type Layer,
@@ -542,6 +543,25 @@ export function registerModelBuilderIpc({
       const next: ProjectManifest = { ...manifest };
       if (allow) next.aiCloudDrawings = true;
       else delete next.aiCloudDrawings;
+      return next;
+    });
+    return { ok: true };
+  });
+
+  // the tool sets a person chose (18 Nov 2026): the whole list, or null for the project type's;
+  // a name a later build wrote stays in the file
+  handle('project:setToolSets', async ({ projectId, toolSets }) => {
+    if (projects.package(projectId)) return READ_ONLY;
+    const root = projects.root(projectId);
+    if (root === undefined) return notOpen(projectId);
+    await updateManifest(root, (manifest) => {
+      const next: ProjectManifest = { ...manifest };
+      if (toolSets === null) delete next.toolSets;
+      else {
+        const known: readonly string[] = ToolSet.options;
+        const later = (manifest.toolSets ?? []).filter((name) => !known.includes(name));
+        next.toolSets = [...ToolSet.options.filter((set) => toolSets.includes(set)), ...later];
+      }
       return next;
     });
     return { ok: true };
