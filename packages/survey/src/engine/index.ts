@@ -79,7 +79,6 @@ export {
   tinAt,
   type TinFile,
 } from './tin';
-export { Accumulator, type Accumulated } from './accumulate';
 export {
   baseSpread,
   compareSeries,

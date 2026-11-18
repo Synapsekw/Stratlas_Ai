@@ -61,7 +61,5 @@ meshes so the survey materials stay untouched.
 
 ## Parity
 
-The stockpile parity test in `src/model/` runs on the real stockpile package when present: all 152 pile volumes
-(19 piles, 2 dates, 4 bases) and 19 changes recomputed from the grids equal `volumes.json` within
-0.5 % (relative to the larger of the figure and 10 m³), and an edit started on P02 (10 Jan) gives
-the original review's 7,637 m³.
+The package computes no figure, so it has no parity test of its own. The survey engine's figures are
+held to its Python twin by the shared fixtures in `@aio/schema` (ADR 0013, decision 9).
