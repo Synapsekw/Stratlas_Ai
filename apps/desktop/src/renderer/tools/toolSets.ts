@@ -86,6 +86,20 @@ export function switchesFor(manifest: TypedManifest, held: Held): ToolSetSwitch[
 }
 
 /**
+ * The switches a person is offered: every set's, except Road where it could show nothing. Road's
+ * tools read the road model, and a road is built only in a road project (`roadProject`,
+ * `road/model.ts` `isRoadProject`), so its switch is offered there, and in a project that holds
+ * a road model (locked on). A set left out keeps its place in the saved list (`toggled`).
+ */
+export function shownSwitches(
+  manifest: TypedManifest,
+  held: Held,
+  roadProject: boolean,
+): ToolSetSwitch[] {
+  return switchesFor(manifest, held).filter((r) => r.set !== 'road' || roadProject || r.locked);
+}
+
+/**
  * The list to save when a switch is turned: the whole list of sets then on. Null when nothing
  * changes (a locked set, or a switch that already reads that way).
  */

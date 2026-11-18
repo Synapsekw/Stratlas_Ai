@@ -185,8 +185,10 @@ test('Tool sets in Project settings adds a set to a project and takes it away ag
   // the switches start as the project type gives them: a survey has Earthworks
   await openToolSets(win);
   await expect(toolSwitch(win, 'earthworks')).toHaveAttribute('aria-checked', 'true');
-  for (const set of ['road', 'telecom', 'thermal'] as const)
+  for (const set of ['telecom', 'thermal'] as const)
     await expect(toolSwitch(win, set)).toHaveAttribute('aria-checked', 'false');
+  // road tools belong to road projects: a survey without a road has no Road switch
+  await expect(win.getByTestId('tool-set-road')).toHaveCount(0);
 
   // Telecom on: saved in the project, and the tools are there without a restart
   await toolSwitch(win, 'telecom').click();
@@ -214,7 +216,7 @@ test('Tool sets in Project settings adds a set to a project and takes it away ag
   await expect(win.getByTestId('wb-section-telecom')).toHaveCount(0);
 });
 
-test('Earthworks shows Volumes before the first pile; Road shows nothing without a road', async ({
+test('Earthworks shows Volumes before the first pile; Road is not offered outside a road project', async ({
   win,
   dataRoot,
 }) => {
@@ -238,15 +240,10 @@ test('Earthworks shows Volumes before the first pile; Road shows nothing without
   // its empty state offers the way to the first pile
   await expect(volumes.getByTestId('volumes-draw')).toBeVisible();
 
-  // Road on: the switch says what happens, and nothing shows, because this is not a road project
+  // Road could show nothing here (this is not a road project): its switch is not offered
   await openToolSets(win);
-  await expect(block).toContainText('a road is built only in a Road project');
-  await toolSwitch(win, 'road').click();
-  await expect(toolSwitch(win, 'road')).toHaveAttribute('aria-checked', 'true');
-  await backToScene(win);
-  expect(await toolSections(win)).not.toContain('tools.road');
-  await openSection(win, 'project');
-  await expect(panelSection(win, 'project.road')).toHaveCount(0);
+  await expect(toolSwitch(win, 'earthworks')).toHaveAttribute('aria-checked', 'true');
+  await expect(win.getByTestId('tool-set-road')).toHaveCount(0);
 });
 
 test('a survey project that holds an antenna inventory keeps its telecom tools, switch locked on', async ({

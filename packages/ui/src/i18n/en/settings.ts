@@ -78,8 +78,7 @@ export const enSettings = {
     'Volumes, with its pile list (empty until the first pile is drawn), and survey checks.',
   'settings.toolSets.earthworks.held': 'On: this project holds piles or volumes.',
   'settings.toolSets.road': 'Road',
-  'settings.toolSets.road.what':
-    'Defects, condition and chainage along a road. They show once the project has a road, and a road is built only in a Road project.',
+  'settings.toolSets.road.what': 'Defects, condition and chainage along a road.',
   'settings.toolSets.road.held': 'On: this project holds a road.',
   'settings.toolSets.telecom': 'Telecom',
   'settings.toolSets.telecom.what': 'Antennas, azimuth, tilt, clearance and RF coverage.',

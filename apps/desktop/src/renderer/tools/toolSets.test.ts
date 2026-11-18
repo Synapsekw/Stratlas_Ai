@@ -10,6 +10,7 @@ import {
   projectGroupSet,
   PURPOSE_SETS,
   SECTION_SET,
+  shownSwitches,
   switchesFor,
   toggled,
   toolSetsFor,
@@ -90,6 +91,32 @@ describe('records and switches', () => {
       { set: 'telecom', on: true, locked: true },
       { set: 'thermal', on: true, locked: false },
     ]);
+  });
+
+  it('the Road switch is offered only where it can have an effect', () => {
+    const rows = (m: Parameters<typeof shownSwitches>[0], h: Held, roadProject: boolean) =>
+      shownSwitches(m, h, roadProject).map((r) => r.set);
+    // not a road project and no road model: no Road row, whatever the type gives
+    expect(rows({ purpose: 'survey' }, NOTHING_HELD, false)).toEqual([
+      'earthworks',
+      'telecom',
+      'thermal',
+    ]);
+    expect(rows({ purpose: 'data-fusion' }, NOTHING_HELD, false)).not.toContain('road');
+    // Data fusion keeps Road in its list all the same: it is on once the project has a road
+    expect(toolSetsFor({ purpose: 'data-fusion' }, NOTHING_HELD).has('road')).toBe(true);
+    // a road project: the row is there and can be turned off
+    expect(shownSwitches({ purpose: 'road', type: 'road' }, NOTHING_HELD, true)[1]).toEqual({
+      set: 'road',
+      on: true,
+      locked: false,
+    });
+    // a project that holds a road model: there, locked on
+    expect(shownSwitches({ purpose: 'survey' }, held('road'), false)[1]).toEqual({
+      set: 'road',
+      on: true,
+      locked: true,
+    });
   });
 
   it('a switch saves the whole list: a set of the type can go off, a locked one cannot', () => {

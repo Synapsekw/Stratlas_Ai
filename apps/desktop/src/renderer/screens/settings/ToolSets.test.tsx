@@ -27,6 +27,7 @@ const base = {
   id: 'p1',
   name: 'P',
   layers: [],
+  classCatalogues: [],
   purpose: 'survey',
 } as unknown as ProjectManifest;
 let root: Root | null = null;
@@ -74,14 +75,30 @@ describe('Settings, This project, Tool sets', () => {
     expect(host?.innerHTML).toBe('');
   });
 
-  it('lists the four sets, on as the project type gives them', () => {
+  it('lists the sets, on as the project type gives them, without Road outside a road project', () => {
     mount();
-    expect(host?.querySelectorAll('[data-testid^="tool-set-"]')).toHaveLength(4);
+    expect(host?.querySelectorAll('[data-testid^="tool-set-"]')).toHaveLength(3);
     expect(on('earthworks')).toBe(true);
-    expect(on('road')).toBe(false);
+    expect(sw('road')).toBeNull();
     expect(on('telecom')).toBe(false);
     expect(on('thermal')).toBe(false);
     expect(host?.textContent).toContain('Tool sets');
+  });
+
+  it('offers Road in a road project, where it can be turned off', () => {
+    open({ ...base, purpose: 'road', type: 'road' });
+    mount();
+    expect(host?.querySelectorAll('[data-testid^="tool-set-"]')).toHaveLength(4);
+    expect(on('road')).toBe(true);
+    expect(sw('road')?.disabled).toBe(false);
+  });
+
+  it('offers Road, locked on, in a project that holds a road model', () => {
+    h.held = { ...NOTHING_HELD, road: true };
+    mount();
+    expect(on('road')).toBe(true);
+    expect(sw('road')?.disabled).toBe(true);
+    expect(host?.textContent).toContain('On: this project holds a road.');
   });
 
   it('follows the list a person chose', () => {
@@ -135,17 +152,16 @@ describe('Settings, This project, Tool sets', () => {
   it('a package shows the switches but cannot change them', () => {
     h.pkg = { id: 'p1' };
     mount();
-    for (const set of ['earthworks', 'road', 'telecom', 'thermal'])
-      expect(sw(set)?.disabled).toBe(true);
+    for (const set of ['earthworks', 'telecom', 'thermal']) expect(sw(set)?.disabled).toBe(true);
     expect(host?.textContent).toContain('read only');
   });
 
   it('shows why a save failed and leaves the switch as it was', async () => {
     h.call.mockResolvedValue({ ok: true, value: { ok: false, error: 'The disk is full.' } });
     mount();
-    act(() => sw('road')?.click());
+    act(() => sw('thermal')?.click());
     await flush();
     expect(host?.querySelector('[role="alert"]')?.textContent).toBe('The disk is full.');
-    expect(on('road')).toBe(false);
+    expect(on('thermal')).toBe(false);
   });
 });

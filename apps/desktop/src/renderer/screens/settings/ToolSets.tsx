@@ -3,13 +3,15 @@
  * tool set, on as the project type gives it. Turning one saves the whole list in the project
  * (`project:setToolSets`) and reads the manifest again, so the tools follow at once. A set whose
  * records the project holds is on and locked: no record ever loses its tools. A package shows the
- * switches and cannot change them. The rule is `tools/toolSets.ts`.
+ * switches and cannot change them. Road is offered only in a road project or with a road model:
+ * anywhere else it could show nothing. The rule is `tools/toolSets.ts`.
  */
 import { Switch, t, type MessageKey } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { type ReactElement, useState } from 'react';
 import { bridge, useShell } from '../../shell';
-import { switchesFor, toggled, type ToolSet } from '../../tools/toolSets';
+import { isRoadProject } from '../../road/model';
+import { shownSwitches, toggled, type ToolSet } from '../../tools/toolSets';
 import { useHeld } from '../../tools/useToolSets';
 
 const NAME: Record<ToolSet, MessageKey> = {
@@ -82,7 +84,7 @@ export function ToolSets(): ReactElement | null {
       <p className="help">
         {isPackage ? t('settings.toolSets.package') : t('settings.toolSets.text')}
       </p>
-      {switchesFor(manifest, held).map((row) => (
+      {shownSwitches(manifest, held, isRoadProject(manifest)).map((row) => (
         <div className="opt" key={row.set}>
           <b>{t(NAME[row.set])}</b>
           <span>{t(row.locked ? HELD[row.set] : WHAT[row.set])}</span>
