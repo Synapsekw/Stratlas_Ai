@@ -2,7 +2,7 @@
 
 |          |                                                                                                                                              |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status   | **Proposed**, 18 Nov 2026. Design and plan only; nothing is built.                                                                           |
+| Status   | **Decided** by the founder, 18 Nov 2026 (section 7), and built on `feat/tools-by-project`.                                                   |
 | Decision | Founder, 18 Nov 2026: "let the tools be shown based on the project, there is no point showing telecom tools in a confined space project".    |
 | Replaces | Decision 2 of `docs/plans/2026-10-30-ui-revision-design.md` ("no feature is ever gated by project type") and its section 7 "No gating, ever" |
 | Freeze   | This is a simplification. It removes things from view and adds no capability. The one new control is a list of switches in project settings. |
@@ -26,13 +26,13 @@ Everything that is not core belongs to one of five **tool sets**. A set is eithe
 
 | Tool set    | What is in it                                                                                                                                                                                                                                                                          |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Earthworks  | Tools: Volumes, Terrain analysis, Survey checks. Project: Volumes. Layers: Show (surface and pile overlays). Stage tools mode: Volumes. Bottom strip: volume over time.                                                                                                                |
+| Earthworks  | Tools: Volumes, Survey checks. Project: Volumes. Layers: Show (surface and pile overlays). Stage tools mode: Volumes. Bottom strip: volume over time.                                                                                                                                  |
 | Road        | Tools: Road. Project: Road. Stage tools mode: Road. Bottom strip: chainage.                                                                                                                                                                                                            |
 | Engineering | Tools: Engineering (model review). Right-click: "Create engineering model". The same offer in the import summary.                                                                                                                                                                      |
 | Telecom     | Measure family Telecom (Azimuth, Antenna tilt, Clearance, Find antennas). Tools: Coverage. "In this project": Antennas, Sectors, Coverage plan. Right-click: every antenna action (fly to, hide, show, edit azimuth, edit downtilt, accept, reject, redraw, delete) and "RF coverage". |
 | Thermal     | Tools: Thermal. Right-click on photos: "Analyse thermal".                                                                                                                                                                                                                              |
 
-**Core, in every project:** View, Measure (the Point, Line, Polygon, Markup and Section families), Annotate, Environment, Compare and the dates, Issues, Search, Digest, Processing, Reports, every Layers and display section, and all six rail screens. Point cloud and Video tools are core too: they keep showing only when the project holds a point cloud or a video, as today.
+**Core, in every project:** View, Measure (the Point, Line, Polygon, Markup and Section families), Annotate, Terrain analysis, Environment, Compare and the dates, Issues, Search, Digest, Processing, Reports, every Layers and display section, and all six rail screens. Point cloud, Video and Terrain analysis tools are core too: they keep showing only when the project holds a point cloud, a video, or a model or raster, as today.
 
 ### Which project gets which set
 
@@ -42,9 +42,9 @@ Everything that is not core belongs to one of five **tool sets**. A set is eithe
 | ----------- | ------ | ------------ | -------------- | -------------- | ----------- | ---- | -------------- | -------------------------------------------------- |
 | Core        | on     | on           | on             | on             | on          | on   | on             | on everywhere                                      |
 | Earthworks  | on     | on           | data           | data           | on          | data | data           | every project with a model, a raster or piles      |
-| Road        | data   | data         | data           | data           | data        | on   | data           | every project with a road model (unchanged)        |
+| Road        | data   | data         | data           | data           | on          | on   | data           | every project with a road model (unchanged)        |
 | Engineering | data   | data         | on             | data           | on          | data | on             | every project with a point cloud or mesh           |
-| Telecom     | data   | data         | data           | data           | data        | data | on             | measure family everywhere; Coverage with any model |
+| Telecom     | data   | data         | data           | data           | on          | data | on             | measure family everywhere; Coverage with any model |
 | Thermal     | data   | data         | on             | data           | on          | data | data           | every project with photos                          |
 
 ### Every surface, row by row
@@ -58,12 +58,12 @@ Columns: Su survey, Co construction, VA vertical asset, CS confined space, DF da
 | Tools tab group            | Annotate                                                                                                                | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | always                                                        | none                          |
 | Tools tab group            | Volumes                                                                                                                 | Y                      | Y   | .   | .   | Y   | .   | .   | piles or stockpile kit                                        | piles or stockpile kit        |
 | Tools tab group            | Point cloud                                                                                                             | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | a point cloud                                                 | a point cloud                 |
-| Tools tab group            | Terrain analysis                                                                                                        | Y                      | Y   | .   | .   | Y   | .   | .   | any model or raster                                           | a model or raster             |
+| Tools tab group            | Terrain analysis                                                                                                        | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | any model or raster                                           | a model or raster             |
 | Tools tab group            | Survey checks                                                                                                           | Y                      | Y   | .   | .   | Y   | .   | .   | any model or raster                                           | a model or raster             |
 | Tools tab group            | Video                                                                                                                   | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | a video                                                       | a video                       |
-| Tools tab group            | Road                                                                                                                    | .                      | .   | .   | .   | .   | Y   | .   | a road model                                                  | a road model                  |
+| Tools tab group            | Road                                                                                                                    | .                      | .   | .   | .   | Y   | Y   | .   | a road model                                                  | a road model                  |
 | Tools tab group            | Engineering                                                                                                             | .                      | .   | Y   | .   | Y   | .   | Y   | any point cloud or mesh                                       | a point cloud or mesh         |
-| Tools tab group            | Coverage                                                                                                                | .                      | .   | .   | .   | .   | .   | Y   | any point cloud or mesh                                       | a point cloud or mesh         |
+| Tools tab group            | Coverage                                                                                                                | .                      | .   | .   | .   | Y   | .   | Y   | any point cloud or mesh                                       | a point cloud or mesh         |
 | Tools tab group            | Thermal                                                                                                                 | .                      | .   | Y   | .   | Y   | .   | .   | any photos                                                    | photos                        |
 | Tools tab group            | Environment                                                                                                             | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | always                                                        | none                          |
 | Selection tab              | Selected                                                                                                                | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | always                                                        | none                          |
@@ -71,20 +71,20 @@ Columns: Su survey, Co construction, VA vertical asset, CS confined space, DF da
 | Layers and display section | Show (surface and pile overlays)                                                                                        | Y                      | Y   | .   | .   | Y   | .   | .   | piles or stockpile kit                                        | piles or stockpile kit        |
 | Project tab section        | Digest, In this project, Search, Changes, Issues, Processing                                                            | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | always, or two dates                                          | unchanged                     |
 | Project tab section        | Volumes                                                                                                                 | Y                      | Y   | .   | .   | Y   | .   | .   | piles or stockpile kit                                        | piles or stockpile kit        |
-| Project tab section        | Road                                                                                                                    | .                      | .   | .   | .   | .   | Y   | .   | a road model                                                  | a road model                  |
+| Project tab section        | Road                                                                                                                    | .                      | .   | .   | .   | Y   | Y   | .   | a road model                                                  | a road model                  |
 | Measure family             | Point, Line, Polygon, Markup, Section                                                                                   | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | always                                                        | none                          |
-| Measure family             | Telecom, with Find antennas                                                                                             | .                      | .   | .   | .   | .   | .   | Y   | always (greyed when read-only)                                | none; tools still say why not |
+| Measure family             | Telecom, with Find antennas                                                                                             | .                      | .   | .   | .   | Y   | .   | Y   | always (greyed when read-only)                                | none; tools still say why not |
 | Stage tools mode           | View, Measure, Annotate                                                                                                 | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | always                                                        | none                          |
 | Stage tools mode           | Compare                                                                                                                 | Y                      | Y   | Y   | Y   | Y   | .   | Y   | two dates or a video, not a road                              | unchanged                     |
 | Stage tools mode           | Video                                                                                                                   | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | a video                                                       | a video                       |
 | Stage tools mode           | Volumes                                                                                                                 | Y                      | Y   | .   | .   | Y   | .   | .   | piles or stockpile kit                                        | piles or stockpile kit        |
-| Stage tools mode           | Road                                                                                                                    | .                      | .   | .   | .   | .   | Y   | .   | a road model, map in view                                     | unchanged                     |
+| Stage tools mode           | Road                                                                                                                    | .                      | .   | .   | .   | Y   | Y   | .   | a road model, map in view                                     | unchanged                     |
 | "In this project" group    | Measurements, Issues                                                                                                    | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | always                                                        | none                          |
-| "In this project" group    | Antennas                                                                                                                | .                      | .   | .   | .   | .   | .   | Y   | a point cloud and an inventory, not in survey or construction | a point cloud                 |
-| "In this project" group    | Sectors, Coverage plan                                                                                                  | .                      | .   | .   | .   | .   | .   | Y   | an inventory or RF plan, not in survey or construction        | an inventory or plan          |
+| "In this project" group    | Antennas                                                                                                                | .                      | .   | .   | .   | Y   | .   | Y   | a point cloud and an inventory, not in survey or construction | a point cloud                 |
+| "In this project" group    | Sectors, Coverage plan                                                                                                  | .                      | .   | .   | .   | Y   | .   | Y   | an inventory or RF plan, not in survey or construction        | an inventory or plan          |
 | Rail screen                | Projects, Globe, Scene, Issues, Inspect, Reports                                                                        | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | always                                                        | none                          |
 | Right-click actions        | Project, dates, layers, point cloud, mesh, drawing, pins, photo position, measurements, reports, findings, area compare | Y                      | Y   | Y   | Y   | Y   | Y   | Y   | by what was clicked                                           | unchanged                     |
-| Right-click actions        | Antenna actions, "RF coverage"                                                                                          | .                      | .   | .   | .   | .   | .   | Y   | an antenna row; an inventory                                  | unchanged                     |
+| Right-click actions        | Antenna actions, "RF coverage"                                                                                          | .                      | .   | .   | .   | Y   | .   | Y   | an antenna row; an inventory                                  | unchanged                     |
 | Right-click actions        | "Analyse thermal"                                                                                                       | .                      | .   | Y   | .   | Y   | .   | .   | a thermal photo was clicked                                   | unchanged                     |
 | Right-click actions        | "Create engineering model"                                                                                              | .                      | .   | Y   | .   | Y   | .   | Y   | a point cloud or mesh was clicked                             | unchanged                     |
 | Command palette            | Tools, tool groups and panel names                                                                                      | follows the rows above |     |     |     |     |     |     | every tool, in every project                                  | follows the rows above        |
@@ -154,13 +154,13 @@ Everything else asks it: the panel sections (`sectionsOf`), the tool registry (`
 
 **The five older project types.** Projects from before the seven wizard types have only the older type. They map the way the layout presets already map them (`purposeOf`), so a project's tools and its layout always agree:
 
-| Older type          | Counts as      | Sets on                          |
-| ------------------- | -------------- | -------------------------------- |
-| volumetric          | Survey         | Earthworks                       |
-| road                | Road           | Road                             |
-| inspection          | Vertical asset | Engineering, Thermal             |
-| fusion, twin        | Data fusion    | Earthworks, Engineering, Thermal |
-| none (imported kit) | Vertical asset | Engineering, Thermal             |
+| Older type          | Counts as      | Sets on              |
+| ------------------- | -------------- | -------------------- |
+| volumetric          | Survey         | Earthworks           |
+| road                | Road           | Road                 |
+| inspection          | Vertical asset | Engineering, Thermal |
+| fusion, twin        | Data fusion    | all five             |
+| none (imported kit) | Vertical asset | Engineering, Thermal |
 
 A fusion, twin or untyped project that holds piles counts as a Survey for its layout today; its Earthworks set comes on through its records either way. An older inspection project that was really a tower job keeps its telecom tools because it holds antennas.
 
@@ -245,9 +245,16 @@ One, additive: `ProjectManifest.toolSets?` in `@aio/schema`, a list of plain nam
 7. Add thermal photos to the confined space project from step 3. The Thermal section appears by itself once the import finishes.
 8. Open a read-only package: the tools match the project it was made from, and the Tool sets switches cannot be changed.
 
-## 7. Open questions for the founder
+## 7. Founder decisions, 18 Nov 2026
 
-1. **Data fusion: which sets?** Recommended: Earthworks, Engineering and Thermal, with Telecom and Road joining only through their records or the switch. The other choice is "everything on", which is simpler to explain but brings back the clutter for every older fusion and twin project.
-2. **Engineering in Construction projects?** Recommended: no, off by default. The construction layout leads with Measure, Terrain, Checks and Volumes; the engineering model review is used on stacks and towers. One switch adds it.
-3. **Terrain analysis and Survey checks: Earthworks or core?** Recommended: Earthworks, so they leave inspection, road and telecom projects. If survey accuracy checks are wanted on road or tower surveys too, Survey checks can be core at no extra cost; say so before the build.
-4. **May a set be switched off when the project type includes it** (Thermal off in a vertical asset project)? Recommended: yes. The switches are the whole project's list, and only a set with records is locked on.
+1. **Data fusion gets all five tool sets** (Earthworks, Road, Engineering, Telecom, Thermal). It is the type for a site with any mix of data, so nothing is left out of it. The older fusion and twin types count as Data fusion and get the same.
+2. **Terrain analysis is core.** It shows in every project that holds a model or a raster.
+3. **A set that the project type includes may be switched off.** Only a set with records is locked on.
+
+### Still open
+
+- **Engineering in Construction projects.** Not answered yet. It is built **off by default** as a provisional value: a construction project does not show Engineering until someone turns the switch on or the project holds an engineering model. Changing the answer is one line in `toolSets.ts` (`PURPOSE_SETS.construction`).
+
+### Assumption to confirm
+
+- **Survey checks stays in Earthworks.** The founder moved Terrain analysis to core and did not mention Survey checks, so it shows in survey, construction and data fusion projects, and elsewhere through the switch.
