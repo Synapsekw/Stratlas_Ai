@@ -3,20 +3,15 @@
  * Web Worker (worker.ts) and in tests. Grids load lazily, once, from the project's kit scripts.
  * All positions are easting and northing in the project CRS.
  */
-import type { VolumeBaseId } from '@aio/schema';
-import { changeBodyCoarse, changeBodyFine, coarseBody, fineBody, type BodyCells } from './bodies';
 import {
   changeRaster,
   heightStats,
   reliefRaster,
   sampleDsm,
-  sectionProfile,
   type Raster,
   type ReliefStyle,
-  type SectionProfile,
 } from './dsm';
 import { densify, type EN } from './edit';
-import { pileSurface } from './frame';
 import {
   decodeCoarse,
   decodeDsm,
@@ -45,29 +40,18 @@ export interface ScenePileRequest {
   id: string;
   /** The toe line to draw (zone ring in change mode). */
   ring: EN[];
-  /** A hand-edited line (kit edits saved before the kit editor retired): no fine body under it. */
-  edited: boolean;
 }
 
 export interface SceneRequest {
+  /** The survey the view shows: the toe lines lie on its ground. */
   epoch: string;
-  /** The base the inventory bodies stand on in 3D: display only, never a figure. */
-  base: VolumeBaseId;
-  mode: 'inv' | 'chg';
-  /** The two surveys a change body spans (change mode), earlier first as picked. */
-  from?: string;
-  to?: string;
-  selected: string | null;
   piles: ScenePileRequest[];
 }
 
 export interface ScenePile {
   id: string;
-  body: BodyCells | null;
   /** Toe line draped on the surface, flat (E, N, z) triples. */
   toe: Float64Array;
-  /** Base height under each toe point (inventory bodies), for the lifted base outline. */
-  toeBase: Float64Array | null;
 }
 
 export interface GridInfo {
@@ -158,53 +142,19 @@ export class VolumeCompute {
     return this.gridP;
   }
 
-  private async surface(epoch: string, pile: string | null) {
-    const dsm = await this.dsm(epoch);
-    const g = pile ? await this.pile(pile) : null;
-    return { dsm, surf: pileSurface(g, epoch, dsm) };
-  }
-
+  /**
+   * The toe lines of the piles asked for, on the ground of the survey the view shows. The kit's
+   * volume bodies and base plates are no longer drawn (volumetrics finalization, 18 Nov 2026): an
+   * opened pile is shown by its volume measurement.
+   */
   async scene(req: SceneRequest): Promise<{ piles: ScenePile[] }> {
-    const chg = req.mode === 'chg';
-    const [from, to] = this.pair(req.from, req.to);
-    const dsm = await this.dsm(chg ? to : req.epoch);
-    const first = chg ? await this.dsm(from) : null;
-    // the toe lies on the ground of the survey the view shows (a change body is the same on
-    // every date; a view of another date would bury or float a toe draped on the "to" one)
-    const ground = chg && req.epoch !== to ? await this.dsm(req.epoch) : dsm;
-    const coarse = await this.coarse();
-    const out: ScenePile[] = [];
-    for (const p of req.piles) {
-      const sel = p.id === req.selected;
-      const fine = sel ? await this.pile(p.id) : null;
-      let body: BodyCells | null;
-      let baseAt: ((E: number, N: number) => number) | null = null;
-      if (chg) {
-        body =
-          fine !== null
-            ? changeBodyFine(fine, from, to, this.o.deadband, 3)
-            : first
-              ? changeBodyCoarse(coarse, first, dsm, p.id, this.o.deadband)
-              : null;
-      } else if (p.edited) {
-        // the kit's grids hold the automatic outline only: a saved edit draws its toe line
-        body = null;
-      } else {
-        body =
-          fine !== null
-            ? fineBody(fine, req.epoch, req.base, 3)
-            : coarseBody(coarse, dsm, p.id, req.epoch, req.base);
-        if (body) baseAt = bodyBase(body);
-      }
-      out.push({ id: p.id, body, ...drape(p.ring, (E, N) => sampleDsm(ground, E, N), baseAt) });
-    }
-    return { piles: out };
-  }
-
-  /** The heights of two surveys (the first and the last unless asked) along a line. */
-  async section(a: EN, b: EN, from?: string, to?: string): Promise<SectionProfile> {
-    const [f, t] = this.pair(from, to);
-    return sectionProfile(await this.dsm(f), await this.dsm(t), a, b, this.o.deadband);
+    const ground = await this.dsm(req.epoch);
+    return {
+      piles: req.piles.map((p) => ({
+        id: p.id,
+        toe: drape(p.ring, (E, N) => sampleDsm(ground, E, N)),
+      })),
+    };
   }
 
   /**
@@ -229,56 +179,17 @@ export class VolumeCompute {
     }
     return reliefRaster(await this.dsm(epoch), lo, hi, style);
   }
-
-  /** Surface heights under points (E, N) of one survey, null where there is no data. */
-  async heights(epoch: string, pile: string | null, pts: EN[]): Promise<(number | null)[]> {
-    const { surf } = await this.surface(epoch, pile);
-    return pts.map(([E, N]) => surf(E, N));
-  }
-}
-
-/** Nearest-cell base height of a body (for the lifted base outline). */
-function bodyBase(b: BodyCells): (E: number, N: number) => number {
-  return (E, N) => {
-    const i = Math.max(0, Math.min(b.nx - 1, Math.round((E - b.e0) / b.cell)));
-    const j = Math.max(0, Math.min(b.ny - 1, Math.round((b.n0 - N) / b.cell)));
-    let best = b.bmin;
-    let bd = Infinity;
-    // the toe sits on the edge of the body: look for the nearest cell inside within 3 cells
-    for (let dj = -3; dj <= 3; dj++)
-      for (let di = -3; di <= 3; di++) {
-        const x = i + di;
-        const y = j + dj;
-        if (x < 0 || y < 0 || x >= b.nx || y >= b.ny) continue;
-        const k = y * b.nx + x;
-        if (!b.ins[k]) continue;
-        const d = di * di + dj * dj;
-        if (d < bd) {
-          bd = d;
-          best = b.bot[k] ?? best;
-        }
-      }
-    return best;
-  };
 }
 
 /** A ring sampled every `step` metres on a surface (holes take the last height). */
-function drape(
-  ring: EN[],
-  surf: (E: number, N: number) => number | null,
-  baseAt: ((E: number, N: number) => number) | null,
-  step = 1,
-): { toe: Float64Array; toeBase: Float64Array | null } {
-  const pts = densify(ring, step);
+function drape(ring: EN[], surf: (E: number, N: number) => number | null, step = 1): Float64Array {
   const toe: number[] = [];
-  const base: number[] = [];
   let last: number | null = null;
-  for (const [E, N] of pts) {
+  for (const [E, N] of densify(ring, step)) {
     const z: number | null = surf(E, N) ?? last;
     if (z == null) continue;
     last = z;
     toe.push(E, N, z);
-    if (baseAt) base.push(baseAt(E, N));
   }
-  return { toe: Float64Array.from(toe), toeBase: baseAt ? Float64Array.from(base) : null };
+  return Float64Array.from(toe);
 }

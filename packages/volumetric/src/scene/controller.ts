@@ -1,9 +1,10 @@
 /**
- * The volumetric overlay in the 3D stage: volume bodies (lifted or in place) with their toe
- * lines and base plates, cut and fill bodies, the change or elevation colours draped on the
- * survey terrain, the survey swipe and the section line. It reads the
- * volumetric store, asks the worker for geometry and touches only its own group, the terrain
- * layers' materials (texture and clipping, restored afterwards) and the pile callout text.
+ * The volumetric overlay in the 3D stage: the toe lines of the kit piles that have no volume
+ * measurement, the change or elevation colours draped on the survey terrain and the survey swipe.
+ * The kit's volume bodies, base plates and section line are retired (volumetrics finalization,
+ * 18 Nov 2026): an opened pile is drawn by its volume measurement. It reads the volumetric store,
+ * asks the worker for geometry and touches only its own group, the terrain layers' materials
+ * (texture and clipping, restored afterwards) and the pile callout text.
  */
 import type { EngineStage } from '@aio/engine';
 import { shiftEN } from '@aio/schema';
@@ -12,22 +13,18 @@ import {
   BufferAttribute,
   BufferGeometry,
   DataTexture,
-  DoubleSide,
   Group,
-  Line,
   LineBasicMaterial,
   LineLoop,
-  LineSegments,
   LinearFilter,
   Mesh,
   MeshBasicMaterial,
-  MeshLambertMaterial,
   MeshStandardMaterial,
   Plane,
   RGBAFormat,
   SRGBColorSpace,
-  SphereGeometry,
   Vector3,
+  type Line,
   type Material,
   type Object3D,
   type Texture,
@@ -37,7 +34,7 @@ import type { ScenePile } from '../model/compute';
 import { changeGridRaster, type Raster } from '../model/dsm';
 import type { EN } from '../model/edit';
 import type { SurfaceMode, Volumetric } from '../store';
-import { bodyGeometry, swipePlane, toLocalFn, type ToLocal } from './geometry';
+import { swipePlane, toLocalFn, type ToLocal } from './geometry';
 
 const SELECT = 0x5ad2b4;
 
@@ -68,7 +65,7 @@ function lineGeometry(pts: number[]): BufferGeometry {
 /** How one 3D view draws the volumes when it is not the only view (a split comparing two dates). */
 export interface VolumetricView {
   /**
-   * Draws only: no section picking, no swipe (the second view of a comparison). Such a view
+   * Draws only: no swipe (the second view of a comparison). Such a view
    * draws the survey it is given (`setEpoch`) and nothing at all without one: its pane shows a
    * date the volumes do not have, and another date's piles would be wrong there.
    */
@@ -86,12 +83,9 @@ class DrapeRefused extends Error {}
 export class VolumetricScene {
   readonly group = new Group();
   private readonly bodies = new Group();
-  private readonly sectionG = new Group();
   private readonly unsub: (() => void)[] = [];
   private sceneKey = '';
   private sceneSeq = 0;
-  private sectionDrawn: unknown = null;
-  private sectionEpoch = '';
   /** The survey this view shows; null: the one the store shows. */
   private viewEpoch: string | null = null;
   /** Drapes the budget turned down, by survey: the colouring refused. */
@@ -132,15 +126,13 @@ export class VolumetricScene {
     private readonly view: VolumetricView = {},
   ) {
     this.group.name = 'volumetric';
-    this.group.add(this.bodies, this.sectionG);
+    this.group.add(this.bodies);
   }
 
   /** Start drawing into the stage and following the store. */
   attach(): void {
     if (this.unsub.length) return;
     this.sceneKey = '';
-    this.sectionDrawn = null;
-    this.sectionEpoch = '';
     this.calloutKey = '';
     this.stage.scene.add(this.group);
     this.unsub.push(
@@ -167,7 +159,6 @@ export class VolumetricScene {
     this.restoreCallouts();
     this.restoreOrthos();
     disposeGroup(this.bodies);
-    disposeGroup(this.sectionG);
     this.stage.scene.remove(this.group);
     this.stage.requestRender();
   }
@@ -188,8 +179,8 @@ export class VolumetricScene {
   }
 
   /**
-   * A view that only draws, on a date without volumes: it draws no bodies, toe lines, section
-   * line or surface colours (the main view falls back to the store's survey instead).
+   * A view that only draws, on a date without volumes: it draws no toe lines or surface colours
+   * (the main view falls back to the store's survey instead).
    */
   private blank(): boolean {
     return this.view.display === true && this.viewEpoch === null;
@@ -261,15 +252,12 @@ export class VolumetricScene {
       this.group.visible = false;
       this.sceneSeq++;
       this.sceneKey = '';
-      this.sectionDrawn = null;
       disposeGroup(this.bodies);
-      disposeGroup(this.sectionG);
       this.stage.requestRender();
       return;
     }
     this.group.visible = true;
     void this.updateBodies();
-    void this.updateSection();
     this.stage.requestRender();
   }
 
@@ -284,29 +272,15 @@ export class VolumetricScene {
       .filter((p) => s.isPileShown(p.id) && (chg || p.epochs[epoch]))
       .map((p) => {
         const src = chg ? p.zoneRing : (p.epochs[epoch]?.ring ?? p.zoneRing);
-        return {
-          id: p.id,
-          ring: src.map((q): EN => [q[0] + origin[0], origin[1] - q[1]]),
-          edited: !chg && p.edited.includes(epoch),
-        };
+        return { id: p.id, ring: src.map((q): EN => [q[0] + origin[0], origin[1] - q[1]]) };
       });
-    const req = {
-      epoch,
-      // the 3D body stands on the kit's default base: display only, no figure comes from it
-      base: s.file?.defaultBase ?? ('tin' as const),
-      mode: chg ? ('chg' as const) : ('inv' as const),
-      ...(chg && s.change ? { from: s.change.from, to: s.change.to } : {}),
-      selected: s.selected,
-      piles,
-    };
+    const req = { epoch, piles };
     const key = JSON.stringify([
       req,
-      s.body,
-      this.swiping(),
+      chg,
+      s.selected,
       // a pile with a volume measurement draws no toe line of its own
       Object.keys(s.pileFigures).sort(),
-      // nor a body for a pile whose measurement is drawn
-      s.measuredShown,
       chg ? '' : shiftKey(s.epochShift(epoch)),
     ]);
     if (key === this.sceneKey) return;
@@ -325,86 +299,16 @@ export class VolumetricScene {
   private drawBodies(piles: ScenePile[], chg: boolean): void {
     const s = this.store.getState();
     disposeGroup(this.bodies);
-    // the toe lines and solids of a survey follow its date; in change mode they are the zone's
+    // the toe lines of a survey follow its date; in change mode they are the zone's
     const local = chg ? this.local : this.localOf(this.epoch());
     const clip = this.stage.clippingPlanes;
-    const swipe = this.swiping();
-    // while swiping between the dates only the toe lines show: the bodies would hide the ground
-    const lifted = s.body === 'lift' && !swipe;
     for (const p of piles) {
       const sel = p.id === s.selected;
       const dim = !!s.selected && !sel;
       const g = new Group();
       g.name = `vol:${p.id}`;
       g.userData.pile = p.id;
-      let lift = 0;
-      // a pile whose volume measurement is drawn now is shown by it (its outline and, opened,
-      // the app's lifted box): the kit draws no body, plate or hatch of its own for it; hidden or
-      // on another date, the kit body stays
-      const drawnByMeasurement = s.measuredShown.includes(p.id);
-      if (p.body && s.body !== 'off' && !swipe && !drawnByMeasurement) {
-        const geo = bodyGeometry(p.body, local, { lifted, change: chg });
-        lift = geo.lift;
-        const top = new BufferGeometry();
-        top.setAttribute('position', new BufferAttribute(geo.top, 3));
-        if (geo.colors) top.setAttribute('color', new BufferAttribute(geo.colors, 3));
-        top.setIndex(new BufferAttribute(geo.index, 1));
-        top.computeVertexNormals();
-        const topMesh = new Mesh(
-          top,
-          new MeshLambertMaterial({
-            color: chg ? 0xffffff : 0xff4d4d,
-            vertexColors: chg,
-            transparent: true,
-            opacity: dim ? 0.28 : lifted ? 0.62 : 0.5,
-            depthWrite: false,
-            side: DoubleSide,
-            clippingPlanes: clip,
-          }),
-        );
-        topMesh.renderOrder = 3;
-        topMesh.name = 'body-top';
-        g.add(topMesh);
-        // the base plate: under a lifted body, or seen through the pile when selected in place
-        if (lifted || (sel && !chg)) {
-          const bot = new BufferGeometry();
-          bot.setAttribute('position', new BufferAttribute(geo.bottom, 3));
-          bot.setIndex(new BufferAttribute(geo.index, 1));
-          const plate = new Mesh(
-            bot,
-            new MeshBasicMaterial({
-              color: 0xe6ebf2,
-              transparent: true,
-              opacity: dim ? 0.14 : lifted ? 0.3 : 0.22,
-              depthWrite: false,
-              depthTest: lifted,
-              side: DoubleSide,
-              clippingPlanes: clip,
-            }),
-          );
-          plate.renderOrder = 2;
-          plate.name = 'base-plate';
-          g.add(plate);
-        }
-        if (geo.hatch.length) {
-          const hg = lineGeometry([...geo.hatch]);
-          if (geo.hatchColors) hg.setAttribute('color', new BufferAttribute(geo.hatchColors, 3));
-          const hl = new LineSegments(
-            hg,
-            new LineBasicMaterial({
-              color: geo.hatchColors ? 0xffffff : 0xff2a2a,
-              vertexColors: !!geo.hatchColors,
-              transparent: true,
-              opacity: dim ? 0.18 : 0.5,
-              depthWrite: false,
-              clippingPlanes: clip,
-            }),
-          );
-          hl.renderOrder = 4;
-          g.add(hl);
-        }
-      }
-      // toe line on the ground, the base outline under a lifted body and posts between them
+      // the toe line on the ground
       const toe: number[] = [];
       for (let i = 0; i + 2 < p.toe.length; i += 3)
         toe.push(
@@ -428,43 +332,6 @@ export class VolumetricScene {
         tl.name = sel ? 'toe-selected' : 'toe';
         g.add(tl);
       }
-      if (lifted && p.toeBase && lift > 0 && toe.length > 6) {
-        const bl: number[] = [];
-        const posts: number[] = [];
-        const n = p.toeBase.length;
-        const every = Math.max(1, Math.round(n / 28));
-        for (let k = 0; k < n; k++) {
-          const E = p.toe[k * 3] ?? 0;
-          const N = p.toe[k * 3 + 1] ?? 0;
-          const b = local(E, N, (p.toeBase[k] ?? 0) + lift);
-          bl.push(...b);
-          if (k % every === 0) posts.push(...local(E, N, (p.toe[k * 3 + 2] ?? 0) + 0.25), ...b);
-        }
-        const outline = new LineLoop(
-          lineGeometry(bl),
-          new LineBasicMaterial({
-            color: 0x7d86ff,
-            transparent: true,
-            opacity: dim ? 0.35 : 0.95,
-            depthWrite: false,
-            clippingPlanes: clip,
-          }),
-        );
-        outline.renderOrder = 5;
-        g.add(outline);
-        const pl = new LineSegments(
-          lineGeometry(posts),
-          new LineBasicMaterial({
-            color: 0xffffff,
-            transparent: true,
-            opacity: dim ? 0.35 : 0.9,
-            depthWrite: false,
-            clippingPlanes: clip,
-          }),
-        );
-        pl.renderOrder = 5;
-        g.add(pl);
-      }
       this.bodies.add(g);
     }
     this.stage.requestRender();
@@ -472,47 +339,6 @@ export class VolumetricScene {
 
   private swiping(): boolean {
     return !this.view.display && this.store.getState().swipe;
-  }
-
-  private async updateSection(): Promise<void> {
-    const s = this.store.getState();
-    const sec = s.section;
-    const epoch = this.epoch();
-    if (sec === this.sectionDrawn && epoch === this.sectionEpoch) return;
-    this.sectionDrawn = sec;
-    this.sectionEpoch = epoch;
-    disposeGroup(this.sectionG);
-    this.stage.requestRender();
-    if (sec.mode === 'idle' || !s.service) return;
-    const line =
-      sec.points.length === 2 ? [...densifyOpen(sec.points[0], sec.points[1], 0.5)] : sec.points;
-    const hs = await s.service.heights(epoch, null, [...sec.points, ...line]).catch(() => null);
-    if (!hs || this.store.getState().section !== sec || this.epoch() !== epoch) return;
-    const local = this.local;
-    sec.points.forEach(([E, N], k) => {
-      const z = hs[k] ?? 0;
-      const m = new Mesh(
-        new SphereGeometry(0.9, 16, 12),
-        new MeshBasicMaterial({ color: 0xbc0000, depthTest: false }),
-      );
-      m.position.set(...local(E, N, z + 0.9));
-      m.renderOrder = 8;
-      this.sectionG.add(m);
-    });
-    const lp: number[] = [];
-    line.forEach(([E, N], k) => {
-      const z = hs[sec.points.length + k];
-      if (z != null) lp.push(...local(E, N, z + 0.35));
-    });
-    if (lp.length >= 6) {
-      const l = new Line(
-        lineGeometry(lp),
-        new LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true }),
-      );
-      l.renderOrder = 8;
-      this.sectionG.add(l);
-    }
-    this.stage.requestRender();
   }
 
   /* ------------------------------------------------------------------ per frame */
@@ -885,12 +711,4 @@ export class VolumetricScene {
       }
     });
   }
-}
-
-/** Points every `step` metres from a to b, both ends included. */
-function* densifyOpen(a: EN | undefined, b: EN | undefined, step: number): Generator<EN> {
-  if (!a || !b) return;
-  const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step));
-  for (let k = 0; k <= n; k++)
-    yield [a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n];
 }

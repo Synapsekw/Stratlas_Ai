@@ -24,9 +24,12 @@ const s = vi.hoisted(() => ({
   dates: [] as { capture: string; label: string; date: string; state: SurfaceState }[],
   surveys: [] as { id: string; date: string; label: string }[],
   focus: null as string | null,
+  /** The focused measurement (`measureStore`), as the panel reads it when it closes. */
+  picked: null as string | null,
 }));
 const calls = vi.hoisted(() => ({
   select: vi.fn(),
+  showBench: vi.fn(),
   update: vi.fn(),
   saveSettings: vi.fn<(s: SurveySettings) => Promise<string | null>>(() => Promise.resolve(null)),
 }));
@@ -45,10 +48,12 @@ vi.mock('../compareStore', () => ({
 }));
 vi.mock('../measureStore', () => ({
   useMeasure: (sel: (x: unknown) => unknown) => sel(s.measure),
+  measureStore: { getState: () => ({ focus: s.picked }) },
   select: calls.select,
   updateMeasurement: calls.update,
   saveSiteSettings: calls.saveSettings,
 }));
+vi.mock('../../workspace/workbench/followTool', () => ({ showBench: calls.showBench }));
 vi.mock('../card/slots', () => ({ useSurveyDates: () => s.dates }));
 vi.mock('../surfaceStates', () => ({ usePrepareRunning: () => false }));
 // the card's "⋯" menu has its own tests (the registry's actions)
@@ -85,6 +90,7 @@ vi.mock('../../workspace/timeline', () => ({
 
 const { PilePanel } = await import('./PilePanel');
 const { pileView } = await import('./pileView');
+const { openedFromInventory, pileOrigin } = await import('./pileOrigin');
 const { takeVolumesPick } = await import('../volumesPick');
 
 const NOW = '2026-10-24T00:00:00.000Z';
@@ -148,10 +154,11 @@ const settings: SurveySettings = {
 
 let host: HTMLDivElement;
 let root: Root | undefined;
-const render = (id = '02', order: string[] = ['01', '02', '03']) => {
+/** `order` null: the panel as Selection mounts it, with no order of its own. */
+const render = (id = '02', order: string[] | null = ['01', '02', '03']) => {
   root ??= createRoot(host);
   act(() => {
-    root?.render(<PilePanel id={id} order={order} />);
+    root?.render(<PilePanel id={id} {...(order ? { order } : {})} />);
   });
 };
 const q = (sel: string) => host.querySelector(sel);
@@ -167,6 +174,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   s.surveys = [];
   s.focus = null;
+  s.picked = null;
+  pileOrigin.setState({ id: null, order: null });
   pileView.setState({ tab: 'overview', axis: new Map(), fitted: new Map(), historyUnit: 'm3' });
   s.compare = {
     status: 'ready',
@@ -260,7 +269,7 @@ describe('PilePanel', () => {
     expect(text('[data-testid="pile-kpi-volume"]')).toContain('11 378.7');
   });
 
-  it('‹ Inventory returns and Pile 2 of 19 steps', () => {
+  it('Pile 2 of 19 steps', () => {
     const order = Array.from({ length: 19 }, (_, i) => String(i + 1).padStart(2, '0'));
     s.measure.file.measurements = order.map((id) => pile(id));
     render('02', order);
@@ -271,21 +280,77 @@ describe('PilePanel', () => {
     expect(takeVolumesPick('03')).toBe(true);
     click(q('[data-testid="pile-prev"]'));
     expect(calls.select).toHaveBeenLastCalledWith(['01'], '01');
-    click(q('[data-testid="pile-back"]'));
-    expect(calls.select).toHaveBeenLastCalledWith([], null);
-    expect(text('[data-testid="pile-back"]')).toBe('‹ Inventory');
   });
 
-  it('Esc in the panel returns to the inventory', () => {
+  it('opened from 3D, the Map or the sidebar it has no link back: there is no list behind it', () => {
+    render('02', null);
+    expect(q('[data-testid="pile-back"]')).toBeNull();
+    // the arrows still step through every pile
+    expect(text('[data-testid="pile-position"]')).toBe('Pile 2 of 3');
+  });
+
+  it('opened from the inventory it says "Back to inventory", which returns to Project > Volumes', () => {
+    openedFromInventory('02', ['03', '02', '01']);
+    s.picked = '02';
+    render('02', null);
+    expect(text('[data-testid="pile-back"]')).toBe('Back to inventory');
+    // the arrows follow the inventory's order, not the file's
+    expect(text('[data-testid="pile-position"]')).toBe('Pile 2 of 3');
+    click(q('[data-testid="pile-next"]'));
+    expect(calls.select).toHaveBeenLastCalledWith(['01'], '01');
+    // the selection follows (the store is a stub here): the next pile's panel keeps the link
+    s.picked = '01';
+    render('01', null);
+    click(q('[data-testid="pile-back"]'));
+    expect(calls.select).toHaveBeenLastCalledWith([], null);
+    expect(calls.showBench).toHaveBeenLastCalledWith('volumes');
+    expect(pileOrigin.getState().id).toBeNull();
+  });
+
+  it('a step with the arrows keeps the way back; a pile opened another way does not get it', () => {
+    openedFromInventory('02', ['01', '02', '03']);
+    s.picked = '02';
+    render('02', null);
+    click(q('[data-testid="pile-next"]'));
+    expect(pileOrigin.getState()).toEqual({ id: '03', order: ['01', '02', '03'] });
+    s.picked = '03';
+    render('03', null);
+    expect(text('[data-testid="pile-back"]')).toBe('Back to inventory');
+    // another pile is clicked in 3D: no note for it, and the old one is dropped
+    s.picked = '01';
+    render('01', null);
+    expect(q('[data-testid="pile-back"]')).toBeNull();
+    expect(pileOrigin.getState().id).toBeNull();
+  });
+
+  it('closing the pile forgets where it came from; a change of tab does not', () => {
+    openedFromInventory('02');
+    s.picked = '02';
+    render('02', null);
+    // the Selection tab is left with the pile still open: the panel unmounts, the note stays
+    act(() => root?.unmount());
+    root = undefined;
+    expect(pileOrigin.getState().id).toBe('02');
+    render('02', null);
+    expect(q('[data-testid="pile-back"]')).not.toBeNull();
+    // the pile is closed (Esc, a click on empty ground): the note goes with it
+    s.picked = null;
+    act(() => root?.unmount());
+    root = undefined;
+    expect(pileOrigin.getState().id).toBeNull();
+  });
+
+  it('Esc in the panel closes the pile, without leaving Selection', () => {
     render();
     const panel = q('[data-testid="pile-panel"]');
     act(() => {
       panel?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
     expect(calls.select).toHaveBeenLastCalledWith([], null);
+    expect(calls.showBench).not.toHaveBeenCalled();
   });
 
-  it('Esc in the panel clears a pinned point first, then returns to the inventory', () => {
+  it('Esc in the panel clears a pinned point first, then closes the pile', () => {
     render();
     linkedHover.setState({
       lines: new Map([['pile:02', { key: 'pile:02', polyline: [], series: [] }]]),

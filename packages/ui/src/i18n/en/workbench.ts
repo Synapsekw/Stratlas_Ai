@@ -202,7 +202,7 @@ export const enWorkbench = {
   'measureBench.siteHaul': 'Haul road',
   'measureBench.siteExport': 'Export survey data',
   'measureBench.siteMaterials': 'Materials',
-  'measureBench.siteCutFill': 'Whole site cut and fill',
+  'measureBench.siteCutFill': 'Find cut and fill regions',
   'measureBench.siteUnits': 'Units',
   'measureBench.snapVertices': 'Snap to vertices',
   'measureBench.snapEdges': 'Snap to edges',

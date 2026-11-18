@@ -38,8 +38,8 @@ const ISLAND_TILES = [
   'measure.section-plane',
   'pointcloud.show',
   'pointcloud.cleanUp',
+  'volumes.draw',
   'volumes.swipe',
-  'volumes.section',
   'video.window',
   'video.telemetry',
   'road.closeup',
@@ -136,6 +136,52 @@ describe('one tool registry', () => {
     if (!area || !distance) throw new Error('missing');
     expect(availability(area, ctx)).not.toBe(true);
     expect(availability(distance, ctx)).toBe(true);
+  });
+});
+
+describe('Tools > Volumes after the finalization (18 Nov 2026)', () => {
+  const ids = TOOLS.filter((d) => d.group === 'volumes').map((d) => d.id);
+
+  it('keeps only what acts on the view: Draw volume and Swipe', () => {
+    expect(ids).toEqual(['volumes.draw', 'volumes.swipe']);
+    // the Table tile (the list is Project > Volumes) and the kit section line are gone
+    expect(TOOLS.map((d) => d.id)).not.toContain('volumes.table');
+    expect(TOOLS.map((d) => d.id)).not.toContain('volumes.section');
+  });
+
+  it('Draw volume starts wherever a measurement can be saved, as Measure > Volume', () => {
+    const draw = TOOLS.find((d) => d.id === 'volumes.draw');
+    const measure = TOOLS.find((d) => d.id === 'measure.volume');
+    if (!draw || !measure) throw new Error('missing');
+    for (const ctx of [
+      toolCtxOf(input()),
+      toolCtxOf(input({ readOnly: true })),
+      toolCtxOf(input({ pkg: true, readOnly: true })),
+    ])
+      expect(availability(draw, ctx)).toEqual(availability(measure, ctx));
+    expect(availability(draw, toolCtxOf(input()))).toBe(true);
+  });
+
+  it("Swipe's greyed-out reason is true: an older stockpile project, two dates, in 3D", () => {
+    const swipe = TOOLS.find((d) => d.id === 'volumes.swipe');
+    if (!swipe) throw new Error('no swipe');
+    const in3d = { stage3d: true };
+    // a project with piles but no stockpile kit: the kit and its two dates are what is missing
+    expect(availability(swipe, toolCtxOf(input({ ...in3d, volumes: true })))).toEqual({
+      reason: 'toolReg.reason.needsKit',
+    });
+    expect(availability(swipe, { ...toolCtxOf(input(in3d)), kit: true, kitDates: 1 })).toEqual({
+      reason: 'toolReg.reason.needsKit',
+    });
+    // the kit with two dates, on the map: it needs the 3D view
+    expect(
+      availability(swipe, {
+        ...toolCtxOf(input({ mode: 'map', tools: 'map' })),
+        kit: true,
+        kitDates: 2,
+      }),
+    ).toEqual({ reason: 'palette.unavailable.needs3d' });
+    expect(availability(swipe, { ...toolCtxOf(input(in3d)), kit: true, kitDates: 2 })).toBe(true);
   });
 });
 

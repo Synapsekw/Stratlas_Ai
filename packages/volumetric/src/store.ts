@@ -1,30 +1,23 @@
 /**
  * State of the volumetric workspace: the project's kit piles (their outlines and saved edits, for
- * the 3D toe lines and bodies), the survey shown, the selected pile (kept in step with the scene
- * selection), the display modes, the two surveys "Cut / fill" compares and the section tool.
- * Drawing goes to the volume worker. No volume is computed here: the kit's base computation, its
- * register and its boundary editor retired (volumetric parity W3); every figure a person reads
- * comes from the survey engine, on the pile's volume measurement.
+ * the 3D toe lines), the survey shown, the selected pile (kept in step with the scene selection),
+ * the display modes and the two surveys "Cut / fill" compares. Drawing goes to the volume worker.
+ * No volume is computed here: the kit's base computation, its register and its boundary editor
+ * retired (volumetric parity W3), its volume bodies and its section line too (volumetrics
+ * finalization, 18 Nov 2026); every figure a person reads comes from the survey engine, on the
+ * pile's volume measurement, which also draws an opened pile.
  */
 import type { AioBridge, BoundaryEdit, DateShift, IpcResponse, VolumesFile } from '@aio/schema';
 import { assetUrl, captureShift, workspace as appWorkspace, type Workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
-import {
-  isRampId,
-  type ChangeGridCells,
-  type RampId,
-  type ReliefStyle,
-  type SectionProfile,
-} from './model/dsm';
-import type { EN } from './model/edit';
+import { isRampId, type ChangeGridCells, type RampId, type ReliefStyle } from './model/dsm';
 import { pileNode, surveyLayers, type SurveyLayers } from './model/layers';
 import { applyEdits, type EffectivePile } from './model/register';
 import { startVolumeWorker, type VolumeService } from './worker/client';
 import type { WorkerInit } from './worker/protocol';
 
 export type SurfaceMode = 'photo' | 'elev' | 'change';
-export type BodyMode = 'lift' | 'place' | 'off';
 
 /** How the Elevation surface is coloured (remembered per project). */
 export interface ElevationStyle {
@@ -101,15 +94,6 @@ export function localPrefStore(): VolumePrefStore {
   };
 }
 
-export interface SectionState {
-  mode: 'idle' | 'picking' | 'done';
-  points: EN[];
-  profile: SectionProfile | null;
-  busy: boolean;
-  /** The two surveys profiled (set once the line is drawn). */
-  pair: ChangePair | null;
-}
-
 /** The two surveys "Cut / fill" compares (epochs of the volumes file), from and to. */
 export interface ChangePair {
   from: string;
@@ -135,14 +119,6 @@ export interface PileFigure {
  * result yet. A pile not listed has no measurement.
  */
 export type PileFigures = Readonly<Record<string, Readonly<Record<string, PileFigure>>>>;
-
-const IDLE_SECTION: SectionState = {
-  mode: 'idle',
-  points: [],
-  profile: null,
-  busy: false,
-  pair: null,
-};
 
 /**
  * The default pair around a survey: the one before it to it (previous to current); the first
@@ -176,13 +152,11 @@ export interface VolumetricState {
   change: ChangePair | null;
   /** The engine's difference for `change`; null: the colours come from the surveys' heights. */
   changeGrid: ChangeGrid | null;
-  body: BodyMode;
   /** The piles' figures from their volume measurements (the callouts read them). */
   pileFigures: PileFigures;
   /**
-   * Piles whose volume measurement the host draws now (shown, on the date in focus): the
-   * measurement's look stands for them, so the kit draws no body of its own. A pile whose
-   * measurement is hidden or on another date keeps its kit body.
+   * Piles whose volume measurement the host draws now (shown, on the date in focus). The kit
+   * draws no body for any pile any more, so nothing here reads it; the host still reports it.
    */
   measuredShown: readonly string[];
   selected: string | null;
@@ -195,7 +169,6 @@ export interface VolumetricState {
   elevation: ElevationStyle;
   /** Heights of the surveys for the elevation ramp, once the worker has read the DSMs. */
   relief: { auto: [number, number]; extent: [number, number] } | null;
-  section: SectionState;
   /** A read-only package is open. */
   readOnly: boolean;
   /** Short notice for the person (toast). */
@@ -225,7 +198,6 @@ export interface VolumetricActions {
    * survey saw them; the scene draws them on the lined-up dates.
    */
   epochShift(epoch: string): DateShift | null;
-  setBody(body: BodyMode): void;
   select(pile: string | null, opts?: { fly?: boolean }): void;
   setPileVisible(pile: string, visible: boolean): void;
   /** Show or hide every pile; remembered for the project. */
@@ -237,9 +209,6 @@ export interface VolumetricActions {
   /** The elevation colours with the range resolved (null until the heights are known). */
   reliefStyle(): ReliefStyle | null;
   step(dir: 1 | -1): void;
-  startSection(): void;
-  addSectionPoint(p: EN): Promise<void>;
-  clearSection(): void;
   setMessage(message: string | null): void;
   setReadOnly(on: boolean): void;
 }
@@ -271,14 +240,12 @@ const initial: VolumetricState = {
   surface: 'photo',
   change: null,
   changeGrid: null,
-  body: 'lift',
   pileFigures: {},
   measuredShown: [],
   selected: null,
   shown: [],
   elevation: DEFAULT_ELEVATION,
   relief: null,
-  section: IDLE_SECTION,
   readOnly: false,
   message: null,
   service: null,
@@ -538,10 +505,6 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
         return s.surface === 'change' && s.change ? s.change.to : s.epoch;
       },
 
-      setBody(body) {
-        set({ body });
-      },
-
       select(pile, opts = {}) {
         set({ selected: pile });
         if (!pile) {
@@ -603,38 +566,6 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
         const n = s.piles.length;
         const next = s.piles[(((i < 0 ? 0 : i + dir) % n) + n) % n];
         if (next) get().select(next.id);
-      },
-
-      startSection() {
-        set({ section: { ...IDLE_SECTION, mode: 'picking' } });
-      },
-
-      async addSectionPoint(p) {
-        const sec = get().section;
-        if (sec.mode !== 'picking') return;
-        const points = [...sec.points, p];
-        if (points.length < 2) {
-          set({ section: { ...sec, points } });
-          return;
-        }
-        const [a, b] = points as [EN, EN];
-        // the surveys Cut / fill compares, else the one before the shown survey to it
-        const s = get();
-        const pair = s.change ?? defaultChangePair(epochsOf(s.file), s.epoch);
-        set({ section: { mode: 'done', points, profile: null, busy: true, pair } });
-        const svc = get().service;
-        if (!svc) return;
-        try {
-          const profile = await svc.section(a, b, pair?.from, pair?.to);
-          if (get().section.points === points)
-            set({ section: { mode: 'done', points, profile, busy: false, pair } });
-        } catch (e) {
-          set({ section: IDLE_SECTION, message: e instanceof Error ? e.message : String(e) });
-        }
-      },
-
-      clearSection() {
-        set({ section: IDLE_SECTION });
       },
 
       setMessage(message) {

@@ -8,7 +8,7 @@ export const enVreport = {
   'vreport.block': 'Customer reports',
   'vreport.title': 'Volumetric report',
   'vreport.text':
-    'A report for the customer on the stockpiles: cover and summary, pile cards and what changed. Export it as a PDF or as one HTML file that opens offline.',
+    'The hand-over for a customer: the piles with their figures and pictures, and texts you can edit. Export it as a PDF or as one HTML file that opens offline. The full survey record is the Project report above.',
   'vreport.open': 'Open volumetric report',
   'vreport.close': 'Back to the reports',
   // Editor fields

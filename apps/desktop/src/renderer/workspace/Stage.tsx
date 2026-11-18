@@ -61,7 +61,6 @@ import { StageComponentBrief } from './ComponentBrief';
 import { ChangeLegends } from './MapSwipe';
 import { CursorReadout, useSceneCursor } from './SceneCursor';
 import { StageClassLegend, StageElevationLegend } from './StageLegends';
-import { VolumeSection } from './VolumeSection';
 import { CleanupHost } from '../pointcloud/CleanupHost';
 import { DesignsMount } from '../survey/Designs';
 import { HaulRoadMount } from '../survey/HaulRoad';
@@ -170,8 +169,6 @@ function ScenePane({
       <StageElevationLegend view={view} />
       {/* the "Click a pile" hint takes a corner slot of the stage (I-R51) */}
       <VolumetricStage stage={engine} epoch={epoch} hint={false} />
-      {/* the drawn section line's panel and profile (Volume tools' section line) */}
-      <VolumeSection />
       <StageClassLegend view={view} />
       {!hidden && <CleanupHost engine={engine} />}
       <CloudChangeLegend view={view} />

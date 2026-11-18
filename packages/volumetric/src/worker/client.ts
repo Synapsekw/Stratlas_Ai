@@ -39,11 +39,9 @@ export function connectVolumeService(
     };
   const ops: Record<VolumeOp, unknown> = {
     scene: call('scene'),
-    section: call('section'),
     changeRaster: call('changeRaster'),
     reliefRaster: call('reliefRaster'),
     grid: call('grid'),
-    heights: call('heights'),
   };
   return {
     ...(ops as VolumeOps),

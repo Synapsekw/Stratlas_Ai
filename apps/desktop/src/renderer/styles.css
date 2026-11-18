@@ -2568,14 +2568,6 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
   opacity: 0.45;
   cursor: default;
 }
-.vol-dates {
-  background: transparent;
-}
-.vol-dates button {
-  font-family: var(--f-mono);
-  font-size: var(--t-12);
-}
-
 /* the annotator's tools sit under the clip chip row (8px down, one 11px chip line with 3px
    padding), clear of the telemetry chips; the toolbar takes its own height, not the 3px of the
    app's progress .bar (mission.css), which clipped it to a sliver */

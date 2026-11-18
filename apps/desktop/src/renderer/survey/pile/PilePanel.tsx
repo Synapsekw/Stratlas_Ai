@@ -1,6 +1,7 @@
 /**
- * The pile panel (volumetrics redesign, spec section 3, boards 2 and 3): what opens in the Volumes
- * tab when a pile is picked. "‹ Inventory" and "Pile 2 of 19" on top, the pile's name, material
+ * The pile panel (volumetrics redesign, spec section 3, boards 2 and 3): what opens in Selection
+ * when a pile is picked, from every route (founder, 18 Nov 2026). "Pile 2 of 19" on top, with
+ * "Back to inventory" when the pile was opened from Project > Volumes, the pile's name, material
  * and density, three figures (volume, tonnes, the change since the date before), its footprint,
  * height and base, the status of a figure that is not current, then Overview, Profile and History.
  *
@@ -28,11 +29,12 @@ import {
 import { Tabs, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useId, useMemo, type KeyboardEvent, type ReactElement } from 'react';
+import { useStore } from 'zustand';
 import { volumeStatusLine, type StatusLine } from '../card/VolumeDetail';
 import { useSurveyDates } from '../card/slots';
 import { isStale, seriesStale, useCompare } from '../compareStore';
 import { drawnPoints } from '../measureDates';
-import { select, stopEditing, useMeasure } from '../measureStore';
+import { measureStore, select, stopEditing, useMeasure } from '../measureStore';
 import { escapeStage } from '../stageEscape';
 import { captureDateOf, datedCaptures, weighRows } from '../volumes/surveyDates';
 import { pickInVolumesView } from '../volumesPick';
@@ -41,6 +43,7 @@ import { PileHeader } from './PileHeader';
 import { PileHistory } from './PileHistory';
 import { PileOverview } from './PileOverview';
 import { askPileFly } from './pileFly';
+import { backToInventory, forgetPileOrigin, openedFromInventory, pileOrigin } from './pileOrigin';
 import { PileProfile } from './PileProfile';
 import { pileFigures, pileView, usePileView, type PileFigures, type PileTab } from './pileView';
 import './pile.css';
@@ -155,8 +158,8 @@ function openHere(id: string): void {
   askPileFly(id);
 }
 
-/** Back to the inventory: the pile is no longer selected. */
-function back(): void {
+/** Close the pile (Esc): it is no longer selected. */
+function close(): void {
   select([], null);
 }
 
@@ -171,10 +174,23 @@ export function PilePanel({
   const prefix = `pile-${useId().replace(/[^\w-]/g, '')}`;
   const m = useMeasure((s) => s.file.measurements.find((x) => x.id === id) ?? null);
   const file = useMeasure((s) => s.file);
+  // opened from the inventory (Project > Volumes): its link back, and its order for the arrows
+  const fromInventory = useStore(pileOrigin, (s) => s.id === id);
+  const listed = useStore(pileOrigin, (s) => (s.id === id ? s.order : null));
   // the inventory's order: the view's (its folder) when it says, else every pile
   const ids = useMemo(
-    () => order ?? inventoryPiles(file.measurements).map((x) => x.id),
-    [order, file],
+    () => order ?? listed ?? inventoryPiles(file.measurements).map((x) => x.id),
+    [order, listed, file],
+  );
+  // closed any other way (Esc, a click on empty ground, something else picked): the link back
+  // goes with it. A step with the arrows has moved the note on already, and a change of tab
+  // leaves the pile open.
+  useEffect(
+    () => () => {
+      if (pileOrigin.getState().id === id && measureStore.getState().focus !== id)
+        forgetPileOrigin();
+    },
+    [id],
   );
   const editing = useMeasure((s) => s.editing !== null && s.focus === id);
   const tab = usePileView((s) => s.tab);
@@ -194,7 +210,7 @@ export function PilePanel({
     // the stage's order: a pinned point first, then the pile
     if (
       escapeStage(() => {
-        back();
+        close();
         return true;
       })
     )
@@ -213,7 +229,17 @@ export function PilePanel({
       aria-label={data.m.label}
       onKeyDown={onKey}
     >
-      <PileHeader data={data} order={ids} dates={dates} onOpen={openHere} onBack={back} />
+      <PileHeader
+        data={data}
+        order={ids}
+        dates={dates}
+        onOpen={(next) => {
+          // stepping from a pile the inventory opened stays a visit from the inventory
+          if (fromInventory) openedFromInventory(next, listed);
+          openHere(next);
+        }}
+        {...(fromInventory ? { onBack: backToInventory } : {})}
+      />
       {editing && (
         <div className="pp-editing" role="status" data-testid="pile-editing">
           <p>{t('pile.edit.note')}</p>

@@ -11,6 +11,7 @@ import { workbench } from '../workbenchStore';
 const m = vi.hoisted(() => ({
   measure: { file: { measurements: [] as SurveyMeasurement[] }, focus: null as string | null },
   openPile: vi.fn(),
+  fromInventory: vi.fn(),
 }));
 vi.mock('../../../survey/measureStore', () => ({
   useMeasure: (sel: (x: unknown) => unknown) => sel(m.measure),
@@ -49,11 +50,11 @@ vi.mock('../../../survey/volumes/CutFillPane', () => ({
 vi.mock('../../../survey/volumes/MaterialsPane', () => ({
   MaterialsPane: () => <div data-testid="materials-pane" />,
 }));
+// the bench must not mount the pile panel: a mount of it here would show as this marker
 vi.mock('../../../survey/pile/PilePanel', () => ({
-  PilePanel: ({ id, order }: { id: string; order?: readonly string[] }) => (
-    <div data-testid="pile-panel" data-id={id} data-order={(order ?? []).join(',')} />
-  ),
+  PilePanel: () => <div data-testid="pile-panel" />,
 }));
+vi.mock('../../../survey/pile/pileOrigin', () => ({ openedFromInventory: m.fromInventory }));
 
 const { VolumesBench } = await import('./VolumesBench');
 const { volumesPane } = await import('../../../survey/volumes/volumesPane');
@@ -96,6 +97,7 @@ const click = (el: Element | null | undefined) => {
 beforeEach(() => {
   m.measure = { file: { measurements: [pile('p1'), pile('p2')] }, focus: null };
   m.openPile.mockClear();
+  m.fromInventory.mockClear();
   volumesPane.setState({ pane: 'inventory' });
   workbench.getState().reset();
   host = document.createElement('div');
@@ -142,27 +144,26 @@ describe('VolumesBench', () => {
     expect(q('[data-testid="materials-pane"]')).not.toBeNull();
   });
 
-  it('a row opens the pile panel, from Inventory and from Cut & fill', () => {
+  it('a row opens the pile in Selection, noted as opened from the inventory', () => {
     render();
     click(q('[data-testid="inventory-pane"]'));
     expect(m.openPile).toHaveBeenLastCalledWith('p1');
+    // with the inventory's order, for the panel's arrows and its "Back to inventory"
+    expect(m.fromInventory).toHaveBeenLastCalledWith('p1', ['p1', 'p2']);
     click(segment('Cut & fill'));
     click(q('[data-testid="cutfill-pane"]'));
     expect(m.openPile).toHaveBeenLastCalledWith('p2');
+    expect(m.fromInventory).toHaveBeenLastCalledWith('p2', ['p1', 'p2']);
   });
 
-  it('a focused pile opens the pile panel in place of everything; ‹ Inventory comes back', () => {
+  it('never shows the pile panel itself: with a pile open the inventory stays', () => {
     m.measure.focus = 'p2';
     render();
-    expect(q('[data-testid="pile-panel"]')?.getAttribute('data-id')).toBe('p2');
-    expect(q('[data-testid="pile-panel"]')?.getAttribute('data-order')).toBe('p1,p2');
-    expect(q('[data-testid="volumes-segment"]')).toBeNull();
-    expect(q('[data-testid="volumes-header"]')).toBeNull();
-    // the panel's back link clears the focus
-    m.measure.focus = null;
-    render();
     expect(q('[data-testid="pile-panel"]')).toBeNull();
+    expect(q('[data-testid="volumes-header"]')).not.toBeNull();
+    expect(q('[data-testid="volumes-segment"]')).not.toBeNull();
     expect(q('[data-testid="inventory-pane"]')).not.toBeNull();
+    expect(q('[data-testid="volumes-view"]')?.className).not.toContain('vb-open');
   });
 
   it('no pile: Inventory says so, the header waits, the segments stay', () => {

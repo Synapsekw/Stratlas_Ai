@@ -86,7 +86,8 @@ import { timeline, useTimelineSync } from './workspace/timeline';
 import { connectVolumeDates } from './workspace/volumeDates';
 import { connectPileFigures } from './workspace/pileFigures';
 import { connectKitPilePick, connectKitPilesShown } from './survey/pile/kitPileLink';
-import { connectVolumeChange } from './workspace/VolumeTools';
+import { compareDates } from './workspace/dates/compareDates';
+import { connectVolumeChange, connectVolumePair } from './workspace/VolumeTools';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 import { BuilderLayer } from './builder/BuilderLayer';
 import { DrawingsLayer } from './drawings/DrawingsLayer';
@@ -370,7 +371,9 @@ export function App() {
       }),
     [],
   );
-  // Volume tools' Cut / fill: the survey engine compares the two surveys picked
+  // the kit's Cut & fill colours compare the app's one compare pair (Cut & fill pane, dates strip)
+  useEffect(() => connectVolumePair(volumetric, compareDates), []);
+  // and the survey engine compares those two surveys
   useEffect(
     () =>
       connectVolumeChange(volumetric, {

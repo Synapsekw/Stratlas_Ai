@@ -30,7 +30,7 @@ import {
 } from './fixtures';
 import { measureRow, measureSaved, pickGroupTab, stockpileTree, volumesView } from './island';
 import { focusMeasure } from './measureCard';
-import { panelTab } from './panel';
+import { openSection, panelTab } from './panel';
 
 /**
  * The kit's figures (net on its default base, `tin`), per pile and date: exact at the site's
@@ -635,12 +635,41 @@ test('the Volumes view lists the kit piles; picking one opens its pile panel wit
   );
   expect(figure(await rows.nth(1).locator('td').first().innerText())).toBeCloseTo(NORTH_E1, 1);
   await expect(rows.nth(1).locator('td').last()).toHaveText('first');
-  // back: the pile is let go, and Project > Volumes still lists both
+  // the kit draws no volume body or base plate of its own any more (retired 18 Nov 2026): the
+  // opened pile is shown by its volume measurement, in an older project too
+  const kitBodies = await win.evaluate(() => {
+    interface Named {
+      name: string;
+    }
+    const app = (
+      window as unknown as {
+        __stratlas?: { stage?: () => { scene: { traverse(f: (o: Named) => void): void } } | null };
+      }
+    ).__stratlas;
+    let n = 0;
+    app?.stage?.()?.scene.traverse((o) => {
+      if (o.name === 'body-top' || o.name === 'base-plate') n += 1;
+    });
+    return n;
+  });
+  expect(kitBodies, 'kit bodies and base plates in the 3D view').toBe(0);
+  // Back to inventory: the pile is let go, and Project > Volumes, in front again, lists both
+  await expect(panel.getByTestId('pile-back')).toHaveText('Back to inventory');
   await panel.getByTestId('pile-back').click();
   await expect(panel).toHaveCount(0);
-  const again = await volumesView(win);
+  await expect(panelTab(win, 'project')).toHaveAttribute('aria-selected', 'true');
+  const again = win.getByTestId('volumes-view');
+  await expect(again).toBeVisible();
   await expect(again.getByTestId('pile-panel')).toHaveCount(0);
   await expect(again.getByTestId('volumes-pile')).toHaveCount(2);
+  // the kit's leftovers are retired in Tools > Volumes: no Section tile, no Bodies switch, no
+  // second cut and fill From and To; Draw volume and Swipe are what is left
+  const tools = await openSection(win, 'tools', 'tools.volumes');
+  await expect(tools.getByTestId('tool-volumes.draw')).toBeVisible();
+  await expect(tools.getByTestId('tool-volumes.swipe')).toBeVisible();
+  await expect(tools.locator('[data-testid^="tool-volumes."]')).toHaveCount(2);
+  await expect(tools.getByRole('group', { name: 'Bodies', exact: true })).toHaveCount(0);
+  await expect(tools.getByTestId('vol-change-from')).toHaveCount(0);
 });
 
 test('a kit project without a DSM or cloud layer gets a surface per date from its kit DSMs: the pile Profile charts both dates', async ({

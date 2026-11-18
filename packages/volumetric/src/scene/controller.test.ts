@@ -128,9 +128,7 @@ async function ready(
     Promise.resolve({
       piles: req.piles.map((p) => ({
         id: p.id,
-        body: null,
         toe: new Float64Array([1000, 2000, 50, 1010, 2000, 50, 1010, 1990, 50]),
-        toeBase: null,
       })),
     }),
   );
@@ -138,13 +136,11 @@ async function ready(
   const changeRaster = vi.fn(() => Promise.resolve(raster()));
   const service = {
     scene,
-    section: vi.fn(),
     changeRaster,
     reliefRaster,
     grid: vi.fn(() =>
       Promise.resolve({ w: 2, h: 2, res: 1, x0: 0, y1: 0, relief: [48, 62], extent: [45, 70] }),
     ),
-    heights: vi.fn(() => Promise.resolve([])),
     dispose: vi.fn(),
   } as unknown as VolumeService;
   const store = createVolumetricStore({
@@ -218,7 +214,7 @@ describe('VolumetricScene: one view of two', () => {
     v.detach();
   });
 
-  it('a view with its own survey drapes that survey and asks for its bodies', async () => {
+  it('a view with its own survey drapes that survey and asks for its toe lines', async () => {
     const { store, scene, reliefRaster } = await ready();
     const { stage, frame, drapes } = fakeStage();
     store.getState().setAllPilesVisible(true);
@@ -230,7 +226,7 @@ describe('VolumetricScene: one view of two', () => {
     expect(store.getState().epoch).toBe('e2');
     expect(drapes()).toEqual(['drape:e1']);
     expect(reliefRaster.mock.calls.map((c) => c[0])).toEqual(['e1']);
-    expect(scene.mock.calls.at(-1)?.[0]).toMatchObject({ epoch: 'e1', mode: 'inv' });
+    expect(scene.mock.calls.at(-1)?.[0]).toMatchObject({ epoch: 'e1' });
     // the view moves to another date: the drape follows
     v.setEpoch('e2');
     await settle(frame);
@@ -250,18 +246,6 @@ describe('VolumetricScene: one view of two', () => {
     const { stage, scene: three, frame, drapes } = fakeStage();
     store.getState().setAllPilesVisible(true);
     store.getState().setSurface('elev');
-    store.setState({
-      section: {
-        mode: 'done',
-        points: [
-          [1000, 2000],
-          [1010, 2000],
-        ],
-        profile: null,
-        busy: false,
-        pair: null,
-      },
-    });
     // no setEpoch: the date this second view shows is not one of the volume surveys
     const v = new VolumetricScene(stage, store, () => true, { display: true });
     v.attach();
@@ -304,9 +288,10 @@ describe('VolumetricScene: one view of two', () => {
     await settle(b.frame);
     expect(a.drapes()).toEqual(['drape:e1']);
     expect(b.drapes()).toEqual(['drape:e2']);
-    const asked = scene.mock.calls.map((c) => `${c[0].mode}/${c[0].epoch}`);
-    expect(asked).toContain('chg/e1');
-    expect(asked).toContain('chg/e2');
+    // each view's toe lines lie on its own survey's ground
+    const asked = scene.mock.calls.map((c) => c[0].epoch);
+    expect(asked).toContain('e1');
+    expect(asked).toContain('e2');
     main.detach();
     second.detach();
   });
@@ -361,7 +346,7 @@ describe('VolumetricScene: one view of two', () => {
   });
 
   it('drapes the picked surveys, from the engine difference once it comes', async () => {
-    const { store, scene, changeRaster, grid } = await ready();
+    const { store, changeRaster, grid } = await ready();
     const { stage, frame, drapes } = fakeStage();
     store.getState().setAllPilesVisible(true);
     const v = new VolumetricScene(stage, store);
@@ -371,8 +356,6 @@ describe('VolumetricScene: one view of two', () => {
     // previous to current: the survey heights colour it until the engine answers
     expect(changeRaster).toHaveBeenLastCalledWith('e1', 'e2');
     expect(drapes()).toEqual(['drape:e2']);
-    const chg = scene.mock.calls.map((c) => c[0]).filter((r) => r.mode === 'chg');
-    expect(chg.at(-1)).toMatchObject({ from: 'e1', to: 'e2' });
     const calls = changeRaster.mock.calls.length;
     const asked = vi.mocked(grid).mock.calls.length;
     store.getState().setChangeGrid({
@@ -517,53 +500,35 @@ describe('VolumetricScene: piles read their volume measurements', () => {
     v.detach();
   });
 
-  it('draws no kit body for a pile its measurement draws, and keeps it while that is hidden', async () => {
+  it('draws no kit body or base plate, in any state of the pile (the kit bodies are retired)', async () => {
     const { store, scene } = await ready();
-    scene.mockImplementation((req: SceneRequest) =>
-      Promise.resolve({
-        piles: req.piles.map((p) => ({
-          id: p.id,
-          body: {
-            nx: 2,
-            ny: 2,
-            cell: 1,
-            e0: 1000,
-            n0: 2000,
-            ins: new Uint8Array([1, 1, 1, 1]),
-            top: new Float32Array([52, 52, 52, 52]),
-            bot: new Float32Array([50, 50, 50, 50]),
-            tmax: 52,
-            bmin: 50,
-          },
-          toe: new Float64Array([1000, 2000, 50, 1010, 2000, 50, 1010, 1990, 50]),
-          toeBase: null,
-        })),
-      }),
-    );
     const { stage, scene: three, frame } = fakeStage();
     const v = new VolumetricScene(stage, store);
     v.attach();
     store.getState().setAllPilesVisible(true);
+    store.getState().select('P01');
     await settle(frame);
-    const bodies = () => {
-      let n = 0;
+    const drawn = () => {
+      const names: string[] = [];
       three.getObjectByName('volumetric')?.traverse((o) => {
-        if (o.name === 'body-top' || o.name === 'base-plate') n++;
+        if ((o as Partial<Mesh>).isMesh === true || o.name) names.push(o.name);
       });
-      return n;
+      return names;
     };
-    expect(bodies()).toBeGreaterThan(0);
-    // a measurement that is hidden or on another date: the kit body stays
+    // the worker is asked for toe lines only: no base, no body mode
+    expect(Object.keys(scene.mock.calls.at(-1)?.[0] ?? {}).sort()).toEqual(['epoch', 'piles']);
+    expect(drawn()).not.toContain('body-top');
+    expect(drawn()).not.toContain('base-plate');
+    expect(drawn()).toContain('toe-selected');
+    // with its measurement hidden or on another date too: nothing stands in for it
     store.getState().setPileFigures({ P01: {} });
-    await settle(frame);
-    expect(bodies()).toBeGreaterThan(0);
-    // the measurement drawn now: it stands for the pile
-    store.getState().setMeasuredShown(['P01']);
-    await settle(frame);
-    expect(bodies()).toBe(0);
     store.getState().setMeasuredShown([]);
     await settle(frame);
-    expect(bodies()).toBeGreaterThan(0);
+    expect(drawn().filter((n) => n === 'body-top' || n === 'base-plate')).toEqual([]);
+    // under the cut and fill colours the same
+    store.getState().setSurface('change');
+    await settle(frame);
+    expect(drawn().filter((n) => n === 'body-top' || n === 'base-plate')).toEqual([]);
     v.detach();
   });
 

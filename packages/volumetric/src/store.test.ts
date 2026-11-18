@@ -154,15 +154,11 @@ function setup(
   ws.getState().openProject({ id: 'masafi', root: 'E:/m', manifest: opened });
   const service = {
     scene: vi.fn(() => Promise.resolve({ piles: [] })),
-    section: vi.fn(() =>
-      Promise.resolve({ lengthM: 10, s: [0, 10], z1: [1, 1], z2: [2, 2], cutM2: 0, fillM2: 10 }),
-    ),
     changeRaster: vi.fn(),
     reliefRaster: vi.fn(),
     grid: vi.fn(() =>
       Promise.resolve({ w: 1, h: 1, res: 1, x0: 0, y1: 0, relief: [48, 62], extent: [45, 70] }),
     ),
-    heights: vi.fn(),
     dispose: vi.fn(),
   } as unknown as VolumeService;
   const started: unknown[] = [];
@@ -434,7 +430,7 @@ describe('volumetric store: cut / fill dates', () => {
   });
 
   it('cut/fill compares the picked surveys, not first and last', async () => {
-    const { store, service } = setup({ third: true });
+    const { store } = setup({ third: true });
     await store.getState().load();
     expect(store.getState().epoch).toBe('e3');
     store.getState().setSurface('change');
@@ -449,12 +445,6 @@ describe('volumetric store: cut / fill dates', () => {
     // a From later than To swaps them: the earlier survey is always From
     store.getState().setChange({ from: 'e3', to: 'e1' });
     expect(store.getState().change).toEqual({ from: 'e1', to: 'e3' });
-    store.getState().setChange({ from: 'e1', to: 'e2' });
-    // the section line profiles the picked dates too
-    store.getState().startSection();
-    await store.getState().addSectionPoint([1000, 2000]);
-    await store.getState().addSectionPoint([1010, 2000]);
-    expect(service.section).toHaveBeenCalledWith([1000, 2000], [1010, 2000], 'e1', 'e2');
   });
 
   it('keeps the engine grid only for the dates it was computed for', async () => {
@@ -480,15 +470,24 @@ describe('volumetric store: cut / fill dates', () => {
   });
 });
 
-describe('volumetric store: section', () => {
-  it('profiles a section from two picked points', async () => {
-    const { store, service } = setup();
+describe('volumetric store: retired kit leftovers', () => {
+  it('has no body mode and no section line (volumetrics finalization)', async () => {
+    const { store } = setup();
     await store.getState().load();
-    store.getState().startSection();
-    expect(store.getState().section.mode).toBe('picking');
-    await store.getState().addSectionPoint([1000, 2000]);
-    await store.getState().addSectionPoint([1010, 2000]);
-    expect(service.section).toHaveBeenCalledWith([1000, 2000], [1010, 2000], 'e1', 'e2');
-    expect(store.getState().section).toMatchObject({ mode: 'done', profile: { fillM2: 10 } });
+    const keys = Object.keys(store.getState());
+    for (const k of [
+      'body',
+      'setBody',
+      'section',
+      'startSection',
+      'addSectionPoint',
+      'clearSection',
+    ])
+      expect(keys).not.toContain(k);
+  });
+
+  it('loads prefs that still hold a body mode or a section, and drops them', () => {
+    const stored = { showAll: true, body: 'place', section: { mode: 'done' } };
+    expect(parseVolumePrefs(stored)).toEqual({ showAll: true });
   });
 });

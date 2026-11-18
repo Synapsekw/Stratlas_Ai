@@ -587,6 +587,18 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     }
     expect(await centreClick(win), 'with the Volumes workbench open').toBe('the view');
     await expect(win.locator('.isl-full')).toHaveCount(0);
+
+    // Tools > Volumes holds only what acts on the view (volumetrics finalization, 18 Nov 2026):
+    // Draw volume and Swipe. The list is Project > Volumes: no Table tile, no kit Section tile, no
+    // Bodies switch and no second cut and fill From and To
+    const tools = await openSection(win, 'tools', 'tools.volumes');
+    await expect(tools.getByTestId('tool-volumes.draw')).toBeVisible();
+    await expect(tools.getByTestId('tool-volumes.swipe')).toBeVisible();
+    await expect(tools.locator('[data-testid^="tool-volumes."]')).toHaveCount(2);
+    await expect(tools.getByRole('group', { name: 'Bodies', exact: true })).toHaveCount(0);
+    await expect(tools.getByTestId('vol-change-from')).toHaveCount(0);
+    await expect(tools.getByTestId('vol-change-to')).toHaveCount(0);
+    await shot(win, info, 'tools-volumes-1100.png');
   });
 });
 

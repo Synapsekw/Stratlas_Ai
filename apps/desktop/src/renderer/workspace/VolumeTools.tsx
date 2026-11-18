@@ -1,85 +1,52 @@
 /**
- * The stockpile kit's volume tools that stay: the Cut / fill pair picks (the notch's Volumes row),
- * the section line toggle and the engine's whole-site difference for Cut / fill. The surface,
- * date and bodies switches the Volumes bench used to carry are gone: the stage's Show control and
- * the notch carry them (volumetrics redesign, spec section 6).
+ * What the app wires to the stockpile kit's Cut & fill colours: the pair of surveys they compare
+ * (the app's one compare pair, picked in the Cut & fill pane and on the dates strip's Compare
+ * band) and the survey engine's whole-site difference for it. The kit's own From and To pickers,
+ * its section line and its bodies switch are retired (volumetrics finalization, 18 Nov 2026).
  */
 import type { HeightTiles } from '@aio/schema';
 import { surfaceOfCapture } from '@aio/survey';
-import { t } from '@aio/ui';
-import { useVolumetric, volumetric, type ChangePair, type Volumetric } from '@aio/volumetric';
-import { useId } from 'react';
+import type { Volumetric } from '@aio/volumetric';
 import type { StoreApi } from 'zustand/vanilla';
 import { RunCancelled, type SiteReply } from '../survey/engineClient';
 import type { SiteRequest } from '../survey/engineProtocol';
-import { surveyDateLabel } from './surveyDateLabel';
 
-const NO_CAPTURES: readonly { epoch: string; date: string; label: string }[] = [];
-
-/**
- * The two surveys Cut / fill compares, From and To, one date each (previous to current until
- * another pair is picked). A date is never compared with itself.
- */
-export function VolumeChangePicks() {
-  const id = useId();
-  const captures = useVolumetric((s) => s.file?.captures ?? NO_CAPTURES);
-  const change = useVolumetric((s) => s.change);
-  // the colours come from the survey engine once its difference for this pair has arrived
-  const engine = useVolumetric(
-    (s) => !!s.change && s.changeGrid?.from === s.change.from && s.changeGrid.to === s.change.to,
-  );
-  if (!change) return null;
-  const row = (side: keyof ChangePair, label: string) => {
-    const other = side === 'from' ? change.to : change.from;
-    return (
-      <>
-        <span className="vol-pair-lbl" id={`${id}-${side}`}>
-          {label}
-        </span>
-        <div
-          className="seg vol-dates"
-          role="group"
-          aria-labelledby={`${id}-${side}`}
-          data-testid={`vol-change-${side}`}
-        >
-          {captures.map((c) => (
-            <button
-              key={c.epoch}
-              type="button"
-              aria-pressed={change[side] === c.epoch}
-              disabled={c.epoch === other}
-              onClick={() => {
-                volumetric.getState().setChange({ ...change, [side]: c.epoch });
-              }}
-            >
-              {surveyDateLabel(c)}
-            </button>
-          ))}
-        </div>
-      </>
-    );
-  };
-  const label = (epoch: string) => {
-    const c = captures.find((x) => x.epoch === epoch);
-    return c ? surveyDateLabel(c) : epoch;
-  };
-  const dates = { from: label(change.from), to: label(change.to) };
-  return (
-    <div className="vol-pair" role="group" aria-label={t('island.tile.cutFill')}>
-      {row('from', t('vol.from'))}
-      {row('to', t('vol.to'))}
-      <p className="vol-pair-src" role="status" data-testid="vol-change-source">
-        {t(engine ? 'vol.change.engine' : 'vol.change.heights', dates)}
-      </p>
-    </div>
-  );
+/** The app's compare pair as the kit follows it (`compareDates`): two capture ids, or none. */
+export interface ComparePairSource {
+  getState(): { from: string | null; to: string | null };
+  subscribe(listener: () => void): () => void;
 }
 
-/** Start or clear the section line between the surveys. */
-export function toggleVolumeSection(): void {
-  const s = volumetric.getState();
-  if (s.section.mode !== 'idle') s.clearSection();
-  else s.startSection();
+/**
+ * Keep the two surveys the kit's Cut & fill colours compare to the app's one compare pair, while
+ * those colours show: a From or To picked in the Cut & fill pane or on the dates strip recolours
+ * the terrain. A pair the kit has no survey for (or none picked yet) leaves the kit's own default,
+ * previous to current.
+ */
+export function connectVolumePair(
+  store: StoreApi<Volumetric>,
+  pairs: ComparePairSource,
+): () => void {
+  const run = () => {
+    const s = store.getState();
+    if (s.status !== 'ready' || s.surface !== 'change') return;
+    const epochOf = (capture: string | null) =>
+      s.file?.captures.find((c) => c.captureId === capture)?.epoch;
+    const { from, to } = pairs.getState();
+    const a = epochOf(from);
+    const b = epochOf(to);
+    // the store orders the pair and ignores one it already shows
+    if (a !== undefined && b !== undefined && a !== b) s.setChange({ from: a, to: b });
+  };
+  run();
+  const offStore = store.subscribe((s, p) => {
+    if (s.surface !== p.surface || s.status !== p.status || s.file !== p.file) run();
+  });
+  const offPairs = pairs.subscribe(run);
+  return () => {
+    offStore();
+    offPairs();
+  };
 }
 
 /** At most this many cells in a Cut / fill difference grid (as the whole-site comparison). */

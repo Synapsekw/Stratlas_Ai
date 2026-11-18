@@ -5,19 +5,19 @@
  * The pane is the one `volumesPane` store, which the stage's Show control, the sidebar's
  * Stockpiles group and the Measure tab's Site materials entry read and write too.
  *
- * A pile picked anywhere (a row here, 3D, the map, the sidebar) opens in the pile panel in place
- * of all of it, with "‹ Inventory" back. The surface, date, bodies and section line switches the
- * tab used to carry are gone: the stage's Show control and the notch carry them. It is a section
- * of the Project tab at the panel's band width; Expand panel widens it while pressed (UI revision
- * D1, D2).
+ * A pile picked here (an Inventory row, a Cut & fill bar) opens in Selection, as from every other
+ * route (founder, 18 Nov 2026), with "Back to inventory" there to return; this bench never shows
+ * the pile panel itself. The surface and date switches the tab used to carry are the stage's Show
+ * control's. It is a section of the Project tab at the panel's band width; Expand panel widens it
+ * while pressed (UI revision D1, D2).
  */
 import { inventoryPiles } from '@aio/survey';
 import { useT, type MessageKey } from '@aio/ui';
-import { useMemo, type ReactElement } from 'react';
+import { useCallback, useMemo, type ReactElement } from 'react';
 import { useStore } from 'zustand';
 import { useMeasure } from '../../../survey/measureStore';
 import { openPile } from '../../../survey/pile/openPile';
-import { PilePanel } from '../../../survey/pile/PilePanel';
+import { openedFromInventory } from '../../../survey/pile/pileOrigin';
 import { CutFillPane } from '../../../survey/volumes/CutFillPane';
 import {
   InventoryPane,
@@ -61,38 +61,33 @@ function Segments({ pane }: { pane: VolumesPane }): ReactElement {
 
 export function VolumesBench(): ReactElement {
   const file = useMeasure((s) => s.file);
-  const focus = useMeasure((s) => s.focus);
   const pane = useStore(volumesPane, (s) => s.pane);
   const piles = useMemo(() => inventoryPiles(file.measurements), [file]);
   // every pile's dates are worked out while the tab is up, whichever pane shows
   useSeriesRun(piles);
   const model = useInventoryModel(piles);
-  const focused = piles.find((m) => m.id === focus) ?? null;
+  // a pile opens in Selection, noted as opened from here: its panel offers the way back
+  const open = useCallback(
+    (id: string) => {
+      openPile(id);
+      openedFromInventory(id, inventoryOrder(model, piles));
+    },
+    [model, piles],
+  );
 
   return (
     <div className="vol-bench" data-testid="volumes-bench">
-      <div
-        className={['vb-view', 'ctx-fill', focused ? 'vb-open' : ''].filter(Boolean).join(' ')}
-        data-testid="volumes-view"
-      >
-        {focused ? (
-          <PilePanel id={focused.id} order={inventoryOrder(model, piles)} />
+      <div className="vb-view ctx-fill" data-testid="volumes-view">
+        {pane === 'inventory' && piles.length > 0 && <VolumesHeader model={model} piles={piles} />}
+        <Segments pane={pane} />
+        {pane === 'cutFill' ? (
+          <CutFillPane onPile={open} />
+        ) : pane === 'materials' ? (
+          <MaterialsPane />
+        ) : piles.length === 0 ? (
+          <VolumesEmpty />
         ) : (
-          <>
-            {pane === 'inventory' && piles.length > 0 && (
-              <VolumesHeader model={model} piles={piles} />
-            )}
-            <Segments pane={pane} />
-            {pane === 'cutFill' ? (
-              <CutFillPane onPile={openPile} />
-            ) : pane === 'materials' ? (
-              <MaterialsPane />
-            ) : piles.length === 0 ? (
-              <VolumesEmpty />
-            ) : (
-              <InventoryPane model={model} piles={piles} onPile={openPile} />
-            )}
-          </>
+          <InventoryPane model={model} piles={piles} onPile={open} />
         )}
       </div>
     </div>

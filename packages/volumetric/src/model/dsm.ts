@@ -21,52 +21,6 @@ export function sampleDsm(d: DsmGrid, E: number, N: number): number | null {
   return v / 100 + d.zoff;
 }
 
-export interface SectionProfile {
-  lengthM: number;
-  /** Distance along the line of each sample, m. */
-  s: number[];
-  /** Heights of the first and the last survey, null where there is no data. */
-  z1: (number | null)[];
-  z2: (number | null)[];
-  /** Area between the surfaces along the line where the last survey is lower / higher, m². */
-  cutM2: number;
-  fillM2: number;
-}
-
-/**
- * Elevation profile of both surveys along a line (E, N) sampled every 0.4 m, with the area
- * between them outside the deadband: the kit viewer's `siteSection`.
- */
-export function sectionProfile(
-  first: DsmGrid,
-  last: DsmGrid,
-  a: readonly [number, number],
-  b: readonly [number, number],
-  deadband: number,
-): SectionProfile {
-  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-  const n = Math.max(2, Math.ceil(len / 0.4));
-  const p: SectionProfile = { lengthM: len, s: [], z1: [], z2: [], cutM2: 0, fillM2: 0 };
-  for (let k = 0; k <= n; k++) {
-    const t = k / n;
-    const E = a[0] + (b[0] - a[0]) * t;
-    const N = a[1] + (b[1] - a[1]) * t;
-    p.s.push(t * len);
-    p.z1.push(sampleDsm(first, E, N));
-    p.z2.push(sampleDsm(last, E, N));
-  }
-  const ds = len / n;
-  for (let k = 0; k <= n; k++) {
-    const z1 = p.z1[k];
-    const z2 = p.z2[k];
-    if (z1 == null || z2 == null) continue;
-    const d = z2 - z1;
-    if (d > deadband) p.fillM2 += d * ds;
-    else if (d < -deadband) p.cutM2 -= d * ds;
-  }
-  return p;
-}
-
 const hex = (h: string): RGB => [
   parseInt(h.slice(1, 3), 16),
   parseInt(h.slice(3, 5), 16),

@@ -1,4 +1,4 @@
-/** Volume worker: decodes the kit grids and computes volumes, bodies, sections and rasters. */
+/** Volume worker: decodes the kit grids and computes toe lines and rasters. */
 import type { PortLike } from './protocol';
 import { serveVolumes } from './serve';
 

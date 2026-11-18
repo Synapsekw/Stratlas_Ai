@@ -1,5 +1,6 @@
 /**
- * The pile panel's head (spec section 3, boards 2 and 3): "‹ Inventory" and "Pile 2 of 19" with
+ * The pile panel's head (spec section 3, boards 2 and 3): "Back to inventory" (when the pile was
+ * opened from Project > Volumes) and "Pile 2 of 19" with
  * the arrows, the name, the material chip and the density, the three figures (volume on its date,
  * tonnes at the density, the change since the date before, or "first survey", or the earlier
  * date's surface still preparing), the footprint, the highest point above the base and the base
@@ -86,7 +87,8 @@ export function PileHeader({
   order: readonly string[];
   dates: readonly DatedSurface[];
   onOpen: (id: string) => void;
-  onBack: () => void;
+  /** "Back to inventory", when the pile was opened from Project > Volumes; else no link. */
+  onBack?: () => void;
 }): ReactElement {
   const t = useT();
   const { m, settings, units, locale, readOnly, material, figures, line } = data;
@@ -158,9 +160,11 @@ export function PileHeader({
   return (
     <header className="pp-head">
       <div className="pp-top">
-        <button type="button" className="pp-back" data-testid="pile-back" onClick={onBack}>
-          {t('pile.back')}
-        </button>
+        {onBack && (
+          <button type="button" className="pp-back" data-testid="pile-back" onClick={onBack}>
+            {t('pile.back')}
+          </button>
+        )}
         {pos && (
           <span className="pp-pos">
             <span data-testid="pile-position">

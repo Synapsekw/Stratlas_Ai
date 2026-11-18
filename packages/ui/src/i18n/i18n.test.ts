@@ -582,7 +582,6 @@ describe('pile panel and linked hover strings', () => {
       'stockpiles.netChange': ['count'],
       'stockpiles.byMaterial': ['date'],
       'vol.swipe': [],
-      'vol.sectionLine': [],
       'vol.swipeBetween': [],
       'mcard.cutPlusFill': [],
     };

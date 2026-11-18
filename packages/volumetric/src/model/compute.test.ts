@@ -67,94 +67,25 @@ const ring: [number, number][] = [
 describe('VolumeCompute', () => {
   it('loads each grid once', async () => {
     const { c, loads } = compute();
-    const req = {
-      epoch: 'e2',
-      base: 'tin' as const,
-      mode: 'inv' as const,
-      selected: 'P01',
-      piles: [{ id: 'P01', ring, edited: false }],
-    };
+    const req = { epoch: 'e2', piles: [{ id: 'P01', ring }] };
     await c.scene(req);
     await c.scene(req);
-    expect(loads.filter((u) => u === 'piles/P01.js')).toHaveLength(1);
     expect(loads.filter((u) => u === 'dsm_e2.js')).toHaveLength(1);
   });
 
-  it('builds coarse bodies for the site and a fine body for the selected pile', async () => {
-    const { c } = compute();
-    const site = await c.scene({
-      epoch: 'e2',
-      base: 'tin',
-      mode: 'inv',
-      selected: null,
-      piles: [{ id: 'P01', ring, edited: false }],
-    });
-    expect(site.piles[0]?.body?.cell).toBeCloseTo(0.4, 9);
-    expect(site.piles[0]?.toe.length).toBeGreaterThan(0);
-    const sel = await c.scene({
-      epoch: 'e2',
-      base: 'tin',
-      mode: 'inv',
-      selected: 'P01',
-      piles: [{ id: 'P01', ring, edited: false }],
-    });
-    expect(sel.piles[0]?.body?.cell).toBeCloseTo(0.3, 9);
-  });
-
-  it('builds signed change bodies between the first and last survey', async () => {
-    const { c } = compute();
-    const s = await c.scene({
-      epoch: 'e2',
-      base: 'tin',
-      mode: 'chg',
-      selected: 'P01',
-      piles: [{ id: 'P01', ring, edited: false }],
-    });
-    const b = s.piles[0]?.body;
-    expect(b?.d).toBeDefined();
-    expect(Math.max(...(b?.d ?? []))).toBeCloseTo(2, 5);
-  });
-
-  it('spans the change body between the two picked surveys', async () => {
-    const { c } = compute();
-    const s = await c.scene({
-      epoch: 'e1',
-      base: 'tin',
-      mode: 'chg',
-      from: 'e2',
-      to: 'e1',
-      selected: 'P01',
-      piles: [{ id: 'P01', ring, edited: false }],
-    });
-    // from the later survey back to the earlier one, the block is removed
-    const d = s.piles[0]?.body?.d ?? [];
-    expect(Math.min(...d)).toBeCloseTo(-2, 5);
-    expect(Math.max(...d)).toBeLessThanOrEqual(0);
-  });
-
-  it('draws only the toe line of a saved edit: no base is refitted for it', async () => {
-    const { c } = compute();
-    const s = await c.scene({
-      epoch: 'e2',
-      base: 'tin',
-      mode: 'inv',
-      selected: 'P01',
-      piles: [{ id: 'P01', ring, edited: true }],
-    });
-    expect(s.piles[0]?.body).toBeNull();
+  it('returns toe lines only: the kit bodies and their base are retired', async () => {
+    const { c, loads } = compute();
+    const s = await c.scene({ epoch: 'e2', piles: [{ id: 'P01', ring }] });
+    expect(Object.keys(s.piles[0] ?? {}).sort()).toEqual(['id', 'toe']);
     expect(s.piles[0]?.toe.length).toBeGreaterThan(0);
+    // neither the pile's 10 cm grid nor the pile masks are read for it
+    expect(loads).toEqual(['dsm_e2.js']);
   });
 
-  it('drapes the toe of a change body on the survey the view shows', async () => {
+  it('drapes the toe on the survey the view shows', async () => {
     const { c } = compute();
     const toeZ = async (epoch: string) => {
-      const s = await c.scene({
-        epoch,
-        base: 'tin',
-        mode: 'chg',
-        selected: null,
-        piles: [{ id: 'P01', ring, edited: false }],
-      });
+      const s = await c.scene({ epoch, piles: [{ id: 'P01', ring }] });
       const toe = s.piles[0]?.toe ?? [];
       expect(toe.length).toBeGreaterThan(0);
       return toe.filter((_, i) => i % 3 === 2);
@@ -166,15 +97,10 @@ describe('VolumeCompute', () => {
     expect((last[0] ?? 0) - (first[0] ?? 0)).toBeCloseTo(0.5, 5);
   });
 
-  it('profiles a section across both surveys', async () => {
+  it('has no section and no heights operation any more', () => {
     const { c } = compute();
-    const p = await c.section([1000, 2000], [1003, 2000]);
-    expect(p.fillM2).toBeGreaterThan(0);
-    expect(p.cutM2).toBe(0);
-    // the picked surveys, the other way round: the same ground is cut
-    const back = await c.section([1000, 2000], [1003, 2000], 'e2', 'e1');
-    expect(back.cutM2).toBeCloseTo(p.fillM2, 9);
-    expect(back.fillM2).toBe(0);
+    expect('section' in c).toBe(false);
+    expect('heights' in c).toBe(false);
   });
 
   it('paints the change and relief rasters on the DSM grid', async () => {

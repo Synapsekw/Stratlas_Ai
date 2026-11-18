@@ -7,6 +7,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { threeDates } from '../__fixtures__/threeDates';
 import { shell } from '../../shell';
+import { measureStore, stopTool } from '../../survey/measureStore';
 import { timelinePref } from '../timelinePref';
 import { annotateStage } from '../workbench/benches/annotateStage';
 import { EMPTY_CTX, type IslandMode, type ToolCtx, type ToolGroup } from '../../tools/registry';
@@ -160,16 +161,30 @@ describe('the Volumes mode row and switches', () => {
     volumetric.setState({ status: 'idle', file: null, surface: 'photo', change: null });
   });
 
-  it('without the stockpile kit (a survey project with volumes) leads with the table', () => {
+  it('without the stockpile kit (a survey project with volumes) leads with Draw volume', () => {
     volumetric.setState({ status: 'idle', file: null });
     render('volumes');
     expect(choice('Survey date')).toBeNull();
     expect(choice('Surface')).toBeNull();
-    expect(host.querySelector('button')?.getAttribute('aria-label')).toBe('Open the volumes table');
+    expect(host.querySelector('button')?.getAttribute('aria-label')).toBe('Draw volume');
+    // no Table tile (the list is Project > Volumes) and no kit section line
+    expect(button('Open the volumes table')).toBeNull();
+    expect(button('Section line between the surveys')).toBeNull();
     expect(button('Swipe between surveys')?.getAttribute('aria-disabled')).toBe('true');
   });
 
-  it('has no date or Surface choice: Swipe, the bodies and the section line stay', () => {
+  it('Draw volume starts the Measure volume tool, and is off in a read-only project', () => {
+    render('volumes');
+    act(() => button('Draw volume')?.click());
+    expect(measureStore.getState().tool?.tool).toBe('volume');
+    act(() => {
+      stopTool();
+    });
+    render('volumes', { readOnly: true });
+    expect(button('Draw volume')?.getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('has no switches of its own: no Bodies, no second From and To, Swipe stays', () => {
     volumetric.setState({
       status: 'ready',
       epoch: 'e2',
@@ -177,7 +192,6 @@ describe('the Volumes mode row and switches', () => {
       swipe: false,
       change: { from: 'e1', to: 'e2' },
       changeGrid: null,
-      section: { mode: 'idle', points: [] } as never,
       file: {
         captures: [
           { epoch: 'e1', captureId: 'c1', date: '2026-01-12', label: '12 Jan 2026' },
@@ -186,9 +200,10 @@ describe('the Volumes mode row and switches', () => {
       } as never,
     });
     renderControls('volumes');
-    expect(choice('Survey date')).toBeNull();
-    expect(choice('Surface')).toBeNull();
-    expect(options('Bodies')).toEqual(['Lifted', 'In place', 'Hidden']);
+    expect(host.querySelector('.tool-controls')).toBeNull();
+    expect(choice('Bodies')).toBeNull();
+    expect(host.querySelector('[data-testid="vol-change-from"]')).toBeNull();
+    expect(host.querySelector('[data-testid="vol-change-to"]')).toBeNull();
     render('volumes', { kit: true, kitDates: 2 });
     const swipe = button('Swipe between surveys');
     expect(swipe?.getAttribute('aria-pressed')).toBe('false');
@@ -196,11 +211,6 @@ describe('the Volumes mode row and switches', () => {
     expect(volumetric.getState().swipe).toBe(true);
     // a swipe shows the photos: Cut / fill gives way
     expect(volumetric.getState().surface).toBe('photo');
-    const section = button('Section line between the surveys');
-    expect(section).not.toBeNull();
-    act(() => section?.click());
-    expect(volumetric.getState().section.mode).not.toBe('idle');
-    volumetric.getState().clearSection();
   });
 
   it('keeps Swipe off with one survey date', () => {
@@ -215,35 +225,6 @@ describe('the Volumes mode row and switches', () => {
     });
     render('volumes', { kit: true, kitDates: 1 });
     expect(button('Swipe between surveys')?.getAttribute('aria-disabled')).toBe('true');
-  });
-
-  it('shows the two surveys Cut / fill compares, and picks them', () => {
-    volumetric.setState({
-      status: 'ready',
-      epoch: 'e2',
-      surface: 'photo',
-      swipe: false,
-      change: null,
-      changeGrid: null,
-      file: {
-        captures: [
-          { epoch: 'e1', captureId: 'c1', date: '2026-01-12', label: '12 Jan 2026' },
-          { epoch: 'e2', captureId: 'c2', date: '2026-02-09', label: '9 Feb 2026' },
-        ],
-      } as never,
-    });
-    renderControls('volumes');
-    expect(host.querySelector('[data-testid="vol-change-from"]')).toBeNull();
-    act(() => {
-      volumetric.getState().setSurface('change');
-    });
-    const from = host.querySelector('[data-testid="vol-change-from"]');
-    const to = host.querySelector('[data-testid="vol-change-to"]');
-    expect(from?.querySelector('[aria-pressed="true"]')?.textContent).toBe('12 Jan');
-    expect(to?.querySelector('[aria-pressed="true"]')?.textContent).toBe('9 Feb');
-    expect(host.querySelector('[data-testid="vol-change-source"]')?.textContent).toContain(
-      '12 Jan to 9 Feb',
-    );
   });
 });
 

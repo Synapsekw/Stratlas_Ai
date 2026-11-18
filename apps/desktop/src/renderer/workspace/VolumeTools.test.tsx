@@ -3,45 +3,17 @@ import type { HeightTiles } from '@aio/schema';
 // @ts-expect-error the kit's own base computation is retired: the package no longer exports it
 import { pileVolume } from '@aio/volumetric';
 import { volumetric } from '@aio/volumetric';
-import { act } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SiteReply } from '../survey/engineClient';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { connectVolumeChange, VolumeChangePicks } from './VolumeTools';
+import { createCompareDates } from './dates/compareDates';
+import { connectVolumeChange, connectVolumePair } from './VolumeTools';
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-let host: HTMLDivElement;
-let root: Root | undefined;
-const render = () => {
-  root ??= createRoot(host);
-  act(() => {
-    root?.render(<VolumeChangePicks />);
-  });
-};
-/** Cut / fill turned on (the stage's Show control or the notch row does it in the app). */
+/** Cut / fill turned on (the Show control does it in the app). */
 const showCutFill = () => {
-  act(() => {
-    volumetric.getState().setSurface('change');
-  });
+  volumetric.getState().setSurface('change');
 };
-const button = (name: string, within: ParentNode = host) =>
-  [...within.querySelectorAll('button')].find((b) => b.textContent === name);
-const click = (el: Element | undefined) => {
-  if (!el) throw new Error('not found');
-  act(() => {
-    el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-  });
-};
-const side = (id: 'from' | 'to') => {
-  const el = host.querySelector(`[data-testid="vol-change-${id}"]`);
-  if (!el) throw new Error(`no ${id} pick`);
-  return el;
-};
-const pressed = (id: 'from' | 'to') =>
-  [...side(id).querySelectorAll('button[aria-pressed="true"]')].map((b) => b.textContent);
 
 /** A prepared surface of a capture (the engine's survey side). */
 const surface = (id: string, capture: string) =>
@@ -69,49 +41,91 @@ beforeEach(() => {
       ],
     } as never,
   });
-  host = document.createElement('div');
-  document.body.append(host);
 });
 afterEach(() => {
-  act(() => root?.unmount());
-  root = undefined;
-  host.remove();
   volumetric.setState({ status: 'idle', file: null, surface: 'photo', change: null });
 });
 
-describe('Volume tools: Cut / fill', () => {
-  it('default pick is previous to current', () => {
-    render();
-    expect(host.querySelector('[data-testid="vol-change-from"]')).toBeNull();
-    showCutFill();
-    expect(volumetric.getState().change).toEqual({ from: 'e2', to: 'e3' });
-    expect(pressed('from')).toEqual(['9 Feb']);
-    expect(pressed('to')).toEqual(['9 Mar']);
-    // a date cannot be compared with itself
-    expect(button('9 Feb', side('to'))?.disabled).toBe(true);
-    expect(button('9 Mar', side('from'))?.disabled).toBe(true);
+describe('the kit Cut & fill pair follows the app compare pair', () => {
+  it('previous to current until a pair is picked', () => {
+    const pairs = createCompareDates();
+    const off = connectVolumePair(volumetric, pairs);
+    try {
+      showCutFill();
+      expect(volumetric.getState().change).toEqual({ from: 'e2', to: 'e3' });
+    } finally {
+      off();
+    }
   });
 
-  it('cut/fill compares the picked surveys, not first and last', async () => {
+  it('a From and To picked in the Cut & fill pane or on the dates strip recolour the terrain', () => {
+    const pairs = createCompareDates();
+    const off = connectVolumePair(volumetric, pairs);
+    try {
+      showCutFill();
+      pairs.getState().set('c1', 'c3');
+      expect(volumetric.getState().change).toEqual({ from: 'e1', to: 'e3' });
+      pairs.getState().set('c1', 'c2');
+      expect(volumetric.getState().change).toEqual({ from: 'e1', to: 'e2' });
+      // a pair the wrong way round: the earlier survey is From
+      pairs.getState().set('c3', 'c2');
+      expect(volumetric.getState().change).toEqual({ from: 'e2', to: 'e3' });
+    } finally {
+      off();
+    }
+  });
+
+  it('a pair picked before the colours are switched on is the one they open on', () => {
+    const pairs = createCompareDates();
+    pairs.getState().set('c1', 'c2');
+    const off = connectVolumePair(volumetric, pairs);
+    try {
+      // the photo shows: the pair does not switch the colours on by itself
+      expect(volumetric.getState().surface).toBe('photo');
+      expect(volumetric.getState().change).toBeNull();
+      showCutFill();
+      expect(volumetric.getState().change).toEqual({ from: 'e1', to: 'e2' });
+    } finally {
+      off();
+    }
+  });
+
+  it('a pair the kit has no survey for, or one date twice, leaves the kit pair alone', () => {
+    const pairs = createCompareDates();
+    const off = connectVolumePair(volumetric, pairs);
+    try {
+      showCutFill();
+      pairs.getState().set('c1', 'other');
+      pairs.getState().set('c2', 'c2');
+      expect(volumetric.getState().change).toEqual({ from: 'e2', to: 'e3' });
+      off();
+      // disconnected: a later pick no longer reaches the kit
+      pairs.getState().set('c1', 'c2');
+      expect(volumetric.getState().change).toEqual({ from: 'e2', to: 'e3' });
+    } finally {
+      off();
+    }
+  });
+});
+
+describe('Volume tools: Cut / fill', () => {
+  it('the engine compares the picked surveys, not first and last', async () => {
     const site = vi.fn((): Promise<SiteReply> =>
       Promise.resolve({
         result: {} as never,
         grid: { dz: new Float32Array(4), nx: 2, ny: 2, x0: 0, y0: 0, cellM: 50 },
       }),
     );
+    const pairs = createCompareDates();
+    const offPair = connectVolumePair(volumetric, pairs);
     const off = connectVolumeChange(volumetric, {
       site,
       surfaces: () => [surface('h1', 'c1'), surface('h2', 'c2'), surface('h3', 'c3')],
     });
     try {
-      render();
       showCutFill();
-      click(button('12 Jan', side('from')));
-      expect(volumetric.getState().change).toEqual({ from: 'e1', to: 'e3' });
-      click(button('9 Feb', side('to')));
+      pairs.getState().set('c1', 'c2');
       expect(volumetric.getState().change).toEqual({ from: 'e1', to: 'e2' });
-      expect(pressed('from')).toEqual(['12 Jan']);
-      expect(pressed('to')).toEqual(['9 Feb']);
       // the engine's whole-site comparison of the two picked surveys, never first to last
       const last = site.mock.calls.at(-1) as unknown as [{ from: unknown; to: unknown }, string];
       expect(last[0]).toMatchObject({
@@ -127,13 +141,9 @@ describe('Volume tools: Cut / fill', () => {
       await vi.waitFor(() => {
         expect(volumetric.getState().changeGrid).toMatchObject({ from: 'e1', to: 'e2' });
       });
-      // the line under the picks says the dates and that the engine coloured them
-      act(() => undefined);
-      expect(host.querySelector('[data-testid="vol-change-source"]')?.textContent).toBe(
-        '12 Jan to 9 Feb, from the prepared surfaces',
-      );
     } finally {
       off();
+      offPair();
     }
   });
 
@@ -141,14 +151,10 @@ describe('Volume tools: Cut / fill', () => {
     const site = vi.fn();
     const off = connectVolumeChange(volumetric, { site, surfaces: () => [surface('h3', 'c3')] });
     try {
-      render();
       showCutFill();
       await Promise.resolve();
       expect(site).not.toHaveBeenCalled();
       expect(volumetric.getState().changeGrid).toBeNull();
-      expect(host.querySelector('[data-testid="vol-change-source"]')?.textContent).toBe(
-        '9 Feb to 9 Mar, from the survey heights (no prepared surface yet)',
-      );
     } finally {
       off();
     }
@@ -167,7 +173,6 @@ describe('Volume tools: Cut / fill', () => {
       },
     });
     try {
-      render();
       showCutFill();
       expect(site).not.toHaveBeenCalled();
       surfaces = [surface('h2', 'c2'), surface('h3', 'c3')];
@@ -176,13 +181,6 @@ describe('Volume tools: Cut / fill', () => {
     } finally {
       off();
     }
-  });
-
-  it('a To picked before From swaps them: the earlier survey is From', () => {
-    render();
-    showCutFill();
-    click(button('12 Jan', side('to')));
-    expect(volumetric.getState().change).toEqual({ from: 'e1', to: 'e2' });
   });
 });
 
@@ -195,6 +193,9 @@ describe('the volumetric package', () => {
       'pileVolumes',
       'pileChange',
       'gridBase',
+      'fineBody',
+      'coarseBody',
+      'sectionProfile',
       'BASE_IDS',
       'registerRows',
       'registerCsv',
@@ -206,13 +207,17 @@ describe('the volumetric package', () => {
   });
 });
 
-describe('the volume tools strings', () => {
-  it('come from the catalogue: no Swipe or section line literal', () => {
+describe('the retired kit pickers and section line', () => {
+  it('are gone from the volume tools and the island: no second From and To', async () => {
+    const tools = Object.keys(await import('./VolumeTools'));
+    expect(tools).not.toContain('VolumeChangePicks');
+    expect(tools).not.toContain('toggleVolumeSection');
     for (const file of ['VolumeTools.tsx', 'island/groups.tsx']) {
       const src = readFileSync(join(__dirname, file), 'utf8');
+      expect(src).not.toContain('vol-change-from');
+      expect(src).not.toContain('setBody');
       expect(src).not.toMatch(/>\s*Swipe\s*</);
       expect(src).not.toContain("'Swipe'");
-      expect(src).not.toContain('Section line between');
     }
   });
 });

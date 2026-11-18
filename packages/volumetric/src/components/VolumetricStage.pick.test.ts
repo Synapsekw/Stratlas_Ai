@@ -65,7 +65,7 @@ function toe(x0: number, z0: number, x1: number, z1: number): LineLoop {
 
 function scene(): Group {
   const root = new Group();
-  // P1 has a body (any body mode draws `body-top`), P2 only its toe line (bodies hidden)
+  // P1 carries a mesh named as the retired kit body was, P2 its toe line
   const p1 = pileGroup('P1');
   p1.add(bodyTop(0, 0, 100, 100));
   const p2 = pileGroup('P2');
@@ -76,21 +76,21 @@ function scene(): Group {
 }
 
 describe('pilePickAt', () => {
-  it('a body-top click picks the pile, whichever body mode drew it', () => {
-    expect(pilePickAt(scene(), camera, rect, 550, 550)).toBe('P1');
+  it('a body mesh picks nothing: the kit draws no volume body any more', () => {
+    expect(pilePickAt(scene(), camera, rect, 550, 550)).toBeNull();
   });
 
-  it('a click near a toe line picks its pile when bodies are hidden', () => {
+  it('a click near a toe line picks its pile', () => {
     // the toe's west edge is at x = -300, screen x 200
     expect(pilePickAt(scene(), camera, rect, 203, 250)).toBe('P2');
-    // inside the toe but far from the line: no body there, no pick
+    // inside the toe but far from the line: no pick
     expect(pilePickAt(scene(), camera, rect, 250, 250)).toBeNull();
   });
 
   it('a hidden pile and empty ground pick nothing', () => {
     const root = scene();
     for (const c of root.children) c.visible = false;
-    expect(pilePickAt(root, camera, rect, 550, 550)).toBeNull();
+    expect(pilePickAt(root, camera, rect, 203, 250)).toBeNull();
     expect(pilePickAt(scene(), camera, rect, 900, 900)).toBeNull();
   });
 });

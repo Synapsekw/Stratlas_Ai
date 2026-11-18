@@ -1,8 +1,10 @@
 /**
  * The pile panel (volumetrics redesign, spec section 3, Stage B) in the real app, on the synthetic
  * quarry demo: three monthly surveys, prepared quietly on open (`autoPrepareSurfaces`). A pile
- * opens in its panel in the right panel's Selection tab wherever it is picked: an Inventory row,
- * its body in 3D, its outline on the Map, its sidebar row, with the right workbench folded too.
+ * opens in its panel in the right panel's Selection tab wherever it is picked: an Inventory row
+ * (with "Back to inventory" there, which returns to Project > Volumes), its body in 3D, its
+ * outline on the Map, its sidebar row (none of which has a list to go back to: Esc lets the pile
+ * go), with the right workbench folded too.
  * The panel shows the pile's volume, tonnes and change against the demo's `truth.json`; Profile
  * has a chip per survey and the chart along the pile's long axis, whose point shows on the line in
  * 3D and whose ends can be moved there; History has one row per survey; Esc lets the pile go. A
@@ -194,9 +196,21 @@ test('an Inventory row opens the pile panel with volume, tonnes and change', asy
   await expect(panel.getByTestId('pile-name')).not.toHaveText(SP1);
   await panel.getByTestId('pile-prev').click();
   await expect(panel.getByTestId('pile-name')).toHaveText(SP1);
-  // ‹ Inventory lets the pile go: Selection has nothing picked (Project > Volumes keeps the list)
-  await panel.getByTestId('pile-back').click();
+  // opened from the inventory, the panel sits in Selection and offers the way back; a step with
+  // the arrows kept it
+  await expect(panelTab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
+  await expect(win.getByTestId('volumes-view').getByTestId('pile-panel')).toHaveCount(0);
+  const back = panel.getByTestId('pile-back');
+  await expect(back).toHaveText('Back to inventory');
+  // it lets the pile go and returns to Project > Volumes, the list as it was
+  await back.click();
   await expect(win.getByTestId('pile-panel')).toHaveCount(0);
+  await expect(panelTab(win, 'project')).toHaveAttribute('aria-selected', 'true');
+  const list = win.getByTestId('volumes-view');
+  await expect(list).toBeVisible();
+  await expect(list.getByTestId('volumes-pile')).toHaveCount(4);
+  // nothing is selected any more
+  await openSection(win, 'selection');
   await expect(win.getByTestId('selection-empty')).toBeVisible();
 });
 
@@ -213,7 +227,10 @@ test('a click on the pile in 3D and on its outline in Map opens the same panel',
   const body = await labelAnchor3d(win, SP1_ID);
   await win.mouse.click(body.x, body.y);
   await expect(panel).toHaveAttribute('data-id', SP1_ID);
-  await panel.getByTestId('pile-back').click();
+  // the same panel in the same place, Selection; opened on the view it has no list to go back to
+  await expect(panelTab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
+  await expect(panel.getByTestId('pile-back')).toHaveCount(0);
+  await win.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
 
   // Map: the middle of the outline's first edge
@@ -232,6 +249,9 @@ test('a click on the pile in 3D and on its outline in Map opens the same panel',
   const edge = await mapPoint(win, epsg, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
   await win.mouse.click(edge.x, edge.y);
   await expect(panel).toHaveAttribute('data-id', SP1_ID);
+  // from the Map too: Selection, and no link back
+  await expect(panelTab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
+  await expect(panel.getByTestId('pile-back')).toHaveCount(0);
 });
 
 /** Where the pile look's screenshots go (`PILE_SHOTS`); none taken without it. */
@@ -353,8 +373,9 @@ test('a pile picked with the right workbench folded opens it with its panel', as
   const panel = win.getByTestId('pile-panel');
   await expect(panel).toBeVisible();
   await expect(panel).toHaveAttribute('data-id', SP1_ID);
-  // from the sidebar's row too
-  await panel.getByTestId('pile-back').click();
+  // from the sidebar's row too (Esc on the panel lets the pile go first)
+  await panel.getByTestId('pile-tab-overview').focus();
+  await win.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
   await measureTree(win);
   const again = await focusPile(win, SP1);

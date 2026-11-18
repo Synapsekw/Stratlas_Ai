@@ -2,7 +2,7 @@
  * The island's modes (UI revision W8): the stage view switch, and each mode's slim row of its top
  * tools from the tool registry (`tools/registry.ts`), favourites and recent first. A mode's whole
  * set is its section of the right panel, which picking the mode opens. The switches the old quick
- * rows carried (view preset, cloud colour, pile bodies) sit in the Tools tab's sections now
+ * rows carried (view preset, cloud colour) sit in the Tools tab's sections now
  * (`GroupControls`).
  */
 import type { EngineStage } from '@aio/engine';
@@ -21,9 +21,7 @@ import {
   type MessageKey,
   type ShortcutId,
 } from '@aio/ui';
-import { useVolumetric, volumetric, type BodyMode } from '@aio/volumetric';
 import type { StageMode } from '../../store';
-import { VolumeChangePicks } from '../VolumeTools';
 import { favouritesAndRecent, useFavourites } from '../../survey/measureCatalogue';
 import {
   measureToolId,
@@ -255,37 +253,6 @@ function CloudColour() {
   );
 }
 
-const BODIES: readonly { value: BodyMode; label: MessageKey }[] = [
-  { value: 'lift', label: 'island.tile.lifted' },
-  { value: 'place', label: 'island.tile.inPlace' },
-  { value: 'off', label: 'island.tile.hidden' },
-];
-
-/**
- * The stockpile kit's bodies (lifted, in place, hidden), and while Cut / fill shows the two
- * surveys it compares, in Tools > Volumes.
- */
-function Bodies() {
-  const t = useT();
-  const kit = useVolumetric((s) => s.status === 'ready');
-  const body = useVolumetric((s) => s.body);
-  const change = useVolumetric((s) => s.surface === 'change');
-  if (!kit) return null;
-  return (
-    <>
-      {change && <VolumeChangePicks />}
-      <Choice
-        label={t('island.tile.bodies')}
-        options={BODIES.map((b) => ({ value: b.value, label: t(b.label) }))}
-        value={body}
-        onPick={(b) => {
-          volumetric.getState().setBody(b);
-        }}
-      />
-    </>
-  );
-}
-
 /** A group's switches, under its tools in the Tools tab (the old quick rows' inline switches). */
 export function GroupControls({
   group,
@@ -300,7 +267,6 @@ export function GroupControls({
   let body = null;
   if (group === 'view' && threeD) body = <ViewPresets stage={stage} />;
   else if (group === 'pointcloud') body = <CloudColour />;
-  else if (group === 'volumes') body = <Bodies />;
   if (!body) return null;
   return <div className="tool-controls">{body}</div>;
 }

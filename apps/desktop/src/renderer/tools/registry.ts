@@ -38,7 +38,6 @@ import { useDockClip } from '../workspace/video/videoDockStore';
 import { telemetryOn, toggleTelemetry, useTelemetryOn } from '../workspace/telemetryPref';
 import { toggleTimeline, useTimelineShown } from '../workspace/timelinePref';
 import { toggleMeasure, toggleSection } from '../workspace/tools/measure';
-import { toggleVolumeSection } from '../workspace/VolumeTools';
 import {
   annotateStage,
   FORWARD as mapDraw,
@@ -555,16 +554,19 @@ const ANNOTATE_TOOLS: readonly ToolDef[] = [
 
 const VOLUME_TOOLS: readonly ToolDef[] = [
   {
-    id: 'volumes.table',
-    opens: true,
+    id: 'volumes.draw',
     group: 'volumes',
-    labelKey: 'toolReg.volumesTable',
-    nameKey: 'toolReg.volumesTableName',
-    icon: 'pile',
-    available: (c) => needs(c.data.volumes, 'toolReg.reason.needsPiles'),
-    start: () => {
-      showBench('volumes');
+    labelKey: 'mcard.drawVolume',
+    icon: TOOL_ICON.volume,
+    saves: true,
+    available: (c) => writable(c),
+    start: (c) => {
+      startMeasure('volume', c.stage);
     },
+    stop: (c) => {
+      if (measureOn('volume', c.stage)) stopTool();
+    },
+    useOn: () => useMeasure((s) => s.tool?.tool === 'volume' && !s.tool.template),
   },
   {
     id: 'volumes.swipe',
@@ -583,21 +585,6 @@ const VOLUME_TOOLS: readonly ToolDef[] = [
       volumetric.getState().setSwipe(false);
     },
     useOn: () => useVolumetric((s) => s.swipe),
-  },
-  {
-    id: 'volumes.section',
-    group: 'volumes',
-    labelKey: 'island.tile.section',
-    nameKey: 'vol.sectionLine',
-    icon: 'section',
-    available: (c) => all(needs(c.kit, 'toolReg.reason.needsKit'), in3d(c)),
-    start: () => {
-      if (volumetric.getState().section.mode === 'idle') toggleVolumeSection();
-    },
-    stop: () => {
-      if (volumetric.getState().section.mode !== 'idle') toggleVolumeSection();
-    },
-    useOn: () => useVolumetric((s) => s.section.mode !== 'idle'),
   },
 ];
 

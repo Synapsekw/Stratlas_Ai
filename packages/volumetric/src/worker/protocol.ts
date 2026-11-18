@@ -1,10 +1,7 @@
 import type { VolumeCompute } from '../model/compute';
 
 /** The operations the worker offers: the public methods of VolumeCompute. */
-export type VolumeOps = Pick<
-  VolumeCompute,
-  'scene' | 'section' | 'changeRaster' | 'reliefRaster' | 'grid' | 'heights'
->;
+export type VolumeOps = Pick<VolumeCompute, 'scene' | 'changeRaster' | 'reliefRaster' | 'grid'>;
 export type VolumeOp = keyof VolumeOps;
 
 export interface WorkerInit {

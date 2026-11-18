@@ -3,14 +3,7 @@ import type { ProjectKind } from '../../../builder/model';
 
 /** Every content group the list knows; groups with no registered body are skipped. */
 export type GroupId =
-  | 'antennas'
-  | 'sectors'
-  | 'coverage'
-  | 'measurements'
-  | 'issues'
-  | 'stockpiles'
-  | 'changes'
-  | 'photos';
+  'antennas' | 'sectors' | 'coverage' | 'measurements' | 'issues' | 'changes' | 'photos';
 
 /** A group's section id in the Project tab's folds (bench `measure`, `quadrion.sections`). */
 export const groupSectionId = (group: GroupId): string => `project-${group}`;
@@ -36,7 +29,7 @@ export const CATEGORY_ORDER: Record<Category, readonly { id: GroupId; onlyIfAny?
     { id: 'measurements' },
     { id: 'issues' },
   ],
-  survey: [{ id: 'stockpiles' }, { id: 'measurements' }, { id: 'issues' }],
+  survey: [{ id: 'measurements' }, { id: 'issues' }],
   construction: [{ id: 'changes' }, { id: 'measurements' }, { id: 'issues' }, { id: 'photos' }],
   'vertical-asset': [
     { id: 'issues' },

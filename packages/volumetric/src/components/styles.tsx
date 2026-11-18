@@ -1,18 +1,12 @@
 /**
- * Styling of the volumetric overlay in 3D and the drawn section's panel (tokens from
+ * Styling of the volumetric overlay in 3D (tokens from
  * packages/ui/src/tokens.css): cut and fill in the app's `--cut` / `--fill`, the accent marks the
  * selection.
  */
 const css = `
 .vol-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); min-width: 0; }
-.vol-note { margin: 0; font-size: var(--t-12); color: var(--fg-3); line-height: 1.45; }
-.vol-note b { color: var(--fg-1); font-weight: 600; }
 .vol-stage { position: absolute; inset: 0; pointer-events: none; z-index: 5; overflow: hidden; }
 .vol-stage > * { pointer-events: auto; }
-.vol-under { position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; align-items: flex-end; justify-content: center; gap: var(--sp-5); pointer-events: none; }
-.vol-under > * { pointer-events: auto; }
-.vol-secpanel { width: min(440px, 100%); padding: 10px 12px; display: grid; gap: var(--sp-4); background: var(--bg-1); border-color: var(--line-strong); box-shadow: var(--el-2); margin-right: auto; }
-.vol-secpanel b { font: 600 var(--t-12)/1 var(--f-ui); color: var(--fg-0); }
 .vol-legend { position: absolute; left: 12px; bottom: 56px; display: grid; gap: var(--sp-2); padding: 8px 10px; font-size: var(--t-11); color: var(--fg-1); background: var(--scrim); max-width: 220px; pointer-events: none; }
 .vol-legend b { font-weight: 600; color: var(--fg-0); }
 .vol-legend .ramp { height: 8px; border-radius: 2px; width: 180px; }
@@ -20,9 +14,6 @@ const css = `
 .vol-legend .key { display: flex; align-items: center; gap: var(--sp-3); }
 .vol-legend .key i { width: 12px; height: 8px; border-radius: 1px; }
 .vol-legend .key i.line { height: 2px; background: var(--ov); }
-/* the 3D volume body (red) and its pale base plate (scene/controller.ts) */
-.vol-legend .key i.vol-key-body { background: var(--danger); }
-.vol-legend .key i.vol-key-base { background: var(--fg-1); }
 .vol-legend.live { pointer-events: auto; max-width: 240px; }
 .vol-legend.vol-hint { max-width: 300px; color: var(--fg-2); line-height: 1.45; font-size: var(--t-12); }
 .vol-legend-note { color: var(--fg-2); line-height: 1.45; }

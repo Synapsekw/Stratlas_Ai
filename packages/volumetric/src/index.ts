@@ -2,7 +2,6 @@ export * from './model/kitdata';
 export * from './model/dsm';
 export * from './model/edit';
 export * from './model/frame';
-export * from './model/bodies';
 export * from './model/register';
 export {
   VolumeCompute,
@@ -23,7 +22,6 @@ export {
   parseVolumePrefs,
   useVolumetric,
   volumetric,
-  type BodyMode,
   type ChangeGrid,
   type ChangePair,
   type ElevationStyle,
@@ -31,7 +29,6 @@ export {
   type PileFigures,
   type VolumePrefs,
   type VolumePrefStore,
-  type SectionState,
   type SurfaceMode,
   type Volumetric,
   type VolumetricDeps,

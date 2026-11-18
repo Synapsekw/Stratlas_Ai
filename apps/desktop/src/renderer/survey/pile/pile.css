@@ -41,6 +41,8 @@
   outline-offset: 2px;
 }
 .pp-pos {
+  /* at the end of the row, with or without the link back to the inventory before it */
+  margin-inline-start: auto;
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);

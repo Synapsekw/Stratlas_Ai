@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { projectKind } from '../../../builder/model';
-import { orderGroups, projectCategory, type GroupId } from './projectGroups';
+import { CATEGORY_ORDER, orderGroups, projectCategory, type GroupId } from './projectGroups';
 
 const all = (over: Partial<Record<GroupId, { count?: number; applies?: boolean }>> = {}) =>
   (['antennas', 'sectors', 'coverage', 'measurements', 'issues'] as const).map((id) => ({
@@ -67,6 +67,14 @@ describe('orderGroups', () => {
     const items = all({ antennas: { count: 3 }, sectors: { count: 2 }, coverage: { count: 1 } });
     expect(orderGroups('survey', items)).toEqual(['measurements', 'issues']);
     expect(orderGroups('construction', items)).toEqual(['measurements', 'issues']);
+  });
+});
+
+describe('the groups a category orders', () => {
+  it('names no Stockpiles group: Project > Volumes is that list (the dead id is gone)', () => {
+    const ordered = Object.values(CATEGORY_ORDER).flatMap((groups) => groups.map((g) => g.id));
+    expect(ordered).not.toContain('stockpiles');
+    expect(CATEGORY_ORDER.survey.map((g) => g.id)).toEqual(['measurements', 'issues']);
   });
 });
 

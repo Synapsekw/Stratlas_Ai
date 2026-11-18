@@ -76,6 +76,22 @@ export const enInspect = {
   'reports.house.title': 'Project report',
   'reports.house.text':
     'The full report in the house format: cover, contents, executive summary, scope and method, site and data, statistics, register, one page per issue and appendices.',
+  // shown beside the volumetric report, so the two reports that print piles are told apart
+  'reports.house.forWhat':
+    'The full survey record: every survey measurement and the processing accuracy, with Stockpile inventory and Volume over time inside. To hand the piles over to a customer, use the Volumetric report below.',
+  // The survey files in the Export menu and the command palette
+  'reports.action.surveyPdf': 'Survey report (PDF)',
+  'reports.action.surveyPdf.title':
+    'Export the survey report (measurements, stockpiles, earthworks, landfill) as PDF',
+  'reports.action.surveyPdf.hint': 'Stockpiles, earthworks, landfill',
+  'reports.action.stockpileCsv': 'Stockpile inventory (CSV)',
+  'reports.action.stockpileCsv.title':
+    'Export the stockpile inventory with materials and tonnes as CSV',
+  'reports.action.stockpileCsv.hint': 'Every survey, by material',
+  'reports.action.measurementsCsv': 'Survey measurements (CSV)',
+  'reports.action.measurementsCsv.title':
+    'Export every survey measurement as CSV, as displayed and in SI units',
+  'reports.action.measurementsCsv.hint': 'Every item',
   'reports.house.export': 'Export project report PDF',
   'reports.house.noData': 'Add data to the project first.',
   'reports.house.sections': 'Sections',

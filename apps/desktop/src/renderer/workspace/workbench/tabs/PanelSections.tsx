@@ -3,14 +3,15 @@
  * section shows when the project holds its data or its tool is open, never because of the
  * project type; its body mounts only while it is open. A wide tool's header offers "Expand panel".
  */
+import { inventoryPiles } from '@aio/survey';
 import { Icon, IconButton, useT } from '@aio/ui';
-import { useVolumetric } from '@aio/volumetric';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useId, useMemo, useRef, type ReactNode } from 'react';
 import { ProjectSearch } from '../../../facts/ProjectSearch';
 import { FlightlineSection } from '../../../flyability/FlightlineSection';
 import { SiteDigest } from '../../../insights/SiteDigest';
 import { useIsRoad } from '../../../road/useRoadMap';
+import { useMeasure } from '../../../survey/measureStore';
 import { FrontBody } from '../FrontBody';
 import { usePanelData } from '../panelData';
 import { ProjectList } from '../project/ProjectList';
@@ -25,7 +26,10 @@ function useSectionCount(def: SectionDef): number | undefined {
   const issues = useWorkspace((s) =>
     def.id === 'project.issues' ? s.issues.filter((i) => i.status !== 'closed').length : 0,
   );
-  const piles = useVolumetric((s) => (def.id === 'project.volumes' ? s.piles.length : 0));
+  // what the inventory lists (`VolumesBench`), not the old kit's piles: the two can differ
+  const piles = useMeasure((s) =>
+    def.id === 'project.volumes' ? inventoryPiles(s.file.measurements).length : 0,
+  );
   if (def.id === 'project.issues') return issues;
   if (def.id === 'project.volumes' && piles > 0) return piles;
   return undefined;
