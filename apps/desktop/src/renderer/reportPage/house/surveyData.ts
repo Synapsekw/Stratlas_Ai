@@ -420,6 +420,13 @@ export function standardBaseName(ref: SurfaceRef): string {
   );
 }
 
+/**
+ * A comparison's side as the report prints it: a base by its standard name, decided from the side
+ * itself; a survey or design by the name its result was stored with.
+ */
+export const shownSide = (ref: SurfaceRef, stored: string | undefined): string =>
+  isBase(ref) ? standardBaseName(ref) : (stored ?? sideLabel(ref, null));
+
 // ---------------------------------------------------------------- the engine
 
 const ringOf = (m: SurveyMeasurement): [number, number][] => m.points.map((p) => [p[0], p[1]]);
@@ -1029,7 +1036,14 @@ export async function buildSurveyData(
     m.items.map((it) => {
       const label = it.label ?? it.id;
       const r = m.results.find((x) => x.item === it.id) ?? null;
-      return { item: it.id, label, result: r, reason: r ? '' : tk('house.survey.notComputed') };
+      return {
+        item: it.id,
+        label,
+        from: it.from,
+        to: it.to,
+        result: r,
+        reason: r ? '' : tk('house.survey.notComputed'),
+      };
     });
 
   // ------------------------------------------------ measurements
@@ -1177,9 +1191,7 @@ export async function buildSurveyData(
           id: m.id,
           label: m.label,
           item: it.label ?? it.id,
-          design:
-            (toDesign ? cur?.toLabel : cur?.fromLabel) ??
-            sideLabel(toDesign ? it.to : it.from, null),
+          design: shownSide(toDesign ? it.to : it.from, toDesign ? cur?.toLabel : cur?.fromLabel),
           toleranceM: tol,
           first: f && first ? { capture: first, result: f } : null,
           current: c && current ? { capture: current, result: c } : null,
@@ -1277,7 +1289,7 @@ export async function buildSurveyData(
         ref: refs.get(m.id) ?? m.id,
         id: m.id,
         label: m.label,
-        design: air?.toLabel ?? (items.airspace ? sideLabel(items.airspace.to, null) : ''),
+        design: items.airspace ? shownSide(items.airspace.to, air?.toLabel) : (air?.toLabel ?? ''),
         airspace:
           airOk && current ? { capture: current, remainingM3: airOk.fillM3, result: airOk } : null,
         airspaceReason: airOk

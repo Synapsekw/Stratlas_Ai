@@ -14,12 +14,14 @@ import type {
   MeasurementTool,
   SiteCalibration,
   SiteMaterial,
+  SurfaceRef,
   SurveyMeasurement,
   SurveyPrecision,
   SurveySettings,
   SurveyUnits,
 } from '@aio/schema';
 import { csvText } from '@aio/schema';
+import { pickerBaseName } from './baseNames';
 import { noDashes } from './facts';
 
 /** The house report's survey sections, in print order (each prints only with data). */
@@ -112,6 +114,12 @@ export interface SurveyValue {
 export interface ComparisonReport {
   item: string;
   label: string;
+  /**
+   * The item's two sides. With them the CSV names a base as the base picker does
+   * (`pickerBaseName`); without them it has only the result's stored words.
+   */
+  from?: SurfaceRef;
+  to?: SurfaceRef;
   /** The engine's result; null when the item could not be computed (`reason` says why). */
   result: ComparisonResult | null;
   reason: string;
@@ -162,7 +170,7 @@ export interface StockpileReport {
   id: string;
   label: string;
   material: SiteMaterial | null;
-  /** How the base was taken (smart, fit plane ...), as the result names it. */
+  /** The pile's base by the base picker's name ("Toe surface"), from its base spec. */
   base: string;
   /** The pile on every survey it was computed for, in date order. */
   volumes: PileVolume[];
@@ -500,6 +508,14 @@ export const MEASUREMENTS_CSV_COLUMNS = [
 ] as const;
 
 /**
+ * A side of a comparison as a person reads it: a base by the base picker's name, decided from the
+ * side itself; a survey or design by the name the result was stored with. A figure carried from
+ * an earlier version keeps its stored words, since the engine did not compute it on this base.
+ */
+const sideWords = (ref: SurfaceRef | undefined, r: ComparisonResult, stored: string): string =>
+  (ref !== undefined && r.carried === undefined ? pickerBaseName(ref) : null) ?? stored;
+
+/**
  * Every item of every measurement, one row each: the readouts in the template's order, then each
  * comparison's cut, fill, net, total and area (with its status: a stale, partial or refused
  * result says so), then the custom fields. Values as displayed (the app's text, and the number in
@@ -552,7 +568,7 @@ export function measurementsCsv(data: SurveyReportData): string {
         ? [
             r.reason ?? '',
             r.usedDeadband ? `deadband ${String(r.deadbandM)} m used` : '',
-            `${r.fromLabel} to ${r.toLabel}`,
+            `${sideWords(c.from, r, r.fromLabel)} to ${sideWords(c.to, r, r.toLabel)}`,
           ]
             .filter(Boolean)
             .join('; ')

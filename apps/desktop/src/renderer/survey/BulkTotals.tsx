@@ -28,6 +28,7 @@ import {
 import { announce, Button, t as tr, useT } from '@aio/ui';
 import { useId, useMemo, useRef, useState, type ReactElement } from 'react';
 import { ConfirmDialog } from '../shell/ConfirmDialog';
+import { baseName } from './card/baseNames';
 import {
   computeAll,
   hasCarried,
@@ -477,7 +478,10 @@ function SelectionTotals() {
               <option value="">{t('bulk.chooseSurface')}</option>
               {options.map((o) => (
                 <option key={o.key} value={o.key}>
-                  {o.group === 'Bases' ? t('bulk.baseOption', { label: o.label }) : o.label}
+                  {o.group === 'Bases'
+                    ? // the base this option makes, by the base picker's name for it
+                      t('bulk.baseOption', { label: baseName(sideFor(o, []), options, t) })
+                    : o.label}
                 </option>
               ))}
             </select>

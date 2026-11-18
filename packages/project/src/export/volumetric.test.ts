@@ -85,7 +85,7 @@ function pile(i: number, over: Partial<VolumetricPileInput> = {}): VolumetricPil
     id: `m-${String(i)}`,
     label: name(i),
     material: i === 19 ? null : { id: 'gravel', name: 'Gravel' },
-    base: 'Smart base',
+    base: 'Toe surface',
     dates: [
       {
         capture: 'c1',
@@ -379,7 +379,7 @@ describe('inShortSentence', () => {
 describe('methodNote', () => {
   it('names the base, cell, GSD, CRS and the material density', () => {
     expect(methodNote(volumetricModel(input()), t)).toBe(
-      'Base: Smart base. Surface cell size 0.25 m. Orthophoto ground sample distance 3.2 cm. ' +
+      'Base: Toe surface. Surface cell size 0.25 m. Orthophoto ground sample distance 3.2 cm. ' +
         "Coordinate system EPSG:32639. Tonnes at each pile's material density on that date.",
     );
   });
@@ -390,7 +390,7 @@ describe('methodNote', () => {
       input({ piles, method: { cellM: null, gsdCm: null, siteDensityTPerM3: 1.6 } }),
     );
     expect(methodNote(m, t)).toBe(
-      'Base: Smart base. Coordinate system EPSG:32639. Tonnes at the site-wide density of 1.60 t/m³.',
+      'Base: Toe surface. Coordinate system EPSG:32639. Tonnes at the site-wide density of 1.60 t/m³.',
     );
   });
 
@@ -513,7 +513,7 @@ describe('volumetricCsv', () => {
     id: `m-${String(i)}`,
     label: name(i),
     material: { id: 'gravel', name: 'Gravel', densityTPerM3: 1.6 },
-    base: 'Smart base',
+    base: 'Toe surface',
     volumes: captures.map((c, k) => ({
       capture: c,
       volumeM3: 1000 * i + 100 * k,

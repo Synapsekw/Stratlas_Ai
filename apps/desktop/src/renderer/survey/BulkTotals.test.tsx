@@ -293,4 +293,21 @@ describe('BulkTotals', () => {
     expect(text('survey-bulk-net')).toBe(v(15));
     expect(host.querySelector('[data-testid="survey-bulk-not-counted"]')).toBeNull();
   });
+
+  it('the base options read as the pile panel names them', () => {
+    render();
+    const options = [...host.querySelectorAll('[data-testid="survey-bulk-side"] option')].map(
+      (o) => o.textContent,
+    );
+    expect(options.filter((o) => o.startsWith('Base: '))).toEqual([
+      'Base: Fixed level',
+      'Base: Toe surface',
+      'Base: Best-fit plane',
+      'Base: Average edge level',
+      'Base: Custom',
+    ]);
+    const all = options.join(' | ');
+    for (const old of ['Smart', 'Reference level', 'Mean perimeter', 'edit vertices'])
+      expect(all).not.toContain(old);
+  });
 });

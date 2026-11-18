@@ -1,15 +1,19 @@
 /**
  * The volume bases by their plain names (volumetric parity W3), one module for the base picker,
- * the volume card and the report: which of the seven bases a side is and what it is called. Pure:
- * no store, so the report page prints the same names.
+ * the bulk picker, the volume card and the reports: `baseName` is what a person reads for a side,
+ * decided from the side itself (never from a result's stored label). Which base a side is comes
+ * from `@aio/project` (`baseIdOf`), where the CSV exports name it with the same words; a test
+ * holds the catalogue and those names equal. Pure: no store, so the report page prints the same.
  */
+import { baseIdOf, type BaseId } from '@aio/project/export';
 import type { SurfaceRef } from '@aio/schema';
 import { sideKey, type SideOption } from '@aio/survey';
 import type { MessageKey } from '@aio/ui';
 
-export type BaseId = 'smart' | 'lowest' | 'plane' | 'level' | 'mean' | 'surface' | 'custom';
+// which base a side is: one function, shared with the CSV exports (`@aio/project`)
+export { baseIdOf, type BaseId };
 
-/** The seven bases in the picker's order: the default (Triangulated toe) first. */
+/** The seven bases in the picker's order: the default (Toe surface) first. */
 export const BASES: readonly { id: BaseId; name: MessageKey; hint: MessageKey }[] = [
   { id: 'smart', name: 'base.smart', hint: 'base.smartHint' },
   { id: 'lowest', name: 'base.lowest', hint: 'base.lowestHint' },
@@ -19,28 +23,6 @@ export const BASES: readonly { id: BaseId; name: MessageKey; hint: MessageKey }[
   { id: 'surface', name: 'base.surface', hint: 'base.surfaceHint' },
   { id: 'custom', name: 'base.custom', hint: 'base.customHint' },
 ];
-
-/**
- * Which of the seven bases a side is. Lowest point and Fixed level are reference bases (the
- * lowest point on the perimeter, a typed level); a survey or design side is "surface". Null for a
- * reference mode the picker does not offer (an older file's highest point, say).
- */
-export function baseIdOf(ref: SurfaceRef): BaseId | null {
-  switch (ref.kind) {
-    case 'smart':
-      return 'smart';
-    case 'fit-plane':
-      return 'plane';
-    case 'perimeter-mean':
-      return 'mean';
-    case 'custom':
-      return 'custom';
-    case 'reference':
-      return ref.mode === 'perimeter-min' ? 'lowest' : ref.mode === 'level' ? 'level' : null;
-    default:
-      return 'surface';
-  }
-}
 
 /** A surface option as the pickers show it: "Previous survey (01 Sep)". */
 export const optionLabel = (o: SideOption): string => (o.note ? `${o.label} (${o.note})` : o.label);

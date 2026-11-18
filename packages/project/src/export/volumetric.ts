@@ -39,7 +39,7 @@ export interface VolumetricPileInput {
   label: string;
   /** Its material (`pileMaterial`; the kit's site-wide one has id `kit`), or null. */
   material: { id: string; name: string } | null;
-  /** The base in words: the base picker's name ("Triangulated toe", "Previous survey"). */
+  /** The base in words: the base picker's name ("Toe surface", "Previous survey"). */
   base: string;
   dates: VolumetricPileDateInput[];
 }

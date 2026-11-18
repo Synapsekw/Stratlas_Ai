@@ -139,27 +139,30 @@ export function sideOptions(inp: PickerInput): SideOption[] {
         ref: { kind: 'design', design: d.id, layer: l.id },
       });
     }
+  // the bases by the base picker's names (the catalogue's `base.*`; a desktop test holds them
+  // equal). A label is only ever shown: `sideFor` makes the side from `ref`, and no result,
+  // fingerprint or file holds it. `reference` makes a typed level (`sideFor`): "Fixed level"
   out.push(
     {
       key: 'reference',
-      label: 'Reference level',
+      label: 'Fixed level',
       group: 'Bases',
       ref: { kind: 'reference', mode: 'perimeter-min' },
     },
     {
       key: 'smart',
-      label: 'Smart (triangulated perimeter)',
+      label: 'Toe surface',
       group: 'Bases',
       ref: { kind: 'smart' },
     },
     { key: 'fit-plane', label: 'Best-fit plane', group: 'Bases', ref: { kind: 'fit-plane' } },
     {
       key: 'perimeter-mean',
-      label: 'Mean perimeter level',
+      label: 'Average edge level',
       group: 'Bases',
       ref: { kind: 'perimeter-mean' },
     },
-    { key: 'custom', label: 'Custom base (edit vertices)', group: 'Bases', ref: customBase([]) },
+    { key: 'custom', label: 'Custom', group: 'Bases', ref: customBase([]) },
   );
   return out;
 }

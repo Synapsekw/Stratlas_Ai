@@ -2,10 +2,12 @@ import {
   defaultSurveySettings,
   SiteCalibration,
   type ComparisonResult,
+  type SurfaceRef,
   type SurveyMeasurement,
   type SurveySettings,
 } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
+import { pickerBaseName } from './baseNames';
 import {
   compaction,
   earthworksProgress,
@@ -65,7 +67,7 @@ const pile = (
   id,
   label: `Pile ${id}`,
   material,
-  base: 'Smart base',
+  base: 'Toe surface',
   volumes: volumes.map(([capture, v]) => ({
     capture,
     volumeM3: v,
@@ -295,6 +297,112 @@ const data = (over: Partial<SurveyReportData>): SurveyReportData => ({
 const lines = (csv: string) => csv.replace(BOM, '').trimEnd().split('\r\n');
 
 describe('the measurements CSV', () => {
+  it('a base reads the same in the picker, the list and the CSV', () => {
+    // the engine's stored words stay in the file; a person reads the picker's name
+    const sides: [SurfaceRef, string, string][] = [
+      [{ kind: 'smart' }, 'Smart base (triangulated perimeter)', 'Toe surface'],
+      [
+        { kind: 'reference', mode: 'perimeter-min' },
+        'Lowest point on the perimeter (38.000 m)',
+        'Lowest point',
+      ],
+      [{ kind: 'fit-plane' }, 'Best-fit plane through the perimeter', 'Best-fit plane'],
+      [{ kind: 'reference', mode: 'level', levelM: 12 }, 'Level 12.000 m', 'Fixed level'],
+      [{ kind: 'perimeter-mean' }, 'Mean perimeter level (100.120 m)', 'Average edge level'],
+      [
+        {
+          kind: 'custom',
+          vertices: [
+            { e: 0, n: 0, z: 1 },
+            { e: 1, n: 0, z: 1 },
+            { e: 0, n: 1, z: 1 },
+          ],
+        },
+        'Custom base (3 vertices)',
+        'Custom',
+      ],
+    ];
+    for (const [from, stored, name] of sides) {
+      expect(pickerBaseName(from)).toBe(name);
+      const csv = measurementsCsv(
+        data({
+          measurements: [
+            measurement({
+              comparisons: [
+                {
+                  item: 'pile',
+                  label: 'Stockpile',
+                  from,
+                  to: { kind: 'current' },
+                  result: result(10, { fromLabel: stored }),
+                  reason: '',
+                },
+              ],
+            }),
+          ],
+        }),
+      );
+      const net = lines(csv).find((r) => r.includes(',pile.net,'));
+      expect(net).toContain(`,ok,${name} to Current survey (DSM),`);
+      expect(csv).not.toContain(stored);
+    }
+  });
+
+  it('a base on the To side is named the same way; a survey side keeps its own name', () => {
+    const csv = measurementsCsv(
+      data({
+        measurements: [
+          measurement({
+            comparisons: [
+              {
+                item: 'pile',
+                label: 'Stockpile',
+                from: { kind: 'previous' },
+                to: { kind: 'perimeter-mean' },
+                result: result(10, {
+                  fromLabel: 'Previous survey (DSM)',
+                  toLabel: 'Mean perimeter level (100.120 m)',
+                }),
+                reason: '',
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(lines(csv).find((r) => r.includes(',pile.net,'))).toContain(
+      ',ok,Previous survey (DSM) to Average edge level,',
+    );
+  });
+
+  it('a figure carried from an earlier version keeps the label it was stored with', () => {
+    const csv = measurementsCsv(
+      data({
+        measurements: [
+          measurement({
+            comparisons: [
+              {
+                item: 'pile',
+                label: 'Stockpile',
+                from: { kind: 'smart' },
+                to: { kind: 'current' },
+                result: result(10, {
+                  fromLabel: 'Triangulated',
+                  toLabel: 'Survey 3',
+                  carried: { from: 'kit', base: 'tin', pile: 'p1', epoch: 'e3' },
+                }),
+                reason: '',
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(lines(csv).find((r) => r.includes(',pile.net,'))).toContain(
+      ',ok,Triangulated to Survey 3,',
+    );
+  });
+
   it('writes every item as displayed and in SI, with what it was computed with', () => {
     const csv = measurementsCsv(
       data({
@@ -353,7 +461,8 @@ describe('the measurements CSV', () => {
     // a stale result keeps its numbers with its status; a refused one has none
     expect(rows.find((r) => r.includes(',old.net,'))).toContain(',stale,');
     expect(rows.find((r) => r.includes(',gone.net,'))).toContain(
-      ',,,,,refused,25% outside the survey; Smart base',
+      // without the item's sides the CSV has only the stored words
+      ',,,,,refused,25% outside the survey; Smart base (triangulated perimeter) to Current',
     );
     expect(rows.find((r) => r.includes(',field,'))).toContain(',field,Product,G20,');
     expect(rows).toHaveLength(1 + 2 + 3 * 6 + 1);
@@ -393,7 +502,7 @@ describe('the stockpile inventory CSV', () => {
     expect(head).toContain('current_volume_yd³');
     expect(head).toContain('current_mass_sh tn');
     expect(rows[1]).toMatch(
-      /^pile,a,A,Pile a,Gravel,G,2,Smart base,200,400,ok,300,600,ok,400,800,ok,2026-03-31,400,800,2026-02-28,300,100,200,/,
+      /^pile,a,A,Pile a,Gravel,G,2,Toe surface,200,400,ok,300,600,ok,400,800,ok,2026-03-31,400,800,2026-02-28,300,100,200,/,
     );
     expect(rows[2]).toContain(',refused: 25% outside the survey,');
     expect(rows.slice(3).map((r) => r.split(',').slice(0, 5).join(','))).toEqual([

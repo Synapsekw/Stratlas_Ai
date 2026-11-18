@@ -5,6 +5,7 @@
  * and a description; a bookmark puts it on the toolbar. The site's industry template sets (G9:
  * construction, mining and quarry, landfill) are switched on here and join the toolbar.
  */
+import { BASE_NAMES } from '@aio/project/export';
 import {
   ComparisonPreset,
   IndustrySet,
@@ -49,16 +50,19 @@ import {
 
 type Scope = 'project' | 'user';
 
-/** Surfaces and bases a preset can name without a project's own surfaces (G4 adds the rest). */
+/**
+ * Surfaces and bases a preset can name without a project's own surfaces (G4 adds the rest). The
+ * bases by the base picker's names.
+ */
 const REFS: { id: string; label: string; ref: SurfaceRef }[] = [
   { id: 'current', label: 'Current survey', ref: { kind: 'current' } },
   { id: 'previous', label: 'Previous survey', ref: { kind: 'previous' } },
-  { id: 'smart', label: 'Smart base (perimeter TIN)', ref: { kind: 'smart' } },
-  { id: 'fit-plane', label: 'Best-fit plane base', ref: { kind: 'fit-plane' } },
-  { id: 'perimeter-mean', label: 'Perimeter mean base', ref: { kind: 'perimeter-mean' } },
+  { id: 'smart', label: BASE_NAMES.smart, ref: { kind: 'smart' } },
+  { id: 'fit-plane', label: BASE_NAMES.plane, ref: { kind: 'fit-plane' } },
+  { id: 'perimeter-mean', label: BASE_NAMES.mean, ref: { kind: 'perimeter-mean' } },
   {
     id: 'perimeter-min',
-    label: 'Lowest perimeter point',
+    label: BASE_NAMES.lowest,
     ref: { kind: 'reference', mode: 'perimeter-min' },
   },
 ];
