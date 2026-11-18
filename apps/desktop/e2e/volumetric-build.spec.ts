@@ -6,7 +6,8 @@
  * is a volume measurement in the Volumes view (volumetric parity W3: the kit's register and its
  * base maths are retired; a new project's piles carry no kit figure), and a pile can be selected.
  * Then Compare dates: both 3D views show the surface colours, the selected pile and the legend,
- * each for its own survey. Needs the development
+ * each for its own survey. Last, a pile the person deleted stays gone when the piles are detected
+ * again, and the pile kept is not doubled. Needs the development
  * Python with aio_pipelines (`uv sync` in python/) or QUADRION_E2E_PYTHON; skipped without it.
  */
 import { MeasurementsFile } from '@aio/schema';
@@ -16,7 +17,14 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { closeProcessing, expect, launchApp, test } from './fixtures';
-import { showSurface, toggleCompareDates, volumesView } from './island';
+import {
+  measureRow,
+  measureSaved,
+  showSurface,
+  stockpileTree,
+  toggleCompareDates,
+  volumesView,
+} from './island';
 
 const repo = join(import.meta.dirname, '..', '..', '..');
 const venvPython =
@@ -95,6 +103,71 @@ async function selectPile(win: Page, pile: string): Promise<void> {
       ),
     )
     .toBe(pile);
+}
+
+interface JobsProbe {
+  __stratlas: {
+    jobs: {
+      getState(): {
+        selected: string | null;
+        jobs: { id: string; status: string }[];
+        start(req: {
+          pipeline: 'volumetric.build';
+          project: string;
+          params: Record<string, unknown>;
+        }): Promise<string | null>;
+      };
+    };
+  };
+}
+
+/**
+ * Detect the piles again: the stockpile build run from the job file the first build kept, the job
+ * the Volumes view's Detect piles button asks for. That button shows only while the project has
+ * no pile, so with a pile left the job is started through the Jobs store. Waits for it to finish.
+ */
+async function detectPilesAgain(win: Page, project: string): Promise<void> {
+  const started = await win.evaluate(async (folder) => {
+    const jobs = (window as unknown as JobsProbe).__stratlas.jobs;
+    const before = new Set(jobs.getState().jobs.map((j) => j.id));
+    const error = await jobs.getState().start({
+      pipeline: 'volumetric.build',
+      project: folder,
+      params: { job: 'volumetric/job.json' },
+    });
+    const id = jobs.getState().selected;
+    return { error, id: id !== null && !before.has(id) ? id : null };
+  }, project);
+  expect(started.error).toBeNull();
+  expect(started.id, 'the job that was started').not.toBeNull();
+  await expect
+    .poll(
+      () =>
+        win.evaluate(
+          (id) =>
+            (window as unknown as JobsProbe).__stratlas.jobs
+              .getState()
+              .jobs.find((j) => j.id === id)?.status ?? null,
+          started.id,
+        ),
+      { timeout: 180_000 },
+    )
+    .toBe('done');
+}
+
+/** The project's kit pile measurements on disk (id and pile), and the piles listed as converted. */
+async function kitPilesOnDisk(root: string) {
+  const file = MeasurementsFile.parse(
+    JSON.parse(await readFile(join(root, 'survey', 'measurements.json'), 'utf8')),
+  );
+  return {
+    converted: [...(file.kitPilesConverted ?? [])].sort(),
+    piles: file.measurements
+      .flatMap((m) =>
+        m.origin?.kind === 'kit-pile' ? [{ id: m.id, pile: m.origin.pile, label: m.label }] : [],
+      )
+      .sort((a, b) => a.pile.localeCompare(b.pile)),
+  };
 }
 
 interface Obj3 {
@@ -332,6 +405,45 @@ test('a volumetric project from two raw survey dates: wizard, Processing drawer,
     await expect
       .poll(() => overlays(win, pid), { timeout: 60_000 })
       .toMatchObject({ main: { drapes: ['e1'] }, second: { drapes: ['e2'] } });
+
+    // 5. a pile the person deletes stays gone when the piles are detected again (the journal
+    // knows the deletion), and the pile kept keeps its one measurement
+    await toggleCompareDates(win);
+    await expect(win.locator('[data-scene-view] canvas')).toHaveCount(1);
+    const all = vols.piles.map((p) => p.id).sort();
+    const before = await kitPilesOnDisk(root);
+    expect(before.piles.map((p) => p.pile)).toEqual(all);
+    const kept = before.piles.find((p) => p.pile === pid);
+    const gone = before.piles.find((p) => p.pile !== pid);
+    expect(kept && gone, 'both piles as measurements').toBeTruthy();
+    await stockpileTree(win);
+    await expect(win.getByTestId('measure-row')).toHaveCount(2);
+    await measureRow(win, gone?.label ?? '').press('Delete');
+    await expect(win.getByTestId('measure-row')).toHaveCount(1);
+    await (await measureSaved(win)).getByTestId('survey-list-save').click();
+    await expect(win.getByTestId('survey-saved')).toContainText('Measurements saved.');
+    await expect
+      .poll(async () => (await kitPilesOnDisk(root)).piles.map((p) => p.id))
+      .toEqual([kept?.id]);
+
+    await detectPilesAgain(win, root);
+    // the build found both piles again
+    const again = JSON.parse(await readFile(join(root, 'volumes.json'), 'utf8')) as VolumesJson;
+    expect(again.piles).toHaveLength(2);
+    // adding a pile back would follow the job within moments: nothing may change while it could
+    const after = {
+      converted: all,
+      piles: [{ id: kept?.id, pile: kept?.pile, label: kept?.label }],
+    };
+    for (let i = 0; i < 10; i++) {
+      expect(await kitPilesOnDisk(root)).toEqual(after);
+      await expect(win.getByTestId('measure-row')).toHaveCount(1);
+      await win.waitForTimeout(500);
+    }
+    const view2 = await volumesView(win);
+    await expect(view2.getByTestId('volumes-pile')).toHaveCount(1);
+    await expect(win.getByTestId('measure-row')).toHaveCount(1);
+    expect(await kitPilesOnDisk(root)).toEqual(after);
     expect(errors).toEqual([]);
     expect(await network.outbound()).toEqual([]);
   } finally {

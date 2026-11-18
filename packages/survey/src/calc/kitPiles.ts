@@ -86,6 +86,8 @@ export const SAME_PILE_SHARE = 0.5;
 const OVERLAP_GRID = 64;
 
 type Ring2 = readonly (readonly [number, number])[];
+/** A pile outline in the project CRS, `[E, N]` per vertex. */
+export type KitOutline = Ring2;
 
 function ringArea(r: Ring2): number {
   let a = 0;
@@ -231,6 +233,14 @@ export interface KitConversionOptions {
    * converted pile with no measurement stays gone, as before.
    */
   deletedKitPiles?: KeptGoneKitPiles;
+  /**
+   * After a build only (`rebuilt`): the outlines of the kit-pile measurements a person deleted
+   * (`deletedKitPileOutlines`, from the journal, and those deleted but not saved yet). A pile of
+   * the build no measurement holds that overlaps one (`SAME_PILE_SHARE`) is not added: a pile a
+   * person deleted stays gone. By outline, as a build numbers its piles afresh. Absent or empty
+   * (no journal, a failed read), such a pile is added again, as before.
+   */
+  deletedOutlines?: readonly KitOutline[];
 }
 
 /**
@@ -306,12 +316,22 @@ export function convertKitPiles(
       done.add(pile.id);
       continue;
     }
+    // after a build, a pile whose measurement a person deleted stays gone (by outline); it is
+    // listed as converted, so opening the project does not take it for a pile never converted
+    if (
+      opts.rebuilt &&
+      opts.deletedOutlines?.some((d) => overlapShare(ring, d) >= SAME_PILE_SHARE)
+    ) {
+      if (!done.has(pile.id)) converted.push(pile.id);
+      done.add(pile.id);
+      continue;
+    }
     // converted before and its number not freed: on opening, its measurement is gone. It stays
     // gone unless the journal was read (`deletedKitPiles`) and shows positive evidence it was lost by
     // accident, and no measurement holds its number: then it vanished (a lost write, an old build's bug)
     // and is restored, with its kit figures carried as at a first conversion. After a build, only
-    // a pile an existing kit-pile measurement overlaps is skipped (a pile the person deleted can
-    // come back, never a new pile under an old number).
+    // a pile an existing kit-pile measurement overlaps is skipped (without journal evidence a
+    // pile the person deleted can come back, never a new pile under an old number).
     let restored = false;
     if (done.has(pile.id) && !freed.has(pile.id)) {
       if (!opts.rebuilt) {
@@ -487,6 +507,8 @@ export interface KitOpenOptions {
   newId: () => string;
   /** Right after a volumetric build (`KitConversionOptions.rebuilt`). */
   rebuilt?: boolean;
+  /** After a build: the outlines of deleted kit-pile measurements (`KitConversionOptions`). */
+  deletedOutlines?: readonly KitOutline[];
   /** The kit's DSM heights: converted outlines are draped on them (`KitConversionOptions`). */
   heightAt?: KitHeightAt;
   /**
@@ -561,6 +583,7 @@ export function kitConversion(
     toSite: (xz) => kitToSite(opts.origin, xz),
     materialId: (name) => byName.get(name.trim().toLowerCase()),
     ...(opts.rebuilt ? { rebuilt: true } : {}),
+    ...(opts.deletedOutlines ? { deletedOutlines: opts.deletedOutlines } : {}),
     ...(opts.heightAt ? { heightAt: opts.heightAt } : {}),
     ...(opts.deletedKitPiles ? { deletedKitPiles: opts.deletedKitPiles } : {}),
   });
@@ -653,6 +676,65 @@ export function restorableKitPiles(entries: readonly KitJournalEntry[]): Set<str
     }
   }
   return restorable;
+}
+
+/** A measurement's outline (`points`) as `[E, N]` pairs, or undefined when it is not one. */
+function outlineOf(points: unknown): [number, number][] | undefined {
+  if (!Array.isArray(points)) return undefined;
+  const ring: [number, number][] = [];
+  for (const p of points as unknown[]) {
+    if (!Array.isArray(p)) return undefined;
+    const [e, n] = p as unknown[];
+    if (typeof e !== 'number' || typeof n !== 'number') return undefined;
+    ring.push([e, n]);
+  }
+  return ring;
+}
+
+/**
+ * The outlines of the kit-pile measurements the journal shows deleted, for
+ * `KitConversionOptions.deletedOutlines` (Detect piles must not add them again): the measurement's
+ * create entry holds its record (a kit pile by its `origin`, as later patches set or dropped it;
+ * its outline as later patches moved it) and a `measurement.delete` follows, whoever made it.
+ * Delete entries carry no record, so a delete with no create entry in the journal names no
+ * outline. A measurement created again under the same id (a delete put back) is not deleted.
+ * Entries come in any order.
+ */
+export function deletedKitPileOutlines(entries: readonly KitJournalEntry[]): [number, number][][] {
+  const ordered = entries
+    .filter((e) => e.target.rec === 'measurement')
+    .sort((a, b) =>
+      a.hlc < b.hlc ? -1 : a.hlc > b.hlc ? 1 : a.op < b.op ? -1 : a.op > b.op ? 1 : 0,
+    );
+  const live = new Map<string, { kit: boolean; ring: [number, number][] | undefined }>();
+  const deleted = new Map<string, [number, number][]>();
+  for (const e of ordered) {
+    const id = e.target.id;
+    if (e.kind === 'measurement.create') {
+      const record = e.changes?.find((c) => c.field === 'record')?.after;
+      deleted.delete(id);
+      live.set(
+        id,
+        isObj(record)
+          ? { kit: kitPileOf(record.origin) !== undefined, ring: outlineOf(record.points) }
+          : { kit: false, ring: undefined },
+      );
+    } else if (e.kind === 'measurement.patch') {
+      const was = live.get(id);
+      if (!was) continue;
+      const origin = e.changes?.find((c) => c.field === 'origin');
+      const points = e.changes?.find((c) => c.field === 'points');
+      live.set(id, {
+        kit: origin ? kitPileOf(origin.after) !== undefined : was.kit,
+        ring: points ? outlineOf(points.after) : was.ring,
+      });
+    } else if (e.kind === 'measurement.delete') {
+      const was = live.get(id);
+      live.delete(id);
+      if (was?.kit && was.ring) deleted.set(id, was.ring);
+    }
+  }
+  return [...deleted.values()];
 }
 
 /** The piles that stay gone: only `has` is offered, as no list of them exists. */

@@ -372,7 +372,7 @@ describe('kit piles on load', () => {
     expect(io.writes).toBe(0);
   });
 
-  it('a deleted converted measurement stays gone after a reopen, and comes back after a build', async () => {
+  it('a deleted converted measurement stays gone after a reopen; with no journal to read, a build adds it back', async () => {
     io.volumes = volumes();
     await open({ schema: 'aio.measurements/1', measurements: [] });
     const id = kitMeasurements()[0]?.id ?? '';
@@ -380,8 +380,8 @@ describe('kit piles on load', () => {
     expect(await saveMeasurements()).toBe(true);
     await open(io.saved);
     expect(kitMeasurements()).toHaveLength(0);
-    // Detect piles found it again with no measurement over it: the lesser evil is to add it
-    // back (a number alone never stands for a pile, KNOWN-LIMITS)
+    // Detect piles found it again with no measurement over it, and the journal cannot say it was
+    // deleted (the read fails here): the lesser evil is to add it back (KNOWN-LIMITS)
     await convertAfterJob('p1');
     expect(kitMeasurements().map((m) => m.origin?.pile)).toEqual(['P01']);
     expect(kitMeasurements()[0]?.results).toEqual([]);
@@ -868,6 +868,89 @@ describe('after a volumetric job', () => {
       'Piles from the stockpile build added as volume measurements',
     );
     expect(isDirty(measureStore.getState())).toBe(false);
+  });
+
+  /** The journal's entries (oldest first) of a kit pile's measurement, as `journal:history` gives them. */
+  const journalOf = (...oldestFirst: { kind: string; m: SurveyMeasurement }[]) =>
+    oldestFirst
+      .map(({ kind, m }, i) => ({
+        op: `op${String(i)}`,
+        chain: 'chain',
+        seq: i,
+        hlc: `${String(1_800_000_000_000 + i)}.0000.chain`,
+        at: '2026-10-20T00:00:00.000Z',
+        actor: { id: 'actor' },
+        device: 'device',
+        kind,
+        target: { rec: 'measurement', id: m.id },
+        how: 'hand',
+        state: 'unsigned',
+        ...(kind === 'measurement.create' ? { changes: [{ field: 'record', after: m }] } : {}),
+      }))
+      .reverse();
+  const far = (e: ReturnType<typeof ep>) => ({
+    ...e,
+    ring: ring.map(([x, z]) => [x + 500, z] as [number, number]),
+  });
+
+  it('a pile the person deleted is not added again by Detect piles', async () => {
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [drawn] });
+    const [gone] = kitMeasurements();
+    if (!gone) throw new Error('not converted');
+    deleteMeasurements([gone.id]);
+    expect(await saveMeasurements()).toBe(true);
+    io.journal = {
+      pages: [
+        journalOf({ kind: 'measurement.create', m: gone }, { kind: 'measurement.delete', m: gone }),
+      ],
+    };
+    const writes = io.writes;
+    // the build finds the same pile again
+    await convertAfterJob('p1');
+    expect(kitMeasurements()).toEqual([]);
+    expect(io.saved.measurements.map((m) => m.id)).toEqual(['mine']);
+    expect(io.writes).toBe(writes);
+    expect(io.journalReads).toHaveLength(1);
+    expect(isDirty(measureStore.getState())).toBe(false);
+    // and again, with a pile nobody deleted next to it: only that one is added
+    io.volumes = volumes([
+      pile('P01', { e1: ep('c1', 100), e2: ep('c2', 50) }),
+      pile('P02', { e2: far(ep('c2', 7)) }),
+    ]);
+    await convertAfterJob('p1');
+    expect(kitMeasurements().map((m) => m.origin?.pile)).toEqual(['P02']);
+    expect(io.saved.measurements.map((m) => m.origin?.pile ?? m.id)).toEqual(['mine', 'P02']);
+    // a later open leaves the deleted pile gone too
+    await open(io.saved);
+    expect(kitMeasurements().map((m) => m.origin?.pile)).toEqual(['P02']);
+  });
+
+  it('a pile deleted but not saved yet is not added again either', async () => {
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    const id = kitMeasurements()[0]?.id ?? '';
+    deleteMeasurements([id]);
+    const writes = io.writes;
+    await convertAfterJob('p1');
+    expect(kitMeasurements()).toEqual([]);
+    // the deletion stays the person's unsaved edit; nothing was added, so the journal is not read
+    expect(io.writes).toBe(writes);
+    expect(io.saved.measurements.map((m) => m.id)).toEqual([id]);
+    expect(io.journalReads).toHaveLength(0);
+    expect(isDirty(measureStore.getState())).toBe(true);
+  });
+
+  it('a pile found again keeps its measurement: nothing is added and the journal is not read', async () => {
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    const [kept] = kitMeasurements();
+    const writes = io.writes;
+    io.journal = { pages: [[]] };
+    await convertAfterJob('p1');
+    expect(kitMeasurements()).toEqual([kept]);
+    expect(io.writes).toBe(writes);
+    expect(io.journalReads).toHaveLength(0);
   });
 
   it('a rebuild that renumbers the piles relinks the measurement, never duplicates it', async () => {

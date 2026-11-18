@@ -25,10 +25,12 @@ import {
 } from '@aio/schema';
 import {
   changesFile,
+  deletedKitPileOutlines,
   deliberatelyDeletedKitPiles,
   type KeptGoneKitPiles,
   kitDensity,
   type KitJournalEntry,
+  type KitOutline,
   vanishedKitPiles,
   openWithKitPiles,
   type KitDensity,
@@ -593,6 +595,28 @@ const JOURNAL_PAGES_MAX = 40;
 const JOURNAL_PAGE = 5000;
 
 /**
+ * The project journal's measurement entries, whole. Undefined without them (the journal off, the
+ * read failed, a history too long to read): then there is no evidence.
+ */
+async function measurementJournal(projectId: string): Promise<KitJournalEntry[] | undefined> {
+  const entries: KitJournalEntry[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < JOURNAL_PAGES_MAX; page++) {
+    const r = await bridge.call('journal:history', {
+      projectId,
+      filter: { kinds: ['measurement'] },
+      limit: JOURNAL_PAGE,
+      ...(cursor !== undefined ? { cursor } : {}),
+    });
+    if (!r.ok || !r.value.ok || r.value.off) return undefined;
+    entries.push(...r.value.entries);
+    if (r.value.cursor === null) return entries;
+    cursor = r.value.cursor;
+  }
+  return undefined;
+}
+
+/**
  * The journal's evidence about converted kit piles whose measurement vanished
  * (`vanishedKitPiles`): the piles that stay gone (`deliberatelyDeletedKitPiles`: every pile
  * without journal evidence of an accidental loss) and the vanished ones to restore. Undefined, and
@@ -608,24 +632,10 @@ async function vanishedKitEvidence(
 ): Promise<{ deleted: KeptGoneKitPiles; restore: string[] } | undefined> {
   const vanished = vanishedKitPiles(file, volumes, edits, manifest.origin);
   if (vanished.length === 0) return undefined;
-  const entries: KitJournalEntry[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < JOURNAL_PAGES_MAX; page++) {
-    const r = await bridge.call('journal:history', {
-      projectId,
-      filter: { kinds: ['measurement'] },
-      limit: JOURNAL_PAGE,
-      ...(cursor !== undefined ? { cursor } : {}),
-    });
-    if (!r.ok || !r.value.ok || r.value.off) return undefined;
-    entries.push(...r.value.entries);
-    if (r.value.cursor === null) {
-      const deleted = deliberatelyDeletedKitPiles(entries);
-      return { deleted, restore: vanished.filter((p) => !deleted.has(p)) };
-    }
-    cursor = r.value.cursor;
-  }
-  return undefined;
+  const entries = await measurementJournal(projectId);
+  if (!entries) return undefined;
+  const deleted = deliberatelyDeletedKitPiles(entries);
+  return { deleted, restore: vanished.filter((p) => !deleted.has(p)) };
 }
 
 /**
@@ -664,11 +674,25 @@ export async function writesSettled(projectId: string): Promise<boolean> {
   return !get().saving;
 }
 
+/** The outlines of the kit-pile measurements deleted since the last save (in it, not in the file). */
+function unsavedKitDeletions(s: MeasureState): KitOutline[] {
+  const kept = new Set(s.file.measurements.map((m) => m.id));
+  const saved = (JSON.parse(s.savedText) as MeasurementsFile).measurements;
+  return saved.flatMap((m) =>
+    m.origin?.kind === 'kit-pile' && !kept.has(m.id)
+      ? [m.points.map((p) => [p[0], p[1]] as const)]
+      : [],
+  );
+}
+
 /**
  * After a volumetric build: piles the build added become volume measurements without a carried
  * figure (the engine computes theirs on demand, so nothing old is silently replaced). Written at
  * once with the file as last saved, after any save in flight; the person's unsaved edits stay
- * unsaved.
+ * unsaved. A pile whose measurement a person deleted is not added again: when the build would add
+ * a pile, the journal is read for the outlines of deleted kit-pile measurements
+ * (`deletedKitPileOutlines`), next to those deleted but not saved yet. Without the journal (off, a
+ * failed read) such a pile is added again.
  */
 export async function convertAfterJob(projectId: string): Promise<void> {
   const s0 = get();
@@ -688,14 +712,28 @@ export async function convertAfterJob(projectId: string): Promise<void> {
     : undefined;
   // a save in flight lands first, and the conversion goes on the baseline it leaves
   if (!(await writesSettled(projectId))) return;
-  const s = get();
-  if (loadEpoch !== epoch || s.projectId !== projectId || s.status !== 'ready' || s.readOnly)
+  const s1 = get();
+  if (loadEpoch !== epoch || s1.projectId !== projectId || s1.status !== 'ready' || s1.readOnly)
     return;
   if (!r.ok || !r.value.ok || !r.value.volumes) return;
-  const c = kitConversion(s.file, r.value.volumes, r.value.edits, false, {
-    ...kitOptions(manifest.origin, s.settings.materials, heightAt),
-    rebuilt: true,
-  });
+  const { volumes, edits } = r.value;
+  const convert = (state: MeasureState, deletedOutlines: readonly KitOutline[]) =>
+    kitConversion(state.file, volumes, edits, false, {
+      ...kitOptions(manifest.origin, state.settings.materials, heightAt),
+      rebuilt: true,
+      deletedOutlines: [...unsavedKitDeletions(state), ...deletedOutlines],
+    });
+  let s = s1;
+  let c = convert(s, []);
+  if (c.added.length > 0) {
+    // the build would add piles: not those whose measurement the journal shows deleted
+    const entries = await measurementJournal(projectId);
+    if (!(await writesSettled(projectId))) return;
+    s = get();
+    if (loadEpoch !== epoch || s.projectId !== projectId || s.status !== 'ready' || s.readOnly)
+      return;
+    c = convert(s, entries ? deletedKitPileOutlines(entries) : []);
+  }
   if (!changesFile(c) && s.file.kitPilesConverted !== undefined) return;
   const baseline = withKitConversion(JSON.parse(s.savedText) as MeasurementsFile, c);
   const file = withKitConversion(s.file, c);
@@ -703,7 +741,7 @@ export async function convertAfterJob(projectId: string): Promise<void> {
     file,
     savedText: text(baseline),
     resultsUnwritten: true,
-    kitDensity: kitDensity(r.value.volumes),
+    kitDensity: kitDensity(volumes),
   });
   await writeConversion(projectId, baseline, epoch, 'audit.migration.kitBuilt');
 }

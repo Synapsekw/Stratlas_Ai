@@ -15,6 +15,7 @@ import {
   kitDensity,
   pileMaterial,
   convertKitPiles,
+  deletedKitPileOutlines,
   deliberatelyDeletedKitPiles,
   restorableKitPiles,
   vanishedKitPiles,
@@ -1056,6 +1057,140 @@ describe('a converted kit pile whose measurement vanished (the journal decides)'
       const base = [created(gone), deleted(gone.id), created(again, { label: 'added by a build' })];
       expect(list(history(...base))).toEqual(['P01']);
       expect(list(history(...base, deleted('again', { how: 'external' })))).toEqual([]);
+    });
+  });
+
+  describe('after a build (Detect piles), a pile deleted on purpose stays gone', () => {
+    const build = (...at: number[]): VolumesFile => ({
+      ...volumes(),
+      piles: at.map((x, i) => onRing(`P0${String(i + 1)}`, sq(x))),
+    });
+    const rebuilt = (outlines: ReturnType<typeof deletedKitPileOutlines>) => ({
+      ...later(),
+      rebuilt: true,
+      deletedOutlines: outlines,
+    });
+    const kitPiles = (f: MeasurementsFile) =>
+      f.measurements.flatMap((m) => (m.origin?.kind === 'kit-pile' ? [m.origin.pile] : [])).sort();
+
+    it('a pile deleted on purpose is not added again by a later detection', () => {
+      const { file, gone } = vanished();
+      const outlines = deletedKitPileOutlines(history(created(gone), deleted(gone.id)));
+      expect(outlines).toHaveLength(1);
+      // without the evidence the same build adds it back (the rule before)
+      const before = convertKitPiles(kit(), null, file, { ...later(), rebuilt: true });
+      expect(before.added.map((m) => m.origin?.pile)).toEqual(['P01']);
+      const c = convertKitPiles(kit(), null, file, rebuilt(outlines));
+      expect(c).toEqual({ added: [], converted: [], relinked: [], detached: [] });
+    });
+
+    it('a pile nobody deleted is still added, next to the deleted one that stays gone', () => {
+      const { file, gone } = vanished();
+      const outlines = deletedKitPileOutlines(history(created(gone), deleted(gone.id)));
+      // the build finds a fourth pile
+      const c = convertKitPiles(build(0, 100, 200, 300), null, file, rebuilt(outlines));
+      expect(c.added.map((m) => m.origin?.pile)).toEqual(['P04']);
+      expect(kitPiles(withKitConversion(file, c))).toEqual(['P02', 'P03', 'P04']);
+      // a measurement lost with no delete in the journal is no deliberate deletion: it comes back
+      const lost = deletedKitPileOutlines(history(created(gone)));
+      expect(lost).toEqual([]);
+      const back = convertKitPiles(kit(), null, file, rebuilt(lost));
+      expect(back.added.map((m) => m.origin?.pile)).toEqual(['P01']);
+    });
+
+    it('a pile found again keeps its measurement and no pile is doubled', () => {
+      const { file, gone } = vanished();
+      const outlines = deletedKitPileOutlines(history(created(gone), deleted(gone.id)));
+      const ids = file.measurements.map((m) => m.id);
+      // found a little off its old place: the same piles
+      const c = convertKitPiles(build(1, 101, 201), null, file, rebuilt(outlines));
+      expect(c).toEqual({ added: [], converted: [], relinked: [], detached: [] });
+      const after = withKitConversion(file, c);
+      expect(after.measurements.map((m) => m.id)).toEqual(ids);
+      expect(kitPiles(after)).toEqual(['P02', 'P03']);
+    });
+
+    it('the deleted pile is known by its outline when the build renumbers the piles', () => {
+      const { file, gone } = vanished();
+      const outlines = deletedKitPileOutlines(history(created(gone), deleted(gone.id)));
+      // a new pile to the west takes P01: the deleted pile is now P02, the others P03 and P04
+      const c = convertKitPiles(build(-100, 0, 100, 200), null, file, rebuilt(outlines));
+      expect(c.added.map((m) => m.origin?.pile)).toEqual(['P01']);
+      expect(at(c.added, 0).points[0]?.[0]).toBe(900);
+      const after = withKitConversion(file, c);
+      expect(kitPiles(after)).toEqual(['P01', 'P03', 'P04']);
+      expect(after.kitPilesConverted).toEqual(['P01', 'P02', 'P03', 'P04']);
+    });
+
+    it('a deleted pile under a number not listed yet is listed, so opening does not add it', () => {
+      const start = empty();
+      const all = withKitConversion(start, convertKitPiles(kit(), null, start, opts(true)));
+      const gone = must(all.measurements.find((m) => m.origin?.pile === 'P03'));
+      const file = { ...all, measurements: all.measurements.filter((m) => m !== gone) };
+      const outlines = deletedKitPileOutlines(history(created(gone), deleted(gone.id)));
+      // a new pile to the west: the deleted pile (at 200) is now P04
+      const c = convertKitPiles(build(-100, 0, 100, 200), null, file, rebuilt(outlines));
+      expect(c.added.map((m) => m.origin?.pile)).toEqual(['P01']);
+      expect(c.converted).toEqual(['P04']);
+      const after = withKitConversion(file, c);
+      expect(kitPiles(after)).toEqual(['P01', 'P02', 'P03']);
+      // opening the project later (no build) leaves it gone
+      const opened = convertKitPiles(build(-100, 0, 100, 200), null, after, later());
+      expect(opened).toEqual({ added: [], converted: [], relinked: [], detached: [] });
+    });
+
+    it('the evidence is read after a build only: opening keeps its own rule', () => {
+      const start = empty({ kitPilesConverted: [] });
+      const outlines = [sq(0).map(([x, z]): [number, number] => [1000 + x, 2000 - z])];
+      const c = convertKitPiles(kit(), null, start, { ...later(), deletedOutlines: outlines });
+      expect(c.added.map((m) => m.origin?.pile)).toEqual(['P01', 'P02', 'P03']);
+    });
+
+    describe('deletedKitPileOutlines', () => {
+      const xy = (m: SurveyMeasurement) => m.points.map((p) => [p[0], p[1]]);
+
+      it('is the outline of each kit pile measurement deleted, whoever deleted it', () => {
+        const { gone } = vanished();
+        for (const how of ['hand', 'agent', 'external'] as const)
+          expect(deletedKitPileOutlines(history(created(gone), deleted(gone.id, { how })))).toEqual(
+            [xy(gone)],
+          );
+      });
+
+      it('a delete put back (the same measurement created again) is no deletion', () => {
+        const { gone } = vanished();
+        const entries = history(created(gone), deleted(gone.id), created(gone));
+        expect(deletedKitPileOutlines(entries)).toEqual([]);
+      });
+
+      it('the outline is the one the measurement had when it was deleted', () => {
+        const { gone } = vanished();
+        const points = gone.points.map((p): SitePoint => [p[0] + 40, p[1], p[2]]);
+        const moved = () =>
+          entry('measurement.patch', gone.id, {
+            changes: [{ field: 'points', before: gone.points, after: points }],
+          });
+        expect(deletedKitPileOutlines(history(created(gone), moved(), deleted(gone.id)))).toEqual([
+          points.map((p) => [p[0], p[1]]),
+        ]);
+      });
+
+      it('names nothing without the create entry, for a drawn measurement or a dropped link', () => {
+        const { gone } = vanished();
+        expect(deletedKitPileOutlines([])).toEqual([]);
+        expect(deletedKitPileOutlines(history(deleted(gone.id)))).toEqual([]);
+        const drawn: SurveyMeasurement = { ...gone, id: 'drawn' };
+        delete drawn.origin;
+        expect(deletedKitPileOutlines(history(created(drawn), deleted('drawn')))).toEqual([]);
+        // a build found the pile gone and dropped the link before the person deleted the rest
+        const drop = () =>
+          entry('measurement.patch', gone.id, {
+            changes: [{ field: 'origin', before: gone.origin }],
+          });
+        expect(deletedKitPileOutlines(history(created(gone), drop(), deleted(gone.id)))).toEqual(
+          [],
+        );
+      });
     });
   });
 });
