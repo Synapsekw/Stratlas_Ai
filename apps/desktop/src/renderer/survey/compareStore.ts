@@ -1022,6 +1022,14 @@ export function openCompareDialog(dialog: CompareDialog): void {
   set({ dialog });
 }
 
+// A typed tonnage belongs to the project it was typed in: closing the project, or opening another
+// one, forgets it (`loadCompare` skips the load of the project the store already names, so the
+// same project opened again would otherwise show it once more).
+workspace.subscribe((s, p) => {
+  if ((s.project?.id ?? null) === (p.project?.id ?? null)) return;
+  if (Object.keys(get().tonnes).length > 0) set({ tonnes: {} });
+});
+
 export function setTonnes(id: string, tonnes: number | null): void {
   const next = Object.fromEntries(Object.entries(get().tonnes).filter(([k]) => k !== id));
   if (tonnes !== null && Number.isFinite(tonnes)) next[id] = tonnes;

@@ -153,6 +153,19 @@ export function overlapShare(a: Ring2, b: Ring2): number {
   return Math.min(1, (n * dx * dy) / smaller);
 }
 
+/**
+ * The area two outlines have in common over the LARGER one's area (0 to 1): the share of both
+ * outlines the common area covers at least. An outline that only contains the other, or lies
+ * inside it, scores low, where `overlapShare` scores 1.
+ */
+export function overlapOfBoth(a: Ring2, b: Ring2): number {
+  const areaA = ringArea(a);
+  const areaB = ringArea(b);
+  const larger = Math.max(areaA, areaB);
+  if (!(larger > 0)) return 0;
+  return (overlapShare(a, b) * Math.min(areaA, areaB)) / larger;
+}
+
 /** Whether a conversion changes the file (a measurement added, relinked or detached, an id). */
 export const changesFile = (c: KitConversion): boolean =>
   c.added.length > 0 || c.converted.length > 0 || c.relinked.length > 0 || c.detached.length > 0;
@@ -236,7 +249,7 @@ export interface KitConversionOptions {
   /**
    * After a build only (`rebuilt`): the outlines of the kit-pile measurements a person deleted
    * (`deletedKitPileOutlines`, from the journal, and those deleted but not saved yet). A pile of
-   * the build no measurement holds that overlaps one (`SAME_PILE_SHARE`) is not added: a pile a
+   * the build no measurement holds that overlaps one (`SAME_PILE_SHARE` of both outlines) is not added: a pile a
    * person deleted stays gone. By outline, as a build numbers its piles afresh. Absent or empty
    * (no journal, a failed read), such a pile is added again, as before.
    */
@@ -320,7 +333,7 @@ export function convertKitPiles(
     // listed as converted, so opening the project does not take it for a pile never converted
     if (
       opts.rebuilt &&
-      opts.deletedOutlines?.some((d) => overlapShare(ring, d) >= SAME_PILE_SHARE)
+      opts.deletedOutlines?.some((d) => overlapOfBoth(ring, d) >= SAME_PILE_SHARE)
     ) {
       if (!done.has(pile.id)) converted.push(pile.id);
       done.add(pile.id);

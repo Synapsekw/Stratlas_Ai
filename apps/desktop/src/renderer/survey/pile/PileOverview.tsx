@@ -4,6 +4,7 @@
  * tonnes, weighed tonnage). Nothing else from the volume card shows by default.
  */
 import { formatQuantity } from '@aio/geo';
+import { baseLevelM } from '@aio/project/export';
 import { sideOptions } from '@aio/survey';
 import { useT } from '@aio/ui';
 import { useMemo, type ReactElement } from 'react';
@@ -30,12 +31,20 @@ export function PileOverview({ data }: { data: PileData }): ReactElement {
   const item = stored ? m.items.find((it) => it.id === stored.item) : undefined;
   const v = (x: number) => formatQuantity(x, 'volume', units, settings.precision, locale);
   const d = (x: number) => formatQuantity(x, 'distance', units, settings.precision, locale);
+  // a base that is one level (Fixed level, Lowest point, Average edge level) reads with the level
+  // the figure was computed on, beside its name
+  const baseWords = (): string[] => {
+    if (!item || !stored) return [];
+    const name = baseName(item.from, options, t);
+    const z = baseLevelM(item.from, stored.fromLabel);
+    return [z === null ? name : t('pile.baseAtLevel', { base: name, level: d(z) })];
+  };
   // a figure carried from an earlier version has no method of its own (its status line says
   // "From an earlier version" with the kit's base)
   const method =
     stored && stored.carried === undefined
       ? [
-          ...(item ? [baseName(item.from, options, t)] : []),
+          ...baseWords(),
           ...(stored.usedDeadband ? [`${t('vol.ignoreSmaller')} ${d(stored.deadbandM)}`] : []),
           stored.cellM > 0 ? t('vol.gridCell', { cell: d(stored.cellM) }) : t('vol.highPrecision'),
         ].join(' · ')

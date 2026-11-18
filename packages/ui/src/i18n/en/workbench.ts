@@ -192,6 +192,9 @@ export const enWorkbench = {
   'measure.undo.deletedOne': '{name} deleted',
   'measure.undo.undo': 'Undo',
   'measure.undo.dismiss': 'Dismiss',
+  // Detect piles left out piles whose measurement the person deleted
+  'measure.kit.deletedNotAdded_one': '{count} pile you deleted was not added again',
+  'measure.kit.deletedNotAdded_other': '{count} piles you deleted were not added again',
 
   // Batch G review fixes: the benches' remaining strings (Measure Site data and Drawing aids,
   // the Annotate map tools)

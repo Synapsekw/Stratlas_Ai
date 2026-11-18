@@ -282,11 +282,15 @@ describe('PilePanel', () => {
     expect(calls.select).toHaveBeenLastCalledWith(['01'], '01');
   });
 
-  it('opened from 3D, the Map or the sidebar it has no link back: there is no list behind it', () => {
+  it('opened from 3D, the Map or the sidebar it says "Back to inventory" too, which closes the pile and shows Project > Volumes', () => {
+    // no note of an open from the inventory: the route every other open leaves
     render('02', null);
-    expect(q('[data-testid="pile-back"]')).toBeNull();
-    // the arrows still step through every pile
+    expect(text('[data-testid="pile-back"]')).toBe('Back to inventory');
+    // the arrows still step through every pile, in the file's order
     expect(text('[data-testid="pile-position"]')).toBe('Pile 2 of 3');
+    click(q('[data-testid="pile-back"]'));
+    expect(calls.select).toHaveBeenLastCalledWith([], null);
+    expect(calls.showBench).toHaveBeenLastCalledWith('volumes');
   });
 
   it('opened from the inventory it says "Back to inventory", which returns to Project > Volumes', () => {
@@ -307,7 +311,7 @@ describe('PilePanel', () => {
     expect(pileOrigin.getState().id).toBeNull();
   });
 
-  it('a step with the arrows keeps the way back; a pile opened another way does not get it', () => {
+  it("a step with the arrows keeps the inventory's order; a pile opened another way drops it and keeps the link", () => {
     openedFromInventory('02', ['01', '02', '03']);
     s.picked = '02';
     render('02', null);
@@ -319,7 +323,7 @@ describe('PilePanel', () => {
     // another pile is clicked in 3D: no note for it, and the old one is dropped
     s.picked = '01';
     render('01', null);
-    expect(q('[data-testid="pile-back"]')).toBeNull();
+    expect(text('[data-testid="pile-back"]')).toBe('Back to inventory');
     expect(pileOrigin.getState().id).toBeNull();
   });
 
@@ -395,6 +399,31 @@ describe('PilePanel', () => {
     render();
     expect(text('.pp-method')).toContain('Fixed level');
     expect(text('.pp-method')).not.toContain('Reference level');
+  });
+
+  it('keeps the level beside the name of a base that is one level', () => {
+    const on = (from: SurveyMeasurement['items'][number]['from'], fromLabel: string) => {
+      s.measure.file.measurements = [
+        pile('02', {
+          items: [{ id: 'a', from, to: { kind: 'current' }, useDeadband: false }],
+          results: [result(100, 'c2', { fromLabel })],
+        }),
+      ];
+      render();
+      return text('.pp-method');
+    };
+    // the level the figure was computed on, as the engine stored it, in the panel's units
+    expect(on({ kind: 'reference', mode: 'level', levelM: 12.5 }, 'Level 12.500 m')).toMatch(
+      /Fixed level \(12\.50* m\)/,
+    );
+    expect(
+      on({ kind: 'reference', mode: 'perimeter-min' }, 'Lowest point on the perimeter (38.250 m)'),
+    ).toMatch(/Lowest point \(38\.250* m\)/);
+    expect(on({ kind: 'perimeter-mean' }, 'Mean perimeter level (39.750 m)')).toMatch(
+      /Average edge level \(39\.750* m\)/,
+    );
+    // a base that is no single level has none
+    expect(on({ kind: 'smart' }, 'Triangulated toe')).not.toMatch(/Toe surface \(/);
   });
 
   it('More holds heat map, swell and weighed tonnage', () => {

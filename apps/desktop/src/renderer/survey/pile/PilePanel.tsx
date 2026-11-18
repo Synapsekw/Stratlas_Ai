@@ -174,7 +174,7 @@ export function PilePanel({
   const prefix = `pile-${useId().replace(/[^\w-]/g, '')}`;
   const m = useMeasure((s) => s.file.measurements.find((x) => x.id === id) ?? null);
   const file = useMeasure((s) => s.file);
-  // opened from the inventory (Project > Volumes): its link back, and its order for the arrows
+  // opened from the inventory (Project > Volumes): its order for the arrows
   const fromInventory = useStore(pileOrigin, (s) => s.id === id);
   const listed = useStore(pileOrigin, (s) => (s.id === id ? s.order : null));
   // the inventory's order: the view's (its folder) when it says, else every pile
@@ -182,8 +182,8 @@ export function PilePanel({
     () => order ?? listed ?? inventoryPiles(file.measurements).map((x) => x.id),
     [order, listed, file],
   );
-  // closed any other way (Esc, a click on empty ground, something else picked): the link back
-  // goes with it. A step with the arrows has moved the note on already, and a change of tab
+  // closed any other way (Esc, a click on empty ground, something else picked): the note of the
+  // inventory's order goes with it. A step with the arrows has moved the note on already, and a change of tab
   // leaves the pile open.
   useEffect(
     () => () => {
@@ -238,7 +238,7 @@ export function PilePanel({
           if (fromInventory) openedFromInventory(next, listed);
           openHere(next);
         }}
-        {...(fromInventory ? { onBack: backToInventory } : {})}
+        onBack={backToInventory}
       />
       {editing && (
         <div className="pp-editing" role="status" data-testid="pile-editing">

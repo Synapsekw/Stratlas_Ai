@@ -16,7 +16,8 @@ vi.mock('../../shell', () => ({
   useShell: () => null,
   shell: { getState: () => shellState },
 }));
-vi.mock('../../issueCard/state', () => ({ isIssueEditing: () => false }));
+const issue = vi.hoisted(() => ({ editing: false }));
+vi.mock('../../issueCard/state', () => ({ isIssueEditing: () => issue.editing }));
 
 const m = (
   id: string,
@@ -183,7 +184,40 @@ describe('openMeasurement (a sidebar row)', () => {
   });
 });
 
-describe('the link back to the inventory', () => {
+describe('a pile opened while an issue is being edited', () => {
+  afterEach(() => {
+    issue.editing = false;
+  });
+
+  it('is selected, and Selection waits behind the issue with its "Show it" note', () => {
+    bench.getState().show('volumes');
+    issue.editing = true;
+    openPile('pile1', bench);
+    // the pile is the open one, the panel in front stays (the issue is not covered)
+    expect(measureStore.getState().focus).toBe('pile1');
+    expect(bench.getState().front).toBe('volumes');
+    // and the sidebar says where it waits
+    expect(bench.getState().waiting).toEqual(['selection']);
+    expect(bench.getState().attention).toBe('selection');
+    // opened again: noted once
+    openPile('pile1', bench);
+    expect(bench.getState().waiting).toEqual(['selection']);
+    // "Show it" brings the pile's panel forward and the note goes
+    bench.getState().show('selection');
+    expect(bench.getState().front).toBe('selection');
+    expect(bench.getState().attention).toBeNull();
+  });
+
+  it('with Selection in front already there is nothing to wait for', () => {
+    bench.getState().show('selection');
+    issue.editing = true;
+    openPile('pile1', bench);
+    expect(bench.getState().waiting).toEqual([]);
+    expect(bench.getState().attention).toBeNull();
+  });
+});
+
+describe("the inventory's order for the panel's arrows", () => {
   afterEach(() => {
     pileOrigin.setState({ id: null, order: null });
   });

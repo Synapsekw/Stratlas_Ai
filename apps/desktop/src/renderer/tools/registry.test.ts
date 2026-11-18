@@ -140,12 +140,13 @@ describe('one tool registry', () => {
 });
 
 describe('Tools > Volumes after the finalization (18 Nov 2026)', () => {
-  const ids = TOOLS.filter((d) => d.group === 'volumes').map((d) => d.id);
+  const ids = modeTools('volumes').map((d) => d.id);
 
   it('keeps only what acts on the view: Draw volume and Swipe', () => {
     expect(ids).toEqual(['volumes.draw', 'volumes.swipe']);
-    // the Table tile (the list is Project > Volumes) and the kit section line are gone
-    expect(TOOLS.map((d) => d.id)).not.toContain('volumes.table');
+    // the Table tile (the list is Project > Volumes) and the kit section line are gone; the
+    // palette alone keeps "Open the volumes table" (`registry.volumesTable.test.ts`)
+    expect(TOOLS.find((d) => d.id === 'volumes.table')?.paletteOnly).toBe(true);
     expect(TOOLS.map((d) => d.id)).not.toContain('volumes.section');
   });
 

@@ -29,8 +29,10 @@ export interface KitPileSelection {
 }
 
 /**
- * Open a pile: select it and bring Selection forward so its panel shows (unless an issue is being
- * edited, as the Measure tab waits then). With the sidebar folded the workbench drawer comes
+ * Open a pile: select it and bring Selection forward so its panel shows. While an issue is being
+ * edited the panel in front stays, as the Measure tab waits then: Selection is noted as waiting,
+ * and the sidebar says so with its "Show it" note (`ShowIt`), which brings the pile's panel
+ * forward. With the sidebar folded the workbench drawer comes
  * out with it, and a maximised agent steps back (`showBench`); an open sidebar only changes tab.
  * The pick is noted first so the Measure tab does not follow it.
  *
@@ -46,9 +48,9 @@ export interface KitPileSelection {
  * a list, the map or the panel's arrows always, after a click in 3D only when the pile is not
  * already mostly in view (`fly`).
  *
- * Every open through here ends an earlier visit from the inventory: its "Back to inventory" link
- * shows only while the pile's latest open came from there. The inventory notes its own open
- * after this call (`openedFromInventory`), and the panel's arrows do not come through here.
+ * Every open through here ends an earlier visit from the inventory: the panel's arrows follow the
+ * inventory's order only while the pile's latest open came from there. The inventory notes its
+ * own open after this call (`openedFromInventory`), and the arrows do not come through here.
  */
 export function openPile(
   id: string,
@@ -60,6 +62,13 @@ export function openPile(
   pickInVolumesView(id);
   select([id], id);
   if (!isIssueEditing()) showBench('selection', bench);
+  else if (bench.getState().front !== 'selection')
+    bench.setState((s) => {
+      const waiting = s.waiting.includes('selection')
+        ? s.waiting
+        : [...s.waiting, 'selection' as const];
+      return { waiting, attention: waiting[0] ?? null };
+    });
   const origin = measureStore.getState().file.measurements.find((x) => x.id === id)?.origin;
   if (origin?.kind === 'kit-pile' && vol.getState().selected !== origin.pile)
     vol.getState().select(origin.pile, { fly: false });

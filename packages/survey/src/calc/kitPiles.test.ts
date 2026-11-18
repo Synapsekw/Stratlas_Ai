@@ -26,6 +26,7 @@ import {
   needsHeightRepair,
   repairKitHeights,
   openWithKitPiles,
+  overlapOfBoth,
   overlapShare,
   withKitConversion,
 } from './kitPiles';
@@ -413,6 +414,14 @@ describe('overlapShare', () => {
     expect(overlapShare(sq(0), sq(2, 2, 4))).toBeCloseTo(1, 2);
     expect(overlapShare(sq(0), sq(20))).toBe(0);
     expect(overlapShare(sq(0), [])).toBe(0);
+  });
+  it('overlapOfBoth is the intersection over the larger area: containment is not sameness', () => {
+    expect(overlapOfBoth(sq(0), sq(0))).toBeCloseTo(1, 2);
+    expect(overlapOfBoth(sq(0), sq(5))).toBeCloseTo(0.5, 1);
+    expect(overlapOfBoth(sq(0), sq(2, 2, 4))).toBeCloseTo(0.16, 2);
+    expect(overlapOfBoth(sq(2, 2, 4), sq(0))).toBeCloseTo(0.16, 2);
+    expect(overlapOfBoth(sq(0), sq(20))).toBe(0);
+    expect(overlapOfBoth(sq(0), [])).toBe(0);
   });
 });
 
@@ -1108,6 +1117,29 @@ describe('a converted kit pile whose measurement vanished (the journal decides)'
       const after = withKitConversion(file, c);
       expect(after.measurements.map((m) => m.id)).toEqual(ids);
       expect(kitPiles(after)).toEqual(['P02', 'P03']);
+    });
+
+    it('a small deleted outline does not keep away a larger pile that contains it', () => {
+      const { file } = vanished();
+      // a deleted outline of 4 m by 4 m inside the pile the build finds at x 0 (10 m by 10 m)
+      const small = [sq(3, 4).map(([x, z]): [number, number] => [1000 + x, 2000 - z])];
+      const c = convertKitPiles(kit(), null, file, rebuilt(small));
+      expect(c.added.map((m) => m.origin?.pile)).toEqual(['P01']);
+    });
+
+    it('a large deleted outline does not keep away a smaller pile it contains', () => {
+      const { file } = vanished();
+      // a deleted outline of 30 m by 30 m around the pile the build finds at x 0 (10 m by 10 m)
+      const large = [
+        [
+          [990, 2010],
+          [1020, 2010],
+          [1020, 1980],
+          [990, 1980],
+        ] satisfies [number, number][],
+      ];
+      const c = convertKitPiles(kit(), null, file, rebuilt(large));
+      expect(c.added.map((m) => m.origin?.pile)).toEqual(['P01']);
     });
 
     it('the deleted pile is known by its outline when the build renumbers the piles', () => {

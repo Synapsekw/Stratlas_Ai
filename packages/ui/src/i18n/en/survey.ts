@@ -243,6 +243,8 @@ export const enSurvey = {
   'pile.tab.profile': 'Profile',
   'pile.tab.history': 'History',
   'pile.more': 'More',
+  // a base that is one level, with the level the figure was computed on: "Lowest point (38.250 m)"
+  'pile.baseAtLevel': '{base} ({level})',
   'pile.shadeVs': 'Shade cut & fill vs',
   'pile.lineAxis': 'Line: long axis · {length}',
   'pile.addDate': '+ Date or design',

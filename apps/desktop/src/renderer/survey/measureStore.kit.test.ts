@@ -8,6 +8,7 @@ import {
   type VolumesFile,
 } from '@aio/schema';
 import { workspace } from '@aio/workspace';
+import { clearToasts, toastQueue } from '@aio/ui';
 import { pileMaterial } from '@aio/survey';
 import { pileFigures } from '../workspace/pileFigures';
 import type * as DateSurfaces from './dateSurfaces';
@@ -245,6 +246,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', dsmFetch);
   forgetMeasureWrites();
   forgetKitDsms();
+  clearToasts();
   measureStore.setState({ autosave: false });
 });
 
@@ -939,6 +941,59 @@ describe('after a volumetric job', () => {
     expect(io.saved.measurements.map((m) => m.id)).toEqual([id]);
     expect(io.journalReads).toHaveLength(0);
     expect(isDirty(measureStore.getState())).toBe(true);
+  });
+
+  /** The notice Detect piles leaves when it skipped piles the person deleted. */
+  const skippedNotice = () => toastQueue().find((x) => x.id === 'kit-piles-skipped');
+
+  it('says how many piles the person deleted were not added again', async () => {
+    const two = () =>
+      volumes([
+        pile('P01', { e1: ep('c1', 100), e2: ep('c2', 50) }),
+        pile('P02', { e2: far(ep('c2', 7)) }),
+      ]);
+    io.volumes = two();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    const [a, b] = kitMeasurements();
+    if (!a || !b) throw new Error('not converted');
+    // nothing deleted: the build says nothing
+    await convertAfterJob('p1');
+    expect(skippedNotice()).toBeUndefined();
+    // one pile deleted and saved: the journal knows it
+    deleteMeasurements([a.id]);
+    expect(await saveMeasurements()).toBe(true);
+    io.journal = {
+      pages: [
+        journalOf({ kind: 'measurement.create', m: a }, { kind: 'measurement.delete', m: a }),
+      ],
+    };
+    await convertAfterJob('p1');
+    expect(kitMeasurements().map((m) => m.id)).toEqual([b.id]);
+    expect(skippedNotice()).toMatchObject({
+      message: '1 pile you deleted was not added again',
+      testId: 'kit-piles-skipped',
+    });
+    // the other deleted too, not saved yet: both are counted, and nothing is added
+    deleteMeasurements([b.id]);
+    const writes = io.writes;
+    await convertAfterJob('p1');
+    expect(kitMeasurements()).toEqual([]);
+    expect(io.writes).toBe(writes);
+    expect(skippedNotice()?.message).toBe('2 piles you deleted were not added again');
+    expect(toastQueue().filter((x) => x.id === 'kit-piles-skipped')).toHaveLength(1);
+  });
+
+  it('takes the notice back when a later build skips no deleted pile', async () => {
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    const id = kitMeasurements()[0]?.id ?? '';
+    deleteMeasurements([id]);
+    await convertAfterJob('p1');
+    expect(skippedNotice()?.message).toBe('1 pile you deleted was not added again');
+    // the deletion undone by a revert to the saved file: the pile has its measurement again
+    measureStore.setState({ file: io.saved });
+    await convertAfterJob('p1');
+    expect(skippedNotice()).toBeUndefined();
   });
 
   it('a pile found again keeps its measurement: nothing is added and the journal is not read', async () => {

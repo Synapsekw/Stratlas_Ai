@@ -34,6 +34,7 @@ const {
   computeSpread,
   engineClient,
   followMeasurements,
+  loadCompare,
   hasCarried,
   isStale,
   keepsCarried,
@@ -45,6 +46,7 @@ const {
   scheduleCheck,
   seriesStale,
   setEnginePort,
+  setTonnes,
   spreadItem,
   setEngineStarter,
 } = await import('./compareStore');
@@ -429,6 +431,55 @@ describe('a live run while editing a lined-up date', () => {
     expect(compareStore.getState().computed.m1?.ringKey).toContain('302018');
     expect(compareStore.getState().computed.m1?.ringKey).not.toContain('302020');
     off();
+  });
+});
+
+describe('a weighed tonnage typed into the weight calculator', () => {
+  const project = (id: string): { id: string; root: string; manifest: ProjectManifest } => ({
+    id,
+    root: `E:/${id}`,
+    manifest: {
+      schema: 'aio.project/1',
+      id,
+      name: id,
+      crs: { epsg: 32640 },
+      origin: [0, 0, 0],
+      captures: [{ id: 'c1', label: 'One', date: '2026-01-01' }],
+      layers: [],
+      severityModels: [],
+      classCatalogues: [],
+    },
+  });
+
+  afterEach(() => {
+    workspace.getState().closeProject();
+    compareStore.setState({ tonnes: {} });
+  });
+
+  it('is held by measurement id while the project stays open', () => {
+    workspace.getState().openProject(project('p1'));
+    setTonnes('m1', 4321.5);
+    expect(compareStore.getState().tonnes).toEqual({ m1: 4321.5 });
+  });
+
+  it('is gone once the project is closed, and stays gone when the same project opens again', async () => {
+    workspace.getState().openProject(project('p1'));
+    setTonnes('m1', 4321.5);
+    workspace.getState().closeProject();
+    expect(compareStore.getState().tonnes).toEqual({});
+    // the same project again: the store still names it, and its load is skipped
+    workspace.getState().openProject(project('p1'));
+    await loadCompare(project('p1'));
+    expect(compareStore.getState().projectId).toBe('p1');
+    expect(compareStore.getState().tonnes).toEqual({});
+  });
+
+  it('never shows in another project that has a measurement of the same id', () => {
+    workspace.getState().openProject(project('p1'));
+    setTonnes('m1', 4321.5);
+    // switched without a close in between, before the other project's load has run
+    workspace.getState().openProject(project('p2'));
+    expect(compareStore.getState().tonnes).toEqual({});
   });
 });
 

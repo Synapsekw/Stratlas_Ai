@@ -74,7 +74,7 @@ import {
   type SnapSettings,
   type SnapSource,
 } from '@aio/survey';
-import { t } from '@aio/ui';
+import { dismissToast, t, toast } from '@aio/ui';
 import { shiftKey, workspace } from '@aio/workspace';
 import { createStore, useStore } from 'zustand';
 import { authorName } from '../author';
@@ -685,6 +685,9 @@ function unsavedKitDeletions(s: MeasureState): KitOutline[] {
   );
 }
 
+/** The toast that says a build left out piles the person deleted (one at a time, by this id). */
+const KIT_SKIPPED_TOAST = 'kit-piles-skipped';
+
 /**
  * After a volumetric build: piles the build added become volume measurements without a carried
  * figure (the engine computes theirs on demand, so nothing old is silently replaced). Written at
@@ -692,7 +695,9 @@ function unsavedKitDeletions(s: MeasureState): KitOutline[] {
  * unsaved. A pile whose measurement a person deleted is not added again: when the build would add
  * a pile, the journal is read for the outlines of deleted kit-pile measurements
  * (`deletedKitPileOutlines`), next to those deleted but not saved yet. Without the journal (off, a
- * failed read) such a pile is added again.
+ * failed read) such a pile is added again. The person is told how many piles were left out that
+ * way (a toast that stays until dismissed, in front of the Undo of the deletion): the build would
+ * else end with nothing new and no word why.
  */
 export async function convertAfterJob(projectId: string): Promise<void> {
   const s0 = get();
@@ -717,12 +722,14 @@ export async function convertAfterJob(projectId: string): Promise<void> {
     return;
   if (!r.ok || !r.value.ok || !r.value.volumes) return;
   const { volumes, edits } = r.value;
-  const convert = (state: MeasureState, deletedOutlines: readonly KitOutline[]) =>
+  const convertWith = (state: MeasureState, deletedOutlines: readonly KitOutline[]) =>
     kitConversion(state.file, volumes, edits, false, {
       ...kitOptions(manifest.origin, state.settings.materials, heightAt),
       rebuilt: true,
-      deletedOutlines: [...unsavedKitDeletions(state), ...deletedOutlines],
+      deletedOutlines,
     });
+  const convert = (state: MeasureState, deletedOutlines: readonly KitOutline[]) =>
+    convertWith(state, [...unsavedKitDeletions(state), ...deletedOutlines]);
   let s = s1;
   let c = convert(s, []);
   if (c.added.length > 0) {
@@ -734,6 +741,17 @@ export async function convertAfterJob(projectId: string): Promise<void> {
       return;
     c = convert(s, entries ? deletedKitPileOutlines(entries) : []);
   }
+  // the piles left out because a person deleted them: those the build adds with no deletion known
+  const skipped = convertWith(s, []).added.length - c.added.length;
+  if (skipped > 0)
+    toast(t('measure.kit.deletedNotAdded', { count: skipped }), {
+      id: KIT_SKIPPED_TOAST,
+      testId: KIT_SKIPPED_TOAST,
+      closeTestId: `${KIT_SKIPPED_TOAST}-dismiss`,
+      ttlMs: 0,
+      actionable: true,
+    });
+  else dismissToast(KIT_SKIPPED_TOAST);
   if (!changesFile(c) && s.file.kitPilesConverted !== undefined) return;
   const baseline = withKitConversion(JSON.parse(s.savedText) as MeasurementsFile, c);
   const file = withKitConversion(s.file, c);

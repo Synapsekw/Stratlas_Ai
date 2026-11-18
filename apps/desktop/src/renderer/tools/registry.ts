@@ -214,6 +214,8 @@ export interface ToolDef {
   saves?: boolean;
   /** Starting it opens its panel in the right sidebar (the island goes back to rest). */
   opens?: true;
+  /** Listed by the command palette only: no tile on the island, no row in the Tools tab. */
+  paletteOnly?: true;
   available: (ctx: ToolCtx) => Availability;
   start: (ctx: ToolCtx) => void;
   /** Turns it off again, for a tool that stays on (a tile pressed twice). */
@@ -586,6 +588,19 @@ const VOLUME_TOOLS: readonly ToolDef[] = [
     },
     useOn: () => useVolumetric((s) => s.swipe),
   },
+  // the palette's way to the list (Project > Volumes); the island's Volumes tab opens it too
+  {
+    id: 'volumes.table',
+    opens: true,
+    paletteOnly: true,
+    group: 'volumes',
+    labelKey: 'toolReg.volumesTableName',
+    icon: 'pile',
+    available: (c) => needs(c.data.volumes, 'toolReg.reason.needsPiles'),
+    start: () => {
+      showBench('volumes');
+    },
+  },
 ];
 
 // --- Point cloud
@@ -798,7 +813,10 @@ export function toolsFor(
   const groups = [...lead, ...TOOL_GROUPS.filter((g) => !lead.includes(g))];
   return groups
     .filter((g) => groupShown(g, ctx.data))
-    .map((group) => ({ group, tools: TOOLS.filter((d) => d.group === group) }));
+    .map((group) => ({
+      group,
+      tools: TOOLS.filter((d) => d.group === group && !d.paletteOnly),
+    }));
 }
 
 /** The tool's full name key as it reads now (on or off). */
@@ -947,7 +965,7 @@ export function islandModes(ctx: ToolCtx): IslandModeDef[] {
 export function modeTools(mode: IslandMode): ToolDef[] {
   const def = MODE_DEFS[mode];
   if (def.tools) return def.tools.map(toolById).filter((d): d is ToolDef => d !== undefined);
-  return TOOLS.filter((d) => d.group === def.group);
+  return TOOLS.filter((d) => d.group === def.group && !d.paletteOnly);
 }
 
 /** How many tools a mode's slim row shows. */

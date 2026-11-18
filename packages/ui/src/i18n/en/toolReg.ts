@@ -21,4 +21,7 @@ export const enToolReg = {
   'toolReg.reason.needsStage': 'Open the scene to compare dates',
   'toolReg.reason.road': 'A road shows its chainage instead',
   'toolReg.reason.comparing': 'Leave the comparison beside the stage tools',
+  // the palette's entry for the full table, in Project > Volumes
+  'toolReg.reason.needsPiles': 'Needs a pile or a volume measurement',
+  'toolReg.volumesTableName': 'Open the volumes table',
 } as const;

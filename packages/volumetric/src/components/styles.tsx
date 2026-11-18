@@ -36,10 +36,6 @@ const css = `
 .vol-swipe-lbl { position: absolute; top: 56px; font: 600 var(--t-11)/1 var(--f-ui); letter-spacing: .07em; text-transform: uppercase; color: var(--ov); background: var(--scrim); padding: 5px 8px; border-radius: var(--r-4); pointer-events: none; }
 .vol-swipe-lbl.vol-l { left: 12px; }
 .vol-swipe-lbl.vol-r { right: 12px; }
-/* Cut / fill's From and To surveys (the desktop's Volume tools) */
-.vol-pair { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--sp-2) var(--sp-4); }
-.vol-pair-lbl { font-size: var(--t-11); color: var(--fg-3); }
-.vol-pair-src { grid-column: 1 / -1; margin: 0; font-size: var(--t-11); color: var(--fg-3); }
 `;
 
 /** Renders the stylesheet once per document (React 19 hoists and dedupes by href). */

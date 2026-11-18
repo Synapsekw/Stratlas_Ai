@@ -531,7 +531,7 @@ const sideWords = (
  * engine wrote into its stored label ("Level 12.500 m", "... (38.000 m)"); a fixed level's own
  * when the label has none. Null for every other base.
  */
-function baseLevelM(ref: SurfaceRef, stored: string): number | null {
+export function baseLevelM(ref: SurfaceRef, stored: string): number | null {
   if (ref.kind !== 'reference' && ref.kind !== 'perimeter-mean') return null;
   const found = /(-?\d+(?:\.\d+)?) m\)?$/.exec(stored)?.[1];
   if (found !== undefined) return Number(found);
