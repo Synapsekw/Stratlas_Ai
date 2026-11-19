@@ -2,6 +2,7 @@ import type { AioBridge, ImportItem, IpcEvent, JobRecord } from '@aio/schema';
 import { t, toast } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { builder } from '../builder/state';
+import { followImport } from './followImport';
 
 type LaneNotice = IpcEvent<'builder:inspectorQueue'>;
 type ChamberNotice = Exclude<LaneNotice, { state: 'tidied' }>;
@@ -77,15 +78,21 @@ export function onLaneNotice(n: LaneNotice): void {
   const project = workspace.getState().project;
   if (!project || folderKey(project.root) !== folderKey(n.project)) return;
   if (n.state === 'tidied') {
-    void reloadSpaces(project.id).catch((e: unknown) => {
-      console.warn('The spaces were not read again after a tidy', e);
-    });
+    void reloadSpaces(project.id)
+      // the empty space of a chamber that will not run is gone: the line may have ended with it
+      .then(() => {
+        followImport();
+      })
+      .catch((e: unknown) => {
+        console.warn('The spaces were not read again after a tidy', e);
+      });
     return;
   }
   const result = builder.getState().importResult;
-  if (!result) return;
-  const items = applyLaneNotice(result.items, n);
-  if (items) builder.setState({ importResult: { ...result, items } });
+  const items = result ? applyLaneNotice(result.items, n) : null;
+  if (result && items) builder.setState({ importResult: { ...result, items } });
+  // a chamber that left the line or could not start has no job to end: the line may end here
+  if (n.state !== 'started') followImport();
 }
 
 /** A chamber's row as its job goes: converting (with progress), then imported, failed, cancelled. */

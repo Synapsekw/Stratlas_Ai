@@ -61,7 +61,7 @@ import {
   mergeDiskIssues,
   sameFolder,
 } from './jobs';
-import { followImport, noteImports } from './flyability/followImport';
+import { connectFollowImport, followImport, importFinished } from './flyability/followImport';
 import { compareStore, engineClient, isStale, seriesStale } from './survey/compareStore';
 import { convertAfterJob, knownTemplates, measureStore } from './survey/measureStore';
 import { bridge, jobs, shell, useShell } from './shell';
@@ -574,23 +574,19 @@ export function App() {
       if (!project || !finishedManifestJob(prev.jobs, s.jobs, project.root)) return;
       // the road builder also rewrites issues.json and road.json: reopen the project whole
       const whole = finishedProjectJob(prev.jobs, s.jobs, project.root);
+      const imported = importFinished(prev.jobs, s.jobs, project.root);
       void bridge.call('project:open', { path: project.root }).then((r) => {
         const ws = workspace.getState();
         if (!r.ok || !r.value.ok || ws.project?.id !== project.id) return;
         if (whole) ws.openProject({ ...project, manifest: r.value.manifest }, r.value.issues);
         else ws.replaceManifest(r.value.manifest);
-        // an Inspector import filled a space: that space is the one to look at now
-        followImport(jobs.getState().jobs);
+        // an Inspector import filled a space: that space is the one to look at now. Only for
+        // such a job: a reload for another pipeline never switches the space
+        if (imported) followImport();
       });
     });
-    // the Inspector import that finishes is remembered for the reload above; one that ends another
-    // way reads nothing again, but may be the last of a line whose earlier chamber is still to show
-    const stopFollowImport = jobs.subscribe((s, prev) => {
-      const project = workspace.getState().project;
-      if (!project) return;
-      const ended = noteImports(prev.jobs, s.jobs, project.root);
-      if (ended) followImport(s.jobs, ended === 'cancelled');
-    });
+    // an Inspector import that ends, or a project that changes, is watched for that follow
+    const stopFollowImport = connectFollowImport(jobs);
     // a change run wrote its change set: the Changes panel reads the project's sets again
     const stopChangeReload = jobs.subscribe((s, prev) => {
       const project = workspace.getState().project;
