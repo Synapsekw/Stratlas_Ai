@@ -65,6 +65,7 @@ export const enFlyability = {
   'fly.space.all': 'All spaces',
   'fly.space.crumb': 'Space: {name}. Choose a space.',
   'fly.space.menu': 'Space',
+  'fly.space.followed': 'Imported: now showing {name}. Switch spaces in the title bar.',
   'fly.map.local': 'No map: this space has its own frame',
   'fly.move.action': 'Move point',
   'fly.move.prompt': 'Click the point cloud where the finding is. Esc cancels.',

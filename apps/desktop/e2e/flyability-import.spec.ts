@@ -349,7 +349,18 @@ test.describe('Flyability Inspector import', () => {
     const second = await cloneAsSecond(first.root, join(scratch, 'two'));
     await openTinyProject(win);
     await importFolder(app, win, first.root);
-    await importFolder(app, win, second);
+    // one space so far: nothing to switch, so no notice
+    await expect(win.getByTestId('fly-import-space')).toHaveCount(0);
+    await answerFolder(app, second);
+    await openPicker(win);
+    await win.getByTestId('inspector-import').click();
+    await expect(win.getByTestId('inspector-list')).toBeHidden();
+    // the second import ends: a notice says its space is the one on screen now
+    await expect(win.getByTestId('fly-import-space')).toContainText(
+      /Imported: now showing .+\. Switch spaces in the title bar\./,
+      { timeout: 240_000 },
+    );
+    await jobsSettled(win);
     await expect
       .poll(async () => (await manifestOf(dataRoot.projectDir)).spaces?.length, {
         timeout: 120_000,
@@ -360,6 +371,20 @@ test.describe('Flyability Inspector import', () => {
     const cloudsOf = (id: string) =>
       m.layers.filter((l) => l.kind === 'pointcloud' && l.space === id).map((l) => l.id);
     for (const s of spaces) expect(cloudsOf(s.id).length).toBeGreaterThan(0);
+
+    // the second import shows by itself, no click on the crumb: the crumb reads its space and
+    // the Layers column lists its clouds, not the first space's
+    const fresh = spaces.find((s) => s.source?.inspectionId !== first.inspection_id);
+    const earlier = spaces.find((s) => s.source?.inspectionId === first.inspection_id);
+    if (!fresh || !earlier) throw new Error('the two imports made no two spaces');
+    await expect(win.getByTestId('crumb-space')).toContainText(fresh.name, { timeout: 30_000 });
+    await openCloudGroup(win);
+    for (const id of cloudsOf(fresh.id)) {
+      await expect(win.getByTestId(`tree-row-${id}`)).toBeVisible();
+    }
+    for (const id of cloudsOf(earlier.id)) {
+      await expect(win.getByTestId(`tree-row-${id}`)).toHaveCount(0);
+    }
 
     // two spaces: the crumb is there, and the Layers column follows the space picked
     await expect(win.getByTestId('crumb-space')).toBeVisible();
@@ -432,7 +457,8 @@ test.describe('Flyability Inspector import', () => {
     const m = await manifestOf(dataRoot.projectDir);
     expect((m.spaces ?? []).map((s) => s.name).sort()).toEqual(['Chamber A', 'Chamber B']);
     expect(await flyIssues(dataRoot.projectDir)).toHaveLength(6);
-    await expect(win.getByTestId('crumb-space')).toBeVisible();
+    // the line switched once, to the last chamber imported
+    await expect(win.getByTestId('crumb-space')).toContainText('Chamber B', { timeout: 30_000 });
   });
 
   /**
