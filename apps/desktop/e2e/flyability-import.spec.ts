@@ -165,6 +165,34 @@ test.describe('Flyability Inspector import', () => {
     await jobsSettled(win);
   }
 
+  /**
+   * Keep every "Imported: now showing ..." notice the window shows from now on, so a spec can say
+   * how many there were and what they named after the notices themselves are gone.
+   */
+  async function recordSpaceNotices(win: Page): Promise<void> {
+    await win.evaluate(() => {
+      const seen: string[] = [];
+      (window as unknown as { spaceNotices: string[] }).spaceNotices = seen;
+      let last: string | null = null;
+      const look = () => {
+        const text =
+          document.querySelector('[data-testid="fly-import-space"]')?.textContent ?? null;
+        const said =
+          text === null ? null : (/Imported: now showing .+?\. Switch/.exec(text)?.[0] ?? text);
+        if (said !== null && said !== last) seen.push(said);
+        last = said;
+      };
+      new MutationObserver(look).observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+      look();
+    });
+  }
+  const spaceNotices = (win: Page): Promise<string[]> =>
+    win.evaluate(() => (window as unknown as { spaceNotices: string[] }).spaceNotices);
+
   /** Unfold the Point clouds group (kind groups start folded) so the cloud rows are drawn. */
   async function openCloudGroup(win: Page): Promise<void> {
     const group = win.getByTestId('tree-group-toggle-pointclouds');
@@ -348,9 +376,8 @@ test.describe('Flyability Inspector import', () => {
     test.setTimeout(420_000);
     const second = await cloneAsSecond(first.root, join(scratch, 'two'));
     await openTinyProject(win);
+    await recordSpaceNotices(win);
     await importFolder(app, win, first.root);
-    // one space so far: nothing to switch, so no notice
-    await expect(win.getByTestId('fly-import-space')).toHaveCount(0);
     await answerFolder(app, second);
     await openPicker(win);
     await win.getByTestId('inspector-import').click();
@@ -377,6 +404,8 @@ test.describe('Flyability Inspector import', () => {
     const fresh = spaces.find((s) => s.source?.inspectionId !== first.inspection_id);
     const earlier = spaces.find((s) => s.source?.inspectionId === first.inspection_id);
     if (!fresh || !earlier) throw new Error('the two imports made no two spaces');
+    // one notice in all, for the second import: the first had one space and nothing to switch
+    expect(await spaceNotices(win)).toEqual([`Imported: now showing ${fresh.name}. Switch`]);
     await expect(win.getByTestId('crumb-space')).toContainText(fresh.name, { timeout: 30_000 });
     await openCloudGroup(win);
     for (const id of cloudsOf(fresh.id)) {
@@ -438,6 +467,7 @@ test.describe('Flyability Inspector import', () => {
       await expect(win.getByTestId(`inspector-chamber-${String(k)}`)).toContainText('3 findings');
       await expect(win.getByTestId(`inspector-chamber-tick-${String(k)}`)).toBeChecked();
     }
+    await recordSpaceNotices(win);
     await win.getByTestId('inspector-import').click();
     await expect(win.getByTestId('inspector-list')).toBeHidden();
 
@@ -457,8 +487,12 @@ test.describe('Flyability Inspector import', () => {
     const m = await manifestOf(dataRoot.projectDir);
     expect((m.spaces ?? []).map((s) => s.name).sort()).toEqual(['Chamber A', 'Chamber B']);
     expect(await flyIssues(dataRoot.projectDir)).toHaveLength(6);
-    // the line switched once, to the last chamber imported
+    // the line switched once, to the last chamber imported: the crumb names it, and the one
+    // notice of the whole line names it too (a switch per chamber would have said Chamber A first)
     await expect(win.getByTestId('crumb-space')).toContainText('Chamber B', { timeout: 30_000 });
+    await expect
+      .poll(() => spaceNotices(win), { timeout: 30_000 })
+      .toEqual(['Imported: now showing Chamber B. Switch']);
   });
 
   /**
