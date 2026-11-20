@@ -137,6 +137,14 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
   };
   const totalOn = (capture: string, unit = state.unit): number | null =>
     sum(data.piles.map((p) => amountOn(p, capture, unit)));
+  /** What the piles above zero hold together: what a pile's share is a share of. */
+  const stockedOn = (capture: string): number | null =>
+    sum(
+      data.piles.map((p) => {
+        const v = shownOn(p, capture);
+        return v !== null && v > 0 ? v : null;
+      }),
+    );
   /**
    * An amount in the chosen unit. Without one: "Not computed" when there is no volume either (a
    * pile that was never computed is listed all the same), else there is no density for tonnes.
@@ -405,7 +413,8 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
     card.append(crops);
 
     const amount = shownOn(p, state.date);
-    const site = totalOn(state.date);
+    // the share is of the piles above zero, as the printed share bar's (the model's `share`)
+    const site = stockedOn(state.date);
     const facts = el(doc, 'dl', 'vr-d-facts');
     const fact = (label: string, value: string) => {
       const row = el(doc, 'div');

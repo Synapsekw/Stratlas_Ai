@@ -381,6 +381,36 @@ describe('volumetric interactive viewer', () => {
       noBadNumbers();
     });
 
+    it("gives a pile's share of the piles above zero, as the printed share bar does", () => {
+      // 300, 200 and -100: 60 % and 40 %, not 75 % and 50 % of the site total of 400
+      const d = data();
+      const [sand, gravel] = d.piles;
+      if (!sand || !gravel) throw new Error('fixture');
+      sand.byDate = [{ capture: 'c2', m3: 300, t: null }];
+      gravel.byDate = [{ capture: 'c2', m3: 200, t: null }];
+      d.piles.push({
+        ...gravel,
+        id: 'c',
+        number: 3,
+        tag: '3',
+        label: 'Fines',
+        byDate: [{ capture: 'c2', m3: -100, t: null }],
+      });
+      mount(d);
+      const share = () => {
+        const dts = [...document.querySelectorAll('.vr-d-card .vr-d-facts dt')];
+        const dt = dts.find((x) => x.textContent === 'vreport.piles.share');
+        return dt?.nextElementSibling?.textContent ?? null;
+      };
+      button('Select Sand').click();
+      expect(share()).toBe('60 %');
+      button('Select Gravel').click();
+      expect(share()).toBe('40 %');
+      button('Select Fines').click();
+      expect(share()).toBeNull();
+      expect(q('.vr-d-kpi-total .vr-d-kpi-value').textContent).toBe('400 m³');
+    });
+
     it('a pile at or under zero has no share of the site', () => {
       const d = data();
       const sand = d.piles[0];
