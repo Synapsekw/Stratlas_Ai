@@ -18,19 +18,32 @@ const calls = vi.hoisted(() => ({
   >(() => Promise.resolve({ ok: true, value: { path: 'x.csv' } })),
   addToReport: vi.fn<(id: string) => Promise<'added' | 'already'>>(() => Promise.resolve('added')),
   recomputeVolume: vi.fn<(m: { id: string }) => string | null>(() => null),
+  recomputeStandard: vi.fn<(id: string) => Promise<string | null>>(() => Promise.resolve(null)),
 }));
 /** What the panel reads of the survey engine: its prepared surfaces and the runs under way. */
-const engine = vi.hoisted((): { surfaces: { id: string }[]; running: Record<string, boolean> } => ({
-  surfaces: [{ id: 's1' }],
-  running: {},
-}));
+const engine = vi.hoisted(
+  (): {
+    surfaces: { id: string }[];
+    running: Record<string, boolean>;
+    /** Why the last run of a measurement failed, and the engine's own trouble. */
+    problems: Record<string, string>;
+    error: string | null;
+  } => ({ surfaces: [{ id: 's1' }], running: {}, problems: {}, error: null }),
+);
 const CAPTURES = [
   { id: 'c1', date: '2020-12-31', label: '31 Dec 2020' },
   { id: 'c2', date: '2021-01-10', label: '10 Jan 2021' },
 ];
 vi.mock('../compareStore', () => ({
   useCompare: (sel: (x: unknown) => unknown) =>
-    sel({ captures: CAPTURES, surfaces: engine.surfaces, running: engine.running }),
+    sel({
+      captures: CAPTURES,
+      surfaces: engine.surfaces,
+      running: engine.running,
+      problems: engine.problems,
+      error: engine.error,
+    }),
+  recomputeStandard: calls.recomputeStandard,
 }));
 // the volume card's own Recompute (it has its tests there)
 vi.mock('../card/VolumeDetail', () => ({ recomputeVolume: calls.recomputeVolume }));
@@ -143,6 +156,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   engine.surfaces = [{ id: 's1' }];
   engine.running = {};
+  engine.problems = {};
+  engine.error = null;
   pileView.setState({ historyUnit: 'm3' });
   host = document.createElement('div');
   document.body.append(host);
@@ -254,9 +269,71 @@ describe('PileHistory', () => {
       calls.recomputeVolume.mockReturnValueOnce('The volume engine is still starting.');
       render(empty());
       click(q('[data-testid="pile-history-recompute"]'));
-      const why = q('[data-testid="pile-history-done"]');
+      // with the note it explains, not at the foot of the tab
+      const why = q('[data-testid="pile-history-problem"]');
       expect(why?.textContent).toBe('The volume engine is still starting.');
       expect(why?.getAttribute('role')).toBe('alert');
+      expect(q('[data-testid="pile-history-done"]')).toBeNull();
+    });
+
+    it('says why a Recompute that started then failed, as the volume card does', () => {
+      render(empty());
+      expect(q('[data-testid="pile-history-problem"]')).toBeNull();
+      // the run ended with the engine's reason for this pile
+      engine.problems = { '02': 'The comparison engine stopped. Recompute to start it again.' };
+      render(empty());
+      const why = q('[data-testid="pile-history-problem"]');
+      expect(why?.textContent).toBe('The comparison engine stopped. Recompute to start it again.');
+      expect(why?.getAttribute('role')).toBe('alert');
+      expect(q('[data-testid="pile-history-none"]')).not.toBeNull();
+      // another pile's failure is not this one's
+      engine.problems = { '07': 'Not this pile' };
+      render(empty());
+      expect(q('[data-testid="pile-history-problem"]')).toBeNull();
+    });
+
+    it('says the engine’s own trouble too, before the pile’s', () => {
+      engine.error = 'The comparison engine could not start.';
+      engine.problems = { '02': 'The run failed.' };
+      render(empty());
+      expect(q('[data-testid="pile-history-problem"]')?.textContent).toBe(
+        'The comparison engine could not start.',
+      );
+    });
+
+    it('keeps saying why once the failed run left a comparison with no figure on any date', () => {
+      // Recompute gave the outline its comparison, then the run failed: a row per date, no value
+      engine.problems = { '02': 'The run failed.' };
+      render(dataOf({ results: [], series: [] }));
+      expect(q('[data-testid="pile-history-none"]')).toBeNull();
+      expect(cells().map((r) => r[1])).toEqual([
+        'Not measured on this date',
+        'Not measured on this date',
+      ]);
+      expect(q('[data-testid="pile-history-problem"]')?.textContent).toBe('The run failed.');
+    });
+
+    it('a kit-carried pile gets the card’s Recompute with the standard base, never the plain one', async () => {
+      const kit = {
+        ...result(11378.7, 'c2'),
+        carried: { from: 'kit' as const, base: 'tin' as const, pile: 'p7', epoch: 'e1' },
+      };
+      const data = empty();
+      const carried = { ...data, m: { ...data.m, items: dataOf().m.items, results: [kit] } };
+      render(carried);
+      expect(q('[data-testid="pile-history-recompute"]')).toBeNull();
+      const standard = q('[data-testid="pile-history-recompute-standard"]');
+      expect(standard?.textContent).toBe('Recompute with the standard base');
+      calls.recomputeStandard.mockResolvedValueOnce('This project is read-only.');
+      await act(async () => {
+        standard?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await Promise.resolve();
+      });
+      expect(calls.recomputeStandard).toHaveBeenCalledWith('02');
+      expect(calls.recomputeVolume).not.toHaveBeenCalled();
+      expect(q('[data-testid="pile-history-problem"]')?.textContent).toBe(
+        'This project is read-only.',
+      );
     });
 
     it('shows Recompute as busy while the volume is worked out', () => {

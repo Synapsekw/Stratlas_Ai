@@ -55,6 +55,7 @@ import {
   useSpread,
 } from '../compareStore';
 import type { ItemShare } from '../engineProtocol';
+import { carriedItem } from '../seriesRule';
 import { updateMeasurement, useMeasure } from '../measureStore';
 import { usePrepareRunning, usePreparingSoon, useSurfaceStates } from '../surfaceStates';
 import { setSeriesFailed, useSeriesFailed } from '../useInventory';
@@ -202,10 +203,8 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
   );
   const stopsDeadband = deadbandFromStops(settings.heatmap.stops);
   const first = m.items[0];
-  const carriedFirst =
-    first !== undefined &&
-    (m.results.some((r) => r.item === first.id && r.carried !== undefined) ||
-      (m.series ?? []).some((r) => r.item === first.id && r.carried !== undefined));
+  // one rule with the pile panel's History (`carriedItem`)
+  const carriedFirst = first !== undefined && carriedItem(m, first.id);
   // the volume per survey date, worked out when shown (a carried pile keeps the kit's history)
   const points = m.points;
   // what a series run is for: the item, the outline (its edits move updatedAt), the dates and the

@@ -5,7 +5,9 @@
  * figure replaced shows as "was" under its date), the density note and Add to report. Export CSV
  * sits in the head row beside the switch, in view when the tab opens (founder's test, Nov 2026).
  * A pile with no volume on any date says so in place of an empty chart and table, with the volume
- * card's own Recompute where that can run.
+ * card's own Recompute where that can run (for a figure carried from the kit, the card's
+ * "Recompute with the standard base"), and why a Recompute could not start or failed, as the card
+ * says it.
  */
 import { formatNumber, fromSI, unitLabel } from '@aio/geo';
 import { volumeSeriesCsv } from '@aio/project/export';
@@ -17,8 +19,9 @@ import { TimeChart, type TimeValueOf } from '../../charts/TimeChart';
 import { addToReport } from '../../report/templateStore';
 import { bridge } from '../../shell';
 import { recomputeVolume } from '../card/VolumeDetail';
-import { useCompare } from '../compareStore';
+import { recomputeStandard, useCompare } from '../compareStore';
 import { fileBase } from '../exportHelpers';
+import { carriedItem } from '../seriesRule';
 import { massParts, volumeParts } from './PileHeader';
 import type { PileData } from './PilePanel';
 import { minusSigned, usePileView, wasFigure, type HistoryUnit } from './pileView';
@@ -36,6 +39,16 @@ export function PileHistory({ data }: { data: PileData }): ReactElement {
   const running = useCompare((s) => s.running[m.id] === true);
   /** No volume on any date: nothing to chart, list or export. */
   const none = rows.length === 0;
+  // the card's rule: a figure carried from the kit is replaced by "Recompute with the standard
+  // base" (kept as "was"), never by a plain Recompute
+  const first = m.items[0];
+  const carriedFirst = first !== undefined && carriedItem(m, first.id);
+  // why the last Recompute could not start, the engine's own trouble, or why this pile's last run
+  // failed: the reasons the volume card puts in its status line, in its order
+  const [why, setWhy] = useState<string | null>(null);
+  const engineError = useCompare((s) => s.error);
+  const engineProblem = useCompare((s) => s.problems[m.id]);
+  const problem = why ?? engineError ?? engineProblem ?? null;
   const [done, setDone] = useState<{ text: string; warn: boolean } | null>(null);
   const decimals = settings.precision.volume;
   const vol = (x: number) => volumeParts(x, units, decimals, locale).num;
@@ -123,8 +136,11 @@ export function PileHistory({ data }: { data: PileData }): ReactElement {
   };
 
   const recompute = () => {
-    const why = recomputeVolume(m);
-    setDone(why === null ? null : { text: why, warn: true });
+    setWhy(recomputeVolume(m));
+  };
+  const recomputeWithStandard = () => {
+    setWhy(null);
+    void recomputeStandard(m.id).then(setWhy);
   };
 
   const units3: { id: HistoryUnit; label: string }[] = [
@@ -178,18 +194,35 @@ export function PileHistory({ data }: { data: PileData }): ReactElement {
           <p className="pp-note" role="status" data-testid="pile-history-none">
             {t('pile.history.none')}
           </p>
-          {!readOnly && haveSurfaces && (
-            <Button
-              variant="quiet"
-              icon="refresh"
-              busy={running}
-              data-testid="pile-history-recompute"
-              onClick={recompute}
-            >
-              {t('vol.card.recompute')}
-            </Button>
-          )}
+          {!readOnly &&
+            haveSurfaces &&
+            (carriedFirst ? (
+              <Button
+                variant="quiet"
+                icon="refresh"
+                busy={running}
+                data-testid="pile-history-recompute-standard"
+                onClick={recomputeWithStandard}
+              >
+                {t('mcard.recomputeStandard')}
+              </Button>
+            ) : (
+              <Button
+                variant="quiet"
+                icon="refresh"
+                busy={running}
+                data-testid="pile-history-recompute"
+                onClick={recompute}
+              >
+                {t('vol.card.recompute')}
+              </Button>
+            ))}
         </div>
+      )}
+      {problem !== null && (
+        <p className="notice warn small" role="alert" data-testid="pile-history-problem">
+          {problem}
+        </p>
       )}
       {!none && unit !== 't' && volumeChart}
       {!none && unit !== 'm3' && tonnesChart}
