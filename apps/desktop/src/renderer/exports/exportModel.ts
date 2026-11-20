@@ -207,7 +207,17 @@ export function snapshotName(projectName: string, now: Date): string {
 export function doneMessage(id: ExportActionId, r: { path: string; count?: number }): string {
   if (r.count === undefined || id === 'snapshot' || id === 'photo-report-pdf')
     return `Saved to ${r.path}`;
-  const what = id === 'masks-zip' ? 'mask files' : r.count === 1 ? 'issue' : 'issues';
+  const one = r.count === 1;
+  const what =
+    id === 'masks-zip'
+      ? 'mask files'
+      : id === 'volumetric-pdf' || id === 'volumetric-html'
+        ? one
+          ? 'pile'
+          : 'piles'
+        : one
+          ? 'issue'
+          : 'issues';
   return `${String(r.count)} ${what} saved to ${r.path}`;
 }
 

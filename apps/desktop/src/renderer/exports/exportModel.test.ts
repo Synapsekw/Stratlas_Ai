@@ -120,6 +120,15 @@ describe('export actions', () => {
       'Saved to C:/x/a.pdf',
     );
   });
+
+  it('counts piles, not issues, for the volumetric report', () => {
+    expect(doneMessage('volumetric-pdf', { path: 'C:/x/v.pdf', count: 8 })).toBe(
+      '8 piles saved to C:/x/v.pdf',
+    );
+    expect(doneMessage('volumetric-html', { path: 'C:/x/v.html', count: 1 })).toBe(
+      '1 pile saved to C:/x/v.html',
+    );
+  });
 });
 
 describe('toast store', () => {
