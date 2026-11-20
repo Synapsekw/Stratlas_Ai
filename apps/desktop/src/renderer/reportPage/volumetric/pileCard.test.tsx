@@ -281,6 +281,17 @@ describe('a pile card, the other states', () => {
     expect(stat(el, 'density')).toBe(t('vreport.table.noTonnes'));
   });
 
+  it('never prints a base level or a "Base" line for a pile whose base is not set', () => {
+    // the profile stands such a pile on the default surface under its boundary (baseKind 'own')
+    const el = card(model, 'm3', all);
+    expect(stat(el, 'base')).toBe(t('vreport.pile.baseNotSet'));
+    expect(stat(el, 'base-level')).toBe(t('vreport.pile.baseNotSet'));
+    expect(text(el, '.vr-pile-key-item.is-base')).toBe(t('vreport.card.profile.boundary'));
+    expect(el.querySelector('.vr-pile-key-item.is-base')?.getAttribute('data-base')).toBe(
+      'boundary',
+    );
+  });
+
   it('prints a volume under zero as computed, with the note and a badge without a percentage', () => {
     const el = card(model, 'm2', all);
     expect(el.classList.contains('is-below-base')).toBe(true);

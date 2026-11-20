@@ -397,7 +397,11 @@ export function PileCard({
   const beforeExtent = before?.extent ?? beforeCrop?.extent ?? null;
 
   const baseName = pile.base.trim();
-  const level = profile?.baseKind === 'own' ? profile.baseLevel : null;
+  // a pile whose base is not set is drawn on the default surface under its boundary: that is
+  // no base of the pile's own, so the card gives no base level and the key names the boundary
+  const drawn: VolumetricPileProfile | null =
+    profile && baseName === '' ? { ...profile, baseKind: 'boundary' } : profile;
+  const level = drawn?.baseKind === 'own' ? drawn.baseLevel : null;
   const levelText = level
     ? level[1] - level[0] < 0.05
       ? `${fixed(level[0], 2)} m`
@@ -487,7 +491,7 @@ export function PileCard({
           </Picture>
         ) : null}
       </div>
-      <Profile profile={profile} height={height} />
+      <Profile profile={drawn} height={height} />
       <dl className="vr-pile-stats">
         <Stat
           id="footprint"
