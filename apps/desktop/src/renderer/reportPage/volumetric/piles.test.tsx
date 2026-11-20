@@ -184,4 +184,24 @@ describe('part B, the site overview and the pile pages', () => {
     expect(render(model, 3).querySelector('.vr-last')).toBeNull();
     expect(last.querySelector('.vr-foot .vr-method')).toBeNull();
   });
+
+  it('closes on a page of its own after a last page of two cards', () => {
+    // one date and an even number of piles: two cards fill their page, nothing is squeezed in
+    const even = volumetricModel(
+      input(4, { captures: [{ id: 'c2', label: 'Survey 2', date: '2026-10-01' }] }),
+    );
+    const long: ResolvedText = {
+      parts: { closing: 'Closing remarks. '.repeat(40) },
+      pileNotes: {},
+    };
+    const full = render(even, 2, long);
+    expect(full.querySelectorAll('.vr-pile')).toHaveLength(2);
+    expect(full.querySelector('.vr-last')).toBeNull();
+    const closing = render(even, 3, long);
+    expect(closing.querySelectorAll('.vr-pile')).toHaveLength(0);
+    expect(closing.querySelector('.vr-pile-page-head')).toBeNull();
+    expect(text(closing, '.vr-last .vr-closing p')).toContain('Closing remarks.');
+    expect(text(closing, '.vr-last .vr-method h2')).toBe(t('vreport.method.title'));
+    expect(pagePlan(even).filter((p) => p.page === 'piles')).toHaveLength(4);
+  });
 });

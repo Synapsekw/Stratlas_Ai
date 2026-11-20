@@ -483,9 +483,13 @@ export function volumetricModel(input: VolumetricInput): VolumetricModel {
     .map((p) => p.id);
 
   // ------------------------------------------------ method
-  const bases = [...new Set(piles0.map((p) => p.base.trim()).filter((b) => b !== ''))];
+  // read from the piles that have a volume: a pile nobody computed rests no figure on a base
+  const bases = [...new Set(counted.map((p) => p.base.trim()).filter((b) => b !== ''))];
   const withDensity = counted.filter((p) => p.densityTPerM3 !== null);
-  const kitOnly = piles0.every((p) => !p.material || p.material.id === 'kit');
+  const measured = new Set(counted.map((p) => p.id));
+  const kitOnly = piles0
+    .filter((p) => measured.has(p.id))
+    .every((p) => !p.material || p.material.id === 'kit');
   const density: VolumetricModel['method']['density'] =
     withDensity.length === 0
       ? 'none'
@@ -694,7 +698,7 @@ export function methodNote(model: VolumetricModel, t: VolumetricT): string {
   // one base for every pile is stated; mixed bases, or a pile whose base is unknown, are named
   // per pile in the table and cards
   const [only] = m.bases;
-  const allNamed = model.piles.every((p) => p.base.trim() !== '');
+  const allNamed = model.piles.every((p) => p.latestM3 === null || p.base.trim() !== '');
   if (m.bases.length === 1 && only !== undefined && allNamed)
     parts.push(t('vreport.method.base', { base: only }));
   else if (m.bases.length >= 1) parts.push(t('vreport.method.basePerPile'));
@@ -724,8 +728,11 @@ export const CHANGE_CONTINUED_ROWS = 40;
  */
 export interface PlannedPage {
   page: ReportPageId;
-  /** On B only: the site overview, or a page of pile cards. */
-  part?: 'overview' | 'cards';
+  /**
+   * On B only: the site overview, a page of pile cards, or the page that holds nothing but the
+   * report's closing block (after a last page of two cards, which leaves it no room).
+   */
+  part?: 'overview' | 'cards' | 'closing';
   continued: boolean;
   from: number;
   to: number;
@@ -778,6 +785,11 @@ export function pagePlan(
   if (on('change') && model.compared)
     plan.push(...split('change', model.changeOrder.length, CHANGE_ROWS, CHANGE_CONTINUED_ROWS));
   if (plan.length === 0) plan.push(...cover());
+  // The last page closes the report with the closing remarks and the method note. Two cards fill
+  // their page, so after such a page the closing block gets a page of its own.
+  const end = plan.at(-1);
+  if (end?.part === 'cards' && end.to - end.from >= PILE_CARDS_PER_PAGE)
+    plan.push({ page: 'piles', part: 'closing', continued: true, from: end.to, to: end.to });
   return plan.map((p, k) => ({ ...p, number: k + 1 }));
 }
 

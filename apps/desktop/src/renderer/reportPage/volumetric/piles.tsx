@@ -2,8 +2,9 @@
 // (`page.part === 'overview'`, see overview.tsx), then the pile pages with one full card per pile,
 // two to a page (`pagePlan` indexes `model.cards`; see pileCard.tsx). Every pile has a card, with
 // a volume or not. The report's last printed page, whichever it is, closes with the closing
-// remarks and the method note (`LastBlocks`); the room they take comes off the pictures or the
-// cards' charts, by counts.
+// remarks and the method note (`LastBlocks`). On the overview their room comes off the pictures, by
+// counts; a page with one card has the other card's room; two cards fill their page, so after
+// such a last page `pagePlan` adds a page that holds the closing block alone (`part: 'closing'`).
 import type { VolumetricModel, VolumetricPile } from '@aio/project/export';
 import { t } from '@aio/ui';
 import type { ReactElement } from 'react';
@@ -38,13 +39,17 @@ export function PilesPage({
         <LastBlocks texts={texts} last={last} />
       </Page>
     );
+  if (page.part === 'closing')
+    return (
+      <Page kind="piles" number={page.number} by={texts.preparedBy}>
+        <LastBlocks texts={texts} last={last} />
+      </Page>
+    );
   const byId = new Map(model.piles.map((p) => [p.id, p]));
   const cards = model.cards
     .slice(page.from, page.to)
     .map((id) => byId.get(id))
     .filter((p): p is VolumetricPile => p !== undefined);
-  // a page with one card has the other card's room for the closing block
-  const perCard = cards.length > 1 ? reserve / cards.length : 0;
   return (
     <Page kind="piles" number={page.number} by={texts.preparedBy}>
       <header className="vr-pile-page-head">
@@ -62,7 +67,6 @@ export function PilesPage({
             pile={p}
             note={note === '' ? null : note}
             views={views}
-            reserveMm={perCard}
           />
         );
       })}

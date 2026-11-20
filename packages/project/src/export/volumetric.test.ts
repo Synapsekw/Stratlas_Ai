@@ -579,6 +579,18 @@ describe('methodNote', () => {
     expect(note).not.toContain('Base: ');
   });
 
+  it('reads the base from the measured piles only', () => {
+    // a pile nobody computed has no base that the figures rest on
+    const bare = (over: Partial<VolumetricPileInput>) =>
+      pile(30, { dates: pile(30).dates.map((d) => ({ ...d, volumeM3: null })), ...over });
+    for (const base of ['', 'Lowest point']) {
+      const piles = [...ORDER.map((i) => pile(i)), bare({ base })];
+      const m = volumetricModel(input({ piles }));
+      expect(m.method.bases).toEqual(['Toe surface']);
+      expect(methodNote(m, t)).toContain('Base: Toe surface.');
+    }
+  });
+
   it('says there are no tonnes without a density', () => {
     const piles = ORDER.map((i) =>
       pile(i, {
@@ -657,6 +669,30 @@ describe('pagePlan', () => {
       ['piles', 'cards'],
       ['piles', 'cards'],
     ]);
+  });
+
+  it('ends on a closing page when the last page would hold two cards', () => {
+    // two cards fill a page, so the closing remarks and the method note get a page of their own
+    const one = (n: number) =>
+      Array.from({ length: n }, (_, k) => pile(k + 1, { dates: pile(k + 1).dates.slice(1) }));
+    expect(cols(pagePlan(volumetricModel(input({ piles: one(4) }))))).toEqual([
+      ['cover', null, false, 0, 4],
+      ['piles', 'overview', false, 0, 0],
+      ['piles', 'cards', false, 0, 2],
+      ['piles', 'cards', true, 2, 4],
+      ['piles', 'closing', true, 4, 4],
+    ]);
+    // a last page with one card has the other card's room, and a change page closes by itself
+    expect(pagePlan(volumetricModel(input({ piles: one(3) }))).at(-1)?.part).toBe('cards');
+    const two = volumetricModel(input({ piles: [1, 2, 3, 4].map((i) => pile(i)) }));
+    expect(pagePlan(two).some((p) => p.part === 'closing')).toBe(false);
+    // the change page switched off: the pile pages end the report again
+    expect(pagePlan(two, { change: false }).at(-1)).toMatchObject({
+      page: 'piles',
+      part: 'closing',
+      from: 4,
+      to: 4,
+    });
   });
 
   it('gives a pile without a volume its card, and keeps it out of the change bars', () => {
