@@ -766,7 +766,28 @@ describe('captureViews, the pile pictures', () => {
     expect(shots[0]?.label).toBe('Site, 12 Jan 2026');
     expect(shots.find((s) => s.w === 800)?.label).toBe('Pile 1 of 2: Pile A');
     expect(shots.at(-1)?.label).toBe('Cut and fill between the surveys');
-    expect(pictureRun.getState().label).toBe('');
+    // the last picture stays named until the card goes: it is still up while the file is written
+    expect(pictureRun.getState().label).toBe('Cut and fill between the surveys');
+    expect(pictureRun.getState().running).toBe(false);
+  });
+
+  it('names the first picture while the stage is made ready, as it counts it', async () => {
+    const seen: { label: string; total: number }[] = [];
+    const base = fakeStage();
+    const { stage } = fakeStage({
+      prepare: () => {
+        const { label, total } = pictureRun.getState();
+        seen.push({ label, total });
+        return base.stage.prepare();
+      },
+    });
+    await run(stage, {
+      ...REQ,
+      dateLabels: { 'c-jan': '12 Jan 2026', 'c-feb': '12 Feb 2026', 'c-mar': '12 Mar 2026' },
+    });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.total).toBeGreaterThan(0);
+    expect(seen[0]?.label).toBe('Site, 12 Jan 2026');
   });
 
   it('pictures the piles that fit in 512 views and returns the ids of the rest', async () => {

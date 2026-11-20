@@ -383,7 +383,10 @@ export async function captureViews(
   const pileMs = opts.pileTimeoutMs ?? 6000;
 
   const total = shots.length;
-  pictureRun.setState({ running: true, done: 0, total, label: '' });
+  // the card counts from the start ("Picture 1 of 22"), so it names the first picture from the
+  // start too, while the stage is still being made ready
+  const first = shots[0];
+  pictureRun.setState({ running: true, done: 0, total, label: first ? labelOf(first) : '' });
   opts.onProgress?.(0, total);
   const token = stage.save();
   const views: ReportView[] = [];
@@ -474,8 +477,10 @@ export async function captureViews(
   }
   // the run counts as going until its save: a stop asked during the last shot or while the view
   // comes back still keeps it from being saved
+  // the label stays: the card is still up while the export goes on to write its file, and an
+  // empty line beside "Picture 22 of 22" reads as a fault (the next run names its first picture)
   const end = () => {
-    pictureRun.setState({ running: false, stopping: false, label: '' });
+    pictureRun.setState({ running: false, stopping: false });
   };
   if (failed === null && pictureRun.getState().stopping) failed = picturesStopped();
   if (failed !== null) {
