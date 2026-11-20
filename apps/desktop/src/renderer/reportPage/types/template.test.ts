@@ -11,6 +11,7 @@ import {
   type SurveyMeasurement,
 } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
+import { reportPiles } from '../../report/volumetric/editorView';
 import type { SurveyFiles } from '../house/surveyData';
 import { REPORT_TEMPLATES, volumetricTemplate } from './index';
 import { NO_VIEWS, reportViews } from './template';
@@ -85,6 +86,17 @@ describe('the report-type seam', () => {
     );
     expect(volumetricTemplate.offered(project([]))).toBe(false);
     expect(volumetricTemplate.offered(project(null))).toBe(false);
+  });
+
+  it('offers it for piles without a computed volume, as Reports does', () => {
+    // a boundary drawn and never computed: no base item, no results
+    const drawn = [pile({ items: [], results: [] })];
+    expect(volumetricTemplate.offered(project(drawn))).toBe(true);
+    expect(volumetricTemplate.offered(project(drawn))).toBe(reportPiles(drawn).length > 0);
+    // a polygon that is not a volume is no pile for either
+    const area = [pile({ tool: 'area', items: [] })];
+    expect(volumetricTemplate.offered(project(area))).toBe(false);
+    expect(reportPiles(area)).toHaveLength(0);
   });
 
   it("builds the model from the app's figures", () => {

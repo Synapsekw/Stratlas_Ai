@@ -10,8 +10,8 @@ import {
   type VolumetricModel,
 } from '@aio/project/export';
 import { ReportPageId, VolumetricTextId } from '@aio/schema';
+import { inventoryPiles } from '@aio/survey';
 import { createElement } from 'react';
-import { stockpileItem } from '../house/surveyData';
 import type { PageComponent, RenderedPage, ReportTemplate } from './template';
 
 export type * from './template';
@@ -36,7 +36,8 @@ export const VOLUMETRIC_PAGES: Partial<Record<ReportPageId, PageComponent<Volume
 
 export const volumetricTemplate: ReportTemplate<VolumetricModel, VolumetricInput> = {
   id: 'volumetric',
-  offered: ({ survey }) => survey?.measurements.some((m) => stockpileItem(m) !== null) ?? false,
+  // the Volumes view's piles, as Reports offers it (`reportPiles`): a pile needs no figure yet
+  offered: ({ survey }) => inventoryPiles(survey?.measurements ?? []).length > 0,
   textParts: VolumetricTextId.options,
   pages: ReportPageId.options,
   model: volumetricModel,
