@@ -58,7 +58,7 @@ What the report holds:
 - **Pile pages**, two piles per page. Each pile has its volume and the change since the compared survey; the photo with its outline and the A to B profile line, the 3D picture and the compared survey's photo; the elevation profile with both surveys and the base; then footprint, base, base level, peak height, density and survey date. The 3D picture always shows the latest survey, also for a pile filed under an earlier date.
 - **What changed.** The before and after photos, the cut and fill picture, a bar per pile, and the method note once at the end.
 
-A pile with a negative volume (the surface lies below its base) prints the volume as computed with the note "The surface is below the base here. Check the base." Its card shows no tonnes, and its change is given in cubic metres without a percentage. It still counts in the site total, so the report's total equals the app's.
+A pile with a negative volume (the surface lies below its base) prints the volume as computed with the note "The surface is below the base here. Check the base." Its change is given in cubic metres without a percentage. A pile at or under zero prints no tonnes in its table row, on its card or in the HTML file's interactive view. It still counts in the site totals, cubic metres and tonnes, so the report's totals equal the app's.
 
 The HTML file also has an interactive view: switch the date, the view (Photo, Cut & fill, Elevation, 3D) and the units, pick a pile, **Download CSV** and **Save as PDF**. It works without a network.
 
