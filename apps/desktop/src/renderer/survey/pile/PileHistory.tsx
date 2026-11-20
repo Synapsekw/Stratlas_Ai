@@ -2,7 +2,10 @@
  * The pile panel's History (spec section 3, board 3): "Volume and tonnes over time" with m³ | t |
  * Both, one bar per survey date with its value and the change in %, then the table (newest first:
  * date, volume, density, tonnes, change, "first" on the earliest; a kit figure the standard-base
- * figure replaced shows as "was" under its date), the density note, Export CSV and Add to report.
+ * figure replaced shows as "was" under its date), the density note and Add to report. Export CSV
+ * sits in the head row beside the switch, in view when the tab opens (founder's test, Nov 2026).
+ * A pile with no volume on any date says so in place of an empty chart and table, with the volume
+ * card's own Recompute where that can run.
  */
 import { formatNumber, fromSI, unitLabel } from '@aio/geo';
 import { volumeSeriesCsv } from '@aio/project/export';
@@ -13,6 +16,7 @@ import { useMemo, useState, type ReactElement } from 'react';
 import { TimeChart, type TimeValueOf } from '../../charts/TimeChart';
 import { addToReport } from '../../report/templateStore';
 import { bridge } from '../../shell';
+import { recomputeVolume } from '../card/VolumeDetail';
 import { useCompare } from '../compareStore';
 import { fileBase } from '../exportHelpers';
 import { massParts, volumeParts } from './PileHeader';
@@ -23,10 +27,15 @@ const DENSITY_DECIMALS = 2;
 
 export function PileHistory({ data }: { data: PileData }): ReactElement {
   const t = useT();
-  const { m, settings, units, locale, material, rows } = data;
+  const { m, settings, units, locale, readOnly, material, rows } = data;
   const unit = usePileView((s) => s.historyUnit);
   const setUnit = usePileView((s) => s.setHistoryUnit);
   const captures = useCompare((s) => s.captures);
+  // Recompute as the volume card offers it: a project that can be written, with a prepared surface
+  const haveSurfaces = useCompare((s) => s.surfaces.length > 0);
+  const running = useCompare((s) => s.running[m.id] === true);
+  /** No volume on any date: nothing to chart, list or export. */
+  const none = rows.length === 0;
   const [done, setDone] = useState<{ text: string; warn: boolean } | null>(null);
   const decimals = settings.precision.volume;
   const vol = (x: number) => volumeParts(x, units, decimals, locale).num;
@@ -113,6 +122,11 @@ export function PileHistory({ data }: { data: PileData }): ReactElement {
     );
   };
 
+  const recompute = () => {
+    const why = recomputeVolume(m);
+    setDone(why === null ? null : { text: why, warn: true });
+  };
+
   const units3: { id: HistoryUnit; label: string }[] = [
     { id: 'm3', label: unitLabel(units.volume) },
     { id: 't', label: unitLabel(units.mass) },
@@ -121,80 +135,112 @@ export function PileHistory({ data }: { data: PileData }): ReactElement {
 
   return (
     <div className="pp-history" data-testid="pile-history">
-      <div className="pp-row">
+      <div className="pp-row pp-history-head" data-pile-lead="">
         <h3 className="pp-sub" data-testid="pile-history-title">
           {t('pile.history.title')}
         </h3>
-        <div
-          className="seg"
-          role="group"
-          aria-label={t('pile.history.title')}
-          data-testid="pile-history-unit"
-        >
-          {units3.map((u) => (
-            <button
-              key={u.id}
-              type="button"
-              aria-pressed={unit === u.id}
-              onClick={() => {
-                setUnit(u.id);
-              }}
-            >
-              {u.label}
-            </button>
-          ))}
+        {/* the switch and Export CSV as one group: they keep the row's first line together */}
+        <div className="pp-history-tools">
+          <div
+            className="seg"
+            role="group"
+            aria-label={t('pile.history.title')}
+            data-testid="pile-history-unit"
+          >
+            {units3.map((u) => (
+              <button
+                key={u.id}
+                type="button"
+                aria-pressed={unit === u.id}
+                onClick={() => {
+                  setUnit(u.id);
+                }}
+              >
+                {u.label}
+              </button>
+            ))}
+          </div>
+          <Button
+            icon="download"
+            data-testid="pile-history-csv"
+            disabled={none}
+            onClick={() => {
+              void exportCsv();
+            }}
+          >
+            {`${t('chart.export')} ${t('chart.csv')}`}
+          </Button>
         </div>
       </div>
 
-      {unit !== 't' && volumeChart}
-      {unit !== 'm3' && tonnesChart}
-
-      <table className="pp-table" data-testid="pile-history-table">
-        <caption className="sr-only">{t('pile.history.title')}</caption>
-        <thead>
-          <tr>
-            <th scope="col">{t('chart.date')}</th>
-            <th scope="col">{`${t('chart.volume')} ${unitLabel(units.volume)}`}</th>
-            <th scope="col">{t('pile.density')}</th>
-            <th scope="col">{t('pile.tonnes')}</th>
-            <th scope="col">{t('vol.change')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {shownRows.map((r) => (
-            <tr
-              key={r.capture}
-              data-capture={r.capture}
-              data-latest={r.latest ? '' : undefined}
-              data-stale={r.stale ? '' : undefined}
-              aria-current={r.latest ? 'date' : undefined}
+      {none && (
+        <div className="pp-row">
+          <p className="pp-note" role="status" data-testid="pile-history-none">
+            {t('pile.history.none')}
+          </p>
+          {!readOnly && haveSurfaces && (
+            <Button
+              variant="quiet"
+              icon="refresh"
+              busy={running}
+              data-testid="pile-history-recompute"
+              onClick={recompute}
             >
-              <th scope="row">{r.label}</th>
-              <td>
-                {r.valueM3 !== null ? vol(r.valueM3) : t('mcard.notMeasured')}
-                {was?.capture === r.capture && (
-                  <span className="pp-was" data-testid="pile-history-was">
-                    {t('pile.history.was', { value: vol(was.netM3) })}
-                  </span>
-                )}
-              </td>
-              <td>
-                {densityAt(r.capture) !== undefined && r.valueM3 !== null
-                  ? formatNumber(densityAt(r.capture) ?? 0, DENSITY_DECIMALS, locale)
-                  : ''}
-              </td>
-              <td>{r.tonnes !== null ? mass(r.tonnes) : ''}</td>
-              <td data-sign={r.changeM3 === null ? undefined : r.changeM3 < 0 ? 'loss' : 'gain'}>
-                {r === firstWithValue
-                  ? t('pile.history.first')
-                  : r.changeM3 !== null
-                    ? minusSigned(vol(r.changeM3), r.changeM3)
-                    : ''}
-              </td>
+              {t('vol.card.recompute')}
+            </Button>
+          )}
+        </div>
+      )}
+      {!none && unit !== 't' && volumeChart}
+      {!none && unit !== 'm3' && tonnesChart}
+      {!none && (
+        <table className="pp-table" data-testid="pile-history-table">
+          <caption className="sr-only">{t('pile.history.title')}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{t('chart.date')}</th>
+              <th scope="col">{`${t('chart.volume')} ${unitLabel(units.volume)}`}</th>
+              <th scope="col">{t('pile.density')}</th>
+              <th scope="col">{t('pile.tonnes')}</th>
+              <th scope="col">{t('vol.change')}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {shownRows.map((r) => (
+              <tr
+                key={r.capture}
+                data-capture={r.capture}
+                data-latest={r.latest ? '' : undefined}
+                data-stale={r.stale ? '' : undefined}
+                aria-current={r.latest ? 'date' : undefined}
+              >
+                <th scope="row">{r.label}</th>
+                <td>
+                  {r.valueM3 !== null ? vol(r.valueM3) : t('mcard.notMeasured')}
+                  {was?.capture === r.capture && (
+                    <span className="pp-was" data-testid="pile-history-was">
+                      {t('pile.history.was', { value: vol(was.netM3) })}
+                    </span>
+                  )}
+                </td>
+                <td>
+                  {densityAt(r.capture) !== undefined && r.valueM3 !== null
+                    ? formatNumber(densityAt(r.capture) ?? 0, DENSITY_DECIMALS, locale)
+                    : ''}
+                </td>
+                <td>{r.tonnes !== null ? mass(r.tonnes) : ''}</td>
+                <td data-sign={r.changeM3 === null ? undefined : r.changeM3 < 0 ? 'loss' : 'gain'}>
+                  {r === firstWithValue
+                    ? t('pile.history.first')
+                    : r.changeM3 !== null
+                      ? minusSigned(vol(r.changeM3), r.changeM3)
+                      : ''}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
 
       {material && firstWithValue && densityAt(firstWithValue.capture) !== undefined && (
         <p className="pp-note" data-testid="pile-history-note">
@@ -207,16 +253,6 @@ export function PileHistory({ data }: { data: PileData }): ReactElement {
       )}
 
       <div className="pp-actions">
-        <Button
-          icon="download"
-          data-testid="pile-history-csv"
-          disabled={rows.length === 0}
-          onClick={() => {
-            void exportCsv();
-          }}
-        >
-          {`${t('chart.export')} ${t('chart.csv')}`}
-        </Button>
         <Button variant="primary" icon="report" data-testid="pile-history-report" onClick={report}>
           {t('chart.addToReport')}
         </Button>

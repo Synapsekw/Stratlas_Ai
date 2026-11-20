@@ -43,6 +43,7 @@ import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 
 import { TimeChart } from '../../charts/TimeChart';
 import { shortDates } from '../../charts/dateTicks';
 import {
+  compareStore,
   compute,
   computeSeries,
   isStale,
@@ -134,6 +135,30 @@ export function volumeStatusLine(
 /** A new volume's comparison: the default base (Triangulated toe) under the current survey. */
 export function volumeItem(taken: readonly { id: string }[]): ComparisonItem {
   return { id: newItemId(taken), from: DEFAULT_BASE, to: { kind: 'current' }, useDeadband: false };
+}
+
+/**
+ * A person's Recompute of a volume, the card's button and the pile panel's History alike: a
+ * volume with no comparison yet takes the default base first, then the engine computes it and the
+ * result is stored as an edit. Why it cannot run now (the engine still starting, an outline of
+ * fewer than three points), or null once it has started.
+ */
+export function recomputeVolume(m: SurveyMeasurement): string | null {
+  setSeriesFailed(m.id, null);
+  const reason =
+    compareStore.getState().status !== 'ready'
+      ? t('vol.card.engineStarting')
+      : m.points.length < 3
+        ? t('vol.card.needPoints')
+        : null;
+  if (reason) return reason;
+  // a new volume has no comparison yet: the default base, then compute
+  if (m.items.length === 0)
+    updateMeasurement(m.id, (x) =>
+      x.items.length > 0 ? x : { ...x, items: [volumeItem(x.items)] },
+    );
+  void compute(m.id);
+  return null;
 }
 
 export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
@@ -257,16 +282,7 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
   };
 
   const recompute = () => {
-    const reason = blocked();
-    setWhy(reason);
-    setSeriesFailed(m.id, null);
-    if (reason) return;
-    // a new volume has no comparison yet: the default base, then compute
-    if (m.items.length === 0)
-      updateMeasurement(m.id, (x) =>
-        x.items.length > 0 ? x : { ...x, items: [volumeItem(x.items)] },
-      );
-    void compute(m.id);
+    setWhy(recomputeVolume(m));
   };
   const recomputeWithStandard = () => {
     const reason = blocked();

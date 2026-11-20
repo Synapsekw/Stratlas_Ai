@@ -17,14 +17,23 @@ const calls = vi.hoisted(() => ({
     (channel: string, req: { defaultName: string; data: string }) => Promise<unknown>
   >(() => Promise.resolve({ ok: true, value: { path: 'x.csv' } })),
   addToReport: vi.fn<(id: string) => Promise<'added' | 'already'>>(() => Promise.resolve('added')),
+  recomputeVolume: vi.fn<(m: { id: string }) => string | null>(() => null),
+}));
+/** What the panel reads of the survey engine: its prepared surfaces and the runs under way. */
+const engine = vi.hoisted((): { surfaces: { id: string }[]; running: Record<string, boolean> } => ({
+  surfaces: [{ id: 's1' }],
+  running: {},
 }));
 const CAPTURES = [
   { id: 'c1', date: '2020-12-31', label: '31 Dec 2020' },
   { id: 'c2', date: '2021-01-10', label: '10 Jan 2021' },
 ];
 vi.mock('../compareStore', () => ({
-  useCompare: (sel: (x: unknown) => unknown) => sel({ captures: CAPTURES }),
+  useCompare: (sel: (x: unknown) => unknown) =>
+    sel({ captures: CAPTURES, surfaces: engine.surfaces, running: engine.running }),
 }));
+// the volume card's own Recompute (it has its tests there)
+vi.mock('../card/VolumeDetail', () => ({ recomputeVolume: calls.recomputeVolume }));
 vi.mock('../../shell', () => ({ bridge: { call: calls.saveFile } }));
 // the head's "⋯" menu reads the shell; it has its own tests
 vi.mock('../card/CardActions', () => ({ CardMenu: () => null }));
@@ -132,6 +141,8 @@ const cells = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  engine.surfaces = [{ id: 's1' }];
+  engine.running = {};
   pileView.setState({ historyUnit: 'm3' });
   host = document.createElement('div');
   document.body.append(host);
@@ -188,6 +199,81 @@ describe('PileHistory', () => {
     );
     click(qa('[data-testid="pile-history-unit"] button')[2]);
     expect(qa('[data-testid="pile-history-chart"]').length).toBe(2);
+  });
+
+  it('keeps Export CSV in the head row, beside the unit switch', () => {
+    render(dataOf());
+    const csv = q('[data-testid="pile-history-csv"]');
+    const head = q('[data-testid="pile-history-title"]')?.parentElement;
+    expect(head?.contains(csv)).toBe(true);
+    expect(head?.contains(q('[data-testid="pile-history-unit"]'))).toBe(true);
+    // one group with the switch, so the two stay on one line
+    expect(csv?.parentElement).toBe(q('[data-testid="pile-history-unit"]')?.parentElement);
+    expect(csv?.parentElement).not.toBe(head);
+    // before the chart and the table, so it shows without scrolling
+    const chart = q('[data-testid="pile-history-chart"]');
+    expect(csv && chart && csv.compareDocumentPosition(chart)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect((csv as HTMLButtonElement | null)?.disabled).toBe(false);
+    expect(q('[data-testid="pile-history-none"]')).toBeNull();
+  });
+
+  describe('a pile with no computed volume', () => {
+    /** A volume outline with no comparison yet: no row on any date. */
+    const empty = (over: Partial<PileData> = {}): PileData => ({
+      ...dataOf({ items: [], results: [], series: [] }),
+      rows: [],
+      figures: pileFigures([]),
+      stored: undefined,
+      line: { tone: 'muted', text: 'Not computed yet' },
+      ...over,
+    });
+
+    it('says so in place of an empty chart and table, and offers the card’s Recompute', () => {
+      const data = empty();
+      render(data);
+      expect(q('[data-testid="pile-history-none"]')?.textContent).toBe(
+        'This pile has no volume yet',
+      );
+      expect(q('[data-testid="pile-history-none"]')?.getAttribute('role')).toBe('status');
+      expect(q('[data-testid="pile-history-table"]')).toBeNull();
+      expect(q('[data-testid="pile-history-chart"]')).toBeNull();
+      // nothing to export yet: the line beside it says why
+      expect((q('[data-testid="pile-history-csv"]') as HTMLButtonElement | null)?.disabled).toBe(
+        true,
+      );
+      const recompute = q('[data-testid="pile-history-recompute"]');
+      expect(recompute?.textContent).toBe('Recompute');
+      click(recompute);
+      expect(calls.recomputeVolume).toHaveBeenCalledTimes(1);
+      expect(calls.recomputeVolume).toHaveBeenCalledWith(data.m);
+    });
+
+    it('says why Recompute could not start', () => {
+      calls.recomputeVolume.mockReturnValueOnce('The volume engine is still starting.');
+      render(empty());
+      click(q('[data-testid="pile-history-recompute"]'));
+      const why = q('[data-testid="pile-history-done"]');
+      expect(why?.textContent).toBe('The volume engine is still starting.');
+      expect(why?.getAttribute('role')).toBe('alert');
+    });
+
+    it('shows Recompute as busy while the volume is worked out', () => {
+      engine.running = { '02': true };
+      render(empty());
+      expect(q('[data-testid="pile-history-recompute"]')?.getAttribute('aria-busy')).toBe('true');
+    });
+
+    it('offers no Recompute in a read-only project, or before a surface is prepared', () => {
+      render(empty({ readOnly: true }));
+      expect(q('[data-testid="pile-history-none"]')).not.toBeNull();
+      expect(q('[data-testid="pile-history-recompute"]')).toBeNull();
+      engine.surfaces = [];
+      render(empty());
+      expect(q('[data-testid="pile-history-none"]')).not.toBeNull();
+      expect(q('[data-testid="pile-history-recompute"]')).toBeNull();
+    });
   });
 
   it('exports the pile’s dates as CSV and adds it to the report', async () => {

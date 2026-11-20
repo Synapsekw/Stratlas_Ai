@@ -254,6 +254,42 @@ describe('PileProfile', () => {
     expect(q('[data-testid="pile-profile-chart"]')?.getAttribute('data-series')).toBe('c2:current');
   });
 
+  it('keeps Open larger, Export PNG and Add to report above the chips and the chart', async () => {
+    await render();
+    const before = (a: Element | null, b: Element | null) =>
+      a !== null && b !== null && a.compareDocumentPosition(b) === Node.DOCUMENT_POSITION_FOLLOWING;
+    const chart = q('[data-testid="pile-profile-chart"]');
+    const chips = q('[data-testid="pile-chips"]');
+    for (const id of ['pile-open-larger', 'pile-profile-png', 'pile-profile-report']) {
+      const button = q(`[data-testid="${id}"]`);
+      expect(before(button, chips), `${id} before the chips`).toBe(true);
+      expect(before(button, chart), `${id} before the chart`).toBe(true);
+    }
+    // the three in one row, in the order they had under the chart
+    const row = q('[data-testid="pile-open-larger"]')?.parentElement;
+    expect([...(row?.querySelectorAll('button') ?? [])].map((b) => b.textContent)).toEqual([
+      'Open larger',
+      'Export PNG',
+      'Add to report',
+    ]);
+  });
+
+  it('says what Add to report did under the row, where it is in view', async () => {
+    await render();
+    await act(async () => {
+      q('[data-testid="pile-profile-report"]')?.dispatchEvent(
+        new MouseEvent('click', { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+    const done = q('[data-testid="pile-profile-done"]');
+    expect(done?.textContent).toBe('Added to the report');
+    const chart = q('[data-testid="pile-profile-chart"]');
+    expect(done && chart && done.compareDocumentPosition(chart)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
   it('Open larger opens the section window along the line', async () => {
     // an older date not shown yet: the chips offer it
     s.dates = [

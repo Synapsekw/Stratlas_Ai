@@ -4,7 +4,8 @@
  * Chips per date with their surface state, "Shade cut & fill vs [earlier date]", the line's length,
  * the shared `ProfileChart` linked to the scene as `pile:<id>` (spec section 4), then the cut and
  * fill over the whole pile between the two dates (the volume engine's, never estimated) and the
- * largest drop along the line, and Open larger, Export PNG and Add to report.
+ * largest drop along the line. Open larger, Export PNG and Add to report are the tab's first row,
+ * above the chips, so they are in view when it opens.
  *
  * A date still preparing names itself in the placeholder ("Building the height surface for …");
  * the ready dates draw at once and the others join when their surface is ready.
@@ -344,6 +345,58 @@ export function PileProfile({ m }: { m: SurveyMeasurement }): ReactElement {
   const empty = visible.length === 0 || !visible.some((x) => x.z.some((z) => z !== null));
   return (
     <div className="pp-profile" data-testid="pile-profile" ref={root}>
+      {/* first in the tab, and brought into view when the tab is picked (`data-pile-lead`,
+          PilePanel), so they are found without scrolling (founder's test, Nov 2026) */}
+      <div className="pp-actions" data-pile-lead="">
+        <Button
+          icon="section"
+          data-testid="pile-open-larger"
+          onClick={() => {
+            const source: SectionSource = {
+              kind: 'measurement',
+              id: m.id,
+              label: m.label,
+              ...(m.scope.kind === 'survey' ? { capture: m.scope.capture } : {}),
+            };
+            openSectionWindow(lineOf(axis), source);
+            followInWindow(m.id, source);
+          }}
+        >
+          {t('pile.openLarger')}
+        </Button>
+        <Button
+          icon="download"
+          data-testid="pile-profile-png"
+          disabled={empty}
+          onClick={() => {
+            void savePicture();
+          }}
+        >
+          {`${t('chart.export')} ${t('chart.png')}`}
+        </Button>
+        <Button
+          variant="primary"
+          icon="report"
+          data-testid="pile-profile-report"
+          onClick={() => {
+            setDone(null);
+            addToReport(m.id).then((r) => {
+              setDone({ text: t(r === 'added' ? 'report.added' : 'report.already'), warn: false });
+            }, failed);
+          }}
+        >
+          {t('chart.addToReport')}
+        </Button>
+      </div>
+      {done && (
+        <p
+          className={done.warn ? 'notice warn small' : 'small faint'}
+          role={done.warn ? 'alert' : 'status'}
+          data-testid="pile-profile-done"
+        >
+          {done.text}
+        </p>
+      )}
       {chips}
       <div className="pp-row">
         {earlier && later ? (
@@ -444,56 +497,6 @@ export function PileProfile({ m }: { m: SurveyMeasurement }): ReactElement {
             </div>
           )}
         </dl>
-      )}
-
-      <div className="pp-actions">
-        <Button
-          icon="section"
-          data-testid="pile-open-larger"
-          onClick={() => {
-            const source: SectionSource = {
-              kind: 'measurement',
-              id: m.id,
-              label: m.label,
-              ...(m.scope.kind === 'survey' ? { capture: m.scope.capture } : {}),
-            };
-            openSectionWindow(lineOf(axis), source);
-            followInWindow(m.id, source);
-          }}
-        >
-          {t('pile.openLarger')}
-        </Button>
-        <Button
-          icon="download"
-          data-testid="pile-profile-png"
-          disabled={empty}
-          onClick={() => {
-            void savePicture();
-          }}
-        >
-          {`${t('chart.export')} ${t('chart.png')}`}
-        </Button>
-        <Button
-          variant="primary"
-          icon="report"
-          data-testid="pile-profile-report"
-          onClick={() => {
-            setDone(null);
-            addToReport(m.id).then((r) => {
-              setDone({ text: t(r === 'added' ? 'report.added' : 'report.already'), warn: false });
-            }, failed);
-          }}
-        >
-          {t('chart.addToReport')}
-        </Button>
-      </div>
-      {done && (
-        <p
-          className={done.warn ? 'notice warn small' : 'small faint'}
-          role={done.warn ? 'alert' : 'status'}
-        >
-          {done.text}
-        </p>
       )}
     </div>
   );

@@ -40,6 +40,7 @@ const calls = vi.hoisted(() => ({
 
 vi.mock('../compareStore', () => ({
   useCompare: (sel: (x: unknown) => unknown) => sel(s.compare),
+  compareStore: { getState: () => s.compare },
   useSpread: () => s.spread,
   isStale: () => false,
   seriesStale: () => false,

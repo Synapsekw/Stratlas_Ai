@@ -28,7 +28,7 @@ import {
 } from '@aio/survey';
 import { Tabs, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useId, useMemo, type KeyboardEvent, type ReactElement } from 'react';
+import { useEffect, useId, useMemo, useRef, type KeyboardEvent, type ReactElement } from 'react';
 import { useStore } from 'zustand';
 import { volumeStatusLine, type StatusLine } from '../card/VolumeDetail';
 import { useSurveyDates } from '../card/slots';
@@ -195,6 +195,20 @@ export function PilePanel({
   const editing = useMeasure((s) => s.editing !== null && s.focus === id);
   const tab = usePileView((s) => s.tab);
   const setTab = usePileView((s) => s.setTab);
+  // A tab just picked shows its first row (Profile's actions, History's switch and Export CSV,
+  // marked `data-pile-lead`): the panel's head is tall enough to leave that row at the fold in a
+  // small window, so the panel moves by the least that brings it into view. Only on a pick: a
+  // pile opened on the tab it was left on stays where the person scrolled it.
+  const body = useRef<HTMLDivElement>(null);
+  const tabShown = useRef(tab);
+  useEffect(() => {
+    if (tabShown.current === tab) return;
+    tabShown.current = tab;
+    const lead = body.current?.querySelector<HTMLElement>('[data-pile-lead]');
+    // absent where nothing is laid out (the unit tests' DOM)
+    if (lead && typeof lead.scrollIntoView === 'function')
+      lead.scrollIntoView({ block: 'nearest' });
+  }, [tab]);
   const data = usePileData(m);
   const dates = useSurveyDates();
   // a line moved or turned for the pile is fitted again once its outline is edited
@@ -257,6 +271,7 @@ export function PilePanel({
       )}
       <Tabs items={tabs} value={tab} onChange={setTab} label={data.m.label} idPrefix={prefix} />
       <div
+        ref={body}
         className="pp-body"
         role="tabpanel"
         id={`${prefix}-panel-${tab}`}

@@ -382,6 +382,20 @@
   margin: 0;
 }
 
+/* History's head: the title, then the unit switch and Export CSV. It keeps to the panel's width
+   however wide the table under it is (its dates and figures never wrap), so the two controls are
+   in view when the tab opens; where the panel is too narrow for the title beside them, they keep
+   the first line and the title goes under it, over its chart */
+.pp-history-head {
+  flex-wrap: wrap-reverse;
+  max-inline-size: 100cqi;
+}
+.pp-history-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
 /* History: the table, newest first */
 .pp-table {
   inline-size: 100%;

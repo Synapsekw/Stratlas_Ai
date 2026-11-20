@@ -68,8 +68,21 @@ vi.mock('../card/BasePicker', () => ({
 }));
 // the tabs other than Overview have their own tests
 vi.mock('./pileAxisScene', () => ({ stagePile: () => null }));
-vi.mock('./PileProfile', () => ({ PileProfile: () => <div data-testid="pile-profile" /> }));
-vi.mock('./PileHistory', () => ({ PileHistory: () => <div data-testid="pile-history" /> }));
+// each with its first row, as the real ones mark it (`data-pile-lead`)
+vi.mock('./PileProfile', () => ({
+  PileProfile: () => (
+    <div data-testid="pile-profile">
+      <div data-pile-lead="" data-testid="profile-lead" />
+    </div>
+  ),
+}));
+vi.mock('./PileHistory', () => ({
+  PileHistory: () => (
+    <div data-testid="pile-history">
+      <div data-pile-lead="" data-testid="history-lead" />
+    </div>
+  ),
+}));
 vi.mock('../Calculators', () => ({
   Calculators: () => <div data-testid="survey-calculators">Loose Compacted Weighed tonnage</div>,
 }));
@@ -444,6 +457,41 @@ describe('PilePanel', () => {
     expect(q('[data-testid="pile-profile"]')).not.toBeNull();
     click(q('[role="tab"][id$="-tab-history"]'));
     expect(q('[data-testid="pile-history"]')).not.toBeNull();
+  });
+
+  describe('a tab just picked brings its first row into view', () => {
+    // jsdom lays nothing out: the call is what the panel owes
+    const shown: string[] = [];
+    const into = vi.fn(function (this: HTMLElement, opts?: ScrollIntoViewOptions) {
+      shown.push(`${this.getAttribute('data-testid') ?? ''}:${opts?.block ?? ''}`);
+    });
+    beforeEach(() => {
+      shown.length = 0;
+      HTMLElement.prototype.scrollIntoView = into;
+    });
+    afterEach(() => {
+      Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
+    });
+
+    it('Profile, then History: each by the least scroll that shows it', () => {
+      render();
+      expect(shown).toEqual([]);
+      click(q('[role="tab"][id$="-tab-profile"]'));
+      expect(shown).toEqual(['profile-lead:nearest']);
+      click(q('[role="tab"][id$="-tab-history"]'));
+      expect(shown).toEqual(['profile-lead:nearest', 'history-lead:nearest']);
+      // Overview has no such row: the panel stays where it is
+      click(q('[role="tab"][id$="-tab-overview"]'));
+      expect(shown).toHaveLength(2);
+    });
+
+    it('a pile opened on the tab it was left on does not move the panel', () => {
+      pileView.setState({ tab: 'profile' });
+      render();
+      expect(q('[data-testid="profile-lead"]')).not.toBeNull();
+      render('03');
+      expect(shown).toEqual([]);
+    });
   });
 
   it('the head carries the measurement "⋯" menu (rename, colour, fly to, …)', () => {

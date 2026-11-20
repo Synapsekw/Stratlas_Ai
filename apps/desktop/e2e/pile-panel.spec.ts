@@ -824,6 +824,8 @@ test('Open larger opens one section window, and closing it leaves none', async (
   await figuresIn(panel);
   await panel.getByTestId('pile-tab-profile').click();
   await expect(panel.getByTestId('pile-profile-chart')).toBeVisible({ timeout: 120_000 });
+  // in view as the tab opens: found without scrolling
+  await expect(panel.getByTestId('pile-open-larger')).toBeInViewport({ ratio: 1 });
   await panel.getByTestId('pile-open-larger').click();
   await expect(win.locator('.sec-window')).toHaveCount(1);
   // the window alone: the dock does not wait under it to show once the window closes
@@ -831,6 +833,125 @@ test('Open larger opens one section window, and closing it leaves none', async (
   await win.getByTestId('section-window-close').click();
   await expect(win.locator('.sec-window')).toHaveCount(0);
   await expect(win.getByTestId('section-dock')).toHaveCount(0);
+});
+
+test('Profile and History show their actions without scrolling', async ({ quarryProject, win }) => {
+  test.setTimeout(600_000);
+  const view = await opened(win, quarryProject);
+  await view.getByTestId('volumes-pile').filter({ hasText: SP1 }).click();
+  const panel = win.getByTestId('pile-panel');
+  await figuresIn(panel);
+  // the Selection tab's scroll box, at its top as the pile opens. The test never scrolls it: at
+  // this height the panel's head fills it, and a picked tab brings its own first row into view
+  const scroller = win.locator('.right #wb-panel-selection > .wb-panel-scroll');
+  await expect(scroller).toHaveCount(1);
+  expect(await scroller.evaluate((el) => [el.scrollLeft, el.scrollTop])).toEqual([0, 0]);
+  const port = await scroller.boundingBox();
+  if (!port) throw new Error('no scroll box');
+  /** Within the scroll box from side to side: nothing to scroll sideways for. */
+  const inWidth = async (id: string) => {
+    const box = await panel.getByTestId(id).boundingBox();
+    if (!box) throw new Error(`no ${id}`);
+    expect(box.x, id).toBeGreaterThanOrEqual(port.x);
+    expect(box.x + box.width, id).toBeLessThanOrEqual(port.x + port.width);
+    return box;
+  };
+
+  // Profile: Open larger, Export PNG and Add to report lead the tab, whole in view as it opens
+  await panel.getByTestId('pile-tab-profile').click();
+  for (const id of ['pile-open-larger', 'pile-profile-png']) {
+    await expect(panel.getByTestId(id), id).toBeInViewport({ ratio: 1 });
+    await inWidth(id);
+  }
+  // in a panel this narrow the third wraps under the two: in view too
+  await expect(panel.getByTestId('pile-profile-report')).toBeInViewport();
+  await inWidth('pile-profile-report');
+  // above the chips and the chart
+  await expect(panel.getByTestId('pile-profile-chart')).toBeVisible({ timeout: 120_000 });
+  const larger = await inWidth('pile-open-larger');
+  const chips = await panel.getByTestId('pile-chips').boundingBox();
+  const chart = await panel.getByTestId('pile-profile-chart').boundingBox();
+  if (!chips || !chart) throw new Error('no Profile chart');
+  expect(larger.y + larger.height).toBeLessThanOrEqual(chips.y);
+  expect(larger.y + larger.height).toBeLessThanOrEqual(chart.y);
+  await expect(panel.getByTestId('pile-open-larger')).toBeInViewport({ ratio: 1 });
+
+  // History: Export CSV beside the m³ | t | Both switch on the tab's first line, whole in view as
+  // it opens and within the panel from side to side (the table under it is wider than the panel)
+  await panel.getByTestId('pile-tab-history').click();
+  const csv = panel.getByTestId('pile-history-csv');
+  await expect(csv).toBeInViewport({ ratio: 1 });
+  await expect(csv).toBeEnabled();
+  await expect(csv).toHaveText('Export CSV');
+  await expect(panel.getByTestId('pile-history-unit')).toBeInViewport({ ratio: 1 });
+  const unit = await inWidth('pile-history-unit');
+  const button = await inWidth('pile-history-csv');
+  const table = await panel.getByTestId('pile-history-table').boundingBox();
+  if (!table) throw new Error('no History table');
+  // one line, the switch first
+  expect(Math.abs(unit.y + unit.height / 2 - (button.y + button.height / 2))).toBeLessThan(3);
+  expect(unit.x + unit.width).toBeLessThanOrEqual(button.x);
+  expect(button.y + button.height).toBeLessThanOrEqual(table.y);
+  // never sideways: the panel moved down only
+  expect(await scroller.evaluate((el) => el.scrollLeft)).toBe(0);
+  // a pile with figures never shows the "no volume yet" line
+  await expect(panel.getByTestId('pile-history-none')).toHaveCount(0);
+});
+
+test('a volume outline with no volume yet says so in History, and Recompute works it out', async ({
+  quarryProject,
+  win,
+}) => {
+  test.setTimeout(600_000);
+  // the first pile's outline again as a volume with no comparison yet: nothing computed for it
+  const mfile = join(quarryProject.dir, 'survey', 'measurements.json');
+  const file = MeasurementsFile.parse(JSON.parse(await readFile(mfile, 'utf8')));
+  const sp1 = file.measurements.find((x) => x.id === SP1_ID);
+  if (!sp1) throw new Error('no first pile');
+  const bare = { ...sp1, id: 'bare-outline', label: 'Bare outline', items: [], results: [] };
+  delete bare.series;
+  delete bare.previousResults;
+  file.measurements.push(bare);
+  await writeFile(mfile, JSON.stringify(MeasurementsFile.parse(file), null, 1));
+
+  await openDemo(win, quarryProject.name, quarryProject.id);
+  const view = await volumesView(win);
+  await expect(view.getByTestId('volumes-pile')).toHaveCount(5, { timeout: 60_000 });
+  // every survey prepared: Recompute has surfaces to work on
+  const strip = win.getByRole('region', { name: 'Dates strip' });
+  await expect(strip.locator('[data-survey][data-state="ready"]')).toHaveCount(DATES.length, {
+    timeout: 360_000,
+  });
+  await view.getByTestId('volumes-pile').filter({ hasText: 'Bare outline' }).click();
+  const panel = win.getByTestId('pile-panel');
+  await expect(panel).toHaveAttribute('data-id', 'bare-outline');
+
+  // History says why there is nothing to list or export, in view as the tab opens
+  await panel.getByTestId('pile-tab-history').click();
+  const none = panel.getByTestId('pile-history-none');
+  await expect(none).toHaveText('This pile has no volume yet');
+  await expect(none).toBeInViewport();
+  await expect(panel.getByTestId('pile-history-table')).toHaveCount(0);
+  await expect(panel.getByTestId('pile-history-chart')).toHaveCount(0);
+  await expect(panel.getByTestId('pile-history-csv')).toBeDisabled();
+
+  // Recompute, the volume card's own: the default base, then a figure on every survey date
+  const recompute = panel.getByTestId('pile-history-recompute');
+  await expect(recompute).toHaveText('Recompute');
+  await recompute.click();
+  await expect(none).toHaveCount(0, { timeout: 60_000 });
+  const rows = panel.getByTestId('pile-history-table').locator('tbody tr');
+  await expect(rows).toHaveCount(DATES.length);
+  await figuresIn(panel);
+  await expect(panel.getByTestId('pile-history-csv')).toBeEnabled();
+  // the same outline on the same base as the first pile: the same volume
+  const truth = (quarryProject.truth as unknown as QuarryTruth).stockpiles.sp1?.dates ?? {};
+  await expect
+    .poll(async () => figure(await rows.first().locator('td').first().innerText()), {
+      timeout: 240_000,
+    })
+    .toBeGreaterThan(0);
+  near(figure(await rows.first().locator('td').first().innerText()), truth.m3?.volumeM3 ?? NaN);
 });
 
 test('a pile picked in Project, In this project, Measurements opens in Selection and scrolls with the wheel over its middle', async ({

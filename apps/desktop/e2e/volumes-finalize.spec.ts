@@ -340,7 +340,8 @@ test('with the larger chart window open, a fly on the Map lands the point above 
   await stageMode(win, 'Map');
   await mapThere(win);
   await profileShown(panel);
-  await panel.getByTestId('pile-open-larger').scrollIntoViewIfNeeded();
+  // the tab's first row: in view as the tab opens, nothing to scroll to
+  await expect(panel.getByTestId('pile-open-larger')).toBeInViewport({ ratio: 1 });
   await panel.getByTestId('pile-open-larger').click();
   const big = win.getByTestId('section-window');
   await expect(big).toBeVisible();
