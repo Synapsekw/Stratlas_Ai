@@ -49,6 +49,7 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 | Walks W1            | 360 video: a 360 camera file or a stitched 360 video comes in and plays beside the 3D view                                                                                                                                                                                                                                  | Version 0.12.0 with pipeline pack 0.6.0, which brings ffmpeg (see Walks W1, Before you start)                                                                                                                                                              | Built; not yet tested by the founder                 |
 | Walks W2            | Placing a 360 walk: the path notice, the shape following the pointer, Start and End on a drawing, the map or the 3D view, handles, Fine-tune, Save, Edit placement, Remove placement, Remove walk                                                                                                                           | Version 0.12.0 with pipeline pack 0.6.0, a 360 video and a drawing (see Walks W2, Before you start)                                                                                                                                                        | Built; not yet tested by the founder                 |
 | Point cloud cleanup | Clip box, height range, box and lasso selections, Remove noise, Save cleaned copy, Apply cleanup on export, right-click actions                                                                                                                                                                                             | The build of this branch with pipeline pack 0.12.0                                                                                                                                                                                                         | Built; not yet tested by the founder                 |
+| Volumetric report   | The rebuilt volumetric report: pictures taken at export with progress and Stop, every pile listed, the site overview, two pile cards per page with pictures and profile, the overlap warning, the offline HTML file                                                                                                         | The build of this branch and a stockpile project of yours with two survey dates (a copy is best)                                                                                                                                                           | Built; not yet tested by the founder                 |
 
 ## Stage M5: your M4 feedback, fixed
 
@@ -1287,3 +1288,37 @@ Use the build of this branch and a test project (or a copy) with a coordinate sy
 
 - [ ] A photo twice as wide as it is high shows **Looks like a 360** in **Media**. **Treat as 360**: it moves to the 360s of its date. Right-click it, **Treat as photo**: it goes back to the photos.
 - [ ] **Treat as 360** on a photo with marks on it is greyed with the reason. In a package neither is offered.
+
+## Stage Volumetric report: the rebuilt layout
+
+Use the build of this branch and a stockpile project of yours with two survey dates and several piles (a copy is best). The report writes only its own pictures folder and text file into the project. The end to end specs `apps/desktop/e2e/volumetric-report.spec.ts`, `volumetric-report-edit.spec.ts` and `volumetric-report-layout.spec.ts` run the same steps on the generated Quarry demo. What is different on purpose is in [KNOWN-LIMITS.md](KNOWN-LIMITS.md), under Volumes.
+
+### Pictures at export
+
+- [ ] **Reports**, **Customer reports**, **Open volumetric report**: the editor opens with a preview. There is no **Take pictures** button. Above the preview a line says "Pictures are taken when you export." with **Take them now**.
+- [ ] Click **Export PDF** and choose where to save. The 3D view opens and a card, "Taking the report pictures", says what is being pictured ("Site, ...", then "Pile 1 of N: ...") with "Picture n of N", a bar and **Stop taking pictures**. Then it reads "Writing the PDF" and the button is greyed out. Your view comes back as you left it, and a message says the report was saved.
+- [ ] Click **Export PDF** again without changing anything: no pictures are taken, the file is written at once.
+- [ ] In the project, move one corner of one pile and save. Open the report again: the line reads "The data changed since the pictures were taken." Click **Export PDF** and, while the card counts, **Stop taking pictures**: no file is saved, a message says taking them was stopped, the editor and your view are back, and the old pictures are still in the preview.
+- [ ] Click **Take them now**: the same card runs without a save dialog, and the preview then shows the new pictures and the line is gone.
+- [ ] **Exports** screen (or **Ctrl K**, "volumetric"): **Volumetric report (PDF)** takes the pictures when they are needed and saves the file. It no longer says the report has no pictures.
+
+### The PDF
+
+- [ ] Page 1: under the title, the number of piles ("N piles, M measured" when some have no volume). The table lists every pile of the project; a pile without a volume reads "Not computed", and the stock on hand equals the site total of **Project**, **Volumes**.
+- [ ] If two of your piles lie on top of each other (half or more of the smaller one), a line under the table names both and says the site total may count the same material twice. Without such piles there is no line.
+- [ ] The "In short" text is whole, also a long one you typed.
+- [ ] Page 2, **Site overview**: the site photo, the elevation map and the 3D view, each with the pile numbers. Ground the survey does not cover is light, never black. No two numbers sit on top of each other; a moved number has a line to its place.
+- [ ] The pile pages, two piles per page. Per pile: the volume and the change since the compared survey; the photo with the outline and the A to B line; the 3D picture; the "Before" photo; the elevation profile with both surveys and the base; footprint, base, base level, peak height, density and survey date.
+- [ ] The 3D picture of every pile is captioned with the latest survey date and shows that survey, also for a pile filed under the earlier date.
+- [ ] A pile without a volume has a card too: "Not computed", no change badge, still its pictures and profile.
+- [ ] A pile with a negative volume, if you have one: the volume as computed, the note "The surface is below the base here. Check the base.", no tonnes on the card, and a change in m³ without a percentage. The site total still includes it.
+- [ ] The last page, **What changed**: the before and after photos, the cut and fill picture, a bar per pile with room between the rows, and the method note once, at the end. No other page has the method note in its footer.
+- [ ] In the editor switch **B. Site overview and pile pages** off and export: the PDF has the summary and the change page only. Switch it on again.
+- [ ] Change **Compare with** to another date (a project with three dates): the figures, the "Before" photos and the second line of the profiles follow, and the next export takes the pictures again.
+
+### The HTML file
+
+- [ ] **Export HTML**, then open the file in a browser with the network off: the date, view and unit switches work, a pile can be picked on the picture and in the list, and **Download CSV** and **Save as PDF** work.
+- [ ] The pile list shows a pile without a volume as "Not computed", last in the list, and the totals do not count it.
+- [ ] **Save as PDF** prints the same pages as **Export PDF**, with each pile's own pictures.
+- [ ] The file is under 15 MB. On a site with very many piles (about 70 or more) the export may instead say the file would be larger than 15 MB and to export a PDF: that is the limit, not a fault.

@@ -31,7 +31,7 @@ How this plan was made: the notes, plans, ADR, guide and known limits were read,
 | 8   | Change what the view shows | Right panel, **Layers and display > Surface and piles** (Photo, Elevation, Cut & fill, Outlines, Labels)                 | Colours the terrain and shows or hides pile outlines and labels.                                                                                                                                           |
 | 9   | Compare one area           | Right-click a polygon, **Compare with previous survey**, tick **Include volumes**                                        | One layer row with the cut and fill heat map inside the polygon.                                                                                                                                           |
 | 10  | Export figures             | **Export** in the Volumes header, the Cut & fill pane, the pile's History, Materials, and the **Exports** screen         | CSV files (volume over time, cut and fill, materials, stockpile inventory), and single measurement CSV, DXF and PNG.                                                                                       |
-| 11  | Make the customer report   | **Reports > Customer reports > Open volumetric report**                                                                  | An editor with a live preview: Take pictures, edit the texts, switch pages on and off, **Export PDF** and **Export HTML** (one offline file).                                                              |
+| 11  | Make the customer report   | **Reports > Customer reports > Open volumetric report**                                                                  | An editor with a live preview: edit the texts, switch pages on and off, **Export PDF** and **Export HTML** (one offline file); the export takes the pictures itself.                                       |
 
 The numbers come from one place: the survey engine (`packages/survey`, with a Python twin in `python/src/aio_pipelines/survey`). The older "stockpile kit" (`packages/volumetric`, `python/src/aio_pipelines/volumetric`) now only detects piles and draws pictures; it computes no figure the user sees (ADR 0013).
 
@@ -358,13 +358,15 @@ Things that hold for many steps:
 
 ### D. Reports and exports
 
+Steps 29 to 32 were rewritten on 20 Nov 2026 for the rebuilt report (`docs/plans/2026-11-20-volumetric-report-layout.md`): there is no **Take pictures** step any more, the export takes the pictures, and the PDF has a site overview and two pile cards per page. The full walkthrough is section 12 of that plan and the stage "Volumetric report: the rebuilt layout" in `docs/TESTING.md`.
+
 28. **Which report is for what.** Data: Q.
     - Do: open **Reports**.
     - Expect: under **Project report**, a few sentences saying it is the full survey record with Stockpile inventory and Volume over time inside; under **Customer reports** > **Volumetric report**, that it is the hand-over for a customer, as PDF or one offline HTML file.
     - Checked by: `volumes-finalize.spec.ts` (same test as 26).
 29. **Pictures for the report.** Data: Q.
-    - Do: **Open volumetric report** > **Take pictures**.
-    - Expect: the preview shows the photo with numbered markers.
+    - Do: **Open volumetric report**; on the line above the preview click **Take them now** (or go straight to step 31: the export takes them).
+    - Expect: a card counts the pictures ("Picture n of N") with **Stop taking pictures**; then the preview shows the photo with numbered markers and each pile's own pictures.
     - Checked by: `volumetric-report.spec.ts` ("the volumetric report shows the Volumes tab figures, prints them to PDF and exports an offline HTML file"). By eye: that each marker's number matches its table row.
 30. **Edit the report.** Data: Q.
     - Do: edit the title and the In short text; **Reset to generated**; switch page B off and on.
@@ -372,11 +374,11 @@ Things that hold for many steps:
     - Checked by: `volumetric-report-edit.spec.ts` (both tests).
 31. **Export PDF.** Data: Q.
     - Do: **Export PDF**.
-    - Expect: three pages with the figures and base names of Project > Volumes.
+    - Expect: pictures are taken first when there are none or the data changed, under the same card, which then reads "Writing the PDF". The PDF has the summary, the site overview, the pile pages (two piles per page) and the change page, with the figures and base names of Project > Volumes.
     - Checked by: `volumetric-report.spec.ts`. By eye: the branding.
 32. **Export HTML and open it offline.** Data: Q.
     - Do: **Export HTML**; open the file with Wi-Fi off; use the date, view and unit switches; click a pile; **Download CSV**; **Save as PDF**.
-    - Expect: everything works without a network.
+    - Expect: everything works without a network; a pile without a volume is listed as "Not computed".
     - Checked by: `volumetric-report.spec.ts` ("the volumetric report shows the Volumes tab figures, prints them to PDF and exports an offline HTML file"): the file is opened from disk with every network request blocked; the date switch, the four views, the unit switch, a pile picked from the list and on the picture, and Download CSV are driven. Partly: **Save as PDF** is not clicked (the test prints the PDF itself). By eye: Wi-Fi really off.
 33. **The edits are kept.** Data: Q.
     - Do: project switcher > **Close project**; open it again; open the report.

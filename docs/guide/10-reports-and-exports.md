@@ -38,6 +38,34 @@ The full report in the house format: cover, contents, executive summary, scope a
 
 Stockpile projects add the stockpile map and the volume table; road projects the road ratings. A project with no issues still prints.
 
+## Volumetric report
+
+The hand-over of a stockpile site for a customer: the piles with their figures, pictures and profiles, and texts you can edit. The figures are the ones **Project**, **Volumes** shows.
+
+1. **Reports**, **Customer reports**, **Open volumetric report**. The editor opens with a live preview.
+2. Edit the texts: **Title**, **Prepared for**, **Prepared by**, **In short**, **Intro**, **Method note**, **Pile notes** and **Closing remarks**. **In short** and the method note are written from the figures and follow them until you edit them; **Reset to generated** brings the generated text back. **Compare with** picks the survey date the change is measured from.
+3. Under **Pages**, switch **A. Cover and summary**, **B. Site overview and pile pages** and **C. What changed** on or off. At least one page stays on.
+4. Click **Export PDF**, or **Export HTML** for one file that opens offline, and choose where to save it.
+
+The export takes the report's pictures itself when there are none yet or the data changed since they were taken. The 3D view opens and a card says what is being pictured ("Site, ..." and then "Pile 4 of 31: ...") with "Picture 12 of 97" and a bar. Then it reads "Writing the PDF" or "Writing the HTML file", and your view comes back as you left it. **Stop taking pictures** ends the run after the current picture: nothing is saved, the pictures you had stay, and no file is written. While the file is written the button is greyed out. An export with pictures that are still current takes none and writes the file at once.
+
+Until the first export the preview has no pictures, and a line above it says "Pictures are taken when you export." **Take them now** on that line takes them at once, so you can check the preview first. After the data changed the line reads "The data changed since the pictures were taken.", with the same link. Every run takes the whole set again.
+
+What the report holds:
+
+- **Summary.** The title band with the number of piles ("8 piles, 3 measured" when some have no volume), the stock on hand, the change and "In short". The table lists every pile of the project. A pile without a volume reads "Not computed" and is left out of every sum. When two outlines share half or more of the smaller one, a line under the table names the two piles and says the site total may count the same material twice.
+- **Site overview.** The site photo, the elevation map and the 3D view from the south-east, each with the pile numbers. Numbers that would sit on top of each other are moved apart, with a line to their true place.
+- **Pile pages**, two piles per page. Each pile has its volume and the change since the compared survey; the photo with its outline and the A to B profile line, the 3D picture and the compared survey's photo; the elevation profile with both surveys and the base; then footprint, base, base level, peak height, density and survey date. The 3D picture always shows the latest survey, also for a pile filed under an earlier date.
+- **What changed.** The before and after photos, the cut and fill picture, a bar per pile, and the method note once at the end.
+
+A pile with a negative volume (the surface lies below its base) prints the volume as computed with the note "The surface is below the base here. Check the base." Its card shows no tonnes, and its change is given in cubic metres without a percentage. It still counts in the site total, so the report's total equals the app's.
+
+The HTML file also has an interactive view: switch the date, the view (Photo, Cut & fill, Elevation, 3D) and the units, pick a pile, **Download CSV** and **Save as PDF**. It works without a network.
+
+The same exports are on the **Exports** screen and under **Ctrl K** as **Volumetric report (PDF)** and **Volumetric report (HTML)**; they take the pictures the same way.
+
+Two limits on very large sites. The report keeps up to 512 pictures, which is the site pictures and three pictures each for 168 piles on two survey dates; the piles past that, the smallest, have their photos cut from the site photo and the line "No 3D picture: the report pictures the 168 largest piles". The HTML file is at most 15 MB: with many piles the pile pictures are made smaller first, then the site pictures, and past that the export says to export a PDF instead, which has no such limit.
+
 ## Issue register
 
 **Reports**, **Issue register**, **Export issue register PDF**: every issue with its photo, severity and note, with your branding.
