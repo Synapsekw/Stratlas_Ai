@@ -2,7 +2,7 @@
  * Feature dialogs on the shared Dialog (UI revision W15b), in the real app. The volumetric report's
  * picture progress card is a modal: while the pictures are taken it holds the focus (Tab and
  * Shift+Tab stay inside), and Escape stops the run after the current shot: the card closes, the
- * person's view comes back and the report says the pictures were not taken. On the synthetic
+ * person's view comes back and a message says taking the pictures was stopped. On the synthetic
  * quarry demo; off-screen, zero network, pipeline Python needed.
  *
  * The shell's confirm and the library's Delete project (W15a) are on the same Dialog: an
@@ -72,8 +72,9 @@ test('the picture progress card traps focus and closes on Escape', async ({
   await expect(editor.getByRole('textbox', { name: 'Title', exact: true })).toBeVisible({
     timeout: 120_000,
   });
-  const bar = editor.getByTestId('volumetric-pictures');
-  await bar.getByRole('button', { name: /^Take pictures/ }).click();
+  // the quiet line over the preview: the export takes the pictures, "Take them now" takes them at once
+  const note = editor.getByTestId('volumetric-pictures');
+  await note.getByRole('button', { name: 'Take them now' }).click();
 
   const progress = win.getByRole('alertdialog', { name: 'Taking the report pictures' });
   await expect(progress).toBeVisible({ timeout: 30_000 });
@@ -88,14 +89,18 @@ test('the picture progress card traps focus and closes on Escape', async ({
 
   await win.keyboard.press('Escape');
   await expect(progress).toHaveCount(0, { timeout: 120_000 });
-  // the run stopped: nothing saved, the report says so and offers the pictures again
+  // the run stopped: nothing saved, a message says so and the report still offers the pictures
   await expect(editor).toBeVisible({ timeout: 60_000 });
-  await expect(editor.getByTestId('volumetric-pictures')).toContainText(/stopped/i, {
-    timeout: 60_000,
-  });
+  await expect(win.getByTestId('export-toast-message').last()).toContainText(
+    'Taking them was stopped.',
+    { timeout: 60_000 },
+  );
+  await expect(editor.getByTestId('volumetric-pictures')).toContainText(
+    'Pictures are taken when you export.',
+  );
   await expect(
-    editor.getByTestId('volumetric-pictures').getByRole('button', { name: /^Take pictures/ }),
-  ).toBeVisible();
+    editor.getByTestId('volumetric-pictures').getByRole('button', { name: 'Take them now' }),
+  ).toBeEnabled();
 });
 
 test('Report a problem and the new project wizard are modal Dialogs that Escape closes', async ({

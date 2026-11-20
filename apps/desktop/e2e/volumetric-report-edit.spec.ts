@@ -5,9 +5,11 @@
  * preview follows each one; Export HTML writes them all into the file, including a text typed
  * and exported at once (the export hands pending edits over first); the project closed and opened
  * again shows them, and `report/volumetric.json` keeps them as `user` versions. Reset to generated
- * puts the generated summary back, in the preview and in the next export. Page B turned off
- * leaves the preview, the PDF and the HTML's print pages without pile cards, and the last page
- * left on cannot be turned off. Off-screen, zero network, pipeline Python needed.
+ * puts the generated summary back, in the preview and in the next export. Page B ("Site overview
+ * and pile pages") turned off leaves the preview, the PDF and the HTML's print pages without the
+ * site overview and without pile cards, and the last page left on cannot be turned off. There is
+ * no "Take pictures" step: the first export takes the pictures itself (layout plan 2026-11-20).
+ * Off-screen, zero network, pipeline Python needed.
  */
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { mkdir, readFile } from 'node:fs/promises';
@@ -80,9 +82,10 @@ async function exportFrom(
   const before = await win.getByTestId('export-toast-message').count();
   await editor.getByRole('button', { name, exact: true }).click();
   const msg = win.getByTestId('export-toast-message').nth(before);
-  // stop at the first end, a saved file or a refusal, rather than waiting out a refusal
-  await expect(msg).toContainText(/saved to|no pictures|could not|failed|not /i, {
-    timeout: 240_000,
+  // stop at the first end, a saved file or a refusal, rather than waiting out a refusal (the
+  // first export takes the report's pictures before it writes its file)
+  await expect(msg).toContainText(/saved to|no pictures|could not|failed|not |stopped/i, {
+    timeout: 600_000,
   });
   await expect(msg).toContainText('saved to');
   await win.getByRole('button', { name: 'Dismiss' }).last().click();
@@ -120,17 +123,8 @@ async function openEditor(win: Page): Promise<Locator> {
     timeout: 120_000,
   });
   await expect(editor.getByTestId('volumetric-preview')).toBeVisible();
-  // the exports need the pictures: take them from the 3D stage once (they are saved with the
-  // project, so a reopen finds them current)
-  const bar = editor.getByTestId('volumetric-pictures');
-  if ((await bar.count()) > 0) {
-    await bar.getByRole('button', { name: /^Take pictures/ }).click();
-    const progress = win.getByTestId('volumetric-picture-progress');
-    await expect(progress).toBeVisible({ timeout: 30_000 });
-    await expect(progress).toHaveCount(0, { timeout: 300_000 });
-    await expect(bar, 'the pictures are current').toHaveCount(0, { timeout: 60_000 });
-    await expect(editor).toBeVisible();
-  }
+  // no step before an export: the first one takes the pictures itself
+  await expect(editor.getByRole('button', { name: /^Take pictures/ })).toHaveCount(0);
   return editor;
 }
 
@@ -166,7 +160,7 @@ test('edits show in the preview and the HTML, persist across a reopen, and reset
   quarryProject,
   win,
 }) => {
-  test.setTimeout(900_000);
+  test.setTimeout(1_500_000);
   const p = quarryProject;
   const out = join(dataRoot.base, 'out');
   await mkdir(out, { recursive: true });
@@ -206,9 +200,16 @@ test('edits show in the preview and the HTML, persist across a reopen, and reset
   await expect(preview).not.toContainText(generated.trim().slice(0, 40));
   await saved(editor);
 
-  // the HTML has every edited text
+  // the HTML has every edited text (this first export takes the pictures itself)
+  await expect(editor.getByTestId('volumetric-pictures')).toContainText(
+    'Pictures are taken when you export.',
+  );
   let html = unescape(await readFile(await exportFrom(app, win, editor, 'Export HTML'), 'utf8'));
   for (const text of Object.values(EDITS)) expect(html, text).toContain(text);
+  await expect(editor.getByTestId('volumetric-pictures'), 'the pictures are current').toHaveCount(
+    0,
+    { timeout: 60_000 },
+  );
 
   // typed and exported at once: the export hands the pending edit over first
   await box(editor, 'Closing remarks').fill(AT_ONCE);
@@ -274,7 +275,7 @@ test('pages turned off leave the preview, the PDF and the HTML; one page stays o
   quarryProject,
   win,
 }) => {
-  test.setTimeout(900_000);
+  test.setTimeout(1_500_000);
   const p = quarryProject;
   const out = join(dataRoot.base, 'out');
   await mkdir(out, { recursive: true });
@@ -286,20 +287,28 @@ test('pages turned off leave the preview, the PDF and the HTML; one page stays o
   const pileCards = preview.locator('.vr-page-piles');
   const page = (name: string) => editor.getByRole('checkbox', { name, exact: true });
   const A = page('A. Cover and summary');
-  const B = page('B. Pile cards');
+  const B = page('B. Site overview and pile pages');
   const C = page('C. What changed');
   for (const c of [A, B, C]) await expect(c).toBeChecked();
   await expect(pileCards.first()).toBeVisible();
+  // part B is the site overview and the pile pages, two cards to a page
   const cardPages = await pileCards.count();
+  const piles = await preview.locator('.vr-page-piles .vr-pile').count();
+  expect(piles).toBeGreaterThan(0);
+  expect(cardPages).toBe(1 + Math.ceil(piles / 2));
+  await expect(preview.locator('.vr-page-piles .vr-ov')).toHaveCount(1);
   const allPages = await preview.locator('.vr-page').count();
+  /** What only part B prints: the overview's heading and share bar, a card's profile title. */
+  const PART_B = ['Site overview', 'Share of stock on hand', 'Elevation profile, A to B'];
 
-  // all on: the PDF and the HTML print pile cards
+  // all on: the PDF and the HTML print the overview and the pile cards
   const full = await pdfText(
     await exportFrom(app, win, editor, 'Export PDF'),
     Array.from({ length: 12 }, (_, i) => i + 1),
   );
   expect(full.count).toBe(allPages);
-  expect(flat([...full.text.values()].join(' '))).toContain(flat('Share of stock on hand'));
+  for (const text of PART_B)
+    expect(flat([...full.text.values()].join(' ')), text).toContain(flat(text));
   let html = await readFile(await exportFrom(app, win, editor, 'Export HTML'), 'utf8');
   expect(printBlock(html)).toContain('vr-page-piles');
 
@@ -315,9 +324,12 @@ test('pages turned off leave the preview, the PDF and the HTML; one page stays o
     Array.from({ length: 12 }, (_, i) => i + 1),
   );
   expect(less.count).toBe(full.count - cardPages);
-  expect(flat([...less.text.values()].join(' '))).not.toContain(flat('Share of stock on hand'));
+  // neither the overview nor a card
+  for (const text of PART_B)
+    expect(flat([...less.text.values()].join(' ')), text).not.toContain(flat(text));
   html = await readFile(await exportFrom(app, win, editor, 'Export HTML'), 'utf8');
   expect(printBlock(html)).not.toContain('vr-page-piles');
+  expect(printBlock(html)).not.toContain('vr-ov-fig');
   expect(printBlock(html)).toContain('vr-page-cover');
 
   // A off too: C is the last page on and cannot be turned off

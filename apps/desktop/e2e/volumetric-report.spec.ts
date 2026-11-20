@@ -1,13 +1,17 @@
 /**
- * The volumetric report (spec 2026-10-25, plan Task 25) in the real app, on the synthetic quarry
- * demo: three monthly surveys prepared quietly on open, three stockpiles with materials and the
- * pit. Each pile's latest and previous m³ and tonnes are read from the Volumes tab's inventory;
- * Reports, Customer reports, Open volumetric report: the preview's ranked table and KPIs show the
- * same figures. Take pictures runs the live stage capture (progress card, then the preview's photo).
- * Export PDF prints pages A, B and C (one each for three piles) with the same figures. Export HTML
- * writes one file under 15 MB that opens in a fresh offline window (every request but `file:`,
- * `data:` and `blob:` cancelled and recorded: none is), boots its viewer, selects a pile from its
- * marker, switches to tonnes, downloads its CSV and prints the same number of pages as the PDF.
+ * The volumetric report (spec 2026-10-25, layout plan 2026-11-20) in the real app, on the
+ * synthetic quarry demo: three monthly surveys prepared quietly on open, three stockpiles with
+ * materials and the pit. Each pile's latest and previous m³ and tonnes are read from the Volumes
+ * tab's inventory; Reports, Customer reports, Open volumetric report: the preview's ranked table
+ * and KPIs show the same figures. There is no "Take pictures" step: Export PDF from a project
+ * without pictures takes them itself under the progress card (a label, a count, then "Writing the
+ * PDF" with Stop inert), asks where to save only after the capture, and saves three pictures per
+ * pile beside the site's; every pile's 3D picture is taken on the latest date. The PDF has the
+ * cover, the site overview, two piles per page and the change page, with the same figures. A
+ * second export takes no pictures. Export HTML writes one file under 15 MB that opens in a fresh
+ * offline window (every request but `file:`, `data:` and `blob:` cancelled and recorded: none
+ * is), carries each pile's own pictures, boots its viewer, selects a pile from its marker,
+ * switches to tonnes, downloads its CSV and prints the same number of pages as the PDF.
  * Off-screen, zero network, pipeline Python needed.
  */
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
@@ -19,6 +23,15 @@ import { volumesView } from './island';
 import { pdfText } from './pdf';
 import { openDemo } from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
+import {
+  answerSaves,
+  cardLog,
+  readFrame,
+  saveDialogs,
+  secondsPerPicture,
+  viewsDir,
+  watchCard,
+} from './volumetricCapture';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
@@ -28,8 +41,9 @@ test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`
  * every volume measurement, the pit's month-on-month change too (it has no material, so no tonnes).
  */
 const PILES = ['Stockpile SP1', 'Stockpile SP2', 'Stockpile SP3'] as const;
-/** The planned page count for three piles: A, B and C on one page each. */
-const PAGES = 3;
+/** The survey dates of the quarry, oldest first; the report's latest date is the last. */
+const DATES = ['m1', 'm2', 'm3'] as const;
+const LATEST = 'm3';
 /** The base picker's names (`base.*` in en.ts), and a survey or design side's. */
 const BASE_NAMES = [
   'Toe surface',
@@ -105,33 +119,28 @@ async function inventoryOf(view: Locator): Promise<Record<string, Figures>> {
   return out;
 }
 
-/** Answer every save dialog with `<dir>/<default name>`. */
-async function answerSaveDialogs(app: ElectronApplication, dir: string): Promise<void> {
-  await app.evaluate(
-    ({ dialog }, folder) => {
-      dialog.showSaveDialog = (...args: unknown[]) => {
-        const opts = (args.length > 1 ? args[1] : args[0]) as { defaultPath?: string };
-        const name = String(opts.defaultPath).split(/[\\/]/).pop() ?? 'export';
-        return Promise.resolve({ canceled: false, filePath: `${folder}/${name}` });
-      };
-    },
-    dir.replace(/\\/g, '/'),
-  );
-}
-
 /** The local day as YYYY-MM-DD (the export names carry it). */
 const today = () => {
   const d = new Date();
   return `${String(d.getFullYear())}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-/** Wait for the export named `name` to land in `dir`, and its saved toast. */
-async function exported(win: Page, dir: string, name: string): Promise<string> {
+/** Wait for the export's saved toast and its file, named `<n>-<name>` in `dir`. */
+async function exported(
+  app: ElectronApplication,
+  win: Page,
+  dir: string,
+  name: string,
+): Promise<string> {
   const msg = win.getByTestId('export-toast-message').last();
-  await expect(msg).toContainText('saved to', { timeout: 300_000 });
-  await expect.poll(async () => readdir(dir), { timeout: 30_000 }).toContain(name);
+  await expect(msg).toContainText(/saved to|not |could not|failed/i, { timeout: 600_000 });
+  await expect(msg).toContainText('saved to');
+  const saves = await saveDialogs(app);
+  const file = `${String(saves.count)}-${name}`;
+  expect(saves.last.endsWith(file), `the save dialog offered ${name}`).toBe(true);
+  await expect.poll(async () => readdir(dir), { timeout: 30_000 }).toContain(file);
   await win.getByRole('button', { name: 'Dismiss' }).last().click();
-  return join(dir, name);
+  return join(dir, file);
 }
 
 test('the volumetric report shows the Volumes tab figures, prints them to PDF and exports an offline HTML file', async ({
@@ -140,10 +149,10 @@ test('the volumetric report shows the Volumes tab figures, prints them to PDF an
   quarryProject,
   win,
 }) => {
-  test.setTimeout(900_000);
+  test.setTimeout(1_500_000);
   const out = join(dataRoot.base, 'out');
   await mkdir(out, { recursive: true });
-  await answerSaveDialogs(app, out);
+  await answerSaves(app, out);
 
   // ---- the app's figures: the latest survey and the one before, from the inventory
   const view = await opened(win, quarryProject);
@@ -234,13 +243,28 @@ test('the volumetric report shows the Volumes tab figures, prints them to PDF an
       : 'Base per pile, see table.',
   );
 
-  // ---- Take pictures: the progress card over the stage, then the preview shows the photo
-  const bar = editor.getByTestId('volumetric-pictures');
-  await expect(bar).toBeVisible();
-  await bar.getByRole('button', { name: 'Take pictures' }).click();
-  await expect(win.getByTestId('volumetric-picture-progress')).toBeVisible({ timeout: 30_000 });
-  await expect(win.getByTestId('volumetric-picture-progress')).toHaveCount(0, { timeout: 300_000 });
-  await expect(bar, 'the pictures are current (no failure, nothing stale)').toHaveCount(0, {
+  // ---- no "Take pictures" step: one quiet line with a link, and the export takes them itself
+  const note = editor.getByTestId('volumetric-pictures');
+  await expect(note).toContainText('Pictures are taken when you export.');
+  await expect(note.getByRole('button', { name: 'Take them now' })).toBeVisible();
+  await expect(editor.getByRole('button', { name: /^Take pictures/ })).toHaveCount(0);
+  expect(await readFrame(quarryProject.dir), 'no pictures before the first export').toBeNull();
+
+  // ---- Export PDF from a project with no pictures: the progress card, then the file
+  await watchCard(win);
+  await editor.getByRole('button', { name: 'Export PDF' }).click();
+  const progress = win.getByTestId('volumetric-picture-progress');
+  await expect(progress).toBeVisible({ timeout: 60_000 });
+  await expect(progress).toHaveAttribute('data-phase', 'pictures');
+  await expect(progress.locator('.vre-progress-count')).toHaveText(/^Picture \d+ of \d+$/, {
+    timeout: 120_000,
+  });
+  expect((await saveDialogs(app)).count, 'no save dialog before the pictures are in').toBe(0);
+  const pdfFile = await exported(app, win, out, `Quarry-demo-volumetric-report-${today()}.pdf`);
+  await expect(progress).toHaveCount(0);
+  // the report is open again where it was, with the pictures in the preview and no note
+  await expect(editor).toBeVisible();
+  await expect(note, 'the pictures are current (no failure, nothing stale)').toHaveCount(0, {
     timeout: 60_000,
   });
   const photo = preview.locator('.vr-picture-inner img').first();
@@ -250,40 +274,122 @@ test('the volumetric report shows the Volumes tab figures, prints them to PDF an
       timeout: 60_000,
     })
     .toBeGreaterThan(0);
-  // the report is open again where it was
-  await expect(editor).toBeVisible();
 
-  // ---- Export PDF: A, B and C, one page each, with the same figures
-  await editor.getByRole('button', { name: 'Export PDF' }).click();
-  const pdfFile = await exported(win, out, `Quarry-demo-volumetric-report-${today()}.pdf`);
+  // what the card showed: every picture counted with what it is of, then the writing phase
+  const log = await cardLog(win);
+  const total = listed.length * 3 + DATES.length * 3 + 1;
+  const pictured = log.filter((c) => c.phase === 'pictures' && c.count !== '');
+  expect(pictured.map((c) => c.count)).toContain(`Picture 1 of ${String(total)}`);
+  expect(pictured.map((c) => c.count)).toContain(`Picture ${String(total)} of ${String(total)}`);
+  for (const c of pictured)
+    expect(c.what, `the card says what picture ${c.count} is of`).toMatch(
+      /^(Site, \d+ \w+ 2026|Pile \d+ of \d+: .+|Cut and fill between the surveys)$/,
+    );
+  expect(
+    pictured.map((c) => c.what),
+    'the piles are pictured in report order',
+  ).toContain(`Pile 1 of ${String(listed.length)}: ${shown[0]?.label ?? ''}`);
+  expect(
+    pictured.every((c) => !c.stopInert),
+    'Stop works while pictures are taken',
+  ).toBe(true);
+  const writing = log.filter((c) => c.phase === 'writing');
+  expect(writing.length, 'the writing phase showed').toBeGreaterThan(0);
+  expect(writing.every((c) => c.what === 'Writing the PDF' && c.stopInert && c.count === '')).toBe(
+    true,
+  );
+  const pace = secondsPerPicture(log);
+  const paceText = `${String(pace.pictures)} pictures: ${String(pace.all)} s each (site ${String(pace.site)} s, pile ${String(pace.pile)} s)`;
+  test.info().annotations.push({ type: 'seconds-per-picture', description: paceText });
+  process.stdout.write(`[e2e] volumetric report capture, ${paceText}\n`);
+
+  // ---- the saved pictures: the site's, and three per pile, the 3D one on the latest date
+  const frame = await readFrame(quarryProject.dir);
+  if (!frame) throw new Error('the export saved no frame.json');
+  expect(frame.views).toHaveLength(total);
+  const saved = await readdir(viewsDir(quarryProject.dir));
+  for (const v of frame.views) expect(saved, v.file).toContain(v.file);
+  const pile3d = frame.views.filter((v) => v.kind === 'pile-3d');
+  expect(pile3d).toHaveLength(listed.length);
+  expect(
+    pile3d.map((v) => v.capture),
+    'every 3D pile picture is of the latest date',
+  ).toEqual(pile3d.map(() => LATEST));
+  const pilePhotos = frame.views.filter((v) => v.kind === 'pile-photo');
+  expect(pilePhotos).toHaveLength(listed.length * 2);
+  expect([...new Set(pilePhotos.map((v) => v.capture))].sort()).toEqual(['m2', LATEST]);
+  for (const id of new Set(pilePhotos.map((v) => v.pile))) {
+    const two = pilePhotos.filter((v) => v.pile === id);
+    expect(two[0]?.extent, 'both photos of a pile share one frame').toEqual(two[1]?.extent);
+  }
+  expect(frame.views.filter((v) => !v.kind.startsWith('pile-'))).toHaveLength(DATES.length * 3 + 1);
+
+  // ---- the PDF: cover, site overview, two piles per page, change
+  const cardPages = Math.ceil(listed.length / 2);
   const pdf = await pdfText(
     pdfFile,
-    Array.from({ length: 8 }, (_, i) => i + 1),
+    Array.from({ length: 12 }, (_, i) => i + 1),
   );
-  expect(pdf.count, 'the planned page count').toBe(PAGES);
+  expect(pdf.count, 'cover, overview, the pile pages, change').toBe(1 + 1 + cardPages + 1);
   const page = (n: number) => flat(pdf.text.get(n) ?? '');
   expect(page(1)).toContain(flat('Volumetric report'));
   expect(page(1)).toContain(flat('Stock on hand'));
   expect(page(1)).toContain(flat('Latest m³'));
-  expect(page(2)).toContain(flat('Stock inventory'));
+  expect(page(2)).toContain(flat('Site overview'));
   expect(page(2)).toContain(flat('Share of stock on hand'));
-  // a change share is a plausible percentage (none from a previous volume of about zero)
-  expect(page(2), 'no runaway change share on page B').not.toMatch(/[-+−]\d{4,}(\.\d+)?%/);
-  expect(page(3)).toContain(flat(': what moved'));
-  expect(page(3)).toContain(flat('Where the ground went up or down'));
-  for (const r of shown) {
+  expect(page(2)).toContain(flat('Elevation, 31 March 2026'));
+  expect(page(2)).toContain(flat('3D view from the south-east, 31 March 2026'));
+  const cards = Array.from({ length: cardPages }, (_, i) => page(3 + i));
+  cards.forEach((text, i) => {
+    const from = i * 2 + 1;
+    const to = Math.min(listed.length, from + 1);
+    expect(text).toContain(
+      flat(
+        to > from
+          ? `Piles ${String(from)} to ${String(to)} of ${String(listed.length)}`
+          : `Pile ${String(from)} of ${String(listed.length)}`,
+      ),
+    );
+    expect(text).toContain(flat('Elevation profile, A to B'));
+    // the 3D picture is captioned with the latest survey date, for every pile
+    expect(text).toContain(flat('3D view, 31 Mar'));
+    // a change share is a plausible percentage (none from a previous volume of about zero)
+    expect(text, 'no runaway change share on a pile page').not.toMatch(/[-+−]\d{4,}(\.\d+)?%/);
+  });
+  const last = page(pdf.count);
+  expect(last).toContain(flat(': what moved'));
+  expect(last).toContain(flat('Where the ground went up or down'));
+  // the method note prints once, at the end of the report
+  expect(last).toContain(flat('Surface cell size'));
+  for (let n = 1; n < pdf.count; n++)
+    expect(page(n), `no method note on page ${String(n)}`).not.toContain(flat('Surface cell size'));
+  shown.forEach((r, k) => {
     expect(page(1), `${r.label} on page A`).toContain(flat(r.label));
     expect(page(1)).toContain(flat(r.cells[1] ?? '-'));
     expect(page(1)).toContain(flat(r.cells[3] ?? '-'));
     expect(page(1)).toContain(flat(r.cells[4] ?? '-'));
-  }
-  for (const p of PILES) expect(page(2), `${p} on page B`).toContain(flat(p));
+    // each pile has its card, in report order, two to a page
+    expect(cards[Math.floor(k / 2)], `${r.label}'s card`).toContain(flat(r.label));
+  });
   // each card names its pile's base
-  for (const b of bases) expect(page(2), `base ${b} on page B`).toContain(flat(b));
+  for (const b of bases) expect(cards.join(''), `base ${b} on the pile pages`).toContain(flat(b));
+
+  // ---- a second export with nothing changed takes no pictures
+  const frameFile = join(viewsDir(quarryProject.dir), 'frame.json');
+  const takenAt = (await stat(frameFile)).mtimeMs;
+  await watchCard(win);
+  await editor.getByRole('button', { name: 'Export PDF' }).click();
+  const again = await exported(app, win, out, `Quarry-demo-volumetric-report-${today()}.pdf`);
+  expect((await pdfText(again, [])).count).toBe(pdf.count);
+  expect(
+    (await cardLog(win)).filter((c) => c.phase !== 'writing'),
+    'no pictures taken the second time',
+  ).toEqual([]);
+  expect((await stat(frameFile)).mtimeMs, 'the saved pictures are untouched').toBe(takenAt);
 
   // ---- Export HTML: one file under the budget, opened offline
   await editor.getByRole('button', { name: 'Export HTML' }).click();
-  const htmlFile = await exported(win, out, `Quarry-demo-volumetric-report-${today()}.html`);
+  const htmlFile = await exported(app, win, out, `Quarry-demo-volumetric-report-${today()}.html`);
   const size = (await stat(htmlFile)).size;
   expect(size, 'the HTML size budget').toBeLessThan(HTML_BUDGET);
   test.info().annotations.push({ type: 'html-size', description: `${String(size)} bytes` });
@@ -294,6 +400,30 @@ test('the volumetric report shows the Volumes tab figures, prints them to PDF an
   try {
     const d = offline.page;
     await expect(d.locator('.vr-d-band h1')).toBeVisible({ timeout: 30_000 });
+    // the print pages: a card per pile with its three pictures drawn from the file itself
+    const cardPics = d.locator('.vr-print .vr-pile .vr-pile-pic img');
+    await expect(cardPics).toHaveCount(listed.length * 3);
+    const drawn = await cardPics.evaluateAll((imgs) =>
+      Promise.all(
+        (imgs as HTMLImageElement[]).map(async (img) => {
+          await img.decode().catch(() => undefined);
+          return { data: img.src.startsWith('data:image/jpeg'), width: img.naturalWidth };
+        }),
+      ),
+    );
+    expect(
+      drawn.every((x) => x.data && x.width > 0),
+      'every pile picture is in the file',
+    ).toBe(true);
+    // the site pictures are filled in when the file boots
+    const sitePics = d.locator('.vr-print img[data-vr-pic]');
+    expect(await sitePics.count()).toBeGreaterThan(0);
+    expect(
+      await sitePics.evaluateAll((imgs) =>
+        (imgs as HTMLImageElement[]).every((img) => img.src.startsWith('data:image/jpeg')),
+      ),
+    ).toBe(true);
+    await expect(d.locator('.vr-print .vr-page')).toHaveCount(pdf.count);
     const mapImg = d.locator('.vr-d-map img');
     await expect
       .poll(async () => mapImg.evaluate((img: HTMLImageElement) => img.naturalWidth), {
