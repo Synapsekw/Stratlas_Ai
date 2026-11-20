@@ -7,6 +7,7 @@
 import type { SurveyMeasurement } from '@aio/schema';
 import { inventoryPiles } from '@aio/survey';
 import { createStore } from 'zustand/vanilla';
+import { baseSpecOf } from '../../survey/pile/pileBase';
 
 export interface VolumetricViewState {
   /** The project whose volumetric report editor is open, else null. */
@@ -79,8 +80,9 @@ function hash(text: string): string {
 }
 
 /**
- * What the pictures show: the piles' outlines, the dates and the compared pair. `v2` is the set
- * with each pile's own pictures: a set taken before it counts as stale and is retaken at export.
+ * What the pictures show: the piles' outlines and bases (the 3D picture's box stands on the
+ * pile's base), the dates and the compared pair. `v2` is the set with each pile's own pictures:
+ * a set taken before it counts as stale and is retaken at export.
  */
 export function picturesFingerprint(
   measurements: readonly SurveyMeasurement[],
@@ -88,7 +90,12 @@ export function picturesFingerprint(
   pair: { from: string; to: string } | null,
 ): string {
   const piles = reportPiles(measurements)
-    .map((m) => ({ id: m.id, points: m.points, outlines: m.outlines ?? null }))
+    .map((m) => ({
+      id: m.id,
+      points: m.points,
+      outlines: m.outlines ?? null,
+      base: baseSpecOf(m),
+    }))
     .sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
   return `v2-${String(piles.length)}-${hash(JSON.stringify({ piles, dates, pair }))}`;
 }

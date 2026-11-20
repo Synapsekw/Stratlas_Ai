@@ -69,6 +69,16 @@ describe('fingerprints', () => {
     expect(picturesFingerprint([pile('m1')], dates, null)).not.toBe(a);
   });
 
+  it("changes it with a pile's base: the 3D picture's box stands on it", () => {
+    const on = (kind: string) =>
+      pile('m1', { items: [{ from: { kind } }] } as unknown as Partial<SurveyMeasurement>);
+    const a = picturesFingerprint([on('lowest')], dates, pair);
+    expect(picturesFingerprint([on('lowest')], dates, pair)).toBe(a);
+    expect(picturesFingerprint([on('plane')], dates, pair)).not.toBe(a);
+    // no base chosen: the default one
+    expect(picturesFingerprint([pile('m1', { items: [] })], dates, pair)).not.toBe(a);
+  });
+
   it('changes the figures key with any stockpile edit', () => {
     const a = figuresKey([pile('m1')]);
     expect(figuresKey([pile('m1')])).toBe(a);
