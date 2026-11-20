@@ -131,15 +131,15 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 4px 8px;
+  gap: var(--sp-2) var(--sp-4);
   margin: 0;
-  padding: 12px 16px 0;
+  padding: var(--sp-5) var(--sp-6) 0;
   color: var(--fg-2);
 }
 .vre-take {
-  padding: 2px 4px;
+  padding: var(--sp-1) var(--sp-2);
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--r-2);
   background: none;
   color: var(--acc);
   font: inherit;
@@ -165,7 +165,7 @@
    width so the line does not shimmer; the two lines keep their height so the card never jumps. */
 .vre-progress-now {
   display: grid;
-  gap: 2px;
+  gap: var(--sp-1);
   min-height: calc(2 * 1.45em + 2px);
   align-content: start;
 }
@@ -183,7 +183,6 @@
 }
 .vre-progress .bar i {
   background: var(--acc);
-  transition: width 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 /* no figure yet (the 3D view is opening) or none to give (the file is being written) */
 .vre-progress .bar[data-busy] i {
@@ -199,9 +198,6 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .vre-progress .bar i {
-    transition: none;
-  }
   .vre-progress .bar[data-busy] i {
     width: 100%;
     opacity: 0.45;
