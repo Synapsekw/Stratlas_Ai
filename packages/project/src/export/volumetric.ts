@@ -1,6 +1,7 @@
 // The volumetric customer report (spec 2026-10-25): one pure model of the figures every page and
 // the interactive file print, the generated "In short" sentence and method note, the per-pile crop
-// boxes and the page plan. The figures are the app's own: the caller (the report page) builds the
+// boxes and the page plan. Every pile of the input is in the model, with a volume or not (founder,
+// 20 Nov 2026): a pile without one is listed and gets a card. The figures are the app's own: the caller (the report page) builds the
 // input from the survey data the house report builds (`buildSurveyData`: each pile's per-date
 // figures as the Volumes view shows them, densities through `densityOn` / `pileMaterial`), so the
 // model only ranks, adds and compares. "Change" is each pile's latest volume less its volume on the
@@ -34,6 +35,35 @@ export interface VolumetricPileDateInput {
   outline: [number, number][];
 }
 
+/** One line of a pile's elevation profile: a survey's surface, or the base under the pile. */
+export interface VolumetricProfileSeries {
+  /** The latest survey, the compared one, or the pile's base. */
+  kind: 'current' | 'earlier' | 'base';
+  /** The survey date's id and its date (`YYYY-MM-DD`); a base has neither. */
+  capture?: string;
+  date?: string;
+  /** Distance along the line from `a`, m. */
+  chainage: number[];
+  /** Height at each station, m; null where there is none (a base outside the outline). */
+  z: (number | null)[];
+}
+
+/**
+ * A pile's elevation profile along its A to B line, as sampled by the report page (the pile
+ * panel's default line, the app's own surfaces and base). JSON safe.
+ */
+export interface VolumetricPileProfile {
+  /** The line's ends (E, N) in the project CRS. */
+  a: [number, number];
+  b: [number, number];
+  lengthM: number;
+  series: VolumetricProfileSeries[];
+  /** The lowest and the highest base height under the pile, m; null without a base. */
+  baseLevel: [number, number] | null;
+  /** The pile's own base, or the heights along its boundary when no base could be built. */
+  baseKind: 'own' | 'boundary';
+}
+
 export interface VolumetricPileInput {
   id: string;
   label: string;
@@ -41,7 +71,13 @@ export interface VolumetricPileInput {
   material: { id: string; name: string } | null;
   /** The base in words: the base picker's name ("Toe surface", "Previous survey"). */
   base: string;
+  /**
+   * One entry per survey date the pile is known on. A pile that was never computed still has its
+   * outline and footprint here, with `volumeM3` null.
+   */
   dates: VolumetricPileDateInput[];
+  /** Its elevation profile; missing or null when it was not sampled. */
+  profile?: VolumetricPileProfile | null;
 }
 
 export interface VolumetricInput {
@@ -67,6 +103,11 @@ export interface VolumetricInput {
   pileNotes?: Readonly<Record<string, string>>;
   /** Pages switched on or off; a missing page is on. */
   pages?: Partial<Record<ReportPageId, boolean>>;
+  /**
+   * Pairs of piles (measurement ids) whose outlines substantially overlap on the latest date: the
+   * caller's test (`overlapShare` at `SAME_PILE_SHARE`, `@aio/survey`).
+   */
+  overlaps?: readonly { a: string; b: string }[];
 }
 
 // ---------------------------------------------------------------- model
@@ -86,9 +127,15 @@ export interface VolumetricPileDate {
 
 export interface VolumetricPile {
   id: string;
-  /** Its number on the map and in the tables: 1 for the largest latest volume. */
+  /**
+   * Its number on the map and in the tables: 1 for the largest latest volume; piles without a
+   * volume follow, by name.
+   */
   number: number;
-  /** The short label for its map marker and badges: "Pile 10" is "10", else up to 4 characters. */
+  /**
+   * The short label for its map marker and badges: "Pile 10" is "10", else up to 4 characters.
+   * When two piles would share one, every pile's tag is its number.
+   */
   tag: string;
   label: string;
   material: string | null;
@@ -97,15 +144,20 @@ export interface VolumetricPile {
   previousM3: number | null;
   /** Latest less previous, m³; null unless the pile has both. */
   changeM3: number | null;
-  /** The change in % of the previous volume. */
+  /** The change in % of the previous volume; null unless both volumes are above zero. */
   changePct: number | null;
+  /** The latest volume is under zero: the surface lies below the base. */
+  belowBase: boolean;
   tonnes: number | null;
   previousTonnes: number | null;
   densityTPerM3: number | null;
   areaM2: number | null;
   peakM: number | null;
   plusMinusM3: number | null;
-  /** Latest outline (E, N), else the compared date's. */
+  /**
+   * The outline (E, N) on the latest date, else the compared date's, else the pile's last one;
+   * the date's own outline also when the pile has no figure there.
+   */
   outline: [number, number][];
   previousOutline: [number, number][];
   /** The centre of the latest outline (E, N), and where it falls on the pictures. */
@@ -116,11 +168,29 @@ export interface VolumetricPile {
   note: string | null;
   /** Its figures on every report date, oldest first. */
   byDate: VolumetricPileDate[];
+  /** Its elevation profile, null when it was not sampled. */
+  profile: VolumetricPileProfile | null;
+}
+
+/** A pile as a sentence names it: its number, its short label and its name. */
+export interface VolumetricPileRef {
+  id: string;
+  number: number;
+  tag: string;
+  label: string;
+}
+
+/** Two piles whose outlines substantially overlap; `a` is the one listed first. */
+export interface VolumetricOverlap {
+  a: VolumetricPileRef;
+  b: VolumetricPileRef;
 }
 
 export interface VolumetricKpis {
   /** Piles counted on the latest date. */
   piles: number;
+  /** Every pile the report lists, with a volume or not. */
+  listed: number;
   stockM3: number;
   /** Tonnes of the piles with a density; null when none has one. */
   tonnes: number | null;
@@ -134,12 +204,15 @@ export interface VolumetricKpis {
   errorPct: number | null;
 }
 
-/** One segment of the share-of-stock bar: a pile, or the Others (`id` null). */
+/**
+ * One segment of the share-of-stock bar: a pile, or the Others (`id` null). Only piles above zero
+ * have a part in the bar.
+ */
 export interface ShareSegment {
   id: string | null;
   label: string | null;
   m3: number;
-  /** Fraction of the stock, 0 to 1. */
+  /** Fraction of the stock of the piles above zero, 0 to 1; the segments add up to 1. */
   share: number;
 }
 
@@ -158,12 +231,13 @@ export interface VolumetricModel {
     density: 'material' | 'site' | 'none';
   };
   kpis: VolumetricKpis;
-  /** Ranked by latest volume, largest first. */
+  /** Every pile: those with a latest volume first, largest first, then the rest by name. */
   piles: VolumetricPile[];
   share: ShareSegment[];
-  /** Pile ids with a card (the 8 largest) and those in the compact list. */
+  /** Pile ids with a card: every pile, in report order. */
   cards: string[];
-  compact: string[];
+  /** Overlapping pairs where both piles have a volume on the latest date. */
+  overlaps: VolumetricOverlap[];
   /** Pile ids with a change, from the largest drawdown to the largest growth. */
   changeOrder: string[];
   frame: ReportViewsFrame | null;
@@ -171,8 +245,10 @@ export interface VolumetricModel {
   pages: Record<ReportPageId, boolean>;
 }
 
-/** Piles with a card on page B; also the named segments of the share bar. */
+/** The named segments of the share bar: the largest piles; the rest are the Others. */
 export const VOLUMETRIC_CARDS = 8;
+/** Pile cards on one printed page. */
+export const PILE_CARDS_PER_PAGE = 2;
 /** Dates the interactive file embeds at most. */
 export const VOLUMETRIC_SHOWN_DATES = 6;
 const PAGE_IDS: readonly ReportPageId[] = ['cover', 'piles', 'change'];
@@ -258,14 +334,20 @@ export function pileTag(name: string, rank: number): string {
 /**
  * The volumetric report's model: the dates (the newest with figures, compared with the person's
  * pick when it is an earlier date with figures, else the one before), each pile's figures on both,
- * the piles ranked by latest volume, the KPIs, the share of stock, the cards and the change order.
+ * every pile ranked by latest volume (those without one last), the KPIs, the share of stock, the
+ * cards, the overlaps and the change order.
  */
 export function volumetricModel(input: VolumetricInput): VolumetricModel {
   const captures = [...input.captures].sort(byDate);
   const figure = (p: VolumetricPileInput, c: string) =>
     p.dates.find((d) => d.capture === c && d.volumeM3 !== null) ?? null;
-  // Only piles with a volume on some date are reported; the rest (never computed) are left out.
-  const piles0 = input.piles.filter((p) => captures.some((c) => figure(p, c.id)));
+  /** The pile's outline on a date, with a figure or not; null when it has none there. */
+  const ringOn = (p: VolumetricPileInput, c: CaptureRef | null): [number, number][] | null => {
+    const d = c ? p.dates.find((x) => x.capture === c.id && x.outline.length > 0) : undefined;
+    return d?.outline ?? null;
+  };
+  // Every pile is reported; one with no volume on any date reads "Not computed" (D1).
+  const piles0 = [...input.piles];
   const dates = captures.filter((c) => piles0.some((p) => figure(p, c.id)));
   const latest = dates.at(-1) ?? null;
   const earlier = dates.slice(0, -1);
@@ -284,8 +366,9 @@ export function volumetricModel(input: VolumetricInput): VolumetricModel {
       const density = d?.densityTPerM3 ?? null;
       return v !== null && density !== null ? v * density : null;
     };
-    const outline = cur?.outline ?? prev?.outline ?? p.dates.at(-1)?.outline ?? [];
-    const previousOutline = prev?.outline ?? outline;
+    const outline = ringOn(p, latest) ?? ringOn(p, compared) ?? p.dates.at(-1)?.outline ?? [];
+    const previousOutline = ringOn(p, compared) ?? outline;
+    const onLatest = latest ? p.dates.find((d) => d.capture === latest.id) : undefined;
     const centre = centreOf(outline);
     const note = notes[p.id]?.trim() ?? '';
     return {
@@ -299,10 +382,11 @@ export function volumetricModel(input: VolumetricInput): VolumetricModel {
       previousM3,
       changeM3,
       changePct: changeShare(changeM3, previousM3),
+      belowBase: latestM3 !== null && latestM3 < 0,
       tonnes: tonnesOf(cur),
       previousTonnes: tonnesOf(prev),
       densityTPerM3: cur?.densityTPerM3 ?? null,
-      areaM2: cur?.areaM2 ?? null,
+      areaM2: cur?.areaM2 ?? onLatest?.areaM2 ?? p.dates.at(-1)?.areaM2 ?? null,
       peakM: cur?.peakM ?? null,
       plusMinusM3: cur?.plusMinusM3 ?? null,
       outline,
@@ -315,15 +399,19 @@ export function volumetricModel(input: VolumetricInput): VolumetricModel {
         const d = figure(p, c.id);
         return { capture: c.id, volumeM3: d?.volumeM3 ?? null, tonnes: tonnesOf(d) };
       }),
+      profile: p.profile ?? null,
     } satisfies VolumetricPile;
   });
-  const piles = rows
+  const ranked = rows
     .sort((a, b) => {
       if (a.latestM3 === null || b.latestM3 === null)
         return a.latestM3 === b.latestM3 ? natural(a.label, b.label) : a.latestM3 === null ? 1 : -1;
       return b.latestM3 - a.latestM3 || natural(a.label, b.label);
     })
     .map((p, k) => ({ ...p, number: k + 1, tag: pileTag(p.label, k + 1) }));
+  // two piles never share a tag: with a duplicate, every pile is told apart by its number
+  const unique = new Set(ranked.map((p) => p.tag)).size === ranked.length;
+  const piles = unique ? ranked : ranked.map((p) => ({ ...p, tag: String(p.number) }));
 
   // ------------------------------------------------ KPIs
   const counted = piles.filter((p) => p.latestM3 !== null);
@@ -338,6 +426,7 @@ export function volumetricModel(input: VolumetricInput): VolumetricModel {
       : null;
   const kpis: VolumetricKpis = {
     piles: counted.length,
+    listed: piles.length,
     stockM3,
     tonnes: weighed.length > 0 ? sum(weighed.map((p) => p.tonnes ?? 0)) : null,
     tonnesPiles: weighed.length,
@@ -348,20 +437,47 @@ export function volumetricModel(input: VolumetricInput): VolumetricModel {
   };
 
   // ------------------------------------------------ share, cards, change order
-  const named = counted.slice(0, VOLUMETRIC_CARDS);
-  const rest = counted.slice(VOLUMETRIC_CARDS);
+  // A pile at or below zero has no part in the bar (D10), so the bar is the stock of the piles
+  // above zero; the site total (`stockM3`) keeps every counted pile, as the app's does (D11).
+  const stocked = counted.filter((p) => (p.latestM3 ?? 0) > 0);
+  const barM3 = sum(stocked.map((p) => p.latestM3 ?? 0));
+  const named = stocked.slice(0, VOLUMETRIC_CARDS);
+  const rest = stocked.slice(VOLUMETRIC_CARDS);
   const share: ShareSegment[] = named.map((p) => ({
     id: p.id,
     label: p.label,
     m3: p.latestM3 ?? 0,
-    share: stockM3 > 0 ? (p.latestM3 ?? 0) / stockM3 : 0,
+    share: barM3 > 0 ? (p.latestM3 ?? 0) / barM3 : 0,
   }));
   if (rest.length > 0) {
     const m3 = sum(rest.map((p) => p.latestM3 ?? 0));
-    share.push({ id: null, label: null, m3, share: stockM3 > 0 ? m3 / stockM3 : 0 });
+    share.push({ id: null, label: null, m3, share: barM3 > 0 ? m3 / barM3 : 0 });
   }
-  const cards = piles.slice(0, VOLUMETRIC_CARDS).map((p) => p.id);
-  const compact = piles.slice(VOLUMETRIC_CARDS).map((p) => p.id);
+  const cards = piles.map((p) => p.id);
+
+  // ------------------------------------------------ overlaps
+  // Only between two piles that both have a volume on the latest date (D3); each pair once, the
+  // pile listed first as `a`.
+  const byId = new Map(piles.map((p) => [p.id, p]));
+  const refOf = (p: VolumetricPile): VolumetricPileRef => ({
+    id: p.id,
+    number: p.number,
+    tag: p.tag,
+    label: p.label,
+  });
+  const seen = new Set<string>();
+  const overlaps: VolumetricOverlap[] = [];
+  for (const pair of input.overlaps ?? []) {
+    const x = byId.get(pair.a);
+    const y = byId.get(pair.b);
+    if (!x || !y || x.id === y.id || x.latestM3 === null || y.latestM3 === null) continue;
+    const [a, b] = x.number < y.number ? [x, y] : [y, x];
+    const key = `${String(a.number)}:${String(b.number)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    overlaps.push({ a: refOf(a), b: refOf(b) });
+  }
+  overlaps.sort((p, q) => p.a.number - q.a.number || p.b.number - q.b.number);
   const changeOrder = [...both]
     .sort((a, b) => (a.changeM3 ?? 0) - (b.changeM3 ?? 0) || a.number - b.number)
     .map((p) => p.id);
@@ -389,7 +505,7 @@ export function volumetricModel(input: VolumetricInput): VolumetricModel {
     piles,
     share,
     cards,
-    compact,
+    overlaps,
     changeOrder,
     frame,
     text: { ...input.text },
@@ -466,14 +582,15 @@ const SHARE_MIN_PREVIOUS_M3 = 1;
 const SHARE_MAX_PCT = 999;
 
 /**
- * A change in per cent of the previous volume's magnitude. Null when there is no previous volume,
- * when it is under 1 m³ (a pile that is new) or when the share would exceed 999 %.
+ * A change in per cent of the previous volume. Null unless the previous volume and the latest one
+ * (the previous plus the change) are both above zero: a share of, or down to, a volume at or under
+ * zero means nothing, so such a change is given in cubic metres alone. Null also when the previous
+ * volume is under 1 m³ (a pile that is new) or when the share would exceed 999 %.
  */
 export function changeShare(change: number | null, previous: number | null): number | null {
-  if (change === null || previous === null || Math.abs(previous) < SHARE_MIN_PREVIOUS_M3) {
-    return null;
-  }
-  const pct = (change / Math.abs(previous)) * 100;
+  if (change === null || previous === null || previous < SHARE_MIN_PREVIOUS_M3) return null;
+  if (!(previous + change > 0)) return null;
+  const pct = (change / previous) * 100;
   return Math.abs(pct) > SHARE_MAX_PCT ? null : pct;
 }
 
@@ -587,19 +704,19 @@ export function methodNote(model: VolumetricModel, t: VolumetricT): string {
 /** Ranked-table rows on page A, and on each "A, continued". */
 export const COVER_ROWS = 12;
 export const COVER_CONTINUED_ROWS = 30;
-/** Compact rows on page B (under the 8 cards), and on each "B, continued". */
-export const PILES_ROWS = 24;
-export const PILES_CONTINUED_ROWS = 40;
 /** Bars of the change chart on page C, and on each "C, continued". */
 export const CHANGE_ROWS = 24;
 export const CHANGE_CONTINUED_ROWS = 40;
 
 /**
  * One printed page: which report page it is, whether it continues one, and the rows it holds
- * (`from` to `to`, end excluded): ranked piles on A, compact list rows on B, `changeOrder` on C.
+ * (`from` to `to`, end excluded): ranked piles on A, `cards` on a card page of B (none on the
+ * overview), `changeOrder` on C.
  */
 export interface PlannedPage {
   page: ReportPageId;
+  /** On B only: the site overview, or a page of pile cards. */
+  part?: 'overview' | 'cards';
   continued: boolean;
   from: number;
   to: number;
@@ -623,9 +740,11 @@ function split(
 
 /**
  * The printed pages, by counts (not by measuring), so the page count is known before printing:
- * A takes 12 table rows and 30 on each continued page; B 8 cards and 24 compact rows, then 40; C
- * 24 bars, then 40. `pages` (default the model's) turns A, B or C off; C needs a compared date. At
- * least one page stays on: A when nothing else would print.
+ * A takes 12 table rows and 30 on each continued page; B is the site overview and then the pile
+ * cards, two to a page (the first card page does not count as continued, the later ones do); C
+ * takes 24 bars, then 40. `pages` (default the model's) turns A, B or C off, B with its overview
+ * and its cards together; C needs a compared date. At least one page stays on: A when nothing else
+ * would print.
  */
 export function pagePlan(
   model: VolumetricModel,
@@ -635,8 +754,18 @@ export function pagePlan(
   const plan: Omit<PlannedPage, 'number'>[] = [];
   const cover = () => split('cover', model.piles.length, COVER_ROWS, COVER_CONTINUED_ROWS);
   if (on('cover')) plan.push(...cover());
-  if (on('piles'))
-    plan.push(...split('piles', model.compact.length, PILES_ROWS, PILES_CONTINUED_ROWS));
+  if (on('piles')) {
+    plan.push({ page: 'piles', part: 'overview', continued: false, from: 0, to: 0 });
+    const cards = model.cards.length;
+    for (let from = 0; from < cards; from += PILE_CARDS_PER_PAGE)
+      plan.push({
+        page: 'piles',
+        part: 'cards',
+        continued: from > 0,
+        from,
+        to: Math.min(cards, from + PILE_CARDS_PER_PAGE),
+      });
+  }
   if (on('change') && model.compared)
     plan.push(...split('change', model.changeOrder.length, CHANGE_ROWS, CHANGE_CONTINUED_ROWS));
   if (plan.length === 0) plan.push(...cover());

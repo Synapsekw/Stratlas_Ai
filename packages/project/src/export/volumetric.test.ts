@@ -15,13 +15,16 @@ import {
   inShortSentence,
   methodNote,
   pagePlan,
+  PILE_CARDS_PER_PAGE,
   pileCrop,
   pileTag,
   volumetricCsv,
   volumetricModel,
   type VolumetricInput,
   type VolumetricKey,
+  type PlannedPage,
   type VolumetricPileInput,
+  type VolumetricPileProfile,
 } from './volumetric';
 
 // The strings the model's text uses (a copy of `vreport.short.*` and `vreport.method.*` in
@@ -147,20 +150,173 @@ describe('pileTag', () => {
 });
 
 describe('volumetricModel selection and tags', () => {
-  it('leaves out piles with no volume on any date, and counts only the rest', () => {
+  it('keeps a pile with no volume on any date, after the measured ones, and gives it a card', () => {
     const bare = pile(30, {
-      dates: pile(30).dates.map((d) => ({ ...d, volumeM3: null })),
+      dates: pile(30).dates.map((d) => ({ ...d, volumeM3: null, peakM: null })),
     });
     const none = pile(31, { dates: [] });
-    const m = volumetricModel(input({ piles: [...ORDER.map((i) => pile(i)), bare, none] }));
-    expect(m.piles).toHaveLength(19);
+    const m = volumetricModel(input({ piles: [none, bare, ...ORDER.map((i) => pile(i))] }));
+    expect(m.piles).toHaveLength(21);
     expect(m.kpis.piles).toBe(19);
-    expect(m.piles.some((p) => p.label === 'P30' || p.label === 'P31')).toBe(false);
+    expect(m.kpis.listed).toBe(21);
+    // measured piles first, then the rest by name
+    expect(m.piles.slice(19).map((p) => p.label)).toEqual(['P30', 'P31']);
+    expect(m.piles.map((p) => p.number)).toEqual(Array.from({ length: 21 }, (_, k) => k + 1));
+    const p30 = m.piles.find((p) => p.label === 'P30');
+    expect(p30?.latestM3).toBeNull();
+    expect(p30?.changeM3).toBeNull();
+    expect(m.cards).toContain(p30?.id);
+    expect(m.cards).toContain('m-31');
+    // the stock and the dates are those of the measured piles
+    expect(m.kpis.stockM3).toBe(totalPrev + totalChange);
+    expect(m.dates.map((d) => d.id)).toEqual(['c1', 'c2']);
+  });
+
+  it('counts 3 of 8 listed piles', () => {
+    const piles = [1, 2, 3, 4, 5, 6, 7, 8].map((i) =>
+      i <= 3 ? pile(i) : pile(i, { dates: pile(i).dates.map((d) => ({ ...d, volumeM3: null })) }),
+    );
+    const m = volumetricModel(input({ piles }));
+    expect(m.kpis.listed).toBe(8);
+    expect(m.kpis.piles).toBe(3);
+    expect(m.piles).toHaveLength(8);
+    expect(m.cards).toHaveLength(8);
+  });
+
+  it('gives a pile without a figure the outline and footprint of the date itself', () => {
+    const bare = pile(30, {
+      dates: pile(30).dates.map((d) => ({ ...d, volumeM3: null, peakM: null })),
+    });
+    const m = volumetricModel(input({ piles: [...ORDER.map((i) => pile(i)), bare] }));
+    const p30 = m.piles.find((p) => p.label === 'P30');
+    expect(p30?.outline).toEqual(square(1002 + 30 * 20, 2100, 12));
+    expect(p30?.previousOutline).toEqual(square(1000 + 30 * 20, 2100, 10));
+    expect(p30?.areaM2).toBe(420);
+    expect(p30?.peakM).toBeNull();
+    expect(p30?.centre).not.toBeNull();
+    expect(p30?.crop).not.toBeNull();
+    // a pile with no entry at all has no outline, and nothing fails
+    const none = volumetricModel(input({ piles: [pile(1), pile(31, { dates: [] })] }));
+    expect(none.piles.find((p) => p.label === 'P31')?.outline).toEqual([]);
+  });
+
+  it('lists every pile when none has a volume', () => {
+    const piles = [1, 2].map((i) =>
+      pile(i, { dates: pile(i).dates.map((d) => ({ ...d, volumeM3: null })) }),
+    );
+    const m = volumetricModel(input({ piles }));
+    expect(m.latest).toBeNull();
+    expect(m.piles.map((p) => p.label)).toEqual(['P01', 'P02']);
+    expect(m.kpis.piles).toBe(0);
+    expect(m.kpis.listed).toBe(2);
+    expect(m.share).toEqual([]);
+    expect(m.piles[0]?.outline).toEqual(square(1002 + 20, 2100, 12));
   });
 
   it('gives each pile its own short label, not its rank', () => {
     const m = volumetricModel(input());
     for (const p of m.piles) expect(p.tag).toBe(p.label.slice(1));
+  });
+
+  it('falls back to the ranks for every pile when two piles would share a tag', () => {
+    const piles = [
+      pile(1, { label: 'North 1' }),
+      pile(2, { label: 'South 1' }),
+      pile(3, { label: 'Pile 7' }),
+    ];
+    const m = volumetricModel(input({ piles }));
+    expect(m.piles.map((p) => p.tag)).toEqual(['1', '2', '3']);
+    expect(m.piles.map((p) => p.number)).toEqual([1, 2, 3]);
+  });
+});
+
+describe('volumetricModel below the base, overlaps and profiles', () => {
+  /** P01 at `latest` m³ on the second date, beside P02 and P03 as they are. */
+  const withP1 = (latest: number) => [
+    pile(1, {
+      dates: pile(1).dates.map((d) => (d.capture === 'c2' ? { ...d, volumeM3: latest } : d)),
+    }),
+    pile(2),
+    pile(3),
+  ];
+
+  it('flags a pile under its base, gives it no percentage and no share of the bar', () => {
+    const m = volumetricModel(input({ piles: withP1(-3.9) }));
+    const p1 = m.piles.find((p) => p.label === 'P01');
+    expect(p1?.belowBase).toBe(true);
+    expect(p1?.latestM3).toBe(-3.9);
+    expect(p1?.changeM3).toBeCloseTo(-803.9, 9);
+    expect(p1?.changePct).toBeNull();
+    expect(m.piles.find((p) => p.label === 'P02')?.belowBase).toBe(false);
+    expect(m.share.map((s) => s.id)).toEqual(['m-3', 'm-2']);
+    expect(m.share.reduce((a, s) => a + s.share, 0)).toBeCloseTo(1, 12);
+    // the total stays the app's: the negative pile is still in it
+    expect(m.kpis.stockM3).toBeCloseTo(1000 + 1300 - 3.9, 9);
+    expect(m.kpis.piles).toBe(3);
+    expect(m.cards).toContain('m-1');
+  });
+
+  it('leaves a pile at zero out of the share bar without flagging it', () => {
+    const m = volumetricModel(input({ piles: withP1(0) }));
+    expect(m.piles.find((p) => p.label === 'P01')?.belowBase).toBe(false);
+    expect(m.share.some((s) => s.id === 'm-1')).toBe(false);
+  });
+
+  it('names the two piles of an overlap, and drops a pair with a pile that has no latest volume', () => {
+    const bare = pile(30, { dates: pile(30).dates.map((d) => ({ ...d, volumeM3: null })) });
+    const old = pile(31, { dates: pile(31).dates.slice(0, 1) });
+    const m = volumetricModel(
+      input({
+        piles: [pile(1), pile(2), pile(3), bare, old],
+        overlaps: [
+          { a: 'm-1', b: 'm-3' },
+          { a: 'm-2', b: 'm-30' },
+          { a: 'm-31', b: 'm-2' },
+          { a: 'm-2', b: 'm-99' },
+          { a: 'm-2', b: 'm-2' },
+        ],
+      }),
+    );
+    expect(m.overlaps).toEqual([
+      {
+        a: { id: 'm-3', number: 1, tag: '03', label: 'P03' },
+        b: { id: 'm-1', number: 3, tag: '01', label: 'P01' },
+      },
+    ]);
+    expect(volumetricModel(input()).overlaps).toEqual([]);
+  });
+
+  it('names an overlapping pair once', () => {
+    const m = volumetricModel(
+      input({
+        piles: [pile(1), pile(2)],
+        overlaps: [
+          { a: 'm-1', b: 'm-2' },
+          { a: 'm-2', b: 'm-1' },
+        ],
+      }),
+    );
+    expect(m.overlaps).toHaveLength(1);
+  });
+
+  it('carries a pile profile to the model, null when it was not sampled', () => {
+    const chainage = [0, 6, 12];
+    const profile: VolumetricPileProfile = {
+      a: [1022, 2106],
+      b: [1034, 2106],
+      lengthM: 12,
+      series: [
+        { kind: 'current', capture: 'c2', date: '2026-10-01', chainage, z: [10, 14, 10] },
+        { kind: 'earlier', capture: 'c1', date: '2026-09-03', chainage, z: [10, 15, 10] },
+        { kind: 'base', chainage, z: [null, 10, null] },
+      ],
+      baseLevel: [9.8, 10.1],
+      baseKind: 'own',
+    };
+    const m = volumetricModel(input({ piles: [pile(1, { profile }), pile(2)] }));
+    expect(m.piles.find((p) => p.label === 'P01')?.profile).toEqual(profile);
+    expect(m.piles.find((p) => p.label === 'P02')?.profile).toBeNull();
+    expect(JSON.parse(JSON.stringify(m))).toEqual(m);
   });
 });
 
@@ -234,10 +390,10 @@ describe('volumetricModel', () => {
     expect(m.share[8]?.m3).toBe(m.piles.slice(8).reduce((a, p) => a + (p.latestM3 ?? 0), 0));
   });
 
-  it('has cards for the 8 largest piles and a compact list for the rest', () => {
+  it('has a card for every pile, in report order, and no compact list', () => {
     const m = volumetricModel(input());
-    expect(m.cards).toEqual(m.piles.slice(0, 8).map((p) => p.id));
-    expect(m.compact).toEqual(m.piles.slice(8).map((p) => p.id));
+    expect(m.cards).toEqual(m.piles.map((p) => p.id));
+    expect('compact' in m).toBe(false);
   });
 
   it('orders the change chart from the largest drawdown to the largest growth', () => {
@@ -450,18 +606,57 @@ describe('pileCrop', () => {
 });
 
 describe('pagePlan', () => {
-  it('lays 19 piles out on A, A continued, B and C', () => {
-    const plan = pagePlan(volumetricModel(input()));
-    expect(plan.map((p) => [p.page, p.continued, p.from, p.to])).toEqual([
-      ['cover', false, 0, 12],
-      ['cover', true, 12, 19],
-      ['piles', false, 0, 11],
-      ['change', false, 0, 19],
+  const cols = (plan: PlannedPage[]) =>
+    plan.map((p) => [p.page, p.part ?? null, p.continued, p.from, p.to]);
+
+  it('lays 5 piles with a compared date out as cover, overview, 3 card pages and change', () => {
+    const m = volumetricModel(input({ piles: [1, 2, 3, 4, 5].map((i) => pile(i)) }));
+    const plan = pagePlan(m);
+    expect(PILE_CARDS_PER_PAGE).toBe(2);
+    expect(cols(plan)).toEqual([
+      ['cover', null, false, 0, 5],
+      ['piles', 'overview', false, 0, 0],
+      ['piles', 'cards', false, 0, 2],
+      ['piles', 'cards', true, 2, 4],
+      ['piles', 'cards', true, 4, 5],
+      ['change', null, false, 0, 5],
     ]);
-    expect(plan.map((p) => p.number)).toEqual([1, 2, 3, 4]);
+    expect(plan.map((p) => p.number)).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
-  it('continues each page at its own row counts', () => {
+  it('has neither the overview nor the cards with the piles page off', () => {
+    const m = volumetricModel(input({ piles: [1, 2, 3, 4, 5].map((i) => pile(i)) }));
+    expect(pagePlan(m, { piles: false }).map((p) => p.page)).toEqual(['cover', 'change']);
+    expect(
+      pagePlan(volumetricModel(input({ pages: { piles: false } }))).some((p) => p.page === 'piles'),
+    ).toBe(false);
+  });
+
+  it('has no change page with one date', () => {
+    const piles = [1, 2, 3, 4, 5].map((i) => pile(i, { dates: pile(i).dates.slice(1) }));
+    const plan = pagePlan(volumetricModel(input({ piles })));
+    expect(plan.map((p) => [p.page, p.part ?? null])).toEqual([
+      ['cover', null],
+      ['piles', 'overview'],
+      ['piles', 'cards'],
+      ['piles', 'cards'],
+      ['piles', 'cards'],
+    ]);
+  });
+
+  it('gives a pile without a volume its card, and keeps it out of the change bars', () => {
+    const bare = pile(30, { dates: pile(30).dates.map((d) => ({ ...d, volumeM3: null })) });
+    const plan = pagePlan(volumetricModel(input({ piles: [pile(1), pile(2), bare] })));
+    expect(cols(plan)).toEqual([
+      ['cover', null, false, 0, 3],
+      ['piles', 'overview', false, 0, 0],
+      ['piles', 'cards', false, 0, 2],
+      ['piles', 'cards', true, 2, 3],
+      ['change', null, false, 0, 2],
+    ]);
+  });
+
+  it('continues the cover and the change page at their own row counts', () => {
     const piles = Array.from({ length: 80 }, (_, k) => {
       const p = pile((k % 19) + 1);
       return { ...p, id: `m-x${String(k)}`, label: `P${String(k + 1).padStart(2, '0')}` };
@@ -475,25 +670,26 @@ describe('pagePlan', () => {
       [true, 42, 72],
       [true, 72, 80],
     ]);
-    // 72 compact rows: 24 on B, then 40 and 8
-    expect(of('piles')).toEqual([
-      [false, 0, 24],
-      [true, 24, 64],
-      [true, 64, 72],
-    ]);
+    // one overview page, then 80 cards two to a page
+    const b = plan.filter((p) => p.page === 'piles');
+    expect(b).toHaveLength(41);
+    expect(b.filter((p) => p.part === 'overview')).toHaveLength(1);
+    expect(b.at(-1)).toMatchObject({ part: 'cards', continued: true, from: 78, to: 80 });
     expect(of('change')).toEqual([
       [false, 0, 24],
       [true, 24, 64],
       [true, 64, 80],
     ]);
+    expect(plan.map((p) => p.number)).toEqual(plan.map((_, k) => k + 1));
   });
 
   it('prints the pages turned on, leaves C out with one date and keeps one page', () => {
     const m = volumetricModel(input());
     expect(pagePlan(m, { cover: false, piles: false }).map((p) => p.page)).toEqual(['change']);
+    // 19 piles: two cover pages, the overview and 10 card pages
     expect(
       pagePlan(volumetricModel(input({ pages: { change: false } }))).map((p) => p.page),
-    ).toEqual(['cover', 'cover', 'piles']);
+    ).toEqual(['cover', 'cover', ...Array.from({ length: 11 }, () => 'piles')]);
     const one = volumetricModel(
       input({ piles: ORDER.map((i) => pile(i, { dates: pile(i).dates.slice(1) })) }),
     );
@@ -556,10 +752,18 @@ describe('volumetricCsv', () => {
 });
 
 describe('changeShare', () => {
-  it('is the change against the previous magnitude', () => {
+  it('is the change in per cent of the previous volume', () => {
     expect(changeShare(-4100, 6000)).toBeCloseTo(-68.33, 1);
-    expect(changeShare(-50, -200)).toBeCloseTo(-25, 5);
-    expect(changeShare(50, -200)).toBeCloseTo(25, 5);
+    expect(changeShare(-50, 100)).toBeCloseTo(-50, 9);
+    expect(changeShare(25, 100)).toBeCloseTo(25, 9);
+  });
+
+  it('is null unless the earlier and the latest volume are both above zero', () => {
+    // 93.1 m³ before, -3.9 m³ now
+    expect(changeShare(-97, 93.1)).toBeNull();
+    expect(changeShare(-100, 100)).toBeNull();
+    expect(changeShare(-50, -200)).toBeNull();
+    expect(changeShare(250, -200)).toBeNull();
   });
 
   it('is null when the previous volume is about zero or the share runs away', () => {
