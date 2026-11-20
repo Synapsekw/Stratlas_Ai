@@ -360,8 +360,8 @@ describe('page A, piles without a volume', () => {
     for (const r of none) {
       const cell = r.querySelector('td.vr-col-none');
       expect(cell?.textContent).toBe(t('vreport.notComputed'));
-      // previous, latest, tonnes, peak and change
-      expect(cell?.getAttribute('colspan')).toBe('5');
+      // previous, latest, peak and change: no pile has tonnes, so there is no tonnes column
+      expect(cell?.getAttribute('colspan')).toBe('4');
       expect(r.querySelectorAll('td')).toHaveLength(3);
       expect(r.querySelector('.vr-col-base')?.textContent).toBe(t('vreport.pile.baseNotSet'));
     }
@@ -369,11 +369,74 @@ describe('page A, piles without a volume', () => {
     expect(rows[0]?.textContent).toContain('8,000');
   });
 
-  it('spans three columns with one date', () => {
+  it('spans two columns with one date', () => {
     const one = volumetricModel(
       input({ piles: mixed(), captures: [{ id: 'c2', label: 'Survey 2', date: '2026-10-01' }] }),
     );
-    expect(render(one).querySelector('td.vr-col-none')?.getAttribute('colspan')).toBe('3');
+    expect(render(one).querySelector('td.vr-col-none')?.getAttribute('colspan')).toBe('2');
+  });
+});
+
+describe('page A, the tonnes column', () => {
+  const heads = (d: Document) =>
+    [...d.querySelectorAll('.vr-table thead th')].map((th) => th.textContent);
+  const cells = (d: Document, id: string) =>
+    [...(d.querySelector(`tr[data-pile="${id}"]`)?.children ?? [])].map((c) => c.textContent);
+  /** `mixed()` with a density on Heap 2 alone. */
+  const oneWeighed = (): VolumetricPileInput[] =>
+    mixed().map((p) =>
+      p.id === 'm2' ? { ...p, dates: p.dates.map((d) => ({ ...d, densityTPerM3: 2 })) } : p,
+    );
+
+  it('is left out, header and cells, when no pile has tonnes', () => {
+    const d = render(volumetricModel(input({ piles: mixed() })));
+    expect(heads(d)).toEqual([
+      t('vreport.table.pile'),
+      t('vreport.table.base'),
+      t('vreport.table.previous'),
+      t('vreport.table.latest'),
+      t('vreport.table.peak'),
+      t('vreport.table.change'),
+    ]);
+    // pile, base, previous, latest, peak, change
+    expect(cells(d, 'm1')).toEqual(['1Heap 1', 'Lowest point', '8,050', '8,000', '5.0', '−50.0']);
+  });
+
+  it('stays when at least one pile has tonnes, empty for the piles without', () => {
+    const d = render(volumetricModel(input({ piles: oneWeighed() })));
+    expect(heads(d)).toHaveLength(7);
+    expect(heads(d)[4]).toBe(t('vreport.table.tonnes'));
+    expect(cells(d, 'm1')[4]).toBe('');
+    expect(cells(d, 'm2')[4]).toBe('14,000');
+    expect(d.querySelector('td.vr-col-none')?.getAttribute('colspan')).toBe('5');
+  });
+
+  it('is decided by the whole report, so a continued page keeps the columns of the first', () => {
+    // P01 to P14 with a density on P01 alone: the rows of the second page have no tonnes
+    const own = piles(true).map((p, i) =>
+      i === 0 ? p : { ...p, dates: p.dates.map((d) => ({ ...d, densityTPerM3: null })) },
+    );
+    const model = volumetricModel(input({ piles: own }));
+    expect(heads(render(model, NONE, views, 1))).toEqual(heads(render(model)));
+    expect(heads(render(model, NONE, views, 1))).toHaveLength(7);
+  });
+
+  it('is left out when the only pile with a density is at or under zero', () => {
+    const own = mixed().map((p) =>
+      p.id === 'm3'
+        ? {
+            ...p,
+            dates: p.dates.map((d) => ({
+              ...d,
+              densityTPerM3: 2,
+              volumeM3: d.capture === 'c2' ? 0 : d.volumeM3,
+            })),
+          }
+        : p,
+    );
+    expect(heads(render(volumetricModel(input({ piles: own }))))).not.toContain(
+      t('vreport.table.tonnes'),
+    );
   });
 });
 

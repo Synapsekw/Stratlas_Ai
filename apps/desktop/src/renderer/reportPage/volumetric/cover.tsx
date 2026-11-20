@@ -4,6 +4,7 @@
 // the KPI tiles (stock on hand, the change since the compared survey, the survey error when every
 // pile has one), "In short" and the intro, then the table of every pile with a diverging change
 // bar: a pile without a volume reads "Not computed" across its figures, a missing base "Not set".
+// The tonnes column is left out when no pile of the report has tonnes.
 // Under the table a plain notice names the piles whose outlines overlap (D2). The rows past the
 // twelfth continue on "A, continued" pages (`pagePlan`). No text is cut: the texts grow with
 // their length and the photo row gives them the room, by counts (`leadHeightMm`).
@@ -174,8 +175,11 @@ function RankedTable({
 }): ReactElement {
   const compared = model.compared !== null;
   const most = Math.max(0, ...model.piles.map((p) => Math.abs(p.changeM3 ?? 0)));
+  // the tonnes column prints only when a pile of the report (not of this page alone, so a
+  // continued page keeps the same columns) prints tonnes: without a density anywhere it is left out
+  const weighed = model.piles.some((p) => pileTonnesShown(p.latestM3, p.tonnes) !== null);
   // the figure columns a "Not computed" row spans: previous, latest, tonnes, peak, change
-  const figureCols = compared ? 5 : 3;
+  const figureCols = (compared ? 4 : 2) + (weighed ? 1 : 0);
   return (
     <table className="vr-table">
       <thead>
@@ -184,7 +188,7 @@ function RankedTable({
           <th className="vr-col-base">{t('vreport.table.base')}</th>
           {compared ? <th className="vr-col-n">{t('vreport.table.previous')}</th> : null}
           <th className="vr-col-n">{t('vreport.table.latest')}</th>
-          <th className="vr-col-n">{t('vreport.table.tonnes')}</th>
+          {weighed ? <th className="vr-col-n">{t('vreport.table.tonnes')}</th> : null}
           <th className="vr-col-n">{t('vreport.table.peak')}</th>
           {compared ? <th className="vr-col-change">{t('vreport.table.change')}</th> : null}
         </tr>
@@ -227,7 +231,7 @@ function RankedTable({
                 <td className="vr-col-n">{p.previousM3 !== null ? num(p.previousM3) : ''}</td>
               ) : null}
               <td className="vr-col-n">{num(p.latestM3)}</td>
-              <td className="vr-col-n">{tonnes !== null ? num(tonnes) : ''}</td>
+              {weighed ? <td className="vr-col-n">{tonnes !== null ? num(tonnes) : ''}</td> : null}
               <td className="vr-col-n">{p.peakM !== null ? p.peakM.toFixed(1) : ''}</td>
               {compared ? (
                 <td className="vr-col-change">
