@@ -15,6 +15,7 @@ related: [../plans/2026-11-18-volumetrics-finalize.md]
 - **A picked tab brings its first row into view.** In a small window the panel's head fills the panel, so the tab's first row lay at the fold wherever it was put. Picking Profile or History now moves the panel by the least that shows that row (17 to 26 px at 1100 x 720). A pile opened on the tab it was left on stays where it was scrolled.
 - **A pile with no volume says so.** A volume outline with no comparison shows "This pile has no volume yet" in History in place of an empty chart and table, with Recompute beside it where the volume card would offer it (a project that can be written, a prepared surface). It is the card's own Recompute, now one function (`recomputeVolume`), not a second way to compute.
 - **Show, Elevation on a kit project.** The kit drapes its elevation colours in 3D only. Picked in Map view, Elevation now switches the stage to 3D and a notice says "Elevation colours show in 3D"; a split with a 3D side stays as it is with no notice, a split without one keeps its sides and shows the notice. The 3D legend says "The survey heights could not be read" when the read failed, where it said "Reading the survey heights" for good. In a survey project without a height map, the greyed Elevation says why in its tooltip.
+- **After an independent review** (follow-up commits on the same branch): History says why a Recompute could not start or failed after it started, with the reasons the volume card shows (the engine's own trouble, then this pile's last run), also once the failed run left rows with no figure. A pile whose figure is carried from the kit gets the card's "Recompute with the standard base" there, never the plain Recompute; the card and History read one rule (`carriedItem`).
 - No contract change, no pack change. One screenshot label in `e2e/compare.spec.ts` no longer carries a site name.
 
 ## Why
@@ -36,6 +37,8 @@ Steps 1 and 2 are driven by `e2e/pile-panel.spec.ts` ("Profile and History show 
 - The pile panel's head is about 450 px tall in the 287 px panel of a 1100 x 720 window, which leaves 20 to 40 px for a tab. The scroll on a tab pick works around that; a shorter head is a design call and was left alone.
 - At that panel width Add to report wraps under Open larger and Export PNG, and the History table is still wider than the panel (it scrolls sideways as before).
 - The notice waits behind a stage hint, as every plain notice does, so it can show a moment after the switch to 3D.
+- The scroll on a tab pick uses `scrollIntoView`, as other lists in the app do; scrolling only the panel's own scroll box would take finding that box and working out the distance, and was left as it is.
+- The reasons a Recompute failed are covered by unit tests only: no project at hand makes a started run fail.
 - Other screenshot labels in `e2e/compare.spec.ts` and a fixture in `packages/volumetric/src/store.test.ts` still carry site names (the engineering review's clean-up item); only the one label named in the brief was changed.
 
 ## Next session entry point
