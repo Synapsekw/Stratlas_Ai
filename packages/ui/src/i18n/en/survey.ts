@@ -20,6 +20,7 @@ export const enSurvey = {
   'vol.elev.hillshade': 'Hillshade',
   'vol.elev.hillshadeTip': 'Shade the colours with the relief, lit from four directions',
   'vol.elev.reading': 'Reading the survey heights',
+  'vol.elev.failed': 'The survey heights could not be read',
   'vol.compare.noDrape': 'Not enough graphics memory to colour this view. It shows the photo.',
   'vol.legend.label': 'Legend',
   'vol.legend.change': 'Height change',
@@ -265,6 +266,7 @@ export const enSurvey = {
   'pile.history.title': 'Volume over time',
   'pile.history.both': 'Both',
   'pile.history.first': 'first',
+  'pile.history.none': 'This pile has no volume yet',
   'pile.history.was': 'was {value} · earlier version',
   'pile.history.note':
     'Density {density} t/m³ for {material} applies from {date}. A new density takes effect from the date you choose in Materials; earlier dates keep the tonnes they had.',

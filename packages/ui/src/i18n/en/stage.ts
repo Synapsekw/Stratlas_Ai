@@ -387,6 +387,8 @@ export const enStage = {
   'show.caption': 'Show',
   'show.photo': 'Photo',
   'show.elevation': 'Elevation',
+  'show.elevation.in3d': 'Elevation colours show in 3D',
+  'show.elevation.none': 'This project has no height map to show',
   'show.cutFill': 'Cut & fill',
   'show.outlines': 'Outlines',
   'show.labels': 'Labels',

@@ -192,6 +192,21 @@ function useHeightText(): (v: number) => string {
   );
 }
 
+/**
+ * The Elevation legend's line while it has no heights to show: they are being read, or the read
+ * failed (the toast said why once; this stays while the colours are missing).
+ */
+function ElevationWaiting() {
+  const failed = useVolumetric((s) => s.reliefFailed);
+  return failed ? (
+    <span className="vol-elev-note" role="status" data-testid="vol-elev-failed">
+      {t('vol.elev.failed')}
+    </span>
+  ) : (
+    <span className="vol-elev-note">{t('vol.elev.reading')}</span>
+  );
+}
+
 /** Ramp, range (metres) and hillshade of the Elevation surface, with its legend. */
 function ElevationControls() {
   const m1 = useHeightText();
@@ -204,7 +219,7 @@ function ElevationControls() {
     return (
       <>
         <b>{t('vol.elev.title')}</b>
-        <span className="vol-elev-note">{t('vol.elev.reading')}</span>
+        <ElevationWaiting />
       </>
     );
   const [min, max] = relief.extent;
@@ -313,7 +328,7 @@ function ElevationKey() {
           </div>
         </>
       ) : (
-        <span className="vol-elev-note">{t('vol.elev.reading')}</span>
+        <ElevationWaiting />
       )}
     </>
   );

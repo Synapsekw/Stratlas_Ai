@@ -175,6 +175,11 @@ export interface VolumetricState {
   elevation: ElevationStyle;
   /** Heights of the surveys for the elevation ramp, once the worker has read the DSMs. */
   relief: { auto: [number, number]; extent: [number, number] } | null;
+  /**
+   * The last read of those heights failed: the legend says so in place of "Reading the survey
+   * heights". Cleared when they are asked for again.
+   */
+  reliefFailed: boolean;
   /** A read-only package is open. */
   readOnly: boolean;
   /** Short notice for the person (toast). */
@@ -252,6 +257,7 @@ const initial: VolumetricState = {
   shown: [],
   elevation: DEFAULT_ELEVATION,
   relief: null,
+  reliefFailed: false,
   readOnly: false,
   message: null,
   service: null,
@@ -364,6 +370,7 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
       const svc = get().service;
       if (!svc || reliefAsked === svc || get().relief) return;
       reliefAsked = svc;
+      if (get().reliefFailed) set({ reliefFailed: false });
       svc.grid().then(
         (g) => {
           if (get().service === svc)
@@ -373,7 +380,9 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
         },
         (e: unknown) => {
           reliefAsked = null;
-          set({ message: e instanceof Error ? e.message : String(e) });
+          // another project's service by now: its failure is not this one's
+          if (get().service !== svc) return;
+          set({ message: e instanceof Error ? e.message : String(e), reliefFailed: true });
         },
       );
     };

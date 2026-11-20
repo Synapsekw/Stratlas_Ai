@@ -419,6 +419,41 @@ describe('volumetric store: elevation colours', () => {
     expect(store.getState().elevation.range).toEqual([50, 55]);
   });
 
+  it('says the heights could not be read, and reads them again on the next ask', async () => {
+    const { store, service } = setup();
+    await store.getState().load();
+    expect(store.getState().reliefFailed).toBe(false);
+    vi.mocked(service.grid).mockRejectedValueOnce(new Error('site elevation of e2: no data'));
+    store.getState().setSurface('elev');
+    await vi.waitFor(() => {
+      expect(store.getState().reliefFailed).toBe(true);
+    });
+    expect(store.getState().relief).toBeNull();
+    // the person is told once, by the toast the message feeds
+    expect(store.getState().message).toBe('site elevation of e2: no data');
+    // Elevation picked again: read again, and no longer failed while it is read
+    store.getState().setSurface('photo');
+    store.getState().setSurface('elev');
+    expect(store.getState().reliefFailed).toBe(false);
+    await vi.waitFor(() => {
+      expect(store.getState().relief).not.toBeNull();
+    });
+    expect(service.grid).toHaveBeenCalledTimes(2);
+    expect(store.getState().reliefFailed).toBe(false);
+  });
+
+  it('a project opened after a failed read starts without the failure', async () => {
+    const { store, service } = setup();
+    await store.getState().load();
+    vi.mocked(service.grid).mockRejectedValueOnce(new Error('no data'));
+    store.getState().setSurface('elev');
+    await vi.waitFor(() => {
+      expect(store.getState().reliefFailed).toBe(true);
+    });
+    await store.getState().load();
+    expect(store.getState().reliefFailed).toBe(false);
+  });
+
   it('remembers the ramp, range and hillshade per project', async () => {
     const prefs = memoryPrefs();
     const { store } = setup({ prefs });
