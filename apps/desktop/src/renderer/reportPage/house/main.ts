@@ -184,6 +184,8 @@ async function volumetric(
       buildSurveyData(f, (path) => read.bytes(path), {
         need: 'report',
         fillDates: true,
+        // each pile's elevation profile, sampled once the model has named its two dates
+        pileProfiles: true,
         progress: (done, total) => {
           set({ phase: 'Computing the survey volumes', done, total });
         },

@@ -26,6 +26,7 @@ import {
   type StockpileReport,
   type SurveyReportData,
   type SurveyValue,
+  type VolumetricPileProfile,
   type WeighbridgeEntry,
 } from '@aio/project/export';
 import {
@@ -119,6 +120,8 @@ import type { EngineContext } from '../../survey/engineProtocol';
 import { EngineSession } from '../../survey/engineServe';
 import { drawnShifts, onDrawnPoints } from '../../survey/dateReadout';
 import { drawnPoints } from '../../survey/measureDates';
+import { editedOutline } from '../../survey/measureMove';
+import { pileProfile } from '../volumetric/pileProfiles';
 import { captureDateOf, weighRows } from '../../survey/volumes/surveyDates';
 import { carriedItem, datesToRun, lineUps, seriesDate, seriesKeyOf } from '../../survey/seriesRule';
 
@@ -668,6 +671,16 @@ export interface ReportSurveyData extends SurveyReportData {
   /** What the cards are formatted with. */
   settings: SurveySettings;
   templates: SurveyTemplate[];
+  /**
+   * Only with `BuildOptions.pileProfiles` (the volumetric report): each volume measurement's
+   * elevation profile by id, on `latest` and, when given, the `compared` survey date (capture
+   * ids); null for a pile that cannot be sampled. Asked once the report's model has named its two
+   * dates, so the profile's earlier line is always the date the figures are compared with.
+   */
+  pileProfiles?: (
+    latest: string,
+    compared: string | null,
+  ) => Promise<Record<string, VolumetricPileProfile | null>>;
 }
 
 /**
@@ -709,6 +722,8 @@ export interface BuildOptions {
    * section or the summary prints them. Off, only their stored dates are read. Default on.
    */
   fillDates?: boolean;
+  /** Offer each pile's elevation profile (`ReportSurveyData.pileProfiles`). Default off. */
+  pileProfiles?: boolean;
 }
 
 /**
@@ -862,16 +877,24 @@ interface KindRef {
   date?: string;
 }
 
-/** Each surface's heights along a line (400 stations at most), with its kind and date. */
+/**
+ * Each surface's heights along a line (400 stations at most), with its kind and date. `onDrawn`
+ * makes a surface's sampler one of drawn points (a line where the app draws it, the date's line-up
+ * added); without it the line is read where the surfaces hold it.
+ */
 async function sampleProfiles(
   line: readonly (readonly [number, number])[],
   refs: readonly KindRef[],
   resolve: Resolve,
+  onDrawn?: (ref: SectionRef, sample: PointSampler) => PointSampler,
 ): Promise<SectionReport['profiles']> {
-  const { surfaces } = await resolveSection(
+  const resolved = await resolveSection(
     refs.map((r) => r.ref),
     resolve,
   );
+  const surfaces = onDrawn
+    ? resolved.surfaces.map((x) => ({ ...x, sample: onDrawn(x.ref, x.sample) }))
+    : resolved.surfaces;
   const length = lineLength(line);
   const s = await sampleSection({ line, stepM: Math.max(0.25, length / 400) }, surfaces);
   const byKey = new Map(refs.map((r) => [surfaceKey(r.ref), r]));
@@ -1305,6 +1328,57 @@ export async function buildSurveyData(
     }
   }
 
+  // ------------------------------------------------ the piles' profiles (the volumetric report)
+  /**
+   * Each pile's profile on `latestId`, with `comparedId` as its earlier line: the pile panel's
+   * default line on the outline drawn on the latest date, the surveys cut by `sampleProfiles` (as
+   * a section's are), the base built on the latest ground as the pile look builds it. Points are
+   * read where the app draws them (`drawnOnSurface` with the sampled date's line-up, as the
+   * panel's `drawnSampler`).
+   */
+  const pileProfiles = async (
+    latestId: string,
+    comparedId: string | null,
+  ): Promise<Record<string, VolumetricPileProfile | null>> => {
+    const latest = capRef(latestId);
+    const compared = comparedId !== null && comparedId !== latestId ? capRef(comparedId) : null;
+    const out: Record<string, VolumetricPileProfile | null> = {};
+    for (const m of pileWork) out[m.id] = null;
+    if (!latest || !surfaceOfCapture(files.surfaces, latest.id)) return out;
+    const drawnOn = (sample: PointSampler, capture: string): PointSampler =>
+      drawnOnSurface(
+        sample,
+        { kind: 'survey', capture },
+        surfaceOfCapture(files.surfaces, capture),
+        manifest,
+      );
+    const raw = await engine.sampler(latest.id);
+    const ground = raw ? drawnOn(raw, latest.id) : null;
+    const refsOf: KindRef[] = [{ ref: { kind: 'current' }, kind: 'current', date: latest.date }];
+    const earlier = compared ? surfaceOfCapture(files.surfaces, compared.id) : null;
+    if (compared && earlier)
+      refsOf.push({
+        ref: { kind: 'survey', surface: earlier.id },
+        kind: 'earlier',
+        date: compared.date,
+      });
+    const resolve = engine.resolver(latest.id);
+    for (const m of pileWork) {
+      out[m.id] = await pileProfile({
+        m,
+        ring: drawnPoints({ scope: m.scope, points: [...editedOutline(m, latest.id)] }, manifest),
+        latest,
+        compared: compared && earlier ? compared : null,
+        surfaces: (line) =>
+          sampleProfiles(line, refsOf, resolve, (ref, sample) =>
+            drawnOn(sample, ref.kind === 'survey' && compared ? compared.id : latest.id),
+          ),
+        ground: ground ? (es, ns) => ground(es, ns) : null,
+      });
+    }
+    return out;
+  };
+
   return {
     basis: surveyBasis(settings, manifest.crs, files.calibration),
     captures,
@@ -1320,5 +1394,6 @@ export async function buildSurveyData(
     entries,
     settings,
     templates: files.templates,
+    ...(opts.pileProfiles ? { pileProfiles } : {}),
   };
 }

@@ -5,6 +5,10 @@
 // `pileMaterial`), so the PDF, the HTML file and the editor's preview print the same numbers. The
 // person's edits (`report/volumetric.json`) and pictures (`report/views/volumetric/frame.json`)
 // are read here, never passed in: the exports pass no compared date, the editor passes its own.
+// Every volume measurement is in the input, one never computed too (its outline and footprint on
+// each date, no figure). The input also names the piles whose outlines substantially overlap on the
+// latest date, and carries each pile's elevation profile (`pileProfiles.ts`), which the survey
+// data samples against the date the model compares with.
 //
 // - `volumetric-model`: the model, JSON safe, for the editor (`window.__report.model`); nothing is
 //   laid out, and a project without pictures still gets its model (the preview shows placeholders).
@@ -16,6 +20,7 @@ import {
   volumetricModel,
   type VolumetricInput,
   type VolumetricModel,
+  type VolumetricPileProfile,
   type VolumetricT,
 } from '@aio/project/export';
 import {
@@ -26,7 +31,13 @@ import {
   type ReportTextFile as ReportTextFileT,
   type ReportViewsFrame as ReportViewsFrameT,
 } from '@aio/schema';
-import { densityOn, pileSeries, surfaceOfCapture } from '@aio/survey';
+import {
+  densityOn,
+  overlapShare,
+  pileSeries,
+  SAME_PILE_SHARE,
+  surfaceOfCapture,
+} from '@aio/survey';
 import { t } from '@aio/ui';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
@@ -117,30 +128,69 @@ function baseOf(
   return it ? standardBaseName(it.from) : '';
 }
 
+/** Each pile's sampled profile by measurement id; a pile left out, or null, has none. */
+export type PileProfiles = Readonly<Record<string, VolumetricPileProfile | null>>;
+
+/**
+ * The pairs of piles whose outlines substantially overlap on `capture`: the engine's test for
+ * "the same pile drawn again" (`overlapShare` at `SAME_PILE_SHARE`, half or more of the smaller
+ * outline; plan D3, no threshold of the report's own). Each pair once, in the piles' order.
+ */
+function overlapsOn(
+  piles: readonly {
+    id: string;
+    dates: readonly { capture: string; outline: [number, number][] }[];
+  }[],
+  capture: string,
+): { a: string; b: string }[] {
+  const rings = piles.flatMap((p) => {
+    const ring = p.dates.find((d) => d.capture === capture)?.outline ?? [];
+    return ring.length >= 3 ? [{ id: p.id, ring }] : [];
+  });
+  const out: { a: string; b: string }[] = [];
+  rings.forEach((x, i) => {
+    for (const y of rings.slice(i + 1))
+      if (overlapShare(x.ring, y.ring) >= SAME_PILE_SHARE) out.push({ a: x.id, b: y.id });
+  });
+  return out;
+}
+
 /**
  * The model's input from the survey data: every volume measurement with its figures on each
  * date (a stale date has none), on that date's own outline, at its material's density on that date.
  * The footprint and survey error are the stored result's for that date, else the outline's area.
+ * A pile that was never computed is kept (plan D1): one entry per survey date with its outline and
+ * footprint and no figure. `overlaps` is read on the newest date with a figure (the model's latest
+ * date); `profiles` are the sampled profiles (`ReportSurveyData.pileProfiles`).
  */
 export function volumetricInputOf(
   files: SurveyFiles,
   survey: ReportSurveyData,
-  opts: { compareWith: string | null; frame: ReportViewsFrameT | null },
+  opts: { compareWith: string | null; frame: ReportViewsFrameT | null; profiles?: PileProfiles },
 ): VolumetricInput {
   const manifest = files.manifest;
   const captures = survey.captures;
   const dateOf = captureDateOf(captures);
   const byId = new Map(files.measurements.map((m) => [m.id, m]));
+  const oldestFirst = [...captures].sort((a, b) =>
+    a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+  );
   const piles = survey.volumes.piles.map((p) => {
     const m = byId.get(p.id);
     // the figure's own result per date: the Volumes view's choice (`pileSeries`, the first item)
     const series = m ? pileSeries(m).series : [];
+    // a pile the survey data has no rows for still stands on every survey date, without a figure
+    const rows: readonly { capture: string; valueM3: number | null; stale: boolean }[] =
+      p.rows.length > 0
+        ? p.rows
+        : oldestFirst.map((c) => ({ capture: c.id, valueM3: null, stale: false }));
     return {
       id: p.id,
       label: p.label,
       material: p.material ? { id: p.material.id, name: p.material.name } : null,
       base: m ? baseOf(m, series) : p.base,
-      dates: p.rows.map((r) => {
+      profile: opts.profiles?.[p.id] ?? null,
+      dates: rows.map((r) => {
         const outline = p.outlines[r.capture] ?? p.outline;
         const found = series.find((x) => x.toCapture === r.capture);
         const stored =
@@ -163,9 +213,14 @@ export function volumetricInputOf(
   });
   const latest = [...captures].reverse().find((c) => surfaceOfCapture(files.surfaces, c.id));
   const surface = latest ? surfaceOfCapture(files.surfaces, latest.id) : null;
+  // the model's latest date: the newest with a figure
+  const figured = oldestFirst.findLast((c) =>
+    piles.some((p) => p.dates.some((d) => d.capture === c.id && d.volumeM3 !== null)),
+  );
   return {
     captures,
     piles,
+    overlaps: figured ? overlapsOn(piles, figured.id) : [],
     compareWith: opts.compareWith,
     project: {
       name: manifest.name,
@@ -242,7 +297,19 @@ export async function runVolumetric(r: VolumetricRun): Promise<void> {
   const survey = await r.build(files);
   // the editor names its compared date; the exports print the one the text file saved
   const compareWith = exporting ? (file?.compareWith ?? null) : r.compare;
-  const model = volumetricModel(volumetricInputOf(files, survey, { compareWith, frame }));
+  let model = volumetricModel(volumetricInputOf(files, survey, { compareWith, frame }));
+  // the profiles follow the model's own dates (the editor's "Compare with" changes them as it
+  // changes the figures), so they are sampled once the model has named its pair
+  if (survey.pileProfiles && model.latest) {
+    r.set({ phase: 'Sampling the pile profiles' });
+    try {
+      const profiles = await survey.pileProfiles(model.latest.id, model.compared?.id ?? null);
+      model = volumetricModel(volumetricInputOf(files, survey, { compareWith, frame, profiles }));
+    } catch (e) {
+      // a report without profiles prints their placeholders; it never fails for them
+      console.warn('Report: the pile profiles could not be sampled and are left out', e);
+    }
+  }
   if (r.kind === 'volumetric-model') {
     r.set({ state: 'ready', phase: 'Ready', done: 1, total: 1, count: model.piles.length, model });
     return;

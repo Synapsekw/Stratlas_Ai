@@ -3,8 +3,10 @@
 // model and lays nothing out; the PDF kind lays out the pages the text file turns on, one per
 // printed page of the plan, with the person's edits read from `report/volumetric.json` (a `user`
 // part as written, a `template` part generated again from the figures); without pictures the
-// exports refuse and the model kind carries on.
-import { pagePlan, type VolumetricModel } from '@aio/project/export';
+// exports refuse and the model kind carries on. The model's input keeps every pile (one never
+// computed too), names the overlapping pairs and carries each pile's profile, sampled against the
+// date the model compares with.
+import { pagePlan, type VolumetricModel, type VolumetricPileProfile } from '@aio/project/export';
 import type {
   ProjectManifest,
   ReportTextFile,
@@ -282,6 +284,88 @@ describe("the model's input from the app's figures", () => {
   });
 });
 
+/** A sampled profile, as `pileProfile` returns it. */
+const PROFILE: VolumetricPileProfile = {
+  a: [0, 5],
+  b: [12, 5],
+  lengthM: 12,
+  series: [
+    { kind: 'current', capture: 'c2', date: '2026-10-01', chainage: [0, 6, 12], z: [1, 4, 1] },
+    { kind: 'earlier', capture: 'c1', date: '2026-09-03', chainage: [0, 6, 12], z: [1, 2, 1] },
+    { kind: 'base', chainage: [0, 6, 12], z: [null, 1, null] },
+  ],
+  baseLevel: [1, 1],
+  baseKind: 'own',
+};
+
+describe('every pile, overlaps and profiles in the input', () => {
+  it('keeps a pile that was never computed, with its outline and a real area on each date', () => {
+    const s = survey();
+    const never = s.volumes.piles[2];
+    if (!never) throw new Error('no pile');
+    // no figure on any date
+    never.rows = never.rows.map((r) => ({ ...r, valueM3: null, status: 'missing' as const }));
+    // and a pile the survey data has no rows for at all
+    const bare = s.volumes.piles[1];
+    if (bare) bare.rows = [];
+    const input = volumetricInputOf(files(), s, { compareWith: null, frame: null });
+    expect(input.piles).toHaveLength(PILES);
+    for (const p of [input.piles[1], input.piles[2]]) {
+      expect(p?.dates.map((d) => d.capture)).toEqual(['c1', 'c2']);
+      expect(p?.dates.map((d) => d.volumeM3)).toEqual([null, null]);
+      expect(p?.dates.map((d) => d.areaM2)).toEqual([100, 144]);
+      expect(p?.dates.map((d) => d.peakM)).toEqual([null, null]);
+    }
+    expect(input.piles[2]?.dates.map((d) => d.outline)).toEqual([square(40, 10), square(40, 12)]);
+    // the pile without rows has no density history to read, yet its material's density on each date
+    expect(input.piles[1]?.dates.map((d) => d.densityTPerM3)).toEqual([1.5, 1.6]);
+  });
+
+  it('names two piles whose outlines share half or more of the smaller one on the latest date', () => {
+    const at = (offsets: number[]) => {
+      const s = survey();
+      s.volumes.piles.forEach((p, i) => {
+        // apart on the first date, where they are on the latest
+        p.outlines = { c1: square(100 * i, 10), c2: square(offsets[i] ?? 0, 10) };
+      });
+      return volumetricInputOf(files(), s, { compareWith: null, frame: null }).overlaps;
+    };
+    // 60 % of the first two in common, the third far away
+    expect(at([0, 4, 500])).toEqual([{ a: 'm0', b: 'm1' }]);
+    // 30 % is a neighbour, not the same material twice
+    expect(at([0, 7, 500])).toEqual([]);
+    // every pair once
+    expect(at([0, 1, 2])).toHaveLength(3);
+  });
+
+  it('reads the overlap on the newest date that has a figure', () => {
+    const s = survey();
+    s.volumes.piles.forEach((p, i) => {
+      p.outlines = { c1: square(4 * i, 10), c2: square(100 * i, 10) };
+      // nothing computed on the newest date
+      const last = p.rows[1];
+      if (last) last.valueM3 = null;
+    });
+    const input = volumetricInputOf(files(), s, { compareWith: null, frame: null });
+    expect(input.overlaps).toEqual([
+      { a: 'm0', b: 'm1' },
+      { a: 'm1', b: 'm2' },
+    ]);
+  });
+
+  it("carries each pile's profile, null for one that was not sampled", () => {
+    const input = volumetricInputOf(files(), survey(), {
+      compareWith: null,
+      frame: null,
+      profiles: { m0: PROFILE, m1: null },
+    });
+    expect(input.piles.map((p) => p.profile)).toEqual([PROFILE, null, null]);
+    // without sampled profiles every pile has none
+    const bare = volumetricInputOf(files(), survey(), { compareWith: null, frame: null });
+    expect(bare.piles.map((p) => p.profile)).toEqual([null, null, null]);
+  });
+});
+
 describe('the volumetric run', () => {
   it('publishes the model for the editor and lays nothing out', async () => {
     const h = harness('volumetric-model', { compare: 'c1' });
@@ -296,6 +380,44 @@ describe('the volumetric run', () => {
     expect(h.build).toHaveBeenCalledOnce();
     // JSON safe: main reads it through JSON.stringify
     expect(JSON.parse(JSON.stringify(model))).toEqual(model);
+  });
+
+  it("gives the editor's model the profiles, sampled against the model's compared date", async () => {
+    const pileProfiles = vi.fn(() => Promise.resolve({ m0: PROFILE, m1: null }));
+    const withProfiles = () => Promise.resolve({ ...survey(), pileProfiles });
+    // the editor's Compare with choice
+    const h = harness('volumetric-model', { compare: 'c1', build: withProfiles });
+    await runVolumetric(h.run);
+    const model = h.state().model as VolumetricModel;
+    expect(pileProfiles).toHaveBeenCalledOnce();
+    expect(pileProfiles).toHaveBeenCalledWith('c2', 'c1');
+    expect(model.piles.find((p) => p.id === 'm0')?.profile).toEqual(PROFILE);
+    expect(model.piles.find((p) => p.id === 'm1')?.profile).toBeNull();
+    expect(model.piles.find((p) => p.id === 'm2')?.profile).toBeNull();
+    expect(JSON.parse(JSON.stringify(model))).toEqual(model);
+    // a pick that is not an earlier date with figures: the date the model falls back to
+    const other = vi.fn(() => Promise.resolve({}));
+    const g = harness('volumetric-model', {
+      compare: 'nope',
+      build: () => Promise.resolve({ ...survey(), pileProfiles: other }),
+    });
+    await runVolumetric(g.run);
+    expect(other).toHaveBeenCalledWith('c2', 'c1');
+  });
+
+  it('prints the report without profiles when sampling them fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const h = harness('volumetric-model', {
+      build: () =>
+        Promise.resolve({
+          ...survey(),
+          pileProfiles: () => Promise.reject(new Error('no surface')),
+        }),
+    });
+    await runVolumetric(h.run);
+    expect(h.state().state).toBe('ready');
+    expect((h.state().model as VolumetricModel).piles.every((p) => p.profile === null)).toBe(true);
+    warn.mockRestore();
   });
 
   it('gives the editor its model without pictures (the preview shows placeholders)', async () => {
