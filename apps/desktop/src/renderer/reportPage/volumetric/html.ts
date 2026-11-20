@@ -4,17 +4,15 @@
 // inline script that the file's own CSP names by its SHA-256, and the viewer's data as JSON. The
 // file asks for nothing: `default-src 'none'` refuses any request it might still try.
 //
-// Pictures are JPEG, photo and 3D at quality 0.80, the heat map and elevation at 0.88, at most
-// 2000 px on the longest side; when the file would pass the 15 MB budget they are made again at
-// 1600 and then 1200 px, and the export refuses past that. The pile cards' before and after crops
-// are cut as their own 600 px JPEGs (one picture repeated per card would cost its bytes each time).
+// Pictures are JPEG, photo and 3D at quality 0.80, the heat map and elevation at 0.88. The site
+// pictures are at most 2000 px on the longest side, each pile's own pictures (its photo, its 3D
+// view and the compared survey's photo, each held once, in its card) at most 640 px. When the file
+// would pass the 15 MB budget the pile pictures are made again at 480 px, then the site pictures
+// at 1600 and 1200 px, and the export refuses past that (about 70 piles; the PDF has no such
+// limit). A pile without pictures of its own is cut from the site photo by the page's CSS, so it
+// costs no bytes.
 import { lockupSvg } from '@aio/brand';
-import {
-  formatReportDate,
-  volumetricCsv,
-  type PixelBox,
-  type VolumetricModel,
-} from '@aio/project/export';
+import { formatReportDate, volumetricCsv, type VolumetricModel } from '@aio/project/export';
 import type { ReportView, ReportViewKind, ReportViewsFrame } from '@aio/schema';
 import { t } from '@aio/ui';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -39,32 +37,40 @@ import volumetricCss from './volumetric.css?text';
 /** The file's size budget, bytes, and how the refusal names it. */
 export const HTML_BUDGET_BYTES = 15_000_000;
 const BUDGET_LABEL = '15 MB';
-/** The pictures' longest side, tried in turn until the file fits. */
-export const PICTURE_STEPS_PX = [2000, 1600, 1200] as const;
-/** The pile cards' crops, px a side. */
-export const CROP_PX = 600;
 /** JPEG quality by picture kind. */
 export const PICTURE_QUALITY: Record<ReportViewKind, number> = {
   photo: 0.8,
   '3d': 0.8,
   cutfill: 0.88,
   elevation: 0.88,
+  'pile-photo': 0.8,
+  'pile-3d': 0.8,
 };
 
-/** A part of the source picture, as fractions of its width and height (may run past its edges). */
-export interface PictureCrop {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
+/** The kinds that picture one pile: smaller in the file, and the first to step down. */
+const isPileKind = (kind: ReportViewKind) => kind === 'pile-photo' || kind === 'pile-3d';
+
+/** One try at fitting the budget: the longest side of the site and of the pile pictures, px. */
+interface SizeStep {
+  sitePx: number;
+  pilePx: number;
 }
+
+/**
+ * The sizes to try, largest file first: the pile pictures step down while the site pictures stay
+ * whole, then the site pictures step down with the pile pictures at their smallest.
+ */
+export const SIZE_STEPS: readonly SizeStep[] = [
+  { sitePx: 2000, pilePx: 640 },
+  { sitePx: 2000, pilePx: 480 },
+  { sitePx: 1600, pilePx: 480 },
+  { sitePx: 1200, pilePx: 480 },
+];
 
 export interface PictureRequest {
   /** The longest side of the result, px (the source is never made larger). */
   maxPx: number;
   quality: number;
-  /** Cut this part of the source first. */
-  crop?: PictureCrop;
 }
 
 /** A picture (by URL) made into a JPEG `data:` URI. */
@@ -98,19 +104,16 @@ export function browserEncoder(): PictureEncoder {
     const img = await load(src);
     const iw = img.naturalWidth;
     const ih = img.naturalHeight;
-    const c = req.crop ?? { left: 0, top: 0, width: 1, height: 1 };
-    const sw = c.width * iw;
-    const sh = c.height * ih;
-    const k = Math.min(1, req.maxPx / Math.max(sw, sh, 1));
+    const k = Math.min(1, req.maxPx / Math.max(iw, ih, 1));
     const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(sw * k));
-    canvas.height = Math.max(1, Math.round(sh * k));
+    canvas.width = Math.max(1, Math.round(iw * k));
+    canvas.height = Math.max(1, Math.round(ih * k));
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('No canvas for the report pictures.');
     ctx.fillStyle = '#fdfefe';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(img, c.left * iw, c.top * ih, sw, sh, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, iw, ih, 0, 0, canvas.width, canvas.height);
     return canvas.toDataURL('image/jpeg', req.quality);
   };
 }
@@ -143,19 +146,10 @@ const slug = (s: string) =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 60) || 'project';
 
-/** A pile's crop box (frame pixels) as fractions of the picture. */
-const cropOf = (box: PixelBox, frame: ReportViewsFrame): PictureCrop => ({
-  left: box.x / frame.widthPx,
-  top: box.y / frame.heightPx,
-  width: box.size / frame.widthPx,
-  height: box.size / frame.heightPx,
-});
-
-/** One picture the file needs: its source, kind and crop (none for a whole picture). */
+/** One picture the file needs: its source and kind. */
 interface Wanted {
   src: string;
   kind: ReportViewKind;
-  crop: PictureCrop | null;
 }
 
 const TOKEN = (i: number) => `data:image/jpeg;base64,VRPIC${String(i)}END`;
@@ -183,13 +177,14 @@ function printPages(prepared: VolumetricPrepared, want: (w: Wanted) => string): 
     frame,
     picture: (kind, capture, pair) => {
       const src = findView(frame, kind, capture, pair) ? views.picture(kind, capture, pair) : null;
-      return src ? want({ src, kind, crop: null }) : null;
+      return src ? want({ src, kind }) : null;
     },
-    crop: (pileId, capture) => {
-      const pile = model.piles.find((p) => p.id === pileId);
-      const src = views.picture('photo', capture);
-      if (!pile?.crop || pile.crop.size <= 0 || !src) return null;
-      return want({ src, kind: 'photo', crop: cropOf(pile.crop, frame) });
+    // a pile's own picture, asked for by its card alone, so the file holds it once
+    pilePicture: (kind, pile, capture) => {
+      const own = views.pilePicture(kind, pile, capture);
+      if (!own) return null;
+      const src = want({ src: own.src, kind: kind === 'photo' ? 'pile-photo' : 'pile-3d' });
+      return { src, extent: own.extent };
     },
   };
   const pages = volumetricTemplate.render(model, prepared.text, pageViews);
@@ -210,10 +205,10 @@ function viewerDataOf(prepared: VolumetricPrepared, want: (w: Wanted) => string)
   const compared = model.compared;
 
   const pictures: ViewerPicture[] = [];
-  const add = (kind: ReportViewKind, capture: string, pair?: string) => {
+  const add = (kind: ViewerPicture['kind'], capture: string, pair?: string) => {
     if (!findView(frame, kind, capture, pair)) return;
     const src = views.picture(kind, capture, pair);
-    if (src) pictures.push({ kind, capture, src: want({ src, kind, crop: null }) });
+    if (src) pictures.push({ kind, capture, src: want({ src, kind }) });
   };
   for (const c of shown) for (const kind of ['photo', 'elevation', '3d'] as const) add(kind, c.id);
   if (latest && compared) add('cutfill', latest.id, compared.id);
@@ -237,7 +232,13 @@ function viewerDataOf(prepared: VolumetricPrepared, want: (w: Wanted) => string)
   const place = model.project.site ?? model.project.name;
   const title = reportTitle(model);
   const subtitle = [
-    t('vreport.band.piles', { count: model.kpis.piles }),
+    // every pile is listed; how many have a volume is said only when some have none
+    model.kpis.listed === model.kpis.piles
+      ? t('vreport.band.piles', { count: model.kpis.listed })
+      : t('vreport.band.pilesMeasured', {
+          count: model.kpis.listed,
+          measured: model.kpis.piles,
+        }),
     latest ? t('vreport.band.surveyed', { date: formatReportDate(latest.date) }) : null,
     compared ? t('vreport.band.compared', { date: formatReportDate(compared.date) }) : null,
   ]
@@ -304,7 +305,7 @@ export async function volumetricHtmlFile(
   encode: PictureEncoder,
 ): Promise<string> {
   const wanted: Wanted[] = [];
-  const keyOf = (w: Wanted) => JSON.stringify([w.src, w.kind, w.crop]);
+  const keyOf = (w: Wanted) => JSON.stringify([w.src, w.kind]);
   const index = new Map<string, number>();
   const want = (w: Wanted) => {
     const key = keyOf(w);
@@ -357,10 +358,11 @@ export async function volumetricHtmlFile(
   const title = documentTitle(prepared.model);
 
   const encoded = new Map<string, Promise<string>>();
-  const picture = (w: Wanted, maxPx: number) => {
-    const req: PictureRequest = w.crop
-      ? { maxPx: CROP_PX, quality: PICTURE_QUALITY.photo, crop: w.crop }
-      : { maxPx, quality: PICTURE_QUALITY[w.kind] };
+  const picture = (w: Wanted, step: SizeStep) => {
+    const req: PictureRequest = {
+      maxPx: isPileKind(w.kind) ? step.pilePx : step.sitePx,
+      quality: PICTURE_QUALITY[w.kind],
+    };
     const key = JSON.stringify([w.src, req]);
     let p = encoded.get(key);
     if (!p) {
@@ -370,8 +372,13 @@ export async function volumetricHtmlFile(
     return p;
   };
 
-  for (const maxPx of PICTURE_STEPS_PX) {
-    const uris = await Promise.all(wanted.map((w) => picture(w, maxPx)));
+  // a file without pile pictures has nothing to gain from their step down
+  const hasPilePictures = wanted.some((w) => isPileKind(w.kind));
+  const steps = SIZE_STEPS.filter(
+    (step, i) => hasPilePictures || step.sitePx !== SIZE_STEPS[i - 1]?.sitePx,
+  );
+  for (const step of steps) {
+    const uris = await Promise.all(wanted.map((w) => picture(w, step)));
     const fill = (s: string) => s.replace(TOKEN_RE, (_m, i: string) => uris[Number(i)] ?? '');
     const html = documentOf({
       title,

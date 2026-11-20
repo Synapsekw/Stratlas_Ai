@@ -39,6 +39,7 @@ export const VIEWER_STRING_KEYS = [
   'vreport.piles.more',
   'vreport.piles.same',
   'vreport.table.noTonnes',
+  'vreport.notComputed',
   'vreport.key.red',
   'vreport.key.blue',
   'vreport.key.grey',
@@ -87,7 +88,11 @@ export interface ViewerPile {
   /** The base in words, as the base picker names it ("Triangulated toe"); empty when unknown. */
   base: string;
   note: string | null;
-  /** Its figures on the shown dates (any order; a missing date counts as no figure). */
+  /**
+   * Its figures on the shown dates (any order; a missing date counts as no figure). A pile that
+   * was never computed is listed all the same, with `m3` and `t` null on every date: the view
+   * says "Not computed" for it and leaves it out of every sum and share.
+   */
   byDate: ViewerPileDate[];
 }
 
@@ -97,7 +102,7 @@ export interface ViewerData {
   lockupSvg: string;
   /** "<site> · stockpile report". */
   title: string;
-  /** "N piles · surveys <dates> · works offline, all data is inside this file". */
+  /** "N piles · surveyed <date> · compared with <date>" ("N piles, M measured" when they differ). */
   subtitle: string;
   /** The shown dates, oldest first. */
   dates: ViewerDate[];

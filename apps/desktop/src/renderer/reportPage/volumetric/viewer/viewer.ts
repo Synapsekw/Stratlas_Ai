@@ -114,12 +114,22 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
     const b = amountOn(p, to, unit);
     return a === null || b === null ? null : b - a;
   };
-  const totalOn = (capture: string): number | null => {
-    const xs = data.piles.map((p) => amountOn(p, capture)).filter((x): x is number => x !== null);
-    return xs.length ? xs.reduce((a, b) => a + b, 0) : null;
+  const sum = (xs: (number | null)[]): number | null => {
+    const known = xs.filter((x): x is number => x !== null);
+    return known.length ? known.reduce((a, b) => a + b, 0) : null;
   };
-  const amountText = (v: number | null) =>
-    v === null ? s('vreport.table.noTonnes') : formatAmount(v, state.unit);
+  const totalOn = (capture: string, unit = state.unit): number | null =>
+    sum(data.piles.map((p) => amountOn(p, capture, unit)));
+  /**
+   * An amount in the chosen unit. Without one: "Not computed" when there is no volume either (a
+   * pile that was never computed is listed all the same), else there is no density for tonnes.
+   */
+  const amountText = (v: number | null, m3: number | null) =>
+    v !== null
+      ? formatAmount(v, state.unit)
+      : s(m3 === null ? 'vreport.notComputed' : 'vreport.table.noTonnes');
+  const pileAmountText = (p: ViewerPile, capture: string) =>
+    amountText(amountOn(p, capture), amountOn(p, capture, 'm3'));
   const changeText = (v: number | null) => {
     if (v === null) return '';
     if (Math.abs(v) < 0.05) return s('vreport.piles.same');
@@ -383,12 +393,13 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
     };
     fact(
       state.unit === 'm3' ? s('vreport.viewer.list.volume') : s('vreport.viewer.units.t'),
-      amountText(amount),
+      pileAmountText(p, state.date),
     );
     if (p.areaM2 !== null) fact(s('vreport.piles.footprint'), formatPlain(p.areaM2, 0));
     if (p.peakM !== null) fact(s('vreport.piles.peak'), formatPlain(p.peakM, 1));
     if (p.base !== '') fact(s('vreport.piles.base'), p.base);
-    if (amount !== null && site)
+    // a pile at or under zero, or a site that sums to nothing, has no share
+    if (amount !== null && amount > 0 && site !== null && site > 0)
       fact(s('vreport.piles.share'), `${String(Math.round((amount / site) * 100))} %`);
     card.append(facts);
     if (p.note) {
@@ -403,9 +414,14 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
 
   function renderList() {
     const vol = (p: ViewerPile) => amountOn(p, state.date, 'm3');
+    // largest volume first, or largest drawdown first; a pile without the figure goes last
+    const key = (p: ViewerPile) => {
+      const v = state.sort === 'volume' ? vol(p) : changeOf(p, 'm3');
+      return v === null ? null : state.sort === 'volume' ? -v : v;
+    };
     const sorted = [...data.piles].sort((a, b) => {
-      const [x, y] =
-        state.sort === 'volume' ? [vol(b), vol(a)] : [changeOf(a, 'm3'), changeOf(b, 'm3')];
+      const x = key(a);
+      const y = key(b);
       if (x === null && y === null) return a.number - b.number;
       if (x === null) return 1;
       if (y === null) return -1;
@@ -415,7 +431,7 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
     for (const p of sorted) {
       const row = rows.get(p.id);
       if (!row) continue;
-      row.amount.textContent = amountText(amountOn(p, state.date));
+      row.amount.textContent = pileAmountText(p, state.date);
       const ch = changeOf(p);
       row.change.textContent = changeText(ch);
       row.change.className = `vr-d-row-change vr-d-${changeTone(ch)}`;
@@ -455,12 +471,13 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
     legend.hidden = state.view !== 'cutfill' || data.legend.length === 0;
     caption.textContent = mapText;
 
-    total.value.textContent = amountText(totalOn(state.date));
+    total.value.textContent = amountText(totalOn(state.date), totalOn(state.date, 'm3'));
     total.label.textContent = `${s('vreport.kpi.stock')}, ${dateLabel(state.date)}`;
-    const changes = data.piles.map((p) => changeOf(p)).filter((x): x is number => x !== null);
-    const siteChange = changes.length ? changes.reduce((a, b) => a + b, 0) : null;
+    const siteChange = sum(data.piles.map((p) => changeOf(p)));
     change.value.textContent =
-      siteChange === null ? s('vreport.table.noTonnes') : changeText(siteChange);
+      siteChange === null
+        ? amountText(null, sum(data.piles.map((p) => changeOf(p, 'm3'))))
+        : changeText(siteChange);
     change.tile.dataset.tone = changeTone(siteChange);
     renderCard();
     renderList();

@@ -2,7 +2,8 @@
 // The offline volumetric HTML file (spec section 4): one document with its own strict CSP naming
 // the one script's hash, nothing it would have to fetch (fonts, pictures and the lockup as `data:`
 // URIs), pages A to C for print and the interactive view D on screen, booting from the embedded
-// data; the pictures step down to fit the 15 MB budget and the export refuses past it.
+// data; the pictures step down to fit the 15 MB budget (each pile's own pictures first) and the
+// export refuses past it.
 import { stockpileInventory, volumetricCsv } from '@aio/project/export';
 import type {
   ProjectManifest,
@@ -51,7 +52,7 @@ const measurement = (i: number): SurveyMeasurement => ({
   createdAt: '2026-10-16T00:00:00Z',
 });
 
-function files(): SurveyFiles {
+function files(n = PILES): SurveyFiles {
   return {
     manifest: {
       name: 'Demo yard',
@@ -60,17 +61,19 @@ function files(): SurveyFiles {
       captures: CAPTURES,
       crs: { epsg: 32632 },
     } as unknown as ProjectManifest,
-    measurements: Array.from({ length: PILES }, (_, i) => measurement(i)),
+    measurements: Array.from({ length: n }, (_, i) => measurement(i)),
     surfaces: [{ id: 's2', capture: 'c2', cellM: 0.25, source: { kind: 'dsm' } }],
     settings: { materials: [sand] },
     kit: null,
   } as unknown as SurveyFiles;
 }
 
-function survey(): ReportSurveyData {
+/** `n` piles; with `uncomputed` the last of them has no figure on any date. */
+function survey(n = PILES, uncomputed = false): ReportSurveyData {
+  const counted = uncomputed ? n - 1 : n;
   const captureRefs = CAPTURES.map((c) => ({ id: c.id, label: c.label, date: c.date }));
   const stockpiles = stockpileInventory(
-    Array.from({ length: PILES }, (_, i) => ({
+    Array.from({ length: counted }, (_, i) => ({
       ref: `M${String(i + 1)}`,
       id: `m${String(i)}`,
       label: `P${String(i + 1)}`,
@@ -91,7 +94,7 @@ function survey(): ReportSurveyData {
     stockpiles,
     volumes: {
       inventory: [],
-      piles: Array.from({ length: PILES }, (_, i) => ({
+      piles: Array.from({ length: n }, (_, i) => ({
         id: `m${String(i)}`,
         ref: `M${String(i + 1)}`,
         label: `P${String(i + 1)}`,
@@ -99,7 +102,7 @@ function survey(): ReportSurveyData {
         material: sand,
         base: 'Lowest point on the outline',
         carried: null,
-        rows: CAPTURES.map((c, k) => ({
+        rows: (i < counted ? CAPTURES : []).map((c, k) => ({
           capture: c.id,
           date: c.date,
           label: c.label,
@@ -134,6 +137,46 @@ const FRAME: ReportViewsFrame = {
   fingerprint: 'f',
 };
 
+/** The frame with each pile's own pictures: its photo on both dates and its 3D view. */
+function pileFrame(n: number): ReportViewsFrame {
+  return {
+    ...FRAME,
+    views: [
+      ...FRAME.views,
+      ...Array.from({ length: n }, (_, i) => {
+        const k = String(i + 1);
+        const pile = `m${String(i)}`;
+        const extent: [number, number, number, number] = [20 * i - 4, -3, 20 * i + 16, 12];
+        return [
+          {
+            name: `pile-${k}-photo-1`,
+            kind: 'pile-photo' as const,
+            capture: 'c1',
+            pile,
+            extent,
+            file: `pile-${k}-photo-1.jpg`,
+          },
+          {
+            name: `pile-${k}-photo-2`,
+            kind: 'pile-photo' as const,
+            capture: 'c2',
+            pile,
+            extent,
+            file: `pile-${k}-photo-2.jpg`,
+          },
+          {
+            name: `pile-${k}-3d`,
+            kind: 'pile-3d' as const,
+            capture: 'c2',
+            pile,
+            file: `pile-${k}-3d.jpg`,
+          },
+        ];
+      }).flat(),
+    ],
+  };
+}
+
 const TEXT: ReportTextFile = {
   schema: 'aio.report-text/1',
   report: 'volumetric',
@@ -145,10 +188,10 @@ const TEXT: ReportTextFile = {
   pileNotes: {},
 };
 
-function reader(): SurveyReader {
+function reader(frame: ReportViewsFrame): SurveyReader {
   const store: Record<string, unknown> = {
     'report/volumetric.json': TEXT,
-    'report/views/volumetric/frame.json': FRAME,
+    'report/views/volumetric/frame.json': frame,
   };
   return {
     json: (path) => Promise.resolve(store[path] ?? null),
@@ -157,25 +200,35 @@ function reader(): SurveyReader {
   };
 }
 
-/** A fake JPEG: its source and request in the payload, padded to `bytes(maxPx)`. */
+/** A fake JPEG: its source and request in the payload, padded to `bytes(req)`. */
 function encoder(bytes: (req: PictureRequest) => number = () => 0) {
   return vi.fn<PictureEncoder>((src, req) => {
-    const tag = Buffer.from(
-      `${src}|${String(req.maxPx)}|${String(req.quality)}|${JSON.stringify(req.crop ?? null)}`,
-    ).toString('base64url');
+    const tag = Buffer.from(`${src}|${String(req.maxPx)}|${String(req.quality)}`).toString(
+      'base64url',
+    );
     return Promise.resolve(
       `data:image/jpeg;base64,${tag.replace(/[-_]/g, 'A')}${'A'.repeat(bytes(req))}`,
     );
   });
 }
 
-async function exportHtml(encode: PictureEncoder): Promise<string> {
+interface Fixture {
+  /** How many piles (default 3). */
+  piles?: number;
+  /** The frame holds every pile's own pictures. */
+  pilePictures?: boolean;
+  /** The last pile has no figure on any date. */
+  uncomputed?: boolean;
+}
+
+async function exportHtml(encode: PictureEncoder, fixture: Fixture = {}): Promise<string> {
+  const n = fixture.piles ?? PILES;
   let state: Record<string, unknown> = {};
   const run: VolumetricRun = {
     kind: 'volumetric-html',
-    read: reader(),
-    files: files(),
-    build: () => Promise.resolve(survey()),
+    read: reader(fixture.pilePictures ? pileFrame(n) : FRAME),
+    files: files(n),
+    build: () => Promise.resolve(survey(n, fixture.uncomputed)),
     compare: null,
     companyName: 'Our company',
     pictureUrl: (path) => `aio://p/${path}`,
@@ -190,6 +243,17 @@ async function exportHtml(encode: PictureEncoder): Promise<string> {
   const html = state.html;
   if (typeof html !== 'string') throw new Error('no html published');
   return html;
+}
+
+/** A pile's own picture, by its file name. */
+const isPile = (src: string) => /\/pile-\d+-/.test(src);
+
+/** The sizes asked for, of the pile pictures or of the site pictures, ascending. */
+function sizesOf(encode: ReturnType<typeof encoder>, pile: boolean): number[] {
+  const sizes = new Set(
+    encode.mock.calls.filter(([src]) => isPile(src) === pile).map(([, r]) => r.maxPx),
+  );
+  return [...sizes].sort((a, b) => a - b);
 }
 
 const parse = (html: string) => new DOMParser().parseFromString(html, 'text/html');
@@ -269,14 +333,52 @@ describe('the offline volumetric HTML file', () => {
       expect(pic).toBeDefined();
       expect(img.getAttribute('src')).toBe(pic?.src);
     }
+    // the summary, the site overview, two pages of pile cards and the change page
     const pages = [...doc.querySelectorAll('.vr-print .vr-page')];
-    expect(pages).toHaveLength(3);
+    expect(pages).toHaveLength(5);
     expect(pages[0]?.querySelector('img[data-vr-pic="photo:c2"]')?.getAttribute('src')).toMatch(
       /^data:image\/jpeg/,
     );
-    expect(pages[2]?.querySelector('img[data-vr-pic="cutfill:c2"]')?.getAttribute('src')).toMatch(
+    expect(pages[4]?.querySelector('img[data-vr-pic="cutfill:c2"]')?.getAttribute('src')).toMatch(
       /^data:image\/jpeg/,
     );
+  });
+
+  it('holds each pile picture once, inside its card', async () => {
+    const html = await exportHtml(encoder(), { pilePictures: true });
+    const uris = [...html.matchAll(/data:image\/jpeg;base64,[A-Za-z0-9+/=]+/g)].map((m) => m[0]);
+    const counts = new Map<string, number>();
+    for (const u of uris) counts.set(u, (counts.get(u) ?? 0) + 1);
+    for (const [u, n] of counts) expect(n, u.slice(0, 60)).toBe(1);
+    const doc = parse(html);
+    bootViewer(doc);
+    const cards = [...doc.querySelectorAll('.vr-print .vr-pile')];
+    expect(cards).toHaveLength(PILES);
+    const seen = new Set<string>();
+    for (const card of cards) {
+      for (const kind of ['photo', '3d', 'before']) {
+        const img = card.querySelector<HTMLImageElement>(`[data-pic="${kind}"] img`);
+        // the pile's own picture, not the site photo shared with the view
+        expect(img?.hasAttribute('data-vr-pic')).toBe(false);
+        const src = img?.getAttribute('src') ?? '';
+        expect(src).toMatch(/^data:image\/jpeg;base64,/);
+        seen.add(src);
+      }
+      // the outline is drawn over the photo from the ground it covers
+      expect(card.querySelector('[data-pic="photo"] svg.vr-pile-over')).not.toBeNull();
+    }
+    expect(seen.size).toBe(PILES * 3);
+    // the view D keeps the site pictures only
+    const data = JSON.parse(doc.getElementById('vr-data')?.textContent ?? '') as ViewerData;
+    expect(data.pictures).toHaveLength(5);
+  });
+
+  it('a pile without pictures of its own is cut from the shared site photo', async () => {
+    const html = await exportHtml(encoder());
+    const doc = parse(html);
+    const img = doc.querySelector<HTMLImageElement>('.vr-print .vr-pile [data-pic="photo"] img');
+    expect(img?.dataset.vrPic).toBe('photo:c2');
+    expect(doc.querySelector('.vr-print .vr-pile [data-pic="3d"] img')).toBeNull();
   });
 
   it('carries pages A to C for print, hidden on screen, and D for the screen only', async () => {
@@ -327,18 +429,18 @@ describe('the offline volumetric HTML file', () => {
     expect(doc.querySelectorAll('#vr-app button[aria-label]').length).toBeGreaterThan(0);
   });
 
-  it('encodes photo and 3D at 0.80, maps at 0.88, crops at 600 px', async () => {
+  it('encodes photo and 3D at 0.80, maps at 0.88, pile pictures at 640 px', async () => {
     const encode = encoder();
-    await exportHtml(encode);
+    await exportHtml(encode, { pilePictures: true });
     const calls = encode.mock.calls.map(([src, req]) => ({ src, ...req }));
-    const of = (file: string) => calls.filter((c) => c.src.endsWith(file) && !c.crop);
+    const of = (file: string) => calls.filter((c) => c.src.endsWith(`/${file}`));
     expect(of('photo-c2.jpg')[0]).toMatchObject({ maxPx: 2000, quality: 0.8 });
     expect(of('3d-c2.jpg')[0]).toMatchObject({ maxPx: 2000, quality: 0.8 });
     expect(of('elevation-c2.jpg')[0]).toMatchObject({ maxPx: 2000, quality: 0.88 });
     expect(of('cutfill-c2-c1.jpg')[0]).toMatchObject({ maxPx: 2000, quality: 0.88 });
-    const crops = calls.filter((c) => c.crop);
-    expect(crops.length).toBeGreaterThan(0);
-    for (const c of crops) expect(c).toMatchObject({ maxPx: 600, quality: 0.8 });
+    const own = calls.filter((c) => isPile(c.src));
+    expect(own).toHaveLength(PILES * 3);
+    for (const c of own) expect(c).toMatchObject({ maxPx: 640, quality: 0.8 });
     // each picture is encoded once per size
     const keys = calls.map((c) => JSON.stringify(c));
     expect(new Set(keys).size).toBe(keys.length);
@@ -349,14 +451,60 @@ describe('the offline volumetric HTML file', () => {
     const encode = encoder((req) => (req.maxPx > 1600 ? big : 1000));
     const html = await exportHtml(encode);
     expect(new TextEncoder().encode(html).length).toBeLessThanOrEqual(HTML_BUDGET_BYTES);
-    const sizes = new Set(encode.mock.calls.filter(([, r]) => !r.crop).map(([, r]) => r.maxPx));
-    expect([...sizes].sort()).toEqual([1600, 2000]);
+    expect(sizesOf(encode, false)).toEqual([1600, 2000]);
+  });
+
+  it('with 60 piles steps the pile pictures down before the site pictures', async () => {
+    // 180 pile pictures: too heavy at 640 px, light at 480 px
+    const heavy = Math.ceil(HTML_BUDGET_BYTES / 100);
+    const encode = encoder((req) => (req.maxPx === 640 ? heavy : 1000));
+    const html = await exportHtml(encode, { piles: 60, pilePictures: true });
+    expect(new TextEncoder().encode(html).length).toBeLessThanOrEqual(HTML_BUDGET_BYTES);
+    expect(sizesOf(encode, true)).toEqual([480, 640]);
+    expect(sizesOf(encode, false)).toEqual([2000]);
+    expect(parse(html).querySelectorAll('.vr-print .vr-pile')).toHaveLength(60);
+  });
+
+  it('steps the site pictures down once the pile pictures are at their smallest', async () => {
+    const big = Math.ceil(HTML_BUDGET_BYTES / 4);
+    const encode = encoder((req) => (req.maxPx > 1600 ? big : 1000));
+    await exportHtml(encode, { pilePictures: true });
+    expect(sizesOf(encode, true)).toEqual([480, 640]);
+    expect(sizesOf(encode, false)).toEqual([1600, 2000]);
   });
 
   it('refuses when the smallest pictures still do not fit', async () => {
     const encode = encoder(() => Math.ceil(HTML_BUDGET_BYTES / 4));
     await expect(exportHtml(encode)).rejects.toThrow(t('vreport.error.budget', { limit: '15 MB' }));
-    const sizes = new Set(encode.mock.calls.filter(([, r]) => !r.crop).map(([, r]) => r.maxPx));
-    expect([...sizes].sort()).toEqual([1200, 1600, 2000]);
+    expect(sizesOf(encode, false)).toEqual([1200, 1600, 2000]);
+  });
+
+  it('refuses a site of many piles whose smallest pile pictures still do not fit', async () => {
+    const heavy = Math.ceil(HTML_BUDGET_BYTES / 100);
+    const encode = encoder((req) => (req.maxPx <= 640 ? heavy : 1000));
+    await expect(exportHtml(encode, { piles: 60, pilePictures: true })).rejects.toThrow(
+      t('vreport.error.budget', { limit: '15 MB' }),
+    );
+    expect(sizesOf(encode, true)).toEqual([480, 640]);
+    expect(sizesOf(encode, false)).toEqual([1200, 1600, 2000]);
+  });
+
+  it('lists a pile without a volume in the view, with null figures', async () => {
+    const html = await exportHtml(encoder(), { piles: 4, uncomputed: true });
+    const doc = parse(html);
+    const data = JSON.parse(doc.getElementById('vr-data')?.textContent ?? '') as ViewerData;
+    expect(data.piles.map((p) => p.id)).toEqual(['m2', 'm1', 'm0', 'm3']);
+    const none = data.piles.find((p) => p.id === 'm3');
+    expect(none?.byDate.length).toBeGreaterThan(0);
+    for (const d of none?.byDate ?? []) expect(d).toMatchObject({ m3: null, t: null });
+    expect(none?.peakM).toBeNull();
+    expect(data.strings['vreport.notComputed']).toBe(t('vreport.notComputed'));
+    expect(data.subtitle).toContain(t('vreport.band.pilesMeasured', { count: 4, measured: 3 }));
+
+    bootViewer(doc);
+    const row = doc.querySelector('#vr-app .vr-d-list-row[data-pile="m3"]');
+    expect(row?.querySelector('.vr-d-row-amount')?.textContent).toBe(t('vreport.notComputed'));
+    expect(row?.querySelector('.vr-d-row-change')?.textContent).toBe('');
+    expect(doc.querySelector('#vr-app')?.textContent).not.toMatch(/NaN|Infinity|null|undefined/);
   });
 });

@@ -275,6 +275,97 @@ describe('volumetric interactive viewer', () => {
     ).toEqual(['S1', 'G2']);
   });
 
+  describe('a pile without a volume', () => {
+    /** The two measured piles and a third with a footprint and no figure on any date. */
+    function withUncomputed(): ViewerData {
+      const d = data();
+      d.piles.push({
+        id: 'c',
+        number: 3,
+        tag: '3',
+        label: 'Topsoil',
+        marker: [800, 400],
+        crop: null,
+        areaM2: 120,
+        peakM: null,
+        base: '',
+        note: null,
+        byDate: [
+          { capture: 'c1', m3: null, t: null },
+          { capture: 'c2', m3: null, t: null },
+        ],
+      });
+      return d;
+    }
+    const noBadNumbers = () => {
+      expect(q('.vr-d').textContent).not.toMatch(/NaN|Infinity|null|undefined/);
+    };
+
+    it('is listed last as "Not computed", in both units and both sorts', () => {
+      mount(withUncomputed());
+      const rows = () =>
+        [...document.querySelectorAll<HTMLButtonElement>('.vr-d-list-row')].map(
+          (r) => r.dataset.pile,
+        );
+      const row = q('.vr-d-list-row[data-pile="c"]');
+      expect(rows()).toEqual(['a', 'b', 'c']);
+      expect(row.querySelector('.vr-d-row-amount')?.textContent).toBe('vreport.notComputed');
+      expect(row.querySelector('.vr-d-row-change')?.textContent).toBe('');
+      button('Sort by Change').click();
+      expect(rows()).toEqual(['b', 'a', 'c']);
+      button('Tonnes').click();
+      expect(row.querySelector('.vr-d-row-amount')?.textContent).toBe('vreport.notComputed');
+      // a measured pile without a density still says so
+      expect(q('.vr-d-list-row[data-pile="b"] .vr-d-row-amount').textContent).toBe(
+        'vreport.table.noTonnes',
+      );
+      noBadNumbers();
+    });
+
+    it('leaves the site totals as they are', () => {
+      mount(withUncomputed());
+      expect(q('.vr-d-kpi-total .vr-d-kpi-value').textContent).toBe('3,500 m³');
+      expect(q('.vr-d-kpi-change .vr-d-kpi-value').textContent).toBe('500 m³ less');
+    });
+
+    it('its card says "Not computed", with no change, share or crop', () => {
+      mount(withUncomputed());
+      button('Select Topsoil').click();
+      const facts = [...document.querySelectorAll('.vr-d-facts > div')].map((r) => [
+        r.querySelector('dt')?.textContent,
+        r.querySelector('dd')?.textContent,
+      ]);
+      expect(facts).toContainEqual(['Volume', 'vreport.notComputed']);
+      expect(facts).toContainEqual(['vreport.piles.footprint', '120']);
+      expect(facts.map((f) => f[0])).not.toContain('vreport.piles.share');
+      expect(facts.map((f) => f[0])).not.toContain('vreport.piles.peak');
+      expect(document.querySelector('.vr-d-card .vr-d-chip')).toBeNull();
+      for (const box of document.querySelectorAll('.vr-d-crop-img'))
+        expect(box.classList.contains('vr-d-crop-none')).toBe(true);
+      noBadNumbers();
+    });
+
+    it('a site where no pile has a volume shows "Not computed" for the totals', () => {
+      const d = withUncomputed();
+      d.piles = d.piles.filter((p) => p.id === 'c');
+      mount(d);
+      expect(q('.vr-d-kpi-total .vr-d-kpi-value').textContent).toBe('vreport.notComputed');
+      expect(q('.vr-d-kpi-change .vr-d-kpi-value').textContent).toBe('vreport.notComputed');
+      noBadNumbers();
+    });
+
+    it('a pile at or under zero has no share of the site', () => {
+      const d = data();
+      const sand = d.piles[0];
+      if (sand) sand.byDate = [{ capture: 'c2', m3: -4, t: null }];
+      mount(d);
+      const labels = [...document.querySelectorAll('.vr-d-facts dt')].map((x) => x.textContent);
+      expect(labels).not.toContain('vreport.piles.share');
+      expect(q('.vr-d-facts dd').textContent).toBe('−4.0 m³');
+      noBadNumbers();
+    });
+  });
+
   it('keeps focus on a toggle across a re-render', () => {
     mount();
     const b = button('Elevation');
