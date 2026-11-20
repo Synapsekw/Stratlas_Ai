@@ -13,6 +13,13 @@ import { Overview } from './overview';
 import { PileCard } from './pileCard';
 import './piles.css';
 
+/** A pile page's title: "Piles 3 to 4 of 9", or "Pile 9 of 9" for a page with one card. */
+export function pilesTitle(from: number, to: number, total: number): string {
+  return to > from
+    ? t('vreport.piles.range', { from, to, total })
+    : t('vreport.piles.rangeOne', { from, total });
+}
+
 /** The site overview, or a page of two pile cards. */
 export function PilesPage({
   model,
@@ -41,7 +48,7 @@ export function PilesPage({
   return (
     <Page kind="piles" number={page.number} by={texts.preparedBy}>
       <header className="vr-pile-page-head">
-        <h1>{t('vreport.piles.title')}</h1>
+        <h1>{pilesTitle(page.from + 1, page.from + cards.length, model.cards.length)}</h1>
         {model.latest ? (
           <span>{t('vreport.band.surveyed', { date: dateText(model.latest.date) })}</span>
         ) : null}

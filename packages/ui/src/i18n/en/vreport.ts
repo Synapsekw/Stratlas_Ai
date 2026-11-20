@@ -59,9 +59,6 @@ export const enVreport = {
   'vreport.pictures.none': 'Pictures are taken when you export.',
   'vreport.pictures.takeNow': 'Take them now',
   'vreport.pictures.stale': 'The data changed since the pictures were taken.',
-  'vreport.pictures.take': 'Take pictures',
-  'vreport.pictures.retake': 'Take pictures again',
-  'vreport.pictures.taking': 'Taking pictures, {done} of {total}...',
   'vreport.pictures.progressTitle': 'Taking the report pictures',
   'vreport.pictures.progressText':
     'The stage shows each survey date in turn. Your view comes back when it is done.',
@@ -151,7 +148,9 @@ export const enVreport = {
   'vreport.card.density': 'Density',
   'vreport.card.surveyed': 'Surveyed',
   'vreport.card.no3d': 'No 3D picture: the report pictures the {count} largest piles',
-  'vreport.piles.title': 'Pile cards',
+  // A pile page's title: which of the report's piles its cards are
+  'vreport.piles.range': 'Piles {from} to {to} of {total}',
+  'vreport.piles.rangeOne': 'Pile {from} of {total}',
   'vreport.piles.heading': 'Stock inventory',
   'vreport.piles.headingOn': 'Stock inventory · {date}',
   'vreport.piles.share': 'Share of stock on hand',
@@ -241,6 +240,6 @@ export const enVreport = {
   'vreport.error.noPictures':
     'The report has no pictures yet. Export it from Reports, Volumetric report: the pictures are taken then.',
   'vreport.error.notOffered':
-    'This project has no stockpile volumes with figures, so it has no volumetric report.',
+    'This project has no stockpile volumes, so it has no volumetric report.',
   'vreport.error.failed': 'The volumetric report was not exported: {error}',
 } as const satisfies Record<string, string>;

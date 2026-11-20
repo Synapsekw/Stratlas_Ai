@@ -128,9 +128,11 @@ describe('part B, the site overview and the pile pages', () => {
 
   it('heads every card page with its title and the survey date', () => {
     const first = render(model, 1);
-    expect(text(first, '.vr-pile-page-head h1')).toBe(t('vreport.piles.title'));
+    expect(text(first, '.vr-pile-page-head h1')).toBe('Piles 1 to 2 of 5');
     expect(text(first, '.vr-pile-page-head span')).toBe('Surveyed 1 October 2026');
-    expect(text(render(model, 2), '.vr-pile-page-head h1')).toBe(t('vreport.piles.title'));
+    expect(text(render(model, 2), '.vr-pile-page-head h1')).toBe('Piles 3 to 4 of 5');
+    // a page with one card names that pile alone
+    expect(text(render(model, 3), '.vr-pile-page-head h1')).toBe('Pile 5 of 5');
     expect(text(first, '.vr-foot-by')).toContain('Page 3');
   });
 
