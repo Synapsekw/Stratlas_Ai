@@ -24,7 +24,12 @@ import {
   type VolumetricPile,
   type VolumetricPileProfile,
 } from '@aio/project/export';
-import type { ReportViewsFrame, SurveyPrecision, SurveyUnits } from '@aio/schema';
+import {
+  REPORT_VIEWS_MAX,
+  type ReportViewsFrame,
+  type SurveyPrecision,
+  type SurveyUnits,
+} from '@aio/schema';
 import type { ChartSeries } from '@aio/survey';
 import { t } from '@aio/ui';
 import type { ReactElement } from 'react';
@@ -64,22 +69,22 @@ const linesOf = (chars: number, perLine: number) => Math.max(1, Math.ceil(chars 
 
 /**
  * The profile chart's height on a card, CSS pixels: what the card's fixed parts leave, less every
- * extra line the name, the flags under the header, the longest figure and the note take, and less
- * `reserveMm` (the closing block on the report's last page, shared by the page's cards).
+ * extra line the name, the flags under the header, the longest figure and the note take. A card
+ * gives up nothing for the report's closing block: two cards fill their page, and the closing
+ * block then has a page of its own (`pagePlan`).
  */
 export function chartHeightPx(c: {
   nameChars: number;
   flags: number;
   valueChars: number;
   noteChars: number;
-  reserveMm?: number;
 }): number {
   const extra =
     (linesOf(c.nameChars, NAME_LINE) - 1) * NAME_LINE_MM +
     c.flags * FLAG_MM +
     (linesOf(c.valueChars, VALUE_LINE) - 1) * VALUE_LINE_MM +
     (c.noteChars > 0 ? 1 + linesOf(c.noteChars, NOTE_LINE) * NOTE_LINE_MM : 0);
-  const mm = CARD_H - CARD_FIXED - extra - (c.reserveMm ?? 0);
+  const mm = CARD_H - CARD_FIXED - extra;
   return Math.round(Math.min(CHART_MAX, Math.max(CHART_MIN, mm)) / MM_PER_PX);
 }
 
@@ -349,10 +354,20 @@ function Stat({
 }
 
 /** How many piles have pictures of their own in the frame (the pictures' cap, as it fell). */
-function picturedPiles(frame: ReportViewsFrame | null): Set<string> {
-  const ids = new Set<string>();
-  for (const v of frame?.views ?? []) if (v.pile !== undefined) ids.add(v.pile);
+function picturedPiles(frame: ReportViewsFrame | null): Map<string, number> {
+  const ids = new Map<string, number>();
+  for (const v of frame?.views ?? [])
+    if (v.pile !== undefined) ids.set(v.pile, (ids.get(v.pile) ?? 0) + 1);
   return ids;
+}
+
+/**
+ * Whether the set of pictures is full: one more pile's pictures would pass the cap, as the
+ * capture counts them (`planShots`: a pile is pictured whole or not at all).
+ */
+function setIsFull(frame: ReportViewsFrame | null, pictured: Map<string, number>): boolean {
+  const perPile = Math.max(0, ...pictured.values());
+  return perPile > 0 && (frame?.views.length ?? 0) + perPile > REPORT_VIEWS_MAX;
 }
 
 export function PileCard({
@@ -360,15 +375,12 @@ export function PileCard({
   pile,
   note,
   views,
-  reserveMm = 0,
 }: {
   model: VolumetricModel;
   pile: VolumetricPile;
   /** The person's note on the pile, or null. */
   note: string | null;
   views: ReportViews;
-  /** Height this card gives up for the closing block of the report's last page, mm. */
-  reserveMm?: number;
 }): ReactElement {
   const latest: CaptureRef | null = model.latest;
   const compared: CaptureRef | null = model.compared;
@@ -380,12 +392,16 @@ export function PileCard({
     change !== null &&
     pile.changePct === null &&
     pile.previousM3 !== null &&
+    // nothing there before; a pile that was under its base then is not new
+    pile.previousM3 >= 0 &&
     pile.previousM3 < NEW_UNDER_M3 &&
     (pile.latestM3 ?? 0) > 0;
 
-  // pictures: the pile's own, else (a pile past the cap) its place on the site photo
+  // pictures: the pile's own, else its place on the site photo. Only a full set says the pile is
+  // past the cap: a pile missing from a set with room left (its pictures failed, or it was drawn
+  // after they were taken) is given no reason that would be untrue.
   const pictured = picturedPiles(frame);
-  const pastCap = pictured.size > 0 && !pictured.has(pile.id);
+  const pastCap = !pictured.has(pile.id) && setIsFull(frame, pictured);
   const photo = latest ? views.pilePicture('photo', pile.id, latest.id) : null;
   const view3d = latest ? views.pilePicture('3d', pile.id, latest.id) : null;
   const before = compared ? views.pilePicture('photo', pile.id, compared.id) : null;
@@ -420,7 +436,6 @@ export function PileCard({
     flags: flags.length,
     valueChars: Math.max(baseName.length, levelText?.length ?? 0),
     noteChars: note?.length ?? 0,
-    reserveMm,
   });
   const dateOf = (c: CaptureRef | null) => (c ? shortDate(c.date) : '');
 

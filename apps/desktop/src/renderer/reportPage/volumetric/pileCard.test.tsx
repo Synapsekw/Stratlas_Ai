@@ -10,7 +10,7 @@ import {
   type VolumetricPileInput,
   type VolumetricPileProfile,
 } from '@aio/project/export';
-import type { ReportViewsFrame } from '@aio/schema';
+import { REPORT_VIEWS_MAX, type ReportViewsFrame } from '@aio/schema';
 import { t } from '@aio/ui';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -303,6 +303,15 @@ describe('a pile card, the other states', () => {
     expect(el.querySelector('.vr-pile-tonnes')).toBeNull();
   });
 
+  it('calls a pile new only when it held nothing before, never when it was under its base', () => {
+    const m = volumetricModel(input([pile(1, [0, 25]), pile(2, [-40, 25])]));
+    const v = reportViews(frame(['m1', 'm2']), url);
+    expect(text(card(m, 'm1', v), '.vr-chip-pct')).toBe(t('vreport.change.new'));
+    const was = card(m, 'm2', v);
+    expect(text(was, '.vr-chip')).toBe('+65.0 m³');
+    expect(was.querySelector('.vr-chip-pct')).toBeNull();
+  });
+
   it('prints no tonnes for a pile at zero either', () => {
     const zero = volumetricModel(input([pile(1, [1200, 1000]), pile(2, [300, 0])]));
     const el = card(zero, 'm2', reportViews(frame(['m1', 'm2']), url));
@@ -314,12 +323,14 @@ describe('a pile card, the other states', () => {
   });
 
   it('gives a pile past the cap the site photo for both photos and the "No 3D picture" line', () => {
-    // only the two largest piles were pictured
-    const taken = frame(['m1', 'm2']);
+    // the set is full: 170 piles of three pictures and the two site photos, the cap
+    const others = Array.from({ length: 168 }, (_, k) => `x${String(k)}`);
+    const taken = frame(['m1', 'm2', ...others]);
+    expect(taken.views).toHaveLength(REPORT_VIEWS_MAX);
     const capped = reportViews(taken, url);
     const framed = volumetricModel(input(piles, { frame: taken }));
     const el = card(framed, 'm3', capped);
-    expect(text(el, '[data-flag="no-3d"]')).toBe(t('vreport.card.no3d', { count: 2 }));
+    expect(text(el, '[data-flag="no-3d"]')).toBe(t('vreport.card.no3d', { count: 170 }));
     const [photo, view3d, before] = [...el.querySelectorAll('.vr-pile-pic')];
     expect(photo?.querySelector('img.is-crop')?.getAttribute('src')).toBe(url('photo-c2.jpg'));
     expect(before?.querySelector('img.is-crop')?.getAttribute('src')).toBe(url('photo-c1.jpg'));
@@ -328,6 +339,16 @@ describe('a pile card, the other states', () => {
     expect(view3d?.classList.contains('is-empty')).toBe(true);
     // a pictured pile says nothing of the kind
     expect(card(model, 'm1', capped).querySelector('[data-flag="no-3d"]')).toBeNull();
+  });
+
+  it('never blames the cap for a pile that is missing from a set with room left', () => {
+    // its pictures failed, or it was drawn after the pictures were taken
+    const taken = frame(['m1', 'm2']);
+    const el = card(volumetricModel(input(piles, { frame: taken })), 'm3', reportViews(taken, url));
+    expect(el.querySelector('[data-flag="no-3d"]')).toBeNull();
+    const [photo, view3d] = [...el.querySelectorAll('.vr-pile-pic')];
+    expect(photo?.querySelector('img.is-crop')?.getAttribute('src')).toBe(url('photo-c2.jpg'));
+    expect(view3d?.classList.contains('is-empty')).toBe(true);
   });
 
   it('leaves quiet placeholders of the same size without pictures or a profile', () => {
@@ -387,9 +408,6 @@ describe('the card budget', () => {
     expect(chartHeightPx({ nameChars: 200, flags: 2, valueChars: 80, noteChars: 280 })).toBe(
       px(25),
     );
-    expect(
-      chartHeightPx({ nameChars: 10, flags: 0, valueChars: 10, noteChars: 0, reserveMm: 6 }),
-    ).toBe(px(118 - 83 - 6));
   });
 });
 
