@@ -5,7 +5,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { editText } from './editorModel';
-import { picturesFingerprint, volumetricView } from './editorView';
+import { exportRun, picturesFingerprint, volumetricView } from './editorView';
 import { VolumetricEditor } from './VolumetricEditor';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -17,10 +17,16 @@ vi.mock('../../diskChanged', () => ({
   reportIfChangedOnDisk: vi.fn(),
   useDiskChanged: (pick: (s: { reloads: number }) => unknown) => pick({ reloads: 0 }),
 }));
-const { runExportAction } = vi.hoisted(() => ({ runExportAction: vi.fn() }));
-vi.mock('../../exports/exports', () => ({ runExportAction }));
-const { takeReportPictures } = vi.hoisted(() => ({ takeReportPictures: vi.fn() }));
-vi.mock('./liveStage', () => ({ takeReportPictures }));
+interface Source {
+  model?: VolumetricModel;
+  measurements?: readonly SurveyMeasurement[];
+  flush?: () => Promise<void>;
+}
+const { exportVolumetric, takePicturesNow } = vi.hoisted(() => ({
+  exportVolumetric: vi.fn(),
+  takePicturesNow: vi.fn(),
+}));
+vi.mock('./exportRun', () => ({ exportVolumetric, takePicturesNow }));
 
 const pileDate = (capture: string, volumeM3: number) => ({
   capture,
@@ -63,6 +69,7 @@ const oneDate = volumetricModel({
 const measurements = [
   {
     id: 'm1',
+    tool: 'volume',
     family: 'polygon',
     label: 'SP1',
     points: [
@@ -74,6 +81,17 @@ const measurements = [
     results: [],
   },
 ] as unknown as SurveyMeasurement[];
+
+const frameOf = (fingerprint: string): VolumetricModel['frame'] => ({
+  schema: 'aio.report-views/1',
+  extent: [0, 0, 10, 10],
+  widthPx: 100,
+  heightPx: 100,
+  mPerPx: 0.1,
+  views: [],
+  markers3d: {},
+  fingerprint,
+});
 
 let model: VolumetricModel = twoDates;
 let saved: ReportTextFile | null = null;
@@ -130,8 +148,14 @@ beforeEach(() => {
   saved = null;
   readOnly = false;
   writes.length = 0;
-  runExportAction.mockReset();
-  takeReportPictures.mockReset();
+  exportVolumetric.mockReset();
+  // the run writes the editor's pending text first, as the real one does
+  exportVolumetric.mockImplementation(async (_format: string, src: Source) => {
+    await src.flush?.();
+    return 'done';
+  });
+  takePicturesNow.mockReset();
+  takePicturesNow.mockResolvedValue('done');
   call.mockReset();
   call.mockImplementation((channel: string, req: Record<string, unknown>) => {
     if (channel === 'report:readText')
@@ -149,7 +173,8 @@ afterEach(() => {
   act(() => root?.unmount());
   root = undefined;
   host.remove();
-  volumetricView.setState({ openFor: null, taken: {}, pictureError: null });
+  volumetricView.setState({ openFor: null, taken: {} });
+  exportRun.setState({ phase: 'idle', format: null, error: null });
 });
 
 describe('the volumetric report editor', () => {
@@ -197,48 +222,41 @@ describe('the volumetric report editor', () => {
     expect(preview()?.textContent).not.toContain('Written by hand.');
   });
 
-  it('asks for pictures when none are saved, and takes them for the report dates', async () => {
-    takeReportPictures.mockResolvedValue({ ok: true, frame: {} });
+  const note = () => host.querySelector('[data-testid="volumetric-pictures"]');
+
+  it('has no Take pictures step: it says the export takes them, with a quiet link', async () => {
     await mount();
-    const bar = host.querySelector('[data-testid="volumetric-pictures"]');
-    expect(bar?.textContent).toContain('No pictures yet');
+    expect(note()?.textContent).toContain('Pictures are taken when you export.');
+    expect(button('Take pictures')).toBeUndefined();
+    // the line sits with the preview, not among the fields
+    expect(note()?.closest('.vre-preview')).not.toBeNull();
     await act(async () => {
-      button('Take pictures')?.click();
+      button('Take them now')?.click();
       await Promise.resolve();
     });
-    expect(takeReportPictures).toHaveBeenCalledTimes(1);
-    const req = takeReportPictures.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(req).toMatchObject({
-      projectId: 'p1',
-      dates: ['c1', 'c2'],
-      pair: { from: 'c1', to: 'c2' },
-      fingerprint: picturesFingerprint(measurements, ['c1', 'c2'], { from: 'c1', to: 'c2' }),
-    });
-    expect((req.piles as { id: string }[]).map((p) => p.id)).toEqual(['m1']);
-    expect(volumetricView.getState().taken).toEqual({ p1: 1 });
+    expect(takePicturesNow).toHaveBeenCalledTimes(1);
+    const src = takePicturesNow.mock.calls[0]?.[0] as Source;
+    expect(src.model?.dates.map((d) => d.id)).toEqual(['c1', 'c2']);
+    expect(src.measurements).toBe(measurements);
+    expect(exportVolumetric).not.toHaveBeenCalled();
   });
 
-  it('says when the pictures are stale', async () => {
-    model = {
-      ...twoDates,
-      frame: {
-        schema: 'aio.report-views/1',
-        extent: [0, 0, 10, 10],
-        widthPx: 100,
-        heightPx: 100,
-        mPerPx: 0.1,
-        views: [],
-        markers3d: {},
-        fingerprint: 'v1-old',
-      },
-    };
+  it('says when the pictures are stale, with the same link', async () => {
+    model = { ...twoDates, frame: frameOf('v1-old') };
     await mount();
-    const bar = host.querySelector('[data-testid="volumetric-pictures"]');
-    expect(bar?.textContent).toContain('The data changed since the pictures were taken.');
-    expect(button('Take pictures again')).toBeDefined();
+    expect(note()?.textContent).toContain('The data changed since the pictures were taken.');
+    expect(button('Take pictures again')).toBeUndefined();
+    expect(button('Take them now')).toBeDefined();
   });
 
-  it('writes pending edits, then exports the PDF and the HTML', async () => {
+  it('says nothing about pictures while they are current', async () => {
+    const pair = { from: 'c1', to: 'c2' };
+    model = { ...twoDates, frame: frameOf(picturesFingerprint(measurements, ['c1', 'c2'], pair)) };
+    await mount();
+    expect(note()).toBeNull();
+  });
+
+  it('exports through the one flow, which writes pending edits first', async () => {
     await mount();
     const title = field('Title');
     if (!title) throw new Error('no title field');
@@ -248,14 +266,50 @@ describe('the volumetric report editor', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
+    expect(exportVolumetric).toHaveBeenCalledTimes(1);
+    expect(exportVolumetric.mock.calls[0]?.[0]).toBe('volumetric-pdf');
+    const src = exportVolumetric.mock.calls[0]?.[1] as Source;
+    expect(src.model?.piles.map((p) => p.id)).toEqual(['m1']);
+    expect(src.measurements).toBe(measurements);
     expect(writes.at(-1)?.parts.title?.versions.at(-1)?.text).toBe('Monthly stock');
-    expect(runExportAction).toHaveBeenLastCalledWith('volumetric-pdf');
     await act(async () => {
       button('Export HTML')?.click();
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(runExportAction).toHaveBeenLastCalledWith('volumetric-html');
+    expect(exportVolumetric.mock.calls[1]?.[0]).toBe('volumetric-html');
+  });
+
+  it('waits for a run that is going before it offers another', async () => {
+    await mount();
+    act(() => {
+      exportRun.setState({ phase: 'pictures', format: 'volumetric-pdf', error: null });
+    });
+    expect(button('Export PDF')?.disabled).toBe(true);
+    expect(button('Export HTML')?.disabled).toBe(true);
+    expect(button('Take them now')?.disabled).toBe(true);
+    act(() => {
+      exportRun.setState({ phase: 'done', format: null, error: null });
+    });
+    expect(button('Export PDF')?.disabled).toBe(false);
+  });
+
+  it('writes the last words at once when the editor closes mid-sentence', async () => {
+    await mount();
+    const summary = field('In short');
+    if (!summary) throw new Error('no summary field');
+    type(summary, 'Stock is up since 3');
+    type(summary, 'Stock is up since 3 March.');
+    // closed before the pause that would have saved the draft
+    act(() => root?.unmount());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(writes).toHaveLength(1);
+    const versions = writes[0]?.parts.summary?.versions ?? [];
+    expect(versions.at(-1)).toMatchObject({ text: 'Stock is up since 3 March.', source: 'user' });
+    // the half-typed sentence was never a version of its own
+    expect(versions.some((v) => v.text === 'Stock is up since 3')).toBe(false);
   });
 
   it('turns pages on and off, keeping one on', async () => {
@@ -265,7 +319,7 @@ describe('the volumetric report editor', () => {
         .find((l) => l.textContent.includes(name))
         ?.querySelector('input');
     const before = preview()?.querySelectorAll('.vr-page').length ?? 0;
-    act(() => page('B. Pile cards')?.click());
+    act(() => page('B. Site overview and pile pages')?.click());
     expect(preview()?.querySelectorAll('.vr-page').length).toBeLessThan(before);
     act(() => page('C. What changed')?.click());
     // only A is on now: it cannot be turned off

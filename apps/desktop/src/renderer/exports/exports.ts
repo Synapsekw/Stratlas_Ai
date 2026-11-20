@@ -2,6 +2,7 @@ import { issueSaver } from '@aio/annotate';
 import { getActiveStage, type EngineStage } from '@aio/engine';
 import type { ExportFormat } from '@aio/schema';
 import { workspace } from '@aio/workspace';
+import { exportVolumetric } from '../report/volumetric/exportRun';
 import { bridge, shell } from '../shell';
 import {
   actionAllowed,
@@ -29,10 +30,13 @@ export function listenExportProgress(): void {
 
 const jobId = () => globalThis.crypto.randomUUID().slice(0, 32);
 
+/** How an export ended: saved, the save dialog cancelled, or failed (the toast says why). */
+export type ExportOutcome = 'done' | 'cancelled' | 'error';
+
 /** Export the open project's issues: native save dialog, then a job with a progress toast. */
-export async function exportIssues(format: ExportFormat): Promise<void> {
+export async function exportIssues(format: ExportFormat): Promise<ExportOutcome> {
   const project = workspace.getState().project;
-  if (!project) return;
+  if (!project) return 'error';
   listenExportProgress();
   // The export reads issues.json: write any pending edit first.
   await issueSaver.flush();
@@ -43,15 +47,15 @@ export async function exportIssues(format: ExportFormat): Promise<void> {
   const r = await bridge.call('export:run', { jobId: id, projectId: project.id, format });
   if (!r.ok) {
     t.finish(id, 'error', r.error);
-    return;
+    return 'error';
   }
   if (!r.value.ok) {
     t.finish(id, 'error', r.value.error);
-    return;
+    return 'error';
   }
   if (r.value.path === null) {
     t.dismiss(id);
-    return;
+    return 'cancelled';
   }
   t.finish(
     id,
@@ -61,6 +65,7 @@ export async function exportIssues(format: ExportFormat): Promise<void> {
       ...(r.value.count === undefined ? {} : { count: r.value.count }),
     }),
   );
+  return 'done';
 }
 
 export function cancelExport(id: string): void {
@@ -208,5 +213,7 @@ export function runExportAction(id: ExportActionId, opts: { legend?: boolean } =
     return;
   }
   if (id === 'snapshot') void saveSnapshot(opts.legend ?? true);
+  // the volumetric report takes its own pictures first when it has none or they are stale
+  else if (id === 'volumetric-pdf' || id === 'volumetric-html') void exportVolumetric(id);
   else void exportIssues(id);
 }

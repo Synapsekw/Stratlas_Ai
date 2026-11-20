@@ -13,6 +13,7 @@ import {
 const pile = (id: string, over: Partial<SurveyMeasurement> = {}) =>
   ({
     id,
+    tool: 'volume',
     family: 'polygon',
     label: id,
     points: [
@@ -26,7 +27,7 @@ const pile = (id: string, over: Partial<SurveyMeasurement> = {}) =>
   }) as unknown as SurveyMeasurement;
 
 afterEach(() => {
-  volumetricView.setState({ openFor: null, taken: {}, pictureError: null });
+  volumetricView.setState({ openFor: null, taken: {} });
 });
 
 describe('the volumetric editor view', () => {
@@ -74,8 +75,18 @@ describe('fingerprints', () => {
     expect(figuresKey([pile('m1', { label: 'renamed' })])).not.toBe(a);
   });
 
-  it('pictures only the stockpile measurements', () => {
+  it('pictures only the piles', () => {
     const line = pile('l1', { family: 'line' });
-    expect(reportPiles([pile('m1'), line]).map((m) => m.id)).toEqual(['m1']);
+    const area = pile('a1', { tool: 'area' });
+    expect(reportPiles([pile('m1'), line, area]).map((m) => m.id)).toEqual(['m1']);
+  });
+
+  it('keeps a pile that was never computed (it prints "Not computed")', () => {
+    const never = pile('m2', { items: [], results: [] });
+    expect(reportPiles([pile('m1'), never]).map((m) => m.id)).toEqual(['m1', 'm2']);
+  });
+
+  it('marks the pictures with pile pictures as v2, so an older set counts as stale', () => {
+    expect(picturesFingerprint([pile('m1')], dates, pair)).toMatch(/^v2-1-/);
   });
 });

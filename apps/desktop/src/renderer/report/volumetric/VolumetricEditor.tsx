@@ -1,8 +1,10 @@
 // The volumetric report editor (spec section 6), in the Reports screen's viewer area: the fields
 // on the left (title, Prepared for and by, Compare with, the "In short" summary, intro, method
 // note, pile notes, closing remarks, pages A, B and C), the live preview of the same page
-// components the PDF prints on the right, the pictures bar, and Export PDF and Export HTML at the
-// foot. Edits save on their own through `useVolumetric`; a package is read only and still exports.
+// components the PDF prints on the right, and Export PDF and Export HTML at the foot. The export
+// takes the report's pictures itself (exportRun.ts); until then a quiet line over the preview says
+// so and offers to take them now. Edits save on their own through `useVolumetric`; a package is
+// read only and still exports.
 import type { VolumetricModel } from '@aio/project/export';
 import {
   reportViewsDir,
@@ -22,19 +24,11 @@ import {
   type RefObject,
 } from 'react';
 import { useStore } from 'zustand';
-import { runExportAction } from '../../exports/exports';
 import { reportViews, volumetricTemplate, type ResolvedText } from '../../reportPage/types';
 import { dateText } from '../../reportPage/volumetric/chrome';
 import { PAGE_IDS, PILE_NOTE_MAX } from './editorModel';
-import {
-  figuresKey,
-  picturesFingerprint,
-  picturesTaken,
-  reportPiles,
-  volumetricView,
-} from './editorView';
-import { takeReportPictures } from './liveStage';
-import { showPictureProgress } from './PictureProgress';
+import { exportRun, figuresKey, picturesFingerprint, volumetricView } from './editorView';
+import { exportVolumetric, takePicturesNow, type VolumetricFormat } from './exportRun';
 import { useVolumetric } from './useVolumetric';
 import './volumetricEditor.css';
 
@@ -209,32 +203,21 @@ function Field(props: {
   );
 }
 
-/** The pictures bar: none saved yet, or stale, with Take pictures; and the last failure. */
-function PicturesBar(props: {
-  state: 'none' | 'stale' | 'current';
-  error: string | null;
-  busy: boolean;
-  onTake: () => void;
-}) {
-  if (props.state === 'current' && !props.error) return null;
+/**
+ * The quiet line over the preview while the report has no pictures or they are stale: the export
+ * takes them, and "Take them now" takes them at once so the preview can be checked first.
+ */
+function PicturesNote(props: { state: 'none' | 'stale'; busy: boolean; onTake: () => void }) {
   return (
-    <div
-      className={`notice vre-pictures${props.error ? ' danger' : ''}`}
-      role="status"
-      data-testid="volumetric-pictures"
-    >
+    <p className="vre-pictures small" role="status" data-testid="volumetric-pictures">
       <Icon name="camera" size={14} />
-      <span className="grow">
-        {props.error
-          ? t('vreport.pictures.failed', { error: props.error })
-          : props.state === 'none'
-            ? t('vreport.pictures.none')
-            : t('vreport.pictures.stale')}
+      <span>
+        {props.state === 'none' ? t('vreport.pictures.none') : t('vreport.pictures.stale')}
       </span>
-      <button type="button" className="btn sm" disabled={props.busy} onClick={props.onTake}>
-        {props.state === 'none' ? t('vreport.pictures.take') : t('vreport.pictures.retake')}
+      <button type="button" className="vre-take" disabled={props.busy} onClick={props.onTake}>
+        {t('vreport.pictures.takeNow')}
       </button>
-    </div>
+    </p>
   );
 }
 
@@ -243,6 +226,8 @@ function Preview(props: {
   text: ResolvedText;
   projectId: string;
   taken: number;
+  /** The line about the pictures, above the pages. */
+  note: ReactNode;
   onPick: (target: EventTarget) => void;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>();
@@ -259,6 +244,7 @@ function Preview(props: {
   const zoom = width > 0 ? Math.min(1, (width - 32) / PAGE_PX) : 0.6;
   return (
     <div ref={ref} className="vre-preview" aria-label={t('vreport.preview')}>
+      {props.note}
       {/* a click on a text focuses its field; the fields are the keyboard route */}
       <Tip content={t('vreport.preview.focusField')} placement="top">
         <div
@@ -283,8 +269,20 @@ function Preview(props: {
 export function VolumetricEditor(props: VolumetricEditorProps) {
   const { projectId, measurements } = props;
   const taken = useStore(volumetricView, (s) => s.taken[projectId] ?? 0);
-  const pictureError = useStore(volumetricView, (s) => s.pictureError);
+  // an export or a picture run is going (it outlives this editor: the Scene opens meanwhile)
+  const busy = useStore(exportRun, (s) => s.phase === 'pictures' || s.phase === 'writing');
   const figures = useMemo(() => figuresKey(measurements), [measurements]);
+  // Hand a pending draft over when the editor closes. Declared before `useVolumetric` on purpose:
+  // cleanups run in this order, so the draft is in the hook's hands when its own cleanup writes
+  // what is pending. The other way round the last words waited for a timer after the editor was
+  // gone, and were lost if the window closed first.
+  const commitNow = useRef<() => void>(() => undefined);
+  useEffect(
+    () => () => {
+      commitNow.current();
+    },
+    [],
+  );
   const ed = useVolumetric({
     projectId,
     dataKey: `${figures}#${String(taken)}`,
@@ -293,7 +291,6 @@ export function VolumetricEditor(props: VolumetricEditorProps) {
   });
   const [drafts, setDrafts] = useState<Partial<Record<VolumetricTextId, string>>>({});
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputs = useRef(new Map<VolumetricTextId, HTMLInputElement | HTMLTextAreaElement>());
   // the latest drafts, for the commit on a pause, on blur, before an export and on leaving
@@ -313,18 +310,13 @@ export function VolumetricEditor(props: VolumetricEditorProps) {
     if (Object.keys(d).length > 0) setDrafts({});
     if (Object.keys(n).length > 0) setNoteDrafts({});
   };
+  useEffect(() => {
+    commitNow.current = commit;
+  });
   const commitLater = () => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(commit, COMMIT_MS);
   };
-  // hand a pending draft over when the editor closes (the hook then saves it)
-  useEffect(
-    () => () => {
-      commit();
-    },
-    [],
-  );
-
   const model = ed.preview;
   const latestDate = model?.latest ?? null;
   const compared = model?.compared ?? null;
@@ -361,32 +353,17 @@ export function VolumetricEditor(props: VolumetricEditorProps) {
     [shown],
   );
 
-  const takePictures = async () => {
-    if (!model) return;
-    setBusy(true);
-    volumetricView.setState({ pictureError: null });
-    const done = showPictureProgress();
-    try {
-      const r = await takeReportPictures({
-        projectId,
-        dates,
-        pair,
-        piles: reportPiles(measurements),
-        fingerprint,
-      });
-      if (r.ok) picturesTaken(projectId);
-      else volumetricView.setState({ pictureError: r.error });
-    } finally {
-      done();
-      setBusy(false);
-    }
-  };
-
-  const exportAs = async (format: 'volumetric-pdf' | 'volumetric-html') => {
-    commit();
-    await latest.current.ed.flush();
-    runExportAction(format);
-  };
+  // what a run needs from the editor: the model it shows, and the drafts written first
+  const source = () => ({
+    ...(model ? { model } : {}),
+    measurements,
+    flush: async () => {
+      commit();
+      await latest.current.ed.flush();
+    },
+  });
+  const takePictures = () => void takePicturesNow(source());
+  const exportAs = (format: VolumetricFormat) => void exportVolumetric(format, source());
 
   const pick = (target: EventTarget) => {
     if (ed.readOnly || !(target instanceof Element)) return;
@@ -464,14 +441,6 @@ export function VolumetricEditor(props: VolumetricEditorProps) {
               <p className="notice danger" role="alert">
                 {t('vreport.preview.failed', { error: ed.error })}
               </p>
-            )}
-            {model && (
-              <PicturesBar
-                state={pictures}
-                error={pictureError}
-                busy={busy}
-                onTake={() => void takePictures()}
-              />
             )}
             {oneDate && <p className="notice">{t('vreport.oneDate')}</p>}
             {!ed.ready && !ed.error && (
@@ -584,8 +553,10 @@ export function VolumetricEditor(props: VolumetricEditorProps) {
                 <button
                   type="button"
                   className="btn"
-                  disabled={!ed.ready}
-                  onClick={() => void exportAs('volumetric-html')}
+                  disabled={!ed.ready || busy}
+                  onClick={() => {
+                    exportAs('volumetric-html');
+                  }}
                 >
                   <Icon name="download" size={14} />
                   {t('vreport.export.html')}
@@ -593,8 +564,10 @@ export function VolumetricEditor(props: VolumetricEditorProps) {
                 <button
                   type="button"
                   className="btn primary"
-                  disabled={!ed.ready}
-                  onClick={() => void exportAs('volumetric-pdf')}
+                  disabled={!ed.ready || busy}
+                  onClick={() => {
+                    exportAs('volumetric-pdf');
+                  }}
                 >
                   <Icon name="download" size={14} />
                   {t('vreport.export.pdf')}
@@ -606,7 +579,19 @@ export function VolumetricEditor(props: VolumetricEditorProps) {
           </footer>
         </div>
         {shown ? (
-          <Preview model={shown} text={text} projectId={projectId} taken={taken} onPick={pick} />
+          <Preview
+            model={shown}
+            text={text}
+            projectId={projectId}
+            taken={taken}
+            onPick={pick}
+            note={
+              // a package cannot save pictures, so it is not offered to take them
+              pictures !== 'current' && !ed.readOnly ? (
+                <PicturesNote state={pictures} busy={busy} onTake={takePictures} />
+              ) : null
+            }
+          />
         ) : (
           <div className="vre-preview vre-preview-empty">
             <p className="muted small">

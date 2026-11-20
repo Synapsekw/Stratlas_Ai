@@ -36,8 +36,7 @@
 .vre-field-h label {
   color: var(--fg-0);
 }
-.vre-field-h .grow,
-.vre-pictures .grow {
+.vre-field-h .grow {
   flex: 1;
 }
 .vre-source {
@@ -99,9 +98,6 @@
   border-top: 1px solid var(--line-soft);
   background: var(--bg-chrome);
 }
-.vre-pictures {
-  margin: 0;
-}
 
 /* the preview: the printed pages on the app's background, scaled with zoom so layout follows */
 .vre-preview {
@@ -128,13 +124,89 @@
   break-after: auto;
 }
 
-/* the progress card while the pictures are taken (a Dialog over the whole window, the stage
-   included); the body's gap spaces the bar from the count */
+/* the line over the pages while the report has no pictures or they are stale: one quiet sentence
+   and a text link, never a banner (the export takes the pictures itself) */
+.vre-pictures {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 8px;
+  margin: 0;
+  padding: 12px 16px 0;
+  color: var(--fg-2);
+}
+.vre-take {
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--acc);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.vre-take:hover:not(:disabled) {
+  color: var(--fg-0);
+}
+.vre-take:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+.vre-take:disabled {
+  color: var(--fg-3);
+  cursor: default;
+  text-decoration: none;
+}
+
+/* the progress card while the pictures are taken and the file is written (a Dialog over the whole
+   window, the stage included). What is pictured leads; the count sits under it in figures of equal
+   width so the line does not shimmer; the two lines keep their height so the card never jumps. */
+.vre-progress-now {
+  display: grid;
+  gap: 2px;
+  min-height: calc(2 * 1.45em + 2px);
+  align-content: start;
+}
+.vre-progress-what {
+  margin: 0;
+  color: var(--fg-0);
+  overflow-wrap: anywhere;
+}
+.vre-progress-count {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
 .vre-progress .bar {
   display: block;
 }
 .vre-progress .bar i {
   background: var(--acc);
+  transition: width 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* no figure yet (the 3D view is opening) or none to give (the file is being written) */
+.vre-progress .bar[data-busy] i {
+  width: 34%;
+  animation: vre-busy 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite alternate;
+}
+@keyframes vre-busy {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(194%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vre-progress .bar i {
+    transition: none;
+  }
+  .vre-progress .bar[data-busy] i {
+    width: 100%;
+    opacity: 0.45;
+    animation: none;
+  }
 }
 
 @media (max-width: 900px) {

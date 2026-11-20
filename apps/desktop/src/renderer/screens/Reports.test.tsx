@@ -56,7 +56,7 @@ afterEach(() => {
   root = undefined;
   host.remove();
   workspace.setState(original, true);
-  volumetricView.setState({ openFor: null, taken: {}, pictureError: null });
+  volumetricView.setState({ openFor: null, taken: {} });
   REPLIES['survey:readMeasurements'] = NO_MEASUREMENTS;
   vi.restoreAllMocks();
 });
@@ -65,7 +65,7 @@ const NO_MEASUREMENTS = REPLIES['survey:readMeasurements'];
 const stockpile = {
   id: 'm1',
   family: 'polygon',
-  tool: 'polygon',
+  tool: 'volume',
   label: 'SP1',
   scope: 'site',
   points: [
