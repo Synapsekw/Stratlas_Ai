@@ -8,6 +8,7 @@ import {
   NARRATIVE_MAX_VERSIONS,
   NarrativeFile,
   REPORT_TEXT_SCHEMA,
+  REPORT_VIEWS_MAX,
   REPORT_VIEWS_SCHEMA,
   ReportContentsSettings,
   ReportPageId,
@@ -15,6 +16,8 @@ import {
   ReportTextFile,
   reportTextPath,
   ReportTypeId,
+  ReportView,
+  ReportViewKind,
   reportViewsDir,
   ReportViewsFrame,
   VolumetricTextId,
@@ -212,6 +215,85 @@ describe('report views frame', () => {
     expect(bad({ mPerPx: -1 })).toBe(false);
     expect(bad({ schema: 'aio.report-views/2' })).toBe(false);
   });
+
+  const pileExtent = [500100, 2900100, 500140, 2900130];
+  const pilePhoto = {
+    name: 'pile-1-photo-c2',
+    kind: 'pile-photo',
+    capture: 'c2',
+    file: 'pile-1-photo-2.jpg',
+    pile: 'm-1',
+    extent: pileExtent,
+  };
+  const pile3d = {
+    name: 'pile-1-3d',
+    kind: 'pile-3d',
+    capture: 'c2',
+    file: 'pile-1-3d.jpg',
+    pile: 'm-1',
+  };
+
+  it('names the site kinds and the pile kinds', () => {
+    expect(ReportViewKind.options).toEqual([
+      'photo',
+      'elevation',
+      'cutfill',
+      '3d',
+      'pile-photo',
+      'pile-3d',
+    ]);
+  });
+
+  it('parses a frame with both pile kinds', () => {
+    const parsed = ReportViewsFrame.parse({ ...frame, views: [...frame.views, pilePhoto, pile3d] });
+    expect(parsed.views).toHaveLength(5);
+    expect(parsed.views[3]?.pile).toBe('m-1');
+    expect(parsed.views[3]?.extent).toEqual(pileExtent);
+    expect(parsed.views[4]?.kind).toBe('pile-3d');
+    expect(parsed.views[4]?.extent).toBeUndefined();
+  });
+
+  it('still parses a frame written before the pile kinds, and keeps a view its unknown key', () => {
+    expect(ReportViewsFrame.safeParse(frame).success).toBe(true);
+    const parsed = ReportView.parse({ ...view, later: 1 });
+    expect(parsed.pile).toBeUndefined();
+    expect((parsed as Record<string, unknown>).later).toBe(1);
+  });
+
+  it('ties the pile and the extent of a view to its kind', () => {
+    const ok = (v: Record<string, unknown>) => ReportView.safeParse(v).success;
+    expect(ok(pilePhoto)).toBe(true);
+    expect(ok(pile3d)).toBe(true);
+    // a pile kind needs its pile
+    expect(ok({ ...pile3d, pile: undefined })).toBe(false);
+    expect(ok({ ...pilePhoto, pile: undefined })).toBe(false);
+    // a pile photo needs the ground it covers
+    expect(ok({ ...pilePhoto, extent: undefined })).toBe(false);
+    // a site kind has neither
+    expect(ok({ ...view, pile: 'm-1' })).toBe(false);
+    expect(ok({ ...view, extent: pileExtent })).toBe(false);
+    expect(ok({ ...view, kind: '3d', pile: 'm-1' })).toBe(false);
+    // a pile is a measurement id, an extent runs from west-south to east-north
+    expect(ok({ ...pile3d, pile: 'a b' })).toBe(false);
+    expect(ok({ ...pilePhoto, extent: [500140, 2900100, 500100, 2900130] })).toBe(false);
+    expect(ok({ ...pilePhoto, extent: [500100, 2900100, 500140] })).toBe(false);
+    // and the frame refuses what a view refuses
+    expect(
+      ReportViewsFrame.safeParse({ ...frame, views: [{ ...view, pile: 'm-1' }] }).success,
+    ).toBe(false);
+  });
+
+  it('keeps at most 512 pictures', () => {
+    expect(REPORT_VIEWS_MAX).toBe(512);
+    const views = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        ...pile3d,
+        name: `pile-${String(i)}-3d`,
+        file: `pile-${String(i)}-3d.jpg`,
+      }));
+    expect(ReportViewsFrame.safeParse({ ...frame, views: views(512) }).success).toBe(true);
+    expect(ReportViewsFrame.safeParse({ ...frame, views: views(513) }).success).toBe(false);
+  });
 });
 
 describe('volumetric report channels', () => {
@@ -251,7 +333,8 @@ describe('volumetric report channels', () => {
     expect(req.safeParse(ok).success).toBe(true);
     expect(req.safeParse({ ...ok, files: [{ ...jpg, name: 'Photo.JPG' }] }).success).toBe(false);
     expect(req.safeParse({ ...ok, files: [{ ...jpg, name: '../a.jpg' }] }).success).toBe(false);
-    expect(req.safeParse({ ...ok, files: Array<typeof jpg>(65).fill(jpg) }).success).toBe(false);
+    expect(req.safeParse({ ...ok, files: Array<typeof jpg>(512).fill(jpg) }).success).toBe(true);
+    expect(req.safeParse({ ...ok, files: Array<typeof jpg>(513).fill(jpg) }).success).toBe(false);
     expect(ipc['report:saveViews'].response.safeParse({ ok: true }).success).toBe(true);
   });
 

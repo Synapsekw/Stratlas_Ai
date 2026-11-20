@@ -196,28 +196,74 @@ export function reportTextPath(report: ReportTypeId): string {
 
 /**
  * The pictures of a customer report, taken from the app's own stage: JPEGs and their framing in
- * `<project>/report/views/<report>/frame.json` (`aio.report-views/1`). Top-down shots share one
- * frame: `px = (e - e0) / mPerPx`, `py = (n1 - n) / mPerPx`.
+ * `<project>/report/views/<report>/frame.json` (`aio.report-views/1`). The site's top-down shots
+ * share one frame: `px = (e - e0) / mPerPx`, `py = (n1 - n) / mPerPx`. A pile's photo carries its
+ * own `extent` and fills its picture with it.
  */
 export const REPORT_VIEWS_SCHEMA = 'aio.report-views/1' as const;
 
-export const ReportViewKind = z.enum(['photo', 'elevation', 'cutfill', '3d']);
+/**
+ * The site kinds picture the whole site; the pile kinds (`pile-photo` straight down, `pile-3d`)
+ * picture one pile. A pile picture is a kind of its own, never a `photo` with extra keys: a build
+ * from before the pile kinds would have read such a view as the site photo.
+ */
+export const ReportViewKind = z.enum([
+  'photo',
+  'elevation',
+  'cutfill',
+  '3d',
+  'pile-photo',
+  'pile-3d',
+]);
+
+/** The kinds that picture one pile. */
+const PILE_VIEW_KINDS: ReadonlySet<string> = new Set(['pile-photo', 'pile-3d']);
 
 /** A picture's file name inside the views folder: lower case, digits and dashes, `.jpg`. */
 export const ReportViewFileName = z.string().regex(/^[a-z0-9-]{1,80}\.jpg$/);
 
-/** Most pictures one report keeps. */
-export const REPORT_VIEWS_MAX = 64;
+/** Most pictures one report keeps: the site's own and three per pile (64 until 20 Nov 2026). */
+export const REPORT_VIEWS_MAX = 512;
 
-export const ReportView = z.looseObject({
-  name: z.string().min(1).max(80),
-  kind: ReportViewKind,
-  /** The date shown (for `cutfill`, the later date of the pair). */
-  capture: Id,
-  /** `cutfill` only: the date it is compared with. */
-  pair: Id.optional(),
-  file: ReportViewFileName,
-});
+export const ReportView = z
+  .looseObject({
+    name: z.string().min(1).max(80),
+    kind: ReportViewKind,
+    /** The date shown (for `cutfill`, the later date of the pair). */
+    capture: Id,
+    /** `cutfill` only: the date it is compared with. */
+    pair: Id.optional(),
+    file: ReportViewFileName,
+    /** The pile kinds only: the measurement id of the pile pictured. */
+    pile: SurveyId.optional(),
+    /** `pile-photo` only: the ground it covers, [e0, n0, e1, n1] in the project CRS. */
+    extent: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional(),
+  })
+  .superRefine((v, ctx) => {
+    const ofPile = PILE_VIEW_KINDS.has(v.kind);
+    if (ofPile && v.pile === undefined)
+      ctx.addIssue({ code: 'custom', message: 'A pile picture names its pile', path: ['pile'] });
+    if (!ofPile && v.pile !== undefined)
+      ctx.addIssue({ code: 'custom', message: 'A site picture has no pile', path: ['pile'] });
+    if (v.kind === 'pile-photo' && v.extent === undefined)
+      ctx.addIssue({
+        code: 'custom',
+        message: 'A pile photo gives the ground it covers',
+        path: ['extent'],
+      });
+    if (!ofPile && v.extent !== undefined)
+      ctx.addIssue({
+        code: 'custom',
+        message: 'A site picture uses the extent of the frame',
+        path: ['extent'],
+      });
+    if (v.extent && !(v.extent[2] > v.extent[0] && v.extent[3] > v.extent[1]))
+      ctx.addIssue({
+        code: 'custom',
+        message: 'The extent must run from west-south to east-north',
+        path: ['extent'],
+      });
+  });
 
 /** A pixel on a picture, (x, y) from the top left. */
 const PixelPoint = z.tuple([z.number(), z.number()]);
@@ -225,7 +271,7 @@ const PixelPoint = z.tuple([z.number(), z.number()]);
 export const ReportViewsFrame = z
   .looseObject({
     schema: z.literal(REPORT_VIEWS_SCHEMA),
-    /** The top-down extent [e0, n0, e1, n1] in the project CRS. */
+    /** The site's top-down extent [e0, n0, e1, n1] in the project CRS. */
     extent: z.tuple([z.number(), z.number(), z.number(), z.number()]),
     widthPx: z.number().int().positive().max(16_384),
     heightPx: z.number().int().positive().max(16_384),
