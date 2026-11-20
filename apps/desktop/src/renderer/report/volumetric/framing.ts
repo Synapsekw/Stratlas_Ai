@@ -2,7 +2,8 @@
  * The framing of the report's pictures (spec section 7): the top-down shots share one frame over
  * the piles' extent, `px = (e - e0) / mPerPx`, `py = (n1 - n) / mPerPx`, rendered through an
  * orthographic camera looking straight down (north up) so the frame is exact; the 3D shot looks
- * from the south-east at 35 degrees with the whole yard in view.
+ * from the south-east at 35 degrees with the whole yard in view. A pile's own photo has its own
+ * 4:3 frame around its outlines (`pileFrame`).
  */
 import { projectToLocal } from '@aio/geo';
 import type { Vec3 } from '@aio/schema';
@@ -75,6 +76,31 @@ export function yardExtent(
   if (!Number.isFinite(e0) || !Number.isFinite(n0)) return null;
   const m = Math.max((opts.margin ?? 0.1) * Math.max(e1 - e0, n1 - n0), opts.minMarginM ?? 10);
   return [e0 - m, n0 - m, e1 + m, n1 + m];
+}
+
+/** A pile's own picture is never narrower than this on the ground, metres. */
+export const PILE_FRAME_FLOOR_M = 20;
+
+/**
+ * The ground a pile's own photo covers: the extent of its outlines (one per pictured date, so the
+ * photos of two dates share one frame) with `margin` of its size on every side, widened to
+ * `aspect` (width over height) about its centre and never narrower than `PILE_FRAME_FLOOR_M`.
+ * Null without a point.
+ */
+export function pileFrame(
+  rings: readonly (readonly (readonly number[])[])[],
+  aspect = 4 / 3,
+  margin = 0.22,
+): [number, number, number, number] | null {
+  const bare = yardExtent(rings, { margin: 0, minMarginM: 0 });
+  if (!bare) return null;
+  const [e0, n0, e1, n1] = bare;
+  const pad = 1 + 2 * margin;
+  const w = Math.max((e1 - e0) * pad, (n1 - n0) * pad * aspect, PILE_FRAME_FLOOR_M);
+  const h = w / aspect;
+  const ce = (e0 + e1) / 2;
+  const cn = (n0 + n1) / 2;
+  return [ce - w / 2, cn - h / 2, ce + w / 2, cn + h / 2];
 }
 
 const local = (p: Vec3, origin: Vec3) => new Vector3(...projectToLocal(p, origin));

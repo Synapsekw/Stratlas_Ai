@@ -7,10 +7,18 @@ import { getActiveStage, type EngineStage, type LabelMode, type SavedView } from
 import type { Layer, ReportTypeId } from '@aio/schema';
 import { volumetric, type SurfaceMode } from '@aio/volumetric';
 import { workspace, type Selection } from '@aio/workspace';
-import { Vector2, Vector3, type OrthographicCamera, type PerspectiveCamera } from 'three';
+import {
+  Color,
+  Vector2,
+  Vector3,
+  type Object3D,
+  type OrthographicCamera,
+  type PerspectiveCamera,
+} from 'three';
 import { bridge, shell } from '../../shell';
 import { compareStore, engineClient, setHeat } from '../../survey/compareStore';
 import { measureStore } from '../../survey/measureStore';
+import { pileLookState } from '../../survey/pile/pileLookState';
 import { cutFillPrefs, wholeSiteHeat } from '../../survey/volumes/cutFill';
 import { legendRangeM, siteCutFillQuestion } from '../../workspace/stageCutFill';
 import { rasterSwap, stageShow } from '../../workspace/StageShow';
@@ -36,6 +44,22 @@ const frame = () =>
 const SUPERSAMPLE = 2;
 /** Quiet time after the layers report loaded, for the last tiles to come in. */
 const QUIET_MS = 1200;
+/**
+ * The same for a pile's own picture: the date's layers are in from its site pictures, only the
+ * finer tiles around the pile are still to come. The layout spike's figure, not yet measured on
+ * the rebuilt order (layout plan 2026-11-20, section 5).
+ */
+const PILE_QUIET_MS = 450;
+/** How long a pinned pile's box may take to be sampled and drawn, and to go away again. */
+const PILE_BOX_MS = 4000;
+const PILE_GONE_MS = 1000;
+/**
+ * What a top-down picture shows where the survey has no data: the report's quiet paper grey
+ * (`--vr-quiet-soft`, volumetric.css), never the stage's clear colour.
+ */
+const PICTURE_PAPER = new Color('#f1f3f5');
+/** The stage's sky and studio backdrop (`packages/engine/src/stage/environment.ts`). */
+const BACKDROPS = ['env:physicalSky', 'env:sky'];
 
 interface Saved {
   screen: ReturnType<typeof shell.getState>['screen'];
@@ -75,7 +99,16 @@ async function stageNow(): Promise<EngineStage | null> {
   return stage;
 }
 
-/** Render `camera`'s view of the stage into a `w` x `h` canvas, in one task. */
+/**
+ * Render `camera`'s view of the stage into a `w` x `h` canvas, in one task.
+ *
+ * A top-down shot is drawn over paper. Where a survey has no data nothing at all is drawn: the
+ * orthophoto cuts its empty pixels away, the stage's own ground is hidden while imagery shows, and
+ * the sky is a one metre box about the stage camera that an orthographic camera does not look out
+ * through. What is left there is the renderer's clear colour, opaque black (the canvas has no
+ * alpha, and in sky mode the scene has no background), so for the length of the render the scene
+ * background and the clear colour are the paper colour and the backdrops are off.
+ */
 function renderInto(
   stage: EngineStage,
   camera: PerspectiveCamera | OrthographicCamera,
@@ -94,14 +127,34 @@ function renderInto(
   out.height = h;
   const g = out.getContext('2d');
   if (!g) throw new Error('No 2D canvas for the picture.');
+  const scene = stage.scene;
+  const topDown = (camera as Partial<OrthographicCamera>).isOrthographicCamera === true;
+  const background = scene.background;
+  const clear = r.getClearColor(new Color());
+  const clearAlpha = r.getClearAlpha();
+  const hidden: Object3D[] = [];
   try {
+    if (topDown) {
+      scene.background = PICTURE_PAPER;
+      r.setClearColor(PICTURE_PAPER, 1);
+      for (const name of BACKDROPS) {
+        const o = scene.getObjectByName(name);
+        if (o?.visible) {
+          o.visible = false;
+          hidden.push(o);
+        }
+      }
+    }
     r.setPixelRatio(1);
     r.setSize(Math.round(w * k), Math.round(h * k), false);
     // render and read in the same task, so the drawing buffer still holds the frame
-    r.render(stage.scene, camera);
+    r.render(scene, camera);
     g.imageSmoothingQuality = 'high';
     g.drawImage(r.domElement, 0, 0, w, h);
   } finally {
+    for (const o of hidden) o.visible = true;
+    scene.background = background;
+    r.setClearColor(clear, clearAlpha);
     r.setPixelRatio(ratio);
     r.setSize(size.x, size.y, false);
     stage.requestRender();
@@ -184,6 +237,8 @@ export async function liveStage(): Promise<CaptureStage | null> {
       compareStore.setState({ heat: t.heat, siteHeat: t.siteHeat });
       stageShow.setState(t.show);
       measureStore.setState(t.measure);
+      // a pile still pinned for its picture (a run that failed mid-shot) is let go
+      if (pileLookState.getState().pinned !== null) pileLookState.setState({ pinned: null });
       ws.select(t.selection);
       stage.setLabelMode(t.labelMode);
       stage.restoreView(t.view, false);
@@ -260,7 +315,8 @@ export async function liveStage(): Promise<CaptureStage | null> {
           await sleep(100);
       }
       stage.requestRender();
-      await sleep(Math.min(QUIET_MS, Math.max(0, until - Date.now())));
+      const quiet = what === 'pile' ? PILE_QUIET_MS : QUIET_MS;
+      await sleep(Math.min(quiet, Math.max(0, until - Date.now())));
       await frame();
       await frame();
     },
@@ -274,6 +330,25 @@ export async function liveStage(): Promise<CaptureStage | null> {
       const { stops, stepped, inverted } = measureStore.getState().settings.heatmap;
       const style = { stops, stepped, inverted };
       return { thresholdM: heatThresholdM, rangeM: legendRangeM(style), style };
+    },
+    showOutlines(on) {
+      if (stageShow.getState().outlines !== on) stageShow.setState({ outlines: on });
+      stage.requestRender();
+    },
+    async openPile(id, capture) {
+      // the pin alone: no focus, no selection, so no panel opens and nothing else needs restoring
+      const pinned = id === null || capture === undefined ? null : { id, capture };
+      pileLookState.setState({ pinned });
+      stage.requestRender();
+      const there = () => {
+        const s = pileLookState.getState();
+        return pinned ? s.shown === pinned.id && s.shownOn === pinned.capture : s.shown === null;
+      };
+      const until = Date.now() + (pinned ? PILE_BOX_MS : PILE_GONE_MS);
+      while (!there() && Date.now() < until) await sleep(50);
+      stage.requestRender();
+      await frame();
+      return there();
     },
     heightAt(e, n) {
       const [x, , z] = [e - origin[0], 0, 0 - (n - origin[1])];

@@ -2,7 +2,7 @@ import { projectToLocal } from '@aio/geo';
 import type { Vec3 } from '@aio/schema';
 import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { angledCamera, frameFor, pixelOf, topDownCamera, yardExtent } from './framing';
+import { angledCamera, frameFor, pileFrame, pixelOf, topDownCamera, yardExtent } from './framing';
 
 const ORIGIN: Vec3 = [500_000, 2_000_000, 40];
 
@@ -75,6 +75,80 @@ describe('yardExtent', () => {
   it('is null without a pile', () => {
     expect(yardExtent([])).toBeNull();
     expect(yardExtent([[]])).toBeNull();
+  });
+});
+
+describe('pileFrame', () => {
+  const wide = [
+    [1000, 2000],
+    [1100, 2000],
+    [1100, 2030],
+    [1000, 2030],
+  ];
+  const tall = [
+    [1000, 2000],
+    [1030, 2000],
+    [1030, 2100],
+    [1000, 2100],
+  ];
+
+  it('is 4:3 about the outline, with the margin on its tighter side', () => {
+    const f = pileFrame([wide], 4 / 3, 0.2);
+    if (!f) throw new Error('no frame');
+    const [e0, n0, e1, n1] = f;
+    expect((e1 - e0) / (n1 - n0)).toBeCloseTo(4 / 3, 9);
+    // 100 m wide plus a fifth on each side
+    expect(e1 - e0).toBeCloseTo(140, 9);
+    expect((e0 + e1) / 2).toBeCloseTo(1050, 9);
+    expect((n0 + n1) / 2).toBeCloseTo(2015, 9);
+  });
+
+  it('takes its size from the height of a tall outline', () => {
+    const f = pileFrame([tall], 4 / 3, 0.2);
+    if (!f) throw new Error('no frame');
+    const [e0, n0, e1, n1] = f;
+    expect(n1 - n0).toBeCloseTo(140, 9);
+    expect((e1 - e0) / (n1 - n0)).toBeCloseTo(4 / 3, 9);
+    expect(e0).toBeLessThan(1000);
+    expect(e1).toBeGreaterThan(1030);
+  });
+
+  it('holds every outline given, so two dates share one frame', () => {
+    const moved = wide.map(([e, n]) => [(e ?? 0) + 40, (n ?? 0) - 25]);
+    const f = pileFrame([wide, moved], 4 / 3, 0.2);
+    if (!f) throw new Error('no frame');
+    const [e0, n0, e1, n1] = f;
+    for (const [e, n] of [...wide, ...moved]) {
+      expect(e).toBeGreaterThan(e0);
+      expect(e).toBeLessThan(e1);
+      expect(n).toBeGreaterThan(n0);
+      expect(n).toBeLessThan(n1);
+    }
+    // 140 m across both, plus the margin
+    expect(e1 - e0).toBeCloseTo(140 * 1.4, 9);
+  });
+
+  it('is never narrower than 20 m', () => {
+    const f = pileFrame(
+      [
+        [
+          [1000, 2000],
+          [1002, 2000],
+          [1002, 2002],
+        ],
+      ],
+      4 / 3,
+      0.2,
+    );
+    if (!f) throw new Error('no frame');
+    expect(f[2] - f[0]).toBeCloseTo(20, 9);
+    expect(f[3] - f[1]).toBeCloseTo(15, 9);
+    expect(f[2]).toBeGreaterThan(f[0]);
+  });
+
+  it('is null without a point', () => {
+    expect(pileFrame([])).toBeNull();
+    expect(pileFrame([[]])).toBeNull();
   });
 });
 

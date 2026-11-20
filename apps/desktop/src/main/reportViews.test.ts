@@ -141,6 +141,30 @@ describe('report pictures store', () => {
     await expect(readdir(join(root, 'report'))).rejects.toThrow();
   });
 
+  it('saves 512 pictures, the most a report keeps, and refuses one more', async () => {
+    const names = Array.from({ length: 513 }, (_, i) => `pile-${String(i + 1)}-3d.jpg`);
+    const full = names.slice(0, 512);
+    const r = await saveReportViews(
+      root,
+      'volumetric',
+      frame(full),
+      full.map((n) => jpg(n, 3, 64)),
+    );
+    expect(r).toEqual({ ok: true });
+    expect(await list()).toHaveLength(513);
+    // one more: nothing on disk is touched, and the refusal gives the number
+    const over = await saveReportViews(
+      root,
+      'volumetric',
+      frame([]),
+      names.map((n) => jpg(n, 4, 64)),
+    );
+    expect(over.ok).toBe(false);
+    expect(over.error).toMatch(/at most 512 pictures/);
+    expect(await list()).toHaveLength(513);
+    expect([...(await readFile(join(root, ...DIR, 'pile-1-3d.jpg')))][0]).toBe(3);
+  }, 60_000);
+
   it('refuses a frame naming a picture that was not sent, and duplicate names', async () => {
     const missing = await saveReportViews(root, 'volumetric', frame(['a.jpg', 'b.jpg']), [
       jpg('a.jpg', 1),
