@@ -292,6 +292,16 @@ describe('a pile card, the other states', () => {
     expect(el.querySelector('.vr-pile-tonnes')).toBeNull();
   });
 
+  it('prints no tonnes for a pile at zero either', () => {
+    const zero = volumetricModel(input([pile(1, [1200, 1000]), pile(2, [300, 0])]));
+    const el = card(zero, 'm2', reportViews(frame(['m1', 'm2']), url));
+    expect(text(el, '.vr-pile-volume')).toBe('0.0 m³');
+    expect(el.querySelector('.vr-pile-tonnes')).toBeNull();
+    expect(text(card(zero, 'm1', reportViews(frame(['m1', 'm2']), url)), '.vr-pile-tonnes')).toBe(
+      '1,600 t',
+    );
+  });
+
   it('gives a pile past the cap the site photo for both photos and the "No 3D picture" line', () => {
     // only the two largest piles were pictured
     const taken = frame(['m1', 'm2']);

@@ -300,6 +300,46 @@ function mixed(): VolumetricPileInput[] {
   });
 }
 
+describe('page A, a pile at or under zero', () => {
+  /** P01 to P14 with P13 at -3.9 m³ and P14 at 0 on the latest date. */
+  const low = (): VolumetricPileInput[] =>
+    piles(true).map((p, i) =>
+      i < 12
+        ? p
+        : {
+            ...p,
+            dates: p.dates.map((d) =>
+              d.capture === 'c2' ? { ...d, volumeM3: i === 12 ? -3.9 : 0 } : d,
+            ),
+          },
+    );
+  const model = volumetricModel(input({ piles: low() }));
+  const d = render(model);
+  // the two rank last, so their rows are on the "A, continued" page
+  const pages = [d, render(model, NONE, views, 1)];
+  const row = (id: string) => [
+    ...(pages.map((x) => x.querySelector(`tr[data-pile="${id}"]`)).find((r) => r)?.children ?? []),
+  ];
+
+  it('prints no tonnes in its row, and the volume as computed', () => {
+    // pile, base, previous, latest, tonnes, peak, change
+    expect(row('m13')[3]?.textContent).toBe('−3.9');
+    expect(row('m13')[4]?.textContent).toBe('');
+    expect(row('m14')[3]?.textContent).toBe('0.0');
+    expect(row('m14')[4]?.textContent).toBe('');
+    expect(row('m1')[4]?.textContent).toBe('22,400');
+  });
+
+  it("keeps the site's tonnes the app's total, the negative pile in it", () => {
+    const tonnes = model.piles.reduce((a, p) => a + (p.tonnes ?? 0), 0);
+    expect(model.kpis.tonnes).toBeCloseTo(tonnes, 6);
+    expect(tonnes).toBeCloseTo(model.kpis.stockM3 * 1.6, 6);
+    expect(text(d, '.vr-kpi-stock .vr-kpi-sub')).toContain(
+      `${Math.round(tonnes).toLocaleString('en-US')} t`,
+    );
+  });
+});
+
 describe('page A, piles without a volume', () => {
   const model = volumetricModel(input({ piles: mixed() }));
   const d = render(model);

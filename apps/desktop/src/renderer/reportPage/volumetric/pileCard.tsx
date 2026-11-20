@@ -18,7 +18,12 @@
 // Laid out by counts, never measured: what the name, the notes and the figures take beyond one
 // line each comes off the chart (`chartHeightPx`), so two cards always fit a page and no text is
 // cut, however long (D9).
-import type { VolumetricModel, VolumetricPile, VolumetricPileProfile } from '@aio/project/export';
+import {
+  pileTonnesShown,
+  type VolumetricModel,
+  type VolumetricPile,
+  type VolumetricPileProfile,
+} from '@aio/project/export';
 import type { ReportViewsFrame, SurveyPrecision, SurveyUnits } from '@aio/schema';
 import type { ChartSeries } from '@aio/survey';
 import { t } from '@aio/ui';
@@ -398,6 +403,8 @@ export function PileCard({
       ? `${fixed(level[0], 2)} m`
       : `${fixed(level[0], 1)} to ${fixed(level[1], 1)} m`
     : null;
+  // a pile at or under zero prints no tonnes: a weight of nothing, or of less, means nothing
+  const tonnes = pileTonnesShown(pile.latestM3, pile.tonnes);
   const notSet = t('vreport.pile.baseNotSet');
   const notComputed = t('vreport.notComputed');
   const flags = [
@@ -440,9 +447,7 @@ export function PileCard({
               </span>
             </span>
           ) : null}
-          {measured && pile.tonnes !== null && !pile.belowBase ? (
-            <span className="vr-pile-tonnes">{`${num(pile.tonnes)} t`}</span>
-          ) : null}
+          {tonnes !== null ? <span className="vr-pile-tonnes">{`${num(tonnes)} t`}</span> : null}
           {measured ? (
             <span className="vr-pile-volume">{`${num(pile.latestM3 ?? 0)} m³`}</span>
           ) : (

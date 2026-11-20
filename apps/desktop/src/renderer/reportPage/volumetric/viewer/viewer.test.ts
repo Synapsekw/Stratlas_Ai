@@ -175,6 +175,33 @@ describe('volumetric interactive viewer', () => {
     expect(q('.vr-d-kpi-total .vr-d-kpi-value').textContent).toBe('3,200 t');
   });
 
+  it('shows no tonnes for a pile at or under zero, and keeps them in the site total', () => {
+    const d = data();
+    const [sand, gravel] = d.piles;
+    if (!sand || !gravel) throw new Error('fixture');
+    // Gravel is under its base on the latest date, with a density
+    gravel.byDate = [
+      { capture: 'c1', m3: 3000, t: 4800 },
+      { capture: 'c2', m3: -10, t: -16 },
+    ];
+    mount(d);
+    button('Tonnes').click();
+    const amount = (label: string) =>
+      [...document.querySelectorAll('.vr-d-list-row')]
+        .find((r) => r.textContent.includes(label))
+        ?.querySelector('.vr-d-row-amount')?.textContent;
+    expect(amount('Sand')).toBe('3,200 t');
+    expect(amount('Gravel')).toBe('');
+    // the total is the app's: 3200 - 16
+    expect(q('.vr-d-kpi-total .vr-d-kpi-value').textContent).toBe('3,184 t');
+    button('Select Gravel').click();
+    expect(q('.vr-d-card .vr-d-facts dd').textContent).toBe('');
+    expect(document.querySelector('.vr-d-card .vr-d-chip')).toBeNull();
+    // in cubic metres the pile reads as computed
+    button('m³').click();
+    expect(amount('Gravel')).toBe('−10.0 m³');
+  });
+
   it('shows the placeholder when a date has no picture of the view', () => {
     mount();
     button('1 September 2026').click();

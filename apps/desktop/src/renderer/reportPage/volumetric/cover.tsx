@@ -9,6 +9,7 @@
 // their length and the photo row gives them the room, by counts (`leadHeightMm`).
 import {
   formatVolumeM3,
+  pileTonnesShown,
   type VolumetricModel,
   type VolumetricOverlap,
   type VolumetricPile,
@@ -194,6 +195,8 @@ function RankedTable({
           const width = c !== null && most > 0 ? (Math.abs(c) / most) * 50 : 0;
           const way = c === null || c === 0 ? 'is-flat' : c < 0 ? 'is-down' : 'is-up';
           const base = p.base.trim();
+          // a pile at or under zero prints no tonnes (the site's tonnes still add them)
+          const tonnes = pileTonnesShown(p.latestM3, p.tonnes);
           const lead = (
             <>
               <td className="vr-col-pile">
@@ -224,7 +227,7 @@ function RankedTable({
                 <td className="vr-col-n">{p.previousM3 !== null ? num(p.previousM3) : ''}</td>
               ) : null}
               <td className="vr-col-n">{num(p.latestM3)}</td>
-              <td className="vr-col-n">{p.tonnes !== null ? num(p.tonnes) : ''}</td>
+              <td className="vr-col-n">{tonnes !== null ? num(tonnes) : ''}</td>
               <td className="vr-col-n">{p.peakM !== null ? p.peakM.toFixed(1) : ''}</td>
               {compared ? (
                 <td className="vr-col-change">

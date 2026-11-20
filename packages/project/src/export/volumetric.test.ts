@@ -18,6 +18,7 @@ import {
   PILE_CARDS_PER_PAGE,
   pileCrop,
   pileTag,
+  pileTonnesShown,
   volumetricCsv,
   volumetricModel,
   type VolumetricInput,
@@ -254,6 +255,20 @@ describe('volumetricModel below the base, overlaps and profiles', () => {
     expect(m.kpis.stockM3).toBeCloseTo(1000 + 1300 - 3.9, 9);
     expect(m.kpis.piles).toBe(3);
     expect(m.cards).toContain('m-1');
+  });
+
+  it('prints no tonnes for a pile at or under zero, and still adds them to the site tonnes', () => {
+    expect(pileTonnesShown(100, 160)).toBe(160);
+    expect(pileTonnesShown(0, 0)).toBeNull();
+    expect(pileTonnesShown(-3.9, -6.24)).toBeNull();
+    expect(pileTonnesShown(null, null)).toBeNull();
+    expect(pileTonnesShown(100, null)).toBeNull();
+    // the site's tonnes are the app's own total: every weighed pile, the negative one too
+    const m = volumetricModel(input({ piles: withP1(-3.9) }));
+    expect(m.kpis.tonnes).toBeCloseTo((1000 + 1300 - 3.9) * 1.6, 9);
+    expect(m.kpis.tonnesPiles).toBe(3);
+    const p1 = m.piles.find((p) => p.label === 'P01');
+    expect(pileTonnesShown(p1?.latestM3 ?? null, p1?.tonnes ?? null)).toBeNull();
   });
 
   it('leaves a pile at zero out of the share bar without flagging it', () => {

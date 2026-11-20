@@ -114,6 +114,22 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
     const b = amountOn(p, to, unit);
     return a === null || b === null ? null : b - a;
   };
+  /**
+   * What a pile's own row and card show: no tonnes for a pile at or under zero volume, where a
+   * weight means nothing. The site's total still adds such a pile's tonnes (`totalOn`), as the
+   * app's own site total does.
+   */
+  const shownOn = (p: ViewerPile, capture: string | null, unit = state.unit): number | null => {
+    const v = amountOn(p, capture, unit);
+    if (unit !== 't' || v === null) return v;
+    const m3 = amountOn(p, capture, 'm3');
+    return m3 !== null && m3 > 0 ? v : null;
+  };
+  const shownChange = (p: ViewerPile, unit = state.unit): number | null => {
+    const a = shownOn(p, from, unit);
+    const b = shownOn(p, to, unit);
+    return a === null || b === null ? null : b - a;
+  };
   const sum = (xs: (number | null)[]): number | null => {
     const known = xs.filter((x): x is number => x !== null);
     return known.length ? known.reduce((a, b) => a + b, 0) : null;
@@ -128,8 +144,12 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
     v !== null
       ? formatAmount(v, state.unit)
       : s(m3 === null ? 'vreport.notComputed' : 'vreport.table.noTonnes');
-  const pileAmountText = (p: ViewerPile, capture: string) =>
-    amountText(amountOn(p, capture), amountOn(p, capture, 'm3'));
+  /** A pile's own amount; its tonnes are left empty when its volume is at or under zero. */
+  const pileAmountText = (p: ViewerPile, capture: string) => {
+    const v = shownOn(p, capture);
+    if (v === null && amountOn(p, capture) !== null) return '';
+    return amountText(v, amountOn(p, capture, 'm3'));
+  };
   const changeText = (v: number | null) => {
     if (v === null) return '';
     if (Math.abs(v) < 0.05) return s('vreport.piles.same');
@@ -349,7 +369,7 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
     const h2 = el(doc, 'h2');
     h2.append(el(doc, 'span', 'vr-d-num', p.tag), doc.createTextNode(p.label));
     head.append(h2);
-    const ch = changeOf(p);
+    const ch = shownChange(p);
     if (ch !== null) {
       const chip = el(doc, 'span', `vr-d-chip vr-d-${changeTone(ch)}`, changeText(ch));
       head.append(chip);
@@ -383,7 +403,7 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
     }
     card.append(crops);
 
-    const amount = amountOn(p, state.date);
+    const amount = shownOn(p, state.date);
     const site = totalOn(state.date);
     const facts = el(doc, 'dl', 'vr-d-facts');
     const fact = (label: string, value: string) => {
@@ -432,7 +452,7 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
       const row = rows.get(p.id);
       if (!row) continue;
       row.amount.textContent = pileAmountText(p, state.date);
-      const ch = changeOf(p);
+      const ch = shownChange(p);
       row.change.textContent = changeText(ch);
       row.change.className = `vr-d-row-change vr-d-${changeTone(ch)}`;
       row.button.setAttribute('aria-pressed', String(state.selected === p.id));

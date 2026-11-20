@@ -582,6 +582,15 @@ const SHARE_MIN_PREVIOUS_M3 = 1;
 const SHARE_MAX_PCT = 999;
 
 /**
+ * The tonnes a pile's own row and card print: none for a pile at or under zero volume, where a
+ * weight means nothing. The site's tonnes (`kpis.tonnes`) still add such a pile's, as the app's
+ * own site total does, so the report's totals stay the app's (plan D11).
+ */
+export function pileTonnesShown(volumeM3: number | null, tonnes: number | null): number | null {
+  return volumeM3 !== null && volumeM3 > 0 ? tonnes : null;
+}
+
+/**
  * A change in per cent of the previous volume. Null unless the previous volume and the latest one
  * (the previous plus the change) are both above zero: a share of, or down to, a volume at or under
  * zero means nothing, so such a change is given in cubic metres alone. Null also when the previous
