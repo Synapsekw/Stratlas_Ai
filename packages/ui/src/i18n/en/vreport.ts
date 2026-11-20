@@ -3,8 +3,9 @@
  * Part of the `en` catalogue (see `../en.ts`). No em or en dashes.
  */
 export const enVreport = {
-  // Volumetric customer report: the Reports block, the editor, the printed pages (A cover, B pile
-  // cards, C what changed), the interactive HTML view, the "In short" pieces, exports and errors
+  // Volumetric customer report: the Reports block, the editor, the printed pages (A cover, B site
+  // overview and pile pages, C what changed), the interactive HTML view, the "In short" pieces,
+  // exports and errors
   'vreport.block': 'Customer reports',
   'vreport.title': 'Volumetric report',
   'vreport.text':
@@ -39,7 +40,7 @@ export const enVreport = {
   'vreport.source.generated': 'Generated from the figures',
   'vreport.source.edited': 'Edited',
   'vreport.pages.cover': 'A. Cover and summary',
-  'vreport.pages.piles': 'B. Pile cards',
+  'vreport.pages.piles': 'B. Site overview and pile pages',
   'vreport.pages.change': 'C. What changed',
   'vreport.pages.keepOne': 'At least one page stays on.',
   'vreport.saving': 'Saving...',
@@ -53,8 +54,10 @@ export const enVreport = {
     'This package is read only. Its report can be read and exported, not changed.',
   'vreport.oneDate':
     'Only one survey date has figures, so the change, its column and page C are left out.',
-  // Pictures taken from the 3D stage
-  'vreport.pictures.none': 'No pictures yet. Take them from the 3D stage to show the site.',
+  // Pictures taken from the 3D stage. The export takes them itself; "Take them now" is the quiet
+  // link in the preview's empty picture
+  'vreport.pictures.none': 'Pictures are taken when you export.',
+  'vreport.pictures.takeNow': 'Take them now',
   'vreport.pictures.stale': 'The data changed since the pictures were taken.',
   'vreport.pictures.take': 'Take pictures',
   'vreport.pictures.retake': 'Take pictures again',
@@ -62,11 +65,18 @@ export const enVreport = {
   'vreport.pictures.progressTitle': 'Taking the report pictures',
   'vreport.pictures.progressText':
     'The stage shows each survey date in turn. Your view comes back when it is done.',
+  // The progress card: what is pictured, the count, then the writing phase
+  'vreport.pictures.progressSite': 'Site, {date}',
+  'vreport.pictures.progressPile': 'Pile {n} of {total}: {pile}',
+  'vreport.pictures.progressChange': 'Cut and fill between the surveys',
+  'vreport.pictures.progressCount': 'Picture {done} of {total}',
+  'vreport.pictures.progressWritingPdf': 'Writing the PDF',
+  'vreport.pictures.progressWritingHtml': 'Writing the HTML file',
   'vreport.pictures.stop': 'Stop taking pictures',
   'vreport.pictures.stopping': 'Stopping after this picture…',
   'vreport.pictures.stopped': 'Taking them was stopped.',
   'vreport.pictures.failed': 'The pictures were not taken: {error}',
-  'vreport.pictures.placeholder': 'Take pictures in the app',
+  'vreport.pictures.placeholder': 'No picture yet',
   'vreport.export.pdf': 'Export PDF',
   'vreport.export.html': 'Export HTML',
   // Printed pages: band, KPIs, table, method, footer
@@ -76,6 +86,18 @@ export const enVreport = {
   'vreport.band.compared': 'Compared with {date}',
   'vreport.band.piles_one': '{count} pile',
   'vreport.band.piles_other': '{count} piles',
+  'vreport.band.pilesMeasured_one': '{count} pile, {measured} measured',
+  'vreport.band.pilesMeasured_other': '{count} piles, {measured} measured',
+  // A pile without a volume is listed all the same
+  'vreport.notComputed': 'Not computed',
+  'vreport.pile.baseNotSet': 'Not set',
+  'vreport.pile.belowBase': 'The surface is below the base here. Check the base.',
+  // Two outlines that share half or more of the smaller one ({a}, {b}: number and name)
+  'vreport.overlap.warning':
+    '{a} and {b} overlap, so the site total may count the same material twice.',
+  'vreport.overlap.warningMany':
+    'Some piles overlap, so the site total may count the same material twice: {pairs}.',
+  'vreport.overlap.pair': '{a} and {b}',
   'vreport.kpi.stock': 'Stock on hand',
   'vreport.kpi.stockTonnes': '{tonnes} at density',
   'vreport.kpi.tonnesPartial': 'tonnes for {n} of {m} piles',
@@ -108,7 +130,27 @@ export const enVreport = {
   'vreport.footer.noCompany': 'Prepared with {product}',
   'vreport.page.number': 'Page {n}',
   'vreport.page.of': 'Page {n} of {total}',
-  // Page B: pile cards
+  // Page B: the site overview, then the pile pages with one card per pile
+  'vreport.overview.title': 'Site overview',
+  'vreport.overview.photo': 'Site photo, {date}',
+  'vreport.overview.elevation': 'Elevation, {date}',
+  'vreport.overview.3d': '3D view from the south-east, {date}',
+  'vreport.card.photo': 'Photo with the outline and the profile line, {date}',
+  'vreport.card.3d': '3D view, {date}',
+  'vreport.card.before': 'Before, {date}',
+  'vreport.card.since': 'since {date}',
+  'vreport.card.profile': 'Elevation profile, A to B',
+  'vreport.card.profile.surface': 'Surface {date}',
+  'vreport.card.profile.base': 'Base',
+  'vreport.card.profile.boundary': 'Boundary level (no base set)',
+  'vreport.card.profile.none': 'No surface under this pile to draw a profile from.',
+  'vreport.card.footprint': 'Footprint',
+  'vreport.card.base': 'Base',
+  'vreport.card.baseLevel': 'Base level',
+  'vreport.card.peak': 'Peak height',
+  'vreport.card.density': 'Density',
+  'vreport.card.surveyed': 'Surveyed',
+  'vreport.card.no3d': 'No 3D picture: the report pictures the {count} largest piles',
   'vreport.piles.title': 'Pile cards',
   'vreport.piles.heading': 'Stock inventory',
   'vreport.piles.headingOn': 'Stock inventory · {date}',
@@ -197,7 +239,7 @@ export const enVreport = {
   'vreport.error.budget':
     'The HTML file would be larger than {limit} even with smaller pictures. Export a PDF instead.',
   'vreport.error.noPictures':
-    'The report has no pictures yet. Open Reports, Volumetric report and press Take pictures.',
+    'The report has no pictures yet. Export it from Reports, Volumetric report: the pictures are taken then.',
   'vreport.error.notOffered':
     'This project has no stockpile volumes with figures, so it has no volumetric report.',
   'vreport.error.failed': 'The volumetric report was not exported: {error}',
