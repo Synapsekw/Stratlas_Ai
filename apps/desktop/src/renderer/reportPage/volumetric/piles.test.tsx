@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
-// Page B of the volumetric report (pile cards) on a synthetic 19-pile, two-date yard with
-// fictional pile names: the header with the stock and its change, the share-of-stock bar (the 8
-// largest and the Others, summing to 100 %), a card for each of the 8 largest piles (before and
-// after crops at one framing, the change chip, tonnes, footprint, peak height, the note), the
-// compact list of the other 11 with a note mark, and the "B, continued" pages of the page plan.
+// Part B of the volumetric report on a synthetic five-pile yard with fictional pile names: the
+// site overview page, then the pile pages with two cards each (2, 2 and 1), every pile with a
+// card whether it has a volume or not, the person's notes, and the closing block on the report's
+// last page when no change page follows.
 import {
   pagePlan,
   volumetricModel,
@@ -15,8 +14,9 @@ import type { ReportViewsFrame } from '@aio/schema';
 import { t } from '@aio/ui';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { volumetricTemplate } from '../types';
 import { NO_VIEWS, reportViews, type ReportViews, type ResolvedText } from '../types/template';
-import { cropHeightMm, PilesPage, volumetricPage } from './piles';
+import { PilesPage, volumetricPage } from './piles';
 
 const FRAME: ReportViewsFrame = {
   schema: 'aio.report-views/1',
@@ -39,45 +39,39 @@ const square = (e: number, n: number, h: number): [number, number][] => [
   [e - h, n + h],
 ];
 
-/** P01 to P{count}: P01 the largest; P03 grows, the rest shrink. */
+/** Heap 1 to Heap {count}: Heap 1 the largest; the last one has no volume. */
 function piles(count: number): VolumetricPileInput[] {
   return Array.from({ length: count }, (_, i) => {
     const k = i + 1;
-    const latest = 1000 * (count + 1 - k);
-    const previous = k === 3 ? latest - 900 : latest + 100 * k;
-    const outline = square(50 * k, 400, 10);
-    const date = (capture: string, volumeM3: number) => ({
+    const computed = k < count;
+    const latest = computed ? 1000 * (count + 1 - k) : null;
+    const date = (capture: string, volumeM3: number | null) => ({
       capture,
       volumeM3,
-      densityTPerM3: 1.6,
+      densityTPerM3: null,
       areaM2: 400 + k,
-      peakM: 4 + k / 10,
+      peakM: computed ? 4 + k / 10 : null,
       plusMinusM3: null,
-      outline,
+      outline: square(200 * k, 400, 10),
     });
     return {
       id: `m${String(k)}`,
-      label: `P${String(k).padStart(2, '0')}`,
-      material: { id: 'gravel', name: 'Gravel' },
-      base: 'Lowest point on the outline',
-      dates: [date('c1', previous), date('c2', latest)],
+      label: `Heap ${String(k)}`,
+      material: null,
+      base: computed ? 'Lowest point' : '',
+      dates: [date('c1', latest === null ? null : latest + 100), date('c2', latest)],
     };
   });
 }
 
-function input(count = 19, over: Partial<VolumetricInput> = {}): VolumetricInput {
+function input(count = 5, over: Partial<VolumetricInput> = {}): VolumetricInput {
   return {
     captures: [
       { id: 'c1', label: 'Survey 1', date: '2026-09-03' },
       { id: 'c2', label: 'Survey 2', date: '2026-10-01' },
     ],
     piles: piles(count),
-    project: {
-      name: 'Demo yard',
-      customer: 'Demo customer',
-      site: 'The demo yard',
-      crs: 'EPSG:32632',
-    },
+    project: { name: 'Demo yard', customer: null, site: 'The demo yard', crs: 'EPSG:32632' },
     method: { cellM: 0.25, gsdCm: 3, siteDensityTPerM3: null },
     frame: FRAME,
     ...over,
@@ -86,24 +80,15 @@ function input(count = 19, over: Partial<VolumetricInput> = {}): VolumetricInput
 
 const NONE: ResolvedText = { parts: {}, pileNotes: {} };
 const views = reportViews(FRAME, (f) => `aio://project/report/views/volumetric/${f}`);
-const withCrops = reportViews(
-  FRAME,
-  (f) => `aio://project/report/views/volumetric/${f}`,
-  (pile, capture) => `aio://project/report/views/volumetric/crop-${pile}-${capture}.jpg`,
-);
-
-function pilesPages(model: VolumetricModel) {
-  return pagePlan(model).filter((p) => p.page === 'piles');
-}
 
 function render(
   model: VolumetricModel,
+  n: number,
   text: ResolvedText = NONE,
   v: ReportViews = views,
-  n = 0,
 ): Document {
   const plan = pagePlan(model);
-  const page = pilesPages(model)[n];
+  const page = plan.filter((p) => p.page === 'piles')[n];
   if (!page) throw new Error('no such page');
   const html = renderToStaticMarkup(
     <PilesPage model={model} text={text} views={v} page={page} total={plan.length} />,
@@ -114,7 +99,7 @@ function render(
 const text = (el: ParentNode | null | undefined, sel: string) =>
   el?.querySelector(sel)?.textContent ?? '';
 
-describe('page B, the pile cards', () => {
+describe('part B, the site overview and the pile pages', () => {
   const model = volumetricModel(input());
 
   it('registers itself as the piles page', () => {
@@ -122,193 +107,79 @@ describe('page B, the pile cards', () => {
     expect(volumetricPage.component).toBe(PilesPage);
   });
 
-  it('heads the page with the stock on the latest date, its tonnes and its change', () => {
-    const d = render(model);
+  it('opens with the site overview: no cards on it', () => {
+    const d = render(model, 0);
+    expect(d.querySelector('.vr-page-piles .vr-ov')).not.toBeNull();
+    expect(text(d, '.vr-ov-head h1')).toBe(t('vreport.overview.title'));
+    expect(d.querySelectorAll('.vr-ov-fig')).toHaveLength(3);
+    expect(d.querySelector('.vr-pile')).toBeNull();
     expect(d.querySelector('.vr-band')).not.toBeNull();
-    expect(text(d, '.vr-piles-head h1')).toBe('Stock inventory · 1 October 2026');
-    expect(text(d, '.vr-piles-head .vr-piles-site')).toBe('The demo yard');
-    expect(text(d, '.vr-piles-total')).toBe(
-      `${model.kpis.stockM3.toLocaleString('en-US', { maximumFractionDigits: 0 })} m³`,
+  });
+
+  it('gives five piles three card pages of 2, 2 and 1, in report order', () => {
+    const pages = pagePlan(model).filter((p) => p.page === 'piles');
+    expect(pages.map((p) => p.part)).toEqual(['overview', 'cards', 'cards', 'cards']);
+    const names = [1, 2, 3].map((n) =>
+      [...render(model, n).querySelectorAll('.vr-pile .vr-pile-name')].map((h) => h.textContent),
     );
-    expect(text(d, '.vr-piles-tonnes')).toContain(' t');
-    expect(d.querySelector('.vr-piles-change.is-down')).not.toBeNull();
-    expect(text(d, '.vr-piles-change')).toMatch(/^−/);
+    expect(names).toEqual([['Heap 1', 'Heap 2'], ['Heap 3', 'Heap 4'], ['Heap 5']]);
+    expect(render(model, 1).querySelector('.vr-ov')).toBeNull();
   });
 
-  it('splits the share-of-stock bar into the 8 largest and the Others, summing to 100 %', () => {
-    const d = render(model);
-    expect(text(d, '.vr-share h2')).toBe('Share of stock on hand');
-    const segs = [...d.querySelectorAll<HTMLElement>('.vr-share-seg')];
-    expect(segs).toHaveLength(9);
-    const widths = segs.map((s) => Number.parseFloat(s.style.width));
-    expect(widths.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 1);
-    expect(segs.at(-1)?.classList.contains('is-others')).toBe(true);
-    // the first four in the dark teals carry white text, the rest ink
-    expect(segs[0]?.classList.contains('is-dark')).toBe(true);
-    expect(segs[3]?.classList.contains('is-dark')).toBe(true);
-    expect(segs[4]?.classList.contains('is-dark')).toBe(false);
-    // the largest is labelled; a sliver is not
-    expect(segs[0]?.textContent).toContain('P01');
-    const tiny = volumetricModel(input(40));
-    const tinySegs = [...render(tiny).querySelectorAll('.vr-share-seg')];
-    expect(tinySegs[7]?.textContent).toBe('');
+  it('heads every card page with its title and the survey date', () => {
+    const first = render(model, 1);
+    expect(text(first, '.vr-pile-page-head h1')).toBe(t('vreport.piles.title'));
+    expect(text(first, '.vr-pile-page-head span')).toBe('Surveyed 1 October 2026');
+    expect(text(render(model, 2), '.vr-pile-page-head h1')).toBe(t('vreport.piles.title'));
+    expect(text(first, '.vr-foot-by')).toContain('Page 3');
   });
 
-  it('gives the 8 largest piles a card each, the 11 others the compact list', () => {
-    const d = render(model);
-    const cards = [...d.querySelectorAll('.vr-card')];
-    expect(cards).toHaveLength(8);
-    expect(cards.map((c) => text(c, '.vr-card-name'))).toEqual(
-      model.cards.map((id) => model.piles.find((p) => p.id === id)?.label),
+  it('gives the pile without a volume its card all the same', () => {
+    const d = render(model, 3);
+    const card = d.querySelector('.vr-pile');
+    expect(card?.classList.contains('is-uncomputed')).toBe(true);
+    expect(text(card, '.vr-pile-volume')).toBe(t('vreport.notComputed'));
+    expect(card?.querySelectorAll('.vr-pile-pic')).toHaveLength(3);
+  });
+
+  it("prints the person's note on the pile's card, the saved one unless a newer text is given", () => {
+    const noted = volumetricModel(input(5, { pileNotes: { m1: 'Saved note.' } }));
+    expect(text(render(noted, 1), '[data-pile="m1"] .vr-pile-note')).toBe('Saved note.');
+    const live = render(noted, 1, { parts: {}, pileNotes: { m1: 'Typed just now.' } });
+    expect(text(live, '[data-pile="m1"] .vr-pile-note')).toBe('Typed just now.');
+    expect(render(noted, 1).querySelector('[data-pile="m2"] .vr-pile-note')).toBeNull();
+  });
+
+  it('shows placeholders without pictures', () => {
+    const bare = volumetricModel(input(5, { frame: null }));
+    expect(render(bare, 0, NONE, NO_VIEWS).querySelectorAll('.vr-picture.is-empty')).toHaveLength(
+      3,
     );
-    const rows = [...d.querySelectorAll('.vr-smaller-row')];
-    expect(rows).toHaveLength(11);
-    expect(text(d, '.vr-smaller h2')).toBe('Smaller piles');
-    expect(text(rows[0], '.vr-smaller-name')).toBe('P09');
+    expect(render(bare, 1, NONE, NO_VIEWS).querySelectorAll('.vr-pile-pic.is-empty')).toHaveLength(
+      6,
+    );
   });
 
-  it('shows the before and after crops at one framing, the previous date first', () => {
-    const d = render(model);
-    const card = d.querySelector('.vr-card');
-    const crops = [...(card?.querySelectorAll('.vr-crop') ?? [])];
-    expect(crops).toHaveLength(2);
-    const imgs = crops.map((c) => c.querySelector('img')?.getAttribute('src'));
-    expect(imgs).toEqual([
-      'aio://project/report/views/volumetric/photo-c1.jpg',
-      'aio://project/report/views/volumetric/photo-c2.jpg',
-    ]);
-    const styles = crops.map((c) => c.querySelector('img')?.getAttribute('style'));
-    expect(styles[0]).toBe(styles[1]);
-    const caps = crops.map((c) => text(c, 'figcaption'));
-    expect(caps[0]).toMatch(/^3 Sep · [\d,]+ m³$/);
-    expect(caps[1]).toMatch(/^1 Oct · [\d,]+ m³$/);
-    expect(crops[1]?.classList.contains('is-latest')).toBe(true);
+  it('is left out, overview and cards together, when the person turned it off', () => {
+    const off = volumetricModel(input(5, { pages: { piles: false } }));
+    const pages = volumetricTemplate.render(off, NONE, views);
+    expect(pages.some((p) => p.page === 'piles')).toBe(false);
+    expect(
+      volumetricTemplate.render(model, NONE, views).filter((p) => p.page === 'piles'),
+    ).toHaveLength(4);
   });
 
-  it('uses the separate crop JPEGs when the views have them', () => {
-    const d = render(model, NONE, withCrops);
-    const imgs = [...(d.querySelector('.vr-card')?.querySelectorAll('.vr-crop img') ?? [])];
-    expect(imgs.map((i) => i.getAttribute('src'))).toEqual([
-      'aio://project/report/views/volumetric/crop-m1-c1.jpg',
-      'aio://project/report/views/volumetric/crop-m1-c2.jpg',
-    ]);
-    expect(imgs[0]?.classList.contains('is-file')).toBe(true);
-  });
-
-  it('says to take the pictures without any', () => {
-    const d = render(volumetricModel(input(19, { frame: null })), NONE, NO_VIEWS);
-    const crop = d.querySelector('.vr-card .vr-crop');
-    expect(crop?.classList.contains('is-empty')).toBe(true);
-    expect(crop?.querySelector('img')).toBeNull();
-  });
-
-  it('puts the change chip, tonnes, footprint, peak height and base on each card', () => {
-    const d = render(model);
-    const cards = [...d.querySelectorAll('.vr-card')];
-    const p1 = model.piles[0];
-    const p3 = model.piles[2];
-    expect(cards[0]?.querySelector('.vr-chip.is-down')).not.toBeNull();
-    expect(text(cards[0], '.vr-chip')).toMatch(/^−100 m³ · −0\.[0-9] %$/);
-    expect(cards[2]?.querySelector('.vr-chip.is-up')).not.toBeNull();
-    expect(text(cards[2], '.vr-chip')).toMatch(/^\+900 m³/);
-    const stats = [...(cards[0]?.querySelectorAll('.vr-stat') ?? [])];
-    expect(stats.map((s) => text(s, '.vr-stat-label'))).toEqual([
-      t('vreport.piles.tonnes'),
-      t('vreport.piles.footprint'),
-      t('vreport.piles.peak'),
-      t('vreport.piles.base'),
-    ]);
-    expect(stats.map((s) => text(s, '.vr-stat-value'))).toEqual([
-      (p1?.tonnes ?? 0).toLocaleString('en-US', { maximumFractionDigits: 0 }),
-      String(Math.round(p1?.areaM2 ?? 0)),
-      (p1?.peakM ?? 0).toFixed(1),
-      'Lowest point on the outline',
-    ]);
-    expect(p3).toBeDefined();
-  });
-
-  it('prints the note under the card when the person wrote one', () => {
-    const plain = render(model);
-    expect(plain.querySelector('.vr-card-note')).toBeNull();
-    const noted = render(model, { parts: {}, pileNotes: { m2: 'Being loaded out.' } });
-    const cards = [...noted.querySelectorAll('.vr-card')];
-    expect(text(cards[1], '.vr-card-note')).toBe('Being loaded out.');
-    expect(cards[0]?.querySelector('.vr-card-note')).toBeNull();
-  });
-
-  it('marks a compact row that has a note, and colours its change', () => {
-    const d = render(model, { parts: {}, pileNotes: { m12: 'Topsoil.' } });
-    const rows = [...d.querySelectorAll('.vr-smaller-row')];
-    const row = rows.find((r) => text(r, '.vr-smaller-name') === 'P12');
-    expect(row?.querySelector('.vr-note-mark')?.getAttribute('title')).toBe('Topsoil.');
-    expect(rows.filter((r) => r.querySelector('.vr-note-mark'))).toHaveLength(1);
-    expect(row?.querySelector('.vr-smaller-change.is-down')).not.toBeNull();
-  });
-
-  it('leaves out the previous crop and the chip with one date', () => {
+  it('closes the report with the method note when a pile page is the last page', () => {
+    // one date: no change page follows, so the last card page ends the report
     const one = volumetricModel(
-      input(19, { captures: [{ id: 'c2', label: 'Survey 2', date: '2026-10-01' }] }),
+      input(5, { captures: [{ id: 'c2', label: 'Survey 2', date: '2026-10-01' }] }),
     );
-    const d = render(one);
-    expect(d.querySelectorAll('.vr-card')[0]?.querySelectorAll('.vr-crop')).toHaveLength(1);
-    expect(d.querySelector('.vr-chip')).toBeNull();
-    expect(d.querySelector('.vr-piles-change')).toBeNull();
-  });
-
-  it('continues the compact list on "B, continued" pages per the page plan', () => {
-    const big = volumetricModel(input(80));
-    const pages = pilesPages(big);
-    expect(pages).toHaveLength(3); // 72 compact rows: 24, then 40, then 8
-    const first = render(big, NONE, views, 0);
-    expect(first.querySelectorAll('.vr-smaller-row')).toHaveLength(24);
-    const second = render(big, NONE, views, 1);
-    expect(text(second, '.vr-continued')).toBe(t('vreport.page.pilesContinued'));
-    expect(second.querySelector('.vr-card')).toBeNull();
-    expect(second.querySelector('.vr-share')).toBeNull();
-    expect(second.querySelectorAll('.vr-smaller-row')).toHaveLength(40);
-    expect(text(second.querySelector('.vr-smaller-row'), '.vr-smaller-name')).toBe('P33');
-    expect(render(big, NONE, views, 2).querySelectorAll('.vr-smaller-row')).toHaveLength(8);
-    expect(second.querySelector('.vr-page')?.getAttribute('data-page')).toBe(
-      String(pages[1]?.number),
-    );
-  });
-
-  it('sizes the crops from the fixed counts so the page always fits', () => {
-    // fewer compact rows and no notes leave taller crops; never under the floor
-    expect(cropHeightMm({ cardRows: 4, compactRows: 24, notes: true })).toBeGreaterThanOrEqual(12);
-    expect(cropHeightMm({ cardRows: 4, compactRows: 0, notes: false })).toBeGreaterThan(
-      cropHeightMm({ cardRows: 4, compactRows: 24, notes: false }),
-    );
-    expect(cropHeightMm({ cardRows: 4, compactRows: 11, notes: true })).toBeLessThan(
-      cropHeightMm({ cardRows: 4, compactRows: 11, notes: false }),
-    );
-    expect(cropHeightMm({ cardRows: 1, compactRows: 0, notes: false })).toBeLessThanOrEqual(41);
-  });
-});
-
-describe('page B, a pile that was about empty', () => {
-  it('shows "new" instead of a runaway share', () => {
-    const base = input(3);
-    const first = base.piles[0];
-    if (!first) throw new Error('no pile');
-    const [d1, d2] = first.dates;
-    if (!d1 || !d2) throw new Error('no dates');
-    const grown: VolumetricInput = {
-      ...base,
-      piles: [
-        {
-          ...first,
-          dates: [
-            { ...d1, volumeM3: 0.0004 },
-            { ...d2, volumeM3: 1131 },
-          ],
-        },
-        ...base.piles.slice(1),
-      ],
-    };
-    const d = render(volumetricModel(grown));
-    const chips = [...d.querySelectorAll('.vr-chip')].map((c) => c.textContent).join(' | ');
-    expect(chips).toContain('+1,131 m³ · new');
-    expect(chips).not.toMatch(/\d{4,}(\.\d)? ?%/);
+    const last = render(one, 3);
+    expect(text(last, '.vr-last .vr-method h2')).toBe(t('vreport.method.title'));
+    expect(text(last, '.vr-last .vr-method p')).toContain('EPSG:32632');
+    expect(render(one, 2).querySelector('.vr-last')).toBeNull();
+    // with a compared date the change page ends the report, so no pile page carries it
+    expect(render(model, 3).querySelector('.vr-last')).toBeNull();
+    expect(last.querySelector('.vr-foot .vr-method')).toBeNull();
   });
 });

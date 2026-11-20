@@ -1,108 +1,126 @@
-/* Page B of the volumetric report: the pile cards. Scoped to .vr-page-piles; the tokens, band,
-   footer and pile number badge come from volumetric.css. The heights here are the budget
-   `cropHeightMm` in piles.tsx counts on, so change both together. */
+/* Part B of the volumetric report: the site overview and the pile pages. Scoped to .vr-page-piles;
+   the tokens, band, footer, pile badges and their leaders come from volumetric.css. The heights
+   here are the budgets overview.tsx (the picture boxes) and pileCard.tsx (`CARD_FIXED`,
+   `chartHeightPx`) count on, so change both together. Nothing here clips a text: a name, a figure
+   or a note that needs a second line takes it, and the card's chart gives it the room. */
 .vr-page-piles {
-  --vr-b-ground: #f3f4f2;
-  --vr-chip-down-bg: #fbedec;
-  --vr-chip-down-ink: #b3261e;
-  --vr-chip-up-bg: #e5eefb;
-  --vr-chip-up-ink: #1f5fbf;
-  --vr-card-bg: #fdfefd;
-  background: var(--vr-b-ground);
+  --vr-chip-down-bg: var(--vr-down-soft);
+  --vr-chip-down-ink: var(--vr-down-ink);
+  --vr-chip-up-bg: var(--vr-up-soft);
+  --vr-chip-up-ink: var(--vr-up-ink);
 }
+/* the body: 252mm under 5mm of padding */
 .vr-page-piles .vr-body {
   display: flex;
   flex-direction: column;
   padding-top: 5mm;
 }
+.vr-page-piles h1,
 .vr-page-piles h2 {
   margin: 0;
+  text-transform: none;
 }
 
-/* ------------------------------------------------------------------ header (14.5mm) */
-.vr-piles-head {
+/* ------------------------------------------------------------------ overview: header (16.5mm) */
+.vr-ov-head {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 8mm;
-  height: 11mm;
+  min-height: 13mm;
   margin-bottom: 3.5mm;
 }
-.vr-piles-head h1 {
+.vr-ov-heading {
+  min-width: 0;
+}
+.vr-ov-head h1 {
   font-size: 14pt;
   font-weight: 600;
   line-height: 1.15;
   letter-spacing: -0.01em;
 }
-.vr-piles-site {
-  margin-top: 0.6mm;
+.vr-ov-site {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 5mm;
+  margin-top: 0.8mm;
   color: var(--vr-ink-2);
   font-size: 8.5pt;
 }
-.vr-piles-figures {
+.vr-ov-figures {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   flex-shrink: 0;
 }
-.vr-piles-total {
+.vr-ov-total {
   font-family: var(--vr-f-mono);
   font-size: 16pt;
   line-height: 1.1;
   letter-spacing: -0.02em;
+  white-space: nowrap;
 }
-.vr-piles-sub {
+.vr-ov-sub {
   display: flex;
-  gap: 2.5mm;
-  margin-top: 0.4mm;
+  gap: 4mm;
+  margin-top: 0.6mm;
+  font-family: var(--vr-f-mono);
   font-size: 8pt;
+  white-space: nowrap;
 }
-.vr-piles-tonnes {
+.vr-ov-tonnes {
   color: var(--vr-ink-2);
-  font-family: var(--vr-f-mono);
 }
-.vr-piles-change {
-  font-family: var(--vr-f-mono);
+.vr-ov-change {
+  display: inline-flex;
+  gap: 3mm;
   font-weight: 600;
 }
-.vr-piles-change.is-down {
+.vr-ov-change.is-down {
   color: var(--vr-chip-down-ink);
 }
-.vr-piles-change.is-up {
+.vr-ov-change.is-up {
   color: var(--vr-chip-up-ink);
 }
 
-/* ------------------------------------------------------------------ share of stock (13.5mm) */
+/* ------------------------------------------------------------------ overview: share of stock
+   Title 4.5, bar 5.5, the key under it (one line of 4.6, a second with many piles), 3.5 under. */
 .vr-share {
-  height: 10mm;
   margin-bottom: 3.5mm;
 }
-.vr-share h2 {
-  height: 3.4mm;
+.vr-page-piles .vr-share h2 {
   margin-bottom: 1.1mm;
   color: var(--vr-ink-2);
-  font-size: 7pt;
+  font-size: 7.5pt;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  line-height: 3.4mm;
 }
 .vr-share-bar {
   display: flex;
   height: 5.5mm;
-  overflow: hidden;
   border-radius: 1.2mm;
   background: #d9dcdb;
 }
 .vr-share-seg {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   min-width: 0;
   padding: 0 1.4mm;
-  overflow: hidden;
   color: var(--vr-ink);
+  font-family: var(--vr-f-mono);
   font-size: 6.5pt;
   font-weight: 600;
   white-space: nowrap;
+}
+.vr-share-seg:first-child {
+  border-radius: 1.2mm 0 0 1.2mm;
+}
+.vr-share-seg:last-child {
+  border-radius: 0 1.2mm 1.2mm 0;
+}
+.vr-share-seg:only-child {
+  border-radius: 1.2mm;
 }
 .vr-share-seg + .vr-share-seg {
   border-left: 0.4pt solid rgb(253 254 253 / 0.7);
@@ -134,52 +152,199 @@
 .vr-share-7 {
   background: #d3f3ea;
 }
-.vr-share-seg.is-others {
+.vr-share-seg.is-others,
+.vr-share-dot.is-others {
   background: #d9dcdb;
   color: var(--vr-ink-2);
 }
-
-/* ------------------------------------------------------------------ cards */
-.vr-cards {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2.6mm 4mm;
-}
-.vr-card {
-  padding: 2.6mm;
-  border-radius: 8px;
-  background: var(--vr-card-bg);
-  box-shadow:
-    0 0.2mm 0.5mm rgb(17 22 28 / 0.08),
-    0 0.8mm 2.4mm rgb(17 22 28 / 0.06);
-}
-.vr-card-head {
+/* the key names every segment, so the bar never needs a label that would not fit */
+.vr-share-key {
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.4mm 5mm;
+  margin: 1.4mm 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--vr-ink-2);
+  font-size: 7.5pt;
+  line-height: 4.2mm;
+}
+.vr-share-key li {
+  display: inline-flex;
   align-items: center;
-  height: 4.8mm;
-  margin-bottom: 1.6mm;
+  gap: 1.4mm;
 }
-.vr-card-head .vr-num {
-  margin-right: 1.8mm;
+.vr-share-dot {
+  flex-shrink: 0;
+  width: 2.4mm;
+  height: 2.4mm;
+  border-radius: 0.6mm;
 }
-.vr-card-name {
-  flex: 1;
-  min-width: 0;
+.vr-share-name {
+  color: var(--vr-ink);
+  font-weight: 500;
+}
+.vr-share-pct {
+  font-family: var(--vr-f-mono);
+}
+
+/* ------------------------------------------------------------------ overview: the pictures
+   Two rows of pictures (overview.tsx: 112 and 78, or 110 and 78), each with a 5mm caption,
+   3.5 between the rows: 203.5 of the 213 the header and the share bar leave. */
+.vr-ov-fig figcaption {
+  min-height: 5mm;
+  padding-top: 1.2mm;
+  color: var(--vr-ink-2);
+  font-size: 7.5pt;
+  line-height: 3.8mm;
+}
+.vr-ov-pair {
+  display: flex;
+  gap: 3mm;
+}
+.vr-ov > .vr-ov-fig + .vr-ov-pair,
+.vr-ov > .vr-ov-pair + .vr-ov-fig {
+  margin-top: 3.5mm;
+}
+.vr-ov-photo,
+.vr-ov-elev,
+.vr-ov-3d {
+  border-radius: 1mm;
+}
+/* the 3D site picture covers its box; what runs past the box is picture, never text */
+.vr-ov-3d {
   overflow: hidden;
-  font-size: 9pt;
+}
+.vr-ov-3d .vr-picture-inner {
+  flex-shrink: 0;
+}
+.vr-ov-photo img,
+.vr-ov-elev img,
+.vr-ov-3d img {
+  border-radius: 1mm;
+}
+
+/* ------------------------------------------------------------------ pile pages
+   Page heading 9mm, then two cards of 118mm with 2mm between them: 247 of the body's 252.
+   A card with one line of everything: padding 3, header 10.5, pictures 44.25 and their captions
+   7.2, the profile's margin and caption 6.6, the chart (pileCard.tsx: what is left, 25 to 40mm),
+   the figures 10.8, and 0.65 for the rules. Every extra line comes off the chart. */
+.vr-pile-page-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8mm;
+  min-height: 6.5mm;
+  margin-bottom: 2.5mm;
+}
+.vr-pile-page-head h1 {
+  font-size: 12pt;
   font-weight: 600;
-  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+.vr-pile-page-head span {
+  color: var(--vr-ink-2);
+  font-size: 8pt;
   white-space: nowrap;
 }
-.vr-chip {
+.vr-pile {
+  min-height: 118mm;
+  padding-top: 3mm;
+  border-top: 0.75pt solid var(--vr-ink);
+}
+.vr-pile + .vr-pile {
+  margin-top: 2mm;
+}
+
+/* the header: number, name, then the change over its date, the tonnes and the volume. The name
+   takes the room that is left and wraps; the figures never shrink, so nothing collides. */
+.vr-pile-head {
+  display: flex;
+  align-items: center;
+  gap: 4mm;
+  min-height: 8mm;
+  margin-bottom: 2.5mm;
+}
+.vr-pile-head .vr-num {
   flex-shrink: 0;
-  padding: 0.5mm 1.8mm;
+  min-width: 6mm;
+  height: 6mm;
+  margin-right: -1.6mm;
+  border-radius: 3mm;
+  font-size: 7.5pt;
+}
+.vr-page-piles .vr-pile-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13pt;
+  font-weight: 600;
+  line-height: 5.1mm;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.vr-pile-material {
+  margin-left: 2.5mm;
+  color: var(--vr-ink-2);
+  font-size: 8pt;
+  font-weight: 400;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.vr-pile-figures {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5mm;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.vr-pile-volume {
+  font-family: var(--vr-f-mono);
+  font-size: 16pt;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.vr-pile.is-below-base .vr-pile-volume {
+  color: var(--vr-down-ink);
+}
+.vr-pile-volume.is-none {
+  color: var(--vr-ink-3);
+  font-family: var(--vr-f-ui);
+  font-size: 12pt;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.vr-pile-tonnes {
+  color: var(--vr-ink-2);
+  font-family: var(--vr-f-mono);
+  font-size: 10pt;
+}
+/* the change badge with its date under it: one block, so the two never run into the volume */
+.vr-pile-change {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5mm;
+}
+.vr-pile-since {
+  color: var(--vr-ink-3);
+  font-size: 7pt;
+  line-height: 2.8mm;
+}
+.vr-chip {
+  display: inline-flex;
+  gap: 2.4mm;
+  padding: 0.5mm 2mm;
   border-radius: 99px;
   background: var(--vr-quiet-soft);
   color: var(--vr-ink-2);
   font-family: var(--vr-f-mono);
-  font-size: 7pt;
+  font-size: 7.5pt;
   font-weight: 600;
+  line-height: 3.2mm;
+}
+.vr-chip-pct {
+  font-weight: 500;
 }
 .vr-chip.is-down {
   background: var(--vr-chip-down-bg);
@@ -190,189 +355,240 @@
   color: var(--vr-chip-up-ink);
 }
 
-.vr-crops {
+/* a line under the header (4.2mm each): the surface below the base, no 3D picture */
+.vr-page .vr-pile-flag {
+  margin: -1.2mm 0 1.2mm;
+  color: var(--vr-ink-2);
+  font-size: 8pt;
+  line-height: 4.2mm;
+}
+.vr-pile-flag[data-flag='below-base'] {
+  color: var(--vr-down-ink);
+  font-weight: 500;
+}
+
+/* pictures: three across, 4:3 as they are taken; a caption has two lines of room */
+.vr-pile-pics {
   display: flex;
-  gap: 2mm;
+  gap: 2.5mm;
 }
-.vr-crop {
-  width: 40mm;
+.vr-pile-pic {
+  width: 59mm;
 }
-.vr-crop-box {
+.vr-pile-pic-box {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40mm;
+  width: 59mm;
+  height: 44.25mm;
   overflow: hidden;
   border-radius: 1mm;
   background: var(--vr-quiet-soft);
 }
-.vr-crop.is-empty .vr-crop-box {
-  border: 0.75pt dashed var(--vr-rule);
-}
-.vr-crop.is-empty .vr-photo-none {
-  font-size: 7pt;
-}
-.vr-crop-sq {
-  position: absolute;
-  left: 0;
-  width: 40mm;
-  height: 40mm;
-  overflow: hidden;
-}
-.vr-crop-sq img {
-  position: absolute;
-  display: block;
-  max-width: none;
-  height: auto;
-}
-.vr-crop-box img.is-file {
+.vr-pile-pic-box img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-.vr-crop figcaption {
-  height: 3.2mm;
-  margin-top: 0.8mm;
-  color: var(--vr-ink-3);
-  font-family: var(--vr-f-mono);
-  font-size: 6.5pt;
-  line-height: 3.2mm;
-  white-space: nowrap;
+/* a pile past the pictures' cap: its place on the site photo, placed by pileCard.tsx */
+.vr-pile-pic-box img.is-crop {
+  position: absolute;
+  height: auto;
+  max-width: none;
+  object-fit: fill;
 }
-.vr-crop.is-latest figcaption {
+.vr-pile-pic.is-empty .vr-pile-pic-box {
+  border: 0.75pt dashed var(--vr-rule);
+}
+.vr-pile-pic.is-empty .vr-photo-none {
+  padding: 0 4mm;
+  font-size: 7.5pt;
+  text-align: center;
+}
+.vr-pile-pic figcaption {
+  min-height: 7.2mm;
+  padding-top: 1mm;
+  color: var(--vr-ink-2);
+  font-size: 7pt;
+  line-height: 3.1mm;
+}
+.vr-pile-over {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.vr-pile-ring-halo {
+  fill: none;
+  stroke: rgb(17 22 28 / 0.55);
+  stroke-linejoin: round;
+}
+.vr-pile-ring {
+  fill: rgb(94 209 179 / 0.1);
+  stroke: var(--vr-mint);
+  stroke-linejoin: round;
+}
+.vr-pile-axis-halo {
+  stroke: rgb(17 22 28 / 0.45);
+  stroke-linecap: round;
+}
+.vr-pile-axis {
+  stroke: #fdfefe;
+}
+.vr-pile-end circle {
+  fill: var(--vr-ink);
+  stroke: #fdfefe;
+}
+.vr-pile-end text {
+  fill: var(--vr-on-dark);
+  font-family: var(--vr-f-mono);
+  font-weight: 600;
+  text-anchor: middle;
+}
+
+/* the profile: the app's own chart, set on paper. Its tokens are mapped to the report's, and the
+   few rules a static chart needs are restated here so the page does not lean on the app's. */
+.vr-page .vr-pile-profile {
+  margin-top: 2mm;
+}
+.vr-pile-profile figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0 6mm;
+  min-height: 4.6mm;
+  font-size: 7pt;
+  line-height: 3.6mm;
+}
+.vr-pile-profile-title {
   color: var(--vr-ink);
   font-weight: 600;
 }
-
-.vr-stats {
-  display: grid;
-  /* tonnes, footprint and peak are figures; the base is words and takes the wider column */
-  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.6fr);
-  gap: 2mm;
-  height: 6.4mm;
-  margin: 1.6mm 0 0;
-  padding-top: 1.2mm;
-  border-top: 0.5pt solid var(--vr-rule);
-}
-.vr-stat {
-  min-width: 0;
-}
-.vr-stat-label {
-  overflow: hidden;
-  color: var(--vr-ink-3);
-  font-size: 5.8pt;
-  line-height: 2.2mm;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.vr-stat-value {
-  margin: 0;
-  font-family: var(--vr-f-mono);
-  font-size: 8.5pt;
-  line-height: 3mm;
-}
-.vr-stat-base .vr-stat-value {
-  overflow: hidden;
-  font-family: inherit;
-  font-size: 7.5pt;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.vr-card-note {
-  height: 3.8mm;
-  padding-top: 1mm;
-  overflow: hidden;
-  color: var(--vr-ink-2);
-  font-size: 7pt;
-  font-style: italic;
-  line-height: 2.8mm;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ------------------------------------------------------------------ smaller piles */
-.vr-smaller {
-  margin-top: 3mm;
-  padding: 2.6mm 3.5mm;
-  border-radius: 8px;
-  background: var(--vr-card-bg);
-  box-shadow: 0 0.2mm 0.5mm rgb(17 22 28 / 0.08);
-}
-.vr-continued + .vr-smaller {
-  margin-top: 0;
-}
-.vr-smaller h2 {
+.vr-pile-key {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 4mm;
-  margin-bottom: 1.2mm;
-  font-size: 8pt;
-  font-weight: 600;
+  flex-wrap: wrap;
+  gap: 0 4.5mm;
+  color: var(--vr-ink-2);
 }
-.vr-smaller-key {
+.vr-pile-key-item {
   display: inline-flex;
   align-items: center;
-  gap: 1.2mm;
-  color: var(--vr-ink-3);
-  font-size: 6.5pt;
-  font-weight: 400;
+  gap: 1.4mm;
 }
-.vr-smaller-list {
-  display: grid;
-  grid-auto-flow: column;
-  grid-template-columns: 1fr 1fr;
-  column-gap: 8mm;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.vr-pile-key-item::before {
+  content: '';
+  width: 5mm;
+  border-top: 1.5pt solid var(--vr-ink);
 }
-.vr-smaller-row {
+.vr-pile-key-item.is-earlier::before {
+  border-top: 1.1pt solid var(--vr-ink-3);
+}
+.vr-pile-key-item.is-base::before {
+  border-top: 1.3pt dotted var(--vr-teal);
+}
+.vr-pile-profile .pc {
+  --chart-current: var(--vr-ink);
+  --chart-earlier: var(--vr-ink-3);
+  --chart-base: var(--vr-teal);
+  --chart-design: var(--vr-ink-2);
+  --chart-grid: var(--vr-rule);
+  --fill-a: var(--vr-mint-soft);
+  --cut-a: var(--vr-down-soft);
+  --fg-2: var(--vr-ink-2);
+  --fg-3: var(--vr-ink-3);
+  --f-mono: var(--vr-f-mono);
+  --t-11: 7pt;
+
+  display: block;
+  width: 182mm;
+}
+.vr-pile-profile .pc-plot {
+  position: relative;
+  border-radius: 0;
+}
+.vr-pile-profile .pc-svg {
+  display: block;
+  overflow: visible;
+}
+.vr-pile-profile .pc-grid line {
+  stroke: var(--vr-rule);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+.vr-pile-profile .pc-grid text {
+  fill: var(--vr-ink-3);
+  font-family: var(--vr-f-mono);
+  font-size: 7pt;
+}
+.vr-pile-profile .pc-axis-title,
+.vr-pile-profile .pc-axis-note {
+  fill: var(--vr-ink-3);
+  font-family: var(--vr-f-ui);
+  font-size: 7pt;
+}
+.vr-pile-profile .pc-direction {
+  fill: var(--vr-ink-2);
+}
+.vr-pile-profile .pc-fill {
+  fill: var(--vr-mint-soft);
+}
+.vr-pile-profile .pc-cut {
+  fill: var(--vr-down-soft);
+}
+/* the section's cut and fill areas along the line are the app's working figures, not the report's */
+.vr-pile-profile .pc-foot {
+  display: none;
+}
+.vr-pile-profile-none {
   display: flex;
   align-items: center;
-  gap: 1.6mm;
-  height: 3.4mm;
-  border-bottom: 0.4pt solid var(--vr-rule);
-  font-size: 7.5pt;
-}
-.vr-smaller-no {
-  width: 4.5mm;
+  justify-content: center;
+  margin: 0;
+  padding: 0 6mm;
+  border: 0.75pt dashed var(--vr-rule);
+  border-radius: 1mm;
   color: var(--vr-ink-3);
-  font-family: var(--vr-f-mono);
-  font-size: 6.5pt;
+  font-size: 8pt;
+  text-align: center;
 }
-.vr-smaller-name {
-  flex: 1;
+
+/* the six figures (10.8mm with one line each); a long value wraps, it is never cut */
+.vr-pile-stats {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 1.3fr 1fr 1fr 1fr;
+  gap: 4mm;
+  margin: 2mm 0 0;
+  padding-top: 1.6mm;
+  border-top: 0.5pt solid var(--vr-rule);
+}
+.vr-pile-stat {
   min-width: 0;
-  overflow: hidden;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.vr-smaller-m3,
-.vr-smaller-change {
-  font-family: var(--vr-f-mono);
-  text-align: right;
-}
-.vr-smaller-m3 {
-  width: 20mm;
-}
-.vr-smaller-change {
-  width: 14mm;
+.vr-pile-stat dt {
   color: var(--vr-ink-3);
+  font-size: 6.5pt;
+  line-height: 2.8mm;
 }
-.vr-smaller-change.is-down {
-  color: var(--vr-chip-down-ink);
+.vr-pile-stat dd {
+  margin: 0;
+  font-size: 9pt;
+  font-weight: 500;
+  line-height: 4.4mm;
+  overflow-wrap: anywhere;
 }
-.vr-smaller-change.is-up {
-  color: var(--vr-chip-up-ink);
+.vr-pile-stat dd.is-quiet {
+  color: var(--vr-ink-3);
+  font-weight: 400;
 }
-.vr-note-mark {
-  flex-shrink: 0;
-  width: 1.6mm;
-  height: 1.6mm;
-  border-radius: 50%;
-  background: var(--vr-teal);
+
+/* the person's note: whole, on as many lines as it needs (3.4mm each) */
+.vr-page .vr-pile-note {
+  margin-top: 1mm;
+  color: var(--vr-ink-2);
+  font-size: 7.5pt;
+  line-height: 3.4mm;
+  overflow-wrap: anywhere;
 }

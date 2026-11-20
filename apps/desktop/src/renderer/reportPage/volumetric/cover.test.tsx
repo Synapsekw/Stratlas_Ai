@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
 // Page A of the volumetric report (cover and summary) on a synthetic 14-pile, two-date yard with
 // fictional pile names: the band and title block, the KPI tiles, "In short", the ranked table with
-// its diverging bars, the method note, the footer, the orthophoto with its markers, and the
-// "A, continued" page the page plan gives for the rows past the twelfth.
+// its diverging bars, the footer, the orthophoto with its markers, and the "A, continued" page
+// the page plan gives for the rows past the twelfth; then a yard where some piles have no volume
+// (every pile listed, "Not computed"), the overlap notice, and long texts printed whole.
 import { brand } from '@aio/brand';
 import {
   formatVolumeM3,
   inShortSentence,
   methodNote,
   pagePlan,
+  volumetricModel as modelOf,
   volumetricModel,
   type VolumetricInput,
   type VolumetricModel,
@@ -16,10 +18,12 @@ import {
 } from '@aio/project/export';
 import type { ReportViewsFrame } from '@aio/schema';
 import { t } from '@aio/ui';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { NO_VIEWS, reportViews, type ResolvedText } from '../types/template';
-import { CoverPage } from './cover';
+import { CoverPage, leadHeightMm } from './cover';
 
 const FRAME: ReportViewsFrame = {
   schema: 'aio.report-views/1',
@@ -199,13 +203,10 @@ describe('page A, the cover and summary', () => {
     const rows = [...d.querySelectorAll('.vr-table tbody tr')];
     expect(rows[0]?.querySelector('.vr-col-base')?.textContent).toBe('Previous survey');
     expect(rows[1]?.querySelector('.vr-col-base')?.textContent).toBe('Lowest point on the outline');
-    // mixed bases: the method note points at the table
-    expect(text(d, '.vr-method')).toContain(t('vreport.method.basePerPile'));
   });
 
-  it('prints the method note and the footer with the page number', () => {
+  it('prints the footer with the credit and the page number, and no method note on the cover', () => {
     const d = render(model);
-    expect(text(d, '.vr-method')).toContain(methodNote(model, t));
     expect(text(d, '.vr-foot-by')).toBe(`Prepared with ${brand.productName} · Page 1`);
     expect(d.querySelector('.vr-foot img.vr-symbol')).not.toBeNull();
     const by = render(model, {
@@ -215,7 +216,20 @@ describe('page A, the cover and summary', () => {
     expect(text(by, '.vr-foot-by')).toBe(
       `Prepared by Survey Co with ${brand.productName} · Page 1`,
     );
-    expect(text(by, '.vr-method')).toContain('By hand.');
+    // the method note left the cover: it closes the report's last page (D12)
+    expect(d.querySelector('.vr-method')).toBeNull();
+    expect(by.querySelector('.vr-method')).toBeNull();
+    expect(d.body.textContent).not.toContain(methodNote(model, t));
+  });
+
+  it('closes with the method note when the cover is the only page', () => {
+    const alone = modelOf(
+      input({ piles: piles(true).slice(0, 3), pages: { piles: false, change: false } }),
+    );
+    expect(pagePlan(alone)).toHaveLength(1);
+    const d = render(alone);
+    expect(text(d, '.vr-last .vr-method p')).toBe(methodNote(alone, t));
+    expect(d.querySelector('.vr-foot .vr-method')).toBeNull();
   });
 
   it('shows the latest orthophoto with numbered markers placed through the frame', () => {
@@ -239,6 +253,13 @@ describe('page A, the cover and summary', () => {
     expect(text(d, '.vr-photo-none')).toBe(t('vreport.pictures.placeholder'));
   });
 
+  it('keeps badges apart: the pile name and its number never share a box', () => {
+    const d = render(model);
+    const cell = d.querySelector('.vr-table tbody td.vr-col-pile .vr-pile-cell');
+    expect(cell?.querySelector('.vr-num')?.textContent).toBe('01');
+    expect(cell?.querySelector('.vr-pile-name')?.textContent).toBe('P01');
+  });
+
   it('continues the table on "A, continued" with the rest of the rows', () => {
     const plan = pagePlan(model);
     expect(plan[1]).toMatchObject({ page: 'cover', continued: true, from: 12, to: 14 });
@@ -249,5 +270,167 @@ describe('page A, the cover and summary', () => {
     const rows = [...d.querySelectorAll('.vr-table tbody tr')];
     expect(rows.map((r) => r.querySelector('.vr-num')?.textContent)).toEqual(['13', '14']);
     expect(text(d, '.vr-foot-by')).toContain('Page 2');
+  });
+});
+
+/** Eight piles, three with a volume: Heap 1 to Heap 3; Heap 4 to Heap 8 were never computed. */
+function mixed(): VolumetricPileInput[] {
+  return Array.from({ length: 8 }, (_, i) => {
+    const k = i + 1;
+    const computed = k <= 3;
+    const date = (capture: string, volumeM3: number | null) => ({
+      capture,
+      volumeM3,
+      densityTPerM3: null,
+      areaM2: 400,
+      peakM: computed ? 5 : null,
+      plusMinusM3: null,
+      outline: square(100 * k, 400, 10),
+    });
+    return {
+      id: `m${String(k)}`,
+      label: `Heap ${String(k)}`,
+      material: null,
+      base: computed ? 'Lowest point' : '',
+      dates: [
+        date('c1', computed ? 1000 * (9 - k) + 50 : null),
+        date('c2', computed ? 1000 * (9 - k) : null),
+      ],
+    };
+  });
+}
+
+describe('page A, piles without a volume', () => {
+  const model = volumetricModel(input({ piles: mixed() }));
+  const d = render(model);
+
+  it('says how many piles there are and how many are measured', () => {
+    expect(text(d, '.vr-title-meta')).toContain('8 piles, 3 measured');
+    expect(text(d, '.vr-title-meta')).not.toContain('8 piles8');
+  });
+
+  it('lists every pile: five rows read "Not computed" across the figure columns', () => {
+    const rows = [...d.querySelectorAll('.vr-table tbody tr')];
+    expect(rows).toHaveLength(8);
+    expect(rows.map((r) => r.querySelector('.vr-pile-name')?.textContent)).toEqual(
+      Array.from({ length: 8 }, (_, i) => `Heap ${String(i + 1)}`),
+    );
+    const none = rows.filter((r) => r.classList.contains('is-uncomputed'));
+    expect(none).toHaveLength(5);
+    for (const r of none) {
+      const cell = r.querySelector('td.vr-col-none');
+      expect(cell?.textContent).toBe(t('vreport.notComputed'));
+      // previous, latest, tonnes, peak and change
+      expect(cell?.getAttribute('colspan')).toBe('5');
+      expect(r.querySelectorAll('td')).toHaveLength(3);
+      expect(r.querySelector('.vr-col-base')?.textContent).toBe(t('vreport.pile.baseNotSet'));
+    }
+    expect(rows[0]?.querySelector('.vr-col-none')).toBeNull();
+    expect(rows[0]?.textContent).toContain('8,000');
+  });
+
+  it('spans three columns with one date', () => {
+    const one = volumetricModel(
+      input({ piles: mixed(), captures: [{ id: 'c2', label: 'Survey 2', date: '2026-10-01' }] }),
+    );
+    expect(render(one).querySelector('td.vr-col-none')?.getAttribute('colspan')).toBe('3');
+  });
+});
+
+describe('page A, the overlap notice', () => {
+  it('is absent without overlaps', () => {
+    expect(render(volumetricModel(input())).querySelector('.vr-notice')).toBeNull();
+  });
+
+  it('names both piles of one overlapping pair, under the table', () => {
+    const model = volumetricModel(
+      input({ piles: piles(true).slice(0, 4), overlaps: [{ a: 'm3', b: 'm1' }] }),
+    );
+    const d = render(model);
+    const notice = d.querySelector('.vr-table + .vr-notice');
+    expect(notice?.textContent).toBe(t('vreport.overlap.warning', { a: '01P01', b: '03P03' }));
+    expect([...(notice?.querySelectorAll('.vr-num') ?? [])].map((n) => n.textContent)).toEqual([
+      '01',
+      '03',
+    ]);
+    expect(notice?.textContent).toContain('may count the same material twice');
+  });
+
+  it('lists several pairs in one sentence', () => {
+    const model = volumetricModel(
+      input({
+        piles: piles(true).slice(0, 4),
+        overlaps: [
+          { a: 'm1', b: 'm2' },
+          { a: 'm3', b: 'm4' },
+        ],
+      }),
+    );
+    const notice = render(model).querySelector('.vr-notice');
+    const pair = (a: string, b: string) => t('vreport.overlap.pair', { a, b });
+    expect(notice?.textContent).toBe(
+      t('vreport.overlap.warningMany', {
+        pairs: `${pair('01P01', '02P02')}; ${pair('03P03', '04P04')}`,
+      }),
+    );
+  });
+
+  it('stands on the page that ends the table', () => {
+    const model = volumetricModel(input({ overlaps: [{ a: 'm1', b: 'm2' }] }));
+    expect(render(model).querySelector('.vr-notice')).toBeNull();
+    expect(render(model, NONE, views, 1).querySelector('.vr-notice')).not.toBeNull();
+  });
+});
+
+describe('page A, long texts', () => {
+  const model = volumetricModel(input());
+  const long = 'Stock moved between the bays this month, and the north bay was cleared. '
+    .repeat(9)
+    .slice(0, 599)
+    .concat('.');
+
+  it('prints a 600 character summary whole', () => {
+    expect(long).toHaveLength(600);
+    const d = render(model, { parts: { summary: long, intro: long.slice(0, 300) }, pileNotes: {} });
+    expect(text(d, '.vr-short p')).toBe(long);
+    expect(text(d, '.vr-intro')).toBe(long.slice(0, 300).trim());
+  });
+
+  it('makes the room for it by counts: the photo row gives up height, never under its least', () => {
+    const base = { introChars: 0, noticeChars: 0, rows: 12 };
+    expect(leadHeightMm({ ...base, summaryChars: 120 })).toBe(80);
+    const tight = leadHeightMm({ ...base, summaryChars: 600 });
+    expect(tight).toBeLessThan(80);
+    expect(tight).toBeGreaterThanOrEqual(46);
+    expect(leadHeightMm({ ...base, summaryChars: 600, introChars: 600, noticeChars: 300 })).toBe(
+      46,
+    );
+    // fewer rows leave the room without touching the photo
+    expect(leadHeightMm({ ...base, rows: 3, summaryChars: 600 })).toBe(80);
+    const d = render(model, { parts: { summary: long }, pileNotes: {} });
+    expect(d.querySelector<HTMLElement>('.vr-lead')?.style.height).toBe(`${String(tight)}mm`);
+    expect(d.querySelector<HTMLElement>('.vr-photo')?.style.height).toBe(`${String(tight)}mm`);
+  });
+
+  it('has no clip or clamp on a text box in the stylesheet', () => {
+    const css = readFileSync(resolve(__dirname, 'volumetric.css'), 'utf8');
+    const rule = (selector: string) => {
+      const at = css.indexOf(`\n${selector} {`);
+      if (at < 0) throw new Error(`no rule for ${selector}`);
+      return css.slice(at, css.indexOf('}', at));
+    };
+    for (const selector of [
+      '.vr-short',
+      '.vr-short p',
+      '.vr-page .vr-intro',
+      '.vr-page .vr-notice',
+      '.vr-last p',
+    ]) {
+      const body = rule(selector);
+      expect(body, selector).not.toMatch(/overflow:\s*hidden|text-overflow|line-clamp|max-height/);
+      expect(body, selector).not.toMatch(/white-space:\s*nowrap/);
+      expect(body, selector).not.toMatch(/\n {2}height:/);
+    }
+    expect(css).not.toMatch(/text-overflow|line-clamp/);
   });
 });

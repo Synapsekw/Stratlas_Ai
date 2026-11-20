@@ -5,8 +5,10 @@
 // app's own legend and a plain-words key with the deadband; then the change in each pile as a
 // diverging bar chart from the largest drawdown to the largest growth (`changeOrder`). Change is
 // each pile's volume difference (founder): the heat map is a picture of where the ground moved,
-// its numbers are not printed. Bars past the 24th continue on "C, continued" pages (`pagePlan`);
-// the closing remarks print at the foot of the last printed page.
+// its numbers are not printed. Bars past the 24th continue on "C, continued" pages (`pagePlan`).
+// Every bar has a row of real height: with many piles the pictures give the rows their room, by
+// counts (`changeLayout`). The report's last printed page closes with the closing remarks and the
+// method note, once (`LastBlocks`); the footer carries neither.
 import type { VolumetricModel, VolumetricPile } from '@aio/project/export';
 import type { HeatmapStyle, ReportViewsFrame } from '@aio/schema';
 import { t } from '@aio/ui';
@@ -14,14 +16,72 @@ import type { ReactElement } from 'react';
 import { HeatLegendView, LEGEND_RANGE_M } from '../../survey/heatLegendView';
 import { CUT_FILL_DEFAULT_M } from '../../survey/volumes/cutFill';
 import type { PageComponent, PageContext } from '../types/template';
-import { dateText, Page, signed, SitePicture, volumetricTexts } from './chrome';
+import {
+  dateText,
+  LastBlocks,
+  lastBlocksMm,
+  Page,
+  signed,
+  SitePicture,
+  volumetricTexts,
+} from './chrome';
 import './change.css';
 
-/** The boxes of the pictures on page C, mm. */
+/** The boxes of the pictures on page C, mm: their widths, their full heights and their least. */
 const PAIR_W = 89;
 const PAIR_H = 50;
+const PAIR_MIN = 34;
 const HEAT_W = 112;
 const HEAT_H = 78;
+const HEAT_MIN = 46;
+/** A bar's row at its full height and at its least, mm. */
+const ROW_H = 5.6;
+const ROW_MIN = 3.6;
+/** Page C's body, and what its headings, captions and texts take beside the pictures and rows. */
+const BODY_H = 250;
+const FIXED_H = 76;
+const CONTINUED_FIXED_H = 18;
+
+export interface ChangeLayout {
+  pairH: number;
+  heatH: number;
+  rowH: number;
+}
+
+const tenth = (v: number) => Math.round(v * 10) / 10;
+
+/**
+ * Page C by counts (never measured): every bar gets a row of 5.6 mm while the page has the room.
+ * With more bars the cut and fill picture gives up height first, then the before and after
+ * photos, and only then the rows close up, never under 3.6 mm. `lastMm` is the closing block of
+ * the report's last page. A continued page has only its rows.
+ */
+export function changeLayout(c: {
+  rows: number;
+  continued: boolean;
+  lastMm?: number;
+}): ChangeLayout {
+  const lastMm = c.lastMm ?? 0;
+  const rows = Math.max(1, c.rows);
+  if (c.continued) {
+    const room = BODY_H - CONTINUED_FIXED_H - lastMm;
+    return {
+      pairH: 0,
+      heatH: 0,
+      rowH: tenth(Math.min(ROW_H, Math.max(ROW_MIN, room / rows))),
+    };
+  }
+  let short = PAIR_H + HEAT_H + rows * ROW_H - (BODY_H - FIXED_H - lastMm);
+  const give = (most: number) => {
+    const g = Math.min(most, Math.max(0, short));
+    short -= g;
+    return g;
+  };
+  const heatH = HEAT_H - give(HEAT_H - HEAT_MIN);
+  const pairH = PAIR_H - give(PAIR_H - PAIR_MIN);
+  const rowH = Math.max(ROW_MIN, ROW_H - Math.max(0, short) / rows);
+  return { pairH: tenth(pairH), heatH: tenth(heatH), rowH: tenth(rowH) };
+}
 
 /**
  * The cut and fill settings the pictures were taken with, when the capture saved them on the
@@ -73,13 +133,15 @@ function Head({ model }: { model: VolumetricModel }): ReactElement {
 function ChangeChart({
   model,
   rows,
+  rowH,
 }: {
   model: VolumetricModel;
   rows: readonly VolumetricPile[];
+  rowH: number;
 }): ReactElement {
   const most = Math.max(0, ...model.piles.map((p) => Math.abs(p.changeM3 ?? 0)));
   return (
-    <div className="vr-c-chart">
+    <div className="vr-c-chart" data-row-mm={rowH}>
       <div className="vr-c-axis" aria-hidden="true">
         <span />
         <span className="vr-c-axis-hint">
@@ -92,10 +154,15 @@ function ChangeChart({
         const c = p.changeM3;
         const width = c !== null && most > 0 ? (Math.abs(c) / most) * 50 : 0;
         return (
-          <div className="vr-c-row" key={p.id} data-pile={p.id}>
+          <div
+            className="vr-c-row"
+            key={p.id}
+            data-pile={p.id}
+            style={{ minHeight: `${String(rowH)}mm` }}
+          >
             <span className="vr-c-name">
               <span className="vr-num">{p.tag}</span>
-              <span>{p.label}</span>
+              <span className="vr-c-label">{p.label}</span>
             </span>
             <span className="vr-c-bar">
               {c !== null && c !== 0 ? (
@@ -124,19 +191,18 @@ export function ChangePage({
     .slice(page.from, page.to)
     .map((id) => byId.get(id))
     .filter((p): p is VolumetricPile => p !== undefined);
-  const method = t('vreport.change.heatNote');
-  const closing =
-    texts.closing && page.number === total ? (
-      <div className="vr-c-closing">
-        <h2>{t('vreport.change.closing')}</h2>
-        <p>{texts.closing}</p>
-      </div>
-    ) : null;
+  const last = page.number === total;
+  const closing = <LastBlocks texts={texts} last={last} />;
+  const layout = changeLayout({
+    rows: rows.length,
+    continued: page.continued,
+    lastMm: lastBlocksMm(texts, last),
+  });
   if (page.continued)
     return (
-      <Page kind="change" number={page.number} by={texts.preparedBy} method={method}>
+      <Page kind="change" number={page.number} by={texts.preparedBy}>
         <h2 className="vr-continued">{t('vreport.page.changeContinued')}</h2>
-        <ChangeChart model={model} rows={rows} />
+        <ChangeChart model={model} rows={rows} rowH={layout.rowH} />
         {closing}
       </Page>
     );
@@ -146,7 +212,7 @@ export function ChangePage({
   const cf = frameCutFill(frame);
   const deadband = cf.thresholdM.toFixed(2);
   return (
-    <Page kind="change" number={page.number} by={texts.preparedBy} method={method}>
+    <Page kind="change" number={page.number} by={texts.preparedBy}>
       <Head model={model} />
       <div className="vr-c-pair">
         {[
@@ -160,7 +226,7 @@ export function ChangePage({
               frame={frame}
               piles={model.piles}
               boxW={PAIR_W}
-              boxH={PAIR_H}
+              boxH={layout.pairH}
             />
             <figcaption>{t(key, { date: cap ? dateText(cap.date) : '' })}</figcaption>
           </figure>
@@ -182,7 +248,7 @@ export function ChangePage({
             frame={frame}
             piles={model.piles}
             boxW={HEAT_W}
-            boxH={HEAT_H}
+            boxH={layout.heatH}
           />
           <div className="vr-c-key">
             <h3>{t('vreport.key.title')}</h3>
@@ -205,7 +271,7 @@ export function ChangePage({
       </section>
       <section className="vr-c-piles">
         <h2>{t('vreport.change.chart')}</h2>
-        <ChangeChart model={model} rows={rows} />
+        <ChangeChart model={model} rows={rows} rowH={layout.rowH} />
       </section>
       {closing}
     </Page>

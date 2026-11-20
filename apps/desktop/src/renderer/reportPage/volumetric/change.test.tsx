@@ -3,9 +3,10 @@
 // fictional pile names: the header with the date pair and the Before / After / Change key, the
 // before and after orthophotos on the same frame, the cut and fill picture with the app's legend,
 // the plain-words key with the deadband and the pile markers, the change chart sorted from the
-// largest drawdown, the "C, continued" page, the closing remarks on the last printed page, and C
-// left out with one date.
+// largest drawdown with rows of real height, the "C, continued" page, the closing remarks and the
+// method note on the last printed page only (none in the footer), and C left out with one date.
 import {
+  methodNote,
   pagePlan,
   volumetricModel,
   type VolumetricInput,
@@ -18,7 +19,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { volumetricTemplate } from '../types';
 import { NO_VIEWS, reportViews, type ResolvedText } from '../types/template';
-import { ChangePage, volumetricPage } from './change';
+import { ChangePage, changeLayout, volumetricPage } from './change';
 import { dateText, signed } from './chrome';
 
 const FRAME: ReportViewsFrame = {
@@ -191,9 +192,49 @@ describe('page C, what changed', () => {
     expect(hints).toEqual([t('vreport.change.axisLess'), t('vreport.change.axisMore')]);
   });
 
-  it('prints the change method note in the footer', () => {
+  it('prints the method block once, on the last page only, and none in any footer', () => {
+    const first = render(model, NONE, views, 0);
+    const last = render(model, NONE, views, 1);
+    expect(first.querySelector('.vr-method')).toBeNull();
+    expect(text(last, '.vr-last .vr-method h2')).toBe(t('vreport.method.title'));
+    expect(text(last, '.vr-last .vr-method p')).toBe(methodNote(model, t));
+    for (const d of [first, last]) {
+      expect(d.querySelector('.vr-foot .vr-method')).toBeNull();
+      expect(d.querySelector('.vr-foot')?.textContent).not.toContain(t('vreport.method.title'));
+      expect(d.querySelector('.vr-foot')?.textContent).not.toContain(t('vreport.change.heatNote'));
+    }
+    // the person's method text is the one printed
+    const own = render(model, { parts: { method: 'By hand.' }, pileNotes: {} }, views, 1);
+    expect(text(own, '.vr-last .vr-method p')).toBe('By hand.');
+    // across the whole report: one method block
+    const pages = volumetricTemplate.render(model, NONE, views);
+    const html = pages.map((pg) => renderToStaticMarkup(pg.element)).join('');
+    expect(html.split('class="vr-method"')).toHaveLength(2);
+  });
+
+  it('gives every bar a row of real height, by counts', () => {
+    // a few piles: full rows and full pictures
+    expect(changeLayout({ rows: 3, continued: false })).toEqual({
+      pairH: 50,
+      heatH: 78,
+      rowH: 5.6,
+    });
+    // a full first page: the pictures give up height before the rows close up
+    const full = changeLayout({ rows: 24, continued: false });
+    expect(full.heatH).toBe(46);
+    expect(full.pairH).toBe(34);
+    expect(full.rowH).toBeGreaterThanOrEqual(3.6);
+    expect(full.rowH).toBeLessThan(5.6);
+    expect(changeLayout({ rows: 40, continued: true }).rowH).toBe(5.6);
+    expect(changeLayout({ rows: 40, continued: true, lastMm: 60 }).rowH).toBeLessThan(5.6);
     const d = render(model);
-    expect(text(d, '.vr-method')).toContain(t('vreport.change.heatNote'));
+    const row = d.querySelector<HTMLElement>('.vr-c-row');
+    expect(row?.style.minHeight).toBe(`${String(full.rowH)}mm`);
+    // the name and its number each have their own box, so neither is squeezed
+    expect(row?.querySelector('.vr-c-name .vr-num')?.textContent).toBe('29');
+    expect(row?.querySelector('.vr-c-name .vr-c-label')?.textContent).toBe('P29');
+    const few = render(volumetricModel(input({}, 3)));
+    expect(few.querySelector<HTMLElement>('.vr-c-row')?.style.minHeight).toBe('5.6mm');
   });
 
   it('continues the chart on "C, continued" with the rest of the piles', () => {
@@ -207,9 +248,9 @@ describe('page C, what changed', () => {
 
   it('prints the closing remarks only on the last printed page', () => {
     const closing: ResolvedText = { parts: { closing: 'Thank you.' }, pileNotes: {} };
-    expect(text(render(model, closing, views, 0), '.vr-c-closing')).toBe('');
-    expect(text(render(model, closing, views, 1), '.vr-c-closing')).toContain('Thank you.');
-    expect(render(model, NONE, views, 1).querySelector('.vr-c-closing')).toBeNull();
+    expect(text(render(model, closing, views, 0), '.vr-closing')).toBe('');
+    expect(text(render(model, closing, views, 1), '.vr-closing')).toContain('Thank you.');
+    expect(render(model, NONE, views, 1).querySelector('.vr-closing')).toBeNull();
   });
 
   it('shows placeholders without pictures', () => {

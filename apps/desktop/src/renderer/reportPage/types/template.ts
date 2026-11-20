@@ -23,6 +23,15 @@ export interface ResolvedText {
   pileNotes: Readonly<Record<string, string>>;
 }
 
+/** Ground a picture covers: [e0, n0, e1, n1] in the project CRS. */
+export type Extent = readonly [number, number, number, number];
+
+/** One picture of a pile: its URL and, for a photo, the ground it covers. */
+export interface PilePicture {
+  src: string;
+  extent: Extent | null;
+}
+
 /** The report's saved pictures, as the page can show them. */
 export interface ReportViews {
   /** The pictures' framing (`frame.json`), or null when none are taken yet. */
@@ -32,6 +41,12 @@ export interface ReportViews {
    * or null when the frame has no such picture. `pair` is the compared date of a `cutfill` view.
    */
   picture(kind: ReportViewKind, capture: string, pair?: string): string | null;
+  /**
+   * A pile's own picture on a date: its photo straight down (with the ground it covers, so the
+   * page can draw the outline over it) or its 3D view (no extent). Null when the frame has none:
+   * no pictures yet, a pile past the pictures' cap, or a 3D box that did not come.
+   */
+  pilePicture(kind: 'photo' | '3d', pile: string, capture: string): PilePicture | null;
   /** The URL of a pile's crop JPEG on a date (the PDF's separate crops), or null. */
   crop?(pile: string, capture: string): string | null;
 }
@@ -79,13 +94,26 @@ export function reportViews(
 ): ReportViews {
   const find = (kind: ReportViewKind, capture: string, pair?: string): ReportView | undefined =>
     frame?.views.find(
-      (v) => v.kind === kind && v.capture === capture && (pair === undefined || v.pair === pair),
+      (v) =>
+        v.kind === kind &&
+        v.capture === capture &&
+        v.pile === undefined &&
+        (pair === undefined || v.pair === pair),
     );
   return {
     frame,
     picture: (kind, capture, pair) => {
       const v = find(kind, capture, pair);
       return v ? url(v.file) : null;
+    },
+    pilePicture: (kind, pile, capture) => {
+      const wanted: ReportViewKind = kind === 'photo' ? 'pile-photo' : 'pile-3d';
+      const v = frame?.views.find(
+        (x) => x.kind === wanted && x.pile === pile && x.capture === capture,
+      );
+      const src = v ? url(v.file) : null;
+      if (!v || src === null) return null;
+      return { src, extent: kind === 'photo' ? (v.extent ?? null) : null };
     },
     ...(crop ? { crop } : {}),
   };

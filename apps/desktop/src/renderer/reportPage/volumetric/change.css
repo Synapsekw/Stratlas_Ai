@@ -145,10 +145,12 @@
 .vr-page-change .vr-c-piles {
   margin-top: 5mm;
 }
+/* a row per pile, as high as change.tsx counts it (5.6mm while the page has the room); a long
+   name wraps inside its row, it is never cut */
 .vr-page-change .vr-c-axis,
 .vr-page-change .vr-c-row {
   display: grid;
-  grid-template-columns: 32mm 1fr 20mm;
+  grid-template-columns: 46mm 1fr 22mm;
   align-items: center;
   column-gap: 3mm;
 }
@@ -167,26 +169,30 @@
   font-family: var(--vr-f-mono);
 }
 .vr-page-change .vr-c-row {
-  height: 2.95mm;
   border-bottom: 0.4pt solid var(--vr-rule);
   font-size: 7.5pt;
-  line-height: 1;
+  line-height: 3.2mm;
 }
 .vr-page-change .vr-c-name {
   display: flex;
   align-items: center;
-  gap: 1.6mm;
-  overflow: hidden;
-  white-space: nowrap;
+  min-width: 0;
+}
+.vr-page-change .vr-c-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .vr-page-change .vr-c-name .vr-num {
-  width: 3.4mm;
-  height: 2.6mm;
-  font-size: 6pt;
+  flex-shrink: 0;
+  min-width: 3.2mm;
+  height: 3.2mm;
+  margin-right: 1.8mm;
+  padding: 0 0.6mm;
+  font-size: 5.5pt;
 }
 .vr-page-change .vr-c-bar {
   position: relative;
-  height: 1.9mm;
+  height: 2.2mm;
 }
 /* the centre tick: no change */
 .vr-page-change .vr-c-bar::before {
@@ -225,17 +231,4 @@
 }
 .vr-page-change .vr-c-value.is-flat {
   color: var(--vr-ink-3);
-}
-
-/* ------------------------------------------------------------------ closing remarks */
-.vr-page-change .vr-c-closing {
-  max-width: 160mm;
-  margin-top: 5mm;
-}
-.vr-page-change .vr-c-closing h2 {
-  margin-bottom: 1mm;
-  font-size: 8.5pt;
-}
-.vr-page-change .vr-c-closing p {
-  color: var(--vr-ink-2);
 }

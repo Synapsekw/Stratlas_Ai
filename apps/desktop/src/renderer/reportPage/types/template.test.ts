@@ -137,4 +137,46 @@ describe('the report-type seam', () => {
     expect(v.picture('photo', 'c1')).toBeNull();
     expect(NO_VIEWS.picture('photo', 'c2')).toBeNull();
   });
+
+  it("finds a pile's own pictures through the typed views, never as a site picture", () => {
+    const frame: ReportViewsFrame = {
+      schema: 'aio.report-views/1',
+      extent: [0, 0, 10, 10],
+      widthPx: 100,
+      heightPx: 100,
+      mPerPx: 0.1,
+      views: [
+        {
+          name: 'pile-1-photo-2',
+          kind: 'pile-photo',
+          capture: 'c2',
+          pile: 'm1',
+          extent: [1, 2, 5, 5],
+          file: 'pile-1-photo-2.jpg',
+        },
+        { name: 'pile-1-3d', kind: 'pile-3d', capture: 'c2', pile: 'm1', file: 'pile-1-3d.jpg' },
+        { name: 'photo-c2', kind: 'photo', capture: 'c2', file: 'photo-c2.jpg' },
+        { name: '3d-c2', kind: '3d', capture: 'c2', file: '3d-c2.jpg' },
+      ],
+      markers3d: {},
+      fingerprint: 'f',
+    };
+    const v = reportViews(frame, (f) => `x/${f}`);
+    expect(v.pilePicture('photo', 'm1', 'c2')).toEqual({
+      src: 'x/pile-1-photo-2.jpg',
+      extent: [1, 2, 5, 5],
+    });
+    expect(v.pilePicture('3d', 'm1', 'c2')).toEqual({ src: 'x/pile-1-3d.jpg', extent: null });
+    // another pile, another date: none
+    expect(v.pilePicture('photo', 'm2', 'c2')).toBeNull();
+    expect(v.pilePicture('photo', 'm1', 'c1')).toBeNull();
+    expect(v.pilePicture('3d', 'm1', 'c1')).toBeNull();
+    // the site pictures stay the site's, whatever order the views are in
+    expect(v.picture('photo', 'c2')).toBe('x/photo-c2.jpg');
+    expect(v.picture('3d', 'c2')).toBe('x/3d-c2.jpg');
+    expect(v.picture('pile-photo', 'c2')).toBeNull();
+    // a picture whose file has no URL is no picture
+    expect(reportViews(frame, () => null).pilePicture('photo', 'm1', 'c2')).toBeNull();
+    expect(NO_VIEWS.pilePicture('photo', 'm1', 'c2')).toBeNull();
+  });
 });
