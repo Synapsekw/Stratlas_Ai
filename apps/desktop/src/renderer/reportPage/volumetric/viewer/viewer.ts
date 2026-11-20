@@ -34,7 +34,8 @@ export function formatAmount(value: number, unit: ViewerUnit): string {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
-  return `${value < 0 ? '−' : ''}${text} ${UNIT_SUFFIX[unit]}`;
+  // a figure that prints as "0.0" takes no minus
+  return `${value < 0 && v >= 0.05 ? '−' : ''}${text} ${UNIT_SUFFIX[unit]}`;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(

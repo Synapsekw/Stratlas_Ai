@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { lastBlocksMm, num, signed, spreadMarkers, type VolumetricTexts } from './chrome';
+import {
+  lastBlocksMm,
+  num,
+  signed,
+  signedPct,
+  spreadMarkers,
+  type VolumetricTexts,
+} from './chrome';
 
 describe('volumetric number formats', () => {
   it('keeps the minus on a negative volume', () => {
@@ -11,6 +18,13 @@ describe('volumetric number formats', () => {
   it('signed does not double the sign', () => {
     expect(signed(-200, ' m³')).toBe('−200 m³');
     expect(signed(5, ' m³')).toBe('+5.0 m³');
+    // a figure that prints as zero takes no sign
+    expect(num(-0.04)).toBe('0.0');
+    expect(num(-0.06)).toBe('−0.1');
+    expect(signed(-0.04, ' m³')).toBe('0.0 m³');
+    expect(signed(0.04, ' m³')).toBe('0.0 m³');
+    expect(signedPct(-0.04)).toBe('0.0 %');
+    expect(signedPct(-5.2)).toBe('−5.2 %');
   });
 });
 

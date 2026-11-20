@@ -32,20 +32,23 @@ function magnitude(v: number): string {
   });
 }
 
+/** A figure that prints as "0.0": it takes no sign, so nothing reads "−0.0" or "+0.0". */
+const printsZero = (v: number): boolean => Math.abs(v) < 0.05;
+
 /** A volume or tonnage figure without its unit: grouped, no decimals from 100 (one below), the Unicode minus when negative. */
 export function num(v: number): string {
-  return `${v < 0 ? MINUS : ''}${magnitude(v)}`;
+  return `${v < 0 && !printsZero(v) ? MINUS : ''}${magnitude(v)}`;
 }
 
 /** A signed figure: the Unicode minus for less, a plus for more, none for zero. */
 export function signed(v: number, unit = ''): string {
-  const sign = v < 0 ? MINUS : v > 0 ? '+' : '';
+  const sign = printsZero(v) ? '' : v < 0 ? MINUS : '+';
   return `${sign}${magnitude(v)}${unit}`;
 }
 
 /** A signed share: "−5.2 %". */
 export function signedPct(pct: number): string {
-  const sign = pct < 0 ? MINUS : pct > 0 ? '+' : '';
+  const sign = printsZero(pct) ? '' : pct < 0 ? MINUS : '+';
   return `${sign}${Math.abs(pct).toFixed(1)} %`;
 }
 

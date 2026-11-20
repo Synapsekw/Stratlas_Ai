@@ -406,5 +406,8 @@ describe('formatAmount', () => {
   it('groups thousands, one decimal under 100, no sign', () => {
     expect(formatAmount(12345.6, 'm3')).toBe('12,346 m³');
     expect(formatAmount(-42.25, 't')).toBe('−42.3 t');
+    // nothing reads "−0.0"
+    expect(formatAmount(-0.04, 'm3')).toBe('0.0 m³');
+    expect(formatAmount(-0.06, 'm3')).toBe('−0.1 m³');
   });
 });
