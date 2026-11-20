@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
 import type { Layer, ProjectManifest } from '@aio/schema';
+import { clearToasts, toastQueue } from '@aio/ui';
 import { volumetric } from '@aio/volumetric';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compareStore } from '../survey/compareStore';
 import { shell } from '../shell';
 import { workbench } from './workbench/workbenchStore';
 import { threeDates } from './__fixtures__/threeDates';
+import { stagePrefs } from './stagePrefs';
 import { rasterSwap, StageShow, stageShow, useStageShowActive } from './StageShow';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -64,6 +66,9 @@ afterEach(() => {
   host.remove();
   volumetric.setState({ status: 'idle', file: null, surface: 'photo', swipe: false, change: null });
   workspace.getState().closeProject();
+  shell.setState({ stageMode: '3d' });
+  stagePrefs.getState().update('p', { split: undefined });
+  clearToasts();
   compareStore.setState({ heat: { show3d: true, show2d: true, contours: false, item: null } });
 });
 
@@ -141,10 +146,130 @@ describe('the Show control (board 1)', () => {
     expect(compareStore.getState().heat).toMatchObject({ show3d: false, show2d: false });
   });
 
-  it('keeps Elevation off in a survey project without a surface raster', () => {
+  it('keeps Elevation off in a survey project without a surface raster, and says why', () => {
     workspace.getState().openProject({ id: 'p3', root: '/p3', manifest: threeDates });
     render();
-    expect(button('Elevation')?.disabled).toBe(true);
+    // greyed, still focusable to read why (the app's tip and description, never a native title)
+    const elevation = button('Elevation');
+    expect(elevation?.getAttribute('aria-disabled')).toBe('true');
+    expect(elevation?.disabled).toBe(false);
+    expect(elevation?.hasAttribute('title')).toBe(false);
+    const why = elevation?.getAttribute('aria-describedby') ?? '';
+    expect(document.getElementById(why)?.textContent).toBe(
+      'This project has no height map to show',
+    );
+    // a press does nothing
+    click(elevation);
+    expect(stageShow.getState().surface).toBe('photo');
+    expect(elevation?.getAttribute('aria-pressed')).toBe('false');
+    // Photo is on: it has no reason to give
+    expect(button('Photo')?.hasAttribute('aria-disabled')).toBe(false);
+    expect(button('Photo')?.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  it('shows the reason as the tip of the greyed Elevation on keyboard focus', () => {
+    workspace.getState().openProject({ id: 'p3', root: '/p3', manifest: threeDates });
+    render();
+    const elevation = button('Elevation');
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        elevation?.focus();
+      });
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
+        'This project has no height map to show',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('gives Elevation no reason in a survey project that has a surface raster', () => {
+    workspace.getState().openProject({ id: 'p', root: '/p', manifest: surveyManifest });
+    render();
+    expect(button('Elevation')?.disabled).toBe(false);
+    expect(button('Elevation')?.hasAttribute('aria-disabled')).toBe(false);
+    expect(button('Elevation')?.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  describe('Elevation on the stockpile kit, whose colours are draped in 3D only', () => {
+    const NOTICE = 'Elevation colours show in 3D';
+    const notices = () => toastQueue().map((x) => x.message);
+    const kit = () => {
+      volumetric.setState({
+        status: 'ready',
+        epoch: 'e1',
+        surface: 'photo',
+        file: {
+          captures: [{ epoch: 'e1', captureId: 'c1', date: '2026-01-12', label: '12 Jan 2026' }],
+        } as never,
+      });
+    };
+
+    it('in Map view switches the stage to 3D and says so', () => {
+      kit();
+      shell.setState({ stageMode: 'map' });
+      render();
+      click(button('Elevation'));
+      expect(volumetric.getState().surface).toBe('elev');
+      expect(shell.getState().stageMode).toBe('3d');
+      expect(notices()).toEqual([NOTICE]);
+    });
+
+    it('in 3D view changes nothing but the surface', () => {
+      kit();
+      render();
+      click(button('Elevation'));
+      expect(volumetric.getState().surface).toBe('elev');
+      expect(shell.getState().stageMode).toBe('3d');
+      expect(notices()).toEqual([]);
+    });
+
+    it('in Split with a 3D side keeps the split and says nothing', () => {
+      kit();
+      workspace.getState().openProject({ id: 'p', root: '/p', manifest: surveyManifest });
+      stagePrefs.getState().update('p', { split: { left: '3d', right: 'map' } });
+      shell.setState({ stageMode: 'split' });
+      render();
+      click(button('Elevation'));
+      expect(shell.getState().stageMode).toBe('split');
+      expect(notices()).toEqual([]);
+    });
+
+    it('in Split without a 3D side keeps the split and says where the colours show', () => {
+      kit();
+      workspace.getState().openProject({ id: 'p', root: '/p', manifest: surveyManifest });
+      stagePrefs.getState().update('p', { split: { left: 'map', right: 'raster' } });
+      shell.setState({ stageMode: 'split' });
+      render();
+      click(button('Elevation'));
+      expect(volumetric.getState().surface).toBe('elev');
+      expect(shell.getState().stageMode).toBe('split');
+      expect(notices()).toEqual([NOTICE]);
+    });
+
+    it('Photo and Cut & fill in Map view leave the stage where it is', () => {
+      kit();
+      shell.setState({ stageMode: 'map' });
+      render();
+      click(button('Photo'));
+      expect(shell.getState().stageMode).toBe('map');
+      expect(notices()).toEqual([]);
+    });
+
+    it('a survey project in Map view swaps its rasters and stays on the map', () => {
+      workspace.getState().openProject({ id: 'p', root: '/p', manifest: surveyManifest });
+      workspace.getState().setLayersVisible(['dsm-oct', 'dsm-nov'], false);
+      shell.setState({ stageMode: 'map' });
+      render();
+      click(button('Elevation'));
+      expect(workspace.getState().hidden['ortho-oct']).toBe(true);
+      expect(shell.getState().stageMode).toBe('map');
+      expect(notices()).toEqual([]);
+    });
   });
 
   it('toggles Outlines and Labels on their own', () => {

@@ -8,7 +8,9 @@
  * overlays and the colouring apply while the project has piles (`active`: the section is there to
  * bring them back), and a project change puts them back.
  *
- * The surface writes the stockpile kit's `surface` in a kit project. Elsewhere (a survey project's
+ * The surface writes the stockpile kit's `surface` in a kit project; its Elevation colours are
+ * draped in 3D only, so picked from the Map it brings the 3D view (`showKitElevation`). Elsewhere
+ * (a survey project's
  * piles) Photo and Elevation swap each shown survey date's ortho for its surface raster and back,
  * and Cut & fill turns the survey comparison's heat map on (Photo and Elevation turn it off): the
  * focused pile's, else the whole site's between the compare pair with its legend (stageCutFill.tsx).
@@ -19,15 +21,17 @@
  * from `stageShow`.
  */
 import type { Layer } from '@aio/schema';
-import { useT, type MessageKey } from '@aio/ui';
+import { t, Tip, toast, useT, type MessageKey } from '@aio/ui';
 import { useVolumetric, volumetric, type SurfaceMode } from '@aio/volumetric';
 import { canCompare, useWorkspace, workspace } from '@aio/workspace';
-import { useEffect } from 'react';
+import { useEffect, useId } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
+import { shell } from '../shell';
 import { compareStore, setHeat, useCompare } from '../survey/compareStore';
 import { volumesPane, type VolumesPane } from '../survey/volumes/volumesPane';
 import { useCaptureIndex } from './compare';
+import { stagePrefs } from './stagePrefs';
 import { useHasVolumeMeasurements, useKitVolumes } from './workbench/view';
 import './stageShow.css';
 
@@ -178,10 +182,34 @@ const COLOUR_BY: readonly { value: ColourBy; label: MessageKey }[] = [
 
 const NO_LAYERS: readonly Layer[] = [];
 
+/** A 3D view is on the stage: the 3D mode, or a split with a 3D side (the default split has one). */
+function threeDShown(): boolean {
+  const mode = shell.getState().stageMode;
+  if (mode !== 'split') return mode === '3d';
+  const id = workspace.getState().project?.id;
+  const split = id ? stagePrefs.getState().byProject[id]?.split : undefined;
+  return split ? split.left === '3d' || split.right === '3d' : true;
+}
+
+/**
+ * The kit drapes its elevation colours on the 3D terrain only, so the press always has a result
+ * to see: from Map the stage goes to 3D (the toolbar's own view-mode action) with a notice that
+ * says why; a split without a 3D side stays as the person set it up and the notice says where the
+ * colours show.
+ */
+function showKitElevation(): void {
+  if (threeDShown()) return;
+  const sh = shell.getState();
+  if (sh.stageMode === 'map') sh.setStageMode('3d');
+  toast(t('show.elevation.in3d'), { id: 'show-elevation-3d', testId: 'show-elevation-3d' });
+}
+
 /** The surface choice: the kit's own, or the survey project's rasters and heat map. */
 function useSurface(): {
   value: SurfaceMode;
   disabled: (s: SurfaceMode) => boolean;
+  /** Why a surface is off, where the control alone does not say (null: on, or plain enough). */
+  reason: (s: SurfaceMode) => MessageKey | null;
   pick: (s: SurfaceMode) => void;
 } {
   const kit = useKitVolumes();
@@ -195,10 +223,12 @@ function useSurface(): {
     return {
       value: kitSurface,
       disabled: (s) => s === 'change' && kitDates < 2,
+      reason: () => null,
       pick: (s) => {
         const v = volumetric.getState();
         if (v.swipe) v.setSwipe(false);
         v.setSurface(s);
+        if (s === 'elev') showKitElevation();
       },
     };
   const hasDsm = layers.some((l) => isRaster(l, 'dsm'));
@@ -207,6 +237,7 @@ function useSurface(): {
     // Cut & fill reads as on only while the heat map is
     value: own === 'change' && !heatOn ? 'photo' : own,
     disabled: (s) => (s === 'elev' && !hasDsm) || (s === 'change' && !dated),
+    reason: (s) => (s === 'elev' && !hasDsm ? 'show.elevation.none' : null),
     pick: (s) => {
       const ws = workspace.getState();
       if (s !== 'change') {
@@ -227,6 +258,7 @@ function Seg<V extends string>({
   options,
   value,
   disabled,
+  reason,
   onPick,
 }: {
   /** The row's own name (none: it is named by the control around it). */
@@ -234,24 +266,56 @@ function Seg<V extends string>({
   options: readonly { value: V; label: string }[];
   value: V;
   disabled?: (v: V) => boolean;
+  /** Why an option that is off is off, where the row alone does not say (null: nothing to add). */
+  reason?: (v: V) => string | null;
   onPick: (v: V) => void;
 }) {
+  const id = useId();
+  /** The off options that say why, each with the id of its description. */
+  const why = options.flatMap((o) => {
+    const text = disabled?.(o.value) === true ? (reason?.(o.value) ?? null) : null;
+    return text === null ? [] : [{ value: o.value, text, id: `${id}-${o.value}` }];
+  });
   return (
-    <div className="seg stage-show-seg" role={label ? 'group' : undefined} aria-label={label}>
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          aria-pressed={value === o.value}
-          disabled={disabled?.(o.value) === true}
-          onClick={() => {
-            onPick(o.value);
-          }}
-        >
-          {o.label}
-        </button>
+    <>
+      <div className="seg stage-show-seg" role={label ? 'group' : undefined} aria-label={label}>
+        {options.map((o) => {
+          const off = why.find((w) => w.value === o.value);
+          if (off)
+            return (
+              // greyed with its reason in a tip (no native title), and still focusable to read it
+              <Tip key={o.value} content={off.text}>
+                <button
+                  type="button"
+                  aria-pressed={value === o.value}
+                  aria-disabled="true"
+                  aria-describedby={off.id}
+                >
+                  {o.label}
+                </button>
+              </Tip>
+            );
+          return (
+            <button
+              key={o.value}
+              type="button"
+              aria-pressed={value === o.value}
+              disabled={disabled?.(o.value) === true}
+              onClick={() => {
+                onPick(o.value);
+              }}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+      {why.map((w) => (
+        <span key={w.value} id={w.id} className="sr-only">
+          {w.text}
+        </span>
       ))}
-    </div>
+    </>
   );
 }
 
@@ -263,6 +327,10 @@ function Surfaces() {
       options={SURFACES.map((o) => ({ value: o.value, label: t(o.label) }))}
       value={s.value}
       disabled={s.disabled}
+      reason={(v) => {
+        const key = s.reason(v);
+        return key ? t(key) : null;
+      }}
       onPick={s.pick}
     />
   );

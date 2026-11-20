@@ -28,7 +28,16 @@ import {
   tinyManifest,
   type DataRoot,
 } from './fixtures';
-import { measureRow, measureSaved, pickGroupTab, stockpileTree, volumesView } from './island';
+import {
+  measureRow,
+  measureSaved,
+  pickGroupTab,
+  showSurface,
+  stageMode,
+  stageModeButton,
+  stockpileTree,
+  volumesView,
+} from './island';
 import { focusMeasure } from './measureCard';
 import { openSection, panelTab } from './panel';
 
@@ -368,6 +377,42 @@ test('an old stockpile project opens with its kit figures labelled and no unsave
   expect(file.measurements[1]?.outlines?.map((o) => o.capture)).toEqual(['capture-1']);
   expect(file.measurements[1]?.results).toEqual([]);
   expect(await readFile(join(dir, 'volumes.json'))).toEqual(kitBefore);
+});
+
+test('Elevation picked in Map view on a kit project brings the 3D view and says why', async ({
+  win,
+}) => {
+  await openTiny(win);
+  await stageMode(win, 'Map');
+  await expect(await stageModeButton(win, '3D')).toHaveAttribute('aria-pressed', 'false');
+  // the kit drapes its elevation colours on the 3D terrain only: the press brings that view
+  await showSurface(win, 'Elevation');
+  await expect(await stageModeButton(win, '3D')).toHaveAttribute('aria-pressed', 'true');
+  await expect(await stageModeButton(win, 'Map')).toHaveAttribute('aria-pressed', 'false');
+  await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible();
+  // the notice shows in the stage's foot once that is free (a hint there goes first)
+  const notice = win.getByTestId('show-elevation-3d');
+  await expect(notice).toContainText('Elevation colours show in 3D', { timeout: 30_000 });
+  // the 3D legend is the Elevation one, and it settles: the ramp once the heights are read, or
+  // the line that says they could not be read, never "Reading the survey heights" for good
+  const legend = win.locator('.vol-stage .vol-legend').first();
+  await expect(legend).toContainText('Elevation');
+  // the kit left a DSM per survey here, so the heights are read and the ramp shows
+  await expect(legend.getByTestId('vol-elev')).toBeVisible({ timeout: 60_000 });
+  await expect(legend).not.toContainText('Reading the survey heights');
+  await expect(legend.locator('.ends')).toContainText(' m');
+
+  // the notice closed, and Elevation picked again in 3D: the view stays, and nothing more is
+  // said (the foot is as free as it was for the first notice)
+  await notice.getByRole('button', { name: 'Close' }).click();
+  await expect(notice).toHaveCount(0);
+  await showSurface(win, 'Photo');
+  await expect(win.getByTestId('vol-elev')).toHaveCount(0);
+  await showSurface(win, 'Elevation');
+  await expect(await stageModeButton(win, '3D')).toHaveAttribute('aria-pressed', 'true');
+  await expect(legend.getByTestId('vol-elev')).toBeVisible();
+  await win.waitForTimeout(1_500);
+  await expect(notice).toHaveCount(0);
 });
 
 test('the Stockpiles group and its pile rows follow the date in focus', async ({ win }) => {

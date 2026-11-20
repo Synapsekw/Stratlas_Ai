@@ -17,11 +17,14 @@
 .stage-show .stage-show-seg {
   max-inline-size: 100%;
 }
-.stage-show-seg button:disabled {
+/* off: disabled, or greyed with its reason in a tip (aria-disabled, still focusable) */
+.stage-show-seg button:disabled,
+.stage-show-seg button[aria-disabled='true'] {
   opacity: 0.45;
   cursor: default;
 }
-.stage-show-seg button:disabled:hover {
+.stage-show-seg button:disabled:hover,
+.stage-show-seg button[aria-disabled='true']:hover {
   color: var(--fg-2);
 }
 /* the outlines' swatch: the colour the outlines draw in */
