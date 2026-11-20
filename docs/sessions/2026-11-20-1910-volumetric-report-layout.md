@@ -14,6 +14,7 @@ related: [../plans/2026-11-20-volumetric-report-layout.md, ../architecture/contr
 - **Pictures.** The export takes them itself, under a progress card with a count, a bar and Stop; "Take them now" sits in a line above the preview. Pictures count as stale by a fingerprint (now v2, which includes each pile's base). A report stores up to 512 pictures (was 64). The offline HTML file follows the same rules and keeps its 15 MB limit.
 - **Decisions recorded** (plan section 2 and its questions): uncomputed piles are listed, never dropped; the overlap warning is raised at half of the smaller outline; a negative pile stays in the site total, and a pile at or under zero prints no tonnes and no percentage; a stale set is retaken whole, never in part; the HTML limit stays.
 - **How it was built.** Parallel agents along the plan's DAG, then an independent review whose six findings are all fixed in this PR: the closing block overflowing its page, a base change not retaking the pictures, the offline view's share of stock, the "new" label, the wrong reason given for a missing picture, and the method note's inputs.
+- **A later fix in this PR.** The summary table leaves the "Latest t" column out, header and cells, when no pile of the report prints tonnes, and keeps it when at least one does (the same on its continued pages). The offline view and the change page have no such column.
 - **Evidence.** `pnpm check` green on the final code (18,515 passed). End to end the CI way (1100 x 720, scale 1, WARP, one worker): `volumetric-report-layout`, `volumetric-report`, `volumetric-report-edit` and `dialogs-a11y`, 9 passed; earlier on the branch `pile-panel` 14, `volumes-finalize` 6, `kit-migration` 9, `volumetric-build` 1. The layout spec proves on pixels: paper, not black, outside the photo; the 3D picture on the latest date; the progress card and Stop; "Not computed"; the overlap warning. A proof export on a private two-date project copy: 7 pages, 31 pictures, 25 s to take them, 28 s for the export, a second export under 2 s with nothing retaken, PDF 3.2 MB, HTML 4.4 MB, every page looked at.
 - **Not run:** the `@realdata` tests and the full e2e suite. One contract row (20 Nov 2026 in `contract-changes.md`), no pack change.
 
@@ -38,7 +39,6 @@ What backs each step: 2, 3, 5 and 8 are driven by `e2e/volumetric-report.spec.ts
 
 ## Open threads
 
-- The "Latest t" column stays in the summary table when no pile has tonnes.
 - A nearly flat negative pile draws as a tall box in its 3D picture.
 - In the offline view, badges of overlapping piles can sit on each other.
 - The offline view's CSV still carries tonnes for piles at or under zero (a known limit, in the guide).
