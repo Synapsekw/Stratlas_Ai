@@ -7,13 +7,17 @@
  * the view); while Show, Cut & fill is on it takes the site's cut and fill colours. Only the
  * opened pile, and never while its boundary is being edited: then the outline and its handles show.
  *
+ * The volumetric report pins a pile to a survey date instead (`pileLookState.pinned`): that pile's
+ * box is drawn on that date whatever is focused or on screen, always Solid and with no legend.
+ * Which pile, date, outline and mode is `lookTarget`'s rule; the base is `pileBase`'s.
+ *
  * It also answers `askPileFly`: the camera frames the box from an oblique view, after a click in
  * 3D only when the pile is not already mostly in view.
  */
 import type { EngineStage } from '@aio/engine';
 import { formatNumber, fromSI, localeOf, unitLabel } from '@aio/geo';
-import { isSurfaceSide, type BaseSpec, type SitePoint, type SurveyMeasurement } from '@aio/schema';
-import { buildBase, densify, effectiveUnits, heatRamp, samplePoints, Tin } from '@aio/survey';
+import type { SitePoint, SurveyMeasurement } from '@aio/schema';
+import { effectiveUnits, heatRamp } from '@aio/survey';
 import { t } from '@aio/ui';
 import { changeColour, volumetric } from '@aio/volumetric';
 import { workspace } from '@aio/workspace';
@@ -35,12 +39,9 @@ import { timeline } from '../../workspace/timeline';
 import { primaryScene } from '../../workspace/compare';
 import { compareStore } from '../compareStore';
 import { drawnSampler } from '../dateSurfaces';
-import { drawnPoints, measurementsOn } from '../measureDates';
-import { editedOutline } from '../measureMove';
-import { captureInFocus } from '../measureRows';
 import { stageClamp, type Frame } from '../measureScene';
 import { measureStore } from '../measureStore';
-import { isPile } from './openPile';
+import { baseSpecOf, buildPileBase, heightExtent } from './pileBase';
 import { flyStep, pileFly, sampleGate, type PileFlyAsk } from './pileFly';
 import {
   buildPrism,
@@ -62,6 +63,7 @@ import {
   type RGB,
 } from './pileLook';
 import { pileLookState } from './pileLookState';
+import { lookTarget, outlineOn, type LookTarget } from './pileLookTarget';
 import { pileView } from './pileView';
 import './pile.css';
 
@@ -70,35 +72,18 @@ const BASE_BLUE = 0x3373ff;
 /** How long a fly waits for the box before it frames an estimate (ms). */
 const FLY_WAIT_MS = 4000;
 
-/** The opened pile the box is for: the focused pile on screen, not being edited or drawn. */
-function openedPile(): SurveyMeasurement | null {
-  const s = measureStore.getState();
-  if (!s.focus || s.editing || s.draw) return null;
-  const m = s.file.measurements.find((x) => x.id === s.focus);
-  if (!m || !isPile(m)) return null;
-  return measurementsOn(s, primaryScene.getState()).some((x) => x.id === m.id) ? m : null;
-}
-
 const manifestNow = () => workspace.getState().project?.manifest ?? null;
 
-/** The pile's boundary as drawn on the date in focus. */
-function ringOf(m: SurveyMeasurement): SitePoint[] {
-  const stored = editedOutline(m, timeline.getState().focus);
-  return drawnPoints({ ...m, points: [...stored] }, manifestNow());
-}
-
-/** The date whose surface the pile is sampled on: the one in focus, else the pile's own. */
-function captureOf(m: SurveyMeasurement): string | null {
-  return (
-    captureInFocus(timeline.getState().focus, manifestNow()) ??
-    (m.scope.kind === 'survey' ? m.scope.capture : null)
+/** The pile the box is for now: the pinned one, else the opened one (`lookTarget`). */
+function targetNow(): LookTarget | null {
+  return lookTarget(
+    measureStore.getState(),
+    primaryScene.getState(),
+    timeline.getState().focus,
+    manifestNow(),
+    pileLookState.getState().pinned,
+    pileView.getState().surface,
   );
-}
-
-/** The pile's base as its first comparison has it (a surface side: the smart base). */
-function baseSpecOf(m: SurveyMeasurement): BaseSpec {
-  const from = m.items[0]?.from;
-  return from && !isSurfaceSide(from) ? (from as BaseSpec) : { kind: 'smart' };
 }
 
 /** The terrain and the base sampled for one pile, on one date. */
@@ -112,13 +97,13 @@ interface Sampled {
   base: Float64Array;
 }
 
-/** Sample the pile's surface and its base on the grid. */
+/** Sample the pile's surface and its base on the grid, on the date `capture`. */
 async function sample(
   m: SurveyMeasurement,
   ring: SitePoint[],
+  capture: string | null,
   clamp: (e: number, n: number) => number | null,
 ): Promise<Omit<Sampled, 'key' | 'id'>> {
-  const capture = captureOf(m);
   const sampler = capture ? await drawnSampler(capture, manifestNow()) : null;
   // without a prepared surface the stage's terrain is ray cast: a coarser grid
   const grid = pileGrid(ring, sampler ? undefined : 40);
@@ -136,54 +121,15 @@ async function sample(
       for (let k = 0; k < xs.length; k++) out[k] = clamp(xs[k] ?? 0, ys[k] ?? 0) ?? Number.NaN;
       return Promise.resolve(out);
     });
-  // the base in metres from the grid's corner (the engine's own local frame)
-  const le = grid.minE;
-  const ln = grid.minN;
-  const lring = ring.map((p): [number, number] => [p[0] - le, p[1] - ln]);
-  const base = new Float64Array(es.length).fill(Number.NaN);
-  try {
-    const [b] = await buildBase(baseSpecOf(m), {
-      ring: lring,
-      perimeter: async () => {
-        const d = densify(lring, grid.step);
-        const z = await at(
-          d.xs.map((x) => x + le),
-          d.ys.map((y) => y + ln),
-        );
-        const keep: number[] = [];
-        z.forEach((v, k) => {
-          if (Number.isFinite(v)) keep.push(k);
-        });
-        return {
-          xs: Float64Array.from(keep, (k) => d.xs[k] ?? 0),
-          ys: Float64Array.from(keep, (k) => d.ys[k] ?? 0),
-          zs: Float64Array.from(keep, (k) => z[k] ?? 0),
-        };
-      },
-      interior: () => {
-        let lo = Infinity;
-        let hi = -Infinity;
-        zs.forEach((v) => {
-          if (!Number.isFinite(v)) return;
-          lo = Math.min(lo, v);
-          hi = Math.max(hi, v);
-        });
-        return Promise.resolve(lo === Infinity ? null : [lo, hi]);
-      },
-      atPoints: (xs, ys) =>
-        at(
-          xs.map((x) => x + le),
-          ys.map((y) => y + ln),
-        ),
-      toLocal: (e, n) => [e - le, n - ln],
-    });
-    const xs = es.map((e) => e - le);
-    const ys = ns.map((n) => n - ln);
-    if (b instanceof Tin) base.set(samplePoints(b, xs, ys));
-    else for (let k = 0; k < xs.length; k++) base[k] = b.fn(xs[k] ?? 0, ys[k] ?? 0);
-  } catch {
-    // no base to be built (no survey under the edge yet): the boundary's own heights stand in
-  }
+  const built = await buildPileBase({
+    spec: baseSpecOf(m),
+    ring,
+    step: grid.step,
+    at: (xs, ys) => at(xs, ys),
+    interior: () => heightExtent(zs),
+  });
+  // no base to be built (no survey under the edge yet): the boundary's own heights stand in
+  const base = built ? built(es, ns) : new Float64Array(es.length).fill(Number.NaN);
   return { ring, grid, zs, base };
 }
 
@@ -349,16 +295,16 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
   };
 
   /** Publish what is drawn: the measurement layer and the pick read it. */
-  const publish = (id: string | null, p: Prism | null) => {
+  const publish = (id: string | null, p: Prism | null, capture: string | null = null) => {
     if (id !== null && p !== null)
-      pileLookState.setState({ shown: id, hits: prismHitShapes(id, p) });
+      pileLookState.setState({ shown: id, shownOn: capture, hits: prismHitShapes(id, p) });
     else if (pileLookState.getState().shown !== null)
-      pileLookState.setState({ shown: null, hits: [] });
+      pileLookState.setState({ shown: null, shownOn: null, hits: [] });
   };
 
   const draw = () => {
-    const m = openedPile();
-    if (!m) {
+    const target = targetNow();
+    if (!target) {
       if (drawnKey !== '') {
         clear();
         drawnKey = '';
@@ -368,10 +314,10 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
       }
       return;
     }
-    const ring = ringOf(m);
+    const { m, ring, capture, mode } = target;
     if (ring.length < 3) return;
     // a surface prepared since: sampled again
-    const key = JSON.stringify([m.id, captureOf(m), ring, baseSpecOf(m), surfacesSeq]);
+    const key = JSON.stringify([m.id, capture, ring, baseSpecOf(m), surfacesSeq]);
     if (sampled?.key !== key) {
       if (gate.start(key)) {
         // the previous pile's box goes while this one's heights come
@@ -381,7 +327,7 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
           prism = null;
           publish(null, null);
         }
-        void sample(m, ring, clamp)
+        void sample(m, ring, capture, clamp)
           .then((r) => {
             // a result for a pile or date left again meanwhile is not drawn
             if (!gate.settle(key)) return;
@@ -396,11 +342,11 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
     }
     // back on the sampled pile: a sample still in flight for another is no longer wanted
     gate.reuse();
-    const mode = pileView.getState().surface;
-    const colours = changeColours();
+    // a pinned box is the report's: never the site's cut and fill colours
+    const colours = target.pinned ? null : changeColours();
     const change = colours?.at ?? null;
     const heat = colours?.grid ?? null;
-    const dkey = JSON.stringify([key, mode, measureStore.getState().settings]);
+    const dkey = JSON.stringify([key, mode, measureStore.getState().settings, target.pinned]);
     if (dkey === drawnKey && heat === drawnHeat) return;
     const s = sampled;
     const fallback = ringBase(s.ring);
@@ -460,7 +406,7 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
       'pile-look-posts',
     );
     if (mode === 'height' && !change) showLegend(p.hmax);
-    publish(m.id, p);
+    publish(m.id, p, capture);
     host.dataset.pileLook = m.id;
     host.dataset.pileSurface = change ? 'change' : mode;
     stage.requestRender();
@@ -507,7 +453,7 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
   const estimate = (id: string) => {
     const m = measureStore.getState().file.measurements.find((x) => x.id === id);
     if (!m) return null;
-    const ring = ringOf(m);
+    const ring = outlineOn(m, timeline.getState().focus, manifestNow());
     if (ring.length < 3) return null;
     const g = pileGrid(ring);
     const editing = measureStore.getState().editing !== null;
@@ -573,6 +519,10 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
   const offDates = primaryScene.subscribe((ws, prev) => {
     if (ws.hidden !== prev.hidden || ws.dates !== prev.dates) draw();
   });
+  // the report pins a pile to a date, or lets it go (only `pinned`: the scene writes the rest)
+  const offPinned = pileLookState.subscribe((s, p) => {
+    if (s.pinned !== p.pinned) draw();
+  });
   const offView = pileView.subscribe((s, p) => {
     if (s.surface !== p.surface) draw();
   });
@@ -605,6 +555,7 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
     offStore();
     offTimeline();
     offDates();
+    offPinned();
     offView();
     offShow();
     offCompare();
