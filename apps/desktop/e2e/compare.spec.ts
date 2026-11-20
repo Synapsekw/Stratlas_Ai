@@ -823,7 +823,7 @@ real.describe('@realdata Masafi', () => {
       const key = Object.keys(models.held).find((k) => k.includes('terrain-2021-01-10'));
       expect(key && models.held[key]).toBe(2);
       await win.waitForTimeout(2500);
-      await shot(win, 'masafi-3d');
+      await shot(win, 'stockpile-3d');
 
       // the saved measurement is drawn on both views
       await expect
