@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { VIEWER_STRING_KEYS, type ViewerData, type ViewerStringKey } from './types';
-import { bootViewer, fillSharedPictures, formatAmount } from './viewer';
+import { bootViewer, fillSharedPictures, formatAmount, MARKER_R_PX } from './viewer';
 
 const strings = Object.fromEntries(VIEWER_STRING_KEYS.map((k) => [k, k])) as Record<
   ViewerStringKey,
@@ -420,6 +420,76 @@ describe('volumetric interactive viewer', () => {
       expect(labels).not.toContain('vreport.piles.share');
       expect(q('.vr-d-facts dd').textContent).toBe('−4.0 m³');
       noBadNumbers();
+    });
+  });
+
+  describe('badges that would sit on each other', () => {
+    // jsdom lays nothing out: give the map a size, as a browser would
+    const sized = (w: number, h: number) => {
+      vi.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(w);
+      vi.spyOn(Element.prototype, 'clientHeight', 'get').mockReturnValue(h);
+    };
+    /** The fixture with its two piles at the given places of the 1000 x 500 frame. */
+    const at = (a: [number, number], b: [number, number]): ViewerData => {
+      const d = data();
+      const [first, second] = d.piles;
+      if (!first || !second) throw new Error('fixture');
+      first.marker = a;
+      second.marker = b;
+      return d;
+    };
+    const centre = (id: string): [number, number] => {
+      const b = q(`.vr-d-marker[data-pile="${id}"]`);
+      return [(parseFloat(b.style.left) / 100) * 800, (parseFloat(b.style.top) / 100) * 400];
+    };
+
+    it('moves two badges at one place apart, each with a leader to its true place', () => {
+      sized(800, 400);
+      mount(at([500, 250], [500, 250]));
+      const [ax, ay] = centre('a');
+      const [bx, by] = centre('b');
+      expect(Math.hypot(bx - ax, by - ay)).toBeGreaterThanOrEqual(2 * MARKER_R_PX * 1.12 - 0.01);
+      expect(document.querySelectorAll('.vr-d-leaders line.vr-d-leader')).toHaveLength(2);
+      expect(document.querySelectorAll('.vr-d-leaders circle')).toHaveLength(2);
+      // each leader ends at the true place, in the map's pixels
+      const dot = q('.vr-d-leaders circle');
+      expect([dot.getAttribute('cx'), dot.getAttribute('cy')]).toEqual(['400', '200']);
+      // the leaders lie under the buttons, and the buttons are still the two badges
+      expect(q('.vr-d-markers').firstElementChild?.classList.contains('vr-d-leaders')).toBe(true);
+      expect(document.querySelectorAll('.vr-d-markers button')).toHaveLength(2);
+    });
+
+    it('leaves badges that stand clear where they are, with no leader', () => {
+      sized(800, 400);
+      mount(at([100, 100], [900, 400]));
+      expect(centre('a')).toEqual([80, 80]);
+      expect(document.querySelector('.vr-d-leaders')).toBeNull();
+    });
+
+    it('keeps the true places while the map has no size yet', () => {
+      mount(at([500, 250], [500, 250]));
+      expect(q('.vr-d-marker[data-pile="a"]').style.left).toBe('50%');
+      expect(document.querySelector('.vr-d-leaders')).toBeNull();
+    });
+
+    it('lays the badges out again when the map changes size', () => {
+      let resized: (() => void) | null = null;
+      vi.stubGlobal(
+        'ResizeObserver',
+        class {
+          constructor(cb: () => void) {
+            resized = cb;
+          }
+          observe = vi.fn();
+          disconnect = vi.fn();
+        },
+      );
+      mount(at([500, 250], [500, 250]));
+      expect(document.querySelector('.vr-d-leaders')).toBeNull();
+      sized(800, 400);
+      (resized as (() => void) | null)?.();
+      expect(document.querySelectorAll('.vr-d-leaders line.vr-d-leader')).toHaveLength(2);
+      vi.unstubAllGlobals();
     });
   });
 

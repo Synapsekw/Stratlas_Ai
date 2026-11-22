@@ -196,6 +196,30 @@
 .vr-d-markers[hidden] {
   display: none;
 }
+/* the leaders of badges moved apart, under the badges, in the map's own pixels */
+.vr-d-leaders {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.vr-d-leaders line {
+  vector-effect: non-scaling-stroke;
+}
+.vr-d-leader-halo {
+  stroke: rgb(17 22 28 / 0.55);
+  stroke-width: 3;
+}
+.vr-d-leader {
+  stroke: #f6f8f9;
+  stroke-width: 1.25;
+}
+.vr-d-leaders circle {
+  fill: #f6f8f9;
+  stroke: rgb(17 22 28 / 0.55);
+  stroke-width: 1;
+}
 .vr-d-marker {
   position: absolute;
   transform: translate(-50%, -50%);

@@ -5,6 +5,7 @@
  * buttons; the KPI tiles, the selected pile's card and the pile list. Bundled on its own (no
  * imports beyond this folder), plain DOM, every control a real `<button>`.
  */
+import { spreadMarkers } from './spread';
 import type { ViewerData, ViewerPile, ViewerStringKey, ViewerUnit, ViewerViewKind } from './types';
 
 type Sort = 'volume' | 'change';
@@ -23,6 +24,9 @@ export interface ViewerHandle {
   state(): Readonly<State>;
   select(pileId: string | null): void;
 }
+
+/** A pile badge's radius on the map, px: the 26 px badge of viewer.css with a pixel of air. */
+export const MARKER_R_PX = 14;
 
 const UNIT_SUFFIX: Record<ViewerUnit, string> = { m3: 'm³', t: 't' };
 
@@ -276,6 +280,7 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
     const b = makeButton(doc, 'vr-d-marker', p.tag);
     b.setAttribute('aria-label', s('vreport.viewer.select', { pile: p.label }));
     b.title = p.label;
+    b.dataset.pile = p.id;
     b.style.left = `${String(round((p.marker[0] / data.frame.widthPx) * 100))}%`;
     b.style.top = `${String(round((p.marker[1] / data.frame.heightPx) * 100))}%`;
     b.addEventListener('click', () => {
@@ -478,6 +483,64 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
       sb.button.setAttribute('aria-pressed', String(state.sort === sb.sort));
   }
 
+  /**
+   * Badges that would sit on each other are moved apart, in pixels of the map as it is drawn, each
+   * with a leader back to its true place (the printed pages' rule, `spreadMarkers`). A map with no
+   * size yet (not laid out, or printing) keeps the true places.
+   */
+  function placeMarkers() {
+    const frame = data.frame;
+    if (!frame) return;
+    const placed = data.piles.flatMap((p) => {
+      const b = markerButtons.get(p.id);
+      return b && p.marker ? [{ b, marker: p.marker }] : [];
+    });
+    const w = map.clientWidth;
+    const h = map.clientHeight;
+    const sized = w > 0 && h > 0;
+    const points = placed.map(({ marker }): [number, number] =>
+      sized
+        ? [(marker[0] / frame.widthPx) * w, (marker[1] / frame.heightPx) * h]
+        : [marker[0], marker[1]],
+    );
+    const spread = sized ? spreadMarkers(points, MARKER_R_PX, { width: w, height: h }) : null;
+    markers.querySelector('.vr-d-leaders')?.remove();
+    // parsed, not created by namespace: the file names no address, not even the SVG namespace's
+    const holder = el(doc, 'div');
+    holder.innerHTML =
+      '<svg class="vr-d-leaders" preserveAspectRatio="none" aria-hidden="true"></svg>';
+    const leaders = holder.firstElementChild;
+    if (!leaders) return;
+    const ns = leaders.namespaceURI;
+    placed.forEach(({ b, marker }, k) => {
+      const m = spread?.[k];
+      if (!m?.moved) {
+        b.style.left = `${String(round((marker[0] / frame.widthPx) * 100))}%`;
+        b.style.top = `${String(round((marker[1] / frame.heightPx) * 100))}%`;
+        return;
+      }
+      b.style.left = `${String(round((m.at[0] / w) * 100))}%`;
+      b.style.top = `${String(round((m.at[1] / h) * 100))}%`;
+      for (const cls of ['vr-d-leader-halo', 'vr-d-leader']) {
+        const line = doc.createElementNS(ns, 'line');
+        line.setAttribute('class', cls);
+        line.setAttribute('x1', String(round(m.at[0])));
+        line.setAttribute('y1', String(round(m.at[1])));
+        line.setAttribute('x2', String(round(m.anchor[0])));
+        line.setAttribute('y2', String(round(m.anchor[1])));
+        leaders.append(line);
+      }
+      const dot = doc.createElementNS(ns, 'circle');
+      dot.setAttribute('cx', String(round(m.anchor[0])));
+      dot.setAttribute('cy', String(round(m.anchor[1])));
+      dot.setAttribute('r', '2.5');
+      leaders.append(dot);
+    });
+    if (!leaders.firstChild) return;
+    leaders.setAttribute('viewBox', `0 0 ${String(w)} ${String(h)}`);
+    markers.prepend(leaders);
+  }
+
   function render() {
     for (const t of toggles) t.button.setAttribute('aria-pressed', String(t.on()));
     const pic = picture(state.view, state.date);
@@ -511,9 +574,13 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
     change.tile.dataset.tone = changeTone(siteChange);
     renderCard();
     renderList();
+    placeMarkers();
   }
 
   render();
+  // the map is as wide as its column: the badges are laid out again whenever its size changes
+  img.addEventListener('load', placeMarkers);
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(placeMarkers).observe(map);
   return {
     root,
     state: () => ({ ...state }),
