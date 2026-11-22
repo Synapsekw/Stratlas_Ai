@@ -522,7 +522,6 @@ describe('VolumetricScene: piles read their volume measurements', () => {
     expect(drawn()).toContain('toe-selected');
     // with its measurement hidden or on another date too: nothing stands in for it
     store.getState().setPileFigures({ P01: {} });
-    store.getState().setMeasuredShown([]);
     await settle(frame);
     expect(drawn().filter((n) => n === 'body-top' || n === 'base-plate')).toEqual([]);
     // under the cut and fill colours the same

@@ -160,11 +160,6 @@ export interface VolumetricState {
   changeGrid: ChangeGrid | null;
   /** The piles' figures from their volume measurements (the callouts read them). */
   pileFigures: PileFigures;
-  /**
-   * Piles whose volume measurement the host draws now (shown, on the date in focus). The kit
-   * draws no body for any pile any more, so nothing here reads it; the host still reports it.
-   */
-  measuredShown: readonly string[];
   selected: string | null;
   /**
    * Piles whose volume, toe line and callout are drawn in 3D besides the selected one. Empty by
@@ -200,8 +195,6 @@ export interface VolumetricActions {
   setChangeGrid(grid: ChangeGrid | null): void;
   /** The piles' figures from their volume measurements (the host's connector). */
   setPileFigures(figures: PileFigures): void;
-  /** The piles whose volume measurement the host draws now (the host's connector). */
-  setMeasuredShown(piles: readonly string[]): void;
   /** The survey on screen: the "to" survey under the change colours, else the chosen one. */
   shownEpoch(): string;
   /**
@@ -252,7 +245,6 @@ const initial: VolumetricState = {
   change: null,
   changeGrid: null,
   pileFigures: {},
-  measuredShown: [],
   selected: null,
   shown: [],
   elevation: DEFAULT_ELEVATION,
@@ -521,12 +513,6 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
 
       setPileFigures(figures) {
         set({ pileFigures: figures });
-      },
-
-      setMeasuredShown(piles) {
-        const was = get().measuredShown;
-        const same = was.length === piles.length && was.every((p, i) => p === piles[i]);
-        if (!same) set({ measuredShown: [...piles] });
       },
 
       epochShift,
