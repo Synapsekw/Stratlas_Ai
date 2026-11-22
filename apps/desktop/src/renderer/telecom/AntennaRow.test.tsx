@@ -152,13 +152,18 @@ describe('AntennaRow', () => {
     expect(h.setTypedValue).toHaveBeenCalledTimes(1);
   });
 
-  it('shows a dash for the tilt of a dish', () => {
+  it('leaves the downtilt cell of a dish empty: a dish has an elevation angle instead', () => {
     const dish = unit({ kind: 'dish' });
     delete dish.downtiltDeg;
     show({ unit: dish });
     const tilt = q('antenna-row-tilt')!;
     expect(tilt.tagName).not.toBe('INPUT');
-    expect(tilt.textContent).toBe('—');
+    expect(tilt.textContent).toBe('');
+  });
+
+  it('writes the centre altitude to one decimal, as the details and the 3D label do', () => {
+    show({ unit: unit({ centreHeightM: measured(31.46) }) });
+    expect(q('antenna-row')!.querySelector('.antenna-height')!.textContent).toBe('31.5');
   });
 
   it('trash asks to delete this unit', () => {
@@ -202,16 +207,16 @@ describe('AntennaRow', () => {
     expect(trash.getAttribute('aria-disabled')).toBe('true');
   });
 
-  it('hands a right-click to its menu', () => {
-    const onContextMenu = vi.fn();
-    show({ onContextMenu });
+  it('opens the antenna menu on a right-click', async () => {
+    const { antennaStore } = await import('./antennaStore');
+    antennaStore.setState({ projectId: 'p1' });
+    show();
     act(() => {
       q('antenna-row')!.dispatchEvent(
-        new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 6 }),
       );
     });
-    expect(onContextMenu).toHaveBeenCalledTimes(1);
-    expect(onContextMenu.mock.calls[0]![1]).toBe('a1');
+    expect(antennaStore.getState().menu).toEqual({ x: 5, y: 6, id: 'a1', projectId: 'p1' });
   });
 
   it('renders what it is given under the row, inside the same item', () => {

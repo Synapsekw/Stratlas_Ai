@@ -230,7 +230,9 @@ describe('AntennaDetails', () => {
     expect(value('altitude')).toBe('29.1 m');
     expect(value('size')).toBe('0.42 × 2.60 × 0.29 m');
     expect(value('points')).toBe((10330).toLocaleString());
-    expect(host.querySelector('[data-note="downtilt"]')?.textContent).toBe('mechanical');
+    expect(host.querySelector('[data-note="downtilt"]')?.textContent).toBe(
+      'without electrical tilt',
+    );
   });
 
   it('shows elevation and diameter for a dish, and no downtilt', () => {
@@ -261,7 +263,7 @@ describe('AntennaDetails', () => {
     const u = antennaStore.getState().file!.units[0]!;
     expect(u.kind).toBe('dish');
     expect(u.kindBasis).toBe('user');
-    expect(q('antenna-details-kind-basis')!.textContent).toBe('set by you');
+    expect(q('antenna-details-kind-basis')!.textContent).toBe('entered by you');
   });
 
   it('holds the photo strip, the Your values fold and the model fold', () => {
@@ -299,5 +301,63 @@ describe('AntennaDetails', () => {
     await settle();
     expect(h.writes).toBe(0);
     expect(antennaDeleteStore.getState().ask).toBeNull();
+  });
+
+  it('a second Accept or Reject returns the unit to Draft, as every route does (item 13)', async () => {
+    load(three());
+    show();
+    click('antenna-details-accept');
+    await settle();
+    click('antenna-details-accept');
+    await settle();
+    expect(status('a1')).toBe('draft');
+    click('antenna-details-reject');
+    await settle();
+    click('antenna-details-reject');
+    await settle();
+    expect(status('a1')).toBe('draft');
+  });
+
+  it('names the A and R keys, and that a second press sets Draft, in the tips (item 31)', () => {
+    vi.useFakeTimers();
+    try {
+      load(three());
+      show();
+      for (const [id, text] of [
+        ['accept', 'Accept (A). Press again to set it back to Draft.'],
+        ['reject', 'Reject (R). Press again to set it back to Draft.'],
+      ] as const) {
+        act(() => {
+          q(`antenna-details-${id}`)!.focus();
+        });
+        act(() => {
+          vi.advanceTimersByTime(1000);
+        });
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(text);
+        act(() => {
+          q(`antenna-details-${id}`)!.blur();
+        });
+        act(() => {
+          vi.advanceTimersByTime(1000);
+        });
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a value the unit lacks reads Not measured, never a bare dash (item 7)', () => {
+    load([unit('a1', { plumbDeg: undefined, depthM: undefined })]);
+    show();
+    expect(value('plumb')).toBe('Not measured');
+    expect(value('size')).toBe('0.42 m × 2.60 m × Not measured');
+    expect(host.textContent).not.toContain('—');
+  });
+
+  it('shows no position for a unit the filter does not list', () => {
+    load(three(), { filter: 'accepted', selected: 'a1' });
+    show();
+    expect(q('antenna-details-position')).toBeNull();
+    expect(host.textContent).not.toContain('—');
   });
 });

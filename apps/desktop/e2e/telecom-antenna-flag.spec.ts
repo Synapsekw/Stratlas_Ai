@@ -52,7 +52,7 @@ async function openTelecom(win: Page) {
 }
 
 /**
- * The antenna inventory and its Flag button are Project > In this project's Antennas group since
+ * The Antennas list and its Flag button are Project > In this project's Antennas group since
  * the right panel's four tabs (W7); Detect antennas stays in Tools > Measure's Telecom family. One
  * tab is in front at a time, so the spec moves between them.
  */
@@ -253,7 +253,7 @@ test('flags an antenna on the cloud, types its values and keeps them through a r
     .toMatchObject({ value: 271, basis: 'user' });
   await evidence(win, 'c-flag-details');
   await expectAccessible(win, 'Antenna details', { include: '[data-testid="antenna-details"]' });
-  await expectAccessible(win, 'Antenna inventory', { include: '[data-testid="antenna-panel"]' });
+  await expectAccessible(win, 'Antennas list', { include: '[data-testid="antenna-panel"]' });
 
   // a detection re-run finds the 8 others and the radio again: the flagged unit stays, no twin
   await openTelecom(win);

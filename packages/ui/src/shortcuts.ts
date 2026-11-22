@@ -27,6 +27,7 @@ export type ShortcutScope =
   | 'videoAnnotate'
   | 'panorama'
   | 'review'
+  | 'antenna'
   | 'pdf'
   | 'lightbox'
   | 'spot'
@@ -63,6 +64,7 @@ export const SHORTCUT_SCOPES: readonly { scope: ShortcutScope; label: MessageKey
   { scope: 'videoAnnotate', label: 'keys.scope.videoAnnotate' },
   { scope: 'panorama', label: 'keys.scope.panorama' },
   { scope: 'review', label: 'keys.scope.review' },
+  { scope: 'antenna', label: 'keys.scope.antenna' },
   { scope: 'pdf', label: 'keys.scope.pdf' },
   { scope: 'palette', label: 'keys.scope.palette' },
   { scope: 'agent', label: 'keys.scope.agent' },
@@ -80,6 +82,8 @@ export const CONCURRENT_SCOPES: readonly (readonly [ShortcutScope, ShortcutScope
   ['road', 'issues'],
   ['cleanup', 'issues'],
   ['scene', 'panorama'],
+  // a unit selected in the Antennas list: its review keys run before the stage's
+  ['scene', 'antenna'],
 ];
 
 export const SHORTCUTS = [
@@ -463,6 +467,17 @@ export const SHORTCUTS = [
     keys: ['Ctrl+Y', 'Ctrl+Shift+Z'],
     label: 'keys.review.redo',
   },
+
+  // a unit selected in the Antennas list (renderer/telecom/useAntennaKeys.ts): these run before
+  // the stage's own keys, so A accepts there instead of starting Annotate
+  {
+    id: 'antenna.accept',
+    scope: 'antenna',
+    keys: ['A'],
+    label: 'keys.antenna.accept',
+    shadows: ['scene.annotate'],
+  },
+  { id: 'antenna.reject', scope: 'antenna', keys: ['R'], label: 'keys.antenna.reject' },
 
   // the Datasets list (founder, 15 Oct 2026: every sidebar action on right-click)
   { id: 'tree.menu', scope: 'tree', keys: ['Shift+F10', 'Menu'], label: 'keys.tree.menu' },

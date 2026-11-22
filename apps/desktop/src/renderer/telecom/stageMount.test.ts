@@ -1,7 +1,7 @@
 /**
  * The stage mounts the antenna runner once, inside its marked block: the inventory's boxes and
  * the AI send preview then outlive whatever the workbench shows (the runner's behaviour is in
- * `AntennaBench.test.tsx`; mounting the whole stage takes the 3D engine).
+ * `antennaJourney.test.tsx`; mounting the whole stage takes the 3D engine).
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

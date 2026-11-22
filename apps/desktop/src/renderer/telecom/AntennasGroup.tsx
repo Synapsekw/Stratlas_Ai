@@ -1,17 +1,19 @@
 /**
  * The Antennas group of the Project tab's "In this project" list (`project/groupRegistry.ts`):
- * the run's warnings, why the AI labelling was skipped and the Flag antenna tool above the rows,
- * then the inventory (filter chips, editable rows, the selected unit's details inline) and the bulk
- * bar. The header carries the eye (Hide all / Show all) and Flag antenna. It applies to a project
- * with a point cloud and an inventory or a detection run, as the old inventory section did; its
- * count is the units not rejected. The list holds it open for a revealed row (`revealInList`) and
- * scrolls the row into view, so this group never calls `useRevealRow` itself. The boxes, the
- * inventory read and the AI send preview are `AntennaRunner`'s; "Detect antennas" is in the
- * Telecom tools (`survey/DetectAntennas.tsx`), the CSV export next to "Export survey data".
+ * why the last action failed (a delete, a save, a flag), the run's warnings, why the AI labelling
+ * was skipped and the Flag antenna tool above the rows, then the list (filter chips, editable rows,
+ * the selected unit's details inline, Detect antennas when it is empty) and the bulk bar. The
+ * header carries the eye (Hide all / Show all) and Flag antenna; the group opens whenever the flag
+ * tool is on (Flag antenna, Redraw outline from any route), so the tool is always on screen. It
+ * applies to a project with a point cloud and a list or a detection run; its count is the units not
+ * rejected. The list holds it open for a revealed row (`revealInList`) and scrolls the row into
+ * view, so this group never calls `useRevealRow` itself. The boxes, the list's read and the AI send
+ * preview are `AntennaRunner`'s; "Detect antennas" is also in the Telecom tools
+ * (`survey/DetectAntennas.tsx`), the CSV export next to "Export survey data".
  */
 import { Button, IconButton, t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import type { ReactElement } from 'react';
+import { useEffect, type ReactElement } from 'react';
 import type { ProjectGroupDef } from '../workspace/workbench/project/groupRegistry';
 import { GROUP_DEFAULT_OPEN, groupSectionId } from '../workspace/workbench/project/projectGroups';
 import { useSections } from '../workspace/workbench/sectionState';
@@ -68,6 +70,13 @@ function Actions(): ReactElement {
   );
   const reason = useFlagReason();
   const sections = useSections('measure');
+  const flagging = useAntennas((s) => s.flagging !== null);
+  const id = groupSectionId('antennas');
+  const folded = !sections.isOpen(id, GROUP_DEFAULT_OPEN);
+  // the tool shows above the rows: a folded group opens, as the person asked for the tool
+  useEffect(() => {
+    if (flagging && folded) sections.toggle(id, GROUP_DEFAULT_OPEN);
+  }, [flagging, folded, sections, id]);
   return (
     <>
       {allHidden ? (
@@ -93,9 +102,6 @@ function Actions(): ReactElement {
         tip={t('telecom.antennas.flag.tip')}
         {...(reason ? { disabledReason: reason } : {})}
         onClick={() => {
-          // the tool shows above the rows: a folded group opens, as the person asked for it
-          const id = groupSectionId('antennas');
-          if (!sections.isOpen(id, GROUP_DEFAULT_OPEN)) sections.toggle(id, GROUP_DEFAULT_OPEN);
           beginFlag();
         }}
       >
@@ -115,6 +121,12 @@ function Body(): ReactElement {
       data-testid="antenna-panel"
       aria-label={t('telecom.antennas.title')}
     >
+      {s.message && (
+        // a failed delete, save or flag says why here, where the action was
+        <p className="telecom-help telecom-note" role="status" data-testid="antenna-group-message">
+          {s.message}
+        </p>
+      )}
       {s.aiNote !== null && (
         <p className="telecom-help telecom-note" role="status" data-testid="antenna-ai-note">
           {t('telecom.antennas.ai.skipped', { reason: s.aiNote })}

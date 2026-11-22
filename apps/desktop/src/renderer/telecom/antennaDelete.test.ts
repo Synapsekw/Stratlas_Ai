@@ -9,7 +9,10 @@ import {
   askDeleteAntennas,
   cancelDeleteAntennas,
   confirmDeleteAntennas,
+  dismissUndoDeleteAntennas,
   sectorsHolding,
+  undoDeleteAntennas,
+  antennaUndoStore,
 } from './antennaDelete';
 import { antennaStore } from './antennaStore';
 
@@ -18,6 +21,7 @@ const h = vi.hoisted(() => ({
   calls: [] as Call[],
   fail: null as string | null,
   file: null as AntennasFile | null,
+  sectorsOnDisk: null as RfSectorsFile | null,
 }));
 
 vi.mock('../shell', async () => {
@@ -34,8 +38,14 @@ vi.mock('../shell', async () => {
           const file = { ...left, units: left.units.filter((u) => !gone.has(u.id)) };
           return Promise.resolve({ ok: true, value: { ok: true, deleted: [...gone], file } });
         }
-        if (channel === 'rf:writeSectors')
+        if (channel === 'telecom:writeAntennas') {
+          h.file = req.file as AntennasFile;
           return Promise.resolve({ ok: true, value: { ok: true } });
+        }
+        if (channel === 'rf:writeSectors') {
+          h.sectorsOnDisk = req.file as RfSectorsFile;
+          return Promise.resolve({ ok: true, value: { ok: true } });
+        }
         return Promise.resolve({ ok: false, error: 'unexpected' });
       }),
     },
@@ -64,6 +74,8 @@ function setUp(opts: { dirty?: boolean; plan?: boolean } = {}) {
     readOnly: false,
     dirty: opts.dirty ?? false,
     sectors,
+    // the plan as saved: the same plan (with unsaved edits, they are not in the units' places)
+    saved: opts.plan === false ? null : sectors,
   });
 }
 
@@ -71,6 +83,7 @@ beforeEach(() => {
   h.calls = [];
   h.fail = null;
   antennaDeleteStore.setState({ ask: null, busy: false });
+  antennaUndoStore.setState({ undo: [] });
 });
 
 describe('antennaDelete', () => {
@@ -174,5 +187,91 @@ describe('antennaDelete while a job runs', () => {
     antennaStore.setState({ file: null });
     await confirmDeleteAntennas();
     expect(antennaStore.getState().message).toBeNull();
+  });
+});
+
+describe('undo of a delete (item 27)', () => {
+  const ids = () => antennaStore.getState().file?.units.map((u) => u.id);
+  const plan = () => rfStore.getState().sectors;
+  const holder = (id: string) => plan().sectors.find((x) => x.antennaIds.includes(id))?.id;
+
+  it('offers the delete for undo, and Undo puts the units back into the current file and their sector', async () => {
+    setUp();
+    const before = structuredClone(plan());
+    askDeleteAntennas(['ant-a', 'ant-c']);
+    await confirmDeleteAntennas();
+    expect(ids()).toEqual(['ant-b']);
+    expect(plan().antennas.map((x) => x.antennaId)).toEqual(['ant-b']);
+    // ant-a was alone in sec-s1: the sector went with it
+    expect(plan().sectors.map((x) => x.id)).toEqual(['sec-s2']);
+    expect(antennaUndoStore.getState().undo).toHaveLength(1);
+    h.calls = [];
+    await undoDeleteAntennas();
+    // one normal save of the inventory (main then brings back the crops and the deletion record),
+    // then the saved plan with the unit back in its sector
+    expect(h.calls.map(([c]) => c)).toEqual(['telecom:writeAntennas', 'rf:writeSectors']);
+    expect(ids()).toEqual(['ant-a', 'ant-b', 'ant-c']);
+    expect(h.file?.units.map((u) => u.id)).toEqual(['ant-a', 'ant-b', 'ant-c']);
+    expect(holder('ant-a')).toBe('sec-s1');
+    expect(plan().sectors.find((x) => x.id === 'sec-s1')?.name).toBeTruthy();
+    // its RF settings come back whole, in the plan on disk too
+    for (const id of ['ant-a', 'ant-b'])
+      expect(plan().antennas.find((x) => x.antennaId === id)).toEqual(
+        before.antennas.find((x) => x.antennaId === id),
+      );
+    expect(h.sectorsOnDisk?.antennas.map((x) => x.antennaId).sort()).toEqual(['ant-a', 'ant-b']);
+    expect(rfStore.getState().dirty).toBe(false);
+    expect(antennaUndoStore.getState().undo).toEqual([]);
+  });
+
+  it('puts a unit back into a sector that still holds others', async () => {
+    setUp();
+    const both = {
+      ...plan(),
+      sectors: [{ id: 'sec-s1', name: 'S1', antennaIds: ['ant-a', 'ant-b'] }],
+    };
+    rfStore.setState({ sectors: both, saved: both });
+    askDeleteAntennas(['ant-a']);
+    await confirmDeleteAntennas();
+    expect(plan().sectors[0]?.antennaIds).toEqual(['ant-b']);
+    await undoDeleteAntennas();
+    expect(plan().sectors[0]?.antennaIds.slice().sort()).toEqual(['ant-a', 'ant-b']);
+  });
+
+  it('with unsaved Coverage edits, the sector membership comes back into the copy only', async () => {
+    setUp({ dirty: true });
+    askDeleteAntennas(['ant-a']);
+    await confirmDeleteAntennas();
+    h.calls = [];
+    await undoDeleteAntennas();
+    expect(h.calls.map(([c]) => c)).toEqual(['telecom:writeAntennas']);
+    expect(holder('ant-a')).toBe('sec-s1');
+    expect(rfStore.getState().dirty).toBe(true);
+    expect(plan().antennas.some((x) => x.antennaId === 'ant-a')).toBe(true);
+  });
+
+  it('a refused delete offers no undo, and Dismiss lets go of it', async () => {
+    setUp();
+    h.fail = 'Newer on disk.';
+    askDeleteAntennas(['ant-a']);
+    await confirmDeleteAntennas();
+    expect(antennaUndoStore.getState().undo).toEqual([]);
+    h.fail = null;
+    askDeleteAntennas(['ant-a']);
+    await confirmDeleteAntennas();
+    expect(antennaUndoStore.getState().undo).toHaveLength(1);
+    dismissUndoDeleteAntennas();
+    expect(antennaUndoStore.getState().undo).toEqual([]);
+  });
+
+  it('an undo for another project is dropped, not written', async () => {
+    setUp();
+    askDeleteAntennas(['ant-a']);
+    await confirmDeleteAntennas();
+    antennaStore.setState({ projectId: 'p2' });
+    h.calls = [];
+    await undoDeleteAntennas();
+    expect(h.calls).toEqual([]);
+    expect(antennaUndoStore.getState().undo).toEqual([]);
   });
 });

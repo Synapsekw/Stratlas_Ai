@@ -227,7 +227,7 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
     await head.evaluate((el) => el.scrollWidth <= el.clientWidth),
     'the row name is not cut',
   ).toBe(true);
-  // the run leaves the filter on To review, so the details walk the 8 drafts, in the list's order
+  // the run leaves the filter on Draft, so the details walk the 8 drafts, in the list's order
   await expect(card.getByTestId('antenna-details-position')).toHaveText('1 / 8');
   await evidence(win, 'e-card-selected');
   // and so does the list, at the CI size
@@ -236,7 +236,7 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
     'the group',
   ).toBeLessThanOrEqual(0);
 
-  // accept with the key: the unit leaves To review and the details move on
+  // accept with the key: the unit leaves Draft and the details move on
   await win.keyboard.press('a');
   await expect(rows).toHaveCount(7);
   await expect(card.getByTestId('antenna-details-position')).toHaveText('1 / 7');
@@ -251,7 +251,7 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
     await chipWhole(panel.locator('[data-testid="antenna-row"][data-status="draft"]').first()),
     'draft chip is whole',
   ).toBe(true);
-  await expectAccessible(win, 'Antenna inventory', { include: '[data-testid="antenna-panel"]' });
+  await expectAccessible(win, 'Antennas list', { include: '[data-testid="antenna-panel"]' });
   await expectAccessible(win, 'Antenna details', { include: '[data-testid="antenna-details"]' });
 
   // a clicked row keeps the review keys: the arrow steps the details, Escape closes them
@@ -355,7 +355,7 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
 
   // the inventory's CSV export sits next to Export survey data, in Site data (Tools > Measure)
   const site = await measureSection(win, 'siteData');
-  const csvTool = site.getByRole('button', { name: 'Export antenna inventory (CSV)' });
+  const csvTool = site.getByRole('button', { name: 'Export antennas (CSV)' });
   await expect(site.getByTestId('survey-export-open')).toBeVisible();
   await expect(csvTool).toBeVisible();
   await csvTool.click();

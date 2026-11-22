@@ -407,3 +407,45 @@ describe('AntennaTypedField compact (a row cell)', () => {
     expect(h.writes).toBe(0);
   });
 });
+
+describe('the row cell and "Your values" (item 15: one value, two places)', () => {
+  function Both() {
+    const u = useAntennas((s) => s.file?.units[0]);
+    return u ? (
+      <>
+        <AntennaTypedField
+          unit={u}
+          fieldKey="azimuthGridDeg"
+          readOnly={false}
+          compact
+          testId="cell"
+        />
+        <AntennaTypedValues unit={u} readOnly={false} />
+      </>
+    ) : null;
+  }
+  const cell = () => q('cell') as HTMLInputElement;
+
+  it('write the same stored value, and each shows what the other wrote', async () => {
+    // true north: both fields read in true north and store grid azimuth
+    load(unit({ convergenceDeg: 1.5 }));
+    act(() => {
+      root.render(<Both />);
+    });
+    type(cell(), '200');
+    enter(cell());
+    await settle();
+    const fromCell = stored().azimuthGridDeg;
+    expect(fromCell).toEqual(typed(198.5));
+    expect(input('azimuthGridDeg')!.value).toBe('200');
+    load(unit({ convergenceDeg: 1.5 }));
+    act(() => {
+      root.render(<Both />);
+    });
+    type(input('azimuthGridDeg')!, '200');
+    enter(input('azimuthGridDeg')!);
+    await settle();
+    expect(stored().azimuthGridDeg).toEqual(fromCell);
+    expect(cell().value).toBe('200');
+  });
+});

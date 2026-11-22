@@ -1,10 +1,12 @@
 /**
  * Review keys for the selected antenna (its row and details in the Project list): A accepts, R
- * rejects, the arrows step through the filtered list, Esc clears the selection and Delete asks to
- * delete the unit. Keys typed into a field, held with a modifier, already handled or pressed while
+ * rejects (a second press sets the unit back to Draft, `reviewUnits`), the arrows step through the
+ * filtered list, Esc clears the selection and Delete asks to delete the unit. A and R are the
+ * shortcut table's `antenna` scope (`@aio/ui` shortcuts), listed in Settings, Keyboard. Keys typed into a field, held with a modifier, already handled or pressed while
  * a modal dialog is open are left alone, and so are the keys of a widget that owns them: Delete
  * in the Datasets tree belongs to the tree (it removes what is marked there).
  */
+import { matchShortcut } from '@aio/ui';
 import { useEffect } from 'react';
 import { isTypingTarget } from '../keys';
 import { askDeleteAntennas } from './antennaDelete';
@@ -21,12 +23,6 @@ function ignored(e: KeyboardEvent): boolean {
 /** The action for a key, or null when the list does not handle it. */
 function actionOf(key: string): (() => void) | null {
   switch (key) {
-    case 'a':
-    case 'A':
-      return () => void decideAntenna('accepted');
-    case 'r':
-    case 'R':
-      return () => void decideAntenna('rejected');
     case 'ArrowRight':
     case 'ArrowDown':
       return () => {
@@ -79,16 +75,15 @@ export function useAntennaKeys(enabled: boolean): void {
   useEffect(() => {
     if (!enabled) return;
     const onCapture = (e: KeyboardEvent): void => {
-      if (!/^[aArR]$/.test(e.key) || ignored(e) || e.repeat) return;
-      const act = actionOf(e.key);
-      if (!act) return;
+      const id = matchShortcut('antenna', e);
+      if (!id || ignored(e) || e.repeat) return;
       e.preventDefault();
       // the review keys win over the stage's (A is annotate there)
       e.stopImmediatePropagation();
-      act();
+      void decideAntenna(id === 'antenna.accept' ? 'accepted' : 'rejected');
     };
     const onBubble = (e: KeyboardEvent): void => {
-      if (/^[aArR]$/.test(e.key) || ignored(e)) return;
+      if (matchShortcut('antenna', e) || ignored(e)) return;
       if (ownedElsewhere(e.target)) return;
       if (e.key === 'Delete' && inOtherListRow(e.target)) return;
       const act = actionOf(e.key);

@@ -116,15 +116,22 @@ describe('AntennaInventory', () => {
     expect(list.classList.contains('pl-rows')).toBe(true);
     expect(list.hasAttribute('data-antenna-tree')).toBe(true);
     expect(host.querySelector('[data-testid="antenna-cols"]')?.textContent).toBe(
-      'IDKindAz °Tilt °H mStatus',
+      'IDKindAz °Downtilt °Alt mStatus',
     );
   });
 
   it('shows the no-run and nothing-found empty states', () => {
     show({ file: null });
-    expect(host.textContent).toContain('No antenna run yet');
+    expect(host.textContent).toContain('No antennas yet');
+    // the list offers the tool it names (item 14)
+    expect(host.querySelector('[data-testid="antenna-empty-detect"]')?.textContent).toBe(
+      'Detect antennas',
+    );
     show({ file: fileOf([]) });
     expect(host.textContent).toContain('Nothing found');
+    // nothing found points to the tool for a missed unit
+    expect(host.textContent).toContain('Flag antenna');
+    expect(host.querySelector('[data-testid="antenna-empty-detect"]')).toBeNull();
     expect(rows()).toHaveLength(0);
   });
 
@@ -147,7 +154,7 @@ describe('AntennaInventory', () => {
     const h = show({ file, filter: 'draft' });
     const tabs = [...host.querySelectorAll<HTMLElement>('[role="tab"]')];
     expect(tabs.map((x) => x.textContent)).toEqual([
-      'To review 2',
+      'Draft 2',
       'Accepted 1',
       'Rejected 0',
       'All 3',
@@ -189,7 +196,7 @@ describe('AntennaInventory', () => {
     const file = fileOf([mk('ant-1', 'panel'), mk('ant-3', 'dish', { status: 'accepted' })]);
     show({ file, filter: 'rejected' });
     expect(rows()).toHaveLength(0);
-    expect(host.textContent).toContain('Nothing here. Every antenna in this filter is done.');
+    expect(host.textContent).toContain('Nothing here. Every unit in this filter is done.');
   });
 
   it('dims a row whose unit is not drawn', () => {

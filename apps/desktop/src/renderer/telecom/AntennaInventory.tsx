@@ -1,22 +1,17 @@
 /**
- * The antenna inventory inside the Antennas group: the filter chips with their counts, a transient
- * note, the column header, then one flat row per unit in the filter's order (the review walk's)
- * with the selected unit's details open under its row. The rows scroll inside the group beyond
- * eight; the open details count beside the eight rows, never as rows (`--pl-details-h`).
+ * The list inside the Antennas group: the filter chips with their counts, a transient note, the
+ * column header, then one flat row per unit in the filter's order (the review walk's) with the
+ * selected unit's details open under its row. The rows scroll inside the group beyond eight; the
+ * open details count beside the eight rows, never as rows (`--pl-details-h`). With no detection
+ * run yet it offers Detect antennas, the same action as Tools > Measure > Telecom, as the empty
+ * Volumes list offers Detect piles; "Nothing found" points to Flag antenna in the header.
  */
 import type { AntennaKind, AntennasFile } from '@aio/schema';
 import { Button, EmptyState, Tip, t } from '@aio/ui';
-import {
-  useLayoutEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type MouseEvent,
-  type ReactElement,
-} from 'react';
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
 import { AntennaDetails } from './AntennaDetails';
 import { AntennaRow, northOf } from './AntennaRow';
-import { filteredUnits } from './antennaStore';
+import { filteredUnits, runDetection, useAntennas } from './antennaStore';
 import { isAntennaDrawn, type AntennaFilter } from './antennaVisibility';
 
 export interface AntennaInventoryProps {
@@ -33,7 +28,6 @@ export interface AntennaInventoryProps {
   onSelect: (id: string) => void;
   onTick: (id: string) => void;
   onFilter: (f: AntennaFilter) => void;
-  onContextMenu?: (e: MouseEvent, id: string) => void;
 }
 
 const FILTERS: readonly AntennaFilter[] = ['draft', 'accepted', 'rejected', 'all'];
@@ -118,6 +112,32 @@ function Tabs(props: AntennaInventoryProps & { file: AntennasFile }): ReactEleme
   );
 }
 
+/** Detect antennas in the empty list: the Tools button's action, greyed for the same reasons. */
+function DetectButton(): ReactElement {
+  const why = useAntennas((s) =>
+    s.readOnly
+      ? t('telecom.antennas.readOnly')
+      : s.running
+        ? t('telecom.antennas.running')
+        : s.flagStarting || s.flagJob
+          ? t('telecom.antennas.flag.busy')
+          : null,
+  );
+  return (
+    <Button
+      variant="primary"
+      data-testid="antenna-empty-detect"
+      tip={t('telecom.antennas.detect.tip')}
+      {...(why ? { disabledReason: why } : {})}
+      onClick={() => {
+        void runDetection();
+      }}
+    >
+      {t('telecom.antennas.detect')}
+    </Button>
+  );
+}
+
 export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
   const { file } = props;
   const listed = filteredUnits(file, props.filter);
@@ -128,6 +148,7 @@ export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
       <EmptyState
         title={t('telecom.antennas.empty.none.title')}
         body={t('telecom.antennas.empty.none.body')}
+        action={<DetectButton />}
       />
     );
   if (file.units.length === 0)
@@ -192,7 +213,6 @@ export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
                 drawn={isAntennaDrawn(vis, u)}
                 onSelect={props.onSelect}
                 onTick={props.onTick}
-                {...(props.onContextMenu ? { onContextMenu: props.onContextMenu } : {})}
               >
                 {open === u.id ? (
                   <AntennaDetails

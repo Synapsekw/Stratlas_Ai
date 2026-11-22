@@ -43,6 +43,8 @@ export const enTelecom = {
   'telecom.antennas.label.metres': '{value} m',
   // the centre altitude, as the list's Alt m column
   'telecom.antennas.label.name': '{name} · alt {height}',
+  // a flagged unit with too few points: its altitude, and that its sizes are not measured
+  'telecom.antennas.label.nameNotMeasured': '{name} · alt {height} · not measured',
   // a dish: its one size label (item 33)
   'telecom.antennas.label.diameter': 'Diameter {value}',
   'telecom.antennas.labels.title': 'Labels',
@@ -171,7 +173,12 @@ export const enTelecom = {
   'telecom.antennas.reject.tip': 'Reject (R). Press again to set it back to Draft.',
   'telecom.antennas.reloaded': 'The antenna file changed on disk. It was loaded again.',
   'telecom.antennas.jobLost': 'The antenna job is no longer in the jobs list, so it was stopped.',
-  'telecom.antennas.busy': 'Wait until the antenna job ends.',
+  // T1: the Undo notice after a delete (item 27)
+  'telecom.antennas.undo.deleted_one': '{count} unit deleted',
+  'telecom.antennas.undo.deleted_other': '{count} units deleted',
+  'telecom.antennas.undo.deletedOne': '{name} deleted',
+  'telecom.antennas.undo.undo': 'Undo',
+  'telecom.antennas.undo.dismiss': 'Dismiss',
   // T3: the three measuring tools (R/survey/TelecomTools.tsx) and the names on their saved rows
   'telecom.tools.title': 'Telecom measurements',
   'telecom.tools.measurements': 'Measurements',

@@ -201,10 +201,6 @@ export const enLibrary = {
   'project.group.coverage': 'Coverage plan',
   'project.group.measurements': 'Measurements',
   'project.group.issues': 'Issues',
-  // the empty Antennas group (item 14): the title, and why its Detect antennas button is greyed
-  'project.antennas.noCloud':
-    'Add a point cloud first: Detect antennas measures the units from it.',
-  'project.antennas.none': 'No antennas yet',
   'project.antennas.col.id': 'ID',
   'project.antennas.col.kind': 'Kind',
   'project.antennas.col.az': 'Az °',

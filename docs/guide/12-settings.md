@@ -292,6 +292,13 @@ The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) 
 | Ctrl Z                               | Undo                                |
 | Ctrl Y, Ctrl Shift Z                 | Redo                                |
 
+### Antennas, with a unit selected
+
+| Keys | Does                                                  |
+| ---- | ----------------------------------------------------- |
+| A    | Accept the selected unit; again sets it back to Draft |
+| R    | Reject the selected unit; again sets it back to Draft |
+
 ### PDF report
 
 | Keys         | Does               |

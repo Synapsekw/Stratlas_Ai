@@ -1,24 +1,17 @@
 /**
  * One antenna in the Antennas group: a tick for the bulk bar, its kind colour, name and kind, the
- * azimuth and downtilt as fields saved on Enter or leaving them (Esc reverts), its height, its
- * status chip and a trash that asks to delete it. A click or Enter selects it; whatever is passed
- * as children (the selected unit's details) shows under it, in the same list item, so a reveal
- * scrolls the row and its details into view together.
+ * azimuth and downtilt as fields saved on Enter or leaving them (Esc reverts; a dish has an
+ * elevation angle, not a downtilt, so its cell is empty), its centre altitude, its status chip and
+ * a trash that asks to delete it. A click or Enter selects it, a right-click opens the antenna
+ * menu; whatever is passed as children (the selected unit's details) shows under it, in the same
+ * list item, so a reveal scrolls the row and its details into view together.
  */
 import type { AntennaUnit } from '@aio/schema';
 import { Chip, IconButton, t } from '@aio/ui';
-import {
-  useEffect,
-  useRef,
-  type CSSProperties,
-  type MouseEvent,
-  type ReactElement,
-  type ReactNode,
-} from 'react';
+import { useEffect, useRef, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import { deleteBlockedReason, openAntennaMenu, useAntennas } from './antennaStore';
 import { askDeleteAntennas } from './antennaDelete';
-import { DASH } from './AntennaDetails';
-import { TONE } from './antennaFormat';
+import { formatHeight, TONE } from './antennaFormat';
 import { KIND_COLOURS } from './antennaScene';
 import { AntennaTypedField } from './AntennaTypedValues';
 
@@ -47,7 +40,6 @@ export interface AntennaRowProps {
   drawn?: boolean;
   onSelect(id: string): void;
   onTick(id: string): void;
-  onContextMenu?(e: MouseEvent, id: string): void;
   /** Under the row, in the same item: the selected unit's details. */
   children?: ReactNode;
 }
@@ -83,7 +75,8 @@ export function AntennaRow(props: AntennaRowProps): ReactElement {
     field.focus();
     field.select();
   }, [want]);
-  const height = (unit.centreHeightM?.value ?? unit.box.centre[2]).toFixed(1);
+  // the column heading carries the unit ("Alt m")
+  const height = formatHeight(unit.centreHeightM?.value ?? unit.box.centre[2], false);
   return (
     <li className="antenna-item" data-row-id={unit.id} role="none">
       <div
@@ -111,9 +104,8 @@ export function AntennaRow(props: AntennaRowProps): ReactElement {
         }}
         onContextMenu={(e) => {
           e.preventDefault();
-          // the same menu as a box in 3D; a parent may take the click instead
-          if (props.onContextMenu) props.onContextMenu(e, unit.id);
-          else openAntennaMenu({ x: e.clientX, y: e.clientY, id: unit.id });
+          // the same menu as a box in 3D
+          openAntennaMenu({ x: e.clientX, y: e.clientY, id: unit.id });
         }}
       >
         <input
@@ -145,9 +137,7 @@ export function AntennaRow(props: AntennaRowProps): ReactElement {
         </span>
         <span className="antenna-cell">
           {dish ? (
-            <span className="mono antenna-dash" data-testid="antenna-row-tilt">
-              {DASH}
-            </span>
+            <span className="mono antenna-dash" data-testid="antenna-row-tilt" />
           ) : (
             <AntennaTypedField
               unit={unit}

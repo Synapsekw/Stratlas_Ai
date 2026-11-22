@@ -292,7 +292,9 @@ test.describe('project list: the Antennas group', () => {
       await rowOf(group, 'ant-p2').locator('.antenna-name').click({ button: 'right' });
       await expect(menu).toBeVisible();
       const fromRow = await menuLabels(menu);
-      expect(fromRow).toEqual(expect.arrayContaining(['Fly to', 'Accept', 'Reject', 'Delete']));
+      expect(fromRow).toEqual(
+        expect.arrayContaining(['Fly to', 'Accept', 'Reject', 'Open in Coverage', 'Delete']),
+      );
       await evidence(win, 'd-row-menu');
       await win.keyboard.press('Escape');
       await expect(menu).toHaveCount(0);

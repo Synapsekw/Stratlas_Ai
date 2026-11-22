@@ -1,12 +1,23 @@
 /**
  * The confirmation before antennas are deleted (`antennaDelete`): names the units, the RF sectors
- * that hold them and, when the coverage plan has unsaved edits, that it must be saved.
+ * that hold them and, when the coverage plan has unsaved edits, that it must be saved. The Undo
+ * notice of a delete mounts with it, so both live wherever the antenna runner is.
  */
 import { useT } from '@aio/ui';
 import { ConfirmDialog } from '../shell/ConfirmDialog';
 import { cancelDeleteAntennas, confirmDeleteAntennas, useAntennaDelete } from './antennaDelete';
+import { AntennaUndoNotice } from './AntennaUndoNotice';
 
 export function AntennaDeleteDialog() {
+  return (
+    <>
+      <AntennaUndoNotice />
+      <DeleteQuestion />
+    </>
+  );
+}
+
+function DeleteQuestion() {
   const t = useT();
   const ask = useAntennaDelete((s) => s.ask);
   const busy = useAntennaDelete((s) => s.busy);

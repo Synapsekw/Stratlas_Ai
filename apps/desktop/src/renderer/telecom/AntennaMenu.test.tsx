@@ -10,7 +10,14 @@ vi.mock('../shell', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
-    bridge: { call: () => Promise.resolve({ ok: false, error: 'Not configured' }) },
+    bridge: {
+      call: (channel: string) =>
+        Promise.resolve(
+          channel === 'telecom:writeAntennas'
+            ? { ok: true, value: { ok: true } }
+            : { ok: false, error: 'Not configured' },
+        ),
+    },
     jobs: { subscribe: () => () => undefined, getState: () => ({ jobs: [] }) },
   };
 });
@@ -19,6 +26,8 @@ const { AntennaMenu } = await import('./AntennaMenu');
 const { antennaStore } = await import('./antennaStore');
 const { antennaDeleteStore } = await import('./antennaDelete');
 const { shell } = await import('../shell');
+const { workbench } = await import('../workspace/workbench/workbenchStore');
+const { rfStore } = await import('../rf/rfStore');
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -48,6 +57,8 @@ beforeEach(() => {
     manifest: { layers: [], captures: [] } as unknown as ProjectManifest,
   });
   antennaStore.setState({
+    projectId: 'p1',
+    root: 'E:/p',
     readOnly: false,
     ticked: {},
     hidden: {},
@@ -115,5 +126,42 @@ describe('AntennaMenu', () => {
     expect(q('[data-testid="antenna-menu"]')).toBeNull();
     show(null);
     expect(q('[data-testid="antenna-menu"]')).toBeNull();
+  });
+
+  it('Open in Coverage opens the Coverage tab on the clicked unit', () => {
+    show(at('b'));
+    const item = q('[data-testid="ctx-item-antenna.openCoverage"]');
+    expect(item?.textContent).toContain('Open in Coverage');
+    act(() => {
+      item?.click();
+    });
+    expect(workbench.getState().tabs.some((x) => x.id === 'rf')).toBe(true);
+    expect(rfStore.getState().focusUnitId).toBe('b');
+  });
+
+  it('Accept follows the one rule: units that are all accepted go back to Draft', async () => {
+    antennaStore.setState({ ticked: { a: true, b: true } });
+    show(at('b'));
+    act(() => {
+      q('[data-testid="ctx-item-antenna.accept"]')?.click();
+    });
+    await vi.waitFor(() => {
+      expect(antennaStore.getState().file?.units.map((u) => u.status)).toEqual([
+        'accepted',
+        'accepted',
+        'draft',
+      ]);
+    });
+    show(at('b'));
+    act(() => {
+      q('[data-testid="ctx-item-antenna.accept"]')?.click();
+    });
+    await vi.waitFor(() => {
+      expect(antennaStore.getState().file?.units.map((u) => u.status)).toEqual([
+        'draft',
+        'draft',
+        'draft',
+      ]);
+    });
   });
 });

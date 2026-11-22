@@ -1,13 +1,15 @@
 import { defineAction, registerActions, t, type Action, type MenuTarget } from '@aio/ui';
 import type { AntennaStatus, AntennaUnit } from '@aio/schema';
+import { openRfTab } from '../../rf/rfTab';
 import { askDeleteAntennas } from '../../telecom/antennaDelete';
 import {
   antennaStore,
   beginFlag,
   deleteBlockedReason,
   requestFly,
+  revealAntenna,
+  reviewUnits,
   setAntennaSolo,
-  setUnitsStatus,
   showAntennaField,
   toggleAntennaHidden,
 } from '../../telecom/antennaStore';
@@ -15,8 +17,9 @@ import {
 /*
  * The right-click actions of the antenna rows in the project list (and of a unit picked in 3D):
  * edit the azimuth or downtilt in place, accept or reject, redraw the outline, fly to, hide or show,
- * show only one kind, and delete. Several ticked rows take Accept, Reject, Fly to, Hide or Show and
- * Delete together; the rest act on the row the menu opened on.
+ * show only one kind, open the unit in Coverage (its RF settings), and delete. Several ticked rows
+ * take Accept, Reject, Fly to, Hide or Show and Delete together; the rest act on the row the menu
+ * opened on.
  */
 
 type Target = Extract<MenuTarget, { kind: 'antennas' }>;
@@ -48,13 +51,11 @@ const clickedUnit = (tg: Target): AntennaUnit | undefined =>
 
 const isHidden = (id: string): boolean => antennaStore.getState().hidden[id] === true;
 
-/** Accept or reject every unit; when all are in that status already, return them to draft. */
+/** Accept or reject the units by the one rule of every route (`reviewUnits`). */
 function decide(tg: Target, status: Exclude<AntennaStatus, 'draft'>): void {
-  const units = unitsOf(tg);
-  const next: AntennaStatus = units.every((u) => u.status === status) ? 'draft' : status;
-  void setUnitsStatus(
-    units.map((u) => u.id),
-    next,
+  void reviewUnits(
+    unitsOf(tg).map((u) => u.id),
+    status,
   );
 }
 
@@ -160,7 +161,19 @@ const actions: readonly Action[] = [
     targets: ['antennas'],
     disabled: () => redrawBlocked(),
     run: (tg) => {
+      // the tool shows in the Antennas group: the list comes forward on the unit, its group open
+      revealAntenna(tg.clicked, undefined, 'edit');
       beginFlag(tg.clicked);
+    },
+  }),
+  defineAction<'antennas'>({
+    id: 'antenna.openCoverage',
+    label: 'actions.antenna.openCoverage',
+    section: 'view',
+    targets: ['antennas'],
+    appliesTo: (tg) => clickedUnit(tg) !== undefined,
+    run: (tg) => {
+      openRfTab(tg.clicked);
     },
   }),
   defineAction<'antennas'>({

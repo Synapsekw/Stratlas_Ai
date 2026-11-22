@@ -1,10 +1,12 @@
 /**
- * "Your values" in the antenna details: the azimuth, downtilt, centre elevation and size a person
+ * "Your values" in the antenna details: the azimuth, downtilt, centre altitude and size a person
  * types over the measured ones (or types in for a flagged unit too thin to measure). A value
  * commits on Enter or when the field is left, Esc puts the shown value back; Reset to measured
  * brings back the kept measured one. The azimuth reads in the north the details' Azimuth shows
  * (true when the file has the convergence, else project north) and is stored as grid azimuth.
- * `AntennaTypedField compact` is one of these fields as an inventory row's cell.
+ * `AntennaTypedField compact` is one of these fields as a row's cell: the same field, so both
+ * write the same value. Decimals follow `antennaFormat`: angles and the altitude one, sizes two;
+ * an empty field reads "Not set".
  */
 import type { AntennaUnit } from '@aio/schema';
 import { Button, t, type MessageKey } from '@aio/ui';
@@ -28,7 +30,7 @@ interface Field {
 const FIELDS: readonly Field[] = [
   { key: 'azimuthGridDeg', label: 'telecom.antennas.typed.azimuth.true', dp: 1 },
   { key: 'downtiltDeg', label: 'telecom.antennas.typed.downtilt', dp: 1 },
-  { key: 'centreHeightM', label: 'telecom.antennas.typed.centre', dp: 2 },
+  { key: 'centreHeightM', label: 'telecom.antennas.typed.centre', dp: 1 },
   { key: 'widthM', label: 'telecom.antennas.typed.width', dp: 2 },
   { key: 'heightM', label: 'telecom.antennas.typed.height', dp: 2 },
   { key: 'depthM', label: 'telecom.antennas.typed.depth', dp: 2 },
@@ -62,7 +64,7 @@ function stored(unit: AntennaUnit, key: TypedKey, v: number): number {
 function prefill(unit: AntennaUnit, f: Field): string {
   const v = unit[f.key]?.value ?? (f.key === 'centreHeightM' ? unit.box.centre[2] : undefined);
   if (v === undefined) return '';
-  // 359.96 shows as 0, the same as the card's value
+  // 359.96 shows as 0, the same as the details' value
   const n = Number(shown(unit, f.key, v).toFixed(f.dp));
   return String(f.key === 'azimuthGridDeg' && n === 360 ? 0 : n);
 }
@@ -125,6 +127,7 @@ function TypedField(props: {
       value={text}
       disabled={readOnly}
       aria-label={compact ? labelOf(unit, field) : undefined}
+      placeholder={compact ? undefined : t('telecom.antennas.notSet')}
       aria-invalid={bad ? true : undefined}
       aria-describedby={bad ? errId : undefined}
       style={compact ? undefined : { width: '100%', minWidth: 0 }}

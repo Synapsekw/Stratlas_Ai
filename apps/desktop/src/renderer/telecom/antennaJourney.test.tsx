@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /* eslint-disable @typescript-eslint/no-non-null-assertion -- DOM lookups that fail the test when missing */
 /**
- * The antenna inventory in the real right panel: Project > In this project (the list) beside Tools >
+ * The antenna journey in the real right panel: Project > In this project (the list) beside Tools >
  * Measure (the Measure workbench), with the runner the stage mounts beside them: its Antennas group
  * in the list, its CSV tool next to Export survey data, a tools search, the live strip, a 3D pick,
  * and the AI send preview, a dialog under <body> that a run opens whatever is on screen. The
@@ -267,7 +267,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('the antenna inventory in Project > In this project', () => {
+describe('the Antennas list in Project > In this project', () => {
   it('is the Antennas group of the list, with its CSV tool next to Export survey data', async () => {
     await mount();
     expect(head()?.getAttribute('aria-expanded')).toBe('true');
@@ -285,7 +285,7 @@ describe('the antenna inventory in Project > In this project', () => {
     });
     expect(section()?.querySelectorAll('[data-testid="antenna-row"]')).toHaveLength(3);
     const exp = q('[data-testid="survey-export-open"]')!;
-    const csv = q('[aria-label="Export antenna inventory (CSV)"]')!;
+    const csv = q('[aria-label="Export antennas (CSV)"]')!;
     expect(csv).not.toBeNull();
     // in the same tool row, right after it
     expect(exp.closest('.tgroup-h')).toBe(csv.closest('.tgroup-h'));
@@ -308,7 +308,7 @@ describe('the antenna inventory in Project > In this project', () => {
     h.replies['dialog:saveFile'] = { ok: true, value: { path: 'C:/out/antenna-inventory.csv' } };
     await mount();
     act(() => {
-      q('[aria-label="Export antenna inventory (CSV)"]')!.click();
+      q('[aria-label="Export antennas (CSV)"]')!.click();
     });
     act(() => {
       q('[data-testid="antenna-csv"]')!.click();
@@ -414,7 +414,7 @@ describe('the antenna menu on a row', () => {
 });
 
 describe('openAntennaReview (another tool asks for the review)', () => {
-  it('selects the first draft under To review, its details under its row', async () => {
+  it('selects the first draft under Draft, its details under its row', async () => {
     await mount();
     const s = antennaStore.getState();
     const first = filteredUnits(s.file, 'draft')[0]!.id;

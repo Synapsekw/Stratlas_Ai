@@ -2,8 +2,8 @@
  * The selected antenna's details, open inline under its row in the Antennas group: prev and next
  * through the filtered list, the kind pick, the photo strip, the values with their basis as a tip,
  * "Your values", "Model, weight, frequencies", then Accept (A), Reject (R), Redraw outline and
- * Delete (any unit, detected or flagged; it asks first). The photo strip, values and kind pick are
- * also the floating card's until it is retired.
+ * Delete (any unit, detected or flagged; it asks first). Numbers are written by `antennaFormat`,
+ * the same as in the row and the 3D labels; a value the unit lacks reads "Not measured".
  */
 import type { AntennaKind, AntennaStatus, AntennaUnit, AntennaValue, Layer } from '@aio/schema';
 import { Button, Chip, IconButton, Kbd, Tip, t } from '@aio/ui';
@@ -20,7 +20,7 @@ import { openPhoto } from '../builder/photoOpen';
 import { thumbUrl } from '../thumbs/Thumb';
 import { AntennaTrackHistory } from '../tracks/TrackSections';
 import { askDeleteAntennas } from './antennaDelete';
-import { formatDeg, qualityTip, trueAzimuth } from './antennaFormat';
+import { formatAngle, formatHeight, formatSize, qualityTip, trueAzimuth } from './antennaFormat';
 import {
   beginFlag,
   decideAntenna,
@@ -36,20 +36,27 @@ import { AntennaUserFields } from './AntennaUserFields';
 
 // ---------------------------------------------------------------- formatting
 
-/** A value the unit does not have: a symbol, the same in every language. */
-export const DASH = '—';
+/** A value the unit does not have: the app could not measure it. */
+const notMeasured = (): string => t('telecom.antennas.notMeasured');
 
 const deg = (v: AntennaValue | undefined, signed = false): string =>
-  v ? formatDeg(v.value, signed) : DASH;
-const metres = (v: AntennaValue | undefined): string => (v ? v.value.toFixed(2) : DASH);
+  v ? formatAngle(v.value, signed) : notMeasured();
 
 /** The azimuth in degrees: true north when the file has the convergence, else project north. */
 function azimuthText(unit: AntennaUnit): string {
   const grid = unit.azimuthGridDeg;
-  if (!grid) return DASH;
-  return formatDeg(
+  if (!grid) return notMeasured();
+  return formatAngle(
     unit.convergenceDeg === null ? grid.value : trueAzimuth(grid.value, unit.convergenceDeg),
   );
+}
+
+/** W × H × D: "0.42 × 2.60 × 0.29 m", each part with its unit when one is not measured. */
+function sizeText(sizes: readonly (AntennaValue | undefined)[]): string {
+  const known = sizes.flatMap((v) => (v ? [v.value] : []));
+  if (known.length === sizes.length)
+    return `${known.map((v) => formatSize(v, false)).join(' × ')} m`;
+  return sizes.map((v) => (v ? formatSize(v.value) : notMeasured())).join(' × ');
 }
 
 // ---------------------------------------------------------------- photos
@@ -393,15 +400,12 @@ const GRID: CSSProperties = {
 /** Azimuth, downtilt and plumb (elevation and diameter for a dish), altitude, points, W × H × D. */
 export function Values({ unit }: { unit: AntennaUnit }): ReactElement {
   const dish = unit.kind === 'dish';
-  // a flagged unit with too few points has nothing measured: say so instead of a dash
+  // a flagged unit with too few points has nothing measured: its tips say what to do
   const none = isNotMeasured(unit);
-  const missing = none ? t('telecom.antennas.notMeasured') : DASH;
+  const missing = notMeasured();
   const missingTip = none ? t('telecom.antennas.notMeasured.tip') : undefined;
   const sizes = [unit.widthM, unit.heightM, unit.depthM];
-  const size =
-    none && sizes.every((v) => v === undefined)
-      ? missing
-      : `${metres(unit.widthM)} × ${metres(unit.heightM)} × ${metres(unit.depthM)} m`;
+  const size = sizes.every((v) => v === undefined) ? missing : sizeText(sizes);
   return (
     <dl style={GRID}>
       <Value
@@ -431,7 +435,7 @@ export function Values({ unit }: { unit: AntennaUnit }): ReactElement {
             tip={unit.diameterM ? undefined : missingTip}
             big
           >
-            {unit.diameterM ? `${unit.diameterM.value.toFixed(2)} m` : missing}
+            {unit.diameterM ? formatSize(unit.diameterM.value) : missing}
           </Value>
         </>
       ) : (
@@ -465,7 +469,7 @@ export function Values({ unit }: { unit: AntennaUnit }): ReactElement {
         </>
       )}
       <Value name="altitude" label={t('telecom.antennas.card.altitude')} v={unit.centreHeightM}>
-        {`${(unit.centreHeightM?.value ?? unit.box.centre[2]).toFixed(1)} m`}
+        {formatHeight(unit.centreHeightM?.value ?? unit.box.centre[2])}
       </Value>
       <Value name="points" label={t('telecom.antennas.card.points')}>
         {unit.support.toLocaleString()}
@@ -477,7 +481,7 @@ export function Values({ unit }: { unit: AntennaUnit }): ReactElement {
         tip={
           sizes.every((v) => v === undefined)
             ? missingTip
-            : sizes.map((v) => (v ? basisTip(v) : DASH)).join(' / ')
+            : sizes.map((v) => (v ? basisTip(v) : missing)).join(' / ')
         }
       >
         {size}
@@ -597,16 +601,16 @@ export function AntennaDetails({
         >
           {kindBasisText(unit)}
         </span>
-        <span
-          className="mono"
-          data-testid="antenna-details-position"
-          style={{ flex: 'none', color: 'var(--fg-2)', whiteSpace: 'nowrap' }}
-        >
-          {t('telecom.antennas.card.position', {
-            i: position < 0 ? DASH : position + 1,
-            n: count,
-          })}
-        </span>
+        {position < 0 ? null : (
+          // a unit picked in 3D that the filter does not list has no place in it
+          <span
+            className="mono"
+            data-testid="antenna-details-position"
+            style={{ flex: 'none', color: 'var(--fg-2)', whiteSpace: 'nowrap' }}
+          >
+            {t('telecom.antennas.card.position', { i: position + 1, n: count })}
+          </span>
+        )}
         <IconButton
           icon="chev-r"
           label={t('telecom.antennas.card.prev')}
@@ -659,6 +663,7 @@ export function AntennaDetails({
           icon="check"
           variant={unit.status === 'accepted' ? 'primary' : 'secondary'}
           data-testid="antenna-details-accept"
+          tip={t('telecom.antennas.accept.tip')}
           pressed={unit.status === 'accepted'}
           {...reason}
           onClick={() => {
@@ -672,6 +677,7 @@ export function AntennaDetails({
           icon="x"
           variant={unit.status === 'rejected' ? 'danger' : 'secondary'}
           data-testid="antenna-details-reject"
+          tip={t('telecom.antennas.reject.tip')}
           pressed={unit.status === 'rejected'}
           {...reason}
           onClick={() => {

@@ -28,7 +28,8 @@ import {
   cancelHint,
   deleteUnits,
   deleteBlockedReason,
-  setUnitsStatus,
+  reviewUnits,
+  restoreUnits,
   visibleTickedIds,
   toggleTicked,
   endFlag,
@@ -36,7 +37,6 @@ import {
   setTypedValue,
   setUnitKind,
   startFlag,
-  cycleLabelMode,
   decideAntenna,
   getAiLabelPref,
   hideAllAntennas,
@@ -45,7 +45,6 @@ import {
   showAllAntennas,
   stepAntenna,
   filteredUnits,
-  toggleGroupHidden,
   loadAntennas,
   openAntennaReview,
   patchUnitUser,
@@ -54,7 +53,6 @@ import {
   setAiLabelPref,
   setCloudLayer,
   setLabelMode,
-  setUnitStatus,
   toggleAntennaHidden,
 } from './antennaStore';
 
@@ -305,7 +303,7 @@ describe('loading', () => {
     });
     const slow = loadAntennas('p1', '/p'); // snapshots the draft file, then waits
     h.delayRead = null;
-    await setUnitStatus(id, 'accepted');
+    await reviewUnits([id], 'accepted');
     expect(unit(0).status).toBe('accepted');
     release();
     await slow;
@@ -393,6 +391,82 @@ describe('running', () => {
     expect(state().running).toBe(false);
     expect(state().jobId).toBeNull();
   });
+
+  it('a job missing from the list ends the running state, and says so', async () => {
+    await runDetection();
+    // not listed yet: the job's first event has not come in
+    jobsStore.setState({ jobs: [] });
+    expect(state().running).toBe(true);
+    emitJob({ id: 'j1', status: 'running' });
+    expect(state().running).toBe(true);
+    // listed, then gone (a restart pruned it): the run is over
+    jobsStore.setState({ jobs: [] });
+    expect(state()).toMatchObject({
+      running: false,
+      jobId: null,
+      message: 'The antenna job is no longer in the jobs list, so it was stopped.',
+    });
+    await runDetection();
+    expect(starts()).toHaveLength(2);
+  });
+
+  it('a flag job missing from the list ends the flag state', async () => {
+    h.disk.file = sampleFile();
+    await loadAntennas('p1', '/p');
+    beginFlag();
+    await startFlag(flagSel);
+    emitJob({ id: 'j1', status: 'running' });
+    expect(state().flagJob?.id).toBe('j1');
+    jobsStore.setState({ jobs: [] });
+    expect(state().flagJob).toBeNull();
+    expect(state().message).toBe(
+      'The antenna job is no longer in the jobs list, so it was stopped.',
+    );
+  });
+});
+
+describe('a job already going when the project loads (a reload during a run)', () => {
+  const live = (over: Partial<JobRecord>) =>
+    ({
+      id: 'j-live',
+      pipeline: 'telecom.antennas',
+      project: '/p',
+      params: {},
+      status: 'running',
+      ...over,
+    }) as JobRecord;
+
+  it('a live detection job is picked up, so a second run cannot start', async () => {
+    jobsStore.setState({ jobs: [live({})] });
+    await loadAntennas('p1', '/p');
+    expect(state()).toMatchObject({ running: true, jobId: 'j-live' });
+    await runDetection();
+    expect(starts()).toHaveLength(0);
+    h.disk.file = sampleFile();
+    jobsStore.setState({ jobs: [live({ status: 'done' })] });
+    await vi.waitFor(() => {
+      expect(state().file?.units.length).toBe(3);
+    });
+    expect(state().running).toBe(false);
+  });
+
+  it('a job listed after the load is picked up too; another project’s or a finished one is not', async () => {
+    await loadAntennas('p1', '/p');
+    jobsStore.setState({ jobs: [live({ project: '/q' }), live({ id: 'j-old', status: 'done' })] });
+    expect(state().running).toBe(false);
+    jobsStore.setState({ jobs: [live({})] });
+    expect(state()).toMatchObject({ running: true, jobId: 'j-live' });
+  });
+
+  it('a live flag job is picked up with its unit', async () => {
+    h.disk.file = sampleFile();
+    jobsStore.setState({
+      jobs: [live({ pipeline: 'telecom.flag', params: { unit: 'ant-a3', redraw: true } })],
+    });
+    await loadAntennas('p1', '/p');
+    expect(state().flagJob).toEqual({ id: 'j-live', unit: 'ant-a3' });
+    expect(state().running).toBe(false);
+  });
 });
 
 describe('review', () => {
@@ -403,7 +477,7 @@ describe('review', () => {
 
   it('accepts a unit and writes the file', async () => {
     const id = unit(0).id;
-    await setUnitStatus(id, 'accepted');
+    await reviewUnits([id], 'accepted');
     expect(unit(0).status).toBe('accepted');
     expect(writes()).toHaveLength(1);
     const sent = need(writes()[0])[1] as { projectId: string; file: AntennasFile };
@@ -414,7 +488,7 @@ describe('review', () => {
 
   it('rejects a unit', async () => {
     const id = unit(1).id;
-    await setUnitStatus(id, 'rejected');
+    await reviewUnits([id], 'rejected');
     expect(file().units.map((u) => u.status)).toEqual(['draft', 'rejected', 'draft']);
   });
 
@@ -434,22 +508,22 @@ describe('review', () => {
 
   it('applies two quick changes one after the other without losing the first', async () => {
     await Promise.all([
-      setUnitStatus(unit(0).id, 'accepted'),
-      setUnitStatus(unit(1).id, 'rejected'),
+      reviewUnits([unit(0).id], 'accepted'),
+      reviewUnits([unit(1).id], 'rejected'),
     ]);
     expect(file().units.map((u) => u.status)).toEqual(['accepted', 'rejected', 'draft']);
     expect(writes()).toHaveLength(2);
   });
 
   it('does nothing for an unknown unit', async () => {
-    await setUnitStatus('ant-missing', 'accepted');
+    await reviewUnits(['ant-missing'], 'accepted');
     expect(writes()).toHaveLength(0);
   });
 
   it('reloads and says so when the write is refused', async () => {
     const id = unit(0).id;
     h.refuseWrite = true;
-    await setUnitStatus(id, 'accepted');
+    await reviewUnits([id], 'accepted');
     expect(state().message).toBe('Newer on disk.');
     expect(unit(0).status).toBe('draft');
     expect(h.calls.filter(([c]) => c === 'telecom:readAntennas')).toHaveLength(2);
@@ -459,7 +533,7 @@ describe('review', () => {
     h.disk.readOnly = true;
     await loadAntennas('p1', '/p');
     expect(state().readOnly).toBe(true);
-    await setUnitStatus(unit(0).id, 'accepted');
+    await reviewUnits([unit(0).id], 'accepted');
     expect(writes()).toHaveLength(0);
     await runDetection();
     expect(starts()).toHaveLength(0);
@@ -624,22 +698,6 @@ function fileOf(specs: Spec[], runId = 'run-a1'): AntennasFile {
 const sel = () => state().selected;
 
 describe('review walk', () => {
-  it('group eye hides a partly hidden group, then shows it', async () => {
-    h.disk.file = fileOf([
-      ['p1', 'panel', 'draft'],
-      ['p2', 'panel', 'draft'],
-      ['d1', 'dish', 'draft'],
-    ]);
-    await loadAntennas('p1', '/p');
-    toggleAntennaHidden('p1');
-    toggleGroupHidden('panel');
-    expect(state().hidden).toEqual({ p1: true, p2: true });
-    toggleGroupHidden('panel');
-    expect(state().hidden).toEqual({});
-    toggleGroupHidden('dish');
-    expect(state().hidden).toEqual({ d1: true });
-  });
-
   it('solo and walking never write the hidden map', async () => {
     h.disk.file = fileOf([
       ['a', 'panel', 'draft'],
@@ -806,7 +864,7 @@ describe('review walk', () => {
     expect(sel()).toBe('d2');
     await decideAntenna('accepted');
     expect(sel()).toBeNull();
-    expect(state().note).toBe('Every antenna in this filter is done.');
+    expect(state().note).toBe('Every unit in this filter is done.');
   });
 
   it('keeps the selection on the All filter', async () => {
@@ -832,7 +890,7 @@ describe('review walk', () => {
     selectAntenna('a');
     await decideAntenna('accepted');
     expect(unit(0).status).toBe('draft');
-    expect(state().note).toBe('Every antenna in this filter is done.');
+    expect(state().note).toBe('Every unit in this filter is done.');
   });
 
   it('decide does nothing read-only', async () => {
@@ -851,7 +909,7 @@ describe('review walk', () => {
     expect(writes()).toHaveLength(0);
   });
 
-  it('a new project starts on To review when it has drafts, else All', async () => {
+  it('a new project starts on Draft when it has drafts, else All', async () => {
     h.disk.file = fileOf([['a', 'panel', 'draft']]);
     await loadAntennas('p1', '/p');
     expect(state().filter).toBe('draft');
@@ -860,7 +918,7 @@ describe('review walk', () => {
     expect(state().filter).toBe('all');
   });
 
-  it('a run finishing with drafts switches the filter to To review; a plain reload keeps it', async () => {
+  it('a run finishing with drafts switches the filter to Draft; a plain reload keeps it', async () => {
     h.disk.file = fileOf([['a', 'panel', 'accepted']], 'run-1');
     await loadAntennas('p1', '/p');
     expect(state().filter).toBe('all');
@@ -898,14 +956,8 @@ describe('filteredUnits order', () => {
 });
 
 describe('labels mode', () => {
-  it('starts on all and cycles off, selected, all', () => {
+  it('starts on all and takes the setting it is given', () => {
     expect(antennaStore.getInitialState().labelMode).toBe('all');
-    cycleLabelMode();
-    expect(state().labelMode).toBe('off');
-    cycleLabelMode();
-    expect(state().labelMode).toBe('selected');
-    cycleLabelMode();
-    expect(state().labelMode).toBe('all');
     setLabelMode('selected');
     expect(state().labelMode).toBe('selected');
   });
@@ -1418,7 +1470,7 @@ describe('typed values and kinds', () => {
     h.disk.file = withFlagged('ant-f-x');
     await loadAntennas('p1', '/p');
     const ids = [unit(0).id, 'ant-f-x'];
-    expect(await deleteUnits(ids)).toEqual({ ok: true });
+    expect(await deleteUnits(ids)).toMatchObject({ ok: true });
     const calls = h.calls.filter(([c]) => c === 'telecom:deleteAntennas');
     expect(calls).toEqual([['telecom:deleteAntennas', { projectId: 'p1', ids }]]);
     expect(file().units.map((u) => u.id)).toEqual([unit(0).id, unit(1).id]);
@@ -1442,7 +1494,7 @@ describe('typed values and kinds', () => {
   it('runs after a pending review write', async () => {
     await loadAntennas('p1', '/p');
     const id = unit(0).id;
-    void setUnitStatus(id, 'accepted');
+    void reviewUnits([id], 'accepted');
     await deleteUnits([unit(1).id]);
     const order = h.calls
       .map(([c]) => c)
@@ -1475,9 +1527,9 @@ describe('antenna bulk helpers', () => {
     await loadAntennas('p1', '/p');
   });
 
-  it('setUnitsStatus changes several units in one write', async () => {
+  it('reviewUnits changes several units in one write', async () => {
     const ids = [unit(0).id, unit(1).id];
-    await setUnitsStatus(ids, 'accepted');
+    await reviewUnits(ids, 'accepted');
     expect(writes()).toHaveLength(1);
     expect(
       file()
@@ -1487,9 +1539,65 @@ describe('antenna bulk helpers', () => {
     expect(unit(2).status).toBe('draft');
   });
 
-  it('setUnitsStatus writes nothing for ids that are not in the file', async () => {
-    await setUnitsStatus(['nope'], 'accepted');
+  it('reviewUnits writes nothing for ids that are not in the file', async () => {
+    await reviewUnits(['nope'], 'accepted');
     expect(writes()).toHaveLength(0);
+  });
+
+  it('one rule: a second Accept on accepted units returns them to Draft; a mixed set all take it', async () => {
+    const [a, b, c] = [unit(0).id, unit(1).id, unit(2).id];
+    await reviewUnits([a, b], 'accepted');
+    expect(file().units.map((u) => u.status)).toEqual(['accepted', 'accepted', 'draft']);
+    await reviewUnits([a, b], 'accepted');
+    expect(file().units.map((u) => u.status)).toEqual(['draft', 'draft', 'draft']);
+    await reviewUnits([a], 'rejected');
+    // a, rejected, and c, a draft: not all rejected yet, so both are
+    await reviewUnits([a, c], 'rejected');
+    expect(file().units.map((u) => u.status)).toEqual(['rejected', 'draft', 'rejected']);
+    await reviewUnits([a, c], 'rejected');
+    expect(file().units.map((u) => u.status)).toEqual(['draft', 'draft', 'draft']);
+  });
+
+  it('decides on the file as it is when its turn comes', async () => {
+    const a = unit(0).id;
+    // two quick presses of Accept: the second sees the first's result and returns it to Draft
+    await Promise.all([reviewUnits([a], 'accepted'), reviewUnits([a], 'accepted')]);
+    expect(unit(0).status).toBe('draft');
+  });
+
+  it('undo of a delete puts the deleted units back at their old places in the current file, by the normal save', async () => {
+    const ids = file().units.map((u) => u.id);
+    const r = await deleteUnits([need(ids[0]), need(ids[2])]);
+    if (!r.ok) throw new Error('delete refused');
+    expect(r.removed.map((x) => [x.unit.id, x.index])).toEqual([
+      [ids[0], 0],
+      [ids[2], 2],
+    ]);
+    // an edit made after the delete is kept by the undo
+    await reviewUnits([need(ids[1])], 'accepted');
+    expect(await restoreUnits(r.removed)).toBe(true);
+    expect(file().units.map((u) => u.id)).toEqual(ids);
+    expect(unit(1).status).toBe('accepted');
+    const last = need(writes().at(-1))[1] as { file: AntennasFile };
+    expect(last.file.units.map((u) => u.id)).toEqual(ids);
+  });
+
+  it('undo skips a unit that is back already, and says false when nothing is written', async () => {
+    const id = unit(0).id;
+    const r = await deleteUnits([id]);
+    if (!r.ok) throw new Error('delete refused');
+    expect(await restoreUnits(r.removed)).toBe(true);
+    const n = writes().length;
+    expect(await restoreUnits(r.removed)).toBe(false);
+    expect(writes()).toHaveLength(n);
+  });
+
+  it('an undo whose write is refused reloads and says so', async () => {
+    const r = await deleteUnits([unit(0).id]);
+    if (!r.ok) throw new Error('delete refused');
+    h.refuseWrite = true;
+    expect(await restoreUnits(r.removed)).toBe(false);
+    expect(state().message).toBe('Newer on disk.');
   });
 
   it('visibleTickedIds counts only the ticked rows the filter shows', () => {

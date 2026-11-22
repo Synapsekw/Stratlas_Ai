@@ -14,11 +14,20 @@ import { projectListStore, revealInList } from '../workspace/workbench/project/p
 import { sectionStore } from '../workspace/workbench/sectionState';
 import { antennaDeleteStore } from './antennaDelete';
 import { antennasGroup } from './AntennasGroup';
-import { antennaStore, selectAntenna, type AntennaState } from './antennaStore';
+import { antennaStore, beginFlag, selectAntenna, type AntennaState } from './antennaStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const h = vi.hoisted(() => ({ writes: [] as unknown[], clouds: 1 }));
+const h = vi.hoisted(() => ({
+  writes: [] as unknown[],
+  clouds: 1,
+  calls: [] as string[],
+  deleteError: null as string | null,
+}));
+
+const antennaStoreRef = vi.hoisted(() => ({
+  current: null as null | { getState(): { file: unknown; readOnly: boolean } },
+}));
 
 vi.mock('../shell', async () => {
   const { createStore } = await import('zustand/vanilla');
@@ -26,6 +35,13 @@ vi.mock('../shell', async () => {
     jobs: createStore<{ jobs: unknown[] }>()(() => ({ jobs: [] })),
     bridge: {
       call: vi.fn((channel: string, req: { file?: unknown }) => {
+        h.calls.push(channel);
+        if (channel === 'telecom:deleteAntennas' && h.deleteError !== null)
+          return Promise.resolve({ ok: true, value: { ok: false, error: h.deleteError } });
+        if (channel === 'telecom:readAntennas') {
+          const { file, readOnly } = antennaStoreRef.current?.getState() ?? {};
+          return Promise.resolve({ ok: true, value: { ok: true, file, readOnly } });
+        }
         if (channel === 'telecom:writeAntennas') {
           h.writes.push(req.file);
           return Promise.resolve({ ok: true, value: { ok: true } });
@@ -98,9 +114,13 @@ function load(units: AntennaUnit[] | null, over: Partial<AntennaState> = {}) {
   });
 }
 
+antennaStoreRef.current = antennaStore;
+
 let host: HTMLDivElement;
 let root: Root;
 beforeEach(() => {
+  h.calls = [];
+  h.deleteError = null;
   h.writes = [];
   h.clouds = 1;
   localStorage.clear();
@@ -223,6 +243,53 @@ describe('the Antennas group', () => {
     expect(antennaStore.getState().flagging).toEqual({ unit: null });
     expect(head()?.getAttribute('aria-expanded')).toBe('true');
     expect(q('flag-tool')).not.toBeNull();
+  });
+
+  it('Redraw outline from the menu opens a folded group so its tool shows (item 32)', () => {
+    load(four());
+    show();
+    click(head());
+    expect(head()?.getAttribute('aria-expanded')).toBe('false');
+    // what the right-click menu's Redraw outline calls, on a unit whose row is folded away
+    act(() => {
+      beginFlag('p1');
+    });
+    expect(antennaStore.getState().flagging).toEqual({ unit: 'p1' });
+    expect(head()?.getAttribute('aria-expanded')).toBe('true');
+    expect(q('flag-tool')).not.toBeNull();
+  });
+
+  it('the empty list offers Detect antennas, the same action as in Tools (item 14)', async () => {
+    load(null);
+    show();
+    expect(q('antenna-panel')!.textContent).toContain('No antennas yet');
+    const detect = q('antenna-empty-detect')!;
+    expect(detect.textContent).toBe('Detect antennas');
+    click(detect);
+    await settle();
+    expect(h.calls).toContain('jobs:start');
+  });
+
+  it('the empty list greys Detect antennas with its reason while a run goes or read-only', () => {
+    load(null, { running: true });
+    show();
+    expect(q('antenna-empty-detect')!.getAttribute('aria-disabled')).toBe('true');
+    load(null, { readOnly: true });
+    expect(q('antenna-empty-detect')!.getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('a failed delete says why in the group, where the delete was (item 30)', async () => {
+    load(four());
+    show();
+    h.deleteError = 'The antenna file is open in another program.';
+    click(host.querySelector('[data-row-id="p1"] [data-testid="antenna-row-delete"]'));
+    const { confirmDeleteAntennas } = await import('./antennaDelete');
+    await act(async () => {
+      await confirmDeleteAntennas();
+    });
+    expect(q('antenna-group-message')?.textContent).toBe(
+      'The antenna file is open in another program.',
+    );
   });
 
   it('with no inventory yet, shows Flag antenna disabled with its reason', () => {
@@ -408,6 +475,32 @@ describe('the bulk bar', () => {
     click(q('antenna-bulk-accept'));
     await settle();
     expect(h.writes).toHaveLength(1);
+  });
+
+  it('a second Accept on accepted units returns them to Draft (item 13)', async () => {
+    load(four());
+    show();
+    tick('p2');
+    click(q('antenna-bulk-accept'));
+    await settle();
+    expect(status('p2')).toBe('draft');
+    tick('p1');
+    tick('p2');
+    click(q('antenna-bulk-accept'));
+    await settle();
+    expect(status('p1')).toBe('accepted');
+    expect(status('p2')).toBe('accepted');
+  });
+
+  it('Accept and Reject stay live while a job runs, as on every other route (item 38)', async () => {
+    // the jobs read the file again when they commit, so a review made meanwhile is kept
+    load(four(), { running: true, ticked: { p1: true } });
+    show();
+    expect(q('antenna-bulk-accept')!.getAttribute('aria-disabled')).toBeNull();
+    expect(q('antenna-bulk-reject')!.getAttribute('aria-disabled')).toBeNull();
+    click(q('antenna-bulk-accept'));
+    await settle();
+    expect(status('p1')).toBe('accepted');
   });
 
   it('delete is greyed and asks nothing while a detection runs', () => {

@@ -179,6 +179,12 @@ function dropBoxAfterFlag(): void {
 }
 /** Writes run one after the other so a quick second click builds on the first. */
 let queue: Promise<void> = Promise.resolve();
+/**
+ * The jobs of ours seen in the jobs list. A job is listed only once its first event comes in, so
+ * one not listed yet is still starting; one that was listed and then is not (the list was read
+ * again after a restart) has ended, and its state ends with it.
+ */
+const seenJobs = new Set<string>();
 
 // ---------------------------------------------------------------- loading
 
@@ -188,6 +194,7 @@ let queue: Promise<void> = Promise.resolve();
  */
 export function resetAntennas(): void {
   loadSeq++;
+  seenJobs.clear();
   dropBoxAfterFlag();
   set({ ...initial(), reveal: get().reveal, labelMode: get().labelMode });
 }
@@ -245,6 +252,7 @@ export async function loadAntennas(projectId: string, root: string): Promise<voi
         .map((id) => [id, true as const]),
     ),
   });
+  adoptLiveJobs(jobsNow());
   if (offerAfterLoad?.projectId === projectId) {
     const { before } = offerAfterLoad;
     offerAfterLoad = null;
@@ -285,12 +293,55 @@ function watchJobs(): void {
   });
 }
 
+/** The jobs list as it is now (empty when the jobs store is a test's stub). */
+function jobsNow(): readonly JobRecord[] {
+  const store: Partial<typeof jobs> = jobs;
+  return store.getState ? store.getState().jobs : [];
+}
+
+const isLive = (j: JobRecord): boolean =>
+  j.status === 'starting' || j.status === 'running' || j.status === 'cancelling';
+
+/**
+ * A detection or flag job of this project already going when its inventory is read (the window
+ * was reloaded during a run) is taken up, so a second run cannot start beside it.
+ */
+function adoptLiveJobs(list: readonly JobRecord[]): void {
+  const s = get();
+  if (!s.root) return;
+  const ours = (pipeline: string) =>
+    list.find((j) => j.pipeline === pipeline && j.project === s.root && isLive(j));
+  const run = s.running ? undefined : ours('telecom.antennas');
+  if (run) {
+    seenJobs.add(run.id);
+    set({ running: true, jobId: run.id, needsHint: false });
+  }
+  const flag = s.flagJob || s.flagStarting ? undefined : ours('telecom.flag');
+  const unit = flag?.params.unit;
+  if (flag && typeof unit === 'string') {
+    seenJobs.add(flag.id);
+    flagRedraw = flag.params.redraw === true;
+    set({ flagJob: { id: flag.id, unit } });
+  }
+}
+
 function onJobs(list: readonly JobRecord[]): void {
+  adoptLiveJobs(list);
   onFlagJob(list);
   const { jobId, running } = get();
   if (!jobId || !running) return;
   const job = list.find((j) => j.id === jobId);
-  if (!job) return;
+  if (!job) {
+    if (seenJobs.delete(jobId))
+      set({
+        running: false,
+        jobId: null,
+        needsHint: false,
+        message: t('telecom.antennas.jobLost'),
+      });
+    return;
+  }
+  seenJobs.add(job.id);
   switch (job.status) {
     case 'done': {
       const { projectId, root, file } = get();
@@ -324,7 +375,16 @@ function onFlagJob(list: readonly JobRecord[]): void {
   const { flagJob } = get();
   if (!flagJob) return;
   const job = list.find((j) => j.id === flagJob.id);
-  if (!job) return;
+  if (!job) {
+    if (!seenJobs.delete(flagJob.id)) return;
+    // a box drag's end is said by its toast; the Flag tool's by the message line
+    if (boxAfterFlag?.jobId === flagJob.id) {
+      set({ flagJob: null });
+      endBoxMeasure(t('telecom.antennas.resize.stopped'));
+    } else set({ flagJob: null, message: t('telecom.antennas.jobLost') });
+    return;
+  }
+  seenJobs.add(job.id);
   switch (job.status) {
     case 'done': {
       const { projectId, root } = get();
@@ -388,6 +448,8 @@ export async function runDetection(opts?: { towerHint?: [number, number] }): Pro
     set({ running: false, jobId: null, message: error });
     return;
   }
+  // a new job: whether it has been listed starts afresh
+  seenJobs.delete(r.value.job.id);
   set({ jobId: r.value.job.id });
   // the job may already have finished by the time the answer arrives
   const store: Partial<typeof jobs> = jobs;
@@ -462,6 +524,7 @@ export async function startFlag(o: {
     return;
   }
   flagRedraw = redraw;
+  seenJobs.delete(r.value.job.id);
   set({ flagJob: { id: r.value.job.id, unit } });
   // the job may already have finished by the time the answer arrives
   const store: Partial<typeof jobs> = jobs;
@@ -631,6 +694,7 @@ export async function commitBoxDrag(o: {
   }
   flagRedraw = true;
   boxAfterFlag = { ...edit, toast, projectId, jobId: r.value.job.id };
+  seenJobs.delete(r.value.job.id);
   set({ flagJob: { id: r.value.job.id, unit: e.unitId } });
   // the job may already have finished by the time the answer arrives
   const store: Partial<typeof jobs> = jobs;
@@ -665,43 +729,79 @@ export function setCloudLayer(id: string | null): void {
  * refused write (a newer file on disk) reloads and says so.
  */
 function change(edit: (file: AntennasFile) => AntennasFile | null): Promise<void> {
+  return changeOk(edit).then(() => undefined);
+}
+
+/** `change`, answering whether the file was written. */
+function changeOk(edit: (file: AntennasFile) => AntennasFile | null): Promise<boolean> {
   const next = queue.then(async () => {
     const { file, projectId, root, readOnly } = get();
-    if (!file || !projectId || !root || readOnly) return;
+    if (!file || !projectId || !root || readOnly) return false;
     const updated = edit(file);
-    if (!updated) return;
+    if (!updated) return false;
     const r = await bridge.call('telecom:writeAntennas', { projectId, file: updated });
-    if (get().projectId !== projectId) return;
+    if (get().projectId !== projectId) return false;
     if (r.ok && r.value.ok) {
       // a read that started before this write would bring back the file it replaced
       loadSeq++;
       set({ file: updated, message: null });
-      return;
+      return true;
     }
     const error = !r.ok ? r.error : r.value.ok ? '' : r.value.error;
     await loadAntennas(projectId, root);
-    set({ message: error || 'The antenna file changed on disk. It was loaded again.' });
+    set({ message: error || t('telecom.antennas.reloaded') });
+    return false;
   });
-  queue = next.catch(() => undefined);
+  queue = next.then(
+    () => undefined,
+    () => undefined,
+  );
   return next;
 }
 
-export function setUnitStatus(id: string, status: AntennaStatus): Promise<void> {
-  return change((file) =>
-    file.units.some((u) => u.id === id)
-      ? { ...file, units: file.units.map((u) => (u.id === id ? { ...u, status } : u)) }
-      : null,
-  );
+/**
+ * Accept or reject units, the one rule of every route (the details buttons, the A and R keys, the
+ * bulk bar, the right-click menu): when every one of them has that status already they go back to
+ * Draft, otherwise they all take it. One write, decided on the file as it is when its turn comes,
+ * so a quick second press builds on the first.
+ */
+export function reviewUnits(
+  ids: readonly string[],
+  status: Exclude<AntennaStatus, 'draft'>,
+): Promise<void> {
+  const which = new Set(ids);
+  return change((file) => {
+    const chosen = file.units.filter((u) => which.has(u.id));
+    if (chosen.length === 0) return null;
+    const next: AntennaStatus = chosen.every((u) => u.status === status) ? 'draft' : status;
+    return {
+      ...file,
+      units: file.units.map((u) => (which.has(u.id) ? { ...u, status: next } : u)),
+    };
+  });
 }
 
-/** Set the status of several units in one write (one backup, one undo step). */
-export function setUnitsStatus(ids: readonly string[], status: AntennaStatus): Promise<void> {
-  const which = new Set(ids);
-  return change((file) =>
-    file.units.some((u) => which.has(u.id))
-      ? { ...file, units: file.units.map((u) => (which.has(u.id) ? { ...u, status } : u)) }
-      : null,
-  );
+/** A deleted unit and where it stood in the file, for an undo. */
+export interface RemovedUnit {
+  unit: AntennaUnit;
+  index: number;
+}
+
+/**
+ * Undo of a delete: put the units back at their old places into the file as it is now (an edit
+ * made since the delete stays), through the ordinary save. Main sees the ids come back and puts
+ * their crops and deletion records back. A unit already in the file is left alone. Answers
+ * whether the file was written.
+ */
+export function restoreUnits(removed: readonly RemovedUnit[]): Promise<boolean> {
+  return changeOk((file) => {
+    const have = new Set(file.units.map((u) => u.id));
+    const back = removed.filter((r) => !have.has(r.unit.id)).sort((a, b) => a.index - b.index);
+    if (back.length === 0) return null;
+    const units = [...file.units];
+    for (const r of back) units.splice(Math.min(r.index, units.length), 0, r.unit);
+    return { ...file, units };
+  });
 }
 
 /** Set the typed fields; an explicitly undefined field is cleared. */
@@ -751,17 +851,25 @@ export function setUnitKind(id: string, kind: AntennaKind): Promise<void> {
 
 /**
  * Delete units, detected or flagged, through one `telecom:deleteAntennas` call (main writes the
- * deletion record, the file and drops the crops). Queued behind pending writes. On success the
- * file is the one main answers with, and the ids leave the selection, hiding and ticks; a refusal
+ * deletion record, the file and parks the crops). Queued behind pending writes. On success the
+ * file is the one main answers with, the ids leave the selection, hiding and ticks, and the answer
+ * holds the deleted units as they were with their places (for an undo, `restoreUnits`); a refusal
  * keeps everything as it was and answers why.
  */
 export function deleteUnits(
   ids: readonly string[],
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  let result: { ok: true } | { ok: false; error: string } = { ok: false, error: '' };
+): Promise<{ ok: true; removed: RemovedUnit[] } | { ok: false; error: string }> {
+  let result: { ok: true; removed: RemovedUnit[] } | { ok: false; error: string } = {
+    ok: false,
+    error: '',
+  };
   const next = queue.then(async () => {
     const { file, projectId, root, readOnly } = get();
     if (!file || !projectId || !root || readOnly || ids.length === 0) return;
+    const asked = new Set(ids);
+    const removed = file.units.flatMap((unit, index) =>
+      asked.has(unit.id) ? [{ unit, index }] : [],
+    );
     const r = await bridge.call('telecom:deleteAntennas', { projectId, ids: [...ids] });
     if (get().projectId !== projectId) return;
     if (r.ok && r.value.ok) {
@@ -778,7 +886,7 @@ export function deleteUnits(
         hidden: drop(hidden),
         ticked: drop(ticked),
       });
-      result = { ok: true };
+      result = { ok: true, removed };
       return;
     }
     const error = !r.ok ? r.error : r.value.ok ? '' : r.value.error;
@@ -935,31 +1043,14 @@ export function setAntennaFilter(f: AntennaFilter): void {
 }
 
 /**
- * Start reviewing the drafts (another tool's "review antennas"): the "To review" filter, its first
- * unit in the panel's order selected and revealed (the section opens, the row scrolls into view,
- * the camera frames it and the card shows). With no draft, the inventory section only opens.
+ * Start reviewing the drafts (another tool's "review antennas"): the Draft filter, its first unit
+ * in the panel's order selected and revealed (the group opens, the row scrolls into view with its
+ * details, the camera frames it). With no draft, the Antennas group only opens.
  */
 export function openAntennaReview(bench: StoreApi<WorkbenchState> = workbench): void {
   const first = filteredUnits(get().file, 'draft')[0];
   set({ filter: 'draft', note: null });
   revealAntenna(first?.id ?? null, bench, 'review');
-}
-
-/** The group eye: hide the whole kind when any of it shows, else show it all. */
-export function toggleGroupHidden(kind: AntennaKind): void {
-  const { file, hidden } = get();
-  const ids = (file?.units ?? []).filter((u) => u.kind === kind).map((u) => u.id);
-  if (ids.length === 0) return;
-  if (ids.some((id) => !hidden[id])) {
-    const next = { ...hidden };
-    for (const id of ids) next[id] = true;
-    set({ hidden: next });
-  } else {
-    const gone = new Set(ids);
-    set({
-      hidden: Object.fromEntries(Object.entries(hidden).filter(([k]) => !gone.has(k))),
-    });
-  }
 }
 
 export function hideAllAntennas(): void {
@@ -983,14 +1074,6 @@ export function setLabelMode(mode: AntennaLabelMode): void {
   set({ labelMode: mode });
 }
 
-const LABEL_MODES: readonly AntennaLabelMode[] = ['off', 'selected', 'all'];
-
-/** The next labels setting: off, selected, all, then off again. */
-export function cycleLabelMode(): void {
-  const at = LABEL_MODES.indexOf(get().labelMode);
-  set({ labelMode: LABEL_MODES[(at + 1) % LABEL_MODES.length] ?? 'all' });
-}
-
 /** Step the selection through the filtered list, wrapping at the ends. */
 export function stepAntenna(dir: 1 | -1): void {
   const { file, filter, selected } = get();
@@ -1002,16 +1085,16 @@ export function stepAntenna(dir: 1 | -1): void {
 }
 
 /**
- * Accept or reject the selected unit (the same again returns it to draft). When it then leaves the
- * filter, the selection moves to the unit now at its place, or says the filter is done.
+ * Accept or reject the selected unit (`reviewUnits`: the same again returns it to Draft). When it
+ * then leaves the filter, the selection moves to the unit now at its place, or says the filter is
+ * done.
  */
 export async function decideAntenna(status: 'accepted' | 'rejected'): Promise<void> {
   const { file, filter, selected, readOnly } = get();
   if (readOnly || !selected) return;
-  const current = file?.units.find((u) => u.id === selected);
-  if (!current) return;
+  if (!file?.units.some((u) => u.id === selected)) return;
   const index = filteredUnits(file, filter).findIndex((u) => u.id === selected);
-  await setUnitStatus(selected, current.status === status ? 'draft' : status);
+  await reviewUnits([selected], status);
   const after = get();
   if (after.selected !== selected || filter === 'all' || after.filter !== filter) return;
   const list = filteredUnits(after.file, filter);
