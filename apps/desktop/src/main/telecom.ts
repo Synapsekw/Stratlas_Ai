@@ -17,7 +17,7 @@ import {
   type AntennaDeletion,
   type IpcResponse,
 } from '@aio/schema';
-import { mkdir, readdir, readFile, unlink } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { isChangedOnDisk, readBytesSeen, readJsonSeen, writeJsonSeen } from './fsutil';
 import { newerOnDisk, parseJsonText } from './newer';
@@ -132,13 +132,70 @@ export async function writeAntennas(
   const path = join(root, ...ANTENNAS_FILE.split('/'));
   const newer = await newerOnDisk(path, 'aio.antennas', ANTENNAS_FILE);
   if (newer) return { ok: false, error: newer };
+  // the ids on disk now, read plainly (the version the renderer saw stays the one the write checks);
+  // null when the file cannot be read, so nothing is taken for a unit coming back
+  const before = await unitIdsOnDisk(path);
   try {
     await mkdir(dirname(path), { recursive: true });
     await writeJsonSeen(path, file, { backup: true, name: ANTENNAS_FILE });
-    return { ok: true };
   } catch (e) {
     if (isChangedOnDisk(e)) return { ok: false, error: e.message };
     return { ok: false, error: `The antennas were not saved: ${why(e)}` };
+  }
+  if (before !== null) {
+    const back = file.units.map((u) => u.id).filter((id) => !before.has(id));
+    if (back.length > 0) await restoreDeleted(root, back);
+  }
+  return { ok: true };
+}
+
+/** The unit ids of the inventory on disk: none when there is no file, null when it is unreadable. */
+async function unitIdsOnDisk(path: string): Promise<Set<string> | null> {
+  try {
+    const r = AntennasFile.safeParse(parseJsonText(await readFile(path, 'utf8')));
+    return r.success ? new Set(r.data.units.map((u) => u.id)) : null;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'ENOENT' ? new Set() : null;
+  }
+}
+
+const cropPath = (root: string, id: string) =>
+  join(root, ...ANTENNA_CROPS_DIR.split('/'), `${id}.jpg`);
+/** Where a deleted unit's crop waits, so an undo of the delete can bring it back. */
+const parkedCropPath = (root: string, id: string) =>
+  join(root, ...ANTENNA_CROPS_DIR.split('/'), PARKED_CROPS_DIR, `${id}.jpg`);
+const PARKED_CROPS_DIR = 'deleted';
+
+/**
+ * Units a save brings back (the undo of a delete: the inventory written as it was): each gets its
+ * parked crop back and leaves the deletion record, so the history records show it again and a
+ * re-run pairs the find with it. The inventory is already written, which is the one journaled
+ * change; this follows it, best effort: a crop or record that cannot be moved fails nothing.
+ */
+async function restoreDeleted(root: string, ids: readonly string[]): Promise<void> {
+  const safe = ids.filter((id) => SAFE_UNIT_ID.test(id));
+  for (const id of safe) {
+    const live = cropPath(root, id);
+    // a crop already in place (a re-run cut a new one) is kept
+    const there = await stat(live).catch(() => null);
+    if (!there) await rename(parkedCropPath(root, id), live).catch(() => undefined);
+  }
+  const sidecarPath = join(root, ...ANTENNA_DELETIONS_FILE.split('/'));
+  try {
+    const bytes = await readBytesSeen(sidecarPath);
+    if (bytes === null) return;
+    const old = AntennaDeletionsFile.safeParse(parseJsonText(bytes.toString('utf8')));
+    if (!old.success) return;
+    const back = new Set(safe);
+    const kept = old.data.deletions.filter((d) => !back.has(d.unitId));
+    if (kept.length === old.data.deletions.length) return;
+    await writeJsonSeen(
+      sidecarPath,
+      { schema: ANTENNA_DELETIONS_SCHEMA, deletions: kept },
+      { backup: true, name: ANTENNA_DELETIONS_FILE },
+    );
+  } catch (e) {
+    console.warn(`Could not take restored antennas out of ${ANTENNA_DELETIONS_FILE}: ${why(e)}`);
   }
 }
 
@@ -164,7 +221,11 @@ export async function readAntennaCrop(
  * The sidecar is written first: if the inventory write then fails, the unit is still in the file
  * and the merge pairs it first. The inventory is refused when it changed since the renderer read it
  * (`readAntennas` remembers the version); the sidecar, which the renderer never reads, when it
- * changed since this call read it. Crops go last, best effort.
+ * changed since this call read it. Crops go last, best effort, into `telecom/crops/deleted/`.
+ *
+ * The undo of a delete is a `telecom:writeAntennas` of the inventory with the units back: that save
+ * returns their crops and takes them out of the deletion record (`restoreDeleted`), all under the
+ * one journaled change of the inventory. A redo is this delete again.
  */
 export async function deleteAntennas(
   projects: SurveyProjects,
@@ -237,10 +298,11 @@ export async function deleteAntennas(
     await writeJsonSeen(path, updated, { backup: true, name: ANTENNAS_FILE });
     for (const u of gone) {
       if (!SAFE_UNIT_ID.test(u.id)) continue;
-      // a missing or locked crop is not worth failing a delete that is done
-      await unlink(join(root, ...ANTENNA_CROPS_DIR.split('/'), `${u.id}.jpg`)).catch(
-        () => undefined,
-      );
+      // parked, not removed, so an undo of the delete brings it back (`restoreDeleted`); a
+      // missing or locked crop is not worth failing a delete that is done
+      await mkdir(dirname(parkedCropPath(root, u.id)), { recursive: true })
+        .then(() => rename(cropPath(root, u.id), parkedCropPath(root, u.id)))
+        .catch(() => undefined);
     }
     return { ok: true, deleted: gone.map((u) => u.id), file: updated };
   } catch (e) {

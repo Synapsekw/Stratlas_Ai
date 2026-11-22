@@ -198,7 +198,13 @@ import { geoidJobEnv, packGeoidDirsOf, registerGeoidPacksIpc } from './packs/geo
 import { readMeasurements, registerSurveyIpc } from './survey';
 import { registerTelecomIpc } from './telecom';
 import { telecomLabelHost } from './telecomAi';
-import { antennaPackRefusal, readAntennaDeletions, readAntennaInventory } from './telecomPack';
+import {
+  ANTENNA_FLAG_PACK_FEATURE,
+  ANTENNA_PACK_FEATURE,
+  antennaPackRefusal,
+  readAntennaDeletions,
+  readAntennaInventory,
+} from './telecomPack';
 import { registerThermalIpc } from './thermal';
 import { registerAgentMemoryIpc } from './agentMemory';
 import {
@@ -2785,6 +2791,8 @@ function registerIpc(): void {
             DETECT_PACK_FEATURE,
             DETECT_FRAMES_PACK_FEATURE,
             WALK_TRACK_PACK_FEATURE,
+            ANTENNA_PACK_FEATURE,
+            ANTENNA_FLAG_PACK_FEATURE,
           ],
     places: () =>
       packArchivePlaces({

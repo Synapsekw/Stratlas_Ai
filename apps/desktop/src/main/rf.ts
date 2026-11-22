@@ -408,7 +408,7 @@ export function createRf(deps: RfDeps) {
     ): Promise<IpcResponse<'rf:writeSectors'>> {
       if (deps.projects.package(req.projectId))
         return fail(
-          'This project is a read-only package. Coverage settings cannot be changed.',
+          'This project is a read-only package. RF settings cannot be changed.',
           'read-only',
         );
       const root = deps.projects.root(req.projectId);
@@ -435,7 +435,7 @@ export function createRf(deps: RfDeps) {
       const projectCatalogue = await readProjectCatalogue(src);
       if (projectCatalogue.refused !== undefined)
         return fail(
-          `The coverage settings were not saved, and ${RF_CATALOGUE_PATH} was left as it is. ${projectCatalogue.refused}`,
+          `The RF settings were not saved, and ${RF_CATALOGUE_PATH} was left as it is. ${projectCatalogue.refused}`,
         );
 
       const catalogue = await effectiveCatalogue(src);
@@ -463,7 +463,7 @@ export function createRf(deps: RfDeps) {
       if (problems.length > 0) {
         const shown = [...new Set(problems)];
         return fail(
-          `The coverage settings were not saved: ${shown.slice(0, 5).join(' ')}${shown.length > 5 ? ` (and ${String(shown.length - 5)} more)` : ''}`,
+          `The RF settings were not saved: ${shown.slice(0, 5).join(' ')}${shown.length > 5 ? ` (and ${String(shown.length - 5)} more)` : ''}`,
         );
       }
 

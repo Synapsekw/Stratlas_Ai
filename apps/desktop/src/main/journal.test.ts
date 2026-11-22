@@ -13,8 +13,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { signerFromKey, verifyJournal } from '@aio/journal';
 import {
+  AntennaDeletionsFile,
   emptyCleanup,
   emptyRemovalPlan,
+  type AntennasFile,
   type Issue,
   type IpcChannel,
   type IpcResponse,
@@ -33,6 +35,7 @@ import {
 } from './journal';
 import { collectHandlers } from './notYet';
 import { viewsRecord } from './reportViews';
+import { deleteAntennas, readAntennas, writeAntennas } from './telecom';
 
 const signer = signerFromKey(generateKeyPairSync('ed25519').privateKey);
 const identity: JournalIdentity = {
@@ -508,6 +511,69 @@ describe('journal service', () => {
       expect(e).toHaveLength(1);
       expect(e[0]).toMatchObject({ kind: 'record.external' });
       expect(JSON.stringify(e[0])).toContain('telecom/antennas.json');
+    });
+
+    it('undo of a delete restores the crop file and removes the deletion record', async () => {
+      const { root, userData } = setup();
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const projects = {
+        root: (id: string) => (id === 'p' ? root : undefined),
+        package: () => undefined,
+      };
+      const contract = JSON.parse(
+        readFileSync(
+          new URL(
+            '../../../../packages/schema/src/__fixtures__/antennas-contract.json',
+            import.meta.url,
+          ),
+          'utf8',
+        ),
+      ) as { example: AntennasFile };
+      const before = contract.example;
+      const unit = before.units.find((u) => u.origin !== 'flagged');
+      if (!unit) throw new Error('no detected unit');
+      const write = s.journal.wrap('telecom:writeAntennas', ({ projectId, file }) =>
+        writeAntennas(projects, projectId, file),
+      );
+      const del = s.journal.wrap('telecom:deleteAntennas', ({ projectId, ids }) =>
+        deleteAntennas(projects, projectId, ids),
+      );
+      expect(await write({ projectId: 'p', file: before })).toEqual({ ok: true });
+      const crop = join(root, 'telecom', 'crops', `${unit.id}.jpg`);
+      mkdirSync(join(root, 'telecom', 'crops'), { recursive: true });
+      writeFileSync(crop, Buffer.from([7, 7]));
+      await readAntennas(projects, 'p');
+      const records = () =>
+        AntennaDeletionsFile.parse(
+          JSON.parse(readFileSync(join(root, 'telecom', 'antenna-deletions.json'), 'utf8')),
+        ).deletions.map((d) => d.unitId);
+
+      expect(await del({ projectId: 'p', ids: [unit.id] })).toMatchObject({ ok: true });
+      expect(existsSync(crop)).toBe(false);
+      expect(records()).toEqual([unit.id]);
+      const afterDelete = (await s.journal.history({ projectId: 'p' })) as { entries: unknown[] };
+
+      // the undo: the file as it was before the delete, written back
+      expect(await write({ projectId: 'p', file: before })).toEqual({ ok: true });
+      expect(readFileSync(crop)).toEqual(Buffer.from([7, 7]));
+      expect(records()).toEqual([]);
+      const afterUndo = (await s.journal.history({ projectId: 'p' })) as {
+        entries: { kind: string }[];
+      };
+      // one history entry covers the list, the record and the crop together
+      expect(afterUndo.entries).toHaveLength(afterDelete.entries.length + 1);
+      expect(afterUndo.entries[0]).toMatchObject({ kind: 'record.external' });
+      expect(JSON.stringify(afterUndo.entries[0])).toContain('telecom/antennas.json');
+
+      // the redo deletes again cleanly
+      await readAntennas(projects, 'p');
+      expect(await del({ projectId: 'p', ids: [unit.id] })).toMatchObject({
+        ok: true,
+        deleted: [unit.id],
+      });
+      expect(existsSync(crop)).toBe(false);
+      expect(records()).toEqual([unit.id]);
     });
 
     it('journals thermal:write against thermal/thermal.json', async () => {

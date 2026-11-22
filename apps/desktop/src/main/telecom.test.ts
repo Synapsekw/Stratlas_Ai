@@ -359,6 +359,79 @@ describe('deleting antennas', () => {
     expect(existsSync(crop(root, 'ant-a3'))).toBe(true);
   });
 
+  it('undo of a delete restores the crop file and removes the deletion record', async () => {
+    const { root, projects } = await seeded();
+    const [a, b] = sample().units;
+    if (!a || !b) throw new Error('need two units');
+    writeFileSync(crop(root, a.id), Buffer.from([4, 2]));
+    await deleteAntennas(projects, 'p', [a.id, b.id], now);
+    expect(existsSync(crop(root, a.id))).toBe(false);
+    expect(await readAntennaCrop(root, a.id)).toBeNull();
+    // the undo writes the file as it was before the delete, here with only one unit back
+    const back = { ...sample(), units: sample().units.filter((u) => u.id !== b.id) };
+    expect(await writeAntennas(projects, 'p', back)).toEqual({ ok: true });
+    expect(readFileSync(crop(root, a.id))).toEqual(Buffer.from([4, 2]));
+    expect(existsSync(crop(root, b.id))).toBe(false);
+    expect(sidecar(root).deletions.map((d) => d.unitId)).toEqual([b.id]);
+  });
+
+  it('a restored unit shows in the survey date records again', async () => {
+    const { root, projects } = await seeded();
+    const [a] = sample().units;
+    if (!a) throw new Error('no unit');
+    const dir = join(root, 'telecom', 'history');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'c1.json'), JSON.stringify(record('c1', [a.id])));
+    await deleteAntennas(projects, 'p', [a.id], now);
+    const gone = await readAntennaHistory(projects, 'p');
+    expect(gone.ok && gone.files[0]?.units).toEqual([]);
+    await writeAntennas(projects, 'p', sample());
+    const back = await readAntennaHistory(projects, 'p');
+    expect(back.ok && back.files[0]?.units.map((u) => u.id)).toEqual([a.id]);
+  });
+
+  it('a redo after the undo deletes again cleanly, and a second undo restores again', async () => {
+    const { root, projects } = await seeded();
+    const [a] = sample().units;
+    if (!a) throw new Error('no unit');
+    await deleteAntennas(projects, 'p', [a.id], now);
+    await writeAntennas(projects, 'p', sample());
+    await readAntennas(projects, 'p');
+    expect(await deleteAntennas(projects, 'p', [a.id], now)).toMatchObject({
+      ok: true,
+      deleted: [a.id],
+    });
+    expect(existsSync(crop(root, a.id))).toBe(false);
+    expect(sidecar(root).deletions.map((d) => d.unitId)).toEqual([a.id]);
+    await writeAntennas(projects, 'p', sample());
+    expect(existsSync(crop(root, a.id))).toBe(true);
+    expect(sidecar(root).deletions).toEqual([]);
+  });
+
+  it('undo of a flagged unit brings its crop back and writes no record', async () => {
+    const { root, projects } = await seeded(flaggedSample());
+    await deleteAntennas(projects, 'p', ['ant-f1'], now);
+    expect(existsSync(crop(root, 'ant-f1'))).toBe(false);
+    expect(await writeAntennas(projects, 'p', flaggedSample())).toEqual({ ok: true });
+    expect(existsSync(crop(root, 'ant-f1'))).toBe(true);
+    expect(existsSync(sidecarPath(root))).toBe(false);
+  });
+
+  it('an ordinary save leaves the deletion records as they are', async () => {
+    const { root, projects } = await seeded();
+    const [a] = sample().units;
+    if (!a) throw new Error('no unit');
+    const r = await deleteAntennas(projects, 'p', [a.id], now);
+    const text = readFileSync(sidecarPath(root), 'utf8');
+    if (!r.ok) throw new Error(r.error);
+    const edited = {
+      ...r.file,
+      units: r.file.units.map((u) => ({ ...u, status: 'accepted' as const })),
+    };
+    expect(await writeAntennas(projects, 'p', edited)).toEqual({ ok: true });
+    expect(readFileSync(sidecarPath(root), 'utf8')).toBe(text);
+  });
+
   it('registers the channel', async () => {
     const { projects } = await seeded();
     const ipc = collectHandlers((handle) => {

@@ -275,6 +275,8 @@ describe('rf:readSectors and rf:writeSectors', () => {
     const rf = createRf({ ...deps, projects: { root: () => undefined, package: () => pkg } });
     const w = await rf.writeSectors({ projectId: 'p', file: sectors() });
     expect(w).toMatchObject({ ok: false, code: 'read-only' });
+    if (!w.ok)
+      expect(w.error).toBe('This project is a read-only package. RF settings cannot be changed.');
     const r = await rf.readSectors({ projectId: 'p' });
     expect(r).toMatchObject({ ok: true, readOnly: true, file: sectors() });
   });
@@ -304,7 +306,7 @@ describe('rf:readSectors and rf:writeSectors', () => {
     bad.antennas[0]!.equipment = { kind: 'separate', antenna: 'no-such-panel' };
     const w = await rf.writeSectors({ projectId: 'p', file: bad });
     expect(w.ok).toBe(false);
-    if (!w.ok) expect(w.error).toMatch(/no-such-panel/);
+    if (!w.ok) expect(w.error).toMatch(/^The RF settings were not saved: .*no-such-panel/);
   });
 
   it('copies the catalogue entries it uses, and their pattern files, into the project', async () => {
@@ -383,7 +385,8 @@ describe('rf:writeSectors with a project catalogue it cannot read', () => {
       const before = await readFile(path);
       const w = await rf.writeSectors({ projectId: 'p', file: sectors() });
       expect(w.ok).toBe(false);
-      if (!w.ok) expect(w.error).toContain('rf/catalogue.json');
+      if (!w.ok)
+        expect(w.error).toMatch(/^The RF settings were not saved, and rf\/catalogue\.json/);
       expect((await readFile(path)).equals(before)).toBe(true);
       expect(await readdir(join(root, 'rf'))).toEqual(['catalogue.json']);
     });
