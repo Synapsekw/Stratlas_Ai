@@ -9,6 +9,7 @@
 // `report:volumetricModel` payload). Pure and renderer safe.
 import type { ReportPageId, ReportViewsFrame, VolumetricTextId } from '@aio/schema';
 import {
+  pileTonnesShown,
   stockpileCsv,
   stockpileInventory,
   type CaptureRef,
@@ -585,14 +586,8 @@ const SHARE_MIN_PREVIOUS_M3 = 1;
 /** A share beyond this (per cent) is a new or collapsed pile, not a percentage worth printing. */
 const SHARE_MAX_PCT = 999;
 
-/**
- * The tonnes a pile's own row and card print: none for a pile at or under zero volume, where a
- * weight means nothing. The site's tonnes (`kpis.tonnes`) still add such a pile's, as the app's
- * own site total does, so the report's totals stay the app's (plan D11).
- */
-export function pileTonnesShown(volumeM3: number | null, tonnes: number | null): number | null {
-  return volumeM3 !== null && volumeM3 > 0 ? tonnes : null;
-}
+// the tonnes a pile's own row and card print (none at or under zero volume): with the CSV's rule
+export { pileTonnesShown };
 
 /**
  * A change in per cent of the previous volume. Null unless the previous volume and the latest one
@@ -799,13 +794,18 @@ export function pagePlan(
  * The interactive file's CSV: the app's stockpile inventory CSV (`stockpileCsv`) for the report's
  * dates. With the default compared date it is that CSV as is; with another one, the inventory of
  * the dates up to the compared one and the latest, so its previous date is the one compared.
+ * As on the pages, a pile at or under zero has no tonnes in its own row (`pileTonnesShown`); the
+ * totals are the app's.
  */
+const REPORT_CSV = { pileTonnes: 'above-zero' } as const;
+
 export function volumetricCsv(data: SurveyReportData, compareWith?: string | null): string {
   const inv = data.stockpiles;
   const current = inv.current;
-  if (!compareWith || !current || compareWith === inv.previous?.id) return stockpileCsv(data);
+  if (!compareWith || !current || compareWith === inv.previous?.id)
+    return stockpileCsv(data, REPORT_CSV);
   const compared = inv.captures.find((c) => c.id === compareWith);
-  if (!compared || byDate(compared, current) >= 0) return stockpileCsv(data);
+  if (!compared || byDate(compared, current) >= 0) return stockpileCsv(data, REPORT_CSV);
   const keep = inv.captures.filter((c) => byDate(c, compared) <= 0 || c.id === current.id);
   const ids = new Set(keep.map((c) => c.id));
   const piles: StockpileReport[] = inv.rows.map((r) => ({
@@ -816,5 +816,5 @@ export function volumetricCsv(data: SurveyReportData, compareWith?: string | nul
     base: r.base,
     volumes: r.volumes.filter((v) => ids.has(v.capture.id)),
   }));
-  return stockpileCsv({ ...data, stockpiles: stockpileInventory(piles, keep) });
+  return stockpileCsv({ ...data, stockpiles: stockpileInventory(piles, keep) }, REPORT_CSV);
 }

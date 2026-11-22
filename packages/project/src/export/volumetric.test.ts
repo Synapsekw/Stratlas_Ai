@@ -800,6 +800,97 @@ describe('volumetricCsv', () => {
     expect(expected).toContain('2026-08-01');
     expect(expected).not.toContain('2026-09-03_volume_m3');
   });
+
+  describe('a pile at or under zero', () => {
+    const extra = (
+      i: number,
+      material: StockpileReport['material'],
+      vols: number[],
+    ): StockpileReport => ({
+      ref: `M${String(i)}`,
+      id: `m-${String(i)}`,
+      label: name(i),
+      material,
+      base: 'Toe surface',
+      volumes: captures.map((c, k) => ({
+        capture: c,
+        volumeM3: vols[k] ?? 0,
+        status: 'ok' as const,
+        reason: '',
+      })),
+    });
+    // a fourth pile under zero on the latest date, and a fifth under zero without a density
+    const withNegative: SurveyReportData = {
+      ...data,
+      stockpiles: stockpileInventory(
+        [
+          ...reports,
+          extra(4, { id: 'gravel', name: 'Gravel', densityTPerM3: 1.6 }, [100, 120, -3.9]),
+          extra(5, null, [10, 0, -5]),
+        ],
+        captures,
+      ),
+    };
+    const parse = (csv: string) =>
+      csv
+        .replace(String.fromCharCode(0xfeff), '')
+        .trimEnd()
+        .split('\r\n')
+        .map((line) => line.split(','));
+    const rowsOf = (csv: string) => {
+      const rows = parse(csv);
+      const head = rows[0] ?? [];
+      return {
+        rows,
+        cell: (row: string[], column: string) => row[head.indexOf(column)],
+        find: (kind: string, id: string) => rows.find((r) => r[0] === kind && r[1] === id) ?? [],
+      };
+    };
+
+    it('leaves its tonnes empty, and keeps its volume and the totals', () => {
+      const { cell, find, rows } = rowsOf(volumetricCsv(withNegative));
+      const pile = find('pile', 'm-4');
+      expect(cell(pile, '2026-10-01_volume_m3')).toBe('-3.9');
+      expect(cell(pile, '2026-10-01_tonnes')).toBe('');
+      expect(cell(pile, '2026-09-03_tonnes')).toBe('192');
+      expect(cell(pile, 'current_volume_m3')).toBe('-3.9');
+      expect(cell(pile, 'current_tonnes')).toBe('');
+      expect(cell(pile, 'change_m3')).not.toBe('');
+      expect(cell(pile, 'change_tonnes')).toBe('');
+      expect(pile.at((rows[0] ?? []).findIndex((h) => h.startsWith('current_mass_')))).toBe('');
+      // the material and total rows are the app's: the site's tonnes still add the pile
+      const app = parse(stockpileCsv(withNegative));
+      expect(rows.filter((r) => r[0] !== 'pile')).toEqual(app.filter((r) => r[0] !== 'pile'));
+      // the app's own CSV still carries the pile's tonnes
+      const own = rowsOf(stockpileCsv(withNegative));
+      expect(own.cell(own.find('pile', 'm-4'), 'current_tonnes')).not.toBe('');
+    });
+
+    it('leaves the change in tonnes empty when the earlier volume is at or under zero', () => {
+      const risen: SurveyReportData = {
+        ...data,
+        stockpiles: stockpileInventory(
+          [extra(4, { id: 'gravel', name: 'Gravel', densityTPerM3: 1.6 }, [100, -2, 50])],
+          captures,
+        ),
+      };
+      const { cell, find } = rowsOf(volumetricCsv(risen));
+      const pile = find('pile', 'm-4');
+      expect(cell(pile, '2026-09-03_tonnes')).toBe('');
+      expect(cell(pile, 'current_tonnes')).toBe('80');
+      expect(cell(pile, 'change_tonnes')).toBe('');
+    });
+
+    it('changes no cell of a pile without a density', () => {
+      const row = (csv: string) => rowsOf(csv).find('pile', 'm-5');
+      expect(row(volumetricCsv(withNegative))).toEqual(row(stockpileCsv(withNegative)));
+    });
+
+    it('follows the rule with another compared date too', () => {
+      const { cell, find } = rowsOf(volumetricCsv(withNegative, 'c0'));
+      expect(cell(find('pile', 'm-4'), 'current_tonnes')).toBe('');
+    });
+  });
 });
 
 describe('changeShare', () => {

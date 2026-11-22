@@ -482,6 +482,31 @@ describe('the measurements CSV', () => {
 });
 
 describe('the stockpile inventory CSV', () => {
+  it("carries a pile's tonnes at or under zero unless asked to leave them out", () => {
+    const d = data({
+      stockpiles: stockpileInventory(
+        [
+          pile('a', gravel, [
+            [C2, 300],
+            [C3, -4],
+          ]),
+        ],
+        [C1, C2, C3],
+      ),
+    });
+    // the app's own export: the option's default, byte for byte
+    expect(stockpileCsv(d)).toBe(stockpileCsv(d, { pileTonnes: 'all' }));
+    const head = lines(stockpileCsv(d))[0]?.split(',') ?? [];
+    const cell = (csv: string, column: string) => lines(csv)[1]?.split(',')[head.indexOf(column)];
+    expect(cell(stockpileCsv(d), '2026-03-31_tonnes')).toBe('-8');
+    expect(cell(stockpileCsv(d), 'current_tonnes')).toBe('-8');
+    const shown = stockpileCsv(d, { pileTonnes: 'above-zero' });
+    expect(cell(shown, '2026-03-31_tonnes')).toBe('');
+    expect(cell(shown, '2026-02-28_tonnes')).toBe('600');
+    expect(cell(shown, 'current_tonnes')).toBe('');
+    expect(cell(shown, 'change_tonnes')).toBe('');
+  });
+
   it('has every survey, the change, the display units and the materials summary', () => {
     const inv = stockpileInventory(
       [

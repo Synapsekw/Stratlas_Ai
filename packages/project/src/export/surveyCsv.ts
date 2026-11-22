@@ -624,13 +624,32 @@ export function measurementsCsv(data: SurveyReportData): string {
 }
 
 /**
+ * The tonnes the volumetric report prints for a pile: none for a pile at or under zero volume,
+ * where a weight means nothing. The site's tonnes still add such a pile's, as the app's own site
+ * total does, so the report's totals stay the app's (plan D11).
+ */
+export function pileTonnesShown(volumeM3: number | null, tonnes: number | null): number | null {
+  return volumeM3 !== null && volumeM3 > 0 ? tonnes : null;
+}
+
+/**
  * The stockpile inventory CSV, generalising the stockpile kit's register (`registerCsv`, which
  * stays as it is): one row per pile with its material and density, its volume and tonnes on every
  * survey it was computed for, the change since the last survey, and the latest volume and tonnes
  * in the site's display units; then the materials summary (a total row per material) and the grand
  * total. A pile without a volume on a survey has an empty cell and its status says why.
+ *
+ * `pileTonnes: 'above-zero'` is the volumetric report's rule (`pileTonnesShown`): a pile row has no
+ * tonnes where its volume is at or under zero, and no change in tonnes where either of the two
+ * volumes is. The material and total rows are the same either way. The app's own export passes
+ * nothing.
  */
-export function stockpileCsv(data: SurveyReportData): string {
+export function stockpileCsv(
+  data: SurveyReportData,
+  opts: { pileTonnes?: 'all' | 'above-zero' } = {},
+): string {
+  const shown = (volumeM3: number | null, tonnes: number | null) =>
+    opts.pileTonnes === 'above-zero' ? pileTonnesShown(volumeM3, tonnes) : tonnes;
   const inv = data.stockpiles;
   const u = data.basis.units;
   const volUnit = unitLabel(u.volume);
@@ -671,20 +690,24 @@ export function stockpileCsv(data: SurveyReportData): string {
       const d = r.densityTPerM3;
       line.push(
         v?.volumeM3 ?? null,
-        v?.volumeM3 !== null && v?.volumeM3 !== undefined && d !== null ? v.volumeM3 * d : null,
+        v?.volumeM3 !== null && v?.volumeM3 !== undefined && d !== null
+          ? shown(v.volumeM3, v.volumeM3 * d)
+          : null,
         v ? (v.reason ? `${v.status}: ${v.reason}` : v.status) : '',
       );
     }
+    const tonnes = shown(r.currentM3, r.tonnes);
     line.push(
       inv.current?.date ?? '',
       r.currentM3,
-      r.tonnes,
+      tonnes,
       inv.previous?.date ?? '',
       r.previousM3,
       r.changeM3,
-      r.changeTonnes,
+      // a change in tonnes needs both volumes above zero
+      shown(r.currentM3, shown(r.previousM3, r.changeTonnes)),
       vol(r.currentM3),
-      mass(r.tonnes),
+      mass(tonnes),
       vol(r.changeM3),
       ...basis,
     );
