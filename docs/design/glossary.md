@@ -35,6 +35,17 @@ The app speaks the user's language: surveying words (UTM, toe, chainage, PCI) an
 | One date a site was surveyed on | **Survey date** | "Add survey date", "Play through the survey dates". |
 | Any chart of a volume through time | **Volume over time** | The same title on the measurement card, the pile's History and the report. |
 | The button that opens a chart in the larger chart window | **Open larger** | The same label on every card. |
+| The list of detected antennas, its group and its export (telecom finalization, 22 Nov 2026) | **Antennas** | "Project > Antennas", "Export antennas (CSV)", "in the Antennas list" inside a sentence. Never "antenna inventory" or "the inventory". |
+| One detected thing of any kind, inside a sentence | **unit** | "Every unit on the tower". The feature names keep **antenna**: "Detect antennas", "Flag antenna". |
+| The direction an antenna or a sector faces | **Azimuth** | "Group by azimuth", "no azimuth". Never "bearing" in telecom or Coverage text; a sun or a line still has a bearing. |
+| The measured tilt of a unit below horizontal | **Downtilt** | "Downtilt °" in the column, "Downtilt" in the details and in Coverage. Coverage writes **Electrical tilt** in full for the radio value. |
+| The two hand tools that measure a direction and a lean | **Antenna azimuth**, **Physical tilt** | The menu and the saved rows carry the same names. Physical tilt is an unsigned lean from vertical, not a downtilt. The third tool is **Clearance**. |
+| The height of a unit's centre in the project's vertical datum | **Centre altitude** | "Alt m" in the column, "alt" in the 3D label. **Height above ground** stays Coverage's own value. |
+| Where a dish points above or below horizontal | **Elevation angle** | Never "Elevation" alone for a dish: elevation is a height elsewhere in the app. |
+| The review status of a unit, its filter and Coverage's counts | **Draft**, **Accepted**, **Rejected** | The filter tab is "Draft" too. Never "to review", "unreviewed" or "not reviewed" for a unit. |
+| A value a person typed | **Entered by you** | "entered by you" in a lower-case tag. Never "typed" or "set by you". |
+| A value that is missing | **Not measured**, **Not set** | Not measured: the app could not measure it. Not set: a person can type it and has not. |
+| The coverage tool, its tab, its section and its layer | **Coverage** | **RF settings** for one antenna's radio values; **Open in Coverage** on every link into it; **Auto-plan** for the proposal and **Auto-plan and run** for both at once (the review's button is "Apply and run"). |
 
 ## Retired terms
 
@@ -58,6 +69,21 @@ The test reads this table. Each row is a term no UI string may use; the test hol
 | `Survey dates chart` | Dates strip | One name for the strip under the stage. |
 | `Open in section view` | Open larger | Two labels opened the same chart window, and "section" already means other things. |
 | `Volume and tonnes over time` | Volume over time | One title for every chart of a volume through time. |
+| `Antenna inventory` | Antennas | The list had two names (telecom finalization, 22 Nov 2026). |
+| `inventory` | Antennas, the Antennas list | Telecom and Coverage text only: a stockpile still has an inventory. |
+| `Antenna tilt` | Physical tilt | The tilt tool had one name in the menu and another on its rows. |
+| `Mechanical downtilt` | Downtilt | One of five spellings of the same value. |
+| `mechanical` | Downtilt | Telecom and Coverage text only. |
+| `bearing` | Azimuth | Telecom and Coverage text only: a sector faces an azimuth, as its antennas do. |
+| `Centre elevation` | Centre altitude | The centre height had four names, and "elevation" is also a dish's angle. |
+| `To review` | Draft | Telecom and Coverage text only: the status and its filter say the same word. Inspect keeps its own "To review" chip. |
+| `not reviewed` | Draft | Telecom and Coverage text only. |
+| `unreviewed` | Draft, uses drafts | Telecom and Coverage text only. |
+| `set by you` | Entered by you | Telecom and Coverage text only. |
+| `typed` | Entered by you | Telecom and Coverage text only, as a word for a value. "Type it" as an instruction stays. |
+| `Open Coverage` | Open in Coverage | Two labels for the same link. |
+| `coverage settings` | RF settings | One name for one antenna's radio values. |
+| `& run` | and run | Telecom and Coverage text only: "Auto-plan & run" and "Apply & run coverage" became "Auto-plan and run" and "Apply and run". |
 
 ## Allowed exceptions
 
@@ -68,3 +94,5 @@ A retired word may appear where it means something else. The test keeps these in
 ## Not covered yet
 
 The test reads the English catalogue only. Some copy is still written inline in components and in the main process. Known leftovers: the task label "Agent chat" in Settings, AI providers (also "Provider for Agent chat"), the exported conversation title "Agent conversation", the annotation author "Agent", the annotate toolbar's own "Cloud point" and "Cloud box", and "Allow cloud AI" in Settings and package export (allowed wording, but inline). Those follow this glossary when they move into `packages/ui/src/i18n/en/`.
+
+Telecom leftovers (telecom finalization, 22 Nov 2026): the main process's telecom and Coverage messages (`apps/desktop/src/main/telecom.ts`, `rf.ts`) are inline English; only their "coverage settings" becomes "RF settings" now. A few catalogue strings still say "Coverage panel" (the test of the RF texts names it); they say "Coverage" when that test moves with them.

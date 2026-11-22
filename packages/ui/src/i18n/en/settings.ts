@@ -81,7 +81,8 @@ export const enSettings = {
   'settings.toolSets.road.what': 'Defects, condition and chainage along a road.',
   'settings.toolSets.road.held': 'On: this project holds a road.',
   'settings.toolSets.telecom': 'Telecom',
-  'settings.toolSets.telecom.what': 'Antennas, azimuth, tilt, clearance and RF coverage.',
+  'settings.toolSets.telecom.what':
+    'Antennas, antenna azimuth, physical tilt, clearance and Coverage.',
   'settings.toolSets.telecom.held': 'On: this project holds antennas or telecom measurements.',
   'settings.toolSets.thermal': 'Thermal',
   'settings.toolSets.thermal.what': 'Temperatures in thermal photos.',

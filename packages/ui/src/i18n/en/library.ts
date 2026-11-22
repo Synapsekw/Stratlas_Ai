@@ -201,13 +201,15 @@ export const enLibrary = {
   'project.group.coverage': 'Coverage plan',
   'project.group.measurements': 'Measurements',
   'project.group.issues': 'Issues',
-  'project.antennas.noCloud': 'Add a point cloud, then run Detect antennas under Tools, Telecom.',
-  'project.antennas.none': 'No antennas yet. Run Detect antennas under Tools, Telecom.',
+  // the empty Antennas group (item 14): the title, and why its Detect antennas button is greyed
+  'project.antennas.noCloud':
+    'Add a point cloud first: Detect antennas measures the units from it.',
+  'project.antennas.none': 'No antennas yet',
   'project.antennas.col.id': 'ID',
   'project.antennas.col.kind': 'Kind',
   'project.antennas.col.az': 'Az °',
-  'project.antennas.col.tilt': 'Tilt °',
-  'project.antennas.col.height': 'H m',
+  'project.antennas.col.tilt': 'Downtilt °',
+  'project.antennas.col.height': 'Alt m',
   'project.antennas.col.status': 'Status',
   'project.antennas.tick': 'Select {name}',
   'project.antennas.deleteRow': 'Delete {name}',
@@ -216,7 +218,7 @@ export const enLibrary = {
   'project.antennas.confirm.title_one': 'Delete {name}?',
   'project.antennas.confirm.title_other': 'Delete {count} antennas?',
   'project.antennas.confirm.body':
-    'They are removed from the inventory with their photo crops. A deleted detection is not added again by a later run. Reject keeps a record instead.',
+    'They are removed from the Antennas list with their photo crops. A deleted detection is not added again by a later run. Reject keeps a record instead.',
   'project.antennas.confirm.sector': '{name} is in sector {sector}; it will be removed from it.',
   'project.antennas.confirm.planUnsaved':
     'The coverage plan has unsaved changes. Save it in Coverage to keep this removal.',
@@ -229,9 +231,13 @@ export const enLibrary = {
   'project.sectors.rename': 'Rename',
   'project.sectors.flyTo': 'Fly to',
   'project.sectors.openCoverage': 'Open in Coverage',
+  // T6: the unsaved line (item 20), Fly to with no antenna left (item 54), a sector without azimuth
+  'project.sectors.unsaved': 'Unsaved changes in Coverage',
+  'project.sectors.flyTo.gone': 'None of the antennas of this sector is left.',
+  'project.sectors.notMeasured': 'Not measured',
   'project.coverage.notPlanned': 'not planned',
   'project.coverage.lastRun': 'last run {date}',
-  'project.coverage.open': 'Open Coverage',
+  'project.coverage.open': 'Open in Coverage',
   'project.measurements.none': 'No measurements yet. Draw one with the tools below.',
   'project.issues.none': 'No issues yet.',
   'project.issues.open': 'Open',

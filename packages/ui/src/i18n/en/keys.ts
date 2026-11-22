@@ -128,6 +128,10 @@ export const enKeys = {
   'keys.spot.nextMatch': 'Next image of the date',
   'keys.spot.compare': 'Compare two dates',
   // Right-click menus across the sidebar, Align to, dataset properties (15 Oct 2026)
+  // T1: the antenna review keys (item 31)
+  'keys.scope.antenna': 'Antennas, with a unit selected',
+  'keys.antenna.accept': 'Accept the selected unit; again sets it back to Draft',
+  'keys.antenna.reject': 'Reject the selected unit; again sets it back to Draft',
   'keys.scope.tree': 'Datasets list',
   'keys.tree.menu': 'Open the menu of the focused row',
   'keys.tree.rename': 'Rename the focused dataset or survey date',

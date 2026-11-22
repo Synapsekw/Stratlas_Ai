@@ -143,6 +143,8 @@ export const enLayers = {
   'actions.antenna.hide': 'Hide',
   'actions.antenna.show': 'Show',
   'actions.antenna.soloKind': 'Show only this kind',
+  // T1: from an antenna to its RF settings (item 22), the words the sector row uses
+  'actions.antenna.openCoverage': 'Open in Coverage',
   'actions.project.title': 'Project',
   'actions.project.addData': 'Add data...',
   'actions.project.addPanos': 'Add drone panoramas...',
