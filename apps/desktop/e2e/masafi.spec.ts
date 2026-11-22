@@ -408,10 +408,20 @@ test('@realdata the stockpile project: every pile in the inventory, a pile in Se
   await expect(win.locator('[data-pile-look]')).toHaveCount(0);
   await expect.poll(() => outlined(win, first.id), { timeout: 30_000 }).toBe(true);
 
-  // A click on a pile on the terrain (another one, when there is one) opens it in Selection.
-  const other = expected.piles.find((p) => p.id !== first.id) ?? first;
+  // A click on a pile on the terrain opens it in Selection: another pile when another one is
+  // drawn. The view draws the piles filed under the survey date in focus only, so a pile filed
+  // under another date has no outline and no label to click; then the same pile is clicked.
   await win.locator('[data-scene-view] canvas').first().focus();
   await win.keyboard.press('h'); // the whole site
+  await settled(win, first.id);
+  const drawn = await win
+    .locator('[data-scene-view] .sv-labels .sv-label[data-id]')
+    .evaluateAll((els) => els.map((el) => el.getAttribute('data-id') ?? ''));
+  expect(drawn, 'the pile just let go is drawn in the view').toContain(first.id);
+  const other = expected.piles.find((p) => p.id !== first.id && drawn.includes(p.id)) ?? first;
+  say(
+    `[stockpile] ${String(drawn.filter((id) => expected.piles.some((p) => p.id === id)).length)} of ${String(expected.piles.length)} piles are drawn on the date in focus; the click is on ${other.id === first.id ? 'the same pile' : 'another pile'}`,
+  );
   const at = await settled(win, other.id);
   await win.mouse.click(at.x, at.y);
   await expect(selectedPile(win)).toHaveAttribute('data-id', other.id, { timeout: 30_000 });
