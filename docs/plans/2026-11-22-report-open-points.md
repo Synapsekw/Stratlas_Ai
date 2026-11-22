@@ -1,6 +1,6 @@
 # The volumetric report's open points: implementation plan
 
-Date: 22 Nov 2026. Branch `fix/report-open-points`, off `main` `35face58a`. Status: plan written, awaiting review; nothing is built. It follows `2026-11-20-volumetric-report-layout.md` and the open threads of `../sessions/2026-11-20-1910-volumetric-report-layout.md`, `../sessions/2026-11-19-0105-volumetrics-finalize.md` and `../sessions/2026-11-20-1347-volumetrics-test-fixes.md`.
+Date: 22 Nov 2026. Branch `fix/report-open-points`, off `main` `35face58a`. Status: built on this branch (22 Nov 2026); the calls of section 3 are decided. It follows `2026-11-20-volumetric-report-layout.md` and the open threads of `../sessions/2026-11-20-1910-volumetric-report-layout.md`, `../sessions/2026-11-19-0105-volumetrics-finalize.md` and `../sessions/2026-11-20-1347-volumetrics-test-fixes.md`.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development to build this plan task by task, each task test first (superpowers:test-driven-development). Steps use checkbox (`- [ ]`) syntax for tracking. Dispatch each batch of section 4 in one message.
 
@@ -10,7 +10,7 @@ Date: 22 Nov 2026. Branch `fix/report-open-points`, off `main` `35face58a`. Stat
 
 **Tech stack:** TypeScript, React, three.js, Vitest, Playwright with Electron. No Python, no pipeline pack change.
 
-**Spec:** this file. Sections 1 to 3 are the design (causes, approaches, open questions); sections 4 to 6 are the plan.
+**Spec:** this file. Sections 1 to 3 are the design (causes, approaches, decisions); sections 4 to 6 are the plan.
 
 ## Global constraints
 
@@ -33,33 +33,33 @@ Date: 22 Nov 2026. Branch `fix/report-open-points`, off `main` `35face58a`. Stat
 
 ## 2. Approaches
 
-**Point 1.** (a) A lower lift floor for the report's pinned box only: `Math.max(hmax * 1.6, span * 0.06)`. Chosen: the box of a pile with relief stays as approved (its own height sets the lift once it is taller than 3.75 % of its span), a flat pile gets a low box, and the opened pile in the app is untouched. (b) The same lower floor for the opened pile too: changes a look the founder picked on 26 Oct 2026, so not without asking (Q1). (c) Frame the camera lower: does not change the box, so the picture still shows a tall empty box.
+**Point 1.** (a) A lower lift floor for the report's pinned box only: `Math.max(hmax * 1.6, span * 0.06)`. Chosen: the box of a pile with relief stays as approved (its own height sets the lift once it is taller than 3.75 % of its span), a flat pile gets a low box, and the opened pile in the app is untouched. (b) The same lower floor for the opened pile too: changes a look the founder picked on 26 Oct 2026 (D1: not taken). (c) Frame the camera lower: does not change the box, so the picture still shows a tall empty box.
 
-The pictures' fingerprint goes from `v2` to `v3` (`report/volumetric/editorView.ts:100`), as `v2` did for the pile pictures: a set taken before the fix counts as stale and is retaken whole at the next export. Without it a report keeps its old picture of the flat pile until something else changes (Q2).
+The pictures' fingerprint goes from `v2` to `v3` (`report/volumetric/editorView.ts:100`), as `v2` did for the pile pictures: a set taken before the fix counts as stale and is retaken whole at the next export. Without it a report keeps its old picture of the flat pile until something else changes (D2).
 
 **Point 2.** (a) Move `spreadMarkers` to a pure file in the viewer's folder, import it from both sides, and lay the badges out in pixels of the map as it is drawn, again on resize. Chosen: one algorithm for print and screen, and the map is responsive, so the spreading has to follow its size. (b) Spread once in the exporter at a nominal width: wrong at every other window width. (c) A second algorithm in the viewer: two rules to keep equal.
 
-**Point 3.** (a) An option on `stockpileCsv` that leaves a pile row's tonnes empty at or under zero, passed by `volumetricCsv` only. Chosen: the report's CSV follows the report's rule, the app's own inventory CSV stays byte for byte (Q3). (b) Filter in the viewer: it would have to parse and rewrite CSV in the offline script. (c) Change `stockpileCsv` for every caller: changes the app's export, which nobody asked for.
+**Point 3.** (a) An option on `stockpileCsv` that leaves a pile row's tonnes empty at or under zero, passed by `volumetricCsv` only. Chosen: the report's CSV follows the report's rule, the app's own inventory CSV stays byte for byte (D3). (b) Filter in the viewer: it would have to parse and rewrite CSV in the offline script. (c) Change `stockpileCsv` for every caller: changes the app's export, which nobody asked for.
 
 Points 2 and 3 were expected to share `viewer/viewer.ts`. With (a) point 3 does not touch the viewer at all, so they can run at once.
 
 **Point 4.** (a) A shorter string: "Outline and profile line, {date}" (37 characters with the longest date). Chosen: the profile's own caption already reads "Elevation profile, A to B", so the line is named twice either way. (b) A smaller font or a wider column: changes the approved card. (c) `white-space: nowrap` with an ellipsis: cuts text, which the report never does.
 
-**Point 5.** (a) Say it and stop failing: a package with stale pictures exports with them and says so, in the editor and after the export; a package with no pictures is refused at once with the reason, before any picture is taken. Chosen: small, true for every package that already exists, no new storage. (b) Leave stale pictures out and print "No picture yet": a report with slightly old pictures is worth more to its reader than one with none, and every package made before `v3` would lose all of them. (c) Keep a package's new pictures in memory for the session, as the first design note of 25 Oct 2026 intended: a new read path through `aio://` and the report page; a feature, not a fix (Q4). (d) Retake stale pictures before a package is made: a minute of capture inside the Export package dialog for a report the recipient may never open (Q5).
+**Point 5.** (a) Say it and stop failing: a package with stale pictures exports with them and says so, in the editor and after the export; a package with no pictures is refused at once with the reason, before any picture is taken. Chosen: small, true for every package that already exists, no new storage. (b) Leave stale pictures out and print "No picture yet": a report with slightly old pictures is worth more to its reader than one with none, and every package made before `v3` would lose all of them. (c) Keep a package's new pictures in memory for the session, as the first design note of 25 Oct 2026 intended: a new read path through `aio://` and the report page; a feature, not a fix (D4). (d) Retake stale pictures before a package is made: a minute of capture inside the Export package dialog for a report the recipient may never open (D5).
 
 **Point 6.** Remove the dead plumbing and rename the fixtures. Nothing to choose.
 
-## 3. Open questions for the founder
+## 3. Decisions
 
-Each has the answer this plan builds on. None blocks the build.
+The founder delegated these calls on 22 Nov 2026; they are decided as below, and the build follows them.
 
-- **Q1. Should the opened pile in the app get the low box too when it is flat?** Recommendation: no, the report only. The app's lift keeps a pile clear of the terrain around it while you orbit; say so if a flat pile looks wrong there as well.
-- **Q2. One retake for every project.** Raising the fingerprint to `v3` makes the next export of every existing report retake its pictures once (about half a minute on the proof project), and every package made before this fix says its pictures may not match. Recommendation: accept it; the other way a fixed picture only appears after an unrelated edit.
-- **Q3. The app's own stockpile inventory CSV** (Project, Volumes, Export) still lists tonnes for a pile at or under zero. Recommendation: leave it; it is the app's figure as computed and is not part of the report. One line of yours changes it for both.
-- **Q4. Should a package be able to retake pictures for its own session?** Recommendation: not during the freeze. The honest notice covers the defect.
-- **Q5. Should Export package refresh stale report pictures first?** Recommendation: no. The person who makes the package can export the report once before packing; the guide will say so.
-- **Q6. The caption's new wording**, "Outline and profile line, 31 Mar 2026". Recommendation: take it; "Photo, 31 Mar 2026" is the fallback if you prefer the three captions alike.
-- **Q7. The low box's height**, 6 % of the pile's span (3 m for a 50 m pile). It is a look, so it needs your eye on a real flat pile (How to test, step 3). Recommendation: start at 6 %.
+- **D1. The low box is for the report's pictures only.** The pile opened in the app keeps its lift (the look picked on 26 Oct 2026), also when it is flat.
+- **D2. One retake of the pictures per project is accepted.** The fingerprint goes to `v3`, so the next export of every existing report retakes its pictures once (about half a minute on the proof project), and every package made before this fix says its pictures may not match.
+- **D3. The app's own stockpile inventory CSV stays as it is** (Project, Volumes, Export): it still lists tonnes for a pile at or under zero. Only the report's CSV follows the report's rule.
+- **D4. No retake of pictures inside an opened package during the freeze.** The notice covers the defect.
+- **D5. Making a package does not refresh the report's pictures.** The person who makes the package exports the report once before packing; the guide says so.
+- **D6. The caption's new wording is taken:** "Outline and profile line, 31 Mar 2026".
+- **D7. The low box is 6 % of the pile's span** (3 m for a 50 m pile), built as planned. It is a look, so the founder looks at it on a real flat pile: How to test, step 3.
 
 ## 4. Execution DAG
 
