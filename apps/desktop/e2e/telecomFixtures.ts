@@ -190,9 +190,10 @@ export async function writeTelecomTower(dir: string, pointsPerM2 = 1500): Promis
 /**
  * The tower fixture's inventory before any unit is found: a detection run on `tower-cloud` round
  * the axis at the origin (crown 25 to 30 m up, 3 m radius, project north) and no units, so a test
- * can flag a unit without running detection first. Writes `telecom/antennas.json`.
+ * can flag a unit without running detection first. Writes `telecom/antennas.json`. `captureId`
+ * names the survey date the cloud belongs to (the run's frame is then that date's own).
  */
-export async function writeAntennaInventory(dir: string): Promise<void> {
+export async function writeAntennaInventory(dir: string, captureId?: string): Promise<void> {
   const file = AntennasFile.parse({
     schema: ANTENNAS_SCHEMA,
     run: {
@@ -200,6 +201,7 @@ export async function writeAntennaInventory(dir: string): Promise<void> {
       at: '2026-10-22T09:00:00Z',
       params: { run: 'run-e2e-empty' },
       cloudLayer: 'tower-cloud',
+      ...(captureId === undefined ? {} : { captureId }),
       axis: { point: [0, 0, 0], dir: [0, 0, 1], source: 'auto' },
       crown: { floorZ: 25, topZ: 30, radiusM: 3 },
       north: 'project',

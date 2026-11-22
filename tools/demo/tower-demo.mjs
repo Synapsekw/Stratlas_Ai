@@ -116,7 +116,7 @@ export function towerTruth(synth, { origin, epsg, convergenceDeg }) {
     return base;
   });
   return {
-    schema: 'aio.demo-tower-truth/1',
+    kind: 'demo-tower-truth',
     note: 'Synthetic truth of the Demo tower (tools/demo/tower-demo.mjs). No client data.',
     synth: { ...TOWER_SYNTH, generator: 'python/tests/antenna_synth.py' },
     crs: { epsg },

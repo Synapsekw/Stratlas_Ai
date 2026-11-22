@@ -5,7 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const ask = vi.hoisted(() => vi.fn());
 const reveal = vi.hoisted(() => vi.fn());
+const openRf = vi.hoisted(() => vi.fn());
 vi.mock('../../telecom/antennaDelete', () => ({ askDeleteAntennas: ask }));
+vi.mock('../../rf/rfTab', () => ({ openRfTab: openRf }));
 vi.mock('../../workspace/workbench/project/projectListStore', () => ({ revealInList: reveal }));
 vi.mock('../../shell', () => ({
   bridge: { call: () => Promise.resolve({ ok: false, error: 'Not configured' }) },
@@ -58,6 +60,7 @@ describe('antenna actions', () => {
       'antenna.flyTo',
       'antenna.hide',
       'antenna.soloKind',
+      'antenna.openCoverage',
       'antenna.editAzimuth',
       'antenna.editDowntilt',
       'antenna.accept',
@@ -99,6 +102,11 @@ describe('antenna actions', () => {
     item(one('b'), 'antenna.editDowntilt')?.run();
     expect(antennaStore.getState().focusField).toMatchObject({ key: 'downtiltDeg' });
     expect(antennaStore.getState().focusField?.seq).toBeGreaterThan(seq);
+  });
+
+  it('open in Coverage opens the Coverage tab on the clicked unit (plan item 22)', () => {
+    item(one('b'), 'antenna.openCoverage')?.run();
+    expect(openRf).toHaveBeenCalledWith('b');
   });
 
   it('fly to asks the 3D view for the units', () => {

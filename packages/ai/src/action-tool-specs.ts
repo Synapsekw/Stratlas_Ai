@@ -156,6 +156,7 @@ export const AGENT_ACTIONS: Readonly<Record<string, AgentActionEntry>> = {
   'antenna.hide': VIEW,
   'antenna.show': VIEW,
   'antenna.soloKind': VIEW,
+  'antenna.openCoverage': VIEW,
   'antenna.editAzimuth': { exclude: HAND_WORK },
   'antenna.editDowntilt': { exclude: HAND_WORK },
   'antenna.accept': WRITE,

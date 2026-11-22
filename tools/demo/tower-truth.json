@@ -1,5 +1,5 @@
 {
-  "schema": "aio.demo-tower-truth/1",
+  "kind": "demo-tower-truth",
   "note": "Synthetic truth of the Demo tower (tools/demo/tower-demo.mjs). No client data.",
   "synth": {
     "kind": "lattice",
