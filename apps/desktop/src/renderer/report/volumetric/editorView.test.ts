@@ -96,7 +96,7 @@ describe('fingerprints', () => {
     expect(reportPiles([pile('m1'), never]).map((m) => m.id)).toEqual(['m1', 'm2']);
   });
 
-  it('marks the pictures with pile pictures as v2, so an older set counts as stale', () => {
-    expect(picturesFingerprint([pile('m1')], dates, pair)).toMatch(/^v2-1-/);
+  it('marks the pictures as v3 (the low box of a flat pile), so an older set counts as stale', () => {
+    expect(picturesFingerprint([pile('m1')], dates, pair)).toMatch(/^v3-1-/);
   });
 });

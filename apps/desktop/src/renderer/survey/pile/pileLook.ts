@@ -107,9 +107,16 @@ export function ringBase(ring: readonly SitePoint[]): (e: number, n: number) => 
   };
 }
 
-/** How far the pile is lifted above the ground: well clear of its own height and of its size. */
-export function pileLift(hmax: number, span: number): number {
-  return Math.max(hmax * 1.6, span * 0.22);
+/** What a box is drawn for: the pile opened in the app, or a picture of the report. */
+export type PileLookKind = 'opened' | 'picture';
+
+/**
+ * How far the pile is lifted above the ground: well clear of its own height and of its size.
+ * A picture keeps only a low floor (6 % of the size), so a flat pile gets a low box, not an
+ * empty one a fifth of its size tall; a pile with relief is lifted by its height either way.
+ */
+export function pileLift(hmax: number, span: number, look: PileLookKind = 'opened'): number {
+  return Math.max(hmax * 1.6, span * (look === 'picture' ? 0.06 : 0.22));
 }
 
 /** The height ramp, low to high: blue, cyan, green, yellow, red. */
@@ -156,6 +163,8 @@ export interface PrismInput {
    * outside change mode. It takes the place of the solid red or the height ramp.
    */
   change?: ((e: number, n: number) => RGB | null) | null;
+  /** What the box is for (`pileLift`); absent is the opened pile. */
+  look?: PileLookKind;
 }
 
 /** An indexed surface: site positions (E, N, Z) and, for the top, linear vertex colours. */
@@ -246,7 +255,7 @@ export function buildPrism(inp: PrismInput): Prism {
       const b = base(e, n);
       if (b !== null) hmax = Math.max(hmax, zAt(i, j) - b);
     }
-  const lift = pileLift(hmax, g.span);
+  const lift = pileLift(hmax, g.span, inp.look);
 
   // the grid's cells whose middle lies inside the boundary, two triangles each
   const idx: number[] = [];

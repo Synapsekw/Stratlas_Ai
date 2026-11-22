@@ -17,6 +17,8 @@ import {
   pileLift,
   prismHitShapes,
   ringBase,
+  type PileLookKind,
+  type Prism,
   type PrismInput,
 } from './pileLook';
 
@@ -39,6 +41,34 @@ function cone(): PrismInput {
   return { ring: RING, grid, zs, base: ringBase(RING), mode: 'solid' };
 }
 
+/** A square of the given size on a ground and a base given as functions of (e, n). */
+function prismOf(o: {
+  size: number;
+  ground: (e: number, n: number) => number;
+  base: (e: number, n: number) => number;
+  look?: PileLookKind;
+}): Prism {
+  const z0 = o.ground(1000, 2000);
+  const ring: SitePoint[] = [
+    [1000, 2000, z0],
+    [1000 + o.size, 2000, z0],
+    [1000 + o.size, 2000 + o.size, z0],
+    [1000, 2000 + o.size, z0],
+  ];
+  const grid = pileGrid(ring, 40);
+  const { es, ns } = gridPoints(grid);
+  const zs = new Float64Array(es.length);
+  for (let k = 0; k < zs.length; k++) zs[k] = o.ground(es[k] ?? 0, ns[k] ?? 0);
+  return buildPrism({
+    ring,
+    grid,
+    zs,
+    base: o.base,
+    mode: 'solid',
+    ...(o.look ? { look: o.look } : {}),
+  });
+}
+
 describe('the opened pile prism', () => {
   it('lays a grid over the boundary box, about the asked cells across', () => {
     const g = pileGrid(RING, 40);
@@ -55,6 +85,24 @@ describe('the opened pile prism', () => {
     const p = buildPrism(cone());
     expect(p.hmax).toBeCloseTo(6, 1);
     expect(p.lift).toBeCloseTo(pileLift(p.hmax, 40));
+  });
+
+  it('lifts a picture by the pile height alone once that is clear of a low floor', () => {
+    expect(pileLift(6, 40, 'picture')).toBeCloseTo(9.6); // as the opened pile
+    expect(pileLift(0.5, 50, 'picture')).toBeCloseTo(3); // flat: 6 % of the span, not 11 m
+    expect(pileLift(0.5, 50)).toBeCloseTo(11); // the opened pile is unchanged
+  });
+
+  it('gives a flat pile under its base a low box in a picture', () => {
+    // a 50 m square on level ground at 100 m, its base 0.4 m above the ground: a negative pile
+    const flat = prismOf({ size: 50, ground: () => 100, base: () => 100.4, look: 'picture' });
+    expect(flat.hmax).toBe(0.5);
+    expect(flat.lift).toBeCloseTo(3);
+    for (const [a, b] of flat.posts) expect(b[2] - a[2]).toBeCloseTo(3);
+    // the opened pile keeps its tall box: 22 % of the span, the cause of the tall picture
+    const opened = prismOf({ size: 50, ground: () => 100, base: () => 100.4 });
+    expect(opened.hmax).toBe(0.5);
+    expect(opened.lift).toBeCloseTo(11);
   });
 
   it('draws one post per vertex, from the ground to the top', () => {

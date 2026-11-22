@@ -81,8 +81,9 @@ function hash(text: string): string {
 
 /**
  * What the pictures show: the piles' outlines and bases (the 3D picture's box stands on the
- * pile's base), the dates and the compared pair. `v2` is the set with each pile's own pictures:
- * a set taken before it counts as stale and is retaken at export.
+ * pile's base), the dates and the compared pair. `v3` is the set with the low box of a flat pile
+ * (`v2` brought each pile's own pictures): a set taken before it counts as stale and is retaken at
+ * export.
  */
 export function picturesFingerprint(
   measurements: readonly SurveyMeasurement[],
@@ -97,7 +98,7 @@ export function picturesFingerprint(
       base: baseSpecOf(m),
     }))
     .sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
-  return `v2-${String(piles.length)}-${hash(JSON.stringify({ piles, dates, pair }))}`;
+  return `v3-${String(piles.length)}-${hash(JSON.stringify({ piles, dates, pair }))}`;
 }
 
 /** The figures the report prints from: any edit of a stockpile measurement changes it. */

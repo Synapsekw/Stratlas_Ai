@@ -357,7 +357,16 @@ export function attachPileLook3d(stage: EngineStage, frame: Frame): () => void {
       const b = s.base[j * nx + i] ?? Number.NaN;
       return Number.isFinite(b) ? b : fallback(e, n);
     };
-    const p = buildPrism({ ring: s.ring, grid: s.grid, zs: s.zs, base, mode, change });
+    const p = buildPrism({
+      ring: s.ring,
+      grid: s.grid,
+      zs: s.zs,
+      base,
+      mode,
+      change,
+      // the report's picture: a flat pile gets a low box
+      look: target.pinned ? 'picture' : 'opened',
+    });
     clear();
     drawnKey = dkey;
     drawnHeat = heat;
