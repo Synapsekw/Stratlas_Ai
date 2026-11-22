@@ -62,7 +62,7 @@ export const PROJECT_TYPES: { id: ProjectPurpose; label: string; hint: string }[
   {
     id: 'telecom',
     label: 'Telecom towers',
-    hint: 'Antennas on a tower: inventory, azimuths and RF coverage',
+    hint: 'Antennas on a tower: the antenna list, azimuths and coverage',
   },
 ];
 

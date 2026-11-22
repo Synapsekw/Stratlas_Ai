@@ -15,7 +15,7 @@ import {
   type ProjectManifest,
   type RfThresholds,
 } from '@aio/schema';
-import { antennaShift } from '../telecom/antennaScene';
+import { antennaShift } from '../telecom/antennaShift';
 import type { CoverageGrids } from './runGrids';
 
 export {

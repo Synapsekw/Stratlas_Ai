@@ -6,7 +6,7 @@ Coverage is part of the **Telecom** tool set (see [Tools by project type](08-bui
 
 The results are indicative: flat ground, no buildings, an untuned model, about 8 dB either way. Check them against a drive test before relying on them.
 
-## Open Coverage
+## Where Coverage opens
 
 Each of these shows the same **Coverage** panel:
 

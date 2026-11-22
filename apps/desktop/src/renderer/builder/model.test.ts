@@ -59,6 +59,15 @@ describe('the project type cards', () => {
     }
   });
 
+  it('the Telecom towers card speaks the telecom names of the glossary, not the retired words', () => {
+    // the card texts are written here, outside the catalogue, so glossary.test.ts cannot see them
+    const telecom = PROJECT_TYPES.find((c) => c.id === 'telecom');
+    const text = `${telecom?.label ?? ''} ${telecom?.hint ?? ''}`;
+    for (const retired of [/\binventory\b/i, /\bRF coverage\b/i, /\bbearings?\b/i, /\btilt\b/i])
+      expect(text).not.toMatch(retired);
+    expect(telecom?.hint).toBe('Antennas on a tower: the antenna list, azimuths and coverage');
+  });
+
   it('can each be picked by the start of their name (the end to end specs do)', () => {
     const names = PROJECT_TYPES.map((c) => `${c.label} ${c.hint}`);
     const starts = [

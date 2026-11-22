@@ -236,6 +236,8 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
   ]);
   await expect(bench.getByTestId('rf-advanced')).toHaveAttribute('aria-expanded', 'false');
   await expect(bench.getByTestId('rf-sectors')).toContainText('No sectors');
+  // at 1100 px the panel fits its column: nothing runs past the right edge
+  expect(await bench.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
   await evidence(win, 'coverage-panel');
 
   // 2. three sectors by azimuth (the draft panel stays out), each the generic n78 AAU on n78

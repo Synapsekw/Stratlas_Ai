@@ -77,7 +77,7 @@ describe('rulesPick', () => {
       { key: 'rf.autoplan.reason.panelNoSize', vars: { band: AUTOPLAN_PANEL.band } },
     ]);
     expect(planText(t, p.reason)).toBe(
-      `No size measured: panel and radio on ${AUTOPLAN_PANEL.band}`,
+      `Size not measured: panel and radio on ${AUTOPLAN_PANEL.band}`,
     );
     expect(p.carrier.band).toBe(AUTOPLAN_PANEL.band);
   });

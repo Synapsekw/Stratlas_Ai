@@ -52,6 +52,10 @@ const RETIRED: readonly { term: string; pattern: RegExp; keys?: RegExp }[] = [
   { term: 'Open Coverage', pattern: /\bopen coverage\b/i },
   { term: 'coverage settings', pattern: /\bcoverage settings\b/i },
   { term: '& run', pattern: /&\s*run\b/i, keys: TELECOM_KEYS },
+  { term: 'E-tilt', pattern: /\be-?tilt\b/i },
+  { term: 'RF coverage', pattern: /\bRF coverage\b/i },
+  { term: 'Coverage panel', pattern: /\bcoverage panel\b/i },
+  { term: 'No size', pattern: /\bno size\b/i, keys: TELECOM_KEYS },
 ];
 
 /** Whether a retired term counts for this key: a scoped term only in its own keys. */
@@ -159,6 +163,17 @@ describe('glossary', () => {
     expect(uses('rf.x', 'Auto-plan & run')).toEqual(['& run']);
     expect(uses('rf.x', 'Auto-plan and run')).toEqual([]);
     expect(uses('rf.x', 'Antennas, Downtilt, Centre altitude, Draft')).toEqual([]);
+    expect(uses('rf.x', 'E-tilt not -20 to 40 degrees.')).toEqual(['E-tilt']);
+    expect(uses('rf.x', 'e-tilt kept')).toEqual(['E-tilt']);
+    expect(uses('rf.x', 'Electrical tilt kept')).toEqual([]);
+    expect(uses('telecom.x', 'inventory, azimuths and RF coverage')).toEqual([
+      'inventory',
+      'RF coverage',
+    ]);
+    expect(uses('rf.x', 'Open the Coverage panel')).toEqual(['Coverage panel']);
+    expect(uses('rf.x', 'Open Coverage in the panel')).toEqual(['Open Coverage']);
+    expect(uses('rf.x', 'No size measured: panel and radio on B3')).toEqual(['No size']);
+    expect(uses('rf.x', 'Size not measured: panel and radio on B3')).toEqual([]);
   });
 
   it('speaks the telecom names of the glossary', () => {
@@ -174,6 +189,8 @@ describe('glossary', () => {
     expect(e['rf.sectors.group']).toBe('Group by azimuth');
     expect(e['project.coverage.open']).toBe('Open in Coverage');
     expect(e['rf.steps.ai.autoplan']).toBe('Auto-plan and run');
+    expect(e['rf.sector.etilt']).toBe('Electrical tilt');
+    expect(e['rf.csv.col.etilt']).toBe('Electrical tilt');
     expect(e['telecom.tools.name.azimuth']).toBe(e['measureCat.tool.azimuth']);
     expect(e['telecom.tools.name.tilt']).toBe(e['measureCat.tool.tilt']);
     expect(e['telecom.tools.name.clearance']).toBe(e['measureCat.tool.clearance']);

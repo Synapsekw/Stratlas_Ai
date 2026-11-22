@@ -63,9 +63,8 @@ import {
   renameSector,
   rfStore,
   saveRf,
-  selectPlanChanged,
+  selectPlanChangedLine,
   selectRun,
-  selectShownRun,
   setEquipment,
   setHeightOverride,
   setPackStatus,
@@ -1267,10 +1266,8 @@ function ResultsSection() {
   const preview = useRf((s) => s.preview);
   const rows = useRf((s) => s.rows);
   const runsError = useRf((s) => s.runsError);
-  // worked out from what is saved, so it reads the same after a reopen; an unsaved edit counts too
-  const planChanged = useRf(
-    (s) => selectPlanChanged(s) || (s.dirty && selectShownRun(s) !== undefined),
-  );
+  // worked out from what is saved, so it reads the same after a reopen; the chip says the same
+  const planChanged = useRf(selectPlanChangedLine);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportNote, setExportNote] = useState<string | null>(null);
   const exportBtn = useRef<HTMLButtonElement>(null);
@@ -1525,6 +1522,7 @@ export function RfBench() {
   const message = useRf((s) => s.message);
   const antennas = useRf((s) => s.antennas);
   const focus = useRf((s) => s.focusUnitId);
+  const focusSeq = useRf((s) => s.focusSeq);
   const rows = useRf((s) => s.rows);
   const runs = useRf((s) => s.runs);
   const settings = useRf((s) => s.sectors.antennas);
@@ -1536,9 +1534,14 @@ export function RfBench() {
   const [unitId, setUnitId] = useState<string | null>(null);
   const step2 = useRef<HTMLDivElement>(null);
   // an Edit RF action on a unit opens that unit's sector row (once the unit is loaded)
-  const [seenFocus, setSeenFocus] = useState<string | null>(null);
-  if (focus !== seenFocus && (focus === null || rows.some((x) => x.id === focus))) {
-    setSeenFocus(focus);
+  // (a second request for the same unit, Open in Coverage again, opens it again)
+  const [seenFocus, setSeenFocus] = useState<{ id: string | null; seq: number }>({
+    id: null,
+    seq: 0,
+  });
+  const fresh = focus !== seenFocus.id || focusSeq !== seenFocus.seq;
+  if (fresh && (focus === null || rows.some((x) => x.id === focus))) {
+    setSeenFocus({ id: focus, seq: focusSeq });
     const r = rows.find((x) => x.id === focus);
     if (r) {
       setExpanded(r.sectorId ?? UNGROUPED);

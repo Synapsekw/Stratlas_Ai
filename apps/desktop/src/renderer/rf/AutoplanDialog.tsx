@@ -204,7 +204,7 @@ function PlanRow({ row, proposal, t }: { row: ProposalRow; proposal: Proposal; t
         {row.picks.length === 0 && keptCarriers === 0 && (
           <span className="rf-off">{t('rf.autoplan.noCarrier')}</span>
         )}
-        {row.etilt && <small>{t('rf.autoplan.etilt', { deg: row.etilt.deg })}</small>}
+        {row.etilt && <small>{t('rf.autoplan.etilt', { deg: formatAngle(row.etilt.deg) })}</small>}
         {row.kept.etiltDeg && (
           <small>
             <KeptTag t={t}>{t('rf.autoplan.keptEtilt')}</KeptTag>

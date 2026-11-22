@@ -14,12 +14,10 @@ import {
   type AntennasFile,
   type AntennaUnit,
   type DateShift,
-  type ProjectManifest,
   type Vec3,
 } from '@aio/schema';
 import { t } from '@aio/ui';
 import { claimEvent, isClaimed } from '../builder/droneHits';
-import { captureShift, dateShiftOf } from '@aio/workspace';
 import {
   BoxGeometry,
   BufferGeometry,
@@ -67,21 +65,7 @@ export interface AntennaSceneState {
   labelMode?: AntennaLabelMode;
 }
 
-/**
- * How far the inventory is drawn from where it is stored: the line-up shift of the survey date
- * its cloud belongs to (the run's `captureId`, else the cloud layer's date in an older file), or
- * null when that date is not lined up or there is no open manifest.
- */
-export function antennaShift(
-  file: AntennasFile | null,
-  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'> | null,
-): DateShift | null {
-  if (!file || !manifest) return null;
-  const { captureId, cloudLayer } = file.run;
-  return captureId !== undefined
-    ? captureShift(manifest, captureId)
-    : dateShiftOf(manifest, cloudLayer);
-}
+export { antennaShift } from './antennaShift';
 
 const HIGHLIGHT_COLOUR = '#ffffff';
 /** Scale of the selected unit's outline, a little outside the box so it reads as a halo. */

@@ -21,7 +21,7 @@ import { RfLayer } from '../../../rf/RfLayer';
 import { autoplanStore, resetAutoplan } from '../../../rf/autoplan/autoplanStore';
 import { antennaStore } from '../../../telecom/antennaStore';
 import { assumptionsText } from '../../../rf/rfText';
-import { resetRf, rfStore, setPreviewState } from '../../../rf/rfStore';
+import { focusRfUnit, resetRf, rfStore, setPreviewState } from '../../../rf/rfStore';
 import { openCoverage } from '../../../rf/rfTab';
 import { threeDates } from '../../__fixtures__/threeDates';
 import { sectionStore } from '../sectionState';
@@ -439,6 +439,22 @@ describe('RfBench', () => {
     expect(byTest('rf-unit-ant-a1')).toBeNull();
   });
 
+  it('Open in Coverage on the same unit again opens its row again, after another row was opened', async () => {
+    await render();
+    act(() => {
+      focusRfUnit('ant-a2');
+    });
+    expect(byTest('rf-unit-ant-a2')).not.toBeNull();
+    // the person opens the first sector's row by hand
+    expand();
+    expect(byTest('rf-unit-ant-a1')).not.toBeNull();
+    expect(byTest('rf-unit-ant-a2')).toBeNull();
+    act(() => {
+      focusRfUnit('ant-a2');
+    });
+    expect(byTest('rf-unit-ant-a2')).not.toBeNull();
+  });
+
   it('shows the measured geometry with its basis marks', async () => {
     await render();
     expand();
@@ -571,6 +587,42 @@ describe('RfBench', () => {
       rfStore.setState({ runs: [runOf('rf-1', sectorsFile([], []), [])], selectedRunId: 'rf-1' });
     });
     expect(byTest('rf-plan-changed')?.textContent).toBe(t('rf.results.planChanged'));
+  });
+
+  it('step 3 and the chip agree: no plan-changed line with no run chosen, or while a run goes', async () => {
+    await render();
+    act(() => {
+      rfStore.setState({ runs: [runOf('rf-1', sectorsFile([], []), [])], selectedRunId: null });
+    });
+    // "no run" is chosen: there is no run for the plan to have changed since
+    expect(byTest('rf-plan-changed')).toBeNull();
+    act(() => {
+      rfStore.setState({ selectedRunId: 'rf-1', running: true });
+    });
+    // the run going now is the plan as it is: "Run coverage again" would be wrong
+    expect(byTest('rf-plan-changed')).toBeNull();
+    act(() => {
+      rfStore.setState({ running: false });
+    });
+    expect(byTest('rf-plan-changed')?.textContent).toBe(t('rf.results.planChanged'));
+  });
+
+  it('Export is greyed with its reason until a finished run is chosen', async () => {
+    await render();
+    const exportButton = () =>
+      [...(byTest('rf-step-coverage')?.querySelectorAll('button') ?? [])].find((b) =>
+        b.textContent.startsWith(t('rf.results.export')),
+      );
+    const before = exportButton();
+    expect(before?.getAttribute('aria-disabled')).toBe('true');
+    const reason = document.getElementById(
+      (before?.getAttribute('aria-describedby') ?? '').split(' ').pop() ?? '',
+    );
+    expect(reason?.textContent).toBe('Choose a finished run to export.');
+    act(() => {
+      rfStore.setState({ runs: [runOf('rf-1', sectorsFile([], []), [])], selectedRunId: 'rf-1' });
+    });
+    expect(exportButton()?.getAttribute('aria-disabled')).toBeNull();
   });
 
   it('an old save warning does not come back after an edit is reverted', async () => {

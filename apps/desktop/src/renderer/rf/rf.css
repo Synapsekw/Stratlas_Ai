@@ -5,6 +5,9 @@
 /* ----------------------------------------------------------------------- the tab */
 .rf-bench {
   gap: var(--sp-3);
+  /* one column as wide as the panel: an implicit auto column grows to its widest child's
+     min-content, which pushed the whole Coverage panel past the right edge at 1100 px */
+  grid-template-columns: minmax(0, 1fr);
 }
 .rf-sec,
 .rf-group {

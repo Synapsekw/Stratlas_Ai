@@ -39,7 +39,7 @@ import { startRfRun } from '../rfTab';
 import {
   applyPlan,
   rfStore,
-  selectPlanChanged,
+  selectPlanChangedLine,
   type RfState,
   type RfView,
   type StartResult,
@@ -552,7 +552,7 @@ export function canAutoplan(chip: ChipState, readOnly: boolean): boolean {
 /**
  * The Coverage chip's state from the RF store, the detected units and Auto-plan. The selected
  * run is the result while the plan is as it ran: neither edited (`dirty`) nor saved differently
- * since (`selectPlanChanged`, from what is saved, so the same after a reopen); otherwise Ready says
+ * since (`selectPlanChangedLine`, from what is saved, so the same after a reopen); otherwise Ready says
  * the plan changed. Ready needs the units Auto-plan plans (`plannedUnits`) that are in a sector to
  * be set up; a draft, rejected or inactive member does not hold it back.
  */
@@ -569,7 +569,7 @@ export function selectChipState(
 
   const run = rf.selectedRunId ? rf.runs.find((r) => r.runId === rf.selectedRunId) : undefined;
   // the one selector step 3 reads too (the selected run is the one it compares)
-  const changed = run !== undefined && (rf.dirty || selectPlanChanged(rf));
+  const changed = selectPlanChangedLine(rf);
   if (run && !changed) {
     const pct = rf.classStats
       ? Math.round(

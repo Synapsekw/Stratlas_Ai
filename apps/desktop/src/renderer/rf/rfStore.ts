@@ -134,6 +134,8 @@ export interface RfState {
   classStats: RfClassStat[] | null;
   /** The unit the tab shows in its Sector section (an Edit RF action sets it); null: the first. */
   focusUnitId: string | null;
+  /** Counts the requests, so a second request for the same unit is a new one. */
+  focusSeq: number;
   // ---- derived (recomputed after every change)
   rows: RfUnitRow[];
   proposed: ProposedSector[];
@@ -152,6 +154,8 @@ let savesPending = 0;
 let savesEnded = 0;
 /** Writes run one after the other. */
 let queue: Promise<unknown> = Promise.resolve();
+/** The saved plan as last read from or written to disk: what a refused write of it puts back. */
+let savedOnDisk: RfSectorsFile | null = null;
 
 const emptyFile = (): RfSectorsFile => ({
   schema: RF_SECTORS_SCHEMA,
@@ -192,6 +196,7 @@ const base = (): Base => ({
   view: 'rsrp',
   classStats: null,
   focusUnitId: null,
+  focusSeq: 0,
 });
 
 /** The inputs of `check` and the rows, worked out again from the base state. */
@@ -281,6 +286,19 @@ export function selectPlanChanged(s: Pick<RfState, 'saved' | 'runs' | 'selectedR
   return planChangedSince(s, selectShownRun(s));
 }
 
+/**
+ * "The plan changed since this run" as step 3 and the stage chip say it: the chosen run only (no
+ * run chosen, no line), never while a run goes (it runs the plan as it is), and an unsaved edit
+ * counts too.
+ */
+export function selectPlanChangedLine(
+  s: Pick<RfState, 'saved' | 'runs' | 'selectedRunId' | 'dirty' | 'running'>,
+): boolean {
+  if (s.running || s.selectedRunId === null) return false;
+  const run = s.runs.find((r) => r.runId === s.selectedRunId);
+  return run !== undefined && (s.dirty || planChangedSince(s, run));
+}
+
 /** Coverage holds edits that are not saved (the Sectors group's line). */
 export function selectUnsavedChanges(s: Pick<RfState, 'dirty' | 'readOnly'>): boolean {
   return s.dirty && !s.readOnly;
@@ -306,6 +324,7 @@ export function resetRf(opts: { keepPack?: boolean } = {}): void {
   loadSeq++;
   dsmGroundAt = null;
   queue = Promise.resolve();
+  savedOnDisk = null;
   jobSeen = false;
   const pack = opts.keepPack === true ? get().pack : null;
   const b = { ...base(), pack };
@@ -361,6 +380,7 @@ export async function loadRf(projectId: string, opts: { keepEdits?: boolean } = 
   const keep = (opts.keepEdits === true && get().dirty) || overlapped;
   // the sidecar's origins merged in; absent ones mean the person set the value
   const onDisk = sec.value.file ? mergeRfOrigins(sec.value.file, sec.value.origins) : null;
+  if (!overlapped) savedOnDisk = onDisk;
   set({
     status: 'ready',
     message: null,
@@ -454,7 +474,8 @@ export function setIncludeUnreviewed(on: boolean): void {
 
 function edit(fn: (f: RfSectorsFile) => RfSectorsFile): void {
   if (get().readOnly) return;
-  set({ sectors: fn(get().sectors), dirty: true });
+  // the last write's warnings were about the plan as it was saved, not about this one
+  set({ sectors: fn(get().sectors), dirty: true, writeWarnings: [] });
 }
 
 /**
@@ -642,7 +663,7 @@ async function editBoth(
     // still differs from the saved plan by its own edits, or by a change only it took
     dirty: dirty || (working !== null && disk === null),
   });
-  return disk ? writePlan('saved') : null;
+  return disk ? writePlan('saved', { after: disk, fn }) : null;
 }
 
 /**
@@ -660,9 +681,6 @@ export async function renameSector(sectorId: string, name: string): Promise<Save
       : null,
   );
 }
-
-/** The same function as `renameSector` (the Sectors group's name for it). */
-export const renameSavedSector = renameSector;
 
 /**
  * Put units back in named sectors (an antenna delete undone): each unit goes into its sector when
@@ -805,12 +823,25 @@ export function saveRf(): Promise<SaveResult> {
 /**
  * Write the working copy (`working`: it becomes the saved plan) or the saved plan as it is now
  * (`saved`: a change made to both copies; the working copy keeps its own edits). Writes are queued.
+ *
+ * A `change` to the saved plan (`editBoth`) is applied again when its turn comes if a Save that
+ * landed in between replaced the saved plan, and a refused write puts the saved plan back to what
+ * is on disk, so "the plan changed since this run" is never worked out from a plan not written.
  */
-function writePlan(which: 'working' | 'saved'): Promise<SaveResult> {
+function writePlan(
+  which: 'working' | 'saved',
+  change?: { after: RfSectorsFile; fn: (f: RfSectorsFile) => RfSectorsFile | null },
+): Promise<SaveResult> {
   const run = async (): Promise<SaveResult> => {
     const { projectId, readOnly } = get();
     if (!projectId) return { ok: false, code: 'no-project' };
     if (readOnly) return { ok: false, code: 'read-only' };
+    // a Save, or a refused change, replaced the saved plan since this change was made
+    const before = get().saved;
+    if (change && before && before !== change.after) {
+      const again = change.fn(before);
+      if (again) set({ saved: again });
+    }
     const plan = which === 'working' ? get().sectors : get().saved;
     if (!plan) return { ok: true };
     set({ saving: true });
@@ -821,9 +852,16 @@ function writePlan(which: 'working' | 'saved'): Promise<SaveResult> {
     if (!r.ok || !r.value.ok) {
       const error = !r.ok ? r.error : r.value.ok ? '' : r.value.error;
       // a change written to the saved plan only is still in the working copy: it can be saved
-      set({ saving: false, message: error, ...(which === 'saved' ? { dirty: true } : {}) });
+      set({
+        saving: false,
+        message: error,
+        ...(which === 'saved' ? { dirty: true } : {}),
+        // nothing was written: the saved plan is what is on disk (a queued change applies again)
+        ...(change ? { saved: savedOnDisk } : {}),
+      });
       return { ok: false, code: 'refused', message: error };
     }
+    savedOnDisk = plan;
     set({
       saving: false,
       message: null,
@@ -858,7 +896,7 @@ export function setClassStats(stats: RfClassStat[] | null): void {
 
 /** Show this unit in the tab's Sector section (an Edit RF action); null: the first unit. */
 export function focusRfUnit(antennaId: string | null): void {
-  set({ focusUnitId: antennaId });
+  set({ focusUnitId: antennaId, focusSeq: get().focusSeq + 1 });
 }
 
 // ---------------------------------------------------------------- catalogue

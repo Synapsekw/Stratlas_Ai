@@ -84,6 +84,10 @@ The test reads this table. Each row is a term no UI string may use; the test hol
 | `Open Coverage` | Open in Coverage | Two labels for the same link. |
 | `coverage settings` | RF settings | One name for one antenna's radio values. |
 | `& run` | and run | Telecom and Coverage text only: "Auto-plan & run" and "Apply & run coverage" became "Auto-plan and run" and "Apply and run". |
+| `E-tilt` | Electrical tilt | Coverage says the value in full, as its sector field does; "e-tilt" and "etilt" too. |
+| `RF coverage` | Coverage | One name for the tab, the section and the layer. |
+| `Coverage panel` | Coverage | One name for the tab, the section and the layer. |
+| `No size` | Size not measured | Telecom and Coverage text only: one wording for a size that was not measured. |
 
 ## Allowed exceptions
 
@@ -95,4 +99,4 @@ A retired word may appear where it means something else. The test keeps these in
 
 The test reads the English catalogue only. Some copy is still written inline in components and in the main process. Known leftovers: the task label "Agent chat" in Settings, AI providers (also "Provider for Agent chat"), the exported conversation title "Agent conversation", the annotation author "Agent", the annotate toolbar's own "Cloud point" and "Cloud box", and "Allow cloud AI" in Settings and package export (allowed wording, but inline). Those follow this glossary when they move into `packages/ui/src/i18n/en/`.
 
-Telecom leftovers (telecom finalization, 22 Nov 2026): the main process's telecom and Coverage messages (`apps/desktop/src/main/telecom.ts`, `rf.ts`) are inline English; only their "coverage settings" becomes "RF settings" now. A few catalogue strings still say "Coverage panel" (the test of the RF texts names it); they say "Coverage" when that test moves with them.
+Telecom leftovers (telecom finalization, 22 Nov 2026): the main process's telecom and Coverage messages (`apps/desktop/src/main/telecom.ts`, `rf.ts`) are inline English; only their "coverage settings" becomes "RF settings" now. The equipment check's messages in `packages/schema/src/rf.ts` still say "E-tilt" (a frozen package; they follow at its next change). The New project wizard's card texts (`apps/desktop/src/renderer/builder/model.ts`) are inline too; the Telecom towers card has its own test against the retired words.

@@ -182,6 +182,26 @@ describe('AutoplanDialog', () => {
     expect(byTest('rf-autoplan-row-ant-u4')).toBeNull();
   });
 
+  it('says electrical tilt in full, its angle as every other angle', () => {
+    const state = reviewState();
+    const proposal = state.proposal;
+    if (!proposal) throw new Error('no proposal');
+    const [first, second] = proposal.rows;
+    if (!first || !second) throw new Error('two rows expected');
+    const rows = [
+      {
+        ...first,
+        etilt: { deg: 2, origin: { by: 'export' as const, confidence: 'high' as const } },
+      },
+      { ...second, kept: { ...second.kept, etiltDeg: true } },
+      ...proposal.rows.slice(2),
+    ];
+    renderWith({ ...state, proposal: { ...proposal, rows } });
+    expect(must(`rf-autoplan-row-${first.unitId}`).textContent).toContain('electrical tilt 2.0°');
+    expect(must(`rf-autoplan-row-${second.unitId}`).textContent).toContain('electrical tilt kept');
+    expect(must('rf-autoplan').textContent).not.toMatch(/e-tilt/i);
+  });
+
   it('marks low confidence rows amber and kept rows as kept', () => {
     seed(
       UNITS(),

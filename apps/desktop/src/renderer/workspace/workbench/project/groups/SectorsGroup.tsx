@@ -60,10 +60,9 @@ function RenameField(props: {
   );
 }
 
-/** The sector's azimuth in the shared angle format; a value that rounds up to 360 reads 0. */
+/** The sector's azimuth in the shared angle format (which writes a full turn as 0). */
 function azimuthText(deg: number): string {
-  const d = ((deg % 360) + 360) % 360;
-  return formatAngle(Math.round(d * 10) / 10 >= 360 ? 0 : d);
+  return formatAngle(((deg % 360) + 360) % 360);
 }
 
 function SectorRow(props: {

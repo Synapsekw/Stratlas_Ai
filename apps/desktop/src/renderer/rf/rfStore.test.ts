@@ -37,7 +37,6 @@ import {
   refreshRuns,
   removeAntennasFromPlan,
   removeOrphanEntry,
-  renameSavedSector,
   renameSector,
   resetRf,
   restoreAntennasToSectors,
@@ -375,22 +374,21 @@ describe('sectors', () => {
   });
 });
 
-describe('renameSavedSector', () => {
+describe('renameSector', () => {
   it('renames and saves a plan with no edits', async () => {
     site();
     await loadRf('p1');
-    await renameSavedSector('sec-s1', ' North ');
+    await renameSector('sec-s1', ' North ');
     expect(s().dirty).toBe(false);
     expect(h.sectors?.sectors[0]?.name).toBe('North');
   });
 
   it('a rename from Project and from Coverage is one function', async () => {
-    expect(renameSavedSector).toBe(renameSector);
     site();
     await loadRf('p1');
     // Coverage holds an unsaved move when the sector is renamed from Project
     moveUnit('ant-b', 'sec-s1');
-    await renameSavedSector('sec-s2', 'East');
+    await renameSector('sec-s2', 'East');
     // one name in both: the working copy and the saved plan carry it
     expect(s().sectors.sectors[1]?.name).toBe('East');
     expect(h.sectors?.sectors[1]?.name).toBe('East');
@@ -408,6 +406,55 @@ describe('renameSavedSector', () => {
     await renameSector('sec-s3', 'West');
     expect(h.sectors?.sectors[2]?.name).toBe('West');
     expect(s().dirty).toBe(false);
+  });
+
+  it('a refused rename write puts the saved plan back as it is on disk; the name stays unsaved', async () => {
+    site();
+    const ran = structuredClone(h.sectors);
+    if (!ran) throw new Error('no plan');
+    h.runs = [runOf('rf-1', ran)];
+    await loadRf('p1');
+    const before = structuredClone(s().saved);
+    h.writeError = 'The plan file is locked.';
+    expect(await renameSector('sec-s1', 'North')).toEqual({
+      ok: false,
+      code: 'refused',
+      message: 'The plan file is locked.',
+    });
+    // nothing reached the disk, so the saved plan is still the one that ran
+    expect(s().saved).toEqual(before);
+    expect(h.sectors?.sectors[0]?.name).toBe('S1');
+    expect(selectPlanChanged(s())).toBe(false);
+    // the new name is kept in the working copy, unsaved, and the next Save writes it
+    expect(s().sectors.sectors[0]?.name).toBe('North');
+    expect(s().dirty).toBe(true);
+    h.writeError = null;
+    expect(await saveRf()).toEqual({ ok: true });
+    expect(h.sectors?.sectors[0]?.name).toBe('North');
+    expect(s().saved?.sectors[0]?.name).toBe('North');
+  });
+
+  it('a rename made while a Save is in flight is written with the name', async () => {
+    site();
+    await loadRf('p1');
+    patchStudy({ radiusM: 5000 });
+    let release = (): void => undefined;
+    h.writeDelay = new Promise<void>((r) => {
+      release = r;
+    });
+    const saving = saveRf();
+    // the Save has taken its copy and is writing it
+    await vi.waitFor(() => {
+      expect(h.calls.some(([c]) => c === 'rf:writeSectors')).toBe(true);
+    });
+    const renaming = renameSector('sec-s1', 'North');
+    h.writeDelay = null;
+    release();
+    expect(await saving).toEqual({ ok: true });
+    expect(await renaming).toEqual({ ok: true });
+    expect(h.sectors?.sectors[0]?.name).toBe('North');
+    expect(h.sectors?.study.radiusM).toBe(5000);
+    expect(s().saved?.sectors[0]?.name).toBe('North');
   });
 
   it('a sector not saved yet is renamed in the working copy and saved with it', async () => {
@@ -978,6 +1025,20 @@ describe('saving', () => {
     expect(s().writeWarnings).toEqual(['pattern a.msi was not copied']);
     expect(h.sectors?.study.radiusM).toBe(5000);
     expect(s().hasFile).toBe(true);
+  });
+
+  it("an edit after a save makes the save's warnings old: they are gone from the store, not only from one view", async () => {
+    site();
+    h.writeWarnings = ['pattern a.msi was not copied'];
+    await loadRf('p1');
+    patchStudy({ radiusM: 5000 });
+    await saveRf();
+    expect(s().writeWarnings).toEqual(['pattern a.msi was not copied']);
+    patchStudy({ radiusM: 6000 });
+    expect(s().writeWarnings).toEqual([]);
+    // Undo changes (a load) does not bring them back
+    await loadRf('p1');
+    expect(s().writeWarnings).toEqual([]);
   });
 
   it('a refused write keeps the edits and says why', async () => {

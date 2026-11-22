@@ -107,16 +107,15 @@ describe('matchCellExport', () => {
     const m = ok(matchCellExport(csv, units, [], CATALOGUE));
     expect(m.unmatchedRows).toEqual([4]);
     expect(m.unmatchedUnits).toEqual(['u3']);
-    // the row that matched nothing keeps its own text
-    expect(m.unmatched).toEqual([{ line: 4, text: 'Nobody, B3' }]);
+    // the row that matched nothing keeps its own text, for the review to show
+    expect(describeCellExport(csv)?.lines.get(4)).toBe('Nobody, B3');
   });
 
   it('an unknown column is reported by name', () => {
     const units = [unit('u1', 'Panel A', 10)];
     const csv = 'antenna,band,Site code,azimuth,height\nPanel A,B3,X1,10,25';
-    const m = ok(matchCellExport(csv, units, [], CATALOGUE));
     // azimuth and height help the match, so only the unknown one is not used
-    expect(m.ignoredColumns).toEqual(['Site code']);
+    expect(ok(matchCellExport(csv, units, [], CATALOGUE)).picks.has('u1')).toBe(true);
     expect(describeCellExport(csv)).toEqual({
       ignoredColumns: ['Site code'],
       lines: new Map([[2, 'Panel A, B3, X1, 10, 25']]),

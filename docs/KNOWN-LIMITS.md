@@ -89,7 +89,7 @@ These limits were seen on the founder's own real projects in the data folder (no
 - Line up dates: manual point picking is not available yet.
 - Line up dates moves, turns and scales a date in the ground plane (up to 1 degree and 1 %). It does not change height.
 - Point clouds move with a line-up but don't turn: in the viewer, in 3D Tiles and in point-cloud change, which refuses a turned pair.
-- Items drawn on a point cloud (antennas, RF grids, sightings on cloud layers) turn with their date, while the cloud under them only moves, so on a turned date they can sit a little off the cloud. The pipeline's telecom merge step uses the shift only.
+- Items drawn on a point cloud (antennas, RF grids, sightings on cloud layers) turn with their date, while the cloud under them only moves, so on a turned date they can sit a little off the cloud. The pipeline's telecom merge step and the tower hint use the shift only.
 - The surface change and survey jobs turn a point cloud with its date, while the viewer shows that cloud shifted only.
 - Asset measurement (the engineer job) reads point clouds with the shift only; meshes take the full line-up.
 - Panorama headings, photo orientations, video direction keyframes and the clip path, and antenna and RF azimuths aren't turned. A video clip follows the move at the pivot.
@@ -399,7 +399,7 @@ These limits were seen on the founder's own real projects in the data folder (no
 - Only the downtilt is measured; electrical tilt is not.
 - On lattice towers, antennas facing more than 60 degrees away from straight out are listed as other equipment.
 - Small radio units are listed as other equipment without angles, and they or units merged with neighbours can be missed.
-- A radio a few centimetres from a ring or frame member can be missed by detection: on the Demo tower a 0.30 m radio mounted 4 cm off the inner ring formed no face of its own. Flag it with an outline round the whole unit, which is measured.
+- A small radio close to a ring or frame member can be missed by detection: on the Demo tower a 0.30 m radio set just above the inner ring formed no face of its own (the cause is not proven). Flag it with an outline round the whole unit, which is measured.
 - A thin strip outline (for example only the top few centimetres of a unit) can still read "Not measured", even with a couple of hundred points inside, because its points split over several small faces. Outline the whole unit.
 - Units side by side with no gap between them can come out as one wide unit.
 - A unit whose lower part is hidden behind a plate or another unit in front, and whose sides are not seen, has no measurable depth and is left out (counted in the run warning).
@@ -410,7 +410,7 @@ These limits were seen on the founder's own real projects in the data folder (no
 - A dish bolted to a thick member (radius 0.1 m or more) may be missed.
 - The type comes from the size of the unit unless AI labelling is used; AI labelling sets the type label only and never a number.
 - Plumb on narrow faces is less certain than azimuth.
-- Thresholds are tuned on synthetic crowns and one site, and accuracy has been checked on synthetic towers only. On the generated Demo tower, detection found 8 of its 9 units with no false finds, within 0.3 degrees in azimuth, 0.1 degrees in downtilt and 3 mm in centre altitude; that tower has little noise and ideal boxes, so it proves the job and its conventions, not real-world accuracy. No real tower with reference values has been compared yet.
+- Thresholds are tuned on synthetic crowns and one site, and accuracy has been checked on synthetic towers only. On the generated Demo tower, detection found 8 of its 9 units with no false finds, within 0.3 degrees in azimuth (the dish), 0.1 degrees in the dish's elevation angle, no error in the panels' downtilt and 3 mm in centre altitude, in a pipeline run and in the antennas CSV exported in the app (22 Nov 2026); that tower has little noise and ideal boxes, so it proves the job and its conventions, not real-world accuracy. No real tower with reference values has been compared yet.
 - Photo occlusion is not checked when the best photos are chosen.
 - Point clouds packed as PNG or as kit packs are read whole.
 - The engineering model's antennas are still approximate and separate from this inventory; the engineering model does not read the inventory yet.

@@ -651,10 +651,11 @@ test.describe('telecom finalized: with the pipeline', () => {
     await expect(run).toHaveText('Run coverage', { timeout: 30_000 });
     await expect(run).toHaveCount(1);
     await expect(bench.getByRole('button', { name: 'Save as new run' })).toHaveCount(0);
-    await expect(bench.getByTestId('rf-plan-changed')).toHaveCount(0);
     // the chip's words: a narrow stage (as at 1100 px) hides them but keeps them in its name
     const chipWords = (c: typeof chip) => c.getByTestId('rf-chip-open');
+    // once the run is shown (the chip settled on it), step 3 says nothing changed
     await expect(chip).toHaveAttribute('data-state', 'result');
+    await expect(bench.getByTestId('rf-plan-changed')).toHaveCount(0);
     await expect(chipWords(chip)).not.toHaveAccessibleName(/plan changed since this run/);
 
     // Project > Coverage plan counts the finished run

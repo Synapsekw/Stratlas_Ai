@@ -28,10 +28,6 @@ export interface ExportMatch {
   renames: { sectorId: string; name: string }[];
   /** 1-based file lines (the header is line 1) of rows that matched no unit. */
   unmatchedRows: number[];
-  /** The same rows with their own text (`rowText`), so the review can show what they say. */
-  unmatched: { line: number; text: string }[];
-  /** Header cells the match does not read, as written (`unusedColumns`). */
-  ignoredColumns: string[];
   /** Units Auto-plan would plan (`plannedUnits`) that no row matched. */
   unmatchedUnits: string[];
 }
@@ -104,8 +100,6 @@ export function matchCellExport(
     picks: new Map(),
     renames: [],
     unmatchedRows: [],
-    unmatched: [],
-    ignoredColumns: unusedColumns(header, cols, MATCH_FIELDS),
     unmatchedUnits: [],
   };
   const renamed = new Set<string>();
@@ -157,7 +151,6 @@ export function matchCellExport(
     }
     if (!unit) {
       out.unmatchedRows.push(line);
-      out.unmatched.push({ line, text: rowText(rec) });
       return;
     }
 
