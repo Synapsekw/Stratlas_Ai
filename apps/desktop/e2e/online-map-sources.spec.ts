@@ -174,7 +174,8 @@ test('a Mapbox style without a key is greyed with the reason; a key in Map sourc
 
 test('the Globe picks Esri from the same menu', async ({ app, win, network }) => {
   await win.locator('.sb-nav .nav-item', { hasText: 'Globe' }).click();
-  await expect(win.getByTestId('globe-canvas').locator('canvas')).toBeVisible();
+  // the first open of the Globe can take more than the default 5 s: see openGlobe in globe.spec.ts
+  await expect(win.getByTestId('globe-canvas').locator('canvas')).toBeVisible({ timeout: 60_000 });
   await win.getByTestId('globe-map-button').click();
   const esri = win.getByTestId('globe-map-menu').getByTestId('map-tile-esri-world-imagery');
   await esri.click();

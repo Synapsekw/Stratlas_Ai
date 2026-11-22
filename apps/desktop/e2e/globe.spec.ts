@@ -590,7 +590,12 @@ async function expectGlobeAt(win: Page, x: number, y: number) {
 
 async function openGlobe(win: Page) {
   await win.locator('.sb-nav .nav-item', { hasText: 'Globe' }).click();
-  await expect(win.getByTestId('globe-canvas').locator('canvas')).toBeVisible();
+  // The first open loads and runs the Globe's chunk and builds its widget, which holds the
+  // renderer: on a busy runner the canvas came after more than the default 5 s (CI runs
+  // 42612863142 and 43163065010), in whichever test it hit.
+  await expect(win.getByTestId('globe-canvas').locator('canvas')).toBeVisible({
+    timeout: SETTLE_MS,
+  });
   // The Globe's first frames hold the renderer like a flight does: on the Windows runner the
   // first inspect() came back after 15.8 s (main run 37854082873), so a 5 s poll gave up on it.
   await settle(win, 'the Globe placed the sites', (s) => s.sites.length > 0);

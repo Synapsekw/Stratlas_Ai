@@ -467,7 +467,10 @@ twoSurveys(
     lap('cloud change');
     // 7. the Globe: the site card lists the surface heat map; on, it is drawn red over the pile
     await win.locator('.sb-nav .nav-item', { hasText: 'Globe' }).click();
-    await expect(win.getByTestId('globe-canvas').locator('canvas')).toBeVisible();
+    // the first open of the Globe can take more than the default 5 s: see openGlobe in globe.spec.ts
+    await expect(win.getByTestId('globe-canvas').locator('canvas')).toBeVisible({
+      timeout: 60_000,
+    });
     await expect
       .poll(
         async () =>

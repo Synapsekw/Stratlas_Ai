@@ -203,7 +203,8 @@ async function settle(win: Page, what: string, ok: (s: GlobeInspection) => boole
 
 async function openGlobe(win: Page) {
   await win.locator('.sb-nav .nav-item', { hasText: 'Globe' }).click();
-  await expect(win.getByTestId('globe-canvas').locator('canvas')).toBeVisible();
+  // the first open of the Globe can take more than the default 5 s: see openGlobe in globe.spec.ts
+  await expect(win.getByTestId('globe-canvas').locator('canvas')).toBeVisible({ timeout: 60_000 });
   await settle(win, 'the Globe placed the sites', (s) => s.sites.length > 0);
 }
 
