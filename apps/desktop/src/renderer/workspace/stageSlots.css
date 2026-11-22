@@ -55,7 +55,9 @@
 /* ... and never over the bottom strip: while it shows a notice, the strip keeps the notice's
    room free at its end, and the notice stands inside the strip's height. */
 .app:has(.q-toasts[data-placement='window'] .q-toast) .ws-strip {
-  padding-inline-end: calc(min(360px, 100% - 2 * var(--sp-6)) + 2 * var(--sp-6));
+  /* the notice's width, as in the rule above and in toast.css */
+  --ws-notice-w: 360px;
+  padding-inline-end: calc(min(var(--ws-notice-w), 100% - 2 * var(--sp-6)) + 2 * var(--sp-6));
 }
 .app:has(.ws-strip) .q-toasts[data-placement='window'] {
   bottom: var(--sp-2);
