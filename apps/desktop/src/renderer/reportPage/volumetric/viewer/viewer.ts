@@ -503,7 +503,9 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
         ? [(marker[0] / frame.widthPx) * w, (marker[1] / frame.heightPx) * h]
         : [marker[0], marker[1]],
     );
-    const spread = sized ? spreadMarkers(points, MARKER_R_PX, { width: w, height: h }) : null;
+    // a badge with a long tag is wider than the round one: the widest sets the room they keep
+    const radius = Math.max(MARKER_R_PX, ...placed.map(({ b }) => b.offsetWidth / 2 + 1));
+    const spread = sized ? spreadMarkers(points, radius, { width: w, height: h }) : null;
     markers.querySelector('.vr-d-leaders')?.remove();
     // parsed, not created by namespace: the file names no address, not even the SVG namespace's
     const holder = el(doc, 'div');
@@ -514,13 +516,15 @@ export function bootViewer(doc: Document = document): ViewerHandle | null {
     const ns = leaders.namespaceURI;
     placed.forEach(({ b, marker }, k) => {
       const m = spread?.[k];
-      if (!m?.moved) {
+      if (!m) {
         b.style.left = `${String(round((marker[0] / frame.widthPx) * 100))}%`;
         b.style.top = `${String(round((marker[1] / frame.heightPx) * 100))}%`;
         return;
       }
+      // drawn where the spreading put it, as on the printed pages; a leader only for a real move
       b.style.left = `${String(round((m.at[0] / w) * 100))}%`;
       b.style.top = `${String(round((m.at[1] / h) * 100))}%`;
+      if (!m.moved) return;
       for (const cls of ['vr-d-leader-halo', 'vr-d-leader']) {
         const line = doc.createElementNS(ns, 'line');
         line.setAttribute('class', cls);

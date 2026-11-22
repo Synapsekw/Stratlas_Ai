@@ -119,6 +119,7 @@ describe('volumetric interactive viewer', () => {
   });
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('returns null without a data block', () => {
@@ -459,6 +460,26 @@ describe('volumetric interactive viewer', () => {
       expect(document.querySelectorAll('.vr-d-markers button')).toHaveLength(2);
     });
 
+    it('gives badges that only just touch their gap too, without a leader for so small a move', () => {
+      sized(800, 400);
+      // 30 px apart on the map: under the 31.36 px two badges keep between their centres
+      mount(at([500, 250], [537.5, 250]));
+      const [ax] = centre('a');
+      const [bx] = centre('b');
+      expect(bx - ax).toBeGreaterThanOrEqual(2 * MARKER_R_PX * 1.12 - 0.01);
+      expect(document.querySelector('.vr-d-leaders')).toBeNull();
+    });
+
+    it('keeps wide badges apart by their own width', () => {
+      sized(800, 400);
+      // a three-digit tag makes a badge 40 px wide: two of them need more than the round badge's room
+      vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(40);
+      mount(at([500, 250], [500, 250]));
+      const [ax, ay] = centre('a');
+      const [bx, by] = centre('b');
+      expect(Math.hypot(bx - ax, by - ay)).toBeGreaterThanOrEqual(2 * 21 * 1.12 - 0.01);
+    });
+
     it('leaves badges that stand clear where they are, with no leader', () => {
       sized(800, 400);
       mount(at([100, 100], [900, 400]));
@@ -489,7 +510,6 @@ describe('volumetric interactive viewer', () => {
       sized(800, 400);
       (resized as (() => void) | null)?.();
       expect(document.querySelectorAll('.vr-d-leaders line.vr-d-leader')).toHaveLength(2);
-      vi.unstubAllGlobals();
     });
   });
 
