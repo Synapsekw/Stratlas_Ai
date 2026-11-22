@@ -29,7 +29,7 @@
 /* the Status head over the chip's content (its padding), which also keeps it clear of a
    right-aligned head that is wider than its column ("Downtilt °" in the narrow aside) */
 .antenna-cols > .antenna-col-status {
-  padding-inline-start: 6px;
+  padding-inline-start: var(--sp-3);
 }
 /* a narrow aside: the kind column goes (the kind colour and the details still say it) */
 @container (max-width: 330px) {
