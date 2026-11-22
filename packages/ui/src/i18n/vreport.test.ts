@@ -47,6 +47,8 @@ describe('volumetric report words for the rebuilt layout', () => {
       'vreport.pictures.progressWritingHtml': [],
       'vreport.pictures.takeNow': [],
       'vreport.pictures.none': [],
+      'vreport.pictures.stalePackage': [],
+      'vreport.pictures.nonePackage': [],
       'vreport.error.noPictures': [],
     };
     for (const [k, p] of Object.entries(want)) {

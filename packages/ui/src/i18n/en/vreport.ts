@@ -59,6 +59,10 @@ export const enVreport = {
   'vreport.pictures.none': 'Pictures are taken when you export.',
   'vreport.pictures.takeNow': 'Take them now',
   'vreport.pictures.stale': 'The data changed since the pictures were taken.',
+  'vreport.pictures.stalePackage':
+    'The pictures in this package may not match its data. A package cannot take new ones: export the report from the project folder for new pictures.',
+  'vreport.pictures.nonePackage':
+    'This package carries no report pictures, and a package cannot take them. Export the report once from the project folder, then make the package again.',
   'vreport.pictures.progressTitle': 'Taking the report pictures',
   'vreport.pictures.progressText':
     'The stage shows each survey date in turn. Your view comes back when it is done.',
@@ -132,7 +136,7 @@ export const enVreport = {
   'vreport.overview.photo': 'Site photo, {date}',
   'vreport.overview.elevation': 'Elevation, {date}',
   'vreport.overview.3d': '3D view from the south-east, {date}',
-  'vreport.card.photo': 'Photo with the outline and the profile line, {date}',
+  'vreport.card.photo': 'Outline and profile line, {date}',
   'vreport.card.3d': '3D view, {date}',
   'vreport.card.before': 'Before, {date}',
   'vreport.card.since': 'since {date}',

@@ -17,7 +17,7 @@ import { resolve } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { NO_VIEWS, reportViews, type ReportViews } from '../types/template';
-import { CARD_H, chartHeightPx, PileCard } from './pileCard';
+import { CAPTION_LINE, CARD_H, chartHeightPx, PileCard } from './pileCard';
 
 const square = (e: number, n: number, h: number): [number, number][] => [
   [e - h, n - h],
@@ -434,5 +434,13 @@ describe('the stylesheet of the pile pages', () => {
       expect(body, selector).not.toMatch(/\n {2}height:/);
     }
     expect(css).not.toMatch(/text-overflow|line-clamp/);
+  });
+});
+
+describe('the picture captions', () => {
+  it('keeps every picture caption to one line', () => {
+    const date = '30 Sep 2026'; // the longest date the cards print
+    for (const key of ['vreport.card.photo', 'vreport.card.3d', 'vreport.card.before'] as const)
+      expect(t(key, { date }).length, key).toBeLessThanOrEqual(CAPTION_LINE);
   });
 });

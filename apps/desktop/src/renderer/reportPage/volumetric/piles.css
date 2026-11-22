@@ -367,7 +367,8 @@
   font-weight: 500;
 }
 
-/* pictures: three across, 4:3 as they are taken; a caption has two lines of room */
+/* pictures: three across, 4:3 as they are taken; a caption is one line; the second line's room
+   stays in the card's budget */
 .vr-pile-pics {
   display: flex;
   gap: 2.5mm;

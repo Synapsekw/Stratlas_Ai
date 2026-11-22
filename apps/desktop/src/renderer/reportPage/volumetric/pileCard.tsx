@@ -58,6 +58,8 @@ const CHART_MAX = 40;
 const CARD_FIXED = 3 + 10.5 + 44.25 + 7.2 + 6.6 + 10.8 + 0.65;
 /** Characters one line holds: the name beside the figures, a figure's value, a note. */
 const NAME_LINE = 30;
+/** Characters one picture caption line holds (59 mm at 7 pt, with room): a caption is one line. */
+export const CAPTION_LINE = 40;
 const VALUE_LINE = 24;
 const NOTE_LINE = 150;
 const NAME_LINE_MM = 5.1;
