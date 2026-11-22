@@ -36,6 +36,7 @@ import { isStale, seriesStale, useCompare } from '../compareStore';
 import { drawnPoints } from '../measureDates';
 import { measureStore, select, stopEditing, useMeasure } from '../measureStore';
 import { escapeStage } from '../stageEscape';
+import { useSeriesRun } from '../volumes/seriesRun';
 import { captureDateOf, datedCaptures, weighRows } from '../volumes/surveyDates';
 import { pickInVolumesView } from '../volumesPick';
 import { useTimeline } from '../../workspace/timeline';
@@ -209,6 +210,8 @@ export function PilePanel({
     if (lead && typeof lead.scrollIntoView === 'function')
       lead.scrollIntoView({ block: 'nearest' });
   }, [tab]);
+  // the pile's figures on the other dates follow its edits with the panel alone on screen too
+  useSeriesRun(useMemo(() => (m ? [m] : []), [m]));
   const data = usePileData(m);
   const dates = useSurveyDates();
   // a line moved or turned for the pile is fitted again once its outline is edited

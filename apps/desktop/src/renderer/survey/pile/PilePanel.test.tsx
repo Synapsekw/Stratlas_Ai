@@ -31,6 +31,7 @@ const calls = vi.hoisted(() => ({
   select: vi.fn(),
   showBench: vi.fn(),
   update: vi.fn(),
+  computeSeries: vi.fn<(id: string) => Promise<boolean>>(() => Promise.resolve(false)),
   saveSettings: vi.fn<(s: SurveySettings) => Promise<string | null>>(() => Promise.resolve(null)),
 }));
 
@@ -42,7 +43,9 @@ vi.mock('../compareStore', () => ({
   prepareSurfaces: vi.fn(),
   prepareParams: vi.fn(),
   recomputeStandard: vi.fn(),
-  computeSeries: vi.fn(() => Promise.resolve(false)),
+  computeSeries: calls.computeSeries,
+  hasCarried: () => false,
+  neighboursKey: () => '',
   useSpread: () => null,
   setHeat: vi.fn(),
 }));
@@ -642,6 +645,42 @@ describe('PilePanel', () => {
     expect(now).not.toBe(turned);
     expect(now?.angleDeg).toBeCloseTo(30, 6);
     expect(now?.centre[0]).toBeCloseTo(140, 6);
+  });
+
+  it("works the pile's dates out again when its base changes, with only the panel on screen", async () => {
+    // a pile filed under the earlier date, the later date in focus: the tile shows a figure of
+    // the series, which nothing else works out while Project > Volumes and the card are away
+    s.focus = 'c2';
+    render();
+    await act(() => Promise.resolve());
+    expect(calls.computeSeries.mock.calls.map((c) => c[0])).toEqual(['02']);
+    s.measure = {
+      ...s.measure,
+      file: {
+        measurements: s.measure.file.measurements.map((x) =>
+          x.id === '02'
+            ? {
+                ...x,
+                items: [
+                  {
+                    id: 'a',
+                    from: { kind: 'reference' as const, mode: 'perimeter-min' as const },
+                    to: { kind: 'current' as const },
+                    useDeadband: false,
+                  },
+                ],
+              }
+            : x,
+        ),
+      },
+    };
+    render();
+    await act(() => Promise.resolve());
+    expect(calls.computeSeries.mock.calls.map((c) => c[0])).toEqual(['02', '02']);
+    // nothing changed: nothing is asked again
+    render();
+    await act(() => Promise.resolve());
+    expect(calls.computeSeries).toHaveBeenCalledTimes(2);
   });
 
   it('without a material the density is disabled with why, and the chip offers the materials', () => {
