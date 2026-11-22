@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as schema from '../../packages/schema/src/index.ts';
 import { checkFolder } from './check-no-client-data.mjs';
+import { readLasHeader } from './formats.mjs';
 import { pipelinePython } from './photo-demo.mjs';
 import {
   TOWER_BUDGET_MB,
@@ -108,6 +109,22 @@ describe.skipIf(!hasPython)('Demo tower', () => {
       expect(p.pos).toHaveLength(3);
       expect(p.q).toHaveLength(4);
     }
+  });
+
+  it('keeps the dated cloud measured points as sources/tower-cloud.las, which Prepare surfaces reads', async () => {
+    const m = JSON.parse(await readFile(join(built.root, 'manifest.json'), 'utf8'));
+    const cloud = m.layers.find((l) => l.kind === 'pointcloud');
+    // a dated cloud: the app prepares its surface when the project opens, from this file
+    expect(cloud.capture).toBe(m.captures[0].id);
+    const las = readLasHeader(await readFile(join(built.root, 'sources', `${cloud.id}.las`)));
+    expect(las.signature).toBe('LASF');
+    expect(las.points).toBe(cloud.pointCount);
+    expect(las.epsg).toBe(32631);
+    // in the project CRS: the tower base at the origin, its top 40 m above
+    expect(las.min[2]).toBeCloseTo(m.origin[2], 0);
+    expect(las.max[2]).toBeGreaterThan(m.origin[2] + 39);
+    expect(las.min[0]).toBeLessThan(m.origin[0]);
+    expect(las.max[0]).toBeGreaterThan(m.origin[0]);
   });
 
   it('has no antenna list yet, and the known truth beside it', async () => {

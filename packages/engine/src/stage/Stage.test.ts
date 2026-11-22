@@ -371,6 +371,54 @@ describe('Stage', () => {
     stage.dispose();
   });
 
+  it('hands a click to the nearest of the claims that hit along the ray, after the claims that own the pointer', async () => {
+    const { stage, store, resize } = make();
+    resize(800, 600);
+    store.getState().openProject(project([meshLayer('plant')]));
+    await flush();
+    const canvas = container.querySelector('canvas');
+    if (!canvas) throw new Error('no canvas');
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600 }) as DOMRect;
+    canvas.setPointerCapture = () => undefined;
+    canvas.releasePointerCapture = () => undefined;
+    const click = () => {
+      for (const type of ['pointerdown', 'pointerup'])
+        canvas.dispatchEvent(new MouseEvent(type, { clientX: 400, clientY: 300, button: 0 }));
+    };
+    const took: string[] = [];
+    const claim = (name: string, depth: number | null) =>
+      stage.claimClicks(
+        () => {
+          took.push(name);
+          return true;
+        },
+        { depth: () => depth },
+      );
+    // registered first, but further along the ray: the nearer one takes the click
+    const far = claim('far', 9);
+    const near = claim('near', 4);
+    const miss = claim('miss', null);
+    click();
+    expect(took).toEqual(['near']);
+    expect(store.getState().selection).toBeNull();
+    // a claim without a depth (a tool drawing, icons on top) still comes first
+    const tool = stage.claimClicks(() => {
+      took.push('tool');
+      return true;
+    });
+    click();
+    expect(took).toEqual(['near', 'tool']);
+    tool();
+    near();
+    click();
+    expect(took).toEqual(['near', 'tool', 'far']);
+    far();
+    miss();
+    click();
+    expect(store.getState().selection).toMatchObject({ kind: 'asset', id: 'TANK-1' });
+    stage.dispose();
+  });
+
   describe('engineering components', () => {
     async function open() {
       clearHiddenNodes();

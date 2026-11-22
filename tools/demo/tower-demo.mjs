@@ -12,7 +12,10 @@
 // kind: four legs and their bracing, a ring headframe with mount pipes and nine units (three
 // panels with 2, 4 and 6 degrees of downtilt, three short units, one wide panel, a dish and a
 // small radio), plus the ground. The photos are rendered from that same cloud (point splats, the
-// units drawn lighter than the steel), so a unit's box projects onto what the photo shows.
+// units drawn lighter than the steel), so a unit's box projects onto what the photo shows. The
+// cloud's measured points are kept as sources/tower-cloud.las too, as an imported cloud's are, so
+// the surface the app prepares for a dated cloud when the project opens has its points (as the
+// change demo's clouds have theirs).
 //
 // tower-truth.json beside this file is the known truth of the units in the project's terms
 // (grid azimuth, downtilt, centre altitude, size): the build fails when the generated tower no
@@ -32,6 +35,7 @@ import { treeHash, treeSize } from './build-change-demo.mjs';
 import { prng } from './noise.mjs';
 import { pipelinePython } from './photo-demo.mjs';
 import { lookAtQuat, rotate } from './render.mjs';
+import { writeLas } from './formats.mjs';
 import { writePhoto, writePngCloud } from './writers.mjs';
 
 export const TOWER_ID = 'demo-tower';
@@ -329,7 +333,19 @@ export async function buildTowerDemo({ out, python, log = () => undefined, write
         pointCount: pc.points,
       },
     ];
-    log(`${TOWER_ID}: point cloud ${String(pc.points)} points`);
+    // the measured points, in the project's CRS (E, N, height), as an import keeps them
+    const enh = new Float64Array(xyz.length);
+    for (let i = 0; i < xyz.length / 3; i++) {
+      enh[3 * i] = E + xyz[3 * i];
+      enh[3 * i + 1] = N - xyz[3 * i + 2];
+      enh[3 * i + 2] = TOWER_PLACE.h + xyz[3 * i + 1];
+    }
+    await mkdir(join(root, 'sources'), { recursive: true });
+    await writeFile(
+      join(root, 'sources', 'tower-cloud.las'),
+      writeLas({ xyz: enh, rgb: col, epsg: TOWER_PLACE.epsg, date: TOWER_DAY }),
+    );
+    log(`${TOWER_ID}: point cloud ${String(pc.points)} points, its LAS in sources/`);
 
     const PW = 1280;
     const PH = 960;
@@ -390,16 +406,17 @@ export async function buildTowerDemo({ out, python, log = () => undefined, write
     await rm(join(root, 'telecom', 'antennas.json'), { force: true });
     await removeEmptyDirs(root);
 
-    const dest = join(out, TOWER_ID);
-    await rm(dest, { recursive: true, force: true });
-    await mkdir(out, { recursive: true });
-    await cp(root, dest, { recursive: true });
-    const bytes = await treeSize(dest);
+    // over budget fails before the output folder is touched (ensure-demo takes a folder for good)
+    const bytes = await treeSize(root);
     log(`${TOWER_ID}: ${(bytes / 1e6).toFixed(1)} MB`);
     if (bytes > TOWER_BUDGET_MB * 1e6)
       throw new Error(
         `${TOWER_ID} is ${(bytes / 1e6).toFixed(1)} MB, over its ${String(TOWER_BUDGET_MB)} MB budget.`,
       );
+    const dest = join(out, TOWER_ID);
+    await rm(dest, { recursive: true, force: true });
+    await mkdir(out, { recursive: true });
+    await cp(root, dest, { recursive: true });
     return { id: TOWER_ID, root: dest, bytes, truth, points: pc.points, photos: items.length };
   } finally {
     await rm(work, { recursive: true, force: true });

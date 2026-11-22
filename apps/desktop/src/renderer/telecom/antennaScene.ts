@@ -43,6 +43,7 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import type { Frame } from '../survey/measureScene';
+import { pointerBusy } from '../survey/pointerBusy';
 import { antennaCentre, antennaMeasure, boxAxes, facingTip, nameAnchor } from './antennaMeasure';
 import { isNotMeasured } from './antennaTyped';
 import { isAntennaDrawn, type AntennaLabelMode, type AntennaLabelSpot } from './antennaVisibility';
@@ -386,8 +387,15 @@ function disposeGroup(group: Group): void {
 
 const raycaster = new Raycaster();
 
-/** The id of the unit whose box is under the cursor (normalised device coordinates), or null. */
-export function pickAntennaAt(group: Group, camera: Camera, ndc: [number, number]): string | null {
+/**
+ * The unit whose box is nearest under the cursor (normalised device coordinates) and how far
+ * along the ray its box is hit, or null.
+ */
+export function antennaHitAt(
+  group: Group,
+  camera: Camera,
+  ndc: [number, number],
+): { id: string; distance: number } | null {
   group.updateMatrixWorld(true);
   camera.updateMatrixWorld(true);
   raycaster.setFromCamera(new Vector2(ndc[0], ndc[1]), camera);
@@ -395,8 +403,14 @@ export function pickAntennaAt(group: Group, camera: Camera, ndc: [number, number
     group.children.filter((c) => c instanceof Mesh),
     false,
   );
-  const id: unknown = hits[0]?.object.userData.antennaId;
-  return typeof id === 'string' ? id : null;
+  const hit = hits[0];
+  const id: unknown = hit?.object.userData.antennaId;
+  return hit && typeof id === 'string' ? { id, distance: hit.distance } : null;
+}
+
+/** The id of the unit whose box is under the cursor (normalised device coordinates), or null. */
+export function pickAntennaAt(group: Group, camera: Camera, ndc: [number, number]): string | null {
+  return antennaHitAt(group, camera, ndc)?.id ?? null;
 }
 
 /** Draw the antennas in the stage and report a click on a box. Returns the detach. */
@@ -443,25 +457,27 @@ export function attachAntennaLayer(
     setLineResolution(group, w, h);
   });
 
-  let down: { x: number; y: number } | null = null;
-  const onDown = (e: PointerEvent) => {
-    down = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
-  };
-  const onUp = (e: PointerEvent) => {
-    const start = down;
-    down = null;
-    if (!start || e.button !== 0) return;
-    if (Math.hypot(e.clientX - start.x, e.clientY - start.y) >= CLICK_SLOP_PX) return;
+  // a left click on a box goes through the stage's claims with how far along the ray the box is
+  // hit, so whatever is nearest takes it (a photo's image plane in front of the box, or the box
+  // in front of the plane), a tool drawing an outline keeps its clicks, and one click is acted on
+  // once. A tool owning the pointer (a crosshair, a pick armed) is never interrupted.
+  const boxHit = (e: PointerEvent) => {
+    if (e.button !== 0 || pointerBusy(canvas, stage)) return null;
     const r = canvas.getBoundingClientRect();
-    const ndc: [number, number] = [
+    return antennaHitAt(group, stage.camera, [
       ((e.clientX - r.left) / r.width) * 2 - 1,
       -((e.clientY - r.top) / r.height) * 2 + 1,
-    ];
-    const id = pickAntennaAt(group, stage.camera, ndc);
-    if (id) opts.onPick(id);
+    ]);
   };
-  canvas.addEventListener('pointerdown', onDown);
-  canvas.addEventListener('pointerup', onUp);
+  const unclaim = stage.claimClicks(
+    (e) => {
+      const hit = boxHit(e);
+      if (!hit) return false;
+      opts.onPick(hit.id);
+      return true;
+    },
+    { depth: (e) => boxHit(e)?.distance ?? null },
+  );
 
   // the right-click, as the measurement menu's: pins, photos and drone menus listen on the pane
   // before the window does and claim their event first
@@ -491,8 +507,7 @@ export function attachAntennaLayer(
   return () => {
     off();
     offFrame();
-    canvas.removeEventListener('pointerdown', onDown);
-    canvas.removeEventListener('pointerup', onUp);
+    unclaim();
     window.removeEventListener('pointerdown', onRightDown, true);
     window.removeEventListener('contextmenu', onContext);
     stage.scene.remove(group);

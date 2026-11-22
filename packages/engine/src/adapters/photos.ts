@@ -21,6 +21,7 @@ import {
 import type { StoreApi } from 'zustand/vanilla';
 import { engineConfig, FAR_M } from '../config';
 import { PALETTE } from '../palette';
+import { isEngineStage } from '../registry';
 import type { LayerAdapter, LayerHandle } from '../types';
 import { MarkerLayer, pickingOver, sceneMarkerView } from './markers';
 
@@ -356,6 +357,32 @@ export function createPhotosAdapter(
       // claim their own clicks)
       const el = scene.renderer.domElement;
       const rc = new Raycaster();
+      /** The photo whose image plane a click hits, and how far along the ray, or null. */
+      const planeHit = (e: PointerEvent): { photo: number; distance: number } | null => {
+        // an armed pick takes this click
+        if (!group.visible || pickingOver(el)) return null;
+        if (markers.hits(e.clientX, e.clientY)) return null;
+        const r = el.getBoundingClientRect();
+        const x = ((e.clientX - r.left) / r.width) * 2 - 1;
+        const y = -((e.clientY - r.top) / r.height) * 2 + 1;
+        rc.setFromCamera(new Vector2(x, y), scene.camera);
+        const hit = rc.intersectObject(planes, false)[0];
+        if (hit?.instanceId === undefined) return null;
+        const behind = scene.raycast(x, y);
+        if (behind && behind.object !== planes && behind.distance < hit.distance - depth * 0.5)
+          return null;
+        return { photo: hit.instanceId, distance: hit.distance };
+      };
+      const open = (e: PointerEvent): boolean => {
+        const hit = planeHit(e);
+        const photo = hit ? photos[hit.photo] : undefined;
+        if (!photo) return false;
+        choose(photo.id, !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey));
+        return true;
+      };
+      // on the 3D stage the click goes through its claims, so a box drawn in front of the plane
+      // (an antenna) takes it instead and a tool drawing an outline keeps it; elsewhere the layer
+      // listens itself
       let down: { x: number; y: number } | null = null;
       const onDown = (e: PointerEvent) => {
         down = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
@@ -363,25 +390,16 @@ export function createPhotosAdapter(
       const onUp = (e: PointerEvent) => {
         const d = down;
         down = null;
-        if (!d || !group.visible || Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_SLOP_PX)
-          return;
-        // an armed pick takes this click
-        if (pickingOver(el)) return;
-        if (markers.hits(e.clientX, e.clientY)) return;
-        const r = el.getBoundingClientRect();
-        const x = ((e.clientX - r.left) / r.width) * 2 - 1;
-        const y = -((e.clientY - r.top) / r.height) * 2 + 1;
-        rc.setFromCamera(new Vector2(x, y), scene.camera);
-        const hit = rc.intersectObject(planes, false)[0];
-        if (hit?.instanceId === undefined) return;
-        const behind = scene.raycast(x, y);
-        if (behind && behind.object !== planes && behind.distance < hit.distance - depth * 0.5)
-          return;
-        const photo = photos[hit.instanceId];
-        if (photo) choose(photo.id, !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey));
+        if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_SLOP_PX) return;
+        open(e);
       };
-      el.addEventListener('pointerdown', onDown);
-      el.addEventListener('pointerup', onUp);
+      const unclaim = isEngineStage(scene)
+        ? scene.claimClicks(open, { depth: (e) => planeHit(e)?.distance ?? null })
+        : null;
+      if (!unclaim) {
+        el.addEventListener('pointerdown', onDown);
+        el.addEventListener('pointerup', onUp);
+      }
       // where the photos were taken frames the view while there is no model or cloud
       const placed = new Box3().setFromPoints(located.map((p) => new Vector3(...p.pos)));
       // Centre on project leaves out the photos a bad GPS put far from the origin
@@ -406,6 +424,7 @@ export function createPhotosAdapter(
           unsub();
           unbound();
           markers.dispose();
+          unclaim?.();
           el.removeEventListener('pointerdown', onDown);
           el.removeEventListener('pointerup', onUp);
           scene.scene.remove(group);

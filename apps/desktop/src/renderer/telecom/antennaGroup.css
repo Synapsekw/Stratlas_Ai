@@ -26,6 +26,11 @@
 .antenna-cols > :nth-child(n + 5):nth-child(-n + 7) {
   text-align: end;
 }
+/* the Status head over the chip's content (its padding), which also keeps it clear of a
+   right-aligned head that is wider than its column ("Downtilt °" in the narrow aside) */
+.antenna-cols > .antenna-col-status {
+  padding-inline-start: 6px;
+}
 /* a narrow aside: the kind column goes (the kind colour and the details still say it) */
 @container (max-width: 330px) {
   .antenna-cols,

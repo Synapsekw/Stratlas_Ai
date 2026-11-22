@@ -1,7 +1,7 @@
 import type { AntennaUnit, AntennaValue } from '@aio/schema';
 import { t } from '@aio/ui';
 
-/** The chip tone of each review status, in the inventory and the card. */
+/** The chip tone of each review status, in the antenna list and its details. */
 export const TONE = { draft: 'warn', accepted: 'acc', rejected: 'off' } as const;
 
 /** Grid azimuth to true azimuth, wrapped to 0..360. */

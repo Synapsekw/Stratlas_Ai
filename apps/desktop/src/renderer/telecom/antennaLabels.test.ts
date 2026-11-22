@@ -263,3 +263,102 @@ it('hides a pin whose rect meets a selected label, and shows it again when clear
     spy.mockRestore();
   }
 });
+
+it('puts a label with two anchors beside the one further right on screen, from the front or behind', () => {
+  const host = document.createElement('div');
+  const canvas = document.createElement('canvas');
+  host.append(canvas);
+  document.body.append(host);
+  canvas.getBoundingClientRect = () => new DOMRect(0, 0, 100, 100);
+  host.getBoundingClientRect = () => new DOMRect(0, 0, 100, 100);
+  const camera = new PerspectiveCamera(50, 1, 0.1, 1000);
+  let frame: () => void = () => undefined;
+  const stage = {
+    camera,
+    renderer: { domElement: canvas },
+    onFrame: (fn: () => void) => {
+      frame = fn;
+      return () => undefined;
+    },
+  };
+  // a width line from x = -1 to x = 1: its label sits beside one end, clear of the middle
+  const spots: AntennaLabelSpot[] = [
+    { key: 'w', text: '0.30 m', at: [1, 0, 0], orAt: [-1, 0, 0], kind: 'dim', selected: true },
+  ];
+  const detach = attachAntennaLabels(stage as unknown as EngineStage, () => spots);
+  const x = () => {
+    frame();
+    const el = host.querySelector<HTMLElement>('span.sv-label');
+    return Number(/translate\((-?\d+)px/.exec(el?.style.transform ?? '')?.[1]);
+  };
+  // from the front (+z), x = 1 is on the right
+  camera.position.set(0, 0, 10);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
+  expect(x()).toBeGreaterThan(50);
+  // from behind (-z), x = -1 is on the right: the label moves there instead of over the middle
+  camera.position.set(0, 0, -10);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
+  expect(x()).toBeGreaterThan(50);
+  detach();
+  host.remove();
+});
+
+it('lifts a unit name label clear of its own size label when they meet (zoomed out)', () => {
+  const host = document.createElement('div');
+  const canvas = document.createElement('canvas');
+  host.append(canvas);
+  document.body.append(host);
+  canvas.getBoundingClientRect = () => new DOMRect(0, 0, 100, 100);
+  host.getBoundingClientRect = () => new DOMRect(0, 0, 100, 100);
+  const camera = new PerspectiveCamera(50, 1, 0.1, 1000);
+  camera.position.set(0, 0, 10);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
+  let frame: () => void = () => undefined;
+  const stage = {
+    camera,
+    renderer: { domElement: canvas },
+    onFrame: (fn: () => void) => {
+      frame = fn;
+      return () => undefined;
+    },
+  };
+  const spots: AntennaLabelSpot[] = [
+    { key: 'ant-1:dim:w', text: '0.30 m', at: [0, 0, 0], kind: 'dim', selected: true },
+    { key: 'ant-2:dim:w', text: '0.40 m', at: [0, 0, 0], kind: 'dim', selected: true },
+    {
+      key: 'ant-1:name',
+      text: 'A1 · alt 423.5 m',
+      at: [0, 0, 0],
+      kind: 'name',
+      selected: true,
+      align: 'above',
+    },
+  ];
+  // the name's box (y 289 to 309) meets the width label's (y 305 to 325) by 4 px
+  let width = new DOMRect(68, 305, 55, 20);
+  const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
+  spy.mockImplementation(function (this: HTMLElement) {
+    if (this.dataset.key === 'ant-1:dim:w') return width;
+    // another unit's label does not move this name
+    if (this.dataset.key === 'ant-2:dim:w') return new DOMRect(0, 300, 120, 20);
+    if (this.dataset.key === 'ant-1:name') return new DOMRect(0, 289, 127, 20);
+    return new DOMRect(0, 0, 0, 0);
+  });
+  try {
+    const detach = attachAntennaLabels(stage as unknown as EngineStage, () => spots);
+    const name = () => host.querySelector<HTMLElement>('[data-key="ant-1:name"]');
+    frame();
+    // up by the overlap and a 2 px gap
+    expect(name()?.style.transform).toMatch(/translateY\(-6px\)$/);
+    width = new DOMRect(68, 340, 55, 20);
+    frame();
+    expect(name()?.style.transform).not.toMatch(/translateY/);
+    detach();
+  } finally {
+    spy.mockRestore();
+    host.remove();
+  }
+});

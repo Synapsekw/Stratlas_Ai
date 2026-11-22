@@ -60,11 +60,16 @@ interface Box {
 /** How far the chip sits from the cursor, pixels. */
 const CHIP_GAP = { x: 16, y: 14 };
 
+/** The gap the drag chip keeps from the stage's controls, pixels. */
+const CHIP_CLEAR = 4;
+
 /**
  * Where the drag chip goes: below-right of the cursor, else below-left, above-right, above-left,
- * the first that lies wholly on the canvas and meets none of the `keepOut` boxes (the stage's
- * corner controls, such as the basemap chip). If none does, the first that is on the canvas, else
- * below-right held inside it. A canvas of no size (not laid out) leaves the chip below-right.
+ * the first that lies wholly on the canvas and keeps `CHIP_CLEAR` from every `keepOut` box (the
+ * stage's controls: the top bar, the basemap chip). Else the first of those moved down below the
+ * boxes it meets, if that is clear and on the canvas (the cursor under the top bar); else the
+ * first that is on the canvas, else below-right held inside it. A canvas of no size (not laid
+ * out) leaves the chip below-right.
  */
 export function chipPlace(
   pointer: { x: number; y: number },
@@ -86,11 +91,26 @@ export function chipPlace(
   if (canvas.w <= 0 || canvas.h <= 0) return first;
   const onCanvas = (p: { x: number; y: number }) =>
     p.x >= 0 && p.y >= 0 && p.x + size.w <= canvas.w && p.y + size.h <= canvas.h;
-  const clear = (p: { x: number; y: number }) =>
-    !keepOut.some(
-      (b) => p.x < b.right && p.x + size.w > b.left && p.y < b.bottom && p.y + size.h > b.top,
-    );
-  const fit = tries.find((p) => onCanvas(p) && clear(p)) ?? tries.find(onCanvas);
+  const meets = (p: { x: number; y: number }, b: Box) =>
+    p.x < b.right + CHIP_CLEAR &&
+    p.x + size.w > b.left - CHIP_CLEAR &&
+    p.y < b.bottom + CHIP_CLEAR &&
+    p.y + size.h > b.top - CHIP_CLEAR;
+  const clear = (p: { x: number; y: number }) => !keepOut.some((b) => meets(p, b));
+  // moved down under every box it meets, as often as a move meets another
+  const slid = (p: { x: number; y: number }) => {
+    const q = { ...p };
+    let hit = keepOut.find((b) => meets(q, b));
+    for (let left = keepOut.length; hit && left > 0; left--) {
+      q.y = hit.bottom + CHIP_CLEAR;
+      hit = keepOut.find((b) => meets(q, b));
+    }
+    return q;
+  };
+  const fit =
+    tries.find((p) => onCanvas(p) && clear(p)) ??
+    tries.map(slid).find((p) => onCanvas(p) && clear(p)) ??
+    tries.find(onCanvas);
   if (fit) return fit;
   return {
     x: Math.max(0, Math.min(first.x, canvas.w - size.w)),
@@ -250,18 +270,18 @@ export function attachAntennaHandles(
     chip.style.display = 'block';
     const r = rect();
     const size = chip.getBoundingClientRect();
-    // the stage's corner controls (the basemap chip, the dates, a legend), canvas relative
-    const keepOut = [...(host.closest('.stage')?.querySelectorAll('.stage-slot > *') ?? [])].map(
-      (e) => {
-        const b = e.getBoundingClientRect();
-        return {
-          left: b.left - r.left,
-          top: b.top - r.top,
-          right: b.right - r.left,
-          bottom: b.bottom - r.top,
-        };
-      },
-    );
+    // the stage's controls (the top bar, the basemap chip, the dates, a legend), canvas relative
+    const keepOut = [
+      ...(host.closest('.stage')?.querySelectorAll('.stage-slot > *, .island') ?? []),
+    ].map((e) => {
+      const b = e.getBoundingClientRect();
+      return {
+        left: b.left - r.left,
+        top: b.top - r.top,
+        right: b.right - r.left,
+        bottom: b.bottom - r.top,
+      };
+    });
     const at = chipPlace(
       hold.pointer,
       { w: size.width, h: size.height },

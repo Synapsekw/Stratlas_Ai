@@ -20,6 +20,7 @@ type Call = [string, Record<string, unknown>];
 const h = vi.hoisted(() => ({
   calls: [] as Call[],
   fail: null as string | null,
+  writeFail: null as string | null,
   file: null as AntennasFile | null,
   sectorsOnDisk: null as RfSectorsFile | null,
 }));
@@ -36,12 +37,17 @@ vi.mock('../shell', async () => {
           const gone = new Set(req.ids as string[]);
           const left = h.file!;
           const file = { ...left, units: left.units.filter((u) => !gone.has(u.id)) };
+          h.file = file;
           return Promise.resolve({ ok: true, value: { ok: true, deleted: [...gone], file } });
         }
         if (channel === 'telecom:writeAntennas') {
+          if (h.writeFail)
+            return Promise.resolve({ ok: true, value: { ok: false, error: h.writeFail } });
           h.file = req.file as AntennasFile;
           return Promise.resolve({ ok: true, value: { ok: true } });
         }
+        if (channel === 'telecom:readAntennas')
+          return Promise.resolve({ ok: true, value: { ok: true, file: h.file, readOnly: false } });
         if (channel === 'rf:writeSectors') {
           h.sectorsOnDisk = req.file as RfSectorsFile;
           return Promise.resolve({ ok: true, value: { ok: true } });
@@ -82,6 +88,7 @@ function setUp(opts: { dirty?: boolean; plan?: boolean } = {}) {
 beforeEach(() => {
   h.calls = [];
   h.fail = null;
+  h.writeFail = null;
   antennaDeleteStore.setState({ ask: null, busy: false });
   antennaUndoStore.setState({ undo: [] });
 });
@@ -262,6 +269,36 @@ describe('undo of a delete (item 27)', () => {
     expect(antennaUndoStore.getState().undo).toHaveLength(1);
     dismissUndoDeleteAntennas();
     expect(antennaUndoStore.getState().undo).toEqual([]);
+  });
+
+  it('a refused Undo keeps the delete for undo and says why in the group; the next Undo brings the unit back', async () => {
+    setUp();
+    askDeleteAntennas(['ant-a']);
+    await confirmDeleteAntennas();
+    h.writeFail = 'The antenna file is read-only.';
+    await undoDeleteAntennas();
+    expect(ids()).toEqual(['ant-b', 'ant-c']);
+    expect(antennaStore.getState().message).toBe('The antenna file is read-only.');
+    expect(antennaUndoStore.getState().undo).toHaveLength(1);
+    h.writeFail = null;
+    await undoDeleteAntennas();
+    expect(ids()).toEqual(['ant-a', 'ant-b', 'ant-c']);
+    expect(holder('ant-a')).toBe('sec-s1');
+    expect(antennaUndoStore.getState().undo).toEqual([]);
+  });
+
+  it('two Undo presses at once write once and take only that delete off', async () => {
+    setUp();
+    askDeleteAntennas(['ant-a']);
+    await confirmDeleteAntennas();
+    askDeleteAntennas(['ant-b']);
+    await confirmDeleteAntennas();
+    h.calls = [];
+    await Promise.all([undoDeleteAntennas(), undoDeleteAntennas()]);
+    expect(h.calls.filter(([c]) => c === 'telecom:writeAntennas')).toHaveLength(1);
+    expect(ids()).toEqual(['ant-b', 'ant-c']);
+    // the delete of ant-a is still offered
+    expect(antennaUndoStore.getState().undo.map((u) => u.removed[0]?.unit.id)).toEqual(['ant-a']);
   });
 
   it('an undo for another project is dropped, not written', async () => {

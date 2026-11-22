@@ -734,23 +734,34 @@ function change(edit: (file: AntennasFile) => AntennasFile | null): Promise<void
 
 /** `change`, answering whether the file was written. */
 function changeOk(edit: (file: AntennasFile) => AntennasFile | null): Promise<boolean> {
-  const next = queue.then(async () => {
+  return changeResult(edit).then((r) => r === 'written');
+}
+
+/**
+ * What became of a change: `written`; `unchanged` when the edit had nothing to do; `refused` when
+ * it could not be written (refused by main, read-only, no file or the project switched), its
+ * reason in the group's message when main gave one.
+ */
+export type ChangeResult = 'written' | 'unchanged' | 'refused';
+
+function changeResult(edit: (file: AntennasFile) => AntennasFile | null): Promise<ChangeResult> {
+  const next = queue.then(async (): Promise<ChangeResult> => {
     const { file, projectId, root, readOnly } = get();
-    if (!file || !projectId || !root || readOnly) return false;
+    if (!file || !projectId || !root || readOnly) return 'refused';
     const updated = edit(file);
-    if (!updated) return false;
+    if (!updated) return 'unchanged';
     const r = await bridge.call('telecom:writeAntennas', { projectId, file: updated });
-    if (get().projectId !== projectId) return false;
+    if (get().projectId !== projectId) return 'refused';
     if (r.ok && r.value.ok) {
       // a read that started before this write would bring back the file it replaced
       loadSeq++;
       set({ file: updated, message: null });
-      return true;
+      return 'written';
     }
     const error = !r.ok ? r.error : r.value.ok ? '' : r.value.error;
     await loadAntennas(projectId, root);
     set({ message: error || t('telecom.antennas.reloaded') });
-    return false;
+    return 'refused';
   });
   queue = next.then(
     () => undefined,
@@ -790,11 +801,11 @@ export interface RemovedUnit {
 /**
  * Undo of a delete: put the units back at their old places into the file as it is now (an edit
  * made since the delete stays), through the ordinary save. Main sees the ids come back and puts
- * their crops and deletion records back. A unit already in the file is left alone. Answers
- * whether the file was written.
+ * their crops and deletion records back. A unit already in the file is left alone (`unchanged`
+ * when every one is). Answers what became of the write (`ChangeResult`).
  */
-export function restoreUnits(removed: readonly RemovedUnit[]): Promise<boolean> {
-  return changeOk((file) => {
+export function restoreUnits(removed: readonly RemovedUnit[]): Promise<ChangeResult> {
+  return changeResult((file) => {
     const have = new Set(file.units.map((u) => u.id));
     const back = removed.filter((r) => !have.has(r.unit.id)).sort((a, b) => a.index - b.index);
     if (back.length === 0) return null;
@@ -895,7 +906,10 @@ export function deleteUnits(
     result = {
       ok: false,
       error:
-        error.trim() || t('project.antennas.deleteFailed', { reason: 'the antenna file changed.' }),
+        error.trim() ||
+        t('project.antennas.deleteFailed', {
+          reason: t('project.antennas.deleteFailed.changed'),
+        }),
     };
   });
   queue = next.catch(() => undefined);

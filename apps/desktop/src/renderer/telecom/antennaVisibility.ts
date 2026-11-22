@@ -36,6 +36,11 @@ export interface AntennaLabelSpot {
   text: string;
   /** Local frame (x east, y up, z south). */
   at: Vec3;
+  /**
+   * A second anchor (the other end of a line): the label sits beside whichever of `at` and `orAt`
+   * is further right on screen, so a box seen from behind keeps the label off the line's middle.
+   */
+  orAt?: Vec3;
   /** 'pin': the small numbered marker of a unit that is not selected. */
   kind: 'name' | 'dim' | 'angle' | 'pin';
   selected: boolean;

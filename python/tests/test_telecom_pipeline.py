@@ -196,7 +196,7 @@ def test_runs_end_to_end(tmp_path, monopole):
         "Finding planar faces",
         "Fitting antenna boxes",
         "Picking the best photos",
-        "Saving the inventory",
+        "Saving the antenna list",
     ):
         assert m in msgs
     assert not list((root / "telecom").glob("*.tmp"))

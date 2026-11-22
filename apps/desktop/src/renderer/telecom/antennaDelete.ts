@@ -13,6 +13,7 @@ import {
   deleteBlockedReason,
   deleteUnits,
   restoreUnits,
+  type ChangeResult,
   type RemovedUnit,
 } from './antennaStore';
 
@@ -140,6 +141,8 @@ export interface AntennaUndo {
 /** How many deletes back Undo reaches, as for measurements. */
 const UNDO_DELETES = 10;
 let undoSeq = 0;
+/** The `seq` of the delete whose undo is being written, else null. */
+let undoing: number | null = null;
 
 export const antennaUndoStore = createStore<{ undo: readonly AntennaUndo[] }>()(() => ({
   undo: [],
@@ -174,22 +177,33 @@ function sectorPlaces(ids: readonly string[]): SectorPlace[] {
  * Undo the last delete: the units go back into the current file at their old places (one ordinary
  * save, `restoreUnits`; main then puts their crops and deletion records back), then each goes back
  * into its sector with its RF settings (`restoreAntennasToSectors`: the saved plan is written,
- * unsaved edits stay unsaved; a sector the delete emptied comes back). The delete before it is offered next. Refused
- * while an antenna job runs; a delete of another project is dropped.
+ * unsaved edits stay unsaved; a sector the delete emptied comes back). The delete before it is
+ * offered next. A refused write keeps the delete offered (its reason shows in the Antennas
+ * group), so Undo can be pressed again. Refused while an antenna job runs; a delete of another
+ * project is dropped. A second press while one undo is being written does nothing.
  */
 export async function undoDeleteAntennas(): Promise<void> {
   const { undo } = antennaUndoStore.getState();
   const last = undo.at(-1);
-  if (!last) return;
+  if (!last || undoing !== null) return;
   const { projectId } = antennaStore.getState();
   if (last.projectId !== projectId) {
     antennaUndoStore.setState({ undo: undo.filter((u) => u.projectId === projectId) });
     return;
   }
   if (deleteBlockedReason()) return;
-  antennaUndoStore.setState({ undo: undo.slice(0, -1) });
-  const written = await restoreUnits(last.removed);
-  if (!written || last.places.length === 0) return;
+  undoing = last.seq;
+  let result: ChangeResult;
+  try {
+    result = await restoreUnits(last.removed);
+  } finally {
+    undoing = null;
+  }
+  if (result === 'refused') return;
+  antennaUndoStore.setState({
+    undo: antennaUndoStore.getState().undo.filter((u) => u.seq !== last.seq),
+  });
+  if (result !== 'written' || last.places.length === 0) return;
   if (rfStore.getState().projectId !== projectId) return;
   await restoreAntennasToSectors(last.places);
 }

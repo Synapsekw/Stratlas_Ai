@@ -31,6 +31,7 @@ import { attachAntennaLabels } from './antennaLabels';
 import { antennaCorners } from './antennaMeasure';
 import {
   antennaShift,
+  armTowerPick,
   attachAntennaLayer,
   labelSpotsCache,
   type AntennaSceneState,
@@ -38,11 +39,13 @@ import {
 import {
   antennaStore,
   cancelAiLabels,
+  cancelHint,
   closeAntennaMenu,
   drawnFile,
   loadAntennas,
   openAntennaMenu,
   resetAntennas,
+  runDetection,
   sendAiLabels,
   useAntennas,
 } from './antennaStore';
@@ -183,6 +186,17 @@ export function AntennaRunner(): ReactElement | null {
       offLayer();
     };
   }, [drawn, stage, frame, manifest, spotsOf]);
+
+  // "Which one is the tower?": the next click on the cloud re-runs detection with it. Taken here,
+  // once, whichever tab shows the question (`AntennaTowerHint`)
+  const needsHint = useAntennas((a) => a.needsHint);
+  useEffect(() => {
+    if (!needsHint || !stage) return;
+    return armTowerPick(stage, (local) => {
+      cancelHint();
+      void runDetection({ towerHint: [local[0], local[2]] });
+    });
+  }, [needsHint, stage]);
 
   // the Labels control while the antennas are drawn in a 3D view on screen
   const showLayer = drawn && stage !== null && frame !== null && onScene;

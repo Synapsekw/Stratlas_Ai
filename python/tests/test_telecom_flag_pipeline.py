@@ -161,7 +161,7 @@ def test_flag_adds_an_accepted_flagged_unit(project):
         "Reading the outlined points",
         "Measuring the flagged unit",
         "Picking the best photos",
-        "Saving the inventory",
+        "Saving the antenna list",
     ):
         assert m in msgs
 
@@ -409,7 +409,7 @@ def test_commit_refuses_when_a_new_detection_run_landed_during_the_job(project):
         emit,
         threading.Event(),
     )
-    with pytest.raises(JobError, match="inventory changed while measuring"):
+    with pytest.raises(JobError, match="antenna list changed while measuring"):
         job.run()
     assert not any(u["id"] == "ant-flag-8" for u in read_file(root)["units"])
 

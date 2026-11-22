@@ -380,6 +380,7 @@ describe('antenna review drawing', () => {
           listeners--;
         };
       },
+      claimClicks: () => () => undefined,
     } as never;
     const detach = attachAntennaLayer(stage, frame, {
       getState: () => current,
@@ -458,6 +459,84 @@ describe('armTowerPick', () => {
   });
 });
 
+describe('the antenna layer left-click', () => {
+  function setup() {
+    const canvas = document.createElement('canvas');
+    document.body.append(canvas);
+    canvas.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100 }) as DOMRect;
+    const camera = new PerspectiveCamera(50, 1, 0.1, 100);
+    // the first unit sits at local (3, 10, -4): look at it down -z from 12 m in front
+    camera.position.set(3, 10, 8);
+    camera.lookAt(3, 10, -4);
+    camera.updateMatrixWorld(true);
+    const claims: {
+      handler: (e: PointerEvent) => boolean;
+      depth?: (e: PointerEvent) => number | null;
+    }[] = [];
+    const stage = {
+      scene: new Scene(),
+      camera,
+      tool: 'select',
+      renderer: { domElement: canvas },
+      requestRender: () => undefined,
+      onFrame: () => () => undefined,
+      claimClicks: (
+        handler: (e: PointerEvent) => boolean,
+        opts?: { depth: (e: PointerEvent) => number | null },
+      ) => {
+        const c = { handler, ...(opts ? { depth: opts.depth } : {}) };
+        claims.push(c);
+        return () => {
+          claims.splice(claims.indexOf(c), 1);
+        };
+      },
+    } as never;
+    const onPick = vi.fn();
+    const detach = attachAntennaLayer(stage, frame, {
+      getState: () => state(),
+      subscribe: () => () => undefined,
+      onPick,
+    });
+    const at = (x: number, y: number) =>
+      new PointerEvent('pointerup', { button: 0, clientX: x, clientY: y });
+    return { canvas, claims, onPick, at, detach };
+  }
+
+  it('takes its click through the stage claims, at the depth the box is hit', () => {
+    const t = setup();
+    expect(t.claims).toHaveLength(1);
+    const claim = t.claims[0];
+    if (!claim?.depth) throw new Error('the box pick claims with no depth');
+    // the box's front face is 12 m minus half its 0.15 m depth away
+    expect(claim.depth(t.at(50, 50))).toBeCloseTo(11.925, 2);
+    expect(claim.depth(t.at(2, 2))).toBeNull();
+    expect(claim.handler(t.at(50, 50))).toBe(true);
+    expect(t.onPick).toHaveBeenCalledWith('ant-acc');
+    // a click straight on the canvas, outside the stage's claims, picks nothing
+    t.onPick.mockClear();
+    t.canvas.dispatchEvent(
+      new PointerEvent('pointerdown', { button: 0, clientX: 50, clientY: 50 }),
+    );
+    t.canvas.dispatchEvent(t.at(50, 50));
+    expect(t.onPick).not.toHaveBeenCalled();
+    t.detach();
+    expect(t.claims).toHaveLength(0);
+    t.canvas.remove();
+  });
+
+  it('keeps out of a tool that owns the pointer (an outline being drawn shows a crosshair)', () => {
+    const t = setup();
+    const claim = t.claims[0];
+    t.canvas.style.cursor = 'crosshair';
+    expect(claim?.depth?.(t.at(50, 50))).toBeNull();
+    expect(claim?.handler(t.at(50, 50))).toBe(false);
+    expect(t.onPick).not.toHaveBeenCalled();
+    t.detach();
+    t.canvas.remove();
+  });
+});
+
 describe('the antenna layer right-click', () => {
   function setup() {
     const canvas = document.createElement('canvas');
@@ -475,6 +554,7 @@ describe('the antenna layer right-click', () => {
       renderer: { domElement: canvas },
       requestRender: () => undefined,
       onFrame: () => () => undefined,
+      claimClicks: () => () => undefined,
     } as never;
     const onMenu = vi.fn();
     const detach = attachAntennaLayer(stage, frame, {

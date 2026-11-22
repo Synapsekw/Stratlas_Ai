@@ -240,9 +240,11 @@ export function antennaMeasure(
     spots.push({
       key: `${unit.id}:dim:${l.key}`,
       text: metres(l.value),
-      // the width sits beside its line's right end as seen from the front (`.sv-label`'s
-      // offset: right and up), clear of the top face's arrow in the middle of the edge
+      // the width sits beside its line's right end on screen (`.sv-label`'s offset: right and
+      // up), clear of the top face's arrow in the middle of the edge: the right end as seen from
+      // the front, or the other one when the box is seen from behind (`orAt`)
       at: l.key === 'w' ? (rightHanded ? b : a) : lerp(a, b, DIM_LABEL_AT),
+      ...(l.key === 'w' ? { orAt: rightHanded ? a : b } : {}),
       kind: 'dim',
       selected: true,
     });

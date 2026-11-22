@@ -55,7 +55,7 @@ Every unit starts as a **Draft**. Status is shown by outline style and a text ch
 One rule holds on every route: a press sets the status, and a press on units that all have that status already returns them to **Draft**.
 
 - **Accept** and **Reject** in the details.
-- The **A** and **R** keys, while a unit is selected. They are listed in **Settings**, **Keyboard shortcuts**, under **Antennas, with a unit selected**, and in the buttons' tooltips.
+- The **A** and **R** keys, while a unit is selected. They are listed in **Settings**, **Keyboard**, under **Antennas, with a unit selected**, and in the buttons' tooltips.
 - The bulk bar: tick several rows, then **Accept**, **Reject** or **Delete**.
 - The right-click menu, on a row or on a box in the 3D view.
 

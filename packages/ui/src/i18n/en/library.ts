@@ -221,6 +221,7 @@ export const enLibrary = {
   'project.antennas.confirm.yes_one': 'Delete',
   'project.antennas.confirm.yes_other': 'Delete {count}',
   'project.antennas.deleteFailed': 'The antennas were not deleted: {reason}',
+  'project.antennas.deleteFailed.changed': 'the antenna file changed on disk.',
   'project.sectors.none': 'Plan sectors in Coverage.',
   'project.sectors.antennas_one': '{count} antenna',
   'project.sectors.antennas_other': '{count} antennas',

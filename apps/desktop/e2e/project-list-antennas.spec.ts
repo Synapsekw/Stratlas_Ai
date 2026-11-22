@@ -167,6 +167,25 @@ test.describe('project list: the Antennas group', () => {
       await evidence(win, 'a-project-tab', true);
 
       await group.getByTestId('antenna-filter-all').click();
+      // the column heads' words keep a gap between them at this width ("Downtilt °" and Status)
+      const heads = await group.getByTestId('antenna-cols').evaluate((row) =>
+        [...row.children].flatMap((cell) => {
+          if (!(cell instanceof HTMLElement) || cell.offsetParent === null || !cell.textContent)
+            return [];
+          const range = document.createRange();
+          range.selectNodeContents(cell);
+          const r = range.getBoundingClientRect();
+          return [{ text: cell.textContent, left: r.left, right: r.right }];
+        }),
+      );
+      expect(heads.length).toBeGreaterThanOrEqual(4);
+      for (let k = 1; k < heads.length; k++) {
+        const [a, b] = [heads[k - 1], heads[k]];
+        if (!a || !b) continue;
+        expect(b.left - a.right, `"${a.text}" and "${b.text}" apart (px)`).toBeGreaterThanOrEqual(
+          3,
+        );
+      }
       const az = rowOf(group, 'ant-p2').getByTestId('antenna-row-az');
       await az.fill('45');
       await az.press('Enter');

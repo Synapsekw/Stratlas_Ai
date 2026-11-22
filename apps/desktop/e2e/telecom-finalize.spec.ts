@@ -26,13 +26,22 @@ import {
   type AntennaUnit,
 } from '@aio/schema';
 import type { Locator, Page } from '@playwright/test';
+import { existsSync } from 'node:fs';
 import { chmod, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { PIPELINE_ENV, expect, hasPipelinePython, test } from './fixtures';
+import {
+  DEMO_FOLDER,
+  PIPELINE_ENV,
+  expect,
+  hasPipelinePython,
+  openProject,
+  test,
+} from './fixtures';
 import { measureControl } from './island';
 import { expectBench, openSection, panelTab } from './panel';
 import { RF_DRAFT, RF_PANELS, readRfSectors, rfAntennas, writeRfProject } from './rfFixtures';
+import { openDemo, prepareJobs, preparesSettled } from './surveyJobs';
 import {
   projectAntennas,
   writeAntennaInventory,
@@ -815,5 +824,163 @@ test.describe('telecom finalized: with the pipeline', () => {
       );
     }
     await evidence(win, 'l-turned-flag-done');
+  });
+});
+
+/** The Demo tower's truth (`tools/demo/tower-truth.json`): project E, N, Z centres. */
+interface DemoTowerTruth {
+  origin: Vec3;
+  units: TowerTruthUnit[];
+}
+
+const DEMO_TOWER = join(DEMO_FOLDER, 'demo-tower');
+
+/** Open the Demo tower and detect its antennas from the empty list: its folder, truth and group. */
+async function detectDemoTower(win: Page) {
+  const truth = JSON.parse(
+    await readFile(join(DEMO_TOWER, 'truth.json'), 'utf8'),
+  ) as DemoTowerTruth;
+  await openDemo(win, 'Demo tower', 'demo-tower');
+  const dir = (await openProject(win)).root;
+  if (!dir) throw new Error('no project folder');
+  const group = await projectAntennas(win);
+  const detect = group.getByTestId('antenna-empty-detect');
+  await expect(detect).toBeEnabled({ timeout: 60_000 });
+  await detect.click();
+  await expect(group.getByTestId('antenna-row')).toHaveCount(8, { timeout: 180_000 });
+  return { dir, truth, group };
+}
+
+/** A project point (E, N, Z) in the local frame the view draws (x east, y up, z south). */
+const toLocal = (p: Vec3, o: Vec3): Vec3 => [p[0] - o[0], p[2] - o[2], -(p[1] - o[1])];
+
+const lookAt = (win: Page, position: Vec3, target: Vec3) =>
+  win.evaluate(
+    ([p, q]) => {
+      (window as unknown as Inspect).__stratlas
+        .stage()
+        ?.restoreView({ position: p, target: q }, false);
+    },
+    [position, target] as const,
+  );
+
+const selectedUnit = (win: Page) =>
+  win.evaluate(() => (window as unknown as Inspect).__stratlas.antennas.getState().selected);
+
+test.describe('telecom finalized: on the Demo tower', () => {
+  test.use({ appEnv: { ...PIPELINE_ENV, QUADRION_DEMO: DEMO_FOLDER } });
+  test.skip(!hasPipelinePython(), 'needs the pipeline Python (uv sync --frozen in python/)');
+  test.skip(!existsSync(join(DEMO_TOWER, 'truth.json')), 'needs the demos (pnpm demo:build)');
+
+  test('opening the Demo tower prepares its dated cloud surface and leaves no failed job', async ({
+    win,
+  }) => {
+    test.setTimeout(300_000);
+    await openDemo(win, 'Demo tower', 'demo-tower');
+    const dir = (await openProject(win)).root;
+    if (!dir) throw new Error('no project folder');
+    // the quiet preparation starts a moment after the project opens
+    await expect
+      .poll(async () => (await prepareJobs(win, dir)).length, { timeout: 60_000 })
+      .toBeGreaterThan(0);
+    const jobs = await preparesSettled(win, dir);
+    expect(jobs.map((j) => j.status)).toEqual(['done']);
+    await expect(win.getByText(/needs attention/)).toHaveCount(0);
+  });
+
+  test('flag antenna on the missed radio: a whole-unit outline from in front measures it, the boxes behind it never take its clicks', async ({
+    win,
+  }) => {
+    test.setTimeout(420_000);
+    const { dir, truth, group } = await detectDemoTower(win);
+    const enzRadio = truth.units.find((u) => u.name === 'radio-180');
+    if (!enzRadio) throw new Error('the Demo tower has no radio-180');
+    const radio: TowerTruthUnit = { ...enzRadio, centre: toLocal(enzRadio.centre, truth.origin) };
+
+    // look at the radio face on from 3 m out, as a person does: a detected box stands behind it
+    const [, , normal] = unitAxes(radio);
+    await lookAt(win, add(radio.centre, normal, 3), radio.centre);
+    await group.getByTestId('antenna-flag').click();
+    await expect(win.getByTestId('antenna-flag-hint')).toBeVisible();
+    const screen = await win.evaluate((corners) => {
+      const stage = (window as unknown as Inspect).__stratlas.stage();
+      if (!stage) return null;
+      const cam = stage.camera;
+      cam.updateMatrixWorld();
+      const r = stage.renderer.domElement.getBoundingClientRect();
+      return corners.map(([x, y, z]): [number, number] => {
+        const v = cam.position.clone().set(x, y, z).project(cam);
+        return [r.left + ((v.x + 1) / 2) * r.width, r.top + ((1 - v.y) / 2) * r.height];
+      });
+    }, boxCorners(radio));
+    expect(screen, 'the stage is up').not.toBeNull();
+    const outline = grow(hull(screen ?? []), 6);
+    for (const [x, y] of outline) await win.mouse.click(x, y);
+    // the outline's clicks are the outline's: no box behind the radio was picked meanwhile
+    expect(await selectedUnit(win)).toBeNull();
+    await win.keyboard.press('Enter');
+    const bar = win.getByTestId('antenna-flag-bar');
+    await expect(bar).toBeVisible();
+    const kept = Number((await bar.textContent())?.match(/(\d+) points kept/)?.[1] ?? 0);
+    // the whole radio: about 970 points at the demo's 2500 points per m2
+    expect(kept, 'points kept inside the outline').toBeGreaterThan(800);
+    await evidence(win, 'm-demo-radio-preview');
+    await win.getByTestId('antenna-flag-confirm').click();
+
+    await expect(group.getByTestId('antenna-row')).toHaveCount(9, { timeout: 180_000 });
+    const flagged = (await savedFile(dir)).units.find((u) => u.origin === 'flagged');
+    if (!flagged) throw new Error('no flagged unit on disk');
+    expect(flagged.widthM?.basis, 'measured, not a placeholder').toBe('measured');
+    expect(flagged.support).toBeGreaterThan(800);
+    const off = Math.hypot(...add(flagged.box.centre, enzRadio.centre, -1));
+    expect(off, 'the flagged box centre lies on the radio (m)').toBeLessThan(0.1);
+    // 0.30 x 0.40 x 0.15 m in the truth
+    expect(flagged.widthM?.value ?? 0).toBeCloseTo(0.3, 1);
+    expect(flagged.heightM?.value ?? 0).toBeCloseTo(0.4, 1);
+    await evidence(win, 'n-demo-radio-measured');
+  });
+
+  test('with Photos shown, one click on a box is acted on once: the nearest hit along the ray takes it, never a second unit', async ({
+    win,
+  }) => {
+    test.setTimeout(300_000);
+    const { dir, truth } = await detectDemoTower(win);
+    const manifest = ProjectManifest.parse(
+      JSON.parse(await readFile(join(dir, 'manifest.json'), 'utf8')),
+    );
+    expect(manifest.layers.find((l) => l.kind === 'photos')?.visible, 'Photos shown').toBe(true);
+    // the panel facing 120 degrees (A3 in the founder's test list)
+    const file = await savedFile(dir);
+    const unit = file.units.find(
+      (u) => u.kind === 'panel' && Math.abs((u.azimuthGridDeg?.value ?? 0) - 120) < 3,
+    );
+    if (!unit) throw new Error('no panel facing 120 degrees');
+    const centre = toLocal(unit.box.centre, truth.origin);
+    const [, , a] = unit.box.axes;
+    const normal: Vec3 = [a[0], a[2], -a[1]];
+    await expect(win.getByTestId('antenna-labels-control')).toBeVisible({ timeout: 30_000 });
+    await win
+      .getByTestId('antenna-labels-control')
+      .getByRole('button', { name: 'Off', exact: true })
+      .click();
+    // as in the founder's step 3: in front of the panel, where a crown photo's frame lies across
+    // the crown. Before, the photo opened, the view moved, and the same click then picked another
+    // unit's box under the moved view (A1 instead of A3, three runs of three)
+    await lookAt(win, add(add(centre, normal, 3), [0, 1, 0], 0.5), centre);
+    await win.waitForTimeout(500);
+    const at = await boxOnScreen(win, unit.id);
+    expect(at.free, 'the 3D canvas is under the box').toBe(true);
+    await win.mouse.click(at.x, at.y);
+    await win.waitForTimeout(1500);
+    const photoOpen = await win.locator('[aria-label^="Photo crown-"]').count();
+    const picked = await selectedUnit(win);
+    // either the box was nearest (its unit), or the photo's frame was (the photo, and no unit)
+    if (photoOpen > 0) expect(picked, 'a photo opened: no unit is picked as well').toBeNull();
+    else expect(picked).toBe(unit.id);
+    expect(
+      file.units.filter((u) => u.id !== unit.id).map((u) => u.id),
+      'never another unit',
+    ).not.toContain(picked);
+    await evidence(win, 'o-demo-box-click-photos-shown');
   });
 });

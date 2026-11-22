@@ -109,6 +109,12 @@ const SITE_DEFAULT_RADIUS = 200;
 /** The orbit stays above the horizon (a little below, to look along the ground). */
 const MAX_POLAR = Math.PI * 0.53;
 const CLICK_SLOP_PX = 5;
+
+/** A claim on the stage's clicks (`claimClicks`); with a depth, something drawn in the scene. */
+interface ClickClaim {
+  handler: (e: PointerEvent) => boolean;
+  depth?: (e: PointerEvent) => number | null;
+}
 /** Orbit glide: the share of the remaining motion taken per 60 Hz frame. */
 const DAMPING = 0.08;
 
@@ -252,7 +258,7 @@ export class Stage implements EngineStage {
   private hoverRaf = 0;
   private hoverEvent: PointerEvent | null = null;
   private downAt: [number, number] | null = null;
-  private readonly clickClaims = new Set<(e: PointerEvent) => boolean>();
+  private readonly clickClaims = new Set<ClickClaim>();
   private perfHold: (() => void) | null = null;
   private lastRenderMs = 0;
   private gpuAt = -Infinity;
@@ -645,11 +651,30 @@ export class Stage implements EngineStage {
     return this._tool;
   }
 
-  claimClicks(handler: (e: PointerEvent) => boolean): () => void {
-    this.clickClaims.add(handler);
+  claimClicks(
+    handler: (e: PointerEvent) => boolean,
+    opts?: { depth: (e: PointerEvent) => number | null },
+  ): () => void {
+    const claim: ClickClaim = { handler, ...(opts ? { depth: opts.depth } : {}) };
+    this.clickClaims.add(claim);
     return () => {
-      this.clickClaims.delete(handler);
+      this.clickClaims.delete(claim);
     };
+  }
+
+  /** The claims without a depth in their order, then the claims hit along the ray, nearest first. */
+  private claimClick(e: PointerEvent): boolean {
+    const hit: { d: number; claim: ClickClaim }[] = [];
+    for (const claim of this.clickClaims) {
+      if (!claim.depth) {
+        if (claim.handler(e)) return true;
+        continue;
+      }
+      const d = claim.depth(e);
+      if (d !== null) hit.push({ d, claim });
+    }
+    hit.sort((a, b) => a.d - b.d);
+    return hit.some(({ claim }) => claim.handler(e));
   }
 
   setTool(tool: StageTool): void {
@@ -1819,7 +1844,7 @@ export class Stage implements EngineStage {
     if (!d || e.button !== 0) return;
     const slop = e.pointerType === 'touch' ? 12 : CLICK_SLOP_PX;
     if (Math.hypot(e.clientX - d[0], e.clientY - d[1]) > slop) return;
-    for (const claim of this.clickClaims) if (claim(e)) return;
+    if (this.claimClick(e)) return;
     const [x, y] = this.toNdc(e);
     const picked = this.pick(x, y);
     this.opts.store

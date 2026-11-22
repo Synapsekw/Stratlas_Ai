@@ -19,6 +19,8 @@ vi.mock('./antennaScene', () => ({
   KIND_COLOURS: { panel: '#111', short: '#222', dish: '#333', other: '#444' },
 }));
 vi.mock('../builder/photoOpen', () => ({ openPhoto: () => undefined }));
+// the empty list's Detect antennas reads the project's clouds for its greyed reason
+vi.mock('./AntennaRunner', () => ({ useAntennaClouds: () => [] }));
 
 const val = (value: number): AntennaValue => ({
   value,

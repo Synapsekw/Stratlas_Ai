@@ -1575,20 +1575,20 @@ describe('antenna bulk helpers', () => {
     ]);
     // an edit made after the delete is kept by the undo
     await reviewUnits([need(ids[1])], 'accepted');
-    expect(await restoreUnits(r.removed)).toBe(true);
+    expect(await restoreUnits(r.removed)).toBe('written');
     expect(file().units.map((u) => u.id)).toEqual(ids);
     expect(unit(1).status).toBe('accepted');
     const last = need(writes().at(-1))[1] as { file: AntennasFile };
     expect(last.file.units.map((u) => u.id)).toEqual(ids);
   });
 
-  it('undo skips a unit that is back already, and says false when nothing is written', async () => {
+  it('undo skips a unit that is back already, and says unchanged when nothing is written', async () => {
     const id = unit(0).id;
     const r = await deleteUnits([id]);
     if (!r.ok) throw new Error('delete refused');
-    expect(await restoreUnits(r.removed)).toBe(true);
+    expect(await restoreUnits(r.removed)).toBe('written');
     const n = writes().length;
-    expect(await restoreUnits(r.removed)).toBe(false);
+    expect(await restoreUnits(r.removed)).toBe('unchanged');
     expect(writes()).toHaveLength(n);
   });
 
@@ -1596,7 +1596,7 @@ describe('antenna bulk helpers', () => {
     const r = await deleteUnits([unit(0).id]);
     if (!r.ok) throw new Error('delete refused');
     h.refuseWrite = true;
-    expect(await restoreUnits(r.removed)).toBe(false);
+    expect(await restoreUnits(r.removed)).toBe('refused');
     expect(state().message).toBe('Newer on disk.');
   });
 

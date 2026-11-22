@@ -1,7 +1,8 @@
 /**
  * The Antennas group of the Project tab's "In this project" list (`project/groupRegistry.ts`):
- * why the last action failed (a delete, a save, a flag), the run's warnings, why the AI labelling
- * was skipped and the Flag antenna tool above the rows, then the list (filter chips, editable rows,
+ * why the last action failed (a delete, a save, a flag), "Which one is the tower?" while a detection
+ * waits for a click on the tower, the run's warnings, why the AI labelling was skipped and the Flag
+ * antenna tool above the rows, then the list (filter chips, editable rows,
  * the selected unit's details inline, Detect antennas when it is empty) and the bulk bar. The
  * header carries the eye (Hide all / Show all) and Flag antenna; the group opens whenever the flag
  * tool is on (Flag antenna, Redraw outline from any route), so the tool is always on screen. It
@@ -21,6 +22,7 @@ import { AntennaBulkBar } from './AntennaBulkBar';
 import { AntennaFlagTool } from './AntennaFlagTool';
 import { AntennaInventory } from './AntennaInventory';
 import { useAntennaClouds } from './AntennaRunner';
+import { AntennaTowerHint } from './AntennaTowerHint';
 import {
   beginFlag,
   hideAllAntennas,
@@ -127,6 +129,8 @@ function Body(): ReactElement {
           {s.message}
         </p>
       )}
+      {/* "Which one is the tower?" where Detect antennas was pressed; the click is taken once */}
+      <AntennaTowerHint />
       {s.aiNote !== null && (
         <p className="telecom-help telecom-note" role="status" data-testid="antenna-ai-note">
           {t('telecom.antennas.ai.skipped', { reason: s.aiNote })}

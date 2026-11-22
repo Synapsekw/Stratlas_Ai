@@ -213,6 +213,44 @@ describe('photo frustums', () => {
     expect(h.scene.getObjectByName('photos:photos')).toBeUndefined();
   });
 
+  it('on the 3D stage takes a click through its claims, with how far along the ray the plane is hit', async () => {
+    const store = createWorkspace();
+    const canvas = document.createElement('canvas');
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 200 }) as DOMRect;
+    const claims: {
+      handler: (e: PointerEvent) => boolean;
+      opts?: { depth: (e: PointerEvent) => number | null };
+    }[] = [];
+    const h = {
+      ...handle(canvas),
+      setViewPreset: () => undefined,
+      setTool: () => undefined,
+      claimClicks: (
+        handler: (e: PointerEvent) => boolean,
+        opts?: { depth: (e: PointerEvent) => number | null },
+      ) => {
+        claims.push({ handler, ...(opts ? { opts } : {}) });
+        return () => undefined;
+      },
+    };
+    const lh = await createPhotosAdapter(store).create(layer, { url: () => '', scene: h });
+    // the canvas's own listener is not used: a plain click there does nothing
+    click(canvas, 100, 100);
+    expect(store.getState().selection).toBeNull();
+    const frustum = claims.find((c) => c.opts);
+    if (!frustum?.opts) throw new Error('no claim with a depth');
+    const at = (x: number, y: number) =>
+      new PointerEvent('pointerup', { clientX: x, clientY: y, button: 0 });
+    // the middle photo's image plane is straight ahead, just beyond the photo 5 m out
+    const d = frustum.opts.depth(at(100, 100));
+    expect(d).toBeGreaterThan(5);
+    expect(d).toBeLessThan(7);
+    expect(frustum.opts.depth(at(1, 1))).toBeNull();
+    expect(frustum.handler(at(100, 100))).toBe(true);
+    expect(store.getState().selection).toEqual({ kind: 'photo', id: 'p2', layer: 'photos' });
+    lh.dispose();
+  });
+
   it('leaves a click on a photo to an armed pick (the pane is picking)', async () => {
     const store = createWorkspace();
     const pane = document.createElement('div');

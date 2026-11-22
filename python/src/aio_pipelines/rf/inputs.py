@@ -161,9 +161,9 @@ def exclusion(
     status = u.get("status")
     user = u.get("user")
     if user is not None and not isinstance(user, dict):
-        return f"{uid} has an unreadable user field in the antenna inventory."
+        return f"{uid} has an unreadable user field in the antenna list."
     if status == "rejected":
-        return f"{uid} was rejected in the antenna inventory."
+        return f"{uid} was rejected in the antenna list."
     if u.get("notFoundInLatest") is True:
         return f"{uid} was not found in the latest antenna detection."
     if (settings is not None and settings.get("active") is False) or (user or {}).get("active") is False:
@@ -383,7 +383,7 @@ def resolve(
             candidates += 1
             u = units.get(aid)
             if u is None:
-                excluded.append(f"{aid} is no longer in the antenna inventory.")
+                excluded.append(f"{aid} is no longer in the antenna list.")
                 continue
             s = settings_of.get(aid)
             why = exclusion(u, antennas_file, s, include_unreviewed)
@@ -428,7 +428,7 @@ def resolve(
             asked_tilt = _num(s.get("etiltDeg"))
             mech = _value(u, "downtiltDeg")
             if mech is None:
-                warn.append(f"{aid}: no measured mechanical downtilt; 0 degrees used.")
+                warn.append(f"{aid}: no measured downtilt; 0 degrees used.")
                 mech = 0.0
             took = False
             sources_of_unit = "generic"

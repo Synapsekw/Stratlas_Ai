@@ -194,8 +194,16 @@ export interface EngineStage extends SceneHandle {
    * returning true means the stage ignores that click. Returns an unsubscribe. Overlays must claim
    * clicks here rather than stop the pointer events: the orbit controls need every release, or
    * they keep rotating with the mouse.
+   *
+   * A claim with `depth` is something drawn in the scene (an antenna box, a photo's image plane):
+   * `depth` answers how far along the click's ray it is hit, or null for no hit. Claims without a
+   * depth (a tool drawing, icons drawn over the scene) are asked first, in the order they claimed;
+   * then the claims that are hit, the nearest first, so what is in front takes the click.
    */
-  claimClicks(handler: (e: PointerEvent) => boolean): () => void;
+  claimClicks(
+    handler: (e: PointerEvent) => boolean,
+    opts?: { depth: (e: PointerEvent) => number | null },
+  ): () => void;
   readonly labelMode: LabelMode;
   setLabelMode(mode: LabelMode): void;
   /**

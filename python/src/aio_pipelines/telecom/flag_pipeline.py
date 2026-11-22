@@ -45,7 +45,7 @@ READ_POINTS = 400_000
 NO_INVENTORY = "Run antenna detection first: flagging needs the tower found by a detection run."
 UNIT_GONE = "The antenna to redraw is no longer in the inventory."
 UNIT_TAKEN = "An antenna with this id is already in the inventory."
-RUN_CHANGED = "The antenna inventory changed while measuring. Flag the unit again."
+RUN_CHANGED = "The antenna list changed while measuring. Flag the unit again."
 TEMP_ID = "flag"
 #: Measured keys a typed value can replace (the schema's `AntennaMeasured`).
 MEASURED_KEYS = ("azimuthGridDeg", "downtiltDeg", "centreHeightM", "widthM", "heightM", "depthM")
@@ -137,7 +137,7 @@ def _redrawn(old: dict, m: dict, photos: list[dict]) -> dict[str, Any]:
 class TelecomFlag:
     name = "telecom.flag"
     title = "Flag antenna"
-    description = "Measure an antenna outlined in the 3D view and add it to the antenna inventory."
+    description = "Measure an antenna outlined in the 3D view and add it to the antenna list."
     keys = frozenset({"unit", "redraw", "cloud", "selection"})
 
     def validate(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -283,7 +283,7 @@ class TelecomFlag:
         def commit_step(ctx: StepContext) -> dict[str, Any]:
             from .merge import next_name
 
-            ctx.progress(0.0, "Saving the inventory")
+            ctx.progress(0.0, "Saving the antenna list")
             doc = _read_previous(ctx.project)
             if doc is None:
                 raise JobError(NO_INVENTORY)
@@ -347,5 +347,5 @@ class TelecomFlag:
             Step("select", "Reading the outlined points", select_step, weight=1.0),
             Step("measure", "Measuring the flagged unit", measure_step, weight=1.0),
             Step("photos", "Picking the best photos", photos_step, weight=0.5),
-            Step("commit", "Saving the inventory", commit_step, weight=0.2),
+            Step("commit", "Saving the antenna list", commit_step, weight=0.2),
         ]

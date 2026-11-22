@@ -14,9 +14,12 @@ export function generatorStamp() {
     h.update(f);
     h.update(readFileSync(join(dir, f), 'utf8').replace(/\r\n/g, '\n'));
   }
-  // M10: the photo demo's generator lives with the pipeline tests
-  const synth = join(dir, '..', '..', 'python', 'tests', 'photo_synth.py');
-  h.update('photo_synth.py');
-  h.update(readFileSync(synth, 'utf8').replace(/\r\n/g, '\n'));
+  // M10: the photo demo's generator lives with the pipeline tests, as the Demo tower's does
+  for (const f of ['photo_synth.py', 'antenna_synth.py']) {
+    h.update(f);
+    h.update(
+      readFileSync(join(dir, '..', '..', 'python', 'tests', f), 'utf8').replace(/\r\n/g, '\n'),
+    );
+  }
   return h.digest('hex').slice(0, 16);
 }

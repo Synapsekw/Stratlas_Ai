@@ -1333,4 +1333,4 @@ The telecom test list is kept in one place: section 5 of [the telecom finalizati
 - [ ] Part C on a tower project of yours: compare at least five antennas with values known from an as-built record or a climb (step 22).
 - [ ] The "By eye" calls of section 5: the tower icon, the label pins, the A and R keys, the 2 cm rule and no Undo for a resize, per-unit hide on right-click, the Project tab staying in front after a tool stops.
 
-What works differently on purpose is in [KNOWN-LIMITS.md](KNOWN-LIMITS.md), under Telecom antenna inventory and Coverage.
+What works differently on purpose is in [KNOWN-LIMITS.md](KNOWN-LIMITS.md), under Telecom antennas and Coverage.

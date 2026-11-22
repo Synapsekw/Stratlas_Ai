@@ -305,7 +305,7 @@ describe('the Antennas list in Project > In this project', () => {
   });
 
   it('exports the CSV through the save dialog', async () => {
-    h.replies['dialog:saveFile'] = { ok: true, value: { path: 'C:/out/antenna-inventory.csv' } };
+    h.replies['dialog:saveFile'] = { ok: true, value: { path: 'C:/out/antennas.csv' } };
     await mount();
     act(() => {
       q('[aria-label="Export antennas (CSV)"]')!.click();
@@ -316,8 +316,8 @@ describe('the Antennas list in Project > In this project', () => {
     await flush();
     const save = channels('dialog:saveFile');
     expect(save).toHaveLength(1);
-    expect(save[0]![1]).toMatchObject({ defaultName: 'antenna-inventory.csv' });
-    expect(host.textContent).toContain('Exported to C:/out/antenna-inventory.csv.');
+    expect(save[0]![1]).toMatchObject({ defaultName: 'antennas.csv' });
+    expect(host.textContent).toContain('Exported to C:/out/antennas.csv.');
   });
 
   it('stays as it is while the tools are searched (a search filters only the tools)', async () => {

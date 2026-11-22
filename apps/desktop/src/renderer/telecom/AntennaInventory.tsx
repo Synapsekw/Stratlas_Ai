@@ -11,8 +11,9 @@ import { Button, EmptyState, Tip, t } from '@aio/ui';
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
 import { AntennaDetails } from './AntennaDetails';
 import { AntennaRow, northOf } from './AntennaRow';
-import { filteredUnits, runDetection, useAntennas } from './antennaStore';
+import { filteredUnits, runDetection } from './antennaStore';
 import { isAntennaDrawn, type AntennaFilter } from './antennaVisibility';
+import { useDetectReason } from './detectReason';
 
 export interface AntennaInventoryProps {
   file: AntennasFile | null;
@@ -112,17 +113,9 @@ function Tabs(props: AntennaInventoryProps & { file: AntennasFile }): ReactEleme
   );
 }
 
-/** Detect antennas in the empty list: the Tools button's action, greyed for the same reasons. */
+/** Detect antennas in the empty list: the Tools button's action, greyed by the same rule. */
 function DetectButton(): ReactElement {
-  const why = useAntennas((s) =>
-    s.readOnly
-      ? t('telecom.antennas.readOnly')
-      : s.running
-        ? t('telecom.antennas.running')
-        : s.flagStarting || s.flagJob
-          ? t('telecom.antennas.flag.busy')
-          : null,
-  );
+  const why = useDetectReason();
   return (
     <Button
       variant="primary"
@@ -191,7 +184,7 @@ export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
             )}
             <span>{t('project.antennas.col.tilt')}</span>
             <span>{t('project.antennas.col.height')}</span>
-            <span>{t('project.antennas.col.status')}</span>
+            <span className="antenna-col-status">{t('project.antennas.col.status')}</span>
             <span />
           </div>
           {/* the review keys step the selection from a focused row (useAntennaKeys) */}

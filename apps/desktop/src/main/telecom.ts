@@ -142,6 +142,10 @@ export async function writeAntennas(
     if (isChangedOnDisk(e)) return { ok: false, error: e.message };
     return { ok: false, error: `The antennas were not saved: ${why(e)}` };
   }
+  // any save that brings an id back is taken as its delete undone (crop and deletion record go
+  // back). Safe while the renderer's store is the only writer and edits the file as it is at its
+  // turn (a stale file is refused above); a second writer would need an explicit restore flag in
+  // the contract
   if (before !== null) {
     const back = file.units.map((u) => u.id).filter((id) => !before.has(id));
     if (back.length > 0) await restoreDeleted(root, back);

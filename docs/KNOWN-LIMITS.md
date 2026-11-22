@@ -392,11 +392,11 @@ These limits were seen on the founder's own real projects in the data folder (no
 - The AI step's request and token limits per run are fixed per detail level; a run that reaches them stops with the best result so far and needs a new run for more.
 - Later AI passes reserve generated model views alongside representative source views and rotate source photos within the existing image cap. They do not see every original photo. A one-image limit cannot support visual comparison of source and draft; the request says so. The separate photo and scan consents cover only the selected images shown in that preview.
 
-## Telecom antenna inventory
+## Telecom antennas
 
 - Detection needs a monopole or lattice tower axis; rooftop and water-tower sites are not supported yet.
 - Azimuth is given in grid and true north only (project north without a CRS); magnetic north is not available.
-- Only mechanical downtilt is measured; electrical tilt is not.
+- Only the downtilt is measured; electrical tilt is not.
 - On lattice towers, antennas facing more than 60 degrees away from straight out are listed as other equipment.
 - Small radio units are listed as other equipment without angles, and they or units merged with neighbours can be missed.
 - A radio a few centimetres from a ring or frame member can be missed by detection: on the Demo tower a 0.30 m radio mounted 4 cm off the inner ring formed no face of its own. Flag it with an outline round the whole unit, which is measured.

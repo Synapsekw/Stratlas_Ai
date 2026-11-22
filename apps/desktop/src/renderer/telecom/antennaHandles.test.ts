@@ -6,7 +6,7 @@ import { AntennasFile, type DateShift, type Vec3 } from '@aio/schema';
 import { PerspectiveCamera } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { frameOf } from '../survey/measureScene';
-import { attachAntennaHandles } from './antennaHandles';
+import { attachAntennaHandles, chipPlace } from './antennaHandles';
 import { boxCropSelection, draggedUnit } from './antennaBoxEdit';
 import { antennaCentre, antennaMeasure, axisToLocal } from './antennaMeasure';
 import type * as storeModule from './antennaStore';
@@ -352,5 +352,26 @@ describe('antenna box handles', () => {
     expect(env.controls.enabled).toBe(true);
     pointer('pointerup', window, 400, 120);
     expect(commitBoxDrag).not.toHaveBeenCalled();
+  });
+});
+
+describe('the drag chip placement', () => {
+  const size = { w: 120, h: 22 };
+  const canvas = { w: 500, h: 600 };
+  it('keeps a clear gap from the stage top bar instead of touching it', () => {
+    // the pointer drags the top arrow up under the top bar (its bottom edge at y 71)
+    const bar = { left: 150, top: 4, right: 400, bottom: 71 };
+    const at = chipPlace({ x: 260, y: 57 }, size, canvas, [bar]);
+    const meets = (gap: number) =>
+      at.x < bar.right + gap &&
+      at.x + size.w > bar.left - gap &&
+      at.y < bar.bottom + gap &&
+      at.y + size.h > bar.top - gap;
+    expect(meets(3)).toBe(false);
+    expect(at.y + size.h).toBeLessThanOrEqual(canvas.h);
+  });
+
+  it('stays below-right of the pointer when nothing is near', () => {
+    expect(chipPlace({ x: 100, y: 300 }, size, canvas, [])).toEqual({ x: 116, y: 314 });
   });
 });

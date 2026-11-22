@@ -20,7 +20,7 @@ export function AntennaCsvTool(): ReactElement | null {
 
   const exportCsv = async () => {
     const r = await bridge.call('dialog:saveFile', {
-      defaultName: 'antenna-inventory.csv',
+      defaultName: 'antennas.csv',
       data: antennasToCsv(file, { includeDrafts: drafts }),
       title: t('telecom.antennas.csv'),
     });

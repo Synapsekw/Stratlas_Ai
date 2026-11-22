@@ -31,7 +31,7 @@ function readOnlyReason(): string | false {
 
 const blocked = (): string | false => readOnlyReason();
 
-/** Why Redraw outline is greyed (the card's reasons), or false. */
+/** Why Redraw outline is greyed (the details' reasons), or false. */
 function redrawBlocked(): string | false {
   const s = antennaStore.getState();
   if (s.readOnly) return t('telecom.antennas.readOnly');

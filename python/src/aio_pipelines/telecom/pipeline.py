@@ -433,7 +433,7 @@ class TelecomAntennas:
             from .measure import to_project, to_project_dir
             from .merge import merge_with_sources
 
-            ctx.progress(0.0, "Saving the inventory")
+            ctx.progress(0.0, "Saving the antenna list")
             manifest = _manifest(ctx.project)
             crown = ctx.outputs("crown")
             _, point, direction, _ = _load_crown(ctx)
@@ -521,7 +521,7 @@ class TelecomAntennas:
             Step("faces", "Finding planar faces", faces_step, weight=3.0),
             Step("boxes", "Fitting antenna boxes", boxes_step, weight=1.0),
             Step("photos", "Picking the best photos", photos_step, weight=1.0),
-            Step("commit", "Saving the inventory", commit_step, weight=0.2),
+            Step("commit", "Saving the antenna list", commit_step, weight=0.2),
         ]
 
 

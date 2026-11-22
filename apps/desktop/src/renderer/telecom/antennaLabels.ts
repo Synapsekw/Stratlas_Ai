@@ -12,6 +12,9 @@ const ALIGN: Record<NonNullable<AntennaLabelSpot['align']>, string> = {
 /** Where `.sv-label`'s margin (measure.css: -24px 0 0 6px) puts a label beside its anchor. */
 const BESIDE = { x: 6, y: -24 };
 
+/** The gap a name label keeps above its unit's size labels, px. */
+const NAME_GAP_PX = 2;
+
 /** Pointer events a pin keeps to itself, so the stage under it never sees a pin click. */
 const PIN_EVENTS = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick'];
 
@@ -68,6 +71,28 @@ export function attachAntennaLabels(
     }
   };
 
+  /**
+   * A selected unit's name label steps up clear of its own size labels: zoomed out, the width
+   * label beside the top edge's end reaches up into the name above the box.
+   */
+  const liftNames = () => {
+    for (const name of labels.querySelectorAll<HTMLElement>('.antenna-label--name')) {
+      const key = name.dataset.key ?? '';
+      if (name.style.display === 'none' || !key.endsWith(':name')) continue;
+      const unit = key.slice(0, -':name'.length);
+      const n = name.getBoundingClientRect();
+      let lift = 0;
+      for (const d of labels.querySelectorAll<HTMLElement>('.antenna-label--dim')) {
+        if (d.style.display === 'none' || !(d.dataset.key ?? '').startsWith(`${unit}:dim:`))
+          continue;
+        const r = d.getBoundingClientRect();
+        const meets = n.left < r.right && n.right > r.left && n.top < r.bottom && n.bottom > r.top;
+        if (meets) lift = Math.max(lift, n.bottom - r.top + NAME_GAP_PX);
+      }
+      if (lift > 0) name.style.transform += ` translateY(-${String(Math.ceil(lift))}px)`;
+    }
+  };
+
   const place = () => {
     const spots = getSpots();
     const live = new Set(spots.map((s) => s.key));
@@ -98,7 +123,12 @@ export function attachAntennaLabels(
         if (sp.title !== undefined && el.title !== sp.title) el.title = sp.title;
         if (sp.colour !== undefined) el.style.background = sp.colour;
       } else el.style.fontSize = '12px';
-      const at = projectToHost(sp.at, stage.camera, r, hr);
+      let at = projectToHost(sp.at, stage.camera, r, hr);
+      if (sp.orAt) {
+        // two ends: the one further right on screen (seen from behind, the other end)
+        const other = projectToHost(sp.orAt, stage.camera, r, hr);
+        if (other.front && (!at.front || other.x > at.x)) at = other;
+      }
       // the angle label stays in view: its anchor (the facing arrow's tip) may be off the side
       const keep = sp.kind === 'angle' && !align && at.front && hr.width > 0 && hr.height > 0;
       if (!at.inside && !keep) {
@@ -118,6 +148,7 @@ export function attachAntennaLabels(
       // an aligned label is placed by its align; any other sits beside it (.sv-label's margin)
       el.style.transform = align ? to + ALIGN[align] : to;
     }
+    liftNames();
     hidePinsUnderSelected();
   };
 

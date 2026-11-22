@@ -278,6 +278,31 @@ describe('the Antennas group', () => {
     expect(q('antenna-empty-detect')!.getAttribute('aria-disabled')).toBe('true');
   });
 
+  it('asks "Which one is the tower?" in the group when detection needs it, and Cancel drops it', () => {
+    load(null);
+    show();
+    expect(q('antenna-hint')).toBeNull();
+    // what the job outcome sets when the run asks for a tower click (antennaStore)
+    act(() => {
+      antennaStore.setState({ needsHint: true, message: null });
+    });
+    const hint = q('antenna-hint')!;
+    expect(section()!.contains(hint)).toBe(true);
+    expect(hint.textContent).toContain('Which one is the tower?');
+    expect(hint.textContent).toContain('Click the tower once in the 3D view.');
+    click(hint.querySelector('button'));
+    expect(antennaStore.getState().needsHint).toBe(false);
+    expect(q('antenna-hint')).toBeNull();
+  });
+
+  it('the empty list greys Detect antennas while a flag is measured, as the Tools button does', () => {
+    load(null, { flagJob: { id: 'jf', unit: 'ant-f1' } });
+    show();
+    const detect = q('antenna-empty-detect')!;
+    expect(detect.getAttribute('aria-disabled')).toBe('true');
+    expect(detect.textContent).toContain('Wait for the flagged antenna to be measured.');
+  });
+
   it('a failed delete says why in the group, where the delete was (item 30)', async () => {
     load(four());
     show();
