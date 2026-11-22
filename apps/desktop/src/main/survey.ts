@@ -9,6 +9,7 @@
  * `jobs:start`. The site settings are G1's (`geodesy.ts`), the prepared surfaces G2's
  * (`listSurfaces`) and the designs G6's (`surveyDesigns.ts`).
  */
+import { renameWhenFree } from '@aio/project/fs';
 import {
   HeightTiles,
   MEASUREMENTS_FILE,
@@ -22,7 +23,7 @@ import {
   type IpcRequest,
   type IpcResponse,
 } from '@aio/schema';
-import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { z } from 'zod';
 import { isChangedOnDisk, readJsonSeen, writeJsonSeen } from './fsutil';
@@ -348,12 +349,13 @@ export async function writeSurface(
       'utf8',
     );
     await rm(old, { recursive: true, force: true });
+    // Windows refuses a rename for a moment while antivirus or the indexer reads a fresh file
     try {
-      await rename(dest, old);
+      await renameWhenFree(dest, old);
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
     }
-    await rename(staging, dest);
+    await renameWhenFree(staging, dest);
     await rm(old, { recursive: true, force: true });
     return { ok: true };
   } catch (e) {

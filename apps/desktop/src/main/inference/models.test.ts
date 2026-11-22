@@ -152,6 +152,7 @@ describe('import, list and remove', () => {
 
   it('gives an MIT model no warning, on import and in the listing', async () => {
     const r = await importModel({ path: await source(), acceptLicence: true }, dirs, okProbe);
+    expect(r).toMatchObject({ ok: true });
     expect(r.ok && 'licenceWarning' in r.model).toBe(false);
     expect((await listModels(dirs))[0]?.info).not.toHaveProperty('licenceWarning');
   });

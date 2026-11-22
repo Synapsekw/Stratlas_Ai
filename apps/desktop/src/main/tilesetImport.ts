@@ -22,9 +22,10 @@
  * tileset is listed visible. One in a local frame has nothing to place it by: it is listed hidden
  * until a person places it (`transform`, `confirmedAt`; the placement step is not built yet).
  */
+import { renameWhenFree } from '@aio/project/fs';
 import { TILES_DIR, TilesetId, type TilesetEntry } from '@aio/schema';
 import { constants } from 'node:fs';
-import { copyFile, lstat, mkdir, readdir, readFile, rename, rm, stat } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { basename, dirname, join, posix, relative, resolve, sep } from 'node:path';
 
 export const IMPORT_LIMITS = {
@@ -288,7 +289,8 @@ export async function copyTileset(plan: ImportPlan, projectRoot: string, id: str
       await mkdir(dirname(to), { recursive: true });
       await copyFile(join(plan.srcDir, ...f.rel.split('/')), to, constants.COPYFILE_EXCL);
     }
-    await rename(tmp, dest);
+    // Windows refuses a rename for a moment while antivirus or the indexer reads a fresh file
+    await renameWhenFree(tmp, dest);
   } catch (e) {
     await rm(tmp, { recursive: true, force: true });
     throw e;

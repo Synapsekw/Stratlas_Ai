@@ -11,10 +11,11 @@
  * Copyleft, non-commercial and unknown licences import, with `licenceWarning` on the model
  * (`licence.ts`); the listing carries the same warning.
  */
+import { renameWhenFree } from '@aio/project/fs';
 import { DetectorModelCard, DetectorModelId, type DetectorModelInfo } from '@aio/schema';
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { copyFile, mkdir, readdir, readFile, rename, rm, stat } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { licenceProblem, licenceWarning } from './licence';
 
@@ -245,7 +246,8 @@ export async function importModel(
     await mkdir(staging, { recursive: true });
     await copyFile(files.onnx, join(staging, MODEL_FILE));
     await copyFile(files.card, join(staging, CARD_FILE));
-    await rename(staging, join(dirs.user, id));
+    // Windows refuses a rename for a moment while antivirus or the indexer reads a fresh file
+    await renameWhenFree(staging, join(dirs.user, id));
   } catch (e) {
     await rm(staging, { recursive: true, force: true });
     return {
