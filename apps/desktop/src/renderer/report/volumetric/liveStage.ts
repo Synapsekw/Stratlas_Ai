@@ -21,6 +21,7 @@ import { measureStore } from '../../survey/measureStore';
 import { pileLookState } from '../../survey/pile/pileLookState';
 import { cutFillPrefs, wholeSiteHeat } from '../../survey/volumes/cutFill';
 import { legendRangeM, siteCutFillQuestion } from '../../workspace/stageCutFill';
+import { hideForTopDown } from './pictureBackdrops';
 import { rasterSwap, stageShow } from '../../workspace/StageShow';
 import { timeline } from '../../workspace/timeline';
 import {
@@ -58,8 +59,6 @@ const PILE_GONE_MS = 1000;
  * (`--vr-quiet-soft`, volumetric.css), never the stage's clear colour.
  */
 const PICTURE_PAPER = new Color('#f1f3f5');
-/** The stage's sky and studio backdrop (`packages/engine/src/stage/environment.ts`). */
-const BACKDROPS = ['env:physicalSky', 'env:sky'];
 
 interface Saved {
   screen: ReturnType<typeof shell.getState>['screen'];
@@ -105,9 +104,10 @@ async function stageNow(): Promise<EngineStage | null> {
  * A top-down shot is drawn over paper. Where a survey has no data nothing at all is drawn: the
  * orthophoto cuts its empty pixels away, the stage's own ground is hidden while imagery shows, and
  * the sky is a one metre box about the stage camera that an orthographic camera does not look out
- * through. What is left there is the renderer's clear colour, opaque black (the canvas has no
- * alpha, and in sky mode the scene has no background), so for the length of the render the scene
- * background and the clear colour are the paper colour and the backdrops are off.
+ * through. The offline street map under the site, dark all around the survey, is left out too
+ * (`pictureBackdrops.ts`). What is left there is the renderer's clear colour, opaque black (the
+ * canvas has no alpha, and in sky mode the scene has no background), so for the length of the
+ * render the scene background and the clear colour are the paper colour and the backdrops are off.
  */
 function renderInto(
   stage: EngineStage,
@@ -132,18 +132,12 @@ function renderInto(
   const background = scene.background;
   const clear = r.getClearColor(new Color());
   const clearAlpha = r.getClearAlpha();
-  const hidden: Object3D[] = [];
+  let hidden: Object3D[] = [];
   try {
     if (topDown) {
       scene.background = PICTURE_PAPER;
       r.setClearColor(PICTURE_PAPER, 1);
-      for (const name of BACKDROPS) {
-        const o = scene.getObjectByName(name);
-        if (o?.visible) {
-          o.visible = false;
-          hidden.push(o);
-        }
-      }
+      hidden = hideForTopDown(scene);
     }
     r.setPixelRatio(1);
     r.setSize(Math.round(w * k), Math.round(h * k), false);
