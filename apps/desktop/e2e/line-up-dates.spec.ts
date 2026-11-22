@@ -1061,6 +1061,13 @@ test.describe('at the window size CI uses', () => {
         const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
         if (!head.contains(hit)) out.push(head.textContent);
       }
+      // nor over the bottom strip: the strip keeps the notice's room free, and no pane is under it
+      const band = document.querySelector('[data-testid="bottom-strip"]')?.getBoundingClientRect();
+      const inner = document.querySelector('.ws-strip-in')?.getBoundingClientRect();
+      if (!band || !inner) return ['missing'];
+      if (inner.right > card.left) out.push('the notice lies over what the strip shows');
+      if (card.top < band.top) out.push('the notice reaches over the pane');
+      if (card.bottom > band.bottom) out.push('the notice leaves the window');
       return out;
     });
     expect(heads).toEqual([]);

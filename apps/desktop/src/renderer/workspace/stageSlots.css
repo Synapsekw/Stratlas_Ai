@@ -52,3 +52,11 @@
   inset-inline-end: calc(anchor(--sv-stage end, 0px) + var(--sp-6));
   width: min(360px, calc(anchor-size(--sv-stage inline, 100vw) - 2 * var(--sp-6)));
 }
+/* ... and never over the bottom strip: while it shows a notice, the strip keeps the notice's
+   room free at its end, and the notice stands inside the strip's height. */
+.app:has(.q-toasts[data-placement='window'] .q-toast) .ws-strip {
+  padding-inline-end: calc(min(360px, 100% - 2 * var(--sp-6)) + 2 * var(--sp-6));
+}
+.app:has(.ws-strip) .q-toasts[data-placement='window'] {
+  bottom: var(--sp-2);
+}

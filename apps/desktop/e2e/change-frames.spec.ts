@@ -260,6 +260,29 @@ test.describe('in the window CI runs, 1100 x 720', () => {
       return stack.parentElement?.contains(hit) && apart ? 'clear' : 'covered';
     });
     expect(underToast).toBe('clear');
+    // nor over the bottom strip: the strip keeps the notice's room free, and no pane is under it
+    // (polled: the card rises 8 px into place as it fades in)
+    await expect
+      .poll(
+        () =>
+          win.evaluate(() => {
+            const card = document
+              .querySelector('[data-testid="graphics-notice"]')
+              ?.getBoundingClientRect();
+            const band = document
+              .querySelector('[data-testid="bottom-strip"]')
+              ?.getBoundingClientRect();
+            const inner = document.querySelector('.ws-strip-in')?.getBoundingClientRect();
+            if (!card || !band || !inner) return ['missing'];
+            const out: string[] = [];
+            if (inner.right > card.left) out.push('the notice lies over what the strip shows');
+            if (card.top < band.top) out.push('the notice reaches over the pane');
+            if (card.bottom > band.bottom) out.push('the notice leaves the window');
+            return out;
+          }),
+        { timeout: 5_000 },
+      )
+      .toEqual([]);
   });
 });
 
