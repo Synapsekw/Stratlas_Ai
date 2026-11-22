@@ -106,8 +106,8 @@ const layers: Layer[] = [
 
 const manifest: ProjectManifest = {
   schema: 'aio.project/1',
-  id: 'masafi',
-  name: 'Masafi',
+  id: 'quarry-demo',
+  name: 'Quarry demo',
   crs: { epsg: 32639 },
   origin,
   captures: [],
@@ -151,7 +151,7 @@ function setup(
         ],
       }
     : manifest;
-  ws.getState().openProject({ id: 'masafi', root: 'E:/m', manifest: opened });
+  ws.getState().openProject({ id: 'quarry-demo', root: 'E:/m', manifest: opened });
   const service = {
     scene: vi.fn(() => Promise.resolve({ piles: [] })),
     changeRaster: vi.fn(),
@@ -204,7 +204,7 @@ describe('volumetric store: loading', () => {
   it('opens volumes.json and the saved edits on the last survey', async () => {
     const { store, started, reads } = setup({ edits: [savedEdit] });
     await store.getState().load();
-    expect(reads).toEqual(['masafi']);
+    expect(reads).toEqual(['quarry-demo']);
     const s = store.getState();
     expect(s.status).toBe('ready');
     expect(s.epoch).toBe('e2');
@@ -212,9 +212,9 @@ describe('volumetric store: loading', () => {
     expect(s.piles.find((p) => p.id === 'P01')?.epochs.e2?.volumes.tin.net).toBe(70);
     expect(started[0]).toMatchObject({
       patterns: {
-        pile: 'aio://project/masafi/legacy/data/piles/{id}.js',
-        dsm: 'aio://project/masafi/legacy/data/dsm_{epoch}.js',
-        coarse: 'aio://project/masafi/legacy/data/vol.js',
+        pile: 'aio://project/quarry-demo/legacy/data/piles/{id}.js',
+        dsm: 'aio://project/quarry-demo/legacy/data/dsm_{epoch}.js',
+        coarse: 'aio://project/quarry-demo/legacy/data/vol.js',
       },
       epochs: ['e1', 'e2'],
       deadband: 0.1,

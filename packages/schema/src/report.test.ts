@@ -102,21 +102,23 @@ describe('report contents', () => {
 describe('report channels', () => {
   it('reads and writes the narrative of an open project', () => {
     const file = { schema: 'aio.narrative/1', parts: {} };
-    expect(ipc['report:readNarrative'].request.safeParse({ projectId: 'hcl' }).success).toBe(true);
+    expect(ipc['report:readNarrative'].request.safeParse({ projectId: 'yard-demo' }).success).toBe(
+      true,
+    );
     const res = ipc['report:readNarrative'].response;
     expect(res.safeParse({ ok: true, file: null, readOnly: false }).success).toBe(true);
     expect(res.safeParse({ ok: true, file, readOnly: true }).success).toBe(true);
-    expect(ipc['report:writeNarrative'].request.safeParse({ projectId: 'hcl', file }).success).toBe(
-      true,
-    );
     expect(
-      ipc['report:writeNarrative'].request.safeParse({ projectId: 'hcl', file: {} }).success,
+      ipc['report:writeNarrative'].request.safeParse({ projectId: 'yard-demo', file }).success,
+    ).toBe(true);
+    expect(
+      ipc['report:writeNarrative'].request.safeParse({ projectId: 'yard-demo', file: {} }).success,
     ).toBe(false);
   });
 
   it('drafts text on a task route and checks the route of a task', () => {
     const req = ipc['ai:draftText'].request;
-    const ok = { runId: 'r1', projectId: 'hcl', task: 'report', system: 'S', prompt: 'P' };
+    const ok = { runId: 'r1', projectId: 'yard-demo', task: 'report', system: 'S', prompt: 'P' };
     expect(req.safeParse(ok).success).toBe(true);
     expect(req.safeParse({ ...ok, task: 'poem' }).success).toBe(false);
     expect(req.safeParse({ ...ok, prompt: '' }).success).toBe(false);
