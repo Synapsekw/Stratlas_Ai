@@ -22,14 +22,15 @@ import { builder, useBuilder } from './state';
 import { buildParams, emptySurvey, noSurveys, surveyProblem, type SurveyInput } from './surveys';
 import { VolumetricSurveys } from './VolumetricSurveys';
 
-const TYPE_ICON: Record<WizardForm['purpose'], IconName> = {
+/** The icon on each project type card (exported for its test). */
+export const TYPE_ICON: Record<WizardForm['purpose'], IconName> = {
   survey: 'pile',
   construction: 'facade',
   'vertical-asset': 'flare',
   'confined-space': 'tank',
   'data-fusion': 'layers',
   road: 'road',
-  telecom: 'telemetry',
+  telecom: 'tower',
 };
 
 const STEPS = ['Project', 'Place', 'Standards', 'Review'] as const;

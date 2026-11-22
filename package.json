@@ -33,6 +33,7 @@
     "bench:walk": "uv run --project python python python/scripts/walk_bench.py",
     "demo:survey": "node tools/demo/survey-demo.mjs",
     "demo:pano": "node tools/demo/pano-dates-demo.mjs",
+    "demo:tower": "node tools/demo/tower-demo.mjs",
     "review": "node tools/review-board/server.mjs",
     "test-board": "node tools/test-board/build.mjs"
   },

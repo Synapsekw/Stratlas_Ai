@@ -119,6 +119,14 @@ export const ICONS = {
       <path d="M2.5 16.5h15" />
     </>
   ),
+  /** A telecom tower: a tapered lattice mast with radio waves from its top. */
+  tower: (
+    <>
+      <path d="M6.5 17.5L9 7.5h2l2.5 10M5 17.5h10" />
+      <path d="M7.75 12.5h4.5M9 7.5l3.25 5M7.75 12.5l5.75 5M10 7.5V4" />
+      <path d="M8.2 3.2a2.5 2.5 0 000 3.6M11.8 3.2a2.5 2.5 0 010 3.6M6.5 2.1a4.5 4.5 0 000 5.8M13.5 2.1a4.5 4.5 0 010 5.8" />
+    </>
+  ),
   /** Some of the layers shown: the eye with a half-filled pupil. */
   'eye-mixed': (
     <>

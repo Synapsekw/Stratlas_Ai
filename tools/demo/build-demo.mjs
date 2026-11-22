@@ -18,6 +18,8 @@
 //                                   precomputed alignment and truth.json (photo-demo.mjs; the
 //                                   mini set unless --photo-set or QUADRION_PHOTO_DEMO_SET says
 //                                   quick, which is for development only and never released)
+//   <out>/demo-tower/               telecom: a lattice tower's point cloud and drone photos, no
+//                                   antenna list yet, and truth.json (tower-demo.mjs)
 //
 // The 3D model is procedural (geometry.mjs, scene.mjs) and written as GLB; every image (video
 // frames, photos, orthos) is rendered from that same geometry by a small software rasteriser
@@ -46,6 +48,7 @@ import { createWorld } from './world.mjs';
 import { generatorStamp } from './stamp.mjs';
 import { CHANGE_ID, buildChangeDemo } from './build-change-demo.mjs';
 import { PHOTO_ID, buildPhotoDemo } from './photo-demo.mjs';
+import { TOWER_ID, buildTowerDemo } from './tower-demo.mjs';
 import { writePhoto, writePngCloud, writePyramid } from './writers.mjs';
 import { envVar } from '../../packages/brand/src/env.ts';
 
@@ -521,6 +524,8 @@ async function main() {
     python,
     photoSet: opt('photo-set'),
   });
+  // telecom: the Demo tower (a lattice tower's cloud and photos, no antenna list yet)
+  await buildTowerDemo({ out: OUT, quick: QUICK, log, python });
   const stamp = await treeHash(OUT);
   await writeFile(
     join(OUT, 'demo.json'),
@@ -532,7 +537,7 @@ async function main() {
       photoSet: photo.photoSet,
       generator: generatorStamp(),
       primary: PRIMARY,
-      projects: [site.manifest.id, road.manifest.id, CHANGE_ID, PHOTO_ID],
+      projects: [site.manifest.id, road.manifest.id, CHANGE_ID, PHOTO_ID, TOWER_ID],
       note: 'Synthetic demo data made by tools/demo/build-demo.mjs. No client data.',
     }),
   );

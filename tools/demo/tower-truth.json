@@ -1,0 +1,140 @@
+{
+  "schema": "aio.demo-tower-truth/1",
+  "note": "Synthetic truth of the Demo tower (tools/demo/tower-demo.mjs). No client data.",
+  "synth": {
+    "kind": "lattice",
+    "seed": 3,
+    "pointsPerM2": 2500,
+    "generator": "python/tests/antenna_synth.py"
+  },
+  "crs": {
+    "epsg": 32631
+  },
+  "origin": [321551, 2589014, 386],
+  "north": "grid",
+  "convergenceDeg": -0.6938,
+  "axis": {
+    "point": [321551, 2589014, 386],
+    "dir": [0, 0, 1]
+  },
+  "towerHeightM": 40,
+  "units": [
+    {
+      "name": "panel-0",
+      "kind": "panel",
+      "azimuthDeg": 0,
+      "downtiltDeg": 2,
+      "plumbDeg": 0,
+      "centreAltitudeM": 423.5,
+      "heightAboveBaseM": 37.5,
+      "centre": [321551, 2589016.195, 423.5],
+      "widthM": 0.3,
+      "heightM": 1.4,
+      "depthM": 0.15
+    },
+    {
+      "name": "short-0",
+      "kind": "short",
+      "azimuthDeg": 0,
+      "downtiltDeg": 0,
+      "plumbDeg": 0,
+      "centreAltitudeM": 423.5,
+      "heightAboveBaseM": 37.5,
+      "centre": [321551.65, 2589016.22, 423.5],
+      "widthM": 0.4,
+      "heightM": 0.9,
+      "depthM": 0.2
+    },
+    {
+      "name": "panel-120",
+      "kind": "panel",
+      "azimuthDeg": 120,
+      "downtiltDeg": 4,
+      "plumbDeg": 1,
+      "centreAltitudeM": 423.5,
+      "heightAboveBaseM": 37.5,
+      "centre": [321552.901, 2589012.903, 423.5],
+      "widthM": 0.3,
+      "heightM": 1.4,
+      "depthM": 0.15
+    },
+    {
+      "name": "short-120",
+      "kind": "short",
+      "azimuthDeg": 120,
+      "downtiltDeg": 0,
+      "plumbDeg": 0,
+      "centreAltitudeM": 423.5,
+      "heightAboveBaseM": 37.5,
+      "centre": [321552.598, 2589012.327, 423.5],
+      "widthM": 0.4,
+      "heightM": 0.9,
+      "depthM": 0.2
+    },
+    {
+      "name": "panel-240",
+      "kind": "panel",
+      "azimuthDeg": 240,
+      "downtiltDeg": 6,
+      "plumbDeg": -1,
+      "centreAltitudeM": 423.5,
+      "heightAboveBaseM": 37.5,
+      "centre": [321549.099, 2589012.903, 423.5],
+      "widthM": 0.3,
+      "heightM": 1.4,
+      "depthM": 0.15
+    },
+    {
+      "name": "short-240",
+      "kind": "short",
+      "azimuthDeg": 240,
+      "downtiltDeg": 0,
+      "plumbDeg": 0,
+      "centreAltitudeM": 423.5,
+      "heightAboveBaseM": 37.5,
+      "centre": [321548.752, 2589013.453, 423.5],
+      "widthM": 0.4,
+      "heightM": 0.9,
+      "depthM": 0.2
+    },
+    {
+      "name": "wide-300",
+      "kind": "panel",
+      "azimuthDeg": 300,
+      "downtiltDeg": 0,
+      "plumbDeg": 0,
+      "centreAltitudeM": 423.5,
+      "heightAboveBaseM": 37.5,
+      "centre": [321549.077, 2589015.11, 423.5],
+      "widthM": 1.5,
+      "heightM": 1.3,
+      "depthM": 0.2
+    },
+    {
+      "name": "dish-60",
+      "kind": "dish",
+      "azimuthDeg": 60,
+      "elevationDeg": 1,
+      "diameterM": 0.6,
+      "centreAltitudeM": 422.1,
+      "heightAboveBaseM": 36.1,
+      "centre": [321553.078, 2589015.2, 422.1],
+      "widthM": 0.6,
+      "heightM": 0.6,
+      "depthM": 0.15
+    },
+    {
+      "name": "radio-180",
+      "kind": "other",
+      "azimuthDeg": 270,
+      "downtiltDeg": 0,
+      "plumbDeg": 0,
+      "centreAltitudeM": 422.9,
+      "heightAboveBaseM": 36.9,
+      "centre": [321551, 2589012.685, 422.9],
+      "widthM": 0.3,
+      "heightM": 0.4,
+      "depthM": 0.15
+    }
+  ]
+}
