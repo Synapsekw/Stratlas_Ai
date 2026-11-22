@@ -27,14 +27,13 @@ const CSV = [
   'Z9,West,B3,20,40,2,,',
 ].join('\n');
 
-const render = async (text: string) => {
+const render = async (
+  text: string,
+  readFile: (file: File) => Promise<string> = () => Promise.resolve(text),
+) => {
   const onClose = vi.fn();
   root = createRoot(host);
-  act(() =>
-    root?.render(
-      <CsvImport opener={null} onClose={onClose} readFile={() => Promise.resolve(text)} />,
-    ),
-  );
+  act(() => root?.render(<CsvImport opener={null} onClose={onClose} readFile={readFile} />));
   const input = byTest('rf-csv-file') as HTMLInputElement | null;
   if (!input) throw new Error('no file input');
   Object.defineProperty(input, 'files', {
@@ -131,5 +130,22 @@ describe('CsvImport', () => {
       'no antenna column',
     );
     expect(byTest('rf-csv-apply')?.getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('an unknown column is reported by name', async () => {
+    await render(['Antenna,Band,Site code,Azimuth', 'A1,B3,X1,120'].join('\n'));
+    expect(byTest('rf-csv-ignored')?.textContent).toBe('Columns not used: Site code, Azimuth');
+  });
+
+  it('a row that matches nothing shows its own text', async () => {
+    await render(CSV);
+    expect(byTest('rf-csv-row-4')?.textContent).toContain('Z9, West, B3, 20, 40, 2');
+  });
+
+  it('says so when the file cannot be read', async () => {
+    await render('', () => Promise.reject(new Error('permission denied')));
+    expect(document.body.querySelector('[role="alert"]')?.textContent).toBe(
+      'The cell export could not be read: permission denied',
+    );
   });
 });

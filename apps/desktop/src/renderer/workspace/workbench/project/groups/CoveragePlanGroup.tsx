@@ -1,10 +1,10 @@
 /**
  * The Coverage plan group of the "In this project" list: one row saying whether the plan has a
- * finished run ("not planned", else "last run {date}") and a button that opens the Coverage tab.
+ * finished run ("not planned", else "last run {date}") and a button that opens the Coverage tab. The count is the number of finished runs.
  */
 import { Button, Row, useT } from '@aio/ui';
 import type { ReactElement } from 'react';
-import { useRf } from '../../../../rf/rfStore';
+import { selectFinishedRunCount, useRf } from '../../../../rf/rfStore';
 import { openCoverage } from '../../../../rf/rfTab';
 import type { ProjectGroupDef } from '../groupRegistry';
 import { useCoverageApplies } from './SectorsGroup';
@@ -45,7 +45,7 @@ function CoveragePlanBody(): ReactElement {
 export const coveragePlanGroup: ProjectGroupDef = {
   id: 'coverage',
   title: 'project.group.coverage',
-  useCount: () => 0,
+  useCount: () => useRf(selectFinishedRunCount),
   useApplies: useCoverageApplies,
   Body: CoveragePlanBody,
 };

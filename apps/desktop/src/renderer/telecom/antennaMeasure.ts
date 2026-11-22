@@ -4,10 +4,10 @@
  * local frame (x east, y up, z south) and moved by the survey date's line-up shift, exactly as the
  * box mesh in `antennaScene` is placed.
  */
-import { shiftEN, type AntennaUnit, type DateShift, type Vec3 } from '@aio/schema';
+import { hasTurn, shiftEN, type AntennaUnit, type DateShift, type Vec3 } from '@aio/schema';
 import { t } from '@aio/ui';
 import type { Frame } from '../survey/measureScene';
-import { formatDeg, trueAzimuth } from './antennaFormat';
+import { formatAngle, formatHeight, formatSize, trueAzimuth } from './antennaFormat';
 import { isNotMeasured } from './antennaTyped';
 import type { AntennaLabelSpot } from './antennaVisibility';
 
@@ -15,8 +15,12 @@ import type { AntennaLabelSpot } from './antennaVisibility';
 export const DIM_OFFSET_M = 0.08;
 /** Length of the tick across each end of a dimension line, metres. */
 export const DIM_TICK_M = 0.05;
-/** A length as label text: '2.60 m'. */
-const metres = (v: number): string => t('telecom.antennas.label.metres', { value: v.toFixed(2) });
+/** A size as label text, the shared size format: '2.60 m'. */
+const metres = (v: number): string =>
+  t('telecom.antennas.label.metres', { value: formatSize(v, false) });
+/** An altitude as label text, the shared height format the list uses: '31.2 m'. */
+const altitude = (v: number): string =>
+  t('telecom.antennas.label.metres', { value: formatHeight(v, false) });
 
 /** Gap between the box top and its name label, metres. */
 const NAME_LIFT_M = 0.3;
@@ -51,20 +55,38 @@ export function antennaCentre(unit: AntennaUnit, frame: Frame, shift: DateShift 
   return frame.toLocal(shiftEN(unit.box.centre, shift));
 }
 
+/**
+ * The box's axes (across, up, outward) as local directions, turned with the survey date's line-up
+ * as the view turns that date's cloud (`shiftEN` already turns the centre): counter-clockwise by
+ * `rotationDeg`, east towards north. The turn's scale is not applied to the extents: a line-up
+ * scale is within 1e-3 of 1. Without a turn, the stored axes.
+ */
+export function boxAxes(unit: AntennaUnit, shift: DateShift | null): [Vec3, Vec3, Vec3] {
+  const turn = shift?.turn && hasTurn(shift.turn) ? shift.turn : null;
+  const r = ((turn?.rotationDeg ?? 0) * Math.PI) / 180;
+  const a = Math.cos(r);
+  const b = Math.sin(r);
+  const one = (v: Vec3): Vec3 =>
+    axisToLocal(turn ? [a * v[0] - b * v[1], b * v[0] + a * v[1], v[2]] : v);
+  return [one(unit.box.axes[0]), one(unit.box.axes[1]), one(unit.box.axes[2])];
+}
+
 /** A point of the box from its centre by signs along (across, up, outward): -1 .. 1 each. */
-function boxPoint(unit: AntennaUnit, centre: Vec3, s: Vec3): Vec3 {
+function boxPoint(unit: AntennaUnit, axes: readonly Vec3[], centre: Vec3, s: Vec3): Vec3 {
   const [w, h, d] = unit.box.extents;
-  let p = add(centre, axisToLocal(unit.box.axes[0]), (s[0] * w) / 2);
-  p = add(p, axisToLocal(unit.box.axes[1]), (s[1] * h) / 2);
-  return add(p, axisToLocal(unit.box.axes[2]), (s[2] * d) / 2);
+  const [x, y, z] = axes as [Vec3, Vec3, Vec3];
+  let p = add(centre, x, (s[0] * w) / 2);
+  p = add(p, y, (s[1] * h) / 2);
+  return add(p, z, (s[2] * d) / 2);
 }
 
 /** The 8 corners of the unit's box in the local frame; corner i has bit 0/1/2 = +across/up/out. */
 export function antennaCorners(unit: AntennaUnit, frame: Frame, shift: DateShift | null): Vec3[] {
   const centre = antennaCentre(unit, frame, shift);
+  const axes = boxAxes(unit, shift);
   const corners: Vec3[] = [];
   for (let i = 0; i < 8; i++)
-    corners.push(boxPoint(unit, centre, [i & 1 ? 1 : -1, i & 2 ? 1 : -1, i & 4 ? 1 : -1]));
+    corners.push(boxPoint(unit, axes, centre, [i & 1 ? 1 : -1, i & 2 ? 1 : -1, i & 4 ? 1 : -1]));
   return corners;
 }
 
@@ -92,18 +114,34 @@ function angleText(unit: AntennaUnit): string | null {
   if (!grid) return null;
   const az =
     unit.convergenceDeg === null ? grid.value : trueAzimuth(grid.value, unit.convergenceDeg);
-  const azText = formatDeg(az);
+  const azText = formatAngle(az);
   if (unit.kind === 'dish' && unit.elevationDeg)
     return t('telecom.antennas.label.angleDish', {
       az: azText,
-      elev: formatDeg(unit.elevationDeg.value),
+      elev: formatAngle(unit.elevationDeg.value),
     });
   if (unit.kind !== 'dish' && unit.downtiltDeg)
     return t('telecom.antennas.label.angle', {
       az: azText,
-      tilt: formatDeg(unit.downtiltDeg.value),
+      tilt: formatAngle(unit.downtiltDeg.value),
     });
   return t('telecom.antennas.label.azimuth', { az: azText });
+}
+
+/** The centre altitude as the list's Alt m column has it: the typed value, else the box centre. */
+function centreAltitude(unit: AntennaUnit): number {
+  return unit.centreHeightM?.value ?? unit.box.centre[2];
+}
+
+/**
+ * The name label: the name and the centre altitude, the same figure as the list's Alt m column
+ * (the stored centre, not the drawn one: the line-up shift moves only east and north).
+ */
+function nameText(unit: AntennaUnit): string {
+  const height = altitude(centreAltitude(unit));
+  return isNotMeasured(unit)
+    ? t('telecom.antennas.label.nameNotMeasured', { name: unit.name, height })
+    : t('telecom.antennas.label.name', { name: unit.name, height });
 }
 
 /**
@@ -111,9 +149,11 @@ function angleText(unit: AntennaUnit): string | null {
  * top-front edge, pushed up and out, and height along its up axis on the right-front edge, pushed
  * out along the outward axis (so the width and depth labels stay apart); depth runs along the
  * outward axis on the bottom-right edge, pushed out to the right. Each line is `DIM_OFFSET_M` off
- * its edge with a `DIM_TICK_M` tick across each end. Each value sits `DIM_LABEL_AT` of the way
- * along its line (width from the left, height from the bottom, depth from the back), clear of the
- * face centres where the drag handles are.
+ * its edge with a `DIM_TICK_M` tick across each end. The height and depth values sit
+ * `DIM_LABEL_AT` of the way along their lines (height from the bottom, depth from the back), clear
+ * of the face centres where the drag handles are; the width value sits beside the line's right
+ * end as seen from the front, so on a narrow panel it never meets the top face's arrow. A dish has a diameter, not three
+ * sizes: one line across its top-front edge carries it, and nothing else.
  */
 export function antennaMeasure(
   unit: AntennaUnit,
@@ -128,10 +168,7 @@ export function antennaMeasure(
       spots: [
         {
           key: `${unit.id}:name`,
-          text: t('telecom.antennas.label.name', {
-            name: unit.name,
-            height: t('telecom.antennas.notMeasured'),
-          }),
+          text: nameText(unit),
           at: nameAnchor(unit, frame, shift),
           kind: 'name',
           selected: true,
@@ -140,37 +177,48 @@ export function antennaMeasure(
       ],
     };
   }
-  const across = axisToLocal(unit.box.axes[0]);
-  const out = axisToLocal(unit.box.axes[2]);
-  const up = axisToLocal(unit.box.axes[1]);
+  const axes = boxAxes(unit, shift);
+  const [across, up, out] = axes;
   const upOut: Vec3 = [out[0] + up[0], out[1] + up[1], out[2] + up[2]];
   const n = Math.hypot(...upOut) || 1;
   const pushUpOut: Vec3 = [upOut[0] / n, upOut[1] / n, upOut[2] / n];
-  const at = (s: Vec3) => boxPoint(unit, centre, s);
-
-  const lines: { key: string; from: Vec3; to: Vec3; push: Vec3; value: number | undefined }[] = [
-    {
-      key: 'w',
-      from: at([-1, 1, 1]),
-      to: at([1, 1, 1]),
-      push: pushUpOut,
-      value: unit.widthM?.value,
-    },
-    {
-      key: 'h',
-      from: at([1, -1, 1]),
-      to: at([1, 1, 1]),
-      push: out,
-      value: unit.heightM?.value,
-    },
-    {
-      key: 'd',
-      from: at([1, -1, -1]),
-      to: at([1, -1, 1]),
-      push: across,
-      value: unit.depthM?.value,
-    },
+  const at = (s: Vec3) => boxPoint(unit, axes, centre, s);
+  // seen from the front (the outward face toward the eye), the +across end is on the right when
+  // (across, up, outward) is right-handed; a file may hold either hand
+  const cross: Vec3 = [
+    across[1] * up[2] - across[2] * up[1],
+    across[2] * up[0] - across[0] * up[2],
+    across[0] * up[1] - across[1] * up[0],
   ];
+  const rightHanded = cross[0] * out[0] + cross[1] * out[1] + cross[2] * out[2] >= 0;
+
+  const top = { from: at([-1, 1, 1]), to: at([1, 1, 1]), push: pushUpOut };
+  const lines: {
+    key: string;
+    from: Vec3;
+    to: Vec3;
+    push: Vec3;
+    value: number | undefined;
+  }[] =
+    unit.kind === 'dish'
+      ? [{ key: 'diameter', ...top, value: unit.diameterM?.value }]
+      : [
+          { key: 'w', ...top, value: unit.widthM?.value },
+          {
+            key: 'h',
+            from: at([1, -1, 1]),
+            to: at([1, 1, 1]),
+            push: out,
+            value: unit.heightM?.value,
+          },
+          {
+            key: 'd',
+            from: at([1, -1, -1]),
+            to: at([1, -1, 1]),
+            push: across,
+            value: unit.depthM?.value,
+          },
+        ];
 
   const main: [Vec3, Vec3][] = [];
   const ticks: [Vec3, Vec3][] = [];
@@ -183,14 +231,26 @@ export function antennaMeasure(
     main.push([a, b]);
     for (const end of [a, b])
       ticks.push([add(end, l.push, -DIM_TICK_M / 2), add(end, l.push, DIM_TICK_M / 2)]);
+    if (l.key === 'diameter') {
+      // no handles on a dish: the value hangs under the middle of its line
+      spots.push({
+        key: `${unit.id}:dim:diameter`,
+        text: t('telecom.antennas.label.diameter', { value: metres(l.value) }),
+        at: lerp(a, b, 0.5),
+        kind: 'dim',
+        selected: true,
+        align: 'below',
+      });
+      continue;
+    }
     spots.push({
       key: `${unit.id}:dim:${l.key}`,
       text: metres(l.value),
-      at: lerp(a, b, DIM_LABEL_AT),
+      // the width sits beside its line's right end as seen from the front (`.sv-label`'s
+      // offset: right and up), clear of the top face's arrow in the middle of the edge
+      at: l.key === 'w' ? (rightHanded ? b : a) : lerp(a, b, DIM_LABEL_AT),
       kind: 'dim',
       selected: true,
-      // the width hangs under its line on the top edge, clear of the name above the box
-      ...(l.key === 'w' ? { align: 'below' as const } : {}),
     });
   }
 
@@ -201,10 +261,7 @@ export function antennaMeasure(
 
   spots.push({
     key: `${unit.id}:name`,
-    text: t('telecom.antennas.label.name', {
-      name: unit.name,
-      height: unit.heightM ? metres(unit.heightM.value) : t('telecom.antennas.notMeasured'),
-    }),
+    text: nameText(unit),
     at: nameAnchor(unit, frame, shift),
     kind: 'name',
     selected: true,

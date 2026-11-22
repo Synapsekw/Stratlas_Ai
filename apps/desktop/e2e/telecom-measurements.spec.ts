@@ -129,7 +129,7 @@ for (const kind of ['mesh', 'cloud'] as const) {
       await expect(panel).toContainText('Grid north');
       await panel.getByTestId('telecom-flip-direction').click();
       await expectValue(win, 'azimuth', 0);
-      await expect(win.locator('.sv-label').filter({ hasText: 'Azimuth' })).toBeVisible();
+      await expect(win.locator('.sv-label').filter({ hasText: 'Antenna azimuth' })).toBeVisible();
       await panel.getByTestId('telecom-save').click();
       await expect(panel).toContainText('Measurements saved.');
       const azimuth = (await saved(dataRoot.projectDir)).measurements[0];
@@ -188,7 +188,7 @@ for (const kind of ['mesh', 'cloud'] as const) {
         .getByRole('button', { name: 'Measurements', exact: true })
         .click();
       await expect(win.getByTestId('measure-row')).toHaveCount(3);
-      await selectMeasure(win, 'Azimuth');
+      await selectMeasure(win, 'Antenna azimuth');
       await expectValue(win, 'azimuth', 0);
       expect((await saved(dataRoot.projectDir)).measurements[0]?.points).toEqual(azimuth.points);
 
@@ -198,7 +198,7 @@ for (const kind of ['mesh', 'cloud'] as const) {
       const footer = await measureSaved(win);
       const beforeVisibility = await saved(dataRoot.projectDir);
       const filter = await measureFilter(win);
-      await filter.fill('Azimuth');
+      await filter.fill('Antenna azimuth');
       await expect(win.getByTestId('measure-row')).toHaveCount(1);
       await expect(group.locator('.gcount')).toHaveText('1 of 3');
       await expect(win.locator('.sv-label')).toHaveCount(3);

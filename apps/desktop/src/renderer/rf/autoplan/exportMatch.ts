@@ -6,7 +6,16 @@
  */
 import { bandOfName, unitTrueAzimuthDeg } from '@aio/rf';
 import type { AntennaUnit, RfCarrier, RfCatalogueEntry, RfEquipment, RfSector } from '@aio/schema';
-import { columnsOf, findEntry, norm, num, splitCsv, type CellField } from '../cellCsv';
+import {
+  columnsOf,
+  findEntry,
+  norm,
+  num,
+  rowText,
+  splitCsv,
+  unusedColumns,
+  type CellField,
+} from '../cellCsv';
 import { defaultBandwidth } from '../rfFields';
 import { rfUnit } from '../rfModel';
 import { msg, type PlanText } from './planText';
@@ -19,8 +28,43 @@ export interface ExportMatch {
   renames: { sectorId: string; name: string }[];
   /** 1-based file lines (the header is line 1) of rows that matched no unit. */
   unmatchedRows: number[];
+  /** The same rows with their own text (`rowText`), so the review can show what they say. */
+  unmatched: { line: number; text: string }[];
+  /** Header cells the match does not read, as written (`unusedColumns`). */
+  ignoredColumns: string[];
   /** Units Auto-plan would plan (`plannedUnits`) that no row matched. */
   unmatchedUnits: string[];
+}
+
+/** Every field the match reads: the name, sector, azimuth and height to match, the rest to plan. */
+const MATCH_FIELDS: readonly CellField[] = [
+  'antenna',
+  'sector',
+  'tech',
+  'band',
+  'bandwidth',
+  'power',
+  'etilt',
+  'antennaModel',
+  'radioModel',
+  'azimuth',
+  'height',
+];
+
+/**
+ * What the review says about a cell export besides its picks: the columns not used, and each
+ * data line's own text by line number. Null for a file with no header.
+ */
+export function describeCellExport(
+  text: string,
+): { ignoredColumns: string[]; lines: Map<number, string> } | null {
+  const records = splitCsv(text);
+  const header = records[0];
+  if (!header) return null;
+  return {
+    ignoredColumns: unusedColumns(header, columnsOf(header), MATCH_FIELDS),
+    lines: new Map(records.slice(1).map((rec, i) => [i + 2, rowText(rec)])),
+  };
 }
 
 /** Bearings closer than this are a tie, so height decides. */
@@ -60,6 +104,8 @@ export function matchCellExport(
     picks: new Map(),
     renames: [],
     unmatchedRows: [],
+    unmatched: [],
+    ignoredColumns: unusedColumns(header, cols, MATCH_FIELDS),
     unmatchedUnits: [],
   };
   const renamed = new Set<string>();
@@ -111,6 +157,7 @@ export function matchCellExport(
     }
     if (!unit) {
       out.unmatchedRows.push(line);
+      out.unmatched.push({ line, text: rowText(rec) });
       return;
     }
 

@@ -7,8 +7,6 @@ import { workbench, type WorkbenchState } from '../workspace/workbench/workbench
 import type { StoreApi } from 'zustand';
 import { focusRfUnit, startCoverage, type StartResult } from './rfStore';
 
-// TODO(antenna-detection merge 2): pass Edit RF… to AntennaInventory extra actions
-// TODO(stage-3): Coverage tile in the island Measure group
 /**
  * Open the Coverage tab (spec F1: the stage chip, Ctrl+K, the project menu), pinned when it opens,
  * so the next panel opened does not replace it. A tab already open only comes to the front: its

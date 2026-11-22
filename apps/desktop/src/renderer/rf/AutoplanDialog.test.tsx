@@ -246,10 +246,10 @@ describe('AutoplanDialog', () => {
     renderWith(reviewState());
     const left = must('rf-autoplan-left-ant-u4');
     expect(left.textContent).toContain('Panel D');
-    expect(left.textContent).toContain('Not reviewed yet');
+    expect(left.textContent).toContain('A draft.');
     // Auto-plan never plans drafts (F6): no hint that a switch would plan this one
     expect(left.textContent).not.toMatch(/include drafts/i);
-    expect(left.textContent).toContain('Accept it in the inventory to include it.');
+    expect(left.textContent).toContain('Accept it in the Antennas list to include it.');
     click(buttonNamed(left, /Review/));
     expect(openAntennaReviewOrFallback).toHaveBeenCalledTimes(1);
     // Auto-plan closes first, so the inventory is not under the dialog
@@ -258,11 +258,25 @@ describe('AutoplanDialog', () => {
     );
   });
 
+  it('from a cell export: an unknown column is reported by name, an unmatched row by its text', () => {
+    const state = reviewState();
+    const p = state.proposal;
+    if (!p) throw new Error('no proposal');
+    renderWith({
+      ...state,
+      source: { csvText: 'antenna,band,Site code\nPanel A,B3,X1\nNobody,B1,X2' },
+      proposal: { ...p, unmatchedRows: [3] },
+    });
+    const notes = must('rf-autoplan').querySelector('.rf-autoplan-notes')?.textContent ?? '';
+    expect(notes).toContain('Cell export columns not used: Site code');
+    expect(notes).toContain('Line 3 matches no antenna: Nobody, B1, X2');
+  });
+
   it('lists a unit with no bearing as left out', () => {
     const units = [...UNITS(), unit('ant-u5', 10, { name: 'Panel E', convergenceDeg: null })];
     seed(units);
     renderWith(reviewState(units));
-    expect(must('rf-autoplan-left-ant-u5').textContent).toMatch(/bearing/i);
+    expect(must('rf-autoplan-left-ant-u5').textContent).toMatch(/No azimuth/);
   });
 
   it('blocked-review shows "Review antennas first" and no apply buttons', () => {
@@ -280,9 +294,9 @@ describe('AutoplanDialog', () => {
     expect(cancelAutoplan).toHaveBeenCalledTimes(2);
   });
 
-  it('Apply & run calls applyAutoplan(true); Apply only calls applyAutoplan(false)', async () => {
+  it('Apply and run calls applyAutoplan(true); Apply only calls applyAutoplan(false)', async () => {
     renderWith(reviewState());
-    expect(must('rf-autoplan-apply-run').textContent).toContain('Apply & run coverage');
+    expect(must('rf-autoplan-apply-run').textContent).toContain('Apply and run');
     await act(async () => {
       must('rf-autoplan-apply-run').click();
       await Promise.resolve();
@@ -315,7 +329,7 @@ describe('AutoplanDialog', () => {
     expect(byTest('rf-autoplan')).toBeNull();
   });
 
-  it('"Open the Coverage panel" after a refused run opens it pinned', async () => {
+  it('"Open in Coverage" after a refused run opens it pinned', async () => {
     vi.mocked(applyAutoplan).mockImplementationOnce(() => {
       autoplanStore.setState({ phase: 'idle', proposal: null });
       return Promise.resolve({ ok: false, code: 'refused' });
@@ -325,7 +339,7 @@ describe('AutoplanDialog', () => {
       must('rf-autoplan-apply-run').click();
       await Promise.resolve();
     });
-    click(buttonNamed(must('rf-autoplan'), /Open the Coverage panel/));
+    click(buttonNamed(must('rf-autoplan'), /Open in Coverage/));
     expect(workbench.getState().tabs.find((t) => t.id === 'rf')?.pinned).toBe(true);
     expect(byTest('rf-autoplan')).toBeNull();
     act(() => {

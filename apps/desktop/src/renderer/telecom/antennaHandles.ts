@@ -24,7 +24,8 @@ import {
   faceKey,
   type BoxFace,
 } from './antennaBoxEdit';
-import { antennaCentre, axisToLocal } from './antennaMeasure';
+import { formatSize } from './antennaFormat';
+import { antennaCentre, boxAxes } from './antennaMeasure';
 import {
   antennaStore,
   beginBoxDrag,
@@ -47,6 +48,55 @@ function el<K extends keyof SVGElementTagNameMap>(
 
 const v3 = (p: Vec3) => new Vector3(p[0], p[1], p[2]);
 const n = (v: number) => v.toFixed(1);
+
+/** A rectangle on the canvas, CSS pixels from its top-left corner. */
+interface Box {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/** How far the chip sits from the cursor, pixels. */
+const CHIP_GAP = { x: 16, y: 14 };
+
+/**
+ * Where the drag chip goes: below-right of the cursor, else below-left, above-right, above-left,
+ * the first that lies wholly on the canvas and meets none of the `keepOut` boxes (the stage's
+ * corner controls, such as the basemap chip). If none does, the first that is on the canvas, else
+ * below-right held inside it. A canvas of no size (not laid out) leaves the chip below-right.
+ */
+export function chipPlace(
+  pointer: { x: number; y: number },
+  size: { w: number; h: number },
+  canvas: { w: number; h: number },
+  keepOut: readonly Box[],
+): { x: number; y: number } {
+  const right = pointer.x + CHIP_GAP.x;
+  const left = pointer.x - CHIP_GAP.x - size.w;
+  const below = pointer.y + CHIP_GAP.y;
+  const above = pointer.y - CHIP_GAP.y - size.h;
+  const tries = [
+    { x: right, y: below },
+    { x: left, y: below },
+    { x: right, y: above },
+    { x: left, y: above },
+  ];
+  const first = { x: right, y: below };
+  if (canvas.w <= 0 || canvas.h <= 0) return first;
+  const onCanvas = (p: { x: number; y: number }) =>
+    p.x >= 0 && p.y >= 0 && p.x + size.w <= canvas.w && p.y + size.h <= canvas.h;
+  const clear = (p: { x: number; y: number }) =>
+    !keepOut.some(
+      (b) => p.x < b.right && p.x + size.w > b.left && p.y < b.bottom && p.y + size.h > b.top,
+    );
+  const fit = tries.find((p) => onCanvas(p) && clear(p)) ?? tries.find(onCanvas);
+  if (fit) return fit;
+  return {
+    x: Math.max(0, Math.min(first.x, canvas.w - size.w)),
+    y: Math.max(0, Math.min(first.y, canvas.h - size.h)),
+  };
+}
 
 /** The pointer's hold on a face: the fixed face's centre and the outward normal, stage local. */
 interface Hold {
@@ -137,7 +187,7 @@ export function attachAntennaHandles(
     }
     layer.style.display = '';
     const c = v3(antennaCentre(unit, frame, opts.getShift()));
-    const axes = unit.box.axes.map((a) => v3(axisToLocal(a)));
+    const axes = boxAxes(unit, opts.getShift()).map(v3);
     const ext = unit.box.extents;
     const cam = stage.camera.position;
     const right = new Vector3().setFromMatrixColumn(stage.camera.matrixWorld, 0);
@@ -194,11 +244,31 @@ export function attachAntennaHandles(
     chip.append(
       letter,
       `${t(`telecom.antennas.resize.chip.${key}`)} ${t('telecom.antennas.label.metres', {
-        value: ext[hold.face.axis].toFixed(2),
+        value: formatSize(ext[hold.face.axis], false),
       })}`,
     );
     chip.style.display = 'block';
-    chip.style.transform = `translate(${n(hold.pointer.x + 16)}px, ${n(hold.pointer.y + 14)}px)`;
+    const r = rect();
+    const size = chip.getBoundingClientRect();
+    // the stage's corner controls (the basemap chip, the dates, a legend), canvas relative
+    const keepOut = [...(host.closest('.stage')?.querySelectorAll('.stage-slot > *') ?? [])].map(
+      (e) => {
+        const b = e.getBoundingClientRect();
+        return {
+          left: b.left - r.left,
+          top: b.top - r.top,
+          right: b.right - r.left,
+          bottom: b.bottom - r.top,
+        };
+      },
+    );
+    const at = chipPlace(
+      hold.pointer,
+      { w: size.width, h: size.height },
+      { w: r.width, h: r.height },
+      keepOut,
+    );
+    chip.style.transform = `translate(${n(at.x)}px, ${n(at.y)}px)`;
   };
 
   const raycaster = new Raycaster();
@@ -247,7 +317,9 @@ export function attachAntennaHandles(
       cancelBoxDrag();
       return;
     }
-    const axes = unit.box.axes.map(axisToLocal) as [Vec3, Vec3, Vec3];
+    // the box as the view draws it: the centre and the axes turned with the date's line-up;
+    // the pipeline takes it back through the line-up itself (telecom.flag)
+    const axes = boxAxes(unit, opts.getShift());
     const selection = boxCropSelection(
       antennaCentre(unit, frame, opts.getShift()),
       axes,
@@ -279,7 +351,7 @@ export function attachAntennaHandles(
     e.preventDefault();
     e.stopPropagation();
     const c = v3(antennaCentre(unit, frame, opts.getShift()));
-    const normal = v3(axisToLocal(unit.box.axes[f.axis])).multiplyScalar(f.sign);
+    const normal = v3(boxAxes(unit, opts.getShift())[f.axis]).multiplyScalar(f.sign);
     const r = rect();
     // the capture goes on the svg: the arrows are re-stacked every frame, and moving the element
     // that holds the capture would drop it

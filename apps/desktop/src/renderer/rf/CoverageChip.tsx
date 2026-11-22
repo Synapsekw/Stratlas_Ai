@@ -11,7 +11,7 @@
  * - A read-only project gets no Auto-plan or Re-plan (`canAutoplan`): it could not take the plan.
  */
 import type { AntennaUnit } from '@aio/schema';
-import { Button, useT, type MessageKey } from '@aio/ui';
+import { Button, useT } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
@@ -28,17 +28,12 @@ import {
 } from './autoplan/autoplanStore';
 import { setRfLayer, useRfLayer } from './coverageDisplay';
 import { openCoverage, startRfRun } from './rfTab';
-import { useRf, type RfState, type RfView } from './rfStore';
+import { useRf, type RfState } from './rfStore';
+import { VIEW_KEY } from './rfText';
 import './rf.css';
 
 /** Below this width of the stage's views the stage chip drops its descriptive text. */
 export const NARROW_STAGE_PX = 640;
-
-const VIEW_KEY: Record<RfView, MessageKey> = {
-  rsrp: 'rf.results.view.rsrp',
-  bestServer: 'rf.results.view.bestServer',
-  overlap: 'rf.results.view.overlap',
-};
 
 /** The detected units: the inventory store's when it holds this project, else the RF store's. */
 function useAntennaUnits(): readonly AntennaUnit[] | null {
@@ -57,7 +52,8 @@ export function useChipState(): ChipState {
   const selectedRunId = useRf((s) => s.selectedRunId);
   const runs = useRf((s) => s.runs);
   const dirty = useRf((s) => s.dirty);
-  const planChangedSinceRun = useRf((s) => s.planChangedSinceRun);
+  // the saved plan: "changed since this run" is worked out from it (`selectPlanChanged`)
+  const saved = useRf((s) => s.saved);
   const classStats = useRf((s) => s.classStats);
   const view = useRf((s) => s.view);
   const sectors = useRf((s) => s.sectors);
@@ -69,24 +65,13 @@ export function useChipState(): ChipState {
       selectedRunId,
       runs,
       dirty,
-      planChangedSinceRun,
+      saved,
       classStats,
       view,
       sectors,
     } as RfState;
     return selectChipState(rf, units, { phase } as AutoplanState);
-  }, [
-    units,
-    running,
-    selectedRunId,
-    runs,
-    dirty,
-    planChangedSinceRun,
-    classStats,
-    view,
-    sectors,
-    phase,
-  ]);
+  }, [units, running, selectedRunId, runs, dirty, saved, classStats, view, sectors, phase]);
 }
 
 /** The running coverage job's progress, 0 to 100; null when unknown. */
@@ -167,7 +152,10 @@ export function CoverageChip({ variant = 'stage' }: { variant?: 'stage' | 'panel
       parts.push(t('rf.chip.antennas', { count: s.accepted }), t('rf.chip.notPlanned'));
       break;
     case 'ready':
-      parts.push(t('rf.chip.sectors', { count: s.sectors }), t('rf.chip.ready'));
+      parts.push(
+        t('rf.chip.sectors', { count: s.sectors }),
+        t(s.changed ? 'rf.chip.planChanged' : 'rf.chip.ready'),
+      );
       break;
     case 'planning':
       parts.push(t('rf.chip.planning'));

@@ -11,6 +11,12 @@
  *   removes or reassigns them.
  * - `check` says whether a run can start and, if not, why, as codes (`RefusalCode`).
  * - Edits change a working copy (`dirty`); `save()` writes it and keeps the warnings main answers.
+ *   `saved` is the plan as it is on disk. A rename and a restored sector place change both copies
+ *   and write the saved one only, so unsaved edits are neither written nor lost.
+ * - Whether the plan changed since a run is worked out from what is saved: the saved plan against
+ *   the plan the run recorded (`selectPlanChanged`), so it is the same after a reopen.
+ * - The coverage job: one this tab started, or one already going for the open project (adopted
+ *   from the jobs list), holds `running`; a job that leaves the list without an end ends it.
  *
  * Nothing here writes `antennas.json`. Bridge calls follow `telecom/antennaStore.ts`.
  */
@@ -18,6 +24,7 @@ import { reassignOrphan, removeOrphan, type Orphan, type ProposedSector } from '
 import {
   DEFAULT_RF_STUDY,
   RF_SECTORS_SCHEMA,
+  RfSectorsFile,
   mergeRfOrigins,
   splitRfOrigins,
   type AntennasFile,
@@ -30,10 +37,12 @@ import {
   type RfOrigin,
   type RfRun,
   type RfSector,
-  type RfSectorsFile,
   type RfStudy,
 } from '@aio/schema';
+import { t } from '@aio/ui';
+import { workspace } from '@aio/workspace';
 import { createStore, useStore } from 'zustand';
+import { isActive, sameFolder } from '../jobs';
 import { bridge, jobs } from '../shell';
 import { applyToFile, type Proposal } from './autoplan/proposal';
 import { applyCellRows, type CellRow } from './cellCsv';
@@ -92,11 +101,10 @@ export interface RfState {
   /** Edited since the last load or save. */
   dirty: boolean;
   /**
-   * The plan was saved after the last coverage run of it started, so that run no longer shows it:
-   * set by every save, cleared when a run started after the last save is done. The Coverage chip
-   * then offers Run instead of the old result. False for a project just opened.
+   * The plan as it is in `rf/sectors.json` (read, or last written), origins merged; null when the
+   * project has none. `selectPlanChanged` compares it with the plan a run recorded.
    */
-  planChangedSinceRun: boolean;
+  saved: RfSectorsFile | null;
   saving: boolean;
   /** Warnings from the last `rf:writeSectors` (pattern files that could not be copied). */
   writeWarnings: string[];
@@ -106,7 +114,7 @@ export interface RfState {
   catalogueWarnings: string[];
   runs: RfRun[];
   selectedRunId: string | null;
-  /** A coverage job this tab started and is still running. */
+  /** A coverage job of the open project is going: one this tab started, or one adopted on load. */
   running: boolean;
   jobId: string | null;
   /** The installed pipeline pack, as the renderer's processing tools store knows it. */
@@ -125,8 +133,6 @@ export interface RfState {
   // ---- derived (recomputed after every change)
   rows: RfUnitRow[];
   proposed: ProposedSector[];
-  /** Eligible units that are in no sector. */
-  unassigned: string[];
   orphans: Orphan[];
   check: RunCheck;
 }
@@ -152,7 +158,7 @@ const emptyFile = (): RfSectorsFile => ({
 
 const idlePreview = (): PreviewState => ({ status: 'idle', elapsedMs: null, error: null });
 
-type Base = Omit<RfState, 'rows' | 'proposed' | 'unassigned' | 'orphans' | 'check'>;
+type Base = Omit<RfState, 'rows' | 'proposed' | 'orphans' | 'check'>;
 
 const base = (): Base => ({
   projectId: null,
@@ -163,7 +169,7 @@ const base = (): Base => ({
   sectors: emptyFile(),
   hasFile: false,
   dirty: false,
-  planChangedSinceRun: false,
+  saved: null,
   saving: false,
   writeWarnings: [],
   includeUnreviewed: false,
@@ -183,7 +189,7 @@ const base = (): Base => ({
 });
 
 /** The inputs of `check` and the rows, worked out again from the base state. */
-function derived(b: Base): Pick<RfState, 'rows' | 'proposed' | 'unassigned' | 'orphans' | 'check'> {
+function derived(b: Base): Pick<RfState, 'rows' | 'proposed' | 'orphans' | 'check'> {
   const rows = deriveRows({
     antennas: b.antennas,
     sectors: b.sectors,
@@ -191,13 +197,9 @@ function derived(b: Base): Pick<RfState, 'rows' | 'proposed' | 'unassigned' | 'o
     includeUnreviewed: b.includeUnreviewed,
     dsmGroundAt,
   });
-  const unassigned = rows
-    .filter((r) => r.sectorId === null && r.excluded === 'not-in-sector')
-    .map((r) => r.id);
   return {
     rows,
     proposed: proposalFor(b.antennas, b.includeUnreviewed),
-    unassigned,
     orphans: orphansFor(b.antennas, b.sectors),
     check: checkRun(rows, {
       sectorMembers: b.sectors.sectors.flatMap((x) => x.antennaIds),
@@ -220,6 +222,69 @@ export function useRf<T>(selector: (s: RfState) => T): T {
   return useStore(rfStore, selector);
 }
 
+// ---------------------------------------------------------------- selectors
+
+/** A plan in one spelling: parsed as main reads it (defaults filled), keys sorted. */
+const canonical = new WeakMap<object, string>();
+function planKey(f: RfSectorsFile): string {
+  const known = canonical.get(f);
+  if (known !== undefined) return known;
+  const { file } = splitRfOrigins(f);
+  const parsed = RfSectorsFile.safeParse(file);
+  const sorted = (v: unknown): unknown =>
+    Array.isArray(v)
+      ? v.map(sorted)
+      : v !== null && typeof v === 'object'
+        ? Object.fromEntries(
+            Object.entries(v)
+              .filter(([, x]) => x !== undefined)
+              .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+              .map(([k, x]) => [k, sorted(x)]),
+          )
+        : v;
+  const key = JSON.stringify(sorted(parsed.success ? parsed.data : file));
+  canonical.set(f, key);
+  return key;
+}
+
+/**
+ * True when the saved plan is not the plan `run` recorded (`run.inputs.sectors`, the file as the
+ * job read it), so the run no longer shows it. Worked out from what is saved, so it reads the same
+ * after a reopen. Unsaved edits do not count here (see `dirty`). False without a run or a saved plan.
+ */
+export function planChangedSince(
+  s: Pick<RfState, 'saved'>,
+  run: RfRun | null | undefined,
+): boolean {
+  if (!s.saved || !run) return false;
+  return planKey(s.saved) !== planKey(run.inputs.sectors);
+}
+
+/** The selected run, else the newest finished one; undefined when there is none. */
+export function selectShownRun(s: Pick<RfState, 'runs' | 'selectedRunId'>): RfRun | undefined {
+  return s.selectedRunId !== null
+    ? s.runs.find((r) => r.runId === s.selectedRunId)
+    : s.runs.find((r) => r.status === 'done');
+}
+
+/**
+ * "The plan changed since this run", for the stage chip and step 3: the saved plan against the
+ * selected run (else the newest finished one). See `planChangedSince`.
+ */
+export function selectPlanChanged(s: Pick<RfState, 'saved' | 'runs' | 'selectedRunId'>): boolean {
+  return planChangedSince(s, selectShownRun(s));
+}
+
+/** Coverage holds edits that are not saved (the Sectors group's line). */
+export function selectUnsavedChanges(s: Pick<RfState, 'dirty' | 'readOnly'>): boolean {
+  return s.dirty && !s.readOnly;
+}
+
+/** The number of finished coverage runs of the project (the Coverage plan group's count). */
+export function selectFinishedRunCount(s: Pick<RfState, 'runs'>): number {
+  return s.runs.filter((r) => r.status === 'done').length;
+}
+
 const get = () => rfStore.getState();
 /** Apply a patch and work the derived fields out again. */
 const set = (patch: Partial<Base>): void => {
@@ -235,6 +300,7 @@ export function resetRf(opts: { keepPack?: boolean } = {}): void {
   loadSeq++;
   dsmGroundAt = null;
   queue = Promise.resolve();
+  jobSeen = false;
   const pack = opts.keepPack === true ? get().pack : null;
   const b = { ...base(), pack };
   rfStore.setState({ ...b, ...derived(b) });
@@ -256,9 +322,13 @@ export async function loadRf(projectId: string, opts: { keepEdits?: boolean } = 
   else {
     // The installed pack belongs to the app, not the project; the ground provider to the project.
     dsmGroundAt = null;
+    jobSeen = false;
     rfStore.setState({ ...initial(), pack: get().pack, projectId, status: 'loading' });
     set({});
   }
+  // a coverage job already going for this project (a reload during a run) holds the run
+  watchJobs();
+  adoptLiveJob(currentJobs());
   const [ant, sec, cat, runs] = await Promise.all([
     bridge.call('telecom:readAntennas', { projectId }),
     bridge.call('rf:readSectors', { projectId }),
@@ -283,19 +353,17 @@ export async function loadRf(projectId: string, opts: { keepEdits?: boolean } = 
   const overlapped =
     same && (pendingAtStart > 0 || savesPending > 0 || savesEnded !== endedAtStart);
   const keep = (opts.keepEdits === true && get().dirty) || overlapped;
+  // the sidecar's origins merged in; absent ones mean the person set the value
+  const onDisk = sec.value.file ? mergeRfOrigins(sec.value.file, sec.value.origins) : null;
   set({
     status: 'ready',
     message: null,
     antennas: ant.value.file,
     readOnly: sec.value.readOnly,
     hasFile: sec.value.file !== null,
-    // the sidecar's origins merged in; absent ones mean the person set the value
-    ...(keep
-      ? {}
-      : {
-          sectors: sec.value.file ? mergeRfOrigins(sec.value.file, sec.value.origins) : emptyFile(),
-          dirty: false,
-        }),
+    // a read that overlapped a save may be the file from before it: the save sets `saved`
+    ...(overlapped ? {} : { saved: onDisk }),
+    ...(keep ? {} : { sectors: onDisk ? structuredClone(onDisk) : emptyFile(), dirty: false }),
     catalogue: cat.ok && cat.value.ok ? cat.value.entries : [],
     catalogueWarnings: cat.ok && cat.value.ok ? cat.value.warnings : [],
     runs: runs.ok && runs.value.ok ? runs.value.runs : [],
@@ -351,10 +419,6 @@ export function setPackStatus(status: Pick<PipelinePackStatus, 'state' | 'versio
 export function setDsmGroundProvider(fn: DsmGroundAt | null): void {
   dsmGroundAt = fn;
   set({});
-}
-
-export function setRunning(running: boolean, jobId: string | null = null): void {
-  set({ running, jobId: running ? jobId : null });
 }
 
 export function setPreviewState(patch: Partial<PreviewState>): void {
@@ -536,25 +600,88 @@ export function applyProposal(): void {
   });
 }
 
-export function renameSector(sectorId: string, name: string): void {
-  const n = name.trim();
-  if (!n) return;
-  edit((f) => ({
-    ...f,
-    sectors: f.sectors.map((s) => (s.id === sectorId ? { ...s, name: n } : s)),
-  }));
+/**
+ * Change the working copy and the saved plan by `fn`, and write the saved plan only: the unsaved
+ * edits of the working copy stay unsaved (and stay, so nothing typed in Coverage is lost or written
+ * behind the person's back). `fn` answers null for a copy it leaves alone. With no plan file, or a
+ * saved plan `fn` leaves alone, only the working copy changes (it is then dirty). Answers the
+ * write's result, or null when nothing was written.
+ */
+async function editBoth(
+  fn: (f: RfSectorsFile) => RfSectorsFile | null,
+): Promise<SaveResult | null> {
+  const { readOnly, hasFile, saved, sectors, dirty } = get();
+  if (readOnly) return null;
+  const working = fn(sectors);
+  const disk = hasFile && saved ? fn(saved) : null;
+  if (!working && !disk) return null;
+  set({
+    ...(working ? { sectors: working } : {}),
+    ...(disk ? { saved: disk } : {}),
+    // still differs from the saved plan by its own edits, or by a change only it took
+    dirty: dirty || (working !== null && disk === null),
+  });
+  return disk ? writePlan('saved') : null;
 }
 
 /**
- * Rename a saved sector from outside Coverage (the Project tab's Sectors group). A plan with no
- * edits is renamed and saved; one with unsaved edits gets the new name in its working copy only
- * (it stays dirty), so nothing typed in Coverage is written behind the person's back.
+ * Rename a sector: the one rename, from Coverage and from Project's Sectors group. The name shows
+ * in both at once; a saved sector is renamed in the saved plan too and that is written, while other
+ * unsaved edits stay unsaved. A sector not saved yet is renamed in the working copy. An empty or
+ * unchanged name does nothing.
  */
-export async function renameSavedSector(sectorId: string, name: string): Promise<void> {
-  const { hasFile, readOnly, dirty } = get();
-  if (!hasFile || readOnly || !name.trim()) return;
-  renameSector(sectorId, name);
-  if (!dirty) await saveRf();
+export async function renameSector(sectorId: string, name: string): Promise<SaveResult | null> {
+  const n = name.trim();
+  if (!n) return null;
+  return editBoth((f) =>
+    f.sectors.some((s) => s.id === sectorId && s.name !== n)
+      ? { ...f, sectors: f.sectors.map((s) => (s.id === sectorId ? { ...s, name: n } : s)) }
+      : null,
+  );
+}
+
+/** The same function as `renameSector` (the Sectors group's name for it). */
+export const renameSavedSector = renameSector;
+
+/**
+ * Put units back in named sectors (an antenna delete undone): each unit goes into its sector when
+ * the unit is in no sector, in the saved plan and in the unsaved copy alike; the saved plan is
+ * written, unsaved edits stay unsaved. A sector the delete emptied (and so removed) comes back when
+ * the pair names it (`sectorName`); without a name the pair is skipped. `settings`, the unit's RF
+ * settings as the delete found them, come back too unless the unit has settings again; a pair
+ * with settings and no sector brings back the settings alone. Answers as `editBoth`.
+ */
+export async function restoreAntennasToSectors(
+  pairs: readonly {
+    unitId: string;
+    sectorId?: string;
+    sectorName?: string;
+    settings?: RfAntennaSettings;
+  }[],
+): Promise<SaveResult | null> {
+  return editBoth((f) => {
+    let changed = false;
+    let sectors = f.sectors;
+    let antennas = f.antennas;
+    for (const { unitId, settings } of pairs) {
+      if (!settings || antennas.some((a) => a.antennaId === unitId)) continue;
+      antennas = [...antennas, { ...settings, antennaId: unitId }];
+      changed = true;
+    }
+    for (const { unitId, sectorId, sectorName } of pairs) {
+      if (sectorId === undefined || sectors.some((s) => s.antennaIds.includes(unitId))) continue;
+      const name = sectorName?.trim() ?? '';
+      if (sectors.some((s) => s.id === sectorId)) {
+        sectors = sectors.map((s) =>
+          s.id === sectorId ? { ...s, antennaIds: [...s.antennaIds, unitId] } : s,
+        );
+      } else if (name !== '') {
+        sectors = [...sectors, { id: sectorId, name, antennaIds: [unitId] }];
+      } else continue;
+      changed = true;
+    }
+    return changed ? { ...f, sectors, antennas } : null;
+  });
 }
 
 /** Put a unit in a sector (it leaves its old one); null takes it out of every sector. */
@@ -651,30 +778,38 @@ export type SaveResult =
  * `writeWarnings`. Saves run one after the other, and a failed one leaves the edits as they are.
  */
 export function saveRf(): Promise<SaveResult> {
+  return writePlan('working');
+}
+
+/**
+ * Write the working copy (`working`: it becomes the saved plan) or the saved plan as it is now
+ * (`saved`: a change made to both copies; the working copy keeps its own edits). Writes are queued.
+ */
+function writePlan(which: 'working' | 'saved'): Promise<SaveResult> {
   const run = async (): Promise<SaveResult> => {
-    const { projectId, sectors, readOnly } = get();
+    const { projectId, readOnly } = get();
     if (!projectId) return { ok: false, code: 'no-project' };
     if (readOnly) return { ok: false, code: 'read-only' };
+    const plan = which === 'working' ? get().sectors : get().saved;
+    if (!plan) return { ok: true };
     set({ saving: true });
     // origins go to their sidecar, so rf/sectors.json stays readable by older builds
-    const { file, origins } = splitRfOrigins(sectors);
+    const { file, origins } = splitRfOrigins(plan);
     const r = await bridge.call('rf:writeSectors', { projectId, file, origins });
     if (get().projectId !== projectId) return { ok: true };
     if (!r.ok || !r.value.ok) {
       const error = !r.ok ? r.error : r.value.ok ? '' : r.value.error;
-      set({ saving: false, message: error });
+      // a change written to the saved plan only is still in the working copy: it can be saved
+      set({ saving: false, message: error, ...(which === 'saved' ? { dirty: true } : {}) });
       return { ok: false, code: 'refused', message: error };
     }
-    // An edit made while the write was in flight stays dirty.
-    const unchanged = get().sectors === sectors;
-    plansSaved++;
     set({
-      planChangedSinceRun: true,
       saving: false,
       message: null,
       hasFile: true,
-      dirty: !unchanged,
       writeWarnings: r.value.warnings ?? [],
+      // An edit made while the write was in flight stays dirty.
+      ...(which === 'working' ? { saved: plan, dirty: get().sectors !== plan } : {}),
     });
     return { ok: true };
   };
@@ -777,40 +912,87 @@ export async function exportRun(
 }
 
 let watchingJobs = false;
-/** Saves written so far, and how many there were when the run going now started. */
-let plansSaved = 0;
-let plansSavedAtRun = 0;
+/**
+ * The running job has been in the jobs list: from then on, a list without it means the job is
+ * gone (removed, or main forgot it), and the run ends. Before that it may simply not have arrived.
+ */
+let jobSeen = false;
+
+/** The jobs store, or null where a test mocks the shell with a bridge only. */
+function jobsStore(): Pick<typeof jobs, 'subscribe' | 'getState'> | null {
+  try {
+    const store: Partial<typeof jobs> = jobs;
+    return store.subscribe && store.getState
+      ? { subscribe: store.subscribe, getState: store.getState }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function currentJobs(): readonly JobRecord[] {
+  return jobsStore()?.getState().jobs ?? [];
+}
+
 function watchJobs(): void {
-  // tests of other modules mock the shell with a bridge only
-  const store: Partial<typeof jobs> = jobs;
-  if (watchingJobs || !store.subscribe) return;
+  const store = jobsStore();
+  if (watchingJobs || !store) return;
   watchingJobs = true;
   store.subscribe((s) => {
     onJobs(s.jobs);
   });
 }
 
+/**
+ * Take up a coverage job already at work for the open project (the window was reloaded during a
+ * run, or the job started elsewhere), so the run shows and a second one cannot start.
+ */
+function adoptLiveJob(list: readonly JobRecord[]): void {
+  const { projectId, running } = get();
+  if (running || !projectId) return;
+  const project = workspace.getState().project;
+  if (project?.id !== projectId) return;
+  const job = list.find(
+    (j) => j.pipeline === 'rf.coverage' && isActive(j) && sameFolder(j.project, project.root),
+  );
+  if (!job) return;
+  const runId = job.params.runId;
+  jobSeen = true;
+  set({
+    running: true,
+    jobId: job.id,
+    pendingRunId: typeof runId === 'string' ? runId : null,
+    runError: null,
+  });
+}
+
 function onJobs(list: readonly JobRecord[]): void {
   const { jobId, running, pendingRunId } = get();
-  if (!jobId || !running) return;
+  if (!running) {
+    adoptLiveJob(list);
+    return;
+  }
+  if (!jobId) return;
   const job = list.find((j) => j.id === jobId);
-  if (!job) return;
+  if (!job) {
+    if (!jobSeen) return;
+    jobSeen = false;
+    set({ running: false, jobId: null, pendingRunId: null, runError: t('rf.results.runLost') });
+    return;
+  }
+  jobSeen = true;
   if (job.status === 'done') {
-    set({
-      running: false,
-      jobId: null,
-      pendingRunId: null,
-      runError: null,
-      // the run shows the plan unless it was saved again while the run went
-      planChangedSinceRun: plansSaved !== plansSavedAtRun,
-    });
+    jobSeen = false;
+    set({ running: false, jobId: null, pendingRunId: null, runError: null });
     void refreshRuns().then(() => {
       if (pendingRunId && get().runs.some((r) => r.runId === pendingRunId))
         void selectRun(pendingRunId);
     });
   } else if (job.status === 'failed') {
+    jobSeen = false;
     set({ running: false, jobId: null, pendingRunId: null, runError: job.error ?? '' });
   } else if (job.status === 'cancelled' || job.status === 'interrupted') {
+    jobSeen = false;
     set({ running: false, jobId: null, pendingRunId: null });
   }
 }
@@ -840,10 +1022,9 @@ export async function startCoverage(root: string): Promise<StartResult> {
   if (get().projectId !== projectId || get().check.refusals.length > 0)
     return { ok: false, code: 'refused' };
   watchJobs();
-  // the job reads the file as saved now
-  plansSavedAtRun = plansSaved;
   const runId = newRunId();
-  set({ running: true, pendingRunId: runId, runError: null });
+  jobSeen = false;
+  set({ running: true, jobId: null, pendingRunId: runId, runError: null });
   const r = await bridge.call('jobs:start', {
     pipeline: 'rf.coverage',
     project: root,
@@ -858,7 +1039,6 @@ export async function startCoverage(root: string): Promise<StartResult> {
   const jobId = r.value.job.id;
   set({ jobId });
   // the job may already have ended by the time the answer arrives
-  const store: Partial<typeof jobs> = jobs;
-  if (store.getState) onJobs(store.getState().jobs);
+  onJobs(currentJobs());
   return { ok: true, jobId, runId };
 }

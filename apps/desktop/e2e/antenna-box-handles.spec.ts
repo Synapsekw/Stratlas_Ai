@@ -128,6 +128,16 @@ const face = (box: Box, sign: 1 | -1): Vec3 =>
 
 const dist = (p: Vec3, q: Vec3) => Math.hypot(...add(p, q, -1));
 
+interface ScreenBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+/** Whether two boxes on screen share any area. */
+const overlaps = (a: ScreenBox, b: ScreenBox): boolean =>
+  a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+
 /** A project ENZ point on screen (CSS px), through the stage camera. */
 async function onScreen(win: Page, p: Vec3): Promise<{ x: number; y: number }> {
   const [ox, oy, oz] = tinyManifest().origin;
@@ -197,6 +207,16 @@ test('drags the top face of an antenna box up its panel and keeps it through a r
   const handles = win.getByTestId('antenna-handles');
   await expect(handles).toBeVisible();
   await expect(handles.locator('[data-face]')).toHaveCount(6);
+  // idle: the width label keeps clear of the top arrow; the name carries the centre altitude
+  const widthLabel = win.locator('.antenna-labels .sv-label[data-key="ant-p1:dim:w"]');
+  await expect(widthLabel).toBeVisible();
+  const widthBox = await widthLabel.boundingBox();
+  const topArrowBox = await handles.locator('[data-face="1:+"]').boundingBox();
+  if (!widthBox || !topArrowBox) throw new Error('no width label or top arrow on screen');
+  expect(overlaps(widthBox, topArrowBox), 'the width label meets the top arrow').toBe(false);
+  await expect(win.locator('.antenna-labels .sv-label[data-key="ant-p1:name"]')).toHaveText(
+    / · alt \d+\.\d m$/,
+  );
 
   const before = (await antennaState(win)).unit;
   if (!before) throw new Error('no P1 in the store');
@@ -241,6 +261,14 @@ test('drags the top face of an antenna box up its panel and keeps it through a r
   expect(face(mid.box, 1)[2], 'the top face moves up').toBeGreaterThan(top0[2] + 0.5);
   const chipValue = Number((await chip.textContent())?.match(/(\d+\.\d\d) m$/)?.[1]);
   expect(chipValue).toBeCloseTo(mid.box.extents[1], 2);
+  // the chip stays on the canvas and off the stage's basemap control, when there is one
+  const chipBox = await chip.boundingBox();
+  if (!chipBox) throw new Error('no drag chip on screen');
+  expect(chipBox.x).toBeGreaterThanOrEqual(canvas.x - 1);
+  expect(chipBox.x + chipBox.width).toBeLessThanOrEqual(canvas.x + canvas.width + 1);
+  const basemapBox = await win.locator('.stage-basemap').first().boundingBox();
+  if (basemapBox)
+    expect(overlaps(chipBox, basemapBox), 'the chip meets the basemap control').toBe(false);
   if (EVIDENCE) {
     await mkdir(EVIDENCE, { recursive: true });
     await win

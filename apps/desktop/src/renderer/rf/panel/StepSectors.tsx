@@ -1,18 +1,18 @@
 /**
  * Step 2 of the Coverage panel, Sectors & equipment: one row per sector (its best-server colour,
- * name and bearing, the equipment and band, and a state tag), then a row for the units in no
+ * name and azimuth, the equipment and band, and a state tag), then a row for the units in no
  * sector. Expanding a row shows its body, which the bench renders (today's sector controls and
- * unit fields); one row is open at a time. The toolbar (group by bearing, add sector) sits above
+ * unit fields); one row is open at a time. The toolbar (group by azimuth, add sector) sits above
  * the rows and the orphan settings below them (`children`).
  */
 import { getEntry } from '@aio/rf';
 import type { RfAntennaSettings } from '@aio/schema';
 import { Chip, Icon, useT, type MessageKey } from '@aio/ui';
 import { useId, useMemo, type ReactElement, type ReactNode } from 'react';
+import { formatAngle } from '../../telecom/antennaFormat';
 import { hex, sectorColour } from '../coverageRamp';
 import { sectorBearing } from '../rfFields';
 import { useRf } from '../rfStore';
-import { fmt } from './parts';
 import { Step } from './Step';
 import { groupTag, type StepTag } from './stepTag';
 
@@ -138,7 +138,7 @@ export function StepSectors({
       title:
         bearing === null
           ? sec.name
-          : t('rf.sector.chip', { name: sec.name, bearing: fmt(bearing, 0) }),
+          : t('rf.sector.chip', { name: sec.name, bearing: formatAngle(bearing) }),
       summary: summary(inSector),
       tag: groupTag(inSector),
       colour: hex(sectorColour(i)),

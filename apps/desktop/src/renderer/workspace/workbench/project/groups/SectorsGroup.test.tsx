@@ -19,7 +19,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock('../../../../rf/rfStore', async (orig) => ({
   ...(await orig<typeof RfStoreModule>()),
-  renameSavedSector: h.rename,
+  renameSector: h.rename,
 }));
 vi.mock('../../../../rf/rfTab', () => ({ openRfTab: h.open, openCoverage: vi.fn() }));
 vi.mock('../../../../telecom/antennaStore', async (orig) => ({
@@ -170,6 +170,53 @@ describe('Sectors group', () => {
     expect(h.rename).not.toHaveBeenCalled();
   });
 
+  it('writes the azimuth with the shared angle format', () => {
+    plan();
+    mount();
+    // ant-c alone: about 240 degrees, one decimal
+    expect(host.querySelectorAll('li[data-row-id]')[1]!.textContent).toMatch(/24\d\.\d°/);
+  });
+
+  it('a sector with no measured azimuth reads Not measured, never a dash', () => {
+    rfStore.setState({
+      hasFile: true,
+      antennas: antennasFile([unit('ant-a', 0)]),
+      sectors: sectorsFile([{ id: 'sec-s1', antennaIds: ['gone'] }], []),
+    });
+    mount();
+    const text = host.querySelector('li[data-row-id]')!.textContent;
+    expect(text).toContain('Not measured');
+    expect(text).not.toContain('—');
+  });
+
+  it('says Unsaved changes in Coverage only while Coverage holds unsaved changes', () => {
+    plan();
+    mount();
+    expect(host.textContent).not.toContain('Unsaved changes in Coverage');
+    rfStore.setState({ dirty: true });
+    mount();
+    expect(host.textContent).toContain('Unsaved changes in Coverage');
+    rfStore.setState({ readOnly: true });
+    mount();
+    expect(host.textContent).not.toContain('Unsaved changes in Coverage');
+  });
+
+  it('Fly to is greyed with a reason when no antenna is left', () => {
+    rfStore.setState({
+      hasFile: true,
+      antennas: antennasFile([unit('ant-a', 0)]),
+      sectors: sectorsFile([{ id: 'sec-s1', antennaIds: ['gone'] }], []),
+    });
+    mount();
+    const btn = host.querySelector<HTMLButtonElement>('li button[aria-label="Fly to"]')!;
+    expect(btn.getAttribute('aria-disabled')).toBe('true');
+    expect(host.textContent).toContain('None of the antennas of this sector is left.');
+    act(() => {
+      btn.click();
+    });
+    expect(h.fly).not.toHaveBeenCalled();
+  });
+
   it('never shows a bearing of 360 degrees', () => {
     rfStore.setState({
       hasFile: true,
@@ -178,7 +225,19 @@ describe('Sectors group', () => {
     });
     mount();
     const row = host.querySelector('li[data-row-id]')!;
-    expect(row.textContent).toContain('0°');
+    expect(row.textContent).toContain('359.6°');
+    expect(row.textContent).not.toContain('360');
+  });
+
+  it('a bearing that rounds up to 360 reads 0.0 degrees', () => {
+    rfStore.setState({
+      hasFile: true,
+      antennas: antennasFile([unit('ant-z', 359.98, { convergenceDeg: 0 })]),
+      sectors: sectorsFile([{ id: 'sec-s1', antennaIds: ['ant-z'] }], []),
+    });
+    mount();
+    const row = host.querySelector('li[data-row-id]')!;
+    expect(row.textContent).toContain('0.0°');
     expect(row.textContent).not.toContain('360');
   });
 

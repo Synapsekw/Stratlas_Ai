@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { planText, type PlanText } from './planText';
 
 const en = (parts: readonly PlanText[] | undefined): string => planText(t, parts ?? []);
-import { matchCellExport, type ExportMatch } from './exportMatch';
+import { describeCellExport, matchCellExport, type ExportMatch } from './exportMatch';
 
 const CATALOGUE = (
   JSON.parse(
@@ -107,6 +107,20 @@ describe('matchCellExport', () => {
     const m = ok(matchCellExport(csv, units, [], CATALOGUE));
     expect(m.unmatchedRows).toEqual([4]);
     expect(m.unmatchedUnits).toEqual(['u3']);
+    // the row that matched nothing keeps its own text
+    expect(m.unmatched).toEqual([{ line: 4, text: 'Nobody, B3' }]);
+  });
+
+  it('an unknown column is reported by name', () => {
+    const units = [unit('u1', 'Panel A', 10)];
+    const csv = 'antenna,band,Site code,azimuth,height\nPanel A,B3,X1,10,25';
+    const m = ok(matchCellExport(csv, units, [], CATALOGUE));
+    // azimuth and height help the match, so only the unknown one is not used
+    expect(m.ignoredColumns).toEqual(['Site code']);
+    expect(describeCellExport(csv)).toEqual({
+      ignoredColumns: ['Site code'],
+      lines: new Map([[2, 'Panel A, B3, X1, 10, 25']]),
+    });
   });
 
   it('lists as unmatched only the units Auto-plan would plan', () => {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import type { AntennasFile, PipelinePackStatus, RfSectorsFile } from '@aio/schema';
-import { RF_COVERAGE_MIN_PACK } from '@aio/schema';
+import type { AntennasFile, PipelinePackStatus, RfRun, RfSectorsFile } from '@aio/schema';
+import { RF_COVERAGE_MIN_PACK, RF_RUN_SCHEMA } from '@aio/schema';
 import { t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
@@ -169,6 +169,21 @@ const setNumber = (input: HTMLInputElement | null, value: string) => {
 
 const OK_PACK = { state: 'ok', version: RF_COVERAGE_MIN_PACK } as const;
 
+/** A finished run of `sectors` with the catalogue entries it used (only what step 3 reads). */
+function runOf(runId: string, sectors: RfSectorsFile, catalogue: RfRun['catalogue']): RfRun {
+  return {
+    schema: RF_RUN_SCHEMA,
+    runId,
+    createdAt: '2026-11-22T09:00:00Z',
+    status: 'done',
+    inputs: { sectors: structuredClone(sectors), antennas: [] },
+    catalogue,
+    warnings: [],
+    usedUnreviewed: false,
+    patterns: [],
+  } as unknown as RfRun;
+}
+
 beforeEach(() => {
   localStorage.clear();
   sectionStore.setState({ byBench: {} });
@@ -259,6 +274,8 @@ describe('RfBench', () => {
     expect(adv?.getAttribute('aria-expanded')).toBe('true');
     expect(byTest('rf-study')).not.toBeNull();
     expect(byTest('rf-csv-open')).not.toBeNull();
+    // one line says what the CSV import does and how its rows match
+    expect(byTest('rf-csv-what')?.textContent).toBe(t('rf.steps.advanced.csvWhat'));
     // the include drafts switch moved to step 1
     expect(byTest('rf-study')?.querySelector('[role="switch"]')).toBeNull();
     expect(byTest('rf-step-antennas')?.querySelector('[role="switch"]')).not.toBeNull();
@@ -363,7 +380,8 @@ describe('RfBench', () => {
     // a unit with no settings at all needs setup
     expect(row('sec-s2')?.getAttribute('data-tag')).toBe('needs-setup');
     expect(row('sec-s2')?.textContent).toContain('needs setup');
-    expect(row('sec-s1')?.textContent).toMatch(/S1 · \d+°/);
+    // the azimuth through the shared formatter: one decimal
+    expect(row('sec-s1')?.textContent).toMatch(/S1 · \d+\.\d°/);
   });
 
   it('a sector the person set up by hand is tagged edited, with its equipment and band', async () => {
@@ -431,12 +449,12 @@ describe('RfBench', () => {
     expect(height?.querySelector('.tag')?.textContent).toBe('measured');
   });
 
-  it('marks a typed height as typed and clears it back to measured', async () => {
+  it('marks a typed height as entered by you', async () => {
     await render();
     expand();
     setNumber(qi('[data-testid="rf-height"]'), '28');
     const height = q('[data-testid="rf-unit-ant-a1"] [data-field="height"]');
-    expect(height?.querySelector('.tag')?.textContent).toBe('typed');
+    expect(height?.querySelector('.tag')?.textContent).toBe('entered by you');
     expect(rfStore.getState().sectors.antennas[0]?.heightOverrideM).toBe(28);
   });
 
@@ -485,20 +503,79 @@ describe('RfBench', () => {
     expect(line).toMatch(/^Assumes outdoor use: 0 dB penetration, .* dB in all; phone at /);
   });
 
-  it('a study too large to preview says so, and can still be saved and run', async () => {
+  it('a study too large to preview says so, and can still be run', async () => {
     await render();
     expand();
-    const save = () => byTest('rf-save-run');
     setNumber(qi('[data-testid="rf-etilt-number"]'), '6');
     // the coverage follower (the RF layer) works the preview out; here its state is set directly
-    expect(save()?.getAttribute('aria-disabled')).toBe('true');
     expect(byTest('rf-preview-too-large')).toBeNull();
     act(() => {
       setPreviewState({ status: 'too-large', error: null });
     });
     expect(byTest('rf-preview-too-large')?.textContent).toBe(t('rf.results.previewTooLarge'));
-    expect(save()?.getAttribute('aria-disabled')).toBeNull();
     expect(byTest('rf-run')?.getAttribute('aria-disabled')).toBeNull();
+  });
+
+  it('step 3 has one run button', async () => {
+    await render();
+    const step = byTest('rf-step-coverage');
+    expect(step?.querySelectorAll('[data-testid="rf-run"]')).toHaveLength(1);
+    expect(byTest('rf-save-run')).toBeNull();
+    expect(step?.textContent).not.toContain('Save as new run');
+    expect(byTest('rf-run')?.textContent).toBe('Run coverage');
+  });
+
+  it('a run on unverified equipment says so', async () => {
+    await render();
+    const saved = rfStore.getState().saved ?? sectorsFile([], []);
+    act(() => {
+      rfStore.setState({
+        runs: [
+          runOf('rf-1', saved, [{ id: 'ant-x', kind: 'antenna', verified: false }]),
+          runOf('rf-2', saved, [{ id: 'ant-x', kind: 'antenna', verified: true }]),
+        ],
+        selectedRunId: 'rf-1',
+      });
+    });
+    expect(byTest('rf-unverified')?.textContent).toBe(
+      'Equipment values not checked against datasheets',
+    );
+    // the plan is the run's: no plan-changed line
+    expect(byTest('rf-plan-changed')).toBeNull();
+    act(() => {
+      rfStore.setState({ selectedRunId: 'rf-2' });
+    });
+    expect(byTest('rf-unverified')).toBeNull();
+  });
+
+  it('step 3 says the plan changed since the shown run, from what is saved', async () => {
+    await render();
+    act(() => {
+      // a run of another plan than the one saved now
+      rfStore.setState({ runs: [runOf('rf-1', sectorsFile([], []), [])], selectedRunId: 'rf-1' });
+    });
+    expect(byTest('rf-plan-changed')?.textContent).toBe(t('rf.results.planChanged'));
+  });
+
+  it('an old save warning does not come back after an edit is reverted', async () => {
+    h.writeWarnings = ['Pattern file p1.msi could not be copied.'];
+    await render();
+    expand();
+    setNumber(qi('[data-testid="rf-etilt-number"]'), '5');
+    click(byTest('rf-save'));
+    await flush();
+    expect(byTest('rf-write-warnings')).not.toBeNull();
+    // a new edit, then Undo changes: the warning was about the last save, not about this state
+    setNumber(qi('[data-testid="rf-etilt-number"]'), '6');
+    expect(byTest('rf-write-warnings')).toBeNull();
+    const revert = [...document.querySelectorAll<HTMLButtonElement>('.rf-savebar button')].find(
+      (b) => b.textContent === t('rf.revert'),
+    );
+    expect(revert).toBeDefined();
+    click(revert ?? null);
+    await flush();
+    expect(rfStore.getState().dirty).toBe(false);
+    expect(byTest('rf-write-warnings')).toBeNull();
   });
 
   it('a close and reopen of the same project does not bring back unsaved edits', async () => {
@@ -658,9 +735,9 @@ describe('RfBench', () => {
     expect(byTest('rf-more-carriers')?.textContent).toContain('1 more carrier');
   });
 
-  it('shows the empty state when the project has no antenna inventory', async () => {
+  it('shows the empty state when the project has no antennas', async () => {
     h.antennas = null;
     await render();
-    expect(byTest('rf-bench')?.textContent).toContain('No antenna inventory yet');
+    expect(byTest('rf-bench')?.textContent).toContain('No antennas yet');
   });
 });

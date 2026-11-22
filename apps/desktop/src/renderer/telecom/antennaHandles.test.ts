@@ -2,13 +2,16 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { EngineStage } from '@aio/engine';
-import { AntennasFile } from '@aio/schema';
+import { AntennasFile, type DateShift, type Vec3 } from '@aio/schema';
 import { PerspectiveCamera } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { frameOf } from '../survey/measureScene';
 import { attachAntennaHandles } from './antennaHandles';
+import { boxCropSelection, draggedUnit } from './antennaBoxEdit';
+import { antennaCentre, antennaMeasure, axisToLocal } from './antennaMeasure';
 import type * as storeModule from './antennaStore';
 import { antennaStore, commitBoxDrag } from './antennaStore';
+import { projectToHost } from './screenProjection';
 
 vi.mock('../shell', async () => {
   const { createStore } = await import('zustand/vanilla');
@@ -105,6 +108,22 @@ const handle = (key: string) => {
   if (!h) throw new Error(`no handle ${key}`);
   return h;
 };
+/** The screen box of a face's arrow as drawn: its stem ends and its cone's three points. */
+const arrowBounds = (g: SVGGElement) => {
+  const stem = g.querySelector('.antenna-handle-stem');
+  const xs = [Number(stem?.getAttribute('x1')), Number(stem?.getAttribute('x2'))];
+  const ys = [Number(stem?.getAttribute('y1')), Number(stem?.getAttribute('y2'))];
+  const d = g.querySelector('.antenna-handle-cone')?.getAttribute('d') ?? '';
+  const nums = (d.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+  nums.forEach((v, i) => (i % 2 === 0 ? xs : ys).push(v));
+  return {
+    left: Math.min(...xs),
+    right: Math.max(...xs),
+    top: Math.min(...ys),
+    bottom: Math.max(...ys),
+  };
+};
+
 const pointer = (type: string, target: EventTarget, x: number, y: number) => {
   target.dispatchEvent(
     new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 }),
@@ -159,6 +178,163 @@ describe('antenna box handles', () => {
     const arg = vi.mocked(commitBoxDrag).mock.calls[0]?.[0];
     expect(arg?.layer).toBe('cloud-1');
     expect(arg?.selection.polygon).toHaveLength(4);
+  });
+
+  it('keeps the drag chip clear of the basemap control in the top-right corner', () => {
+    // the stage around the canvas, with the basemap chip in its top-right slot
+    const stageEl = document.createElement('div');
+    stageEl.className = 'stage';
+    const slot = document.createElement('div');
+    slot.className = 'stage-slot';
+    slot.dataset.slot = 'tr';
+    const basemap = document.createElement('div');
+    basemap.className = 'stage-basemap';
+    slot.append(basemap);
+    env.host.replaceWith(stageEl);
+    stageEl.append(env.host, slot);
+    const control = new DOMRect(700, 8, 92, 28);
+    const chipSize = new DOMRect(0, 0, 130, 22);
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
+    spy.mockImplementation(function (this: HTMLElement) {
+      if (this === basemap) return control;
+      if (this.classList.contains('antenna-handle-chip')) return chipSize;
+      return new DOMRect(0, 0, 0, 0);
+    });
+    try {
+      pointer('pointerdown', handle('1:+'), 400, 300);
+      // up toward the top-right corner, under the control
+      pointer('pointermove', window, 620, 10);
+      const chip = env.host.querySelector<HTMLElement>('[data-testid="antenna-handle-readout"]');
+      const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(chip?.style.transform ?? '');
+      const x = Number(m?.[1]);
+      const y = Number(m?.[2]);
+      const meets =
+        x < control.right &&
+        x + chipSize.width > control.left &&
+        y < control.bottom &&
+        y + chipSize.height > control.top;
+      expect(meets).toBe(false);
+      // and inside the canvas
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x + chipSize.width).toBeLessThanOrEqual(800);
+      expect(y).toBeGreaterThanOrEqual(0);
+      pointer('pointerup', window, 620, 10);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('on a narrow panel the width label stays clear of the top arrow', () => {
+    // a slim panel, 0.25 m wide: the width label used to hang under the top edge's middle
+    const file = antennaStore.getState().file;
+    const first = file?.units[0];
+    if (!file || !first) throw new Error('no unit');
+    const narrow = { ...first, box: { ...first.box, extents: [0.25, 1.4, 0.15] as Vec3 } };
+    antennaStore.setState({
+      file: { ...file, units: file.units.map((u, i) => (i === 0 ? narrow : u)) },
+    });
+    const [e, nn, z] = narrow.box.centre;
+    const canvasRect = new DOMRect(0, 0, 800, 600);
+    // from a little above and to the side, from level, and from well above
+    for (const [dx, dy] of [
+      [0.5, 0.5],
+      [0, 0],
+      [-0.6, 1.5],
+    ] as const) {
+      env.camera.position.set(e + dx, z + dy, -nn - 4);
+      env.camera.lookAt(e, z, -nn);
+      env.camera.updateMatrixWorld();
+      env.stage.requestRender();
+      const width = antennaMeasure(narrow, frame, null).spots.find((s) => s.key.endsWith(':dim:w'));
+      if (!width) throw new Error('no width label');
+      const at = projectToHost(width.at, env.camera, canvasRect, canvasRect);
+      // `.sv-label` at 12px mono: about 7.3px a character plus 6px padding a side, 20px tall;
+      // placed as antennaLabels does (beside: margin -24px 0 0 6px; below: centred, 4px under)
+      const w = width.text.length * 7.3 + 12;
+      const label =
+        width.align === 'below'
+          ? { left: at.x - w / 2, top: at.y + 4, right: at.x + w / 2, bottom: at.y + 24 }
+          : { left: at.x + 6, top: at.y - 24, right: at.x + 6 + w, bottom: at.y - 4 };
+      const arrow = arrowBounds(handle('1:+'));
+      const meets =
+        label.left < arrow.right &&
+        label.right > arrow.left &&
+        label.top < arrow.bottom &&
+        label.bottom > arrow.top;
+      expect(meets, `camera offset ${String(dx)}, ${String(dy)}`).toBe(false);
+    }
+  });
+
+  describe('the box sent for re-measure on a lined-up date', () => {
+    /** Drag the top arrow up with `shift` as the date's line-up; the selection sent and the box. */
+    const dragWith = (shift: DateShift | null) => {
+      detach();
+      detach = attachAntennaHandles(env.stage, frame, {
+        getShift: () => shift,
+        getLayer: () => 'cloud-1',
+      });
+      pointer('pointerdown', handle('1:+'), 400, 300);
+      pointer('pointermove', window, 400, 120);
+      const edit = antennaStore.getState().boxEdit;
+      const held = antennaStore.getState().file?.units.find((u) => u.id === edit?.unitId);
+      if (!edit || !held) throw new Error('no drag');
+      const dragged = draggedUnit(held, edit.face, edit.box);
+      pointer('pointerup', window, 400, 120);
+      const sel = vi.mocked(commitBoxDrag).mock.calls.at(-1)?.[0].selection;
+      if (!sel) throw new Error('nothing sent');
+      return { sel, dragged };
+    };
+    /** The direction of row r of the selection's viewProj (an axis over its half extent). */
+    const row = (vp: number[], r: 0 | 1): Vec3 => {
+      const v: Vec3 = [vp[r] ?? 0, vp[4 + r] ?? 0, vp[8 + r] ?? 0];
+      const n = Math.hypot(...v);
+      return [v[0] / n, v[1] / n, v[2] / n];
+    };
+    const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    /** A local direction turned counter-clockwise (east towards north) by `deg`. */
+    const turnLocal = (v: Vec3, deg: number): Vec3 => {
+      const a = Math.cos((deg * Math.PI) / 180);
+      const b = Math.sin((deg * Math.PI) / 180);
+      return [a * v[0] + b * v[2], v[1], -b * v[0] + a * v[2]];
+    };
+
+    it('on an unturned date sends the box as stored, axes unturned', () => {
+      const { sel, dragged } = dragWith({ eastM: 0.4, northM: -0.2 });
+      const expected = boxCropSelection(
+        antennaCentre(dragged, frame, { eastM: 0.4, northM: -0.2 }),
+        dragged.box.axes.map(axisToLocal) as [Vec3, Vec3, Vec3],
+        dragged.box.extents,
+      );
+      expect(sel.viewProj.map((v) => Number(v.toFixed(9)))).toEqual(
+        expected.viewProj.map((v) => Number(v.toFixed(9))),
+      );
+      expect(sel.anchor).toEqual(expected.anchor);
+    });
+
+    it('on a date turned by 5 degrees sends the drawn box, its axes turned with the date', () => {
+      const unit = antennaStore.getState().file?.units[0];
+      if (!unit) throw new Error('no unit');
+      const [pe, pn] = unit.box.centre;
+      const turned: DateShift = {
+        eastM: 0,
+        northM: 0,
+        turn: { rotationDeg: 5, scale: 1, pivotE: pe, pivotN: pn, pivotX: pe, pivotZ: -pn },
+      };
+      const { sel, dragged } = dragWith(turned);
+      const plain = boxCropSelection(
+        antennaCentre(dragged, frame, turned),
+        dragged.box.axes.map(axisToLocal) as [Vec3, Vec3, Vec3],
+        dragged.box.extents,
+      );
+      // the two horizontal-ish rows are the stored axes turned by 5 degrees, not the stored ones
+      for (const r of [0, 1] as const) {
+        const want = turnLocal(row(plain.viewProj, r), 5);
+        expect(dot(row(sel.viewProj, r), want)).toBeCloseTo(1, 9);
+        expect(dot(row(sel.viewProj, r), row(plain.viewProj, r))).toBeLessThan(0.9999);
+      }
+      // placed where the view draws the unit: the lined-up centre
+      expect(sel.anchor).toEqual(antennaCentre(dragged, frame, turned));
+    });
   });
 
   it('Escape while dragging puts the box back and keeps the selection', () => {

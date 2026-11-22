@@ -1,5 +1,15 @@
 // @vitest-environment jsdom
-import { RF_COVERAGE_MIN_PACK, RfSectorsFile, type AntennasFile } from '@aio/schema';
+import {
+  RF_COVERAGE_MIN_PACK,
+  RF_RUN_SCHEMA,
+  RfSectorsFile,
+  type AntennasFile,
+  type JobRecord,
+  type ProjectManifest,
+  type RfRun,
+} from '@aio/schema';
+import { t } from '@aio/ui';
+import { workspace } from '@aio/workspace';
 import { buildProposal } from './autoplan/proposal';
 import type { CellRow } from './cellCsv';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -28,19 +38,54 @@ import {
   renameSavedSector,
   renameSector,
   resetRf,
+  restoreAntennasToSectors,
   rfStore,
   saveRf,
+  selectFinishedRunCount,
+  selectPlanChanged,
   selectRun,
+  selectUnsavedChanges,
   clearSetting,
   setEquipment,
   setHeightOverride,
   setIncludeUnreviewed,
   setPackStatus,
-  setRunning,
   setDsmGroundProvider,
+  startCoverage,
 } from './rfStore';
 
 type Call = [string, Record<string, unknown>];
+
+function coverageJob(
+  id: string,
+  status: JobRecord['status'],
+  project = '/p1',
+  params: unknown = { runId: 'rf-live' },
+): JobRecord {
+  return {
+    id,
+    pipeline: 'rf.coverage',
+    project,
+    params: params as Record<string, unknown>,
+    status,
+    progress: 0,
+    steps: [],
+    artifacts: [],
+    createdAt: '2026-11-22T10:00:00Z',
+    updatedAt: '2026-11-22T10:00:01Z',
+  };
+}
+
+/** A finished run of `sectors` (only the fields the store reads are real). */
+function runOf(runId: string, sectors: RfSectorsFile, status: RfRun['status'] = 'done'): RfRun {
+  return {
+    schema: RF_RUN_SCHEMA,
+    runId,
+    createdAt: '2026-11-22T09:00:00Z',
+    status,
+    inputs: { sectors: structuredClone(sectors), antennas: [] },
+  } as unknown as RfRun;
+}
 
 const h = vi.hoisted(() => ({
   antennas: null as AntennasFile | null,
@@ -52,9 +97,11 @@ const h = vi.hoisted(() => ({
   writeWarnings: undefined as string[] | undefined,
   delay: null as null | Promise<void>,
   writeDelay: null as null | Promise<void>,
+  runs: [] as RfRun[],
 }));
 
-vi.mock('../shell', () => ({
+vi.mock('../shell', async () => ({
+  jobs: (await import('zustand/vanilla')).createStore<{ jobs: JobRecord[] }>(() => ({ jobs: [] })),
   bridge: {
     call: vi.fn(async (channel: string, req: Record<string, unknown>) => {
       h.calls.push([channel, req]);
@@ -89,7 +136,15 @@ vi.mock('../shell', () => ({
             },
           };
         case 'rf:listRuns':
-          return { ok: true, value: { ok: true, runs: [] } };
+          return { ok: true, value: { ok: true, runs: structuredClone(h.runs) } };
+        case 'jobs:start':
+          return {
+            ok: true,
+            value: {
+              ok: true,
+              job: coverageJob('job-new', 'running', req.project as string, req.params),
+            },
+          };
         case 'rf:writeSectors':
           if (h.writeError) return { ok: true, value: { ok: false, error: h.writeError } };
           if (h.writeDelay) await h.writeDelay;
@@ -105,6 +160,12 @@ vi.mock('../shell', () => ({
     }),
   },
 }));
+
+const shell = await import('../shell');
+const jobsStore = shell.jobs as unknown as {
+  setState: (s: { jobs: JobRecord[] }) => void;
+};
+const MANIFEST = { captures: [], layers: [] } as unknown as ProjectManifest;
 
 const s = () => rfStore.getState();
 const row = (id: string) => {
@@ -143,9 +204,14 @@ beforeEach(() => {
   h.writeError = null;
   h.writeWarnings = undefined;
   h.delay = null;
+  h.writeDelay = null;
+  h.runs = [];
+  jobsStore.setState({ jobs: [] });
+  workspace.getState().openProject({ id: 'p1', root: '/p1', manifest: MANIFEST });
 });
 afterEach(() => {
   vi.clearAllMocks();
+  workspace.getState().closeProject();
 });
 
 describe('height above ground', () => {
@@ -232,12 +298,10 @@ describe('sectors', () => {
       ['S2', ['ant-b']],
       ['S3', ['ant-c']],
     ]);
-    expect(s().unassigned).toEqual(['ant-a', 'ant-b', 'ant-c']);
     expect(s().check.refusals).toEqual(['no-sectors']);
     applyProposal();
     expect(s().sectors.sectors.map((x) => x.antennaIds)).toEqual([['ant-a'], ['ant-b'], ['ant-c']]);
     expect(s().sectors.antennas).toHaveLength(1);
-    expect(s().unassigned).toEqual([]);
   });
 
   it('groups panels within 30 degrees into one sector', async () => {
@@ -261,7 +325,7 @@ describe('sectors', () => {
     moveUnit('ant-b', 'sec-s1');
     expect(s().sectors.sectors[0]?.antennaIds).toEqual(['ant-a', 'ant-b']);
     expect(s().sectors.sectors[1]?.antennaIds).toEqual([]);
-    renameSector('sec-s1', ' North ');
+    await renameSector('sec-s1', ' North ');
     expect(s().sectors.sectors[0]?.name).toBe('North');
     const id = addSector();
     expect(id).toBe('sec-s4');
@@ -281,14 +345,221 @@ describe('renameSavedSector', () => {
     expect(h.sectors?.sectors[0]?.name).toBe('North');
   });
 
-  it('renames a plan with unsaved edits in the working copy only', async () => {
+  it('a rename from Project and from Coverage is one function', async () => {
+    expect(renameSavedSector).toBe(renameSector);
     site();
     await loadRf('p1');
+    // Coverage holds an unsaved move when the sector is renamed from Project
     moveUnit('ant-b', 'sec-s1');
     await renameSavedSector('sec-s2', 'East');
+    // one name in both: the working copy and the saved plan carry it
     expect(s().sectors.sectors[1]?.name).toBe('East');
+    expect(h.sectors?.sectors[1]?.name).toBe('East');
+    // the unsaved move is neither written behind the person's back nor lost
+    expect(h.sectors?.sectors[0]?.antennaIds).toEqual(['ant-a']);
+    expect(s().sectors.sectors[0]?.antennaIds).toEqual(['ant-a', 'ant-b']);
     expect(s().dirty).toBe(true);
-    expect(h.sectors?.sectors[1]?.name).not.toBe('East');
+    expect(selectUnsavedChanges(s())).toBe(true);
+    // Revert in Coverage drops the move but keeps the name
+    await loadRf('p1');
+    expect(s().sectors.sectors[1]?.name).toBe('East');
+    expect(s().sectors.sectors[0]?.antennaIds).toEqual(['ant-a']);
+    expect(selectUnsavedChanges(s())).toBe(false);
+    // the same call from Coverage on a plan with no edits saves at once
+    await renameSector('sec-s3', 'West');
+    expect(h.sectors?.sectors[2]?.name).toBe('West');
+    expect(s().dirty).toBe(false);
+  });
+
+  it('a sector not saved yet is renamed in the working copy and saved with it', async () => {
+    site();
+    await loadRf('p1');
+    const id = addSector();
+    const writes = h.calls.filter(([c]) => c === 'rf:writeSectors').length;
+    await renameSector(id, 'New');
+    expect(s().sectors.sectors.find((x) => x.id === id)?.name).toBe('New');
+    expect(h.calls.filter(([c]) => c === 'rf:writeSectors')).toHaveLength(writes);
+    expect(s().dirty).toBe(true);
+  });
+
+  it('an unchanged name or an empty one writes nothing', async () => {
+    site();
+    await loadRf('p1');
+    await renameSector('sec-s1', 'S1');
+    await renameSector('sec-s1', '  ');
+    expect(h.calls.some(([c]) => c === 'rf:writeSectors')).toBe(false);
+  });
+});
+
+describe('restoreAntennasToSectors', () => {
+  it('puts the units back in their sectors, in the saved plan and the unsaved copy', async () => {
+    site();
+    await loadRf('p1');
+    await removeAntennasFromPlan(['ant-b']);
+    expect(h.sectors?.sectors.find((x) => x.id === 'sec-s2')).toBeUndefined();
+    // an unsaved edit in Coverage while the delete is undone
+    moveUnit('ant-c', null);
+    await restoreAntennasToSectors([
+      { unitId: 'ant-b', sectorId: 'sec-s2', sectorName: 'S2' },
+      { unitId: 'ant-x', sectorId: 'sec-none' },
+    ]);
+    // the emptied sector comes back by its name; a pair with no sector and no name is skipped
+    for (const f of [s().sectors, h.sectors]) {
+      expect(f?.sectors.find((x) => x.id === 'sec-s2')).toEqual({
+        id: 'sec-s2',
+        name: 'S2',
+        antennaIds: ['ant-b'],
+      });
+      expect(f?.sectors.some((x) => x.id === 'sec-none')).toBe(false);
+    }
+    // the unsaved move of ant-c stays unsaved
+    expect(h.sectors?.sectors.find((x) => x.id === 'sec-s3')?.antennaIds).toEqual(['ant-c']);
+    expect(s().dirty).toBe(true);
+  });
+
+  it('brings back the RF settings the delete removed, in the saved plan and the unsaved copy', async () => {
+    site();
+    await loadRf('p1');
+    const before = s().sectors.antennas.find((a) => a.antennaId === 'ant-b');
+    if (!before) throw new Error('no settings');
+    await removeAntennasFromPlan(['ant-b']);
+    expect(h.sectors?.antennas.some((a) => a.antennaId === 'ant-b')).toBe(false);
+    moveUnit('ant-c', null);
+    await restoreAntennasToSectors([
+      { unitId: 'ant-b', sectorId: 'sec-s2', sectorName: 'S2', settings: before },
+    ]);
+    for (const f of [s().sectors, h.sectors])
+      expect(f?.antennas.find((a) => a.antennaId === 'ant-b')).toEqual(before);
+    expect(s().dirty).toBe(true);
+  });
+
+  it('settings alone come back for a unit that was in no sector; settings set meanwhile win', async () => {
+    site();
+    await loadRf('p1');
+    const b = s().sectors.antennas.find((a) => a.antennaId === 'ant-b');
+    const c = s().sectors.antennas.find((a) => a.antennaId === 'ant-c');
+    if (!b || !c) throw new Error('no settings');
+    await removeAntennasFromPlan(['ant-b']);
+    await restoreAntennasToSectors([
+      { unitId: 'ant-b', settings: b },
+      // ant-c still has its own settings: the old ones are not written over them
+      { unitId: 'ant-c', settings: { ...c, carriers: [] } },
+    ]);
+    expect(h.sectors?.antennas.find((a) => a.antennaId === 'ant-b')).toEqual(b);
+    expect(h.sectors?.antennas.find((a) => a.antennaId === 'ant-c')).toEqual(c);
+    expect(h.sectors?.sectors.some((x) => x.antennaIds.includes('ant-b'))).toBe(false);
+  });
+
+  it('leaves a unit that is already in a sector where it is', async () => {
+    site();
+    await loadRf('p1');
+    await restoreAntennasToSectors([
+      { unitId: 'ant-a', sectorId: 'sec-s2' },
+      { unitId: 'ant-b', sectorId: 'sec-s9', sectorName: 'S9' },
+    ]);
+    expect(s().sectors.sectors.map((x) => x.antennaIds)).toEqual([['ant-a'], ['ant-b'], ['ant-c']]);
+    expect(h.calls.some(([c]) => c === 'rf:writeSectors')).toBe(false);
+  });
+});
+
+describe('the plan changed since a run', () => {
+  it('a plan saved after the newest run reads as changed after a reopen', async () => {
+    site();
+    const ran = structuredClone(h.sectors);
+    if (!ran) throw new Error('no plan');
+    h.runs = [
+      runOf('rf-2', { ...ran, study: { ...ran.study, radiusM: 2000 } }),
+      runOf('rf-1', ran),
+    ];
+    await loadRf('p1');
+    expect(selectPlanChanged(s())).toBe(true);
+    // the app closed and opened again: the same answer from what is saved
+    resetRf();
+    await loadRf('p1');
+    expect(selectPlanChanged(s())).toBe(true);
+    // the older run, chosen, is the plan as saved
+    rfStore.setState({ selectedRunId: 'rf-1' });
+    expect(selectPlanChanged(s())).toBe(false);
+  });
+
+  it('the newest run of the saved plan is current; a save after it is not, an unsaved edit is not saved', async () => {
+    site();
+    const ran = structuredClone(h.sectors);
+    if (!ran) throw new Error('no plan');
+    h.runs = [runOf('rf-1', ran)];
+    await loadRf('p1');
+    expect(selectPlanChanged(s())).toBe(false);
+    patchStudy({ radiusM: 4000 });
+    // the saved plan is still the one that ran
+    expect(selectPlanChanged(s())).toBe(false);
+    await saveRf();
+    expect(selectPlanChanged(s())).toBe(true);
+  });
+
+  it('a failed run does not count, and no run or no plan reads as unchanged', async () => {
+    site();
+    await loadRf('p1');
+    expect(selectPlanChanged(s())).toBe(false);
+    const ran = structuredClone(h.sectors);
+    if (!ran) throw new Error('no plan');
+    h.runs = [runOf('rf-2', sectorsFileOther(ran), 'failed'), runOf('rf-1', ran)];
+    await loadRf('p1');
+    expect(selectFinishedRunCount(s())).toBe(1);
+    expect(selectPlanChanged(s())).toBe(false);
+  });
+});
+
+function sectorsFileOther(f: RfSectorsFile): RfSectorsFile {
+  return { ...f, study: { ...f.study, radiusM: f.study.radiusM + 1000 } };
+}
+
+describe('the coverage job', () => {
+  it('a job missing from the list ends the run', async () => {
+    site();
+    await loadRf('p1');
+    const r = await startCoverage('/p1');
+    expect(r.ok).toBe(true);
+    // the job is not in the list yet: the run is still going
+    expect(s().running).toBe(true);
+    jobsStore.setState({ jobs: [coverageJob('job-new', 'running')] });
+    expect(s().running).toBe(true);
+    // gone from the list without an end: the run ends and says why
+    jobsStore.setState({ jobs: [] });
+    expect(s().running).toBe(false);
+    expect(s().jobId).toBeNull();
+    expect(s().pendingRunId).toBeNull();
+    expect(s().runError).toBe(t('rf.results.runLost'));
+    expect(s().check.refusals).toEqual([]);
+  });
+
+  it('a live coverage job is adopted on load', async () => {
+    site();
+    jobsStore.setState({
+      jobs: [
+        coverageJob('job-other', 'running', '/other'),
+        coverageJob('job-old', 'done'),
+        coverageJob('job-live', 'running', '\\p1\\'),
+      ],
+    });
+    await loadRf('p1');
+    expect(s().running).toBe(true);
+    expect(s().jobId).toBe('job-live');
+    expect(s().pendingRunId).toBe('rf-live');
+    // a second run cannot start
+    expect(s().check.refusals).toContain('running');
+    expect(await startCoverage('/p1')).toEqual({ ok: false, code: 'refused' });
+    expect(h.calls.some(([c]) => c === 'jobs:start')).toBe(false);
+    jobsStore.setState({ jobs: [coverageJob('job-live', 'done')] });
+    expect(s().running).toBe(false);
+  });
+
+  it('a coverage job that shows up after the load is adopted too', async () => {
+    site();
+    await loadRf('p1');
+    expect(s().running).toBe(false);
+    jobsStore.setState({ jobs: [coverageJob('job-late', 'starting')] });
+    expect(s().running).toBe(true);
+    expect(s().jobId).toBe('job-late');
   });
 });
 
@@ -399,9 +670,9 @@ describe('eligibility and the run check', () => {
     expect(s().check.refusals).toEqual(['read-only']);
     h.readOnly = false;
     await loadRf('p1');
-    setRunning(true, 'job-1');
+    jobsStore.setState({ jobs: [coverageJob('job-1', 'running')] });
     expect(s().check.refusals).toEqual(['running']);
-    setRunning(false);
+    jobsStore.setState({ jobs: [coverageJob('job-1', 'cancelled')] });
     expect(s().jobId).toBeNull();
     expect(s().check.refusals).toEqual([]);
   });

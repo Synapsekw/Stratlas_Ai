@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { t } from '@aio/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiCard, type AiCardProps } from './AiCard';
 
@@ -52,13 +53,15 @@ afterEach(() => {
 });
 
 describe('AiCard', () => {
-  it('explains Auto-plan and offers Auto-plan & run, set up by hand and Use cell export', () => {
+  it('explains Auto-plan and offers Auto-plan and run, set up by hand and Use cell export', () => {
     const p = render();
     const card = byTest('rf-ai-card');
     expect(card?.textContent).toContain('Plan coverage with AI');
     expect(card?.textContent).toContain('You review it before anything is saved.');
+    // one line says what Use cell export does and how its rows match
+    expect(byTest('rf-ai-export-what')?.textContent).toBe(t('rf.steps.ai.exportWhat'));
     const run = byTest('rf-ai-autoplan');
-    expect(run?.textContent).toContain('Auto-plan & run');
+    expect(run?.textContent).toContain('Auto-plan and run');
     expect(run?.className).toContain('primary');
     act(() => run?.click());
     expect(p.onAutoplan).toHaveBeenCalledOnce();
@@ -99,6 +102,23 @@ describe('AiCard', () => {
     drop(card, [new File(['a,b'], 'export.CSV')]);
     await flush();
     expect(p.onUseExport).toHaveBeenCalledWith('text of export.CSV');
+  });
+
+  it('a cell export that cannot be read says what failed', async () => {
+    const p = render({ readFile: () => Promise.reject(new Error('the file is locked')) });
+    const input = byTest('rf-ai-export-file') as HTMLInputElement | null;
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      value: [new File(['a,b'], 'cells.csv', { type: 'text/csv' })],
+    });
+    act(() => {
+      input?.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await flush();
+    expect(p.onUseExport).not.toHaveBeenCalled();
+    expect(byTest('rf-ai-card')?.querySelector('[role="alert"]')?.textContent).toBe(
+      'The cell export could not be read: the file is locked',
+    );
   });
 
   it('disabled: no action runs', async () => {

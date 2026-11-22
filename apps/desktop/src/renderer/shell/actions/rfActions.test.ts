@@ -45,9 +45,11 @@ describe('rf coverage action', () => {
     expect(menu()).toBeUndefined();
   });
 
-  it('is greyed with a reason during a coverage run', () => {
+  it('is not greyed during a coverage run: it only opens the tab', () => {
     rfStore.setState({ antennas: { antennas: [] } as never, running: true });
-    expect(menu()?.disabled).toBe(t('actions.rf.running'));
+    expect(menu()?.disabled).toBe(false);
+    menu()?.run();
+    expect(openRfTab).toHaveBeenCalledOnce();
   });
 
   it('opens the RF tab when run', () => {

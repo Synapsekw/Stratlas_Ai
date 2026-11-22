@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MeasurementTool, MeasurementsFile, type SitePoint } from '@aio/schema';
 import { measurementFrom } from '../templates/model';
-import { measurementReadout } from './readout';
+import { measurementReadout, TOOL_LABELS } from './readout';
 import { antennaAzimuth, antennaTilt, clearance, flipFace } from './telecom';
 
 const north: SitePoint[] = [
@@ -333,6 +333,12 @@ describe('telecom measurements in ENZ coordinates', () => {
     expect(measurementReadout({ tool: 'antenna-tilt', points: pts })[0]).toMatchObject({
       value: null,
     });
+  });
+
+  it('names the three tools as the menu does', () => {
+    expect(TOOL_LABELS.azimuth).toBe('Antenna azimuth');
+    expect(TOOL_LABELS['antenna-tilt']).toBe('Physical tilt');
+    expect(TOOL_LABELS.clearance).toBe('Clearance');
   });
 
   it('accepts all three new tool identifiers in the existing schema', () => {

@@ -311,10 +311,12 @@ describe('the Coverage chip', () => {
     expect(startAutoplan).not.toHaveBeenCalled();
   });
 
-  it('a plan saved since the run shows Run, not the old result', () => {
+  it('a plan saved since the run shows Run, not the old result, and says the plan changed', () => {
+    const ran = { ...RUN, inputs: { sectors: planned, antennas: [] } } as RfRun;
     seed(site3(), {
       sectors: planned,
-      runs: [RUN],
+      saved: planned,
+      runs: [ran],
       selectedRunId: RUN.runId,
       classStats: STATS,
       view: 'rsrp',
@@ -322,10 +324,12 @@ describe('the Coverage chip', () => {
     render();
     expect(chip()?.dataset.state).toBe('result');
     act(() => {
-      rfStore.setState({ planChangedSinceRun: true });
+      // what is saved differs from what the run recorded (as after a reopen)
+      rfStore.setState({ saved: { ...planned, sectors: planned.sectors.slice(0, 1) } });
     });
     expect(chip()?.dataset.state).toBe('ready');
     expect(byId('rf-chip-run')).not.toBeNull();
+    expect(text(chip())).toContain('plan changed since this run');
   });
 
   it('result names the view instead of the share for best server and overlap', () => {

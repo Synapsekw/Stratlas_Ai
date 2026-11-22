@@ -68,7 +68,7 @@ describe('palette: Coverage', () => {
     expect(command('rf:open')).toBeUndefined();
   });
 
-  it('offers only Open Coverage panel before the antennas are reviewed', () => {
+  it('offers only Open in Coverage before the antennas are reviewed', () => {
     antennaStore.setState({
       projectId: 'p',
       status: 'ready',
@@ -79,7 +79,7 @@ describe('palette: Coverage', () => {
     expect(command('rf:autoplan')).toBeUndefined();
   });
 
-  it('offers Auto-plan coverage and Open Coverage panel once the project has antennas', () => {
+  it('offers Auto-plan coverage and Open in Coverage once the project has antennas', () => {
     antennaStore.setState({
       projectId: 'p',
       status: 'ready',
@@ -87,12 +87,12 @@ describe('palette: Coverage', () => {
     });
     open();
     expect(command('rf:autoplan')?.title).toBe('Auto-plan coverage');
-    expect(command('rf:open')?.title).toBe('Open Coverage panel');
+    expect(command('rf:open')?.title).toBe('Open in Coverage');
     act(() => {
       command('rf:open')?.run();
     });
     expect(workbench.getState().tabs.find((t) => t.id === 'rf')?.pinned).toBe(true);
-    // the review dialog lives in the Coverage panel: the tab is open before Auto-plan starts
+    // the review dialog lives in Coverage: the tab is open before Auto-plan starts
     act(() => {
       workbench.getState().close('rf');
     });
@@ -108,7 +108,7 @@ describe('palette: Coverage', () => {
     expect(tabAtStart).toBe(true);
   });
 
-  it('offers no Auto-plan on a read-only project, only Open Coverage panel', () => {
+  it('offers no Auto-plan on a read-only project, only Open in Coverage', () => {
     rfStore.setState({ readOnly: true });
     antennaStore.setState({
       projectId: 'p',

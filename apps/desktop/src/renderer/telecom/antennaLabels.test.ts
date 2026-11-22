@@ -130,7 +130,7 @@ it('puts the name wholly above its anchor and hangs the width under its line', (
   const spots: AntennaLabelSpot[] = [
     {
       key: 'u:name',
-      text: 'A7 · 1.31 m',
+      text: 'A7 · alt 31.5 m',
       at: [0, 0, 0],
       kind: 'name',
       selected: true,
@@ -148,6 +148,71 @@ it('puts the name wholly above its anchor and hangs the width under its line', (
   expect(el('u:dim:h')?.dataset.align).toBeUndefined();
   expect(el('u:dim:h')?.style.transform).toMatch(/^translate\([^)]*\)$/);
   detach();
+});
+
+it('keeps an angle label in view when its arrow tip is off the side of the view', () => {
+  const host = document.createElement('div');
+  const canvas = document.createElement('canvas');
+  host.append(canvas);
+  document.body.append(host);
+  canvas.getBoundingClientRect = () => new DOMRect(0, 0, 100, 100);
+  host.getBoundingClientRect = () => new DOMRect(0, 0, 100, 100);
+  const camera = new PerspectiveCamera(50, 1, 0.1, 1000);
+  camera.position.set(0, 0, 10);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
+  let frame: () => void = () => undefined;
+  const stage = {
+    camera,
+    renderer: { domElement: canvas },
+    onFrame: (fn: () => void) => {
+      frame = fn;
+      return () => undefined;
+    },
+  };
+  // a side-on dish: the facing arrow's tip is far to the right, in front of the camera;
+  // a second tip sits just inside the right edge, where the label would run off
+  const spots: AntennaLabelSpot[] = [
+    {
+      key: 'd:angle',
+      text: 'az 200.0° · elev 1.5°',
+      at: [20, 0, 0],
+      kind: 'angle',
+      selected: true,
+    },
+    { key: 'e:angle', text: 'az 90.0° · elev 0.0°', at: [4, 0, 0], kind: 'angle', selected: true },
+    { key: 'b:angle', text: 'az 10.0°', at: [0, 0, 20], kind: 'angle', selected: true },
+  ];
+  const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
+  spy.mockImplementation(function (this: HTMLElement) {
+    if (this.dataset.key?.endsWith(':angle')) return new DOMRect(0, 0, 60, 20);
+    return new DOMRect(0, 0, 0, 0);
+  });
+  try {
+    const detach = attachAntennaLabels(stage as unknown as EngineStage, () => spots);
+    frame();
+    const box = (key: string) => {
+      const el = host.querySelector<HTMLElement>(`[data-key="${key}"]`);
+      const m = /translate\((-?\d+)px, (-?\d+)px\)/.exec(el?.style.transform ?? '');
+      // where `.sv-label`'s margin puts the box
+      const x = Number(m?.[1]) + 6;
+      const y = Number(m?.[2]) - 24;
+      return { display: el?.style.display, x, y };
+    };
+    for (const key of ['d:angle', 'e:angle']) {
+      const b = box(key);
+      expect(b.display).toBe('');
+      expect(b.x).toBeGreaterThanOrEqual(0);
+      expect(b.x + 60).toBeLessThanOrEqual(100);
+      expect(b.y).toBeGreaterThanOrEqual(0);
+      expect(b.y + 20).toBeLessThanOrEqual(100);
+    }
+    // a tip behind the camera is still hidden
+    expect(box('b:angle').display).toBe('none');
+    detach();
+  } finally {
+    spy.mockRestore();
+  }
 });
 
 it('hides a pin whose rect meets a selected label, and shows it again when clear', () => {

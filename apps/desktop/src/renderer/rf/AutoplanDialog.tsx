@@ -1,7 +1,7 @@
 /**
  * The Auto-plan review dialog (spec "Auto-plan", F2): one row per planned antenna with its
  * sector, equipment, band · tech · bandwidth, reason and confidence, the units left out, the
- * `<provider> | Rules only` switch, and Cancel / Apply only / Apply & run coverage. Nothing is
+ * `<provider> | Rules only` switch, and Cancel / Apply only / Apply and run. Nothing is
  * written until Apply. Self-contained: it follows `autoplanStore` and renders into a portal under
  * <body>, so it is mounted once and shows itself.
  *
@@ -17,8 +17,9 @@ import { PROVIDER_LABELS } from '@aio/ai';
 import type { IpcResponse, RfCatalogueEntry, RfEquipment, RfTech } from '@aio/schema';
 import { Button, Dialog, Tip, useT, type MessageKey, type Vars } from '@aio/ui';
 import { assetUrl } from '@aio/workspace';
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useStore } from 'zustand';
+import { formatAngle, formatHeight } from '../telecom/antennaFormat';
 import { antennaStore } from '../telecom/antennaStore';
 import {
   applyAutoplan,
@@ -30,6 +31,7 @@ import {
   type ApplyRefusal,
   type AutoplanPhase,
 } from './autoplan/autoplanStore';
+import { describeCellExport } from './autoplan/exportMatch';
 import { planText, type PlanText } from './autoplan/planText';
 import type { Proposal, ProposalRow } from './autoplan/proposal';
 import type { LeftOut } from './autoplan/sectors';
@@ -124,8 +126,8 @@ function PlanRow({ row, proposal, t }: { row: ProposalRow; proposal: Proposal; t
 
   const tilt = unit?.downtiltDeg?.value;
   const meta = [
-    height !== null ? t('rf.autoplan.height', { m: height.toFixed(1) }) : null,
-    tilt !== undefined ? t('rf.autoplan.tilt', { deg: Math.round(tilt) }) : null,
+    height !== null ? t('rf.autoplan.height', { m: formatHeight(height, false) }) : null,
+    tilt !== undefined ? t('rf.autoplan.tilt', { deg: formatAngle(tilt) }) : null,
   ].filter((x): x is string => x !== null);
 
   const eq = row.equipment?.equipment ?? settings?.equipment;
@@ -151,7 +153,7 @@ function PlanRow({ row, proposal, t }: { row: ProposalRow; proposal: Proposal; t
         <b>
           {bearing === null
             ? sectorName
-            : t('rf.autoplan.sectorName', { name: sectorName, deg: Math.round(bearing) })}
+            : t('rf.autoplan.sectorName', { name: sectorName, deg: formatAngle(bearing) })}
         </b>
       </td>
       <td>
@@ -269,6 +271,14 @@ function LeftOutRow({ left, t }: { left: LeftOut; t: T }) {
 function ReviewBody({ proposal, warnings, t }: { proposal: Proposal; warnings: PlanText[]; t: T }) {
   const sectorsWithRows = new Set(proposal.rows.map((r) => r.sectorId)).size;
   const nameOf = (id: string) => proposal.sectors.find((s) => s.id === id)?.name ?? id;
+  // a plan from a cell export: its unused columns and the text of each row that matched nothing
+  const source = useAutoplan((s) => s.source);
+  const csvText = typeof source === 'object' ? source.csvText : null;
+  const exported = useMemo(
+    () => (csvText === null ? null : describeCellExport(csvText)),
+    [csvText],
+  );
+  const ignored = exported?.ignoredColumns ?? [];
   return (
     <>
       <p className="rf-note">
@@ -302,6 +312,7 @@ function ReviewBody({ proposal, warnings, t }: { proposal: Proposal; warnings: P
       </div>
       {(proposal.renames.length > 0 ||
         proposal.unmatchedRows.length > 0 ||
+        ignored.length > 0 ||
         warnings.length > 0) && (
         <ul className="rf-autoplan-notes">
           {proposal.renames.map((r) => (
@@ -309,9 +320,14 @@ function ReviewBody({ proposal, warnings, t }: { proposal: Proposal; warnings: P
               {t('rf.autoplan.rename', { from: nameOf(r.sectorId), to: r.name })}
             </li>
           ))}
-          {proposal.unmatchedRows.length > 0 && (
-            <li>{t('rf.autoplan.unmatchedRows', { lines: proposal.unmatchedRows.join(', ') })}</li>
+          {ignored.length > 0 && (
+            <li>{t('rf.autoplan.ignoredColumns', { columns: ignored.join(', ') })}</li>
           )}
+          {proposal.unmatchedRows.map((line) => (
+            <li key={`line-${String(line)}`}>
+              {t('rf.autoplan.unmatchedRow', { line, text: exported?.lines.get(line) ?? '' })}
+            </li>
+          ))}
           {warnings.map((w, i) => (
             <li key={i}>{planText(t, w)}</li>
           ))}

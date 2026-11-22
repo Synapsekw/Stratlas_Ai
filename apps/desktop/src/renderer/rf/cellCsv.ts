@@ -64,6 +64,8 @@ export interface CellRow {
   line: number;
   /** The antenna cell as written. */
   ref: string;
+  /** The whole row as written (its cells joined), so a row that matches nothing can be read. */
+  text?: string;
   /** The matched unit, or null. */
   unitId: string | null;
   unitName: string | null;
@@ -81,7 +83,26 @@ export interface CellRow {
 }
 
 export type ParseResult =
-  { ok: true; rows: CellRow[] } | { ok: false; error: 'empty' | 'no-antenna-column' };
+  | {
+      ok: true;
+      rows: CellRow[];
+      /** Header cells this import does not read, as written (`unusedColumns`). */
+      ignoredColumns: string[];
+    }
+  | { ok: false; error: 'empty' | 'no-antenna-column' };
+
+/** The fields the CSV import reads: azimuth and height only help Auto-plan's match. */
+const IMPORT_FIELDS: readonly CellField[] = [
+  'antenna',
+  'sector',
+  'tech',
+  'band',
+  'bandwidth',
+  'power',
+  'etilt',
+  'antennaModel',
+  'radioModel',
+];
 
 /** Split CSV text into records (quotes, doubled quotes, CRLF, a comma or semicolon separator). */
 export function splitCsv(text: string): string[][] {
@@ -133,6 +154,27 @@ export function columnsOf(header: readonly string[]): Partial<Record<CellField, 
   return cols;
 }
 
+/**
+ * The header cells that none of `used` reads, as written (trimmed; empty ones left out): a column
+ * whose name is not understood, or a second column of a field that is already read.
+ */
+export function unusedColumns(
+  header: readonly string[],
+  cols: Partial<Record<CellField, number>>,
+  used: readonly CellField[],
+): string[] {
+  const read = new Set(used.flatMap((f) => (cols[f] === undefined ? [] : [cols[f]])));
+  return header.flatMap((h, i) => (read.has(i) || h.trim() === '' ? [] : [h.trim()]));
+}
+
+/** A row's cells as written, joined, for a row that matches nothing. */
+export const rowText = (rec: readonly string[]): string =>
+  rec
+    .map((c) => c.trim())
+    .join(', ')
+    .replace(/(, )+$/, '')
+    .slice(0, 200);
+
 /** A catalogue entry by id, model, or vendor and model (case and spacing ignored). */
 export function findEntry(
   catalogue: readonly RfCatalogueEntry[],
@@ -181,6 +223,7 @@ export function parseCellCsv(
     const row: CellRow = {
       line: i + 2,
       ref,
+      text: rowText(rec),
       unitId: unit?.id ?? null,
       unitName: unit?.name ?? null,
       problems,
@@ -230,7 +273,7 @@ export function parseCellCsv(
     }
     return row;
   });
-  return { ok: true, rows };
+  return { ok: true, rows, ignoredColumns: unusedColumns(header, cols, IMPORT_FIELDS) };
 }
 
 /** A row that can be applied: it matched a unit (cell problems only leave those cells out). */

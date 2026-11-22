@@ -315,10 +315,10 @@ describe('the English catalogue', () => {
 });
 
 describe('RF coverage texts', () => {
-  it('name the Coverage panel, never the old RF tab', () => {
+  it('name Coverage, never the old RF tab or the Coverage panel', () => {
     const rf = Object.entries(en).filter(([k]) => k.startsWith('rf.'));
-    expect(rf.filter(([, v]) => /\bRF tab\b/.test(v)).map(([k]) => k)).toEqual([]);
-    expect(t('rf.layer.none')).toContain('Coverage panel');
+    expect(rf.filter(([, v]) => /\bRF tab\b|Coverage panel/.test(v)).map(([k]) => k)).toEqual([]);
+    expect(t('rf.layer.none')).toContain('in Coverage');
   });
 
   it('never promise that Auto-plan plans a draft (F6)', () => {

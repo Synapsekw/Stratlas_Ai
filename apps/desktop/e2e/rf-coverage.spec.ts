@@ -238,10 +238,10 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
   await expect(bench.getByTestId('rf-sectors')).toContainText('No sectors');
   await evidence(win, 'coverage-panel');
 
-  // 2. three sectors by bearing (the draft panel stays out), each the generic n78 AAU on n78
+  // 2. three sectors by azimuth (the draft panel stays out), each the generic n78 AAU on n78
   await bench
     .getByTestId('rf-sectors')
-    .getByRole('button', { name: 'Group by bearing', exact: true })
+    .getByRole('button', { name: 'Group by azimuth', exact: true })
     .click();
   const rows = bench.locator('[data-testid^="rf-step-sector-sec-"]');
   await expect(rows).toHaveCount(3);
@@ -317,6 +317,13 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
     })
     .toBe(true);
   const afterRun = await classTable(bench);
+  // the generic catalogue is not checked against datasheets, and the results say so
+  await expect(bench.getByTestId('rf-unverified')).toHaveText(
+    'Equipment values not checked against datasheets',
+  );
+  // step 3 has one run button: every run is a new run
+  await expect(bench.getByRole('button', { name: 'Save as new run' })).toHaveCount(0);
+  await expect(bench.getByTestId('rf-plan-changed')).toHaveCount(0);
   expect(afterRun.map((r) => r.split('|')[0])).toEqual(CLASS_NAMES);
   const shares = afterRun.map((r) => Number(/(\d+)%$/.exec(r)?.[1] ?? NaN));
   expect(shares.every(Number.isFinite)).toBe(true);
@@ -399,16 +406,20 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
   await workbench(win, 'rf');
   bench = win.locator('.rf-bench');
 
-  // 6. save as a new run: the edit is saved, a second run is made and chosen
-  const saveAsRun = bench.getByRole('button', { name: 'Save as new run', exact: true });
-  await expect(saveAsRun).toBeEnabled({ timeout: 60_000 });
-  await saveAsRun.click();
+  // 6. step 3 says the plan changed since the run; Run coverage saves the edit, makes a second
+  // run and chooses it
+  await expect(bench.getByTestId('rf-plan-changed')).toHaveText(
+    'The plan changed since this run. Run coverage again to see it.',
+  );
+  await expect(run).toBeEnabled({ timeout: 60_000 });
+  await run.click();
   await expect.poll(() => doneRuns(dataRoot.projectDir), { timeout: 240_000 }).toHaveLength(2);
   const [firstRun, secondRun] = await doneRuns(dataRoot.projectDir);
   expect((await readRfSectors(dataRoot.projectDir))?.antennas[0]?.etiltDeg).toBe(10);
   const runPick = bench.getByRole('combobox', { name: 'Run', exact: true });
   await expect(runPick).toHaveValue(secondRun ?? '', { timeout: 30_000 });
   await expect(bench.getByRole('status').filter({ hasText: 'not saved yet' })).toHaveCount(0);
+  await expect(bench.getByTestId('rf-plan-changed')).toHaveCount(0);
   await expect
     .poll(async () => (await classTable(bench)).join('\n'), { timeout: 60_000 })
     .toBe(preview.join('\n'));
@@ -540,7 +551,7 @@ for (const size of ['1100x720', '1440x900']) {
       await viewSiteFromAbove(win);
       await expect(card).toBeVisible({ timeout: 30_000 });
 
-      // a quick run: a small study, the rules' plan, Apply & run
+      // a quick run: a small study, the rules' plan, Apply and run
       const head = bench.getByTestId('rf-advanced');
       if ((await head.getAttribute('aria-expanded')) !== 'true') await head.click();
       const study = bench.getByTestId('rf-study');

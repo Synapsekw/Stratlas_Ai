@@ -1,6 +1,7 @@
 /**
  * Import the cell export CSV (spec D6): choose a file, review every row matched to a detected unit
- * by name (or id), with the rows that match no unit listed too, then apply the chosen rows to the
+ * by name (or id), with the rows that match no unit listed too (as written) and the columns it
+ * does not read named, then apply the chosen rows to the
  * RF working copy. Nothing is written until the tab saves; imported values are the person's
  * (basis user). The format is `cellCsv.ts`.
  */
@@ -40,6 +41,8 @@ export function CsvImport({ onClose, opener, readFile }: CsvImportProps) {
   const [rows, setRows] = useState<CellRow[] | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // header cells the import does not read, named so nothing is ignored in silence
+  const [ignored, setIgnored] = useState<string[]>([]);
   const [skip, setSkip] = useState<ReadonlySet<number>>(new Set());
   const input = useRef<HTMLInputElement>(null);
   const choose = useRef<HTMLButtonElement>(null);
@@ -53,17 +56,31 @@ export function CsvImport({ onClose, opener, readFile }: CsvImportProps) {
         })();
 
   const load = async (file: File) => {
-    const text = readFile ? await readFile(file) : await file.text();
-    const r = parseCellCsv(text, units ?? [], entries);
     setFileName(file.name);
     setSkip(new Set());
+    let text: string;
+    try {
+      text = readFile ? await readFile(file) : await file.text();
+    } catch (e) {
+      setRows(null);
+      setIgnored([]);
+      setError(
+        t('rf.autoplan.error.exportUnreadable', {
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      );
+      return;
+    }
+    const r = parseCellCsv(text, units ?? [], entries);
     if (!r.ok) {
       setRows(null);
+      setIgnored([]);
       setError(t(r.error === 'empty' ? 'rf.csv.empty' : 'rf.csv.noAntennaColumn'));
       return;
     }
     setError(null);
     setRows(r.rows);
+    setIgnored(r.ignoredColumns);
   };
 
   const usable = rows?.filter(applicable) ?? [];
@@ -142,6 +159,11 @@ export function CsvImport({ onClose, opener, readFile }: CsvImportProps) {
           <p className="rf-note" role="status" data-testid="rf-csv-summary">
             {t('rf.csv.summary', { matched: usable.length, unmatched })}
           </p>
+          {ignored.length > 0 && (
+            <p className="rf-note" data-testid="rf-csv-ignored">
+              {t('rf.csv.ignoredColumns', { columns: ignored.join(', ') })}
+            </p>
+          )}
           <div className="rf-csv-table-wrap">
             <table className="rf-csv-table">
               <thead>
@@ -183,7 +205,8 @@ export function CsvImport({ onClose, opener, readFile }: CsvImportProps) {
                           }}
                         />
                       </td>
-                      <td className="mono">{r.ref}</td>
+                      {/* a row that matches nothing shows the whole row as written */}
+                      <td className="mono">{r.unitId === null ? (r.text ?? r.ref) : r.ref}</td>
                       <td>{r.unitName ?? <span className="rf-off">{t('rf.csv.noMatch')}</span>}</td>
                       <td>{blank(r.sector)}</td>
                       <td>{blank(r.band)}</td>

@@ -36,7 +36,14 @@ import { bridge } from '../../shell';
 import { antennaStore, openAntennaReview } from '../../telecom/antennaStore';
 import { workbench, type WorkbenchState } from '../../workspace/workbench/workbenchStore';
 import { startRfRun } from '../rfTab';
-import { applyPlan, rfStore, type RfState, type RfView, type StartResult } from '../rfStore';
+import {
+  applyPlan,
+  rfStore,
+  selectPlanChanged,
+  type RfState,
+  type RfView,
+  type StartResult,
+} from '../rfStore';
 import { entryCoversBand } from './bandFit';
 import { matchCellExport } from './exportMatch';
 import { msg, raw, type PlanText } from './planText';
@@ -72,7 +79,8 @@ export type ChipState =
   | { kind: 'hidden' }
   | { kind: 'review-first'; total: number }
   | { kind: 'not-planned'; accepted: number }
-  | { kind: 'ready'; sectors: number }
+  /** `changed`: there is a run, but the plan changed since it (edited, or saved after it). */
+  | { kind: 'ready'; sectors: number; changed?: true }
   | { kind: 'planning' }
   | { kind: 'running' }
   /** `fairOrBetterPct` is null until the selected run's class stats are known. */
@@ -543,9 +551,10 @@ export function canAutoplan(chip: ChipState, readOnly: boolean): boolean {
 
 /**
  * The Coverage chip's state from the RF store, the detected units and Auto-plan. The selected
- * run is the result while the plan is as it ran: neither edited (`dirty`) nor saved again since
- * (`planChangedSinceRun`). Ready needs the units Auto-plan plans (`plannedUnits`) that are in a
- * sector to be set up; a draft, rejected or inactive member does not hold it back.
+ * run is the result while the plan is as it ran: neither edited (`dirty`) nor saved differently
+ * since (`selectPlanChanged`, from what is saved, so the same after a reopen); otherwise Ready says
+ * the plan changed. Ready needs the units Auto-plan plans (`plannedUnits`) that are in a sector to
+ * be set up; a draft, rejected or inactive member does not hold it back.
  */
 export function selectChipState(
   rf: RfState,
@@ -559,7 +568,9 @@ export function selectChipState(
   if (accepted === 0) return { kind: 'review-first', total: antennaUnits.length };
 
   const run = rf.selectedRunId ? rf.runs.find((r) => r.runId === rf.selectedRunId) : undefined;
-  if (run && !rf.dirty && !rf.planChangedSinceRun) {
+  // the one selector step 3 reads too (the selected run is the one it compares)
+  const changed = run !== undefined && (rf.dirty || selectPlanChanged(rf));
+  if (run && !changed) {
     const pct = rf.classStats
       ? Math.round(
           rf.classStats.filter((c) => FAIR_OR_BETTER.has(c.cls)).reduce((t, c) => t + c.share, 0) *
@@ -576,6 +587,8 @@ export function selectChipState(
     return s?.equipment !== undefined && s.carriers.length > 0;
   };
   if (planned.length > 0 && planned.every(setUp))
-    return { kind: 'ready', sectors: rf.sectors.sectors.length };
+    return changed
+      ? { kind: 'ready', sectors: rf.sectors.sectors.length, changed: true }
+      : { kind: 'ready', sectors: rf.sectors.sectors.length };
   return { kind: 'not-planned', accepted };
 }

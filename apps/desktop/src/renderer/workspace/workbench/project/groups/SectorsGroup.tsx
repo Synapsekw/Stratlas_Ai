@@ -3,14 +3,15 @@
  * bearing and antenna count. A sector can be renamed in place, flown to, or opened in Coverage;
  * everything else about a sector is planned in Coverage. Saved sectors only: with no plan file the
  * group reads "Plan sectors in Coverage." and a rename of a plan with unsaved edits stays in the
- * working copy (`renameSavedSector`).
+ * working copy (`renameSector`). A line says so while Coverage holds unsaved changes.
  */
 import type { RfSector } from '@aio/schema';
 import { IconButton, Row, useT } from '@aio/ui';
 import { useRef, useState, type ReactElement } from 'react';
 import { sectorBearing } from '../../../../rf/rfFields';
-import { renameSavedSector, useRf } from '../../../../rf/rfStore';
+import { renameSector, selectUnsavedChanges, useRf } from '../../../../rf/rfStore';
 import { openRfTab } from '../../../../rf/rfTab';
+import { formatAngle } from '../../../../telecom/antennaFormat';
 import { requestFly, useAntennas } from '../../../../telecom/antennaStore';
 import type { ProjectGroupDef } from '../groupRegistry';
 
@@ -59,6 +60,12 @@ function RenameField(props: {
   );
 }
 
+/** The sector's azimuth in the shared angle format; a value that rounds up to 360 reads 0. */
+function azimuthText(deg: number): string {
+  const d = ((deg % 360) + 360) % 360;
+  return formatAngle(Math.round(d * 10) / 10 >= 360 ? 0 : d);
+}
+
 function SectorRow(props: {
   id: string;
   name: string;
@@ -69,11 +76,13 @@ function SectorRow(props: {
   const readOnly = useRf((s) => s.readOnly);
   const [renaming, setRenaming] = useState(false);
   const bearing = sectorBearing(props.antennaIds, units ?? []);
-  const first = props.antennaIds[0];
+  // the antennas of the sector that are still in the inventory: a deleted unit leaves its id behind
+  const present = props.antennaIds.filter((id) => units?.some((u) => u.id === id) === true);
+  const first = present[0] ?? props.antennaIds[0];
   const done = (name: string | null): void => {
     setRenaming(false);
     if (name !== null && name.trim() !== '' && name.trim() !== props.name) {
-      void renameSavedSector(props.id, name);
+      void renameSector(props.id, name);
     }
   };
   return (
@@ -88,7 +97,7 @@ function SectorRow(props: {
           <>
             {props.name}{' '}
             <span className="mono">
-              {bearing === null ? '—' : `${String(Math.round(bearing) % 360)}°`}
+              {bearing === null ? t('project.sectors.notMeasured') : azimuthText(bearing)}
             </span>
           </>
         )
@@ -108,9 +117,10 @@ function SectorRow(props: {
           <IconButton
             icon="crosshair"
             label={t('project.sectors.flyTo')}
-            disabled={props.antennaIds.length === 0}
+            disabled={present.length === 0}
+            {...(present.length === 0 ? { disabledReason: t('project.sectors.flyTo.gone') } : {})}
             onClick={() => {
-              requestFly(props.antennaIds);
+              requestFly(present);
             }}
           />
           <IconButton
@@ -129,13 +139,25 @@ function SectorRow(props: {
 function SectorsBody(): ReactElement {
   const t = useT();
   const sectors = useSavedSectors();
-  if (sectors.length === 0) return <p className="pl-empty">{t('project.sectors.none')}</p>;
+  const unsaved = useRf(selectUnsavedChanges);
+  const note = unsaved ? <p className="pl-empty">{t('project.sectors.unsaved')}</p> : null;
+  if (sectors.length === 0) {
+    return (
+      <>
+        {note}
+        <p className="pl-empty">{t('project.sectors.none')}</p>
+      </>
+    );
+  }
   return (
-    <ul className="pl-rows">
-      {sectors.map((s) => (
-        <SectorRow key={s.id} id={s.id} name={s.name} antennaIds={s.antennaIds} />
-      ))}
-    </ul>
+    <>
+      {note}
+      <ul className="pl-rows">
+        {sectors.map((s) => (
+          <SectorRow key={s.id} id={s.id} name={s.name} antennaIds={s.antennaIds} />
+        ))}
+      </ul>
+    </>
   );
 }
 

@@ -2,7 +2,7 @@
 import type { AntennaUnit, Vec3 } from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
 import { frameOf } from '../survey/measureScene';
-import { antennaCorners, antennaMeasure } from './antennaMeasure';
+import { antennaCorners, antennaMeasure, boxAxes } from './antennaMeasure';
 
 vi.mock('../shell', () => ({ bridge: { call: () => Promise.resolve({ ok: false }) }, jobs: {} }));
 
@@ -78,6 +78,28 @@ describe('antennaCorners', () => {
   });
 });
 
+describe('a date turned by its line-up', () => {
+  it('turns the box with the date, as the view turns the cloud', () => {
+    // a 90 degree turn about the unit's own centre: across (east) becomes north, local -z
+    const turned = {
+      eastM: 0,
+      northM: 0,
+      turn: { rotationDeg: 90, scale: 1, pivotE: 10, pivotN: 20, pivotX: 10, pivotZ: -20 },
+    };
+    const axes = boxAxes(unit(), turned);
+    expect(axes[0][0]).toBeCloseTo(0, 9);
+    expect(axes[0][2]).toBeCloseTo(-1, 9);
+    const c = antennaCorners(unit(), frame, turned);
+    // the 0.4 m width now runs along local z, the 2.6 m height (axis N) along local x
+    expect(span(c, 2)).toBeCloseTo(0.4, 9);
+    expect(span(c, 0)).toBeCloseTo(2.6, 9);
+    // no turn: the stored axes
+    const plain = boxAxes(unit(), { eastM: 1, northM: 1 })[0];
+    expect(plain[0]).toBeCloseTo(1, 9);
+    expect(plain[2]).toBeCloseTo(0, 9);
+  });
+});
+
 describe('antennaMeasure', () => {
   // an upright unit: across east, up project Z, outward south
   const upright = unit({
@@ -130,17 +152,17 @@ describe('antennaMeasure', () => {
 
   it('puts the true azimuth and downtilt at the facing-arrow tip', () => {
     const angles = antennaMeasure(upright, frame, null).spots.filter((s) => s.kind === 'angle');
-    expect(angles.map((s) => s.text)).toEqual(['az 169.1° · tilt 0.3°']);
+    expect(angles.map((s) => s.text)).toEqual(['az 169.1° · downtilt 0.3°']);
     // arrow length clamp(2.6, 0.5, 5) toward grid 170 (north is -z)
     const az = (170 * Math.PI) / 180;
     expect(angles[0]?.at[0]).toBeCloseTo(10 + Math.sin(az) * 2.6, 9);
     expect(angles[0]?.at[2]).toBeCloseTo(-20 - Math.cos(az) * 2.6, 9);
   });
 
-  it('labels the name and height above the box top', () => {
+  it('labels the name and centre altitude above the box top', () => {
     const m = antennaMeasure(upright, frame, null);
     const name = m.spots.filter((s) => s.kind === 'name');
-    expect(name.map((s) => s.text)).toEqual(['A14 · 2.60 m']);
+    expect(name.map((s) => s.text)).toEqual(['A14 · alt 30.0 m']);
     expect(name[0]?.at[1]).toBeGreaterThan(30 + 1.3);
   });
 
@@ -174,7 +196,42 @@ describe('antennaMeasure', () => {
     const angle = antennaMeasure({ ...upright, convergenceDeg: null }, frame, null).spots.find(
       (s) => s.kind === 'angle',
     );
-    expect(angle?.text).toBe('az 170.0° · tilt 0.3°');
+    expect(angle?.text).toBe('az 170.0° · downtilt 0.3°');
+  });
+
+  it('a dish has one diameter label and no width, height or depth labels', () => {
+    const rest = { ...upright };
+    delete rest.downtiltDeg;
+    const dish = {
+      ...rest,
+      kind: 'dish',
+      elevationDeg: val(1.5),
+      diameterM: val(0.6),
+    } as AntennaUnit;
+    const m = antennaMeasure(dish, frame, null);
+    const dims = m.spots.filter((s) => s.kind === 'dim');
+    expect(dims.map((s) => s.text)).toEqual(['Diameter 0.60 m']);
+    expect(dims.map((s) => s.key)).toEqual(['ant-14:dim:diameter']);
+    // one line with its two end ticks
+    expect(m.segments).toHaveLength(3);
+    // the angle label is still there
+    expect(m.spots.filter((s) => s.kind === 'angle')).toHaveLength(1);
+  });
+
+  it('a dish without a diameter has no dimension label at all', () => {
+    const dish = { ...upright, kind: 'dish' } as AntennaUnit;
+    const m = antennaMeasure(dish, frame, null);
+    expect(m.spots.filter((s) => s.kind === 'dim')).toEqual([]);
+    expect(m.segments).toEqual([]);
+  });
+
+  it('the name label carries the centre altitude', () => {
+    // no typed altitude: the box centre's Z, as the list's Alt m column
+    const plain = antennaMeasure(upright, frame, null).spots.find((s) => s.kind === 'name');
+    expect(plain?.text).toBe('A14 · alt 30.0 m');
+    // a typed altitude wins, with the list's one decimal
+    const typed = antennaMeasure({ ...upright, centreHeightM: val(31.24) }, frame, null);
+    expect(typed.spots.find((s) => s.kind === 'name')?.text).toBe('A14 · alt 31.2 m');
   });
 
   it('follows the line-up shift', () => {
@@ -207,12 +264,13 @@ describe('antennaMeasure', () => {
       const u: AntennaUnit = { ...bare(), widthM: val(0.45) };
       const m = antennaMeasure(u, frame, null);
       expect(m.spots.filter((s) => s.kind === 'dim').map((s) => s.text)).toEqual(['0.45 m']);
-      expect(m.spots.find((s) => s.kind === 'name')?.text).toBe('A12 · Not measured');
+      // a typed width makes it measured: the name carries the altitude as for any unit
+      expect(m.spots.find((s) => s.kind === 'name')?.text).toBe('A12 · alt 30.0 m');
     });
 
-    it('labels it Not measured', () => {
+    it('labels it not measured, with the centre altitude the list shows', () => {
       const m = antennaMeasure(bare(), frame, null);
-      expect(m.spots.map((s) => s.text)).toEqual(['A12 · Not measured']);
+      expect(m.spots.map((s) => s.text)).toEqual(['A12 · alt 30.0 m · not measured']);
     });
   });
 });

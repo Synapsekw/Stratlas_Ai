@@ -64,6 +64,18 @@ describe('Coverage plan group', () => {
     );
   });
 
+  it('the count is the number of finished runs', () => {
+    rfStore.setState({
+      runs: [
+        run('r3', '2026-10-20T10:00:00Z', 'failed'),
+        run('r2', '2026-10-18T10:00:00Z', 'done'),
+        run('r1', '2026-10-10T10:00:00Z', 'done'),
+      ],
+    });
+    mount();
+    expect(host.querySelector('[data-testid="count"]')!.textContent).toBe('2');
+  });
+
   it('opens Coverage', () => {
     mount();
     act(() => {

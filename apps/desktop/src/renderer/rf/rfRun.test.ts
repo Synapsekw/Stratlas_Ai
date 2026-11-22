@@ -13,7 +13,15 @@ import {
   ANTENNA_ENTRY,
   RADIO_ENTRY,
 } from './__fixtures__/rfData';
-import { loadRf, patchStudy, resetRf, rfStore, saveRf, setPackStatus } from './rfStore';
+import {
+  loadRf,
+  patchStudy,
+  resetRf,
+  rfStore,
+  saveRf,
+  selectPlanChanged,
+  setPackStatus,
+} from './rfStore';
 import { openCoverage, openRfTab, startRfRun } from './rfTab';
 
 type Call = [string, Record<string, unknown>];
@@ -23,7 +31,7 @@ const h = vi.hoisted(() => ({
   sectors: null as RfSectorsFile | null,
   calls: [] as Call[],
   startError: null as string | null,
-  runs: [] as unknown[],
+  runs: [] as { runId: string; status: string; inputs: unknown }[],
 }));
 
 vi.mock('../shell', async () => {
@@ -126,29 +134,57 @@ describe('startRfRun', () => {
     expect(h.calls.some(([c]) => c === 'rf:listRuns')).toBe(true);
   });
 
-  it('a plan saved after the last run counts as changed until a run of it is done', async () => {
+  it('a plan saved after the newest run counts as changed until a run of it is done', async () => {
     const bench = createWorkbenchStore(null);
-    expect(rfStore.getState().planChangedSinceRun).toBe(false);
+    const changed = () => selectPlanChanged(rfStore.getState());
+    /** The job wrote its run of the plan as it was saved when it started. */
+    const finish = async (ran: RfSectorsFile | null) => {
+      if (!ran) throw new Error('no plan');
+      h.runs = [
+        {
+          runId: `rf-${String(h.runs.length + 1)}`,
+          status: 'done',
+          inputs: { sectors: ran, antennas: [] },
+        },
+        ...h.runs,
+      ];
+      jobsStore.setState({ jobs: [job('done')] });
+      await vi.waitFor(() => {
+        expect(rfStore.getState().runs).toHaveLength(h.runs.length);
+      });
+    };
+    h.runs = [
+      {
+        runId: 'rf-0',
+        status: 'done',
+        inputs: { sectors: structuredClone(h.sectors), antennas: [] },
+      },
+    ];
+    await loadRf('p3');
+    expect(changed()).toBe(false);
     patchStudy({ radiusM: 2000 });
     await saveRf();
     expect(rfStore.getState().dirty).toBe(false);
-    expect(rfStore.getState().planChangedSinceRun).toBe(true);
+    expect(changed()).toBe(true);
     await startRfRun('/p3', bench);
-    // the run is going: the old result still is the last one until it is done
-    expect(rfStore.getState().planChangedSinceRun).toBe(true);
-    jobsStore.setState({ jobs: [job('done')] });
-    expect(rfStore.getState().planChangedSinceRun).toBe(false);
+    const started = structuredClone(h.sectors);
+    // the run is going: the old result still is the newest one until it is done
+    expect(changed()).toBe(true);
+    await finish(started);
+    expect(changed()).toBe(false);
     // a save made while a run is going is newer than that run
     jobsStore.setState({ jobs: [] });
     await startRfRun('/p3', bench);
+    const again = structuredClone(h.sectors);
     expect(rfStore.getState().running).toBe(true);
     patchStudy({ radiusM: 3000 });
     await saveRf();
-    jobsStore.setState({ jobs: [job('done')] });
-    expect(rfStore.getState().planChangedSinceRun).toBe(true);
-    // another project starts unchanged
-    await loadRf('p4');
-    expect(rfStore.getState().planChangedSinceRun).toBe(false);
+    await finish(again);
+    expect(changed()).toBe(true);
+    // the same after a reopen: it comes from what is saved
+    resetRf();
+    await loadRf('p3');
+    expect(changed()).toBe(true);
   });
 
   it('opens the RF tab when a run starts from elsewhere', async () => {

@@ -253,7 +253,7 @@ test.describe('project list: groups and category order', () => {
     await expect(section.locator('.wb-section-count')).toHaveText('1');
     const row = section.getByRole('listitem').filter({ hasText: 'Alpha' });
     // the unit's azimuth, 120 degrees, is the sector's bearing
-    await expect(row).toContainText('120°');
+    await expect(row).toContainText('120.0°');
     await expect(row).toContainText('1 antenna');
     await evidence(win, 'e-sector-row', true);
     // the row's actions show when it is pointed at

@@ -54,6 +54,10 @@ export const TOOL_FAMILY: Record<MeasurementTool, MeasurementFamily> = {
   freehand: 'markup',
 };
 
+/**
+ * The tool names. `@aio/survey` cannot read the UI catalogue (SPEC section 2), so the three
+ * telecom names repeat `telecom.tools.name.*`; TelecomTools.test.tsx pins them to it.
+ */
 export const TOOL_LABELS: Record<MeasurementTool, string> = {
   elevation: 'Elevation',
   'elevation-difference': 'Elevation difference',
@@ -64,8 +68,8 @@ export const TOOL_LABELS: Record<MeasurementTool, string> = {
   'vertex-table': 'Vertex differences',
   'berm-check': 'Berm check',
   section: 'Cross-section',
-  azimuth: 'Azimuth',
-  'antenna-tilt': 'Antenna tilt',
+  azimuth: 'Antenna azimuth',
+  'antenna-tilt': 'Physical tilt',
   clearance: 'Clearance',
   area: 'Area',
   volume: 'Volume',

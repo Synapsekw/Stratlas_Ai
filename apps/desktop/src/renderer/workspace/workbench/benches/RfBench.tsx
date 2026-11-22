@@ -2,17 +2,18 @@
  * The Coverage panel, the `rf` workbench tab (spec D20, D21; stage island R2; rf-coverage-simplify
  * "The Coverage panel"): coverage prediction for the telecom site.
  *
- * - **AI card:** Auto-plan & run, set up by hand, Use cell export (`rf/panel/AiCard.tsx`).
- * - **Step 1, Antennas:** accepted and draft units, the inventory link, the include drafts switch,
- *   the tower and its highest antenna.
- * - **Step 2, Sectors & equipment:** group by bearing and add sector, then one row per sector with
+ * - **AI card:** Auto-plan and run, set up by hand, Use cell export (`rf/panel/AiCard.tsx`).
+ * - **Step 1, Antennas:** accepted and draft units, the link to the Antennas list, the include
+ *   drafts switch, the tower and its highest antenna.
+ * - **Step 2, Sectors & equipment:** group by azimuth and add sector, then one row per sector with
  *   its state tag. An open row shows the sector's toggle, name and delete, and one unit's fields:
  *   measured geometry with its basis, band and carrier, the AAU, antenna and radio fields that open
  *   the catalogue picker, the e-tilt slider within the port's range and step, power and loss. The
  *   units in no sector and the settings of antennas no longer found stay listed.
  * - **Step 3, Coverage:** RSRP / Best server / Overlap (the layer, T10, draws the choice),
- *   per-class areas, Run coverage, Save as new run, Export, the indicative label and the
- *   assumptions.
+ *   per-class areas, Run coverage (the one run button: every run is a new run), Export, whether
+ *   the plan changed since the shown run, the indicative label, the assumptions and whether the
+ *   run's equipment values are checked against datasheets.
  * - **Advanced (folded):** the study settings (model, environment, where people are, radius,
  *   grid) and the CSV import.
  *
@@ -62,7 +63,9 @@ import {
   renameSector,
   rfStore,
   saveRf,
+  selectPlanChanged,
   selectRun,
+  selectShownRun,
   setEquipment,
   setHeightOverride,
   setPackStatus,
@@ -72,6 +75,7 @@ import {
   type RfView,
 } from '../../../rf/rfStore';
 import { startRfRun } from '../../../rf/rfTab';
+import { formatAngle, formatHeight } from '../../../telecom/antennaFormat';
 import { useCoverage } from '../../../rf/coverageStore';
 import {
   ENVIRONMENT_KEY,
@@ -228,7 +232,11 @@ function SaveBar() {
   const warnings = useRf((s) => s.writeWarnings);
   const projectId = useRf((s) => s.projectId);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  // The warnings belong to the write that returned them: an edit after it makes them old, so a
+  // Revert (or any later state with no new write) does not bring them back. Each write sets a new
+  // array, so the warnings of a later write show again.
+  const [old, setOld] = useState<readonly string[] | null>(null);
+  if (dirty && warnings.length > 0 && old !== warnings) setOld(warnings);
   if (readOnly)
     return (
       <p className="rf-note" data-testid="rf-readonly">
@@ -254,10 +262,8 @@ function SaveBar() {
             data-testid="rf-save"
             onClick={() => {
               void saveRf().then((r) => {
-                if (r.ok) {
-                  setError(null);
-                  setSaved(true);
-                } else
+                if (r.ok) setError(null);
+                else
                   setError(
                     r.code === 'refused' ? r.message || t('rf.saveFailed') : t('rf.saveFailed'),
                   );
@@ -273,7 +279,7 @@ function SaveBar() {
           {error}
         </p>
       )}
-      {!dirty && saved && warnings.length > 0 && (
+      {!dirty && warnings.length > 0 && warnings !== old && (
         <div className="rf-warnbox" role="status" data-testid="rf-write-warnings">
           <b>{t('rf.writeWarnings')}</b>
           <ul>
@@ -347,7 +353,7 @@ function SectorManage({ sectorId }: { sectorId: string }) {
         aria-label={t('rf.sectors.rename', { name: sec.name })}
         disabled={readOnly}
         onBlur={(e) => {
-          renameSector(sec.id, e.target.value);
+          void renameSector(sec.id, e.target.value);
         }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') e.currentTarget.blur();
@@ -356,7 +362,7 @@ function SectorManage({ sectorId }: { sectorId: string }) {
       <span className="rf-sector-meta mono">
         {t('rf.sectors.meta', {
           count: live.length,
-          bearing: bearing === null ? t('rf.sectors.noBearing') : `${fmt(bearing, 0)}°`,
+          bearing: bearing === null ? t('rf.sectors.noBearing') : formatAngle(bearing),
         })}
       </span>
       <IconButton
@@ -556,6 +562,9 @@ function CsvImportButton() {
           {t('rf.csv.open')}
         </Button>
       </div>
+      <p className="rf-note" data-testid="rf-csv-what">
+        {t('rf.steps.advanced.csvWhat')}
+      </p>
       {csv && (
         <CsvImport
           opener={csv}
@@ -601,7 +610,7 @@ function SiteFacts() {
         <span className="mono">
           {top?.heightM == null
             ? t('rf.site.heightUnknown')
-            : t('rf.site.heightValue', { m: fmt(top.heightM) })}
+            : t('rf.site.heightValue', { m: formatHeight(top.heightM, false) })}
         </span>
       </Field>
     </div>
@@ -729,8 +738,11 @@ function UnitFields({ row }: { row: RfUnitRow }) {
           {grid === undefined
             ? t('rf.sector.noAzimuth')
             : az === null
-              ? t('rf.sector.azimuthGridOnly', { grid: fmt(grid.value) })
-              : t('rf.sector.azimuthValue', { true: fmt(az), grid: fmt(grid.value) })}
+              ? t('rf.sector.azimuthGridOnly', { grid: formatAngle(grid.value) })
+              : t('rf.sector.azimuthValue', {
+                  true: formatAngle(az),
+                  grid: formatAngle(grid.value),
+                })}
         </span>
       </Field>
       <Field
@@ -746,7 +758,7 @@ function UnitFields({ row }: { row: RfUnitRow }) {
         }
         hint={t('rf.sector.downtiltHint')}
       >
-        <span className="mono">{tilt ? `${fmt(tilt.value)}°` : t('rf.sector.unknown')}</span>
+        <span className="mono">{tilt ? formatAngle(tilt.value) : t('rf.sector.unknown')}</span>
       </Field>
       <Field
         id="height"
@@ -1254,6 +1266,10 @@ function ResultsSection() {
   const study = useRf((s) => s.sectors.study);
   const preview = useRf((s) => s.preview);
   const rows = useRf((s) => s.rows);
+  // worked out from what is saved, so it reads the same after a reopen; an unsaved edit counts too
+  const planChanged = useRf(
+    (s) => selectPlanChanged(s) || (s.dirty && selectShownRun(s) !== undefined),
+  );
   const [exportOpen, setExportOpen] = useState(false);
   const [exportNote, setExportNote] = useState<string | null>(null);
   const exportBtn = useRef<HTMLButtonElement>(null);
@@ -1288,6 +1304,8 @@ function ResultsSection() {
   };
   const nameOf = (id: string) => rows.find((r) => r.id === id)?.name ?? id;
   const generic = run?.patterns.filter((p) => p.source === 'generic').length ?? 0;
+  // the catalogue entries the run used, as it recorded them (item 71 checks them later)
+  const unverified = run?.catalogue.some((c) => !c.verified) ?? false;
   return (
     <div className="rf-sec">
       <div className="seg rf-seg-full" role="group" aria-label={t('rf.results.view')}>
@@ -1392,21 +1410,6 @@ function ResultsSection() {
           {t(running ? 'rf.results.running' : 'rf.results.run')}
         </Button>
         <Button
-          icon="plus"
-          data-testid="rf-save-run"
-          disabledReason={
-            // a study past the preview's pixel cap is saved and run without a preview
-            preview.status === 'ready' || preview.status === 'too-large'
-              ? running
-                ? undefined
-                : reason
-              : t('rf.results.saveNeedsPreview')
-          }
-          onClick={start}
-        >
-          {t('rf.results.saveAsRun')}
-        </Button>
-        <Button
           ref={exportBtn}
           icon="download"
           disabledReason={run?.status === 'done' ? undefined : t('rf.results.exportNeedsRun')}
@@ -1473,12 +1476,18 @@ function ResultsSection() {
           {exportNote}
         </p>
       )}
+      {planChanged && (
+        <p className="rf-note rf-warn-ink" role="status" data-testid="rf-plan-changed">
+          {t('rf.results.planChanged')}
+        </p>
+      )}
       <div className="rf-indicative" data-testid="rf-indicative">
         <p>
           <b>{t('rf.results.indicative')}</b> {t('rf.results.indicativeBody')}
         </p>
         <p>{assumptionsText(t, study)}</p>
         {generic > 0 && <p>{t('rf.results.generic', { count: generic })}</p>}
+        {unverified && <p data-testid="rf-unverified">{t('rf.results.unverified')}</p>}
         {run?.usedUnreviewed && <p>{t('rf.results.unreviewed')}</p>}
         {run && run.warnings.length > 0 && (
           <ul>

@@ -4,7 +4,7 @@
  * three accepted panels, one draft, no `rf/` folder).
  *
  * - Rules only: no AI provider is set up, so the review dialog plans with the rules. Three rows,
- *   the draft listed as left out; Apply & run saves, runs the real `rf.coverage` job in the
+ *   the draft listed as left out; Apply and run saves, runs the real `rf.coverage` job in the
  *   development venv and the class table fills; every step 2 row is tagged `rules`.
  * - A local model (the fake server on 127.0.0.1, OpenAI-compatible): it answers two valid picks
  *   and one with an entry the catalogue lacks. The review shows that row at low confidence with
@@ -123,7 +123,7 @@ const sectorTags = (bench: Locator) =>
 /** The coverage card's header in the stage corner. */
 const stageChip = (win: Page) => win.getByTestId('rf-chip');
 
-test('Auto-plan with the rules from the coverage card: review, Apply & run, coverage', async ({
+test('Auto-plan with the rules from the coverage card: review, Apply and run, coverage', async ({
   win,
   dataRoot,
 }) => {
@@ -159,7 +159,7 @@ test('Auto-plan with the rules from the coverage card: review, Apply & run, cove
     await expect(chip).toContainText('3 antennas · not planned');
   await expect(win.getByTestId('rf-chip-panel')).toContainText('3 antennas · not planned');
   await expect(bench.getByTestId('rf-ai-card').getByTestId('rf-ai-autoplan')).toHaveText(
-    /Auto-plan & run/,
+    /Auto-plan and run/,
   );
   await evidence(win, 'chip-not-planned');
 
@@ -191,7 +191,7 @@ test('Auto-plan with the rules from the coverage card: review, Apply & run, cove
   await expect(dlg.getByTestId(`rf-autoplan-left-${RF_DRAFT}`)).toContainText('P4');
   await evidence(win, 'review-rules');
 
-  // Apply & run: saved, then the real rf.coverage job
+  // Apply and run: saved, then the real rf.coverage job
   await dlg.getByTestId('rf-autoplan-apply-run').click();
   await expect(dlg).toBeHidden();
   await expect.poll(() => doneRuns(dataRoot.projectDir), { timeout: 240_000 }).toHaveLength(1);

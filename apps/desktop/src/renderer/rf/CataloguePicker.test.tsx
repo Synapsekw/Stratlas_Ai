@@ -71,6 +71,17 @@ describe('CataloguePicker', () => {
     expect(byTest('rf-cat-rru-x')).toBeNull();
   });
 
+  it('shows the warnings from reading the catalogue', () => {
+    render();
+    expect(byTest('rf-cat-warnings')).toBeNull();
+    act(() => root?.unmount());
+    rfStore.setState({ catalogueWarnings: ['vendor.json: entry 3 has no ports and was skipped'] });
+    render();
+    const box = byTest('rf-cat-warnings');
+    expect(box?.textContent).toContain('The catalogue was read with warnings:');
+    expect(box?.textContent).toContain('vendor.json: entry 3 has no ports and was skipped');
+  });
+
   it('shows the EmptyState when nothing matches, and Clear filters brings the list back', () => {
     render();
     type('nothing like this');

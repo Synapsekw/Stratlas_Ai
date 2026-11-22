@@ -706,6 +706,7 @@ describe('selectChipState', () => {
     expect(selectChipState(rf({ classStats: STATS, dirty: true }), units3, idle)).toEqual({
       kind: 'ready',
       sectors: 2,
+      changed: true,
     });
   });
 
@@ -737,12 +738,15 @@ describe('selectChipState', () => {
     expect(selectChipState(onlyDraft, units, idle).kind).toBe('not-planned');
   });
 
-  it('is ready, not the old result, once the plan was saved again after the run', () => {
-    const s = rf({ classStats: STATS });
+  it('is ready, not the old result, once the saved plan is not the one the run recorded', () => {
+    const ran = { ...RUN, inputs: { sectors: planned, antennas: [] } } as RfRun;
+    const s = { ...rf({ classStats: STATS, runs: [ran] }), saved: planned };
     expect(selectChipState(s, units3, idle).kind).toBe('result');
-    expect(selectChipState({ ...s, planChangedSinceRun: true }, units3, idle)).toEqual({
+    const resaved = { ...planned, sectors: planned.sectors.slice(0, 1) };
+    expect(selectChipState({ ...s, saved: resaved }, units3, idle)).toEqual({
       kind: 'ready',
       sectors: 2,
+      changed: true,
     });
   });
 

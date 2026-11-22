@@ -9,6 +9,9 @@ const ALIGN: Record<NonNullable<AntennaLabelSpot['align']>, string> = {
   centre: ' translate(-50%, -50%)',
 };
 
+/** Where `.sv-label`'s margin (measure.css: -24px 0 0 6px) puts a label beside its anchor. */
+const BESIDE = { x: 6, y: -24 };
+
 /** Pointer events a pin keeps to itself, so the stage under it never sees a pin click. */
 const PIN_EVENTS = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick'];
 
@@ -96,11 +99,21 @@ export function attachAntennaLabels(
         if (sp.colour !== undefined) el.style.background = sp.colour;
       } else el.style.fontSize = '12px';
       const at = projectToHost(sp.at, stage.camera, r, hr);
-      if (!at.inside) {
+      // the angle label stays in view: its anchor (the facing arrow's tip) may be off the side
+      const keep = sp.kind === 'angle' && !align && at.front && hr.width > 0 && hr.height > 0;
+      if (!at.inside && !keep) {
         el.style.display = 'none';
         continue;
       }
       el.style.display = '';
+      if (keep) {
+        const size = el.getBoundingClientRect();
+        // `.sv-label`'s offset puts the box at (x + 6, y - 24): hold that box inside the host
+        const left = Math.max(0, Math.min(at.x + BESIDE.x, hr.width - size.width));
+        const top = Math.max(0, Math.min(at.y + BESIDE.y, hr.height - size.height));
+        at.x = left - BESIDE.x;
+        at.y = top - BESIDE.y;
+      }
       const to = `translate(${String(Math.round(at.x))}px, ${String(Math.round(at.y))}px)`;
       // an aligned label is placed by its align; any other sits beside it (.sv-label's margin)
       el.style.transform = align ? to + ALIGN[align] : to;

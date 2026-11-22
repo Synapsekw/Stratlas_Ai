@@ -1,7 +1,8 @@
 /**
  * The Coverage panel's AI card (spec "The Coverage panel", 1): one sentence on what Auto-plan
- * does, **Auto-plan & run**, a "set up by hand" link that opens step 2, and **Use cell export**, a
- * file pick. Dropping a `.csv` on the card does what the pick does. Once a group came from an
+ * does, **Auto-plan and run**, a "set up by hand" link that opens step 2, and **Use cell export**, a
+ * file pick, with one line on what the export does and how its rows match. Dropping a `.csv` on the
+ * card does what the pick does; a file that cannot be read says so. Once a group came from an
  * export, Use cell export is the main action. The card only calls its handlers; the bench wires
  * them to Auto-plan.
  */
@@ -35,9 +36,17 @@ export function AiCard({
   const t = useT();
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const use = (file: File | undefined) => {
     if (disabled || !file || !isCsv(file)) return;
-    void (readFile ? readFile(file) : file.text()).then(onUseExport, () => undefined);
+    setError(null);
+    void (readFile ? readFile(file) : file.text()).then(onUseExport, (e: unknown) => {
+      setError(
+        t('rf.autoplan.error.exportUnreadable', {
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      );
+    });
   };
   return (
     <div
@@ -108,6 +117,14 @@ export function AiCard({
           }}
         />
       </div>
+      <p className="rf-note" data-testid="rf-ai-export-what">
+        {t('rf.steps.ai.exportWhat')}
+      </p>
+      {error && (
+        <p className="rf-note rf-err" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

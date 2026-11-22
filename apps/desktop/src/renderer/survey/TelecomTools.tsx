@@ -30,21 +30,8 @@ import {
 } from './measureStore';
 import './telecom.css';
 
-const GUIDANCE: Record<TelecomTool, string> = {
-  azimuth:
-    'Pick three points along the top or bottom edge of the antenna front face. Check the facing arrow, then flip it if needed.',
-  'antenna-tilt':
-    'Pick bottom and top on the same straight antenna edge. Physical inclination from project vertical, not electrical tilt or signed downtilt.',
-  clearance:
-    'Pick two endpoints across the chosen gap. Reports direct 3D distance, horizontal separation and absolute vertical gap.',
-};
-const MEANING: Record<TelecomTool, string> = {
-  azimuth:
-    'Clockwise from project/grid north. The facing arrow shows the chosen outward direction.',
-  'antenna-tilt':
-    'Unsigned physical inclination from project vertical: 0 degrees upright, 90 degrees horizontal. Not electrical tilt or signed downtilt.',
-  clearance: 'The chosen endpoint gap only. This does not check for an obstacle-free volume.',
-};
+/** The catalogue key suffix of each tool's texts. */
+const KEY = { azimuth: 'azimuth', 'antenna-tilt': 'tilt', clearance: 'clearance' } as const;
 
 /**
  * Why the telecom tools cannot pick right now (a package, the map, no 3D view, measurements not
@@ -81,6 +68,7 @@ export function startTelecomTool(t: TelecomTool): void {
  * themselves are the workbench's Telecom rows.
  */
 export function TelecomTools() {
+  const t = useT();
   const pkg = useShell((s) => s.pkg);
   const tool = useMeasure((s) => s.tool);
   const draw = useMeasure((s) => s.draw);
@@ -130,7 +118,7 @@ export function TelecomTools() {
   return (
     <section
       className="telecom-tools"
-      aria-label="Telecom measurements"
+      aria-label={t('telecom.tools.title')}
       data-testid="telecom-tools"
       onKeyDown={(event) => {
         // Keep native Space activation here; the app otherwise uses it for global playback.
@@ -138,7 +126,7 @@ export function TelecomTools() {
       }}
     >
       <header>
-        <b>Telecom measurements</b>
+        <b>{t('telecom.tools.title')}</b>
         <button
           type="button"
           className="btn ghost sm"
@@ -146,16 +134,14 @@ export function TelecomTools() {
             revealMeasurement(focus ?? null);
           }}
         >
-          Measurements
+          {t('telecom.tools.measurements')}
         </button>
       </header>
       {/* a picked measurement carries its own guidance in its card */}
       {(unavailable !== null || active !== null || measurement === null) && (
         <p className="telecom-help" id="telecom-guidance">
           {unavailable ??
-            (active
-              ? GUIDANCE[active]
-              : 'Pick on point clouds or meshes in 3D. Heights come from the picked surface.')}
+            (active ? t(`telecom.tools.guidance.${KEY[active]}`) : t('telecom.tools.idle'))}
         </p>
       )}
       {active === 'azimuth' && <NorthNote />}
@@ -164,7 +150,10 @@ export function TelecomTools() {
         <div className="telecom-result" aria-live="polite">
           <MeasureCard model={model} variant="live" testId="telecom-card" />
           <span className="mono small">
-            {draw.points.length} / {telecomPointCount(active)} points picked
+            {t('telecom.tools.picked', {
+              picked: draw.points.length,
+              total: telecomPointCount(active),
+            })}
           </span>
         </div>
       )}
@@ -210,10 +199,10 @@ export function TelecomTools() {
               drawEvent({ type: 'undo' }, { view: '3d' });
             }}
           >
-            Undo last point
+            {t('telecom.tools.undo')}
           </button>
           <button type="button" className="btn ghost sm" onClick={stopTool}>
-            Cancel
+            {t('telecom.tools.cancel')}
           </button>
         </div>
       )}
@@ -225,7 +214,7 @@ export function TelecomTools() {
           data-testid="telecom-save"
           onClick={() => void saveMeasurements()}
         >
-          Save measurements
+          {t('telecom.tools.save')}
         </button>
       )}
     </section>
@@ -234,12 +223,11 @@ export function TelecomTools() {
 
 /** Which north the azimuth is measured from. */
 function NorthNote() {
+  const t = useT();
   const local = useWorkspace((s) => !!s.project && !('epsg' in s.project.manifest.crs));
   return (
     <p className="telecom-help">
-      {local
-        ? 'Project north is local; no surveyed orientation is assumed.'
-        : 'Grid north follows the project CRS; this is not true north.'}
+      {local ? t('telecom.tools.north.local') : t('telecom.tools.north.grid')}
     </p>
   );
 }
@@ -259,11 +247,12 @@ function TelecomDetail({
   unavailable: string | null;
   editing: boolean;
 }) {
+  const t = useT();
   const tool = measurement.tool as TelecomTool;
   return (
     <>
       <p className="telecom-help" id="telecom-guidance">
-        {MEANING[tool]}
+        {t(`telecom.tools.meaning.${KEY[tool]}`)}
       </p>
       {tool === 'azimuth' && <NorthNote />}
       {!readOnly && (
@@ -278,7 +267,7 @@ function TelecomDetail({
                   flipAzimuth(measurement.id);
                 }}
               >
-                Flip direction
+                {t('telecom.tools.flip')}
               </button>
             )}
             <button
@@ -291,11 +280,11 @@ function TelecomDetail({
                 else startEditing();
               }}
             >
-              {editing ? 'Done editing' : 'Edit endpoints in 3D'}
+              {editing ? t('telecom.tools.editDone') : t('telecom.tools.edit')}
             </button>
           </div>
           <details className="telecom-vertices">
-            <summary>Endpoint coordinates</summary>
+            <summary>{t('telecom.tools.endpoints')}</summary>
             <TelecomVertices measurement={measurement} />
           </details>
         </>
@@ -305,19 +294,23 @@ function TelecomDetail({
 }
 
 function TelecomVertices({ measurement: m }: { measurement: SurveyMeasurement }) {
+  const t = useT();
   return (
     <div className="telecom-coordinates">
       {m.points.map((point, i) => (
         <fieldset key={i}>
-          <legend>Point {i + 1}</legend>
-          {(['E', 'N', 'Z'] as const).map((label, axis) => (
-            <label key={label}>
-              {label}
+          <legend>{t('telecom.tools.point', { n: i + 1 })}</legend>
+          {(['e', 'n', 'z'] as const).map((key, axis) => (
+            <label key={key}>
+              {t(`telecom.tools.axis.${key}`)}
               <input
                 className="sv-input mono"
                 type="number"
                 step="0.001"
-                aria-label={`Vertex ${i + 1} ${label}`}
+                aria-label={t('telecom.tools.vertex', {
+                  n: i + 1,
+                  axis: t(`telecom.tools.axis.${key}`),
+                })}
                 value={point[axis]}
                 onChange={(e) => {
                   if (e.target.value === '') return;

@@ -2,7 +2,8 @@
  * The catalogue picker (spec D22): a modal launched from the antenna, radio or AAU field. Search,
  * a vendor filter and a "Supports <band>" filter over the catalogue the RF store holds; a list of
  * `Row`s (model, vendor, ports, gain or power, the bands, a verified mark); an `EmptyState` when
- * nothing matches; Import MSI (a pattern for the chosen antenna's port) and a catalogue file.
+ * nothing matches; the warnings from reading the catalogue; Import MSI (a pattern for the chosen
+ * antenna's port) and a catalogue file.
  * Not a permanent tab: it closes on Use, Cancel or Esc.
  */
 import { BANDS, catalogueVendors, entryBandRanges, searchCatalogue, type Band } from '@aio/rf';
@@ -146,6 +147,7 @@ export function CataloguePicker({
 }: CataloguePickerProps) {
   const t = useT();
   const all = useRf((s) => s.catalogue);
+  const warnings = useRf((s) => s.catalogueWarnings);
   const entries = useMemo(() => all.map((c) => c.entry), [all]);
   const [kind, setKind] = useState<PickKind>(
     initialKind && kinds.includes(initialKind) ? initialKind : (kinds[0] ?? 'antenna'),
@@ -328,6 +330,16 @@ export function CataloguePicker({
           ))
         )}
       </div>
+      {warnings.length > 0 && (
+        <div className="rf-warnbox" role="status" data-testid="rf-cat-warnings">
+          <b>{t('rf.picker.warnings')}</b>
+          <ul>
+            {warnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {note && (
         <p className={note.error ? 'rf-note rf-err' : 'rf-note'} role="status">
           {note.text}

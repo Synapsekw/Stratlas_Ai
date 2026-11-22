@@ -43,13 +43,7 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import type { Frame } from '../survey/measureScene';
-import {
-  antennaCentre,
-  antennaMeasure,
-  axisToLocal,
-  facingTip,
-  nameAnchor,
-} from './antennaMeasure';
+import { antennaCentre, antennaMeasure, boxAxes, facingTip, nameAnchor } from './antennaMeasure';
 import { isNotMeasured } from './antennaTyped';
 import { isAntennaDrawn, type AntennaLabelMode, type AntennaLabelSpot } from './antennaVisibility';
 
@@ -112,14 +106,16 @@ const drawn = (state: AntennaSceneState, unit: AntennaUnit): boolean =>
     unit,
   );
 
-/** A project axis (E, N, Z) as a local direction: x = E, y = Z, z = -N. */
-const axisVector = (a: Vec3): Vector3 => new Vector3(...axisToLocal(a));
-
-/** Orientation of the box in the local frame from its axes (across, up, outward). */
-function orientation(box: AntennaUnit['box']): Quaternion {
-  const x = axisVector(box.axes[0]);
-  const y = axisVector(box.axes[1]);
-  const z = axisVector(box.axes[2]);
+/**
+ * Orientation of the box in the local frame from its axes (across, up, outward), turned with the
+ * survey date's line-up as its cloud is (`boxAxes`).
+ */
+function orientation(unit: AntennaUnit, shift: DateShift | null): Quaternion {
+  const [x, y, z] = boxAxes(unit, shift).map((a) => new Vector3(...a)) as [
+    Vector3,
+    Vector3,
+    Vector3,
+  ];
   const m = new Matrix4().makeBasis(x, y, z);
   // A left-handed set of axes would shear the rotation: the box is symmetric, so flip outward.
   if (m.determinant() < 0) m.makeBasis(x, y, z.negate());
@@ -239,7 +235,7 @@ export function buildAntennaGroup(state: AntennaSceneState, frame: Frame): Group
     const colour = KIND_COLOURS[unit.kind];
     const [w, h, d] = unit.box.extents;
     const centre = antennaCentre(unit, frame, shift);
-    const quat = orientation(unit.box);
+    const quat = orientation(unit, shift);
     const boxGeometry = new BoxGeometry(w, h, d);
     const rejected = unit.status === 'rejected';
 

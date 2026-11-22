@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
+import { TOOL_LABELS } from '@aio/survey';
+import { messagesEn as en, setLocale, t } from '@aio/ui';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, vi } from 'vitest';
 import { spaceIsPlayPause } from '../keys';
 import { TelecomTools } from './TelecomTools';
+import { cardModel } from './card/cardModel';
 import { measureStore, startTool } from './measureStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -162,3 +165,128 @@ it('telecom card is the shared card with angles in the site angle unit', () => {
     measureStore.setState({ settings, focus: null });
   }
 });
+
+const tiltRow = {
+  id: 'tilt1',
+  family: 'line' as const,
+  tool: 'antenna-tilt' as const,
+  label: 'Tilt A',
+  scope: { kind: 'site' as const },
+  points: [
+    [0, 0, 0],
+    [1, 0, 4],
+  ] as [number, number, number][],
+  items: [],
+  results: [],
+  createdAt: '2026-10-20T00:00:00Z',
+};
+
+it('the tools carry the catalogue names on their saved rows', () => {
+  // @aio/survey cannot read the catalogue, so its list is tied to it here
+  expect(TOOL_LABELS.azimuth).toBe(t('telecom.tools.name.azimuth'));
+  expect(TOOL_LABELS['antenna-tilt']).toBe(t('telecom.tools.name.tilt'));
+  expect(TOOL_LABELS.clearance).toBe(t('telecom.tools.name.clearance'));
+  expect(TOOL_LABELS.azimuth).toBe(t('measureCat.tool.azimuth'));
+  expect(TOOL_LABELS['antenna-tilt']).toBe(t('measureCat.tool.tilt'));
+  expect(TOOL_LABELS.clearance).toBe(t('measureCat.tool.clearance'));
+});
+
+it('a saved tilt row reads Physical tilt', () => {
+  const model = cardModel(tiltRow, {
+    settings: measureStore.getState().settings,
+    templates: [],
+    captures: [],
+  });
+  expect(model.tool).toBe('Physical tilt');
+  // a row saved earlier keeps the name it was given: the label is stored, the tool name derived
+  expect(model.name).toBe('Tilt A');
+});
+
+it('no English outside the catalogue', () => {
+  // every telecom tool key (and the reasons the tools are unavailable) answers with a marker
+  const stub: Record<string, string> = {};
+  for (const key of Object.keys(en)) {
+    if (/^(telecom\.tools\.|palette\.unavailable\.)/.test(key)) stub[key] = `@@${key}@@`;
+  }
+  const settings = measureStore.getState().settings;
+  const base = {
+    readOnly: false,
+    status: 'ready' as const,
+    focus: null,
+    tool: null,
+    draw: null,
+    editing: null,
+    reveal: null,
+  };
+  const stray = (host: HTMLElement): string[] => {
+    const out: string[] = [];
+    const walk = (node: Node) => {
+      if (node instanceof Element) {
+        // the card's own words come from its registry and its own tests
+        if (node.classList.contains('mc') && !node.closest('.mc-detail')) return;
+        for (const attr of ['aria-label', 'title', 'placeholder']) {
+          const v = node.getAttribute(attr);
+          if (v && !v.includes('@@')) out.push(`${attr}=${v}`);
+        }
+      }
+      if (node.nodeType === Node.TEXT_NODE) {
+        const v = (node.textContent ?? '').trim();
+        if (v && !v.includes('@@')) out.push(v);
+      }
+      node.childNodes.forEach(walk);
+    };
+    walk(host);
+    return out;
+  };
+  const render = (state: Record<string, unknown>) => {
+    measureStore.setState({ ...base, settings, ...state });
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(<TelecomTools />);
+    });
+    return {
+      host,
+      done: () => {
+        act(() => {
+          root.unmount();
+        });
+        host.remove();
+      },
+    };
+  };
+  setLocale('xx', stub);
+  try {
+    // picking an azimuth: guidance, north note, points picked, Undo, Cancel
+    startTool('azimuth');
+    const picking = render({});
+    expect(stray(toolsOf(picking.host))).toEqual([]);
+    picking.done();
+    // a picked, unsaved azimuth: meaning, Flip, Edit, Done editing, endpoint coordinates, Save
+    for (const editing of [null, { points: tiltRow.points }]) {
+      const picked = render({
+        focus: 'tilt1',
+        tool: null,
+        draw: null,
+        editing,
+        file: {
+          schema: 'aio.measurements/1',
+          measurements: [{ ...tiltRow, tool: 'azimuth', label: 'Az' }],
+        },
+        savedText: 'older',
+      });
+      expect(stray(toolsOf(picked.host))).toEqual([]);
+      picked.done();
+    }
+  } finally {
+    setLocale('en');
+    measureStore.setState({ tool: null, draw: null, focus: null });
+  }
+});
+
+function toolsOf(host: Element): HTMLElement {
+  const el = host.querySelector('.telecom-tools');
+  if (!(el instanceof HTMLElement)) throw new Error('the telecom tools did not render');
+  return el;
+}
