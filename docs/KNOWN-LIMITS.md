@@ -89,7 +89,7 @@ These limits were seen on the founder's own real projects in the data folder (no
 - Line up dates: manual point picking is not available yet.
 - Line up dates moves, turns and scales a date in the ground plane (up to 1 degree and 1 %). It does not change height.
 - Point clouds move with a line-up but don't turn: in the viewer, in 3D Tiles and in point-cloud change, which refuses a turned pair.
-- Items drawn on a point cloud (antennas, RF grids, sightings on cloud layers) turn with their date, while the cloud under them only moves, so on a turned date they can sit a little off the cloud. The pipeline's telecom merge and crown steps use the shift only.
+- Items drawn on a point cloud (antennas, RF grids, sightings on cloud layers) turn with their date, while the cloud under them only moves, so on a turned date they can sit a little off the cloud. The pipeline's telecom merge step uses the shift only.
 - The surface change and survey jobs turn a point cloud with its date, while the viewer shows that cloud shifted only.
 - Asset measurement (the engineer job) reads point clouds with the shift only; meshes take the full line-up.
 - Panorama headings, photo orientations, video direction keyframes and the clip path, and antenna and RF azimuths aren't turned. A video clip follows the move at the pivot.
@@ -399,6 +399,8 @@ These limits were seen on the founder's own real projects in the data folder (no
 - Only mechanical downtilt is measured; electrical tilt is not.
 - On lattice towers, antennas facing more than 60 degrees away from straight out are listed as other equipment.
 - Small radio units are listed as other equipment without angles, and they or units merged with neighbours can be missed.
+- A radio a few centimetres from a ring or frame member can be missed by detection: on the Demo tower a 0.30 m radio mounted 4 cm off the inner ring formed no face of its own. Flag it with an outline round the whole unit, which is measured.
+- A thin strip outline (for example only the top few centimetres of a unit) can still read "Not measured", even with a couple of hundred points inside, because its points split over several small faces. Outline the whole unit.
 - Units side by side with no gap between them can come out as one wide unit.
 - A unit whose lower part is hidden behind a plate or another unit in front, and whose sides are not seen, has no measurable depth and is left out (counted in the run warning).
 - Units narrower than 0.2 m or thinner than 0.08 m are listed as other equipment, without angles. A narrow part longer than 1.5 m, or one fixed to the shaft, is taken for the structure (a pole, a frame member, a cable run) and not listed.
@@ -408,13 +410,27 @@ These limits were seen on the founder's own real projects in the data folder (no
 - A dish bolted to a thick member (radius 0.1 m or more) may be missed.
 - The type comes from the size of the unit unless AI labelling is used; AI labelling sets the type label only and never a number.
 - Plumb on narrow faces is less certain than azimuth.
-- Thresholds are tuned on synthetic crowns and one reference site.
+- Thresholds are tuned on synthetic crowns and one site, and accuracy has been checked on synthetic towers only. On the generated Demo tower, detection found 8 of its 9 units with no false finds, within 0.3 degrees in azimuth, 0.1 degrees in downtilt and 3 mm in centre altitude; that tower has little noise and ideal boxes, so it proves the job and its conventions, not real-world accuracy. No real tower with reference values has been compared yet.
 - Photo occlusion is not checked when the best photos are chosen.
 - Point clouds packed as PNG or as kit packs are read whole.
 - The engineering model's antennas are still approximate and separate from this inventory; the engineering model does not read the inventory yet.
-- Dishes have no box handles; resize one with Redraw outline. Antenna edits (box handles, typed values, delete) have no Undo.
-- Flagging an antenna, like detection, applies only the line-up shift of a survey date and not a line-up turn.
+- Dishes have no box handles; resize one with Redraw outline.
+- A delete of antennas can be undone from the notice that follows it (up to 10 deletes back, in the open project), which brings back the unit, its photo crop, its deletion record, its sector place and its RF settings. A resize with the box handles and a typed value have no Undo: use Reset to measured, or drag the face back.
+- The photo crop of a deleted unit is kept in the project, so an Undo can bring it back; it is not cleaned up later.
+- Detection's merge step applies only the line-up shift of a survey date, not its turn. Flag antenna, the box-handle re-measure and the tower hint apply the whole line-up, turn included, with processing tools 0.36.0 or later; older tools refuse a flag on a turned date.
+- On a turned date the box is drawn turned with the date, but its facing arrow still points along the stored grid azimuth, off by the turn (2 degrees at most).
 - The flag job selects again the points inside the outline's kept bounds and the outline itself, without the nearest-surface cut the 3D view makes, so a mount pipe right behind a unit can enter its measurement.
+
+## Coverage
+
+- A coverage run does not record which survey date it belongs to, so an old run is drawn with today's line-up of the dates.
+- The prediction is indicative: flat ground, no buildings, an untuned model, about 8 dB either way. Terrain beyond the first phase is not modelled.
+- The equipment catalogue holds typical values from public datasheets, and none is checked against a datasheet yet; a run on such values says "Equipment values not checked against datasheets". Import a catalogue file with the unit's own values when they matter.
+- A cell export is read by two importers with two sets of matching rules: Use cell export matches rows by antenna name, then by sector and azimuth; the CSV import under Advanced matches by antenna name only.
+- A cell export row that matches no antenna is shown with its text and left to the rules; the AI does not read its model text.
+- Include drafts is forgotten when the project is opened again; drafts are left out by default.
+- The live preview does not reuse a run's path-loss cache, and the ground is sampled every 2 m, so a large study can be slow to preview.
+- In a project with both the Earthworks and the Telecom tools, the volumes hint can overlap the coverage map note.
 
 ## Point cloud cleanup
 

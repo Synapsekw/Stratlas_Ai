@@ -50,6 +50,7 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 | Walks W2            | Placing a 360 walk: the path notice, the shape following the pointer, Start and End on a drawing, the map or the 3D view, handles, Fine-tune, Save, Edit placement, Remove placement, Remove walk                                                                                                                           | Version 0.12.0 with pipeline pack 0.6.0, a 360 video and a drawing (see Walks W2, Before you start)                                                                                                                                                        | Built; not yet tested by the founder                 |
 | Point cloud cleanup | Clip box, height range, box and lasso selections, Remove noise, Save cleaned copy, Apply cleanup on export, right-click actions                                                                                                                                                                                             | The build of this branch with pipeline pack 0.12.0                                                                                                                                                                                                         | Built; not yet tested by the founder                 |
 | Volumetric report   | The rebuilt volumetric report: pictures taken at export with progress and Stop, every pile listed, the site overview, two pile cards per page with pictures and profile, the overlap warning, the offline HTML file                                                                                                         | The build of this branch and a stockpile project of yours with two survey dates (a copy is best)                                                                                                                                                           | Built; not yet tested by the founder                 |
+| Telecom             | The telecom section finalized: the Antennas list, review, corrections, Flag antenna, Delete with Undo, labels, the measuring tools, the antenna export, Coverage from plan to export, and the figures on your own tower                                                                                                     | The build of the `feat/telecom-finalize` branch with the processing tools 0.36.0, the Demo tower and a tower project of yours with known antenna values (see Stage Telecom)                                                                                | Built; not yet tested by the founder                 |
 
 ## Stage M5: your M4 feedback, fixed
 
@@ -1322,3 +1323,14 @@ Use the build of this branch and a stockpile project of yours with two survey da
 - [ ] The pile list shows a pile without a volume as "Not computed", last in the list, and the totals do not count it.
 - [ ] **Save as PDF** prints the same pages as **Export PDF**, with each pile's own pictures.
 - [ ] The file is under 15 MB. On a site with very many piles (about 70 or more) the export may instead say the file would be larger than 15 MB and to export a PDF: that is the limit, not a fault.
+
+## Stage Telecom: the section finalized
+
+The telecom test list is kept in one place: section 5 of [the telecom finalization plan](plans/2026-11-22-telecom-finalize.md#5-the-founders-test-list). It replaces the "How to test" lists of the telecom session notes of 16, 17, 18, 22, 24 and 27 Oct 2026; follow it there and report against its step numbers (for example "Telecom, step 9").
+
+- [ ] Install the processing tools 0.36.0 (**Settings**, **Processing tools**, **Choose file**).
+- [ ] Open the **Demo tower** on the **Projects** screen (a generated lattice tower with photos and no antennas yet) and work through parts A and B of section 5.
+- [ ] Part C on a tower project of yours: compare at least five antennas with values known from an as-built record or a climb (step 22).
+- [ ] The "By eye" calls of section 5: the tower icon, the label pins, the A and R keys, the 2 cm rule and no Undo for a resize, per-unit hide on right-click, the Project tab staying in front after a tool stops.
+
+What works differently on purpose is in [KNOWN-LIMITS.md](KNOWN-LIMITS.md), under Telecom antenna inventory and Coverage.

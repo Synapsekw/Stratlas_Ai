@@ -1,6 +1,6 @@
 # Telecom antenna detection — design
 
-Date: 2026-10-17. Branch: `feat/telecom-auto-detect`. Status: draft for founder review.
+Date: 2026-10-17. Branch: `feat/telecom-auto-detect`. Status: built; finalized with the telecom section on 22 Nov 2026 (`docs/plans/2026-11-22-telecom-finalize.md`). The app now calls the inventory the **Antennas** list.
 
 ## Intent
 
