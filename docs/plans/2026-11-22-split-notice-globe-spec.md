@@ -87,7 +87,7 @@ With no Scene strip on screen (home, Globe, settings) neither rule applies and t
 
 - A notice taller than the strip (a running export with its bar and Cancel): it would reach over the foot of the pane by the difference. Task 1 step 5 measures it.
 - A strip with the docked video tile at 1100 px: the tile must give way to its Pop out button (the existing rule under 600 px), not overflow.
-- A passing notice (no button, gone in seconds) makes the strip step twice. Accepted for now, see the open questions.
+- A passing notice (no button, gone in seconds) makes the strip step twice. Accepted, see the decisions.
 - Right-to-left: the inset is logical (`padding-inline-end`), and the host's inline position already is.
 - The single view with the floating video in the bottom left corner also uses the window's host: the same rule applies there.
 
@@ -188,8 +188,8 @@ Expected: all pass, with the window line in the log (the smallest-window test si
 2. With the notice showing, click a date at the end of the strip and press Play: both work. Close the notice: the strip takes its full width back. (`change-frames.spec.ts`, "job progress never covers the Frames pane".)
 3. The Globe change is in the tests only: nothing to see in the app.
 
-## Open questions for the founder
+## Decisions (founder delegated the open calls, 22 Nov 2026)
 
-1. **Where a notice stands in a Split.** Every place covers something. This plan lets the strip give way, so the timeline is narrower while a notice shows. The other choices are the notice over the foot of the end pane, or leaving it over the strip. Recommended: the strip gives way (nothing is out of reach, one CSS rule).
-2. **Passing notices.** A notice without a button also makes the strip step aside for its few seconds. Recommended: accept it now; if the step bothers in use, a follow-up limits it to notices that stay.
-3. **An empty screen while the Globe's chunk loads.** On a slow machine the Globe screen is blank until its code has loaded (no loader before that). Recommended: leave it during the freeze; it showed only on the CI runner.
+1. **Where a notice stands in a Split: decided, the strip gives way.** Every place covers something; the strip keeps the notice's room free, so the timeline is narrower while a notice shows and nothing is out of reach. The notice over the foot of the end pane, and leaving it over the strip, were turned down.
+2. **Passing notices: decided, accepted.** A notice without a button also makes the strip step aside for its few seconds. If the step bothers in use, a follow-up limits it to notices that stay.
+3. **The blank Globe screen while its code loads: decided, left alone during the freeze.** On a slow machine the Globe screen is blank until its code has loaded (no loader before that); it showed only on the CI runner.
