@@ -112,7 +112,11 @@ export interface RfState {
   includeUnreviewed: boolean;
   catalogue: { origin: CatalogueOrigin; entry: RfCatalogueEntry }[];
   catalogueWarnings: string[];
+  /** Why the catalogue could not be read (main's text); null when it was read. */
+  catalogueError: string | null;
   runs: RfRun[];
+  /** Why the list of coverage runs could not be read (main's text); null when it was read. */
+  runsError: string | null;
   selectedRunId: string | null;
   /** A coverage job of the open project is going: one this tab started, or one adopted on load. */
   running: boolean;
@@ -175,7 +179,9 @@ const base = (): Base => ({
   includeUnreviewed: false,
   catalogue: [],
   catalogueWarnings: [],
+  catalogueError: null,
   runs: [],
+  runsError: null,
   selectedRunId: null,
   running: false,
   jobId: null,
@@ -366,7 +372,9 @@ export async function loadRf(projectId: string, opts: { keepEdits?: boolean } = 
     ...(keep ? {} : { sectors: onDisk ? structuredClone(onDisk) : emptyFile(), dirty: false }),
     catalogue: cat.ok && cat.value.ok ? cat.value.entries : [],
     catalogueWarnings: cat.ok && cat.value.ok ? cat.value.warnings : [],
+    catalogueError: errorOf(cat),
     runs: runs.ok && runs.value.ok ? runs.value.runs : [],
+    runsError: errorOf(runs),
   });
   const sel = get().selectedRunId;
   if (sel && !get().runs.some((r) => r.runId === sel)) set({ selectedRunId: null });
@@ -378,7 +386,20 @@ export async function refreshRuns(): Promise<void> {
   if (!projectId) return;
   const r = await bridge.call('rf:listRuns', { projectId });
   if (get().projectId !== projectId) return;
-  if (r.ok && r.value.ok) set({ runs: r.value.runs });
+  if (r.ok && r.value.ok) set({ runs: r.value.runs, runsError: null });
+  else set({ runsError: errorOf(r) });
+}
+
+/**
+ * Why a read failed: the bridge's or main's text (a failure with no text still counts), else null
+ * when it was read.
+ */
+function errorOf(
+  r:
+    { ok: true; value: { ok: true } | { ok: false; error: string } } | { ok: false; error: string },
+): string | null {
+  if (!r.ok) return r.error;
+  return r.value.ok ? null : r.value.error;
 }
 
 /** Select a run and read its `run.json` again (it may have been written since the listing). */
@@ -846,8 +867,12 @@ export function focusRfUnit(antennaId: string | null): void {
 export async function refreshCatalogue(): Promise<void> {
   const projectId = get().projectId;
   const r = await bridge.call('rf:listCatalogue', projectId ? { projectId } : {});
-  if (get().projectId !== projectId || !r.ok || !r.value.ok) return;
-  set({ catalogue: r.value.entries, catalogueWarnings: r.value.warnings });
+  if (get().projectId !== projectId) return;
+  if (!r.ok || !r.value.ok) {
+    set({ catalogueError: errorOf(r) });
+    return;
+  }
+  set({ catalogue: r.value.entries, catalogueWarnings: r.value.warnings, catalogueError: null });
 }
 
 export type ImportResult =

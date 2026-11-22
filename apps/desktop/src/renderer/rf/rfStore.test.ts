@@ -33,6 +33,8 @@ import {
   patchSettings,
   patchStudy,
   reassignOrphanEntry,
+  refreshCatalogue,
+  refreshRuns,
   removeAntennasFromPlan,
   removeOrphanEntry,
   renameSavedSector,
@@ -98,6 +100,8 @@ const h = vi.hoisted(() => ({
   delay: null as null | Promise<void>,
   writeDelay: null as null | Promise<void>,
   runs: [] as RfRun[],
+  catalogueError: null as string | null,
+  runsError: null as string | null,
 }));
 
 vi.mock('../shell', async () => ({
@@ -124,6 +128,8 @@ vi.mock('../shell', async () => ({
             },
           };
         case 'rf:listCatalogue':
+          if (h.catalogueError !== null)
+            return { ok: true, value: { ok: false, error: h.catalogueError } };
           return {
             ok: true,
             value: {
@@ -136,6 +142,7 @@ vi.mock('../shell', async () => ({
             },
           };
         case 'rf:listRuns':
+          if (h.runsError !== null) return { ok: false, error: h.runsError };
           return { ok: true, value: { ok: true, runs: structuredClone(h.runs) } };
         case 'jobs:start':
           return {
@@ -206,12 +213,44 @@ beforeEach(() => {
   h.delay = null;
   h.writeDelay = null;
   h.runs = [];
+  h.catalogueError = null;
+  h.runsError = null;
   jobsStore.setState({ jobs: [] });
   workspace.getState().openProject({ id: 'p1', root: '/p1', manifest: MANIFEST });
 });
 afterEach(() => {
   vi.clearAllMocks();
   workspace.getState().closeProject();
+});
+
+describe('a catalogue or run list that cannot be read', () => {
+  it('keeps the error of each, and a later read that works clears it', async () => {
+    site();
+    h.catalogueError = 'generic.json: unexpected token';
+    h.runsError = 'rf/runs: permission denied';
+    await loadRf('p1');
+    expect(s().catalogueError).toBe('generic.json: unexpected token');
+    expect(s().runsError).toBe('rf/runs: permission denied');
+    expect(s().status).toBe('ready');
+    h.catalogueError = null;
+    h.runsError = null;
+    await refreshCatalogue();
+    await refreshRuns();
+    expect(s().catalogueError).toBeNull();
+    expect(s().runsError).toBeNull();
+  });
+
+  it('a refresh that fails keeps the error too', async () => {
+    site();
+    await loadRf('p1');
+    expect(s().catalogueError).toBeNull();
+    h.runsError = 'disk gone';
+    h.catalogueError = 'vendor.json gone';
+    await refreshRuns();
+    await refreshCatalogue();
+    expect(s().runsError).toBe('disk gone');
+    expect(s().catalogueError).toBe('vendor.json gone');
+  });
 });
 
 describe('height above ground', () => {

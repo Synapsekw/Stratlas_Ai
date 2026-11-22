@@ -148,6 +148,7 @@ export function CataloguePicker({
   const t = useT();
   const all = useRf((s) => s.catalogue);
   const warnings = useRf((s) => s.catalogueWarnings);
+  const readError = useRf((s) => s.catalogueError);
   const entries = useMemo(() => all.map((c) => c.entry), [all]);
   const [kind, setKind] = useState<PickKind>(
     initialKind && kinds.includes(initialKind) ? initialKind : (kinds[0] ?? 'antenna'),
@@ -330,6 +331,11 @@ export function CataloguePicker({
           ))
         )}
       </div>
+      {readError !== null && (
+        <p className="rf-note rf-err" role="alert" data-testid="rf-cat-error">
+          {t('rf.loadCatalogueFailed', { error: readError })}
+        </p>
+      )}
       {warnings.length > 0 && (
         <div className="rf-warnbox" role="status" data-testid="rf-cat-warnings">
           <b>{t('rf.picker.warnings')}</b>

@@ -82,6 +82,15 @@ describe('CataloguePicker', () => {
     expect(box?.textContent).toContain('vendor.json: entry 3 has no ports and was skipped');
   });
 
+  it('says so when the catalogue could not be read', () => {
+    rfStore.setState({ catalogue: [], catalogueError: 'generic.json: unexpected token' });
+    render();
+    expect(byTest('rf-cat-error')?.textContent).toBe(
+      'The equipment catalogue could not be read: generic.json: unexpected token',
+    );
+    expect(byTest('rf-cat-error')?.getAttribute('role')).toBe('alert');
+  });
+
   it('shows the EmptyState when nothing matches, and Clear filters brings the list back', () => {
     render();
     type('nothing like this');

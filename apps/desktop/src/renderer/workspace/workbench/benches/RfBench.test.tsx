@@ -38,6 +38,7 @@ const h = vi.hoisted(() => ({
   writeWarnings: undefined as string[] | undefined,
   pack: null as Pick<PipelinePackStatus, 'state' | 'version'> | null,
   loads: 0,
+  runsError: null as string | null,
 }));
 
 vi.mock('../../../shell', async (importOriginal) => ({
@@ -74,7 +75,11 @@ vi.mock('../../../shell', async (importOriginal) => ({
             },
           });
         case 'rf:listRuns':
-          return Promise.resolve({ ok: true, value: { ok: true, runs: [] } });
+          return Promise.resolve(
+            h.runsError === null
+              ? { ok: true, value: { ok: true, runs: [] } }
+              : { ok: true, value: { ok: false, error: h.runsError } },
+          );
         case 'rf:writeSectors':
           h.sectors = structuredClone(req.file) as RfSectorsFile;
           return Promise.resolve({
@@ -193,6 +198,7 @@ beforeEach(() => {
   h.calls = [];
   h.readOnly = false;
   h.writeWarnings = undefined;
+  h.runsError = null;
   h.pack = OK_PACK;
   h.antennas = antennasFile([unit('ant-a1', 10), unit('ant-a2', 130)]);
   h.sectors = sectorsFile(
@@ -546,6 +552,16 @@ describe('RfBench', () => {
       rfStore.setState({ selectedRunId: 'rf-2' });
     });
     expect(byTest('rf-unverified')).toBeNull();
+  });
+
+  it('step 3 says when the list of runs could not be read', async () => {
+    h.runsError = 'rf/runs: permission denied';
+    await render();
+    const note = byTest('rf-step-coverage')?.querySelector('[data-testid="rf-runs-error"]');
+    expect(note?.textContent).toBe(
+      'The list of coverage runs could not be read: rf/runs: permission denied',
+    );
+    expect(note?.getAttribute('role')).toBe('alert');
   });
 
   it('step 3 says the plan changed since the shown run, from what is saved', async () => {

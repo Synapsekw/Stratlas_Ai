@@ -1266,6 +1266,7 @@ function ResultsSection() {
   const study = useRf((s) => s.sectors.study);
   const preview = useRf((s) => s.preview);
   const rows = useRf((s) => s.rows);
+  const runsError = useRf((s) => s.runsError);
   // worked out from what is saved, so it reads the same after a reopen; an unsaved edit counts too
   const planChanged = useRf(
     (s) => selectPlanChanged(s) || (s.dirty && selectShownRun(s) !== undefined),
@@ -1323,6 +1324,11 @@ function ResultsSection() {
           </button>
         ))}
       </div>
+      {runsError !== null && (
+        <p className="rf-note rf-err" role="alert" data-testid="rf-runs-error">
+          {t('rf.loadRunsFailed', { error: runsError })}
+        </p>
+      )}
       {runs.length > 0 && (
         <Field label={t('rf.results.runPick')}>
           <select

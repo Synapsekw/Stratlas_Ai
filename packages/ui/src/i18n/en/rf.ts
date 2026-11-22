@@ -597,7 +597,6 @@ export const enRf = {
   'rf.autoplan.error.exportUnreadable': 'The cell export could not be read: {error}',
   // T5: a cell export's ignored columns and unmatched rows (item 49)
   'rf.csv.ignoredColumns': 'Columns not used: {columns}',
-  'rf.csv.unmatchedRow': 'Line {line} matches no antenna: {text}',
   'rf.autoplan.ignoredColumns': 'Cell export columns not used: {columns}',
   'rf.autoplan.unmatchedRow': 'Line {line} matches no antenna: {text}',
   // T5: what each of the two cell export importers does (item 16, its small part)
