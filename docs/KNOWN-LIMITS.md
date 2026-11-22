@@ -417,8 +417,7 @@ These limits were seen on the founder's own real projects in the data folder (no
 - Dishes have no box handles; resize one with Redraw outline.
 - A delete of antennas can be undone from the notice that follows it (up to 10 deletes back, in the open project), which brings back the unit, its photo crop, its deletion record, its sector place and its RF settings. A resize with the box handles and a typed value have no Undo: use Reset to measured, or drag the face back.
 - The photo crop of a deleted unit is kept in the project, so an Undo can bring it back; it is not cleaned up later.
-- Detection's merge step applies only the line-up shift of a survey date, not its turn. Flag antenna, the box-handle re-measure and the tower hint apply the whole line-up, turn included, with processing tools 0.36.0 or later; older tools refuse a flag on a turned date.
-- On a turned date the box is drawn turned with the date, but its facing arrow still points along the stored grid azimuth, off by the turn (2 degrees at most).
+- The telecom jobs (detection, Flag antenna, the box-handle re-measure and the tower hint) read a point cloud with its survey date's line-up shift only, as the 3D view draws it, also on a date lined up with a turn.
 - The flag job selects again the points inside the outline's kept bounds and the outline itself, without the nearest-surface cut the 3D view makes, so a mount pipe right behind a unit can enter its measurement.
 
 ## Coverage

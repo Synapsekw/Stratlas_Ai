@@ -3,9 +3,9 @@
 Steps (each resumable):
 
 1. select: the cloud points inside the outline's bounds (drawn frame: the layer's height offset
-   and its date's whole line-up applied, the turn as well as the shift, as the 3D view draws it),
-   kept when they project inside the polygon, then moved into the inventory's frame (the date of
-   `run.captureId`, its whole line-up undone); saved as `selection.npz`.
+   and its date's line-up shift applied, as the 3D view draws a point cloud: the view applies no
+   turn to a cloud, also on a date that carries one), kept when they project inside the polygon,
+   then moved into the inventory's frame (the date of `run.captureId`); saved as `selection.npz`.
 2. measure: the selection measured against the inventory run's tower axis
    (`flag.measure_selection`), else a "not measured" placeholder at the anchor.
 3. photos: the best photos of the one unit and the crop of the best one.
@@ -95,41 +95,6 @@ def _selection(sel: Any) -> dict[str, Any]:
     }
 
 
-def _read_turned(
-    path: Path,
-    fmt: str,
-    bounds: dict[str, list[float]],
-    ctx: Any,
-    origin: tuple[float, float, float],
-    offset_m: float,
-    sim: Any,
-) -> tuple[np.ndarray, dict[str, Any]]:
-    """The cloud points inside `bounds` (the drawn frame) of a date lined up with a turn: the
-    file is read inside the box of the bounds' plan corners taken back through the line-up (`sim`
-    a `Similarity`), each point is placed where the view draws it (`Similarity.apply_local`, as
-    `shiftLocal` of packages/schema/src/dateShift.ts; heights untouched), and those inside the
-    bounds are kept. `info` is `read_region`'s, with `read` the points inside the bounds."""
-    from ..engineer.cloud import read_region
-
-    lo, hi = bounds["min"], bounds["max"]
-    back = sim.inverse()
-    xs, zs = [], []
-    for x in (lo[0], hi[0]):
-        for z in (lo[2], hi[2]):
-            fx, fz = back.apply_local(float(x), float(z), origin)
-            xs.append(fx)
-            zs.append(fz)
-    region = {"min": [min(xs), lo[1], min(zs)], "max": [max(xs), hi[1], max(zs)]}
-    xyz, info = read_region(
-        path, fmt, region, READ_POINTS, ctx, origin, seed=0, offset_m=offset_m, order_free=True
-    )
-    if len(xyz):
-        xyz = np.asarray(xyz, dtype=np.float64).copy()
-        xyz[:, 0], xyz[:, 2] = sim.apply_local(xyz[:, 0], xyz[:, 2], origin)
-        xyz = xyz[np.all((xyz >= np.asarray(lo)) & (xyz <= np.asarray(hi)), axis=1)]
-    return xyz, {**info, "read": len(xyz), "kept": len(xyz)}
-
-
 def _measured_map(old: dict, m: dict) -> dict[str, Any]:
     """For each key the old unit holds as a person's value, the new measurement of it (the box
     centre Z for `centreHeightM`), so Reset to measured shows the redraw's value."""
@@ -209,7 +174,7 @@ class TelecomFlag:
         redraw = bool(params.get("redraw"))
 
         def select_step(ctx: StepContext) -> dict[str, Any]:
-            from ..captures import capture_shift, capture_similarity, date_shift, date_similarity, local_delta
+            from ..captures import capture_shift, date_shift, local_delta
             from ..change.sources import height_offset_m
             from ..engineer.cloud import read_region
             from ..inspection.frame import asset_path
@@ -243,48 +208,27 @@ class TelecomFlag:
             if path is None or not path.exists():
                 raise JobError(f'The point cloud "{layer.get("name", layer_id)}" has no file to read.')
             sel = params["selection"]
-            origin = _origin(manifest)
-            fmt = str(layer.get("format") or "las")
-            bounds = {"min": sel["bounds"]["min"], "max": sel["bounds"]["max"]}
-            sim = date_similarity(manifest, layer_id)
-            if sim.has_turn():
-                # the view draws the date turned as well as shifted: read the file around the
-                # outline's bounds taken back through the line-up, then place the points where
-                # the view draws them (`shiftLocal`) and keep those inside the bounds
-                xyz, info = _read_turned(path, fmt, bounds, ctx, origin, height_offset_m(layer), sim)
-            else:
-                xyz, info = read_region(
-                    path,
-                    fmt,
-                    bounds,
-                    READ_POINTS,
-                    ctx,
-                    origin,
-                    seed=0,
-                    offset_m=height_offset_m(layer),
-                    shift=date_shift(manifest, layer_id),
-                    order_free=True,
-                )
+            # the view draws a point cloud with its date's line-up shift only (no turn, also on a
+            # date that carries one), so the shift alone places the file's points where they show
+            xyz, info = read_region(
+                path,
+                str(layer.get("format") or "las"),
+                {"min": sel["bounds"]["min"], "max": sel["bounds"]["max"]},
+                READ_POINTS,
+                ctx,
+                _origin(manifest),
+                seed=0,
+                offset_m=height_offset_m(layer),
+                shift=date_shift(manifest, layer_id),
+                order_free=True,
+            )
             ctx.check()
             kept = xyz[select_points(xyz, sel["polygon"], sel["viewProj"])] if len(xyz) else xyz
-            points = np.asarray(kept, dtype=np.float64).reshape(-1, 3)
-            anchor = np.asarray(sel["anchor"], dtype=np.float64)
             capture = run.get("captureId")
-            inv = capture_similarity(manifest, capture) if isinstance(capture, str) else None
-            if inv is not None and inv.has_turn():
-                # into the inventory's frame: its date's whole line-up undone
-                back = inv.inverse()
-                points = points.copy()
-                points[:, 0], points[:, 2] = back.apply_local(points[:, 0], points[:, 2], origin)
-                ax, az = back.apply_local(float(anchor[0]), float(anchor[2]), origin)
-                anchor = np.array([ax, anchor[1], az])
-            else:
-                dx, dz = (
-                    local_delta(capture_shift(manifest, capture)) if isinstance(capture, str) else (0.0, 0.0)
-                )
-                move = np.array([dx, 0.0, dz])
-                points = points - move
-                anchor = anchor - move
+            dx, dz = local_delta(capture_shift(manifest, capture)) if isinstance(capture, str) else (0.0, 0.0)
+            move = np.array([dx, 0.0, dz])
+            points = np.asarray(kept, dtype=np.float64).reshape(-1, 3) - move
+            anchor = np.asarray(sel["anchor"], dtype=np.float64) - move
             _save_npz(ctx.stage("selection.npz"), points=points, anchor=anchor)
             ctx.log(f"{len(points):,} of {int(info['read']):,} points in the bounds are inside the outline.")
             # the run the points were moved into the frame of: a new run before the commit refuses

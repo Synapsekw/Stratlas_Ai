@@ -46,7 +46,7 @@ If nothing is found, the list reads **Nothing found**: check the warnings, or ou
 - **Other equipment.** Small radio units and similar equipment are listed with size and position but without angles.
 - **Photos.** The details show the photos that see the front of the unit, with **Open full photo**. If none does, they say **No photo sees this unit.** Whether something stands in the way of the view is not checked.
 - **Model, weight, frequencies** opens the equipment fields: **Model**, **Weight (kg)**, **Frequencies** and **In service**.
-- **Survey dates.** Positions are stored where the scanned survey date has them. When dates are lined up (see [Line up dates](15-imagery-and-surface-change.md#line-up-dates)), the boxes are drawn where that date is drawn, turned with it.
+- **Survey dates.** Positions are stored where the scanned survey date has them. When dates are lined up (see [Line up dates](15-imagery-and-surface-change.md#line-up-dates)), the boxes are drawn where that date is drawn, like its measurements.
 
 ## Review
 
@@ -89,7 +89,7 @@ When detection misses a unit, outline it yourself. **Flag antenna** is in the he
 
 Outline the whole unit. An outline round the whole unit is measured even for a small radio, but a thin strip across only part of a unit can still come out **Not measured**. A unit with too few points gets a small box where the outline's middle meets the point cloud and reads **Not measured**. It has no made-up numbers, so type the values you know.
 
-Flagging works on the point cloud and survey date shown in the tower view, also on a date that is lined up with a turn (with processing tools 0.36.0 or later), and it runs on this computer with no network.
+Flagging works on the point cloud and survey date shown in the tower view, and it runs on this computer with no network.
 
 ## Resize a box with the handles
 

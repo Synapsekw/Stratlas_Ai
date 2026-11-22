@@ -204,7 +204,6 @@ import {
   antennaPackRefusal,
   readAntennaDeletions,
   readAntennaInventory,
-  readTurnedDate,
 } from './telecomPack';
 import { registerThermalIpc } from './thermal';
 import { registerAgentMemoryIpc } from './agentMemory';
@@ -2042,12 +2041,6 @@ function registerIpc(): void {
           await readAntennaDeletions(
             pipeline,
             'project' in req ? req.project : jobs.get(req.resume)?.project,
-          ),
-          // flagging, or a click on the tower, on a survey date lined up with a turn
-          await readTurnedDate(
-            pipeline,
-            'project' in req ? req.project : jobs.get(req.resume)?.project,
-            'params' in req ? req.params : jobs.get(req.resume)?.params,
           ),
         ) ??
         rfPackRefusal(pipeline, version) ??

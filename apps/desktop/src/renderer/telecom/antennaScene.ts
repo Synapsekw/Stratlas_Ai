@@ -107,15 +107,11 @@ const drawn = (state: AntennaSceneState, unit: AntennaUnit): boolean =>
   );
 
 /**
- * Orientation of the box in the local frame from its axes (across, up, outward), turned with the
- * survey date's line-up as its cloud is (`boxAxes`).
+ * Orientation of the box in the local frame from its axes (across, up, outward): the stored axes,
+ * not turned with a date's line-up, as the view does not turn the cloud (`boxAxes`).
  */
-function orientation(unit: AntennaUnit, shift: DateShift | null): Quaternion {
-  const [x, y, z] = boxAxes(unit, shift).map((a) => new Vector3(...a)) as [
-    Vector3,
-    Vector3,
-    Vector3,
-  ];
+function orientation(unit: AntennaUnit): Quaternion {
+  const [x, y, z] = boxAxes(unit).map((a) => new Vector3(...a)) as [Vector3, Vector3, Vector3];
   const m = new Matrix4().makeBasis(x, y, z);
   // A left-handed set of axes would shear the rotation: the box is symmetric, so flip outward.
   if (m.determinant() < 0) m.makeBasis(x, y, z.negate());
@@ -235,7 +231,7 @@ export function buildAntennaGroup(state: AntennaSceneState, frame: Frame): Group
     const colour = KIND_COLOURS[unit.kind];
     const [w, h, d] = unit.box.extents;
     const centre = antennaCentre(unit, frame, shift);
-    const quat = orientation(unit, shift);
+    const quat = orientation(unit);
     const boxGeometry = new BoxGeometry(w, h, d);
     const rejected = unit.status === 'rejected';
 

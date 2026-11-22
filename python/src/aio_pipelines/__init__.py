@@ -43,9 +43,8 @@ PROTOCOL = "aio.pipelines/1"
 # recompute keeps each region's aiLabel; pointcloud.clean marks ground with PDAL SMRF from the Ground
 # classifier add-on; adds segment.lift, which only an app with the Segmentation add-on starts; cleanup
 # regions may carry a depth band) and pack 0.36.0 (telecom.flag measures an outline with a lower
-# face minimum than detection; telecom.flag and a towerHint of telecom.antennas apply a survey date's
-# whole line-up, its turn as well as its shift, which an app gates for a turned date; telecom.antennas
-# reports progress and honours a cancel inside its face search and box measuring).
+# face minimum than detection; telecom.antennas reports progress and honours a cancel inside its
+# face search and box measuring).
 # Each keeps the floor.
 # The app refuses a pack outside the range; the syntax is read by `appRangeAllows` in packages/schema/src/versions.ts
 # (space-separated >=, >, <=, <, =).

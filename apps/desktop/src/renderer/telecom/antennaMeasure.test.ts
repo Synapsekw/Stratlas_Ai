@@ -79,24 +79,20 @@ describe('antennaCorners', () => {
 });
 
 describe('a date turned by its line-up', () => {
-  it('turns the box with the date, as the view turns the cloud', () => {
-    // a 90 degree turn about the unit's own centre: across (east) becomes north, local -z
+  it('keeps the stored axes: the view does not turn a point cloud with its date', () => {
+    // a 90 degree turn about the unit's own centre: the box is not turned with it
     const turned = {
       eastM: 0,
       northM: 0,
       turn: { rotationDeg: 90, scale: 1, pivotE: 10, pivotN: 20, pivotX: 10, pivotZ: -20 },
     };
-    const axes = boxAxes(unit(), turned);
-    expect(axes[0][0]).toBeCloseTo(0, 9);
-    expect(axes[0][2]).toBeCloseTo(-1, 9);
+    const axes = boxAxes(unit());
+    expect(axes[0][0]).toBeCloseTo(1, 9);
+    expect(axes[0][2]).toBeCloseTo(0, 9);
     const c = antennaCorners(unit(), frame, turned);
-    // the 0.4 m width now runs along local z, the 2.6 m height (axis N) along local x
-    expect(span(c, 2)).toBeCloseTo(0.4, 9);
-    expect(span(c, 0)).toBeCloseTo(2.6, 9);
-    // no turn: the stored axes
-    const plain = boxAxes(unit(), { eastM: 1, northM: 1 })[0];
-    expect(plain[0]).toBeCloseTo(1, 9);
-    expect(plain[2]).toBeCloseTo(0, 9);
+    // the 0.4 m width still runs along local x, the 2.6 m (axis N) along local z
+    expect(span(c, 0)).toBeCloseTo(0.4, 9);
+    expect(span(c, 2)).toBeCloseTo(2.6, 9);
   });
 });
 

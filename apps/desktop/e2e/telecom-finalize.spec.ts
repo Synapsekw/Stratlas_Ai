@@ -436,7 +436,11 @@ test.describe('telecom finalized: the antenna list', () => {
     dataRoot,
   }) => {
     const dir = dataRoot.projectDir;
-    const measured = (value: number) => ({ value, basis: 'measured' as const });
+    const measured = (value: number) => ({
+      value,
+      basis: 'measured' as const,
+      quality: { basis: 'measured' as const },
+    });
     const units = rfAntennas().units.map((u): AntennaUnit => {
       if (u.id !== RF_DRAFT) return u;
       return {
@@ -639,7 +643,10 @@ test.describe('telecom finalized: with the pipeline', () => {
     await expect(run).toHaveCount(1);
     await expect(bench.getByRole('button', { name: 'Save as new run' })).toHaveCount(0);
     await expect(bench.getByTestId('rf-plan-changed')).toHaveCount(0);
-    await expect(chip).not.toContainText('plan changed since this run');
+    // the chip's words: a narrow stage (as at 1100 px) hides them but keeps them in its name
+    const chipWords = (c: typeof chip) => c.getByTestId('rf-chip-open');
+    await expect(chip).toHaveAttribute('data-state', 'result');
+    await expect(chipWords(chip)).not.toHaveAccessibleName(/plan changed since this run/);
 
     // Project > Coverage plan counts the finished run
     await openSection(win, 'project', 'project.inThisProject');
@@ -667,7 +674,7 @@ test.describe('telecom finalized: with the pipeline', () => {
     await expect(bench.getByTestId('rf-plan-changed')).toHaveText(
       'The plan changed since this run. Run coverage again to see it.',
     );
-    await expect(chip).toContainText('plan changed since this run');
+    await expect(chipWords(chip)).toHaveAccessibleName(/plan changed since this run/);
 
     // close and open the project again: step 3 and the stage chip still say so
     await reopenTiny(win);
@@ -676,9 +683,10 @@ test.describe('telecom finalized: with the pipeline', () => {
       'The plan changed since this run. Run coverage again to see it.',
       { timeout: 30_000 },
     );
-    await expect(win.getByTestId('rf-chip')).toContainText('plan changed since this run', {
-      timeout: 30_000,
-    });
+    await expect(chipWords(win.getByTestId('rf-chip'))).toHaveAccessibleName(
+      /plan changed since this run/,
+      { timeout: 30_000 },
+    );
     await expect(bench.getByTestId('rf-run')).toHaveCount(1);
     await openSection(win, 'project', 'project.inThisProject');
     await expect(
@@ -687,7 +695,7 @@ test.describe('telecom finalized: with the pipeline', () => {
     await evidence(win, 'j-plan-changed-after-reopen');
   });
 
-  test('flag antenna on a survey date lined up with a turn: measured where the view draws it, the box drawn turned', async ({
+  test('flag antenna on a survey date lined up with a shift and a turn: measures the unit outlined where the view draws its cloud', async ({
     win,
     dataRoot,
   }) => {
@@ -695,7 +703,8 @@ test.describe('telecom finalized: with the pipeline', () => {
     const dir = dataRoot.projectDir;
     const truth = await writeTelecomTower(dir, 2500);
     // the cloud is the later date, lined up with a shift and a 2 degree turn about a pivot 40 m
-    // west of the tower: the view draws it turned (about 1.4 m at the crown)
+    // west of the tower. The view draws a point cloud with the shift only (no turn), so the person
+    // outlines the radio there; a turn would put it about 1.4 m away at the crown
     const file = join(dir, 'manifest.json');
     const manifest = ProjectManifest.parse(JSON.parse(await readFile(file, 'utf8')));
     const later = {
@@ -716,7 +725,9 @@ test.describe('telecom finalized: with the pipeline', () => {
     if (!capture) throw new Error('no later capture');
     const shift = captureLineUpShift(capture, turned.origin);
     expect(shift?.turn?.rotationDeg).toBe(2);
-    const drawn = (p: Vec3): Vec3 => shiftLocal(p, shift);
+    if (!shift) throw new Error('no line-up');
+    // where the view draws the cloud: the shift alone (x += east, z -= north)
+    const cloudAt = (p: Vec3): Vec3 => [p[0] + shift.eastM, p[1], p[2] - shift.northM];
     const radio = truth.units.find((u) => u.name === 'radio-180');
     if (!radio) throw new Error('the synth has no radio-180');
 
@@ -726,13 +737,13 @@ test.describe('telecom finalized: with the pipeline', () => {
     const group = await projectAntennas(win);
     await expect(group.getByTestId('antenna-row')).toHaveCount(0);
 
-    // look at the radio where the view draws it, from 3 m out along its face
+    // look at the radio where the view draws its cloud, from 3 m out along its face
     const [, , normal] = unitAxes(radio);
     await win.evaluate(
       ([position, target]) => {
         (window as unknown as Inspect).__stratlas.stage()?.restoreView({ position, target }, false);
       },
-      [drawn(add(radio.centre, normal, 3)), drawn(radio.centre)] as const,
+      [cloudAt(add(radio.centre, normal, 3)), cloudAt(radio.centre)] as const,
     );
     await group.getByTestId('antenna-flag').click();
     await expect(win.getByTestId('antenna-flag-hint')).toBeVisible();
@@ -746,7 +757,7 @@ test.describe('telecom finalized: with the pipeline', () => {
         const v = cam.position.clone().set(x, y, z).project(cam);
         return [r.left + ((v.x + 1) / 2) * r.width, r.top + ((1 - v.y) / 2) * r.height];
       });
-    }, boxCorners(radio).map(drawn));
+    }, boxCorners(radio).map(cloudAt));
     expect(screen, 'the stage is up').not.toBeNull();
     const outline = grow(hull(screen ?? []), 6);
     for (const [x, y] of outline) await win.mouse.click(x, y);
@@ -772,7 +783,8 @@ test.describe('telecom finalized: with the pipeline', () => {
     expect(flagged.widthM?.basis, 'measured, not a placeholder').toBe('measured');
     expect(flagged.support).toBeGreaterThan(100);
 
-    // drawn turned with its cloud: at the drawn radio, its axes turned by the date's turn
+    // drawn as before this build: the centre where the antenna layer places a lined-up unit
+    // (`shiftLocal`, a known limit on a turned date), the axes as stored, not turned
     const box = await win.evaluate((id) => {
       const mesh = (window as unknown as Inspect).__stratlas
         .stage()
@@ -790,28 +802,17 @@ test.describe('telecom finalized: with the pipeline', () => {
     expect(box, 'the flagged unit is drawn').not.toBeNull();
     const c = flagged.box.centre;
     const local: Vec3 = [c[0], c[2], -c[1]];
-    const at = drawn(local);
     expect(
-      Math.hypot(...add(box?.at ?? [0, 0, 0], at, -1)),
-      'drawn at the turned place (m)',
+      Math.hypot(...add(box?.at ?? [0, 0, 0], shiftLocal(local, shift), -1)),
+      'drawn where the antenna layer places it (m)',
     ).toBeLessThan(0.05);
     const deg = (p: Vec3, q: Vec3) =>
       (Math.acos(Math.min(1, Math.abs(p[0] * q[0] + p[1] * q[1] + p[2] * q[2]))) * 180) / Math.PI;
     for (const [k, a] of flagged.box.axes.entries()) {
       const stored: Vec3 = [a[0], a[2], -a[1]];
-      const tip = drawn(add(local, stored, 1));
-      const turnedAxis = add(tip, at, -1);
-      const n = Math.hypot(...turnedAxis) || 1;
-      const expected: Vec3 = [turnedAxis[0] / n, turnedAxis[1] / n, turnedAxis[2] / n];
-      const drawnAxis = box?.axes[k] ?? [0, 0, 0];
-      expect(deg(drawnAxis, expected), `axis ${String(k)} is turned with the date`).toBeLessThan(
+      expect(deg(box?.axes[k] ?? [0, 0, 0], stored), `axis ${String(k)} as stored`).toBeLessThan(
         0.2,
       );
-      // a horizontal axis is visibly turned against the stored one
-      if (Math.abs(stored[1]) < 0.3)
-        expect(deg(drawnAxis, stored), `axis ${String(k)} differs by the turn`).toBeGreaterThan(
-          1.5,
-        );
     }
     await evidence(win, 'l-turned-flag-done');
   });

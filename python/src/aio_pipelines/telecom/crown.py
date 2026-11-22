@@ -10,11 +10,11 @@ shaft radius is `ShaftRadius.coef` (slope and intercept against height along the
 `ShaftRadius.from_coef` turns back into the function.
 
 Frames: everything here is in the cloud's own date frame (the file's coordinates, no line-up
-shift), like survey measurements, so lining a date up again never moves an inventory. A click on
-the tower is in the lined-up frame the 3D view draws: the date's whole line-up (shift and turn,
-`captures.date_similarity`) is undone on it. Engineering evidence is taken back by the shift alone
-(`captures.date_shift`, x += east, z -= north), the frame the engineering job reads clouds in (its
-clouds are shift-only). Cloud reads and photo poses are raw.
+shift), like survey measurements, so lining a date up again never moves an inventory. Engineering
+evidence and a click on the tower are in the lined-up frame the 3D view draws a cloud in
+(`captures.date_shift` of the cloud layer, x += east, z -= north; the view applies no turn to a
+point cloud, also on a date that carries one): the shift is taken off them before use. Cloud reads
+and photo poses are raw.
 
 Every read samples by coordinates when it holds more points than its cap (`read_region`
 `order_free`), so which points are kept does not depend on the order the reader returns them in,
@@ -32,7 +32,7 @@ from typing import Any
 import numpy as np
 from scipy import ndimage
 
-from ..captures import date_shift, date_similarity, layer_captures, local_delta
+from ..captures import date_shift, layer_captures, local_delta
 from ..change.sources import height_offset_m
 from ..engineer.axis import Axis, estimate_axis
 from ..engineer.cloud import read_region
@@ -409,13 +409,7 @@ def locate_crown(ctx: Any, project: Path, manifest: dict, params: dict) -> Crown
         evidence = to_date_frame(evidence, shift)
     hint = params.get("towerHint")
     if hint is not None:
-        sim = date_similarity(manifest, layer_id)
-        if sim.has_turn():
-            # the view draws the date turned as well as shifted: the click goes back through both
-            hx, hz = sim.inverse().apply_local(float(hint[0]), float(hint[1]), origin)
-            hint = [float(hx), float(hz)]
-        else:
-            hint = _unshift_xz(hint, dx, dz)
+        hint = _unshift_xz(hint, dx, dz)
     read_cap, read_points = FULL_POINTS, 0
     progress = getattr(ctx, "progress", None)
 

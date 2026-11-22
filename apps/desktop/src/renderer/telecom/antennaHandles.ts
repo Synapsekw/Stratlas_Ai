@@ -187,7 +187,7 @@ export function attachAntennaHandles(
     }
     layer.style.display = '';
     const c = v3(antennaCentre(unit, frame, opts.getShift()));
-    const axes = boxAxes(unit, opts.getShift()).map(v3);
+    const axes = boxAxes(unit).map(v3);
     const ext = unit.box.extents;
     const cam = stage.camera.position;
     const right = new Vector3().setFromMatrixColumn(stage.camera.matrixWorld, 0);
@@ -317,9 +317,9 @@ export function attachAntennaHandles(
       cancelBoxDrag();
       return;
     }
-    // the box as the view draws it: the centre and the axes turned with the date's line-up;
-    // the pipeline takes it back through the line-up itself (telecom.flag)
-    const axes = boxAxes(unit, opts.getShift());
+    // the box as the view draws it: the lined-up centre and the stored axes (a point cloud is
+    // drawn with its date's shift only); the pipeline takes the shift off (telecom.flag)
+    const axes = boxAxes(unit);
     const selection = boxCropSelection(
       antennaCentre(unit, frame, opts.getShift()),
       axes,
@@ -351,7 +351,7 @@ export function attachAntennaHandles(
     e.preventDefault();
     e.stopPropagation();
     const c = v3(antennaCentre(unit, frame, opts.getShift()));
-    const normal = v3(boxAxes(unit, opts.getShift())[f.axis]).multiplyScalar(f.sign);
+    const normal = v3(boxAxes(unit)[f.axis]).multiplyScalar(f.sign);
     const r = rect();
     // the capture goes on the svg: the arrows are re-stacked every frame, and moving the element
     // that holds the capture would drop it

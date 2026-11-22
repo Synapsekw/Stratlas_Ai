@@ -11,7 +11,6 @@ import { depthBandRefusal, GROUND_ADDON_MISSING, groundGate, liftRefusal } from 
 import { detectPackRefusal } from './analytics/detectPack';
 import { flyabilityPackRefusal } from './builder';
 import { evidenceJobPackRefusal, evidencePackRefusal } from './evidencePack';
-import { antennaPackRefusal } from './telecomPack';
 import { thermalPackRefusal } from './thermalPack';
 import { walkTrackPackRefusal } from './walkTrackPack';
 
@@ -29,8 +28,6 @@ function jobsStart(
     packVersion: '0.13.1',
   },
   gpuBusy: (pipeline: string) => string | null = () => null,
-  /** Stand-ins replacing the defaults below (a real gate, a spy). */
-  overrides: Record<string, unknown> = {},
 ) {
   const source = ts.createSourceFile(
     'index.ts',
@@ -89,7 +86,6 @@ function jobsStart(
     antennaPackRefusal: () => null,
     readAntennaInventory: () => Promise.resolve(null),
     readAntennaDeletions: () => Promise.resolve(false),
-    readTurnedDate: () => Promise.resolve(false),
     rfPackRefusal: () => null,
     thermalPackRefusal,
     evidenceJobPackRefusal,
@@ -105,33 +101,9 @@ function jobsStart(
     liftRefusal,
     readGroundAddon: () => Promise.resolve(null),
     installedAddon: () => Promise.resolve(null),
-    ...overrides,
   }) as (req: IpcRequest<'jobs:start'>) => Promise<{ ok: boolean; error?: string }>;
   return { handle, start, detectStart, findPack, photoStarting, laneStart };
 }
-
-describe('jobs:start antenna gates', () => {
-  it('refuses flagging on a turned survey date with processing tools older than 0.36.0', async () => {
-    const readTurnedDate = vi.fn(() => Promise.resolve(true));
-    const params = { cloud: { layer: 'cloud-b' } };
-    const old = jobsStart('0.35.0', 'failed', undefined, undefined, {
-      antennaPackRefusal,
-      readTurnedDate,
-    });
-    const r = await old.handle({ pipeline: 'telecom.flag', project: 'synthetic', params });
-    expect(r.ok).toBe(false);
-    expect(r.error).toContain('0.36.0 or later (these are 0.35.0)');
-    expect(readTurnedDate).toHaveBeenCalledWith('telecom.flag', 'synthetic', params);
-    expect(old.start).not.toHaveBeenCalled();
-    const fresh = jobsStart('0.36.0', 'failed', undefined, undefined, {
-      antennaPackRefusal,
-      readTurnedDate,
-    });
-    expect(await fresh.handle({ pipeline: 'telecom.flag', project: 'synthetic', params })).toEqual({
-      ok: true,
-    });
-  });
-});
 
 describe('jobs:start add-on gates', () => {
   const banded = {

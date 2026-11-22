@@ -305,26 +305,19 @@ def turn_date(root: Path, rotation_deg: float, east: float = 3.0, north: float =
     p.write_text(json.dumps(m, indent=1), encoding="utf-8")
 
 
-def view_local(p, rotation_deg: float, east: float, north: float) -> np.ndarray:
-    """Local points (N x 3) where the 3D view draws them on the turned date: `shiftLocal` of
-    `packages/schema/src/dateShift.ts` (turned about the pivot, then shifted; heights kept)."""
+def cloud_drawn(p, east: float, north: float) -> np.ndarray:
+    """Local points (N x 3) where the 3D view draws a point cloud of a lined-up date: moved by the
+    shift alone (x += east, z -= north), also when the date carries a turn (the view applies no
+    turn to a cloud: `cloudFrameOrigin` and packages/pointcloud/src/adapter.ts)."""
     p = np.asarray(p, dtype=np.float64).reshape(-1, 3)
-    r = np.radians(rotation_deg)
-    a, b = np.cos(r), np.sin(r)
-    px, pz = TURN_PIVOT[0] - E0, N0 - TURN_PIVOT[1]
-    dx, dz = p[:, 0] - px, p[:, 2] - pz
-    return np.column_stack([px + a * dx + b * dz + east, p[:, 1], pz - b * dx + a * dz - north])
+    return p + np.array([east, 0.0, -north])
 
 
-def turned_selection(u: dict, rotation_deg: float, east: float, north: float, grow=0.05) -> dict:
-    """`selection` around a truth unit as the view draws it on the turned date: the box turned
-    with the date (centre and axes), seen from 4 m in front."""
+def drawn_selection(u: dict, east: float, north: float, grow=0.05) -> dict:
+    """`selection` around a truth unit as the view draws its cloud on a lined-up date (shifted,
+    not turned), seen from 4 m in front."""
     c, axes, ext = _frame(u)
-    r = np.radians(rotation_deg)
-    a, b = np.cos(r), np.sin(r)
-    turn = np.array([[a, 0.0, b], [0.0, 1.0, 0.0], [-b, 0.0, a]])  # directions turn, shifts do not
-    c = view_local(c, rotation_deg, east, north)[0]
-    axes = axes @ turn.T
+    c = cloud_drawn(c, east, north)[0]
     signs = np.array([[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)], dtype=float)
     corners = c + (signs * (ext / 2 + grow)) @ axes
     vp = _view_proj(c + axes[2] * 4.0, c)
@@ -338,21 +331,21 @@ def turned_selection(u: dict, rotation_deg: float, east: float, north: float, gr
     }
 
 
-def test_a_date_turned_by_5_degrees_selects_the_same_points_as_the_view(project):
+def test_a_flag_on_a_date_with_a_shift_and_a_turn_selects_the_points_the_view_draws(project):
     from aio_pipelines.engineer.cloud import read_region
     from aio_pipelines.telecom.flag import select_points
 
     root, truth = project
-    turn_date(root, 5.0)
+    turn_date(root, 2.0)
     doc = read_file(root)
     doc["run"]["captureId"] = CAPTURE
     write_file(root, doc)
     radio = truth_unit(truth, "radio-180")
-    sel = turned_selection(radio, 5.0, 3.0, -2.0)
+    sel = drawn_selection(radio, 3.0, -2.0)
     # what the view shows inside the outline: every cloud point where the view draws it
     ctx = type("Ctx", (), {"check": staticmethod(lambda: None)})()
     stored, _ = read_region(root / "clouds" / "tower.las", "las", None, 10_000_000, ctx, ORIGIN)
-    drawn = view_local(stored, 5.0, 3.0, -2.0)
+    drawn = cloud_drawn(stored, 3.0, -2.0)
     lo, hi = np.asarray(sel["bounds"]["min"]), np.asarray(sel["bounds"]["max"])
     seen = np.all((drawn >= lo) & (drawn <= hi), axis=1)
     seen[seen] = select_points(drawn[seen], sel["polygon"], sel["viewProj"])

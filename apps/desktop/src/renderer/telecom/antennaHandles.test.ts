@@ -311,7 +311,7 @@ describe('antenna box handles', () => {
       expect(sel.anchor).toEqual(expected.anchor);
     });
 
-    it('on a date turned by 5 degrees sends the drawn box, its axes turned with the date', () => {
+    it('on a date with a 5 degree turn sends the box as drawn, its axes not turned', () => {
       const unit = antennaStore.getState().file?.units[0];
       if (!unit) throw new Error('no unit');
       const [pe, pn] = unit.box.centre;
@@ -321,19 +321,20 @@ describe('antenna box handles', () => {
         turn: { rotationDeg: 5, scale: 1, pivotE: pe, pivotN: pn, pivotX: pe, pivotZ: -pn },
       };
       const { sel, dragged } = dragWith(turned);
-      const plain = boxCropSelection(
+      const drawn = boxCropSelection(
         antennaCentre(dragged, frame, turned),
         dragged.box.axes.map(axisToLocal) as [Vec3, Vec3, Vec3],
         dragged.box.extents,
       );
-      // the two horizontal-ish rows are the stored axes turned by 5 degrees, not the stored ones
+      // the view does not turn a point cloud with its date, so neither is the box: its rows are
+      // the stored axes, not the stored axes turned by 5 degrees
       for (const r of [0, 1] as const) {
-        const want = turnLocal(row(plain.viewProj, r), 5);
-        expect(dot(row(sel.viewProj, r), want)).toBeCloseTo(1, 9);
-        expect(dot(row(sel.viewProj, r), row(plain.viewProj, r))).toBeLessThan(0.9999);
+        expect(dot(row(sel.viewProj, r), row(drawn.viewProj, r))).toBeCloseTo(1, 9);
+        expect(dot(row(sel.viewProj, r), turnLocal(row(drawn.viewProj, r), 5))).toBeLessThan(
+          0.9999,
+        );
       }
-      // placed where the view draws the unit: the lined-up centre
-      expect(sel.anchor).toEqual(antennaCentre(dragged, frame, turned));
+      expect(sel.anchor).toEqual(drawn.anchor);
     });
   });
 

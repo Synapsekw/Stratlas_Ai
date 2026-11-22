@@ -4,7 +4,7 @@
  * local frame (x east, y up, z south) and moved by the survey date's line-up shift, exactly as the
  * box mesh in `antennaScene` is placed.
  */
-import { hasTurn, shiftEN, type AntennaUnit, type DateShift, type Vec3 } from '@aio/schema';
+import { shiftEN, type AntennaUnit, type DateShift, type Vec3 } from '@aio/schema';
 import { t } from '@aio/ui';
 import type { Frame } from '../survey/measureScene';
 import { formatAngle, formatHeight, formatSize, trueAzimuth } from './antennaFormat';
@@ -56,19 +56,13 @@ export function antennaCentre(unit: AntennaUnit, frame: Frame, shift: DateShift 
 }
 
 /**
- * The box's axes (across, up, outward) as local directions, turned with the survey date's line-up
- * as the view turns that date's cloud (`shiftEN` already turns the centre): counter-clockwise by
- * `rotationDeg`, east towards north. The turn's scale is not applied to the extents: a line-up
- * scale is within 1e-3 of 1. Without a turn, the stored axes.
+ * The box's axes (across, up, outward) as local directions: the stored axes, also on a date lined
+ * up with a turn, because the view does not turn a point cloud with its date (it moves it by the
+ * shift only).
  */
-export function boxAxes(unit: AntennaUnit, shift: DateShift | null): [Vec3, Vec3, Vec3] {
-  const turn = shift?.turn && hasTurn(shift.turn) ? shift.turn : null;
-  const r = ((turn?.rotationDeg ?? 0) * Math.PI) / 180;
-  const a = Math.cos(r);
-  const b = Math.sin(r);
-  const one = (v: Vec3): Vec3 =>
-    axisToLocal(turn ? [a * v[0] - b * v[1], b * v[0] + a * v[1], v[2]] : v);
-  return [one(unit.box.axes[0]), one(unit.box.axes[1]), one(unit.box.axes[2])];
+export function boxAxes(unit: AntennaUnit): [Vec3, Vec3, Vec3] {
+  const [x, y, z] = unit.box.axes;
+  return [axisToLocal(x), axisToLocal(y), axisToLocal(z)];
 }
 
 /** A point of the box from its centre by signs along (across, up, outward): -1 .. 1 each. */
@@ -83,7 +77,7 @@ function boxPoint(unit: AntennaUnit, axes: readonly Vec3[], centre: Vec3, s: Vec
 /** The 8 corners of the unit's box in the local frame; corner i has bit 0/1/2 = +across/up/out. */
 export function antennaCorners(unit: AntennaUnit, frame: Frame, shift: DateShift | null): Vec3[] {
   const centre = antennaCentre(unit, frame, shift);
-  const axes = boxAxes(unit, shift);
+  const axes = boxAxes(unit);
   const corners: Vec3[] = [];
   for (let i = 0; i < 8; i++)
     corners.push(boxPoint(unit, axes, centre, [i & 1 ? 1 : -1, i & 2 ? 1 : -1, i & 4 ? 1 : -1]));
@@ -177,7 +171,7 @@ export function antennaMeasure(
       ],
     };
   }
-  const axes = boxAxes(unit, shift);
+  const axes = boxAxes(unit);
   const [across, up, out] = axes;
   const upOut: Vec3 = [out[0] + up[0], out[1] + up[1], out[2] + up[2]];
   const n = Math.hypot(...upOut) || 1;

@@ -10,8 +10,6 @@ import {
   hasPersonOwned,
   readAntennaDeletions,
   readAntennaInventory,
-  readTurnedDate,
-  TURNED_DATE_MIN_PACK,
 } from './telecomPack';
 
 const contract = JSON.parse(
@@ -205,94 +203,6 @@ describe('reading the deletions sidecar for the gate', () => {
     expect(await readAntennaDeletions('telecom.antennas', project('{ nope'))).toBe('unreadable');
     expect(await readAntennaDeletions('telecom.antennas', project('{"deletions": 3}'))).toBe(
       'unreadable',
-    );
-  });
-});
-
-describe('pack gate for a survey date lined up with a turn', () => {
-  const turned = (v: string) =>
-    `Antenna flagging on a survey date lined up with a turn needs processing tools ${TURNED_DATE_MIN_PACK} or later (these are ${v}). Update them in Settings, Processing tools.`;
-  it('flagging on a turned date needs the new pack', () => {
-    expect(TURNED_DATE_MIN_PACK).toBe('0.36.0');
-    expect(antennaPackRefusal('telecom.flag', '0.35.0', null, false, true)).toBe(turned('0.35.0'));
-    expect(antennaPackRefusal('telecom.flag', '0.36.0', null, false, true)).toBeNull();
-    expect(antennaPackRefusal('telecom.flag', 'dev', null, false, true)).toBeNull();
-    // a date without a turn keeps the flagging floor
-    expect(antennaPackRefusal('telecom.flag', '0.35.0', null, false, false)).toBeNull();
-    expect(antennaPackRefusal('telecom.flag', '0.24.0')).toBeNull();
-    // below the flagging floor the flagging message comes first
-    expect(antennaPackRefusal('telecom.flag', '0.23.0', null, false, true)).toContain('0.24.0');
-  });
-  it('a click on the tower on a turned date needs the new pack', () => {
-    expect(antennaPackRefusal('telecom.antennas', '0.35.0', null, false, true)).toBe(
-      `Antenna detection from a click on the tower on a survey date lined up with a turn needs processing tools 0.36.0 or later (these are 0.35.0). Update them in Settings, Processing tools.`,
-    );
-    expect(antennaPackRefusal('telecom.antennas', '0.36.0', null, false, true)).toBeNull();
-    expect(antennaPackRefusal('telecom.antennas', '0.35.0', null, false, false)).toBeNull();
-  });
-});
-
-describe('reading whether a job works on a turned date', () => {
-  const dirs: string[] = [];
-  afterEach(() => {
-    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
-  });
-  const turn = { rotationDeg: 0.5, scale: 1, pivotE: 400010, pivotN: 2700020 };
-  const project = (withTurn: boolean, text?: string): string => {
-    const d = mkdtempSync(join(tmpdir(), 'antenna-turn-'));
-    dirs.push(d);
-    const manifest = {
-      schema: 'aio.project/1',
-      id: 'tower',
-      name: 'Synthetic tower',
-      crs: { epsg: 32640 },
-      origin: [400000, 2700000, 0],
-      captures: [
-        { id: 'd1', label: 'First survey', date: '2026-03-01' },
-        {
-          id: 'd2',
-          label: 'Second survey',
-          date: '2026-09-01',
-          lineUp: { eastM: 2, northM: 1, with: 'd1', at: '2026-10-16T08:00:00.000Z' },
-          ...(withTurn ? { lineUpTurn: turn } : {}),
-        },
-      ],
-      layers: ['d1', 'd2'].map((c) => ({
-        id: `cloud-${c}`,
-        name: 'Tower cloud',
-        kind: 'pointcloud',
-        capture: c,
-        src: { path: `clouds/${c}.copc.laz` },
-        format: 'copc',
-        visible: true,
-      })),
-      severityModels: [],
-      classCatalogues: [],
-    };
-    writeFileSync(join(d, 'manifest.json'), text ?? JSON.stringify(manifest));
-    return d;
-  };
-  const flag = (layer: string) => ({ cloud: { layer } });
-
-  it('is true for flagging a cloud whose date has a turn', async () => {
-    expect(await readTurnedDate('telecom.flag', project(true), flag('cloud-d2'))).toBe(true);
-    expect(await readTurnedDate('telecom.flag', project(true), flag('cloud-d1'))).toBe(false);
-    expect(await readTurnedDate('telecom.flag', project(false), flag('cloud-d2'))).toBe(false);
-  });
-  it('is true for a click on the tower when the cloud (or, unnamed, any cloud) is turned', async () => {
-    const root = project(true);
-    const hint = { run: 'run-a', towerHint: [1, 2] };
-    expect(await readTurnedDate('telecom.antennas', root, hint)).toBe(true);
-    expect(await readTurnedDate('telecom.antennas', root, { ...hint, ...flag('cloud-d1') })).toBe(
-      false,
-    );
-    expect(await readTurnedDate('telecom.antennas', root, { run: 'run-a' })).toBe(false);
-  });
-  it('is false for other jobs, no project and a manifest that cannot be read', async () => {
-    expect(await readTurnedDate('model.evidence', project(true), flag('cloud-d2'))).toBe(false);
-    expect(await readTurnedDate('telecom.flag', undefined, flag('cloud-d2'))).toBe(false);
-    expect(await readTurnedDate('telecom.flag', project(true, '{ nope'), flag('cloud-d2'))).toBe(
-      false,
     );
   });
 });

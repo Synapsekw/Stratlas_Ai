@@ -342,9 +342,10 @@ def test_lined_up_tower_hint_is_taken_back_to_the_date_frame(tmp_path):
     assert c.source == "hint" and off_axis(c, mast) < 0.15
 
 
-def test_a_tower_hint_on_a_turned_date_is_taken_back_through_the_turn(tmp_path):
-    # the date is turned 5 degrees about a pivot 100 m west of the base, then shifted: the view
-    # draws the mast about 10 m from where a shift alone puts it
+def test_a_tower_hint_on_a_date_with_a_shift_and_a_turn_is_taken_back_by_the_shift(tmp_path):
+    # the date carries a 5 degree turn about a pivot 100 m west of the base and a shift; the view
+    # draws a point cloud with the shift alone (no turn: `cloudFrameOrigin`, the pointcloud
+    # adapter), so a click on the drawn mast is taken back by the shift
     xyz, truth = two_masts_cloud(seed=1)
     root = make_tower_project(tmp_path / "proj", xyz)
     line_up(root, 2.0, 1.0)
@@ -357,13 +358,8 @@ def test_a_tower_hint_on_a_turned_date_is_taken_back_through_the_turn(tmp_path):
             cap["lineUpTurn"] = {"rotationDeg": 5.0, "scale": 1.0, "pivotE": pivot[0], "pivotN": pivot[1]}
     p.write_text(json.dumps(m, indent=1), encoding="utf-8")
     mast = truth["masts"][1]["xz"]
-    # where the view draws the mast (`shiftLocal` of packages/schema/src/dateShift.ts)
-    r = np.radians(5.0)
-    a, b = np.cos(r), np.sin(r)
-    px, pz = pivot[0] - e0, n0 - pivot[1]
-    dx, dz = mast[0] - px, mast[1] - pz
-    click = [px + a * dx + b * dz + 2.0, pz - b * dx + a * dz - 1.0]
-    c = _locate(root, tmp_path, towerHint=click)
+    # where the view draws the mast: 2 m east and 1 m north (local z -= north) of its file position
+    c = _locate(root, tmp_path, towerHint=[mast[0] + 2.0, mast[1] - 1.0])
     assert c.source == "hint" and off_axis(c, mast) < 0.15
 
 

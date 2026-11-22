@@ -16,49 +16,8 @@ import {
   TELECOM_DELETE_MIN_PACK,
   TELECOM_FLAG_FEATURE,
   TELECOM_FLAG_MIN_PACK,
-  hasTurn,
 } from '@aio/schema';
-import { dateShiftOf } from '@aio/workspace';
 import { compareVersions } from './jobs/pack';
-import { readManifest } from './project';
-
-/**
- * The pack that applies a survey date's whole line-up (shift and turn) to the points a person
- * outlined, to a box handle's re-measure and to a click on the tower. An older pack takes the
- * shift alone, so on a date lined up with a turn it would measure the wrong points.
- */
-export const TURNED_DATE_MIN_PACK = '0.36.0';
-
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
-
-/**
- * Whether a `telecom.flag` job, or a `telecom.antennas` job started from a click on the tower
- * (`towerHint`), works on a cloud whose survey date is lined up with a turn: the cloud the job
- * names, or any point cloud when it names none (detection picks one itself). False for other
- * jobs, no project, and a manifest that cannot be read (the job reports that itself).
- */
-export async function readTurnedDate(
-  pipeline: string,
-  project: string | undefined,
-  params: unknown,
-): Promise<boolean> {
-  if (!project || (pipeline !== 'telecom.flag' && pipeline !== 'telecom.antennas')) return false;
-  const p = isRecord(params) ? params : {};
-  if (pipeline === 'telecom.antennas' && p.towerHint === undefined) return false;
-  try {
-    const m = await readManifest(project);
-    if (!m.ok) return false;
-    const named = isRecord(p.cloud) && typeof p.cloud.layer === 'string' ? p.cloud.layer : null;
-    const clouds =
-      named !== null
-        ? [named]
-        : m.value.layers.filter((l) => l.kind === 'pointcloud').map((l) => l.id);
-    return clouds.some((id) => hasTurn(dateShiftOf(m.value, id)?.turn));
-  } catch {
-    return false;
-  }
-}
 
 /**
  * The inventory as the gate sees it: the file, null when there is none, or `unreadable` when it
@@ -156,26 +115,19 @@ export function hasPersonOwned(file: AntennasFile): boolean {
  * 0.24.0 is refused only when the file holds something a person owns (`inventory`), or when it is
  * there but unreadable (it may). A re-detect below 0.25.0 is refused when the deletions sidecar
  * holds a record or is unreadable (`deletions`): an older pack would bring the deleted units back.
- * Flagging, or a re-detect from a click on the tower, on a date lined up with a turn (`turned`,
- * `readTurnedDate`) is refused below `TURNED_DATE_MIN_PACK`.
  */
 export function antennaPackRefusal(
   pipeline: string,
   packVersion: string | null,
   inventory?: GateInventory,
   deletions?: boolean | 'unreadable',
-  turned?: boolean,
 ): string | null {
   if (packVersion === null || packVersion === 'dev') return null;
   if (pipeline === 'telecom.flag') {
-    if (compareVersions(packVersion, TELECOM_FLAG_MIN_PACK) < 0) return flagMessage(packVersion);
-    if (turned && compareVersions(packVersion, TURNED_DATE_MIN_PACK) < 0)
-      return `${TELECOM_FLAG_FEATURE} on a survey date lined up with a turn needs processing tools ${TURNED_DATE_MIN_PACK} or later (these are ${packVersion}). Update them in Settings, Processing tools.`;
-    return null;
+    if (compareVersions(packVersion, TELECOM_FLAG_MIN_PACK) >= 0) return null;
+    return flagMessage(packVersion);
   }
   if (pipeline !== 'telecom.antennas') return null;
-  if (turned && compareVersions(packVersion, TURNED_DATE_MIN_PACK) < 0)
-    return `${TELECOM_ANTENNAS_FEATURE} from a click on the tower on a survey date lined up with a turn needs processing tools ${TURNED_DATE_MIN_PACK} or later (these are ${packVersion}). Update them in Settings, Processing tools.`;
   if (inventory === 'unreadable' || (inventory && hasPersonOwned(inventory))) {
     if (compareVersions(packVersion, TELECOM_FLAG_MIN_PACK) < 0) return flagMessage(packVersion);
   }
