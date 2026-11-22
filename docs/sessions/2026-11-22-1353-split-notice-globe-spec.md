@@ -22,12 +22,14 @@ The two open threads of the 12 Nov note: an Undo notice kept nearly half of the 
 
 ## How to test
 
-1. Start the app in a small window (about 1100 x 720) and open a project with a few datasets; "Demo change site (2 dates)" was used here. Press 3, or click the Split switch in the stage tools.
+The development app (`pnpm dev`) lists the demo projects only when `QUADRION_DEMO` names the built demo folder; without it the Projects screen holds only the projects of the data root. Either start it with the demo (PowerShell, from the repository root, after `pnpm demo:build --quick`: `$env:QUADRION_DEMO = "$PWD\apps\desktop\demo"; pnpm dev`) and use "Demo change site (2 dates)", or use any project of your own that has a dataset in its tree.
+
+1. Make the window small (about 1100 x 720), open the project from the Projects screen and press 3, or click the Split switch in the stage tools.
 2. In the Datasets tree, right-click a dataset, Export..., and pick a folder. The "Exporting datasets" notice shows at the bottom, left of the panel on the right, at the end of the bottom strip. The strip's content ends before the notice; nothing of it lies under the notice, and the notice does not reach over the pane.
 3. Click Dismiss (the cross) on the notice: the strip takes its full width back.
 4. The Globe change is in the tests only: nothing to see in the app.
 
-Steps 1 to 3 were driven by a real run of that exact route on the change demo at 1100 x 720 (a scratch spec, not committed); the same checks on the graphics notice and the line-up notice are in the two committed specs. The demo project shows on the Projects screen of a development app only when it is started with `QUADRION_DEMO` set to the built demo folder; whether it is listed in the founder's own development app was not checked, and any project with a dataset serves.
+Steps 1 to 3 were driven by a real run of that exact route at 1100 x 720 (a scratch spec, not committed): the built app started with `QUADRION_DEMO`, the demo opened by its card on the Projects screen. The same checks on the graphics notice and the line-up notice are in the two committed specs. `pnpm dev` itself was not started (its window would show on the workstation's screen); it reads the same variable through the same code (`src/main/demo.ts`, `demoRoot`).
 
 ## Open threads
 
