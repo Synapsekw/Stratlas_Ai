@@ -249,6 +249,30 @@ describe('the volumetric report editor', () => {
     expect(button('Take them now')).toBeDefined();
   });
 
+  it('in a package says the pictures may not match, with no link', async () => {
+    readOnly = true;
+    model = { ...twoDates, frame: frameOf('v1-old') };
+    await mount();
+    expect(note()?.textContent).toContain('may not match its data');
+    expect(button('Take them now')).toBeUndefined();
+  });
+
+  it('in a package without pictures says it carries none', async () => {
+    readOnly = true;
+    model = { ...twoDates, frame: null };
+    await mount();
+    expect(note()?.textContent).toContain('carries no report pictures');
+    expect(button('Take them now')).toBeUndefined();
+  });
+
+  it('in a package says nothing about pictures while they are current', async () => {
+    readOnly = true;
+    const pair = { from: 'c1', to: 'c2' };
+    model = { ...twoDates, frame: frameOf(picturesFingerprint(measurements, ['c1', 'c2'], pair)) };
+    await mount();
+    expect(note()).toBeNull();
+  });
+
   it('says nothing about pictures while they are current', async () => {
     const pair = { from: 'c1', to: 'c2' };
     model = { ...twoDates, frame: frameOf(picturesFingerprint(measurements, ['c1', 'c2'], pair)) };

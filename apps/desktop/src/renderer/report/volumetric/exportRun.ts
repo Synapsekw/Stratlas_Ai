@@ -1,7 +1,9 @@
 // The volumetric report's one export flow (layout plan 2026-11-20, section 5): write pending text,
 // take the pictures when there are none or they are stale, then write the file. The editor's
 // Export PDF and Export HTML and the Exports menu's two volumetric actions all come through
-// `exportVolumetric`, so no route ends with "the report has no pictures yet". The progress card
+// `exportVolumetric`, so no route ends with "the report has no pictures yet", except a package,
+// which says so at once: it cannot save pictures, so it exports with the ones it carries and
+// says when they may not match its data. The progress card
 // (PictureProgress.tsx) reads `exportRun` (editorView.ts) for the phase and `pictureRun` for the
 // count.
 import type { VolumetricModel } from '@aio/project/export';
@@ -159,9 +161,15 @@ async function run(format: VolumetricFormat | null, src: ExportSource): Promise<
       return end('failed', source.error);
     }
     const plan = captureRequest(project.id, source.value.model, source.value.measurements);
-    // a package cannot save new pictures: it exports with the ones it carries
-    const keep = pkg !== null && source.value.model.frame !== null;
-    if (format === null || (!plan.current && !keep)) {
+    // a package cannot save new pictures (`report:saveViews` refuses it): without any it says so
+    // at once, before a picture is taken; else it exports with the ones it carries
+    if (pkg !== null && source.value.model.frame === null) {
+      const none = t('vreport.pictures.nonePackage');
+      say(title, none);
+      return end('failed', none);
+    }
+    const carried = pkg !== null && !plan.current;
+    if (format === null || (!plan.current && pkg === null)) {
       hide = showPictureProgress();
       const r = await takeReportPictures(plan.req);
       if (!r.ok) {
@@ -174,6 +182,13 @@ async function run(format: VolumetricFormat | null, src: ExportSource): Promise<
     if (format === null) return end('done');
     exportRun.setState({ phase: 'writing' });
     const outcome = await exportIssues(format);
+    if (outcome === 'done' && carried) {
+      // the file went out with pictures that may be older than its figures: say so, once
+      const id = runId();
+      const toast = toasts.getState();
+      toast.start(id, title);
+      toast.finish(id, 'done', t('vreport.pictures.stalePackage'));
+    }
     return end(outcome === 'done' ? 'done' : outcome === 'cancelled' ? 'idle' : 'failed');
   } catch (e) {
     say(title, message(e));

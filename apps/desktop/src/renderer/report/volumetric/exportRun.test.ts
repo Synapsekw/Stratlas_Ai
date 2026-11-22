@@ -1,5 +1,6 @@
 import { volumetricModel, type VolumetricInput, type VolumetricModel } from '@aio/project/export';
 import type { ReportViewsFrame, SurveyMeasurement } from '@aio/schema';
+import { t } from '@aio/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { picturesFingerprint, volumetricView } from './editorView';
 import { captureRequest, exportRun, exportVolumetric, takePicturesNow } from './exportRun';
@@ -99,6 +100,9 @@ const frameOf = (fingerprint: string): ReportViewsFrame => ({
 });
 const modelWith = (frame: ReportViewsFrame | null): VolumetricModel =>
   volumetricModel(input(frame));
+
+/** The `[state, message]` pairs the toasts were finished with. */
+const finished = () => toast.finish.mock.calls.map((c) => [c[1], c[2]] as [unknown, unknown]);
 
 /** The order things happened in. */
 let log: string[] = [];
@@ -221,12 +225,55 @@ describe('exportVolumetric', () => {
     expect(exportIssues).not.toHaveBeenCalled();
   });
 
-  it('exports a package with the pictures it carries, stale or not', async () => {
-    // a package cannot save new pictures
-    opened.pkg = { header: { exports: ['report-pdf'] } };
-    const end = await exportVolumetric('volumetric-pdf', given(frameOf('v1-old')));
-    expect(takeReportPictures).not.toHaveBeenCalled();
-    expect(end).toBe('done');
+  // a package cannot save new pictures: it exports with the ones it carries and says so
+  describe('in a package', () => {
+    beforeEach(() => {
+      opened.pkg = { header: { exports: ['report-pdf'] } };
+    });
+
+    it('exports with stale pictures and says they may not match', async () => {
+      const end = await exportVolumetric('volumetric-pdf', given(frameOf('v1-old')));
+      expect(takeReportPictures).not.toHaveBeenCalled();
+      expect(exportIssues).toHaveBeenCalledTimes(1);
+      expect(end).toBe('done');
+      expect(finished()).toContainEqual(['done', t('vreport.pictures.stalePackage')]);
+    });
+
+    it('says nothing more when the pictures are current', async () => {
+      const end = await exportVolumetric('volumetric-pdf', given(frameOf(current)));
+      expect(end).toBe('done');
+      expect(finished()).toEqual([]);
+    });
+
+    it('refuses at once without pictures, before any is taken', async () => {
+      const end = await exportVolumetric('volumetric-pdf', given(null));
+      expect(end).toBe('failed');
+      expect(exportRun.getState().error).toBe(t('vreport.pictures.nonePackage'));
+      expect(takeReportPictures).not.toHaveBeenCalled();
+      expect(showPictureProgress).not.toHaveBeenCalled();
+      expect(exportIssues).not.toHaveBeenCalled();
+      expect(finished()).toContainEqual(['error', t('vreport.pictures.nonePackage')]);
+    });
+
+    it('says nothing about pictures when the export itself failed or was cancelled', async () => {
+      exportIssues.mockResolvedValue('error');
+      await exportVolumetric('volumetric-pdf', given(frameOf('v1-old')));
+      exportIssues.mockResolvedValue('cancelled');
+      await exportVolumetric('volumetric-pdf', given(frameOf('v1-old')));
+      expect(finished()).toEqual([]);
+    });
+
+    it('does nothing when the package does not allow the export', async () => {
+      opened.pkg = { header: { exports: [] } };
+      expect(await exportVolumetric('volumetric-pdf', given(null))).toBe('idle');
+      expect(finished()).toEqual([]);
+    });
+  });
+
+  it('a folder project says nothing about a package', async () => {
+    await exportVolumetric('volumetric-pdf', given(frameOf('v1-old')));
+    expect(takeReportPictures).toHaveBeenCalledTimes(1);
+    expect(finished()).toEqual([]);
   });
 
   it('writes pending text before anything else', async () => {

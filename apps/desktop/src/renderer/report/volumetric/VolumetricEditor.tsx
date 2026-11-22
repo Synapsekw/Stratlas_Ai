@@ -205,18 +205,31 @@ function Field(props: {
 
 /**
  * The quiet line over the preview while the report has no pictures or they are stale: the export
- * takes them, and "Take them now" takes them at once so the preview can be checked first.
+ * takes them, and "Take them now" takes them at once so the preview can be checked first. A
+ * package (`locked`) cannot take pictures: it says what its export will do instead, with no link.
  */
-function PicturesNote(props: { state: 'none' | 'stale'; busy: boolean; onTake: () => void }) {
+function PicturesNote(props: {
+  state: 'none' | 'stale';
+  busy: boolean;
+  onTake: () => void;
+  locked: boolean;
+}) {
+  const text = props.locked
+    ? props.state === 'none'
+      ? t('vreport.pictures.nonePackage')
+      : t('vreport.pictures.stalePackage')
+    : props.state === 'none'
+      ? t('vreport.pictures.none')
+      : t('vreport.pictures.stale');
   return (
     <p className="vre-pictures small" role="status" data-testid="volumetric-pictures">
       <Icon name="camera" size={14} />
-      <span>
-        {props.state === 'none' ? t('vreport.pictures.none') : t('vreport.pictures.stale')}
-      </span>
-      <button type="button" className="vre-take" disabled={props.busy} onClick={props.onTake}>
-        {t('vreport.pictures.takeNow')}
-      </button>
+      <span>{text}</span>
+      {!props.locked && (
+        <button type="button" className="vre-take" disabled={props.busy} onClick={props.onTake}>
+          {t('vreport.pictures.takeNow')}
+        </button>
+      )}
     </p>
   );
 }
@@ -586,9 +599,14 @@ export function VolumetricEditor(props: VolumetricEditorProps) {
             taken={taken}
             onPick={pick}
             note={
-              // a package cannot save pictures, so it is not offered to take them
-              pictures !== 'current' && !ed.readOnly ? (
-                <PicturesNote state={pictures} busy={busy} onTake={takePictures} />
+              // a package cannot save pictures: it is told so, and not offered to take them
+              pictures !== 'current' ? (
+                <PicturesNote
+                  state={pictures}
+                  busy={busy}
+                  onTake={takePictures}
+                  locked={ed.readOnly}
+                />
               ) : null
             }
           />
