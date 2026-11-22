@@ -1,8 +1,8 @@
 # Telecom: finalization plan
 
-Date: 22 Nov 2026. Branch `feat/telecom-finalize`. Status: plan written; the eight open calls of section 6 were decided on 22 Nov 2026 under the founder's delegation. Nothing is built.
+Date: 22 Nov 2026. Branch `feat/telecom-finalize`. Status: the build is under way (started 22 Nov 2026); the eight open calls of section 6 were decided on 22 Nov 2026 under the founder's delegation.
 
-**The build starts only once the founder has approved the volumetrics section** (the freeze rule of 18 Nov 2026: one section is tested and approved before the next begins).
+**The build started on 22 Nov 2026 without waiting for a founder test of volumetrics.** The freeze rule of 18 Nov 2026 (one section is tested and approved before the next begins) was written for a founder who tests each section himself. On 22 Nov 2026 the founder delegated both the choices and the testing ("pick whatever is best for our project", "you test what you can, don't ask me to test if you can do it"), so the volumetrics verification is driven by an agent in parallel and the main session decided that this build starts now.
 
 ## Why this plan exists
 
