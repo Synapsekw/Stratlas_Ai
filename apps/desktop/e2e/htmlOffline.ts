@@ -18,6 +18,8 @@ export interface OfflineWindow {
   requests: () => Promise<string[]>;
   /** `printToPDF` of the window (A4, the page's CSS size), written to `file`. */
   printToPdf: (file: string) => Promise<void>;
+  /** Give the window's page another size, as a reader who makes the browser window narrow. */
+  resize: (width: number, height: number) => Promise<void>;
   close: () => Promise<void>;
 }
 
@@ -92,6 +94,20 @@ export async function openOffline(app: ElectronApplication, file: string): Promi
         return pdf.toString('base64');
       }, key);
       await writeFile(out, Buffer.from(base64, 'base64'));
+    },
+    resize: async (width, height) => {
+      await app.evaluate(
+        ({ BrowserWindow }, { k, width, height }) => {
+          const id = (globalThis as { __aioOfflineWin?: Record<string, number> }).__aioOfflineWin?.[
+            k
+          ];
+          const w = id === undefined ? null : BrowserWindow.fromId(id);
+          if (!w) throw new Error('the offline window is gone');
+          w.setContentSize(width, height);
+        },
+        { k: key, width, height },
+      );
+      await page.waitForFunction((want) => innerWidth === want, width, { timeout: 30_000 });
     },
     close: async () => {
       await app.evaluate(({ BrowserWindow }, k) => {

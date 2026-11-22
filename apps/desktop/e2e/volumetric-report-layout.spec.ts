@@ -199,6 +199,21 @@ test('piles without a volume, an overlap, a pile filed under an earlier date and
   await expect(card).toHaveCount(1);
   await expect(card).toHaveClass(/is-uncomputed/);
   await expect(card.locator('.vr-pile-volume')).toHaveText('Not computed');
+  // every picture caption of the first pile page is one line, the photo's with its new words
+  const firstPiles = preview.locator('.vr-page', { has: win.locator('.vr-pile') }).first();
+  const captions = firstPiles.locator('.vr-pile-pic figcaption');
+  expect(await captions.count()).toBeGreaterThanOrEqual(3);
+  const captionLines = await captions.evaluateAll((els) =>
+    els.map((el) => {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      return { text: el.textContent, lines: r.getClientRects().length };
+    }),
+  );
+  for (const c of captionLines) expect(c.lines, `"${c.text}" is one line`).toBe(1);
+  await expect(firstPiles.locator('[data-pic="photo"] figcaption').first()).toHaveText(
+    /^Outline and profile line, /,
+  );
 
   // ---- Export PDF: the capture, then the file
   await watchCard(win);
@@ -329,6 +344,43 @@ test('piles without a volume, an overlap, a pile filed under an earlier date and
     expect(await d.locator('.vr-print .vr-page').count()).toBeGreaterThanOrEqual(5);
     await expect(d.locator('.vr-print .vr-page')).toHaveCount(pdf.count);
     await expect(d.locator('.vr-print [data-notice="overlap"]')).toHaveCount(1);
+    // the Photo view: the badges of the outline drawn twice share one centre, and are moved apart
+    const badges = d.locator('.vr-d-marker');
+    await expect(badges).toHaveCount(6);
+    const apart = async (what: string) => {
+      const boxes = await badges.evaluateAll((els) =>
+        els.map((el) => {
+          const r = el.getBoundingClientRect();
+          return {
+            id: el.getAttribute('data-pile'),
+            x0: r.left,
+            y0: r.top,
+            x1: r.right,
+            y1: r.bottom,
+          };
+        }),
+      );
+      for (const b of boxes)
+        expect(b.x1 - b.x0, `${what}: ${String(b.id)} is drawn`).toBeGreaterThan(0);
+      for (let i = 0; i < boxes.length; i++)
+        for (let j = i + 1; j < boxes.length; j++) {
+          const a = boxes[i];
+          const b = boxes[j];
+          if (!a || !b) continue;
+          const meet = a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+          expect(
+            meet,
+            `${what}: ${String(a.id)} and ${String(b.id)} do not sit on each other`,
+          ).toBe(false);
+        }
+      expect(boxes.map((b) => b.id)).toEqual(expect.arrayContaining([TWICE.of, TWICE.id]));
+    };
+    await apart('at 1280 px');
+    expect(await d.locator('.vr-d-leaders line.vr-d-leader').count()).toBeGreaterThanOrEqual(2);
+    // a narrow browser window: the map is smaller, and the badges are laid out again
+    await offline.resize(700, 800);
+    await apart('at 700 px');
+    expect(await d.locator('.vr-d-leaders line.vr-d-leader').count()).toBeGreaterThanOrEqual(2);
     expect(await offline.requests(), 'requests from the offline HTML').toEqual([]);
   } finally {
     await offline.close();
