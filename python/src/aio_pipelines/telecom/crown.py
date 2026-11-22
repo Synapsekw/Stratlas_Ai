@@ -10,10 +10,11 @@ shaft radius is `ShaftRadius.coef` (slope and intercept against height along the
 `ShaftRadius.from_coef` turns back into the function.
 
 Frames: everything here is in the cloud's own date frame (the file's coordinates, no line-up
-shift), like survey measurements, so lining a date up again never moves an inventory. Engineering
-evidence and a click on the tower are in the lined-up frame the 3D view draws (`captures.date_shift`
-of the cloud layer, x += east, z -= north): the shift is taken off them before use. Cloud reads
-and photo poses are raw.
+shift), like survey measurements, so lining a date up again never moves an inventory. A click on
+the tower is in the lined-up frame the 3D view draws: the date's whole line-up (shift and turn,
+`captures.date_similarity`) is undone on it. Engineering evidence is taken back by the shift alone
+(`captures.date_shift`, x += east, z -= north), the frame the engineering job reads clouds in (its
+clouds are shift-only). Cloud reads and photo poses are raw.
 
 Every read samples by coordinates when it holds more points than its cap (`read_region`
 `order_free`), so which points are kept does not depend on the order the reader returns them in,
@@ -31,7 +32,7 @@ from typing import Any
 import numpy as np
 from scipy import ndimage
 
-from ..captures import date_shift, layer_captures, local_delta
+from ..captures import date_shift, date_similarity, layer_captures, local_delta
 from ..change.sources import height_offset_m
 from ..engineer.axis import Axis, estimate_axis
 from ..engineer.cloud import read_region
@@ -408,8 +409,20 @@ def locate_crown(ctx: Any, project: Path, manifest: dict, params: dict) -> Crown
         evidence = to_date_frame(evidence, shift)
     hint = params.get("towerHint")
     if hint is not None:
-        hint = _unshift_xz(hint, dx, dz)
+        sim = date_similarity(manifest, layer_id)
+        if sim.has_turn():
+            # the view draws the date turned as well as shifted: the click goes back through both
+            hx, hz = sim.inverse().apply_local(float(hint[0]), float(hint[1]), origin)
+            hint = [float(hx), float(hz)]
+        else:
+            hint = _unshift_xz(hint, dx, dz)
     read_cap, read_points = FULL_POINTS, 0
+    progress = getattr(ctx, "progress", None)
+
+    def stage(share: float) -> None:
+        ctx.check()
+        if progress is not None:
+            progress(share)
 
     def region_pts(centre: tuple[float, float], radius: float, cap: int = FULL_POINTS) -> np.ndarray:
         return _read(
@@ -459,6 +472,7 @@ def locate_crown(ctx: Any, project: Path, manifest: dict, params: dict) -> Crown
             raise JobError(TOWER_HINT_NEEDED)
         height = float(axis.to_frame(local)[2].max())
 
+    stage(0.35)  # the axis is known; the shaft fit and the band read follow
     u, w, h = axis.to_frame(local)
     r = np.hypot(u, w)
     near = r <= HINT_RADIUS_M  # other structures in the crop do not enter the shaft or the band
@@ -488,11 +502,13 @@ def locate_crown(ctx: Any, project: Path, manifest: dict, params: dict) -> Crown
         "min": [float(foot[0] - radius), floor_y, float(foot[2] - radius)],
         "max": [float(foot[0] + radius), top_y + 1.0, float(foot[2] + radius)],
     }
+    stage(0.45)
     if source == "evidence":
         band = local[np.all((local >= box["min"]) & (local <= box["max"]), axis=1)]
     else:
         band, info = _read_info(ctx, layer_path, layer, box, FULL_POINTS, origin, offset)
         read_cap, read_points = FULL_POINTS, int(info["read"])
+    stage(0.7)
     if len(band):
         bu, bw, _ = axis.to_frame(band)
         band = _sorted(band[np.hypot(bu, bw) <= radius])

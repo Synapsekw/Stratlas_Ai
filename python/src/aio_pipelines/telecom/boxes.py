@@ -540,11 +540,15 @@ def pair_faces(
     crown_xyz: np.ndarray,
     shaft_r: Callable | None = None,
     drops: dict[str, int] | None = None,
+    tick: Callable[[float], None] | None = None,
 ) -> list[Unit]:
     """Units (oriented boxes with a kind) from the crown's planar faces and its points. `shaft_r`
     (radius against height above `axis_point`) lets slender units fixed to the shaft go as
     structure; `drops`, when given, counts the candidate boxes left out by reason (`DROP_*`; one
-    whose front lies on a listed unit's box counts as `DROP_PART`)."""
+    whose front lies on a listed unit's box counts as `DROP_PART`). `tick`, when given, is called
+    with the share done (0 to 1) inside the pairing loop and before the dish search, so a job can
+    report progress and honour a cancel there (it may raise); it never changes the units."""
+    tick = tick or (lambda _f: None)
     axis_point = np.asarray(axis_point, dtype=float)
     crown = np.asarray(crown_xyz, dtype=float)
     tree = cKDTree(crown) if len(crown) else None
@@ -556,6 +560,7 @@ def pair_faces(
     used: set[int] = set()
     units: list[Unit] = []
     for i, f in enumerate(big):
+        tick(0.7 * i / len(big))
         if i in used:
             continue
         used.add(i)
@@ -591,8 +596,10 @@ def pair_faces(
             dropped.append((DROP_SPANS, u))
         else:
             kept.append(u)
+    tick(0.7)
     for u in kept:
         u.dish = _flat_dish(u, rng)
+    tick(0.8)
     kept += _reflector_dishes(crown, kept, axis_point, rng)
     if drops is not None:
         for reason, u in dropped:

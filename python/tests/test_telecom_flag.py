@@ -6,6 +6,14 @@ from functools import cache
 
 import numpy as np
 
+from aio_pipelines.telecom.faces import (
+    MIN_FACE_POINTS,
+    REF_SPACING_M,
+    Sparse,
+    planar_faces,
+    point_spacing,
+    voxel_down,
+)
 from aio_pipelines.telecom.flag import (
     FLAG_MIN_POINTS,
     PLACEHOLDER_M,
@@ -140,6 +148,46 @@ def test_too_few_points_is_none():
     xyz, _ = _tower()
     sel = xyz[_in_box(xyz, _truth("panel-0"), 0.05)][:40]
     assert measure_selection(sel, AXIS_POINT, AXIS_DIR, ORIGIN, None) is None
+
+
+def test_an_outline_with_80_points_on_a_dense_cloud_is_measured():
+    # the lowest 6 cm of the radio's front at 4000 points per square metre: 80 points, under the
+    # detector's face minimum on a dense cloud (MIN_FACE_POINTS) but a face a person outlined
+    xyz, _ = _tower()
+    u = _truth("radio-180")
+    local = _box_local(xyz, u)
+    _, _, ext = _frame(u)
+    strip = (
+        (np.abs(local[:, 2] - ext[2] / 2) < 0.01)
+        & (np.abs(local[:, 0]) <= ext[0] / 2)
+        & (local[:, 1] >= -ext[1] / 2)
+        & (local[:, 1] <= -ext[1] / 2 + 0.06)
+    )
+    sel = xyz[strip]
+    assert FLAG_MIN_POINTS <= len(sel) <= 80 < MIN_FACE_POINTS
+    assert point_spacing(voxel_down(sel)) < REF_SPACING_M  # dense: no sparse lowering
+    m = measure_selection(sel, AXIS_POINT, AXIS_DIR, ORIGIN, None)
+    assert m is not None
+    assert "widthM" in m
+    assert abs(m["widthM"]["value"] - ext[0]) <= 0.05
+    assert m["support"] == len(sel)
+
+
+def test_the_detector_keeps_its_face_minimum():
+    # the same 80 points through the detector's face search find no face: only an outline lowers it
+    xyz, _ = _tower()
+    u = _truth("radio-180")
+    local = _box_local(xyz, u)
+    _, _, ext = _frame(u)
+    strip = (
+        (np.abs(local[:, 2] - ext[2] / 2) < 0.01)
+        & (np.abs(local[:, 0]) <= ext[0] / 2)
+        & (local[:, 1] >= -ext[1] / 2)
+        & (local[:, 1] <= -ext[1] / 2 + 0.06)
+    )
+    no_shaft = lambda h: np.zeros_like(np.asarray(h, dtype=float))  # noqa: E731
+    assert planar_faces(xyz[strip], AXIS_POINT, AXIS_DIR, no_shaft) == []
+    assert Sparse.of(0.02).face_points == MIN_FACE_POINTS
 
 
 def test_not_measured_has_no_values():

@@ -102,6 +102,20 @@ def _save_npz(path: Path, **arrays: np.ndarray) -> None:
         np.savez(f, **arrays)
 
 
+def _ticker(ctx: Any, lo: float, hi: float):
+    """A `tick(share)` for a long library call inside a step: a cancel is honoured there
+    (`ctx.check`) and the step's progress moves from `lo` to `hi` with the share done. A ctx
+    without `progress` (a test stub) only checks."""
+    progress = getattr(ctx, "progress", None)
+
+    def tick(share: float) -> None:
+        ctx.check()
+        if progress is not None:
+            progress(lo + (hi - lo) * float(share))
+
+    return tick
+
+
 def _load_crown(ctx: StepContext):
     from .crown import ShaftRadius
 
@@ -306,6 +320,7 @@ class TelecomAntennas:
                 shaft=np.asarray(crown.shaft_r.coef, dtype=np.float64),
             )
             oz = _origin(manifest)[2]
+            ctx.progress(0.8)
             ground_y = ground_near_base(ctx, ctx.project, manifest, crown)
             if ground_y is None:
                 # too few ground points by the base: the axis base, carried to the lowest point of the
@@ -339,7 +354,7 @@ class TelecomAntennas:
 
             ctx.progress(0.0, "Finding planar faces")
             xyz, point, direction, shaft = _load_crown(ctx)
-            faces = planar_faces(xyz, point, direction, shaft)
+            faces = planar_faces(xyz, point, direction, shaft, tick=_ticker(ctx, 0.0, 0.95))
             ctx.check()
             _save_faces(ctx.stage("faces.npz"), faces)
             ctx.log(f"{len(faces)} planar faces on the crown.")
@@ -354,7 +369,7 @@ class TelecomAntennas:
             xyz, point, _, shaft = _load_crown(ctx)
             faces = _load_faces(ctx.stage("faces.npz"))
             drops: dict[str, int] = {}
-            units = pair_faces(faces, point, xyz, shaft, drops) if faces else []
+            units = pair_faces(faces, point, xyz, shaft, drops, tick=_ticker(ctx, 0.0, 0.6)) if faces else []
             ctx.check()
             if drops:
                 ctx.log(
@@ -362,10 +377,13 @@ class TelecomAntennas:
                     + ", ".join(f"{n} {reason}" for reason, n in sorted(drops.items(), key=lambda d: -d[1]))
                     + "."
                 )
+            ctx.progress(0.6)
             convergence = _convergence(manifest, point)
             origin = _origin(manifest)
             out = []
-            for u in units:
+            for k, u in enumerate(units):
+                ctx.check()
+                ctx.progress(0.6 + 0.4 * k / len(units))
                 m = measure_unit(u, origin, convergence)
                 m["convergenceDeg"] = convergence
                 out.append(m)

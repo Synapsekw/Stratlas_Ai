@@ -11,7 +11,7 @@ Normals point outward, away from the tower axis.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 from scipy.sparse import coo_matrix
@@ -109,6 +109,15 @@ class Sparse:
             piece_points=max(least_piece, round(MIN_PIECE_POINTS * q)),
             core_m=CORE_CELL_M * widen,
         )
+
+    def at_least(self, face_points: int | None) -> Sparse:
+        """These counts with a lower face minimum, for points a person outlined: a face then
+        needs `face_points` (when fewer than now) and a piece as many in proportion to
+        `MIN_PIECE_POINTS` / `MIN_FACE_POINTS`. None, or a minimum no lower, keeps them."""
+        if face_points is None or face_points >= self.face_points:
+            return self
+        piece = max(1, MIN_PIECE_POINTS * face_points // MIN_FACE_POINTS)
+        return replace(self, face_points=face_points, piece_points=min(self.piece_points, piece))
 
 
 def point_spacing(pts: np.ndarray, tree: cKDTree | None = None) -> float:
@@ -333,8 +342,17 @@ def planar_faces(
     axis_dir: np.ndarray,
     shaft_r: Callable[[np.ndarray], np.ndarray],
     seed: int = 0,
+    face_points: int | None = None,
+    tick: Callable[[float], None] | None = None,
 ) -> list[Face]:
-    """Upright planar faces of the crown points `xyz` (the shaft and its brackets left out)."""
+    """Upright planar faces of the crown points `xyz` (the shaft and its brackets left out).
+
+    `face_points` lowers the fewest points a face needs (`Sparse.at_least`) for points a person
+    outlined around one unit; None (detection) keeps the minimum of the cloud's spacing. `tick`,
+    when given, is called with the share done (0 to 1) between the stages and inside the loops
+    over the grown regions and the planes, so a job can report progress and honour a cancel
+    there (it may raise); it never changes the faces."""
+    tick = tick or (lambda _f: None)
     axis_point = np.asarray(axis_point, dtype=float)
     axis_dir = np.asarray(axis_dir, dtype=float) / np.linalg.norm(axis_dir)
     rng = np.random.default_rng(seed)
@@ -343,11 +361,13 @@ def planar_faces(
     h = rel @ axis_dir
     r = np.linalg.norm(_horizontal(rel, axis_dir), axis=1)
     pts = pts[r >= np.asarray(shaft_r(h), dtype=float) + SHAFT_MARGIN_M]
-    if len(pts) < MIN_FACE_POINTS_SPARSE:
+    if len(pts) < min(MIN_FACE_POINTS_SPARSE, face_points or MIN_FACE_POINTS_SPARSE):
         return []
     tree = cKDTree(pts)
-    sp = Sparse.of(point_spacing(pts, tree))
+    sp = Sparse.of(point_spacing(pts, tree)).at_least(face_points)
+    tick(0.05)
     nrm, curv = normals(pts, sp.normal_k)
+    tick(0.2)
     flat = np.where((np.abs(nrm[:, 1]) < UPRIGHT_MAX_NY) & (curv < MAX_CURVATURE))[0]
     if len(flat) < sp.face_points:
         return []
@@ -361,7 +381,10 @@ def planar_faces(
     _, lab = connected_components(graph, directed=False)
     counts = np.bincount(lab)
     parts: list[np.ndarray] = []
-    for c in np.where(counts >= sp.piece_points)[0]:
+    regions = np.where(counts >= sp.piece_points)[0]
+    tick(0.3)
+    for k, c in enumerate(regions):
+        tick(0.3 + 0.2 * k / len(regions))
         region = pv[lab == c]
         _, _, rms = _plane(region)
         if rms > SPLIT_RMS_M and len(region) >= sp.face_points:
@@ -373,7 +396,10 @@ def planar_faces(
     knn_r = float(np.median(tree.query(sample, k=min(sp.normal_k, len(pts)))[0][:, -1]))
     reach = max(EDGE_REACH_M, 1.5 * knn_r)
     faces: list[Face] = []
-    for part in _merge_coplanar(parts, reach, sp.face_points):
+    planes = _merge_coplanar(parts, reach, sp.face_points)
+    tick(0.55)
+    for k, part in enumerate(planes):
+        tick(0.55 + 0.35 * k / len(planes))
         for face in _with_edges(part, pts, tree, reach, axis_point, axis_dir, sp):
             if (
                 face.rms < KEEP_RMS_M

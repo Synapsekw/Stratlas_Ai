@@ -17,7 +17,12 @@ from .boxes import classify, pair_faces, unit_from_faces
 from .faces import planar_faces
 from .measure import measure_unit, to_project
 
-FLAG_MIN_POINTS = 60  # below it no measuring is tried (a face needs as many: MIN_FACE_POINTS_SPARSE)
+FLAG_MIN_POINTS = 60  # an outline with fewer points is not measured
+# the fewest points a face of an outline needs (after the voxel thinning and the curvature filter,
+# which erodes every edge), however dense the cloud: a person outlined one unit, so a small face
+# of it is measured where detection, which searches the whole crown, needs `faces.MIN_FACE_POINTS`
+# on a dense cloud and `faces.MIN_FACE_POINTS_SPARSE` on a sparse one
+OUTLINE_FACE_POINTS = 40
 PLACEHOLDER_M = 0.2  # the cube a flag that could not be measured is drawn as
 
 
@@ -61,7 +66,7 @@ def measure_selection(
     axis_point = np.asarray(axis_point, dtype=float)
     axis_dir = np.asarray(axis_dir, dtype=float)
     axis_dir = axis_dir / np.linalg.norm(axis_dir)
-    faces = planar_faces(xyz, axis_point, axis_dir, _no_shaft)
+    faces = planar_faces(xyz, axis_point, axis_dir, _no_shaft, face_points=OUTLINE_FACE_POINTS)
     if not faces:
         return None
     units = pair_faces(faces, axis_point, xyz, _no_shaft, {})
