@@ -1,0 +1,150 @@
+/* Shared Atlas palette for every landing and inspection page. */
+:root {
+  --atlas-background: #081518;
+  --atlas-scene: #0a191d;
+  --atlas-panel: #102025;
+  --atlas-panel-raised: #172c31;
+  --atlas-selected: #263d31;
+  --atlas-text: #e5ece9;
+  --atlas-muted: #9aacaa;
+  --atlas-sage: #91a9a2;
+  --atlas-line: #293b3e;
+  --atlas-line-strong: #435957;
+  --atlas-accent: #d9f99b;
+  --atlas-accent-hover: #e7ffc0;
+  --atlas-on-accent: #142623;
+  --atlas-warning-surface: #3b2923;
+  --atlas-warning-text: #f1b78b;
+  color-scheme: dark;
+  background: var(--atlas-background);
+}
+body[data-page] {
+  background: var(--atlas-background);
+  color: var(--atlas-text);
+}
+body[data-page] .intro-row > p,
+body[data-page] .corrosion-intro .intro-row > div > p {
+  color: var(--atlas-muted);
+}
+body[data-page] .product-nav {
+  background: var(--atlas-background);
+}
+body[data-page] .product-nav nav a {
+  color: var(--atlas-muted);
+}
+body[data-page] .product-nav nav a:hover,
+body[data-page] .product-nav nav [aria-current="page"] {
+  color: var(--atlas-accent);
+}
+body[data-page] .tiny-square {
+  border-radius: 50%;
+}
+body[data-page] .eyebrow {
+  color: var(--atlas-muted);
+}
+body[data-page] .next-chapter,
+body[data-page] .review-summary,
+body[data-page] .workflow-band,
+body[data-page] .handover-lab {
+  border-top: 1px solid var(--atlas-line);
+  border-bottom: 1px solid var(--atlas-line);
+}
+body[data-page] .product-footer {
+  border-top: 1px solid var(--atlas-line);
+}
+body[data-page] .report-sheet {
+  box-shadow: 0 20px 60px #0003;
+}
+body[data-page] .report-sheet h2 {
+  color: var(--atlas-text);
+}
+body[data-page] .severity-bar:nth-child(1) b {
+  background: #ea987f;
+}
+body[data-page] .severity-bar:nth-child(2) b {
+  background: #e9bb80;
+}
+body[data-page] .severity-bar:nth-child(3) b {
+  background: #d9d995;
+}
+
+/* One compact entry point to the dedicated inspection disciplines. */
+.use-case-menu {
+  position: relative;
+  font: inherit;
+  flex-shrink: 0;
+  z-index: 35;
+}
+.use-case-menu > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 0;
+  color: var(--atlas-text);
+}
+.use-case-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.use-case-menu > summary:focus-visible {
+  outline: 2px solid var(--atlas-accent);
+  outline-offset: 5px;
+}
+.use-case-menu[open] > summary {
+  color: var(--atlas-accent);
+}
+.use-case-menu > div {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 255px;
+  padding: 10px;
+  background: var(--atlas-panel);
+  border: 1px solid var(--atlas-line-strong);
+  box-shadow: 0 16px 40px #0006;
+}
+.use-case-menu > div > a {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  width: 100%;
+  padding: 14px 12px !important;
+  font:
+    12px Plex,
+    Arial,
+    sans-serif !important;
+  color: var(--atlas-text) !important;
+  border: 0 !important;
+}
+.use-case-menu > div > a:hover {
+  background: var(--atlas-selected);
+  color: var(--atlas-accent) !important;
+}
+.use-case-menu > div > a > span {
+  color: var(--atlas-muted);
+}
+[data-direction="atlas-dark"] .site-header nav {
+  gap: 20px;
+}
+@media (max-width: 1100px) {
+  .product-nav nav {
+    gap: 16px;
+  }
+}
+@media (max-width: 760px) {
+  .product-subnav .use-case-menu {
+    display: block;
+  }
+  .use-case-menu > div {
+    width: 240px;
+  }
+  .product-subnav {
+    overflow: visible;
+    flex-wrap: wrap;
+  }
+  .use-case-menu > summary {
+    font-size: 11px;
+  }
+}
