@@ -23,6 +23,7 @@ test-results/
 # (the demo project is synthetic but large: built by tools/demo/build-demo.mjs at dist time)
 apps/desktop/demo/
 docs/design/assets/
+docs/design/landing-options/quadrion-inspection-sample.pdf
 fixtures/data/
 
 # Python bytecode outside python/ (the e2e stand-in pipelines)
