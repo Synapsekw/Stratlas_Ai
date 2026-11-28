@@ -37,13 +37,18 @@ On local `main` with `pnpm dev`, started with the demo folder as the telecom and
 3. Telecom: section 5 of `plans/2026-11-22-telecom-finalize.md`. The steps that need the founder are Label with AI with his own provider, opening the coverage GeoTIFF in a GIS, a real tower against reference values, and the looks by eye.
 4. Say when testing is done, so the coordinator pushes.
 
+**Founder test (28 Nov 2026, on local `main` with `pnpm dev`):** all three items approved. (1) The volumetric report works, and the volumetrics section as a whole is approved. (2) The Split notice fix is tested and approved. (3) Telecom is tested and approved. With that the telecom rulings and the calls decided under his delegation stand as decided unless he reopens one. The Demo tower was built into the main checkout's demo folder for the test.
+
+Incident: `pnpm dev` failed at first because the main checkout's `node_modules` had been emptied during this session's agent work (cause not traced; most likely a temporary folder linked to it was deleted). `pnpm install --frozen-lockfile` fixed it. Lesson: an agent must never create a link to the main checkout's `node_modules` in a temporary folder and then delete that folder recursively.
+
 ## Open threads
 
-- After the founder's tests: one push behind a green CI run, then cleanup of the four landed worktrees.
+- The one push behind a green CI run is in progress by the coordinator; cleanup of the landed worktrees follows it.
+- Not recorded as run in the founder's test: Label with AI with his own provider, the coverage GeoTIFF opened in a GIS, a real tower against reference values. The real-data volume check stays open too (it needs reference figures).
 - To decide later: the five unmerged remote branches, the eleven kept local branches and six old stashes in the shared stash (untouched).
 - Two empty folders (one under `.claude/worktrees`, one tool worktree shell) are held open by other processes and can be deleted once those close. The pack build folder outside the repository is kept.
 - The main Python environment's package metadata is stale: it reports 0.24.0 although the code is 0.36.0. `uv sync --frozen` in `python/` refreshes it.
 
 ## Next session entry point
 
-Read this note with the telecom note and north-star section 3. The open local batch waits for the founder's word; the merge coordinator then runs `pnpm check` on the combined `main` and pushes once behind a green run.
+Read this note with the telecom note and north-star section 3. The batch is tested and approved; the merge coordinator runs `pnpm check` on the combined `main` and pushes once behind a green run. Confined spaces is the next section in focus under the freeze.
