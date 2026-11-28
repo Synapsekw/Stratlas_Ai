@@ -15,7 +15,7 @@ related: [../plans/2026-11-22-telecom-finalize.md]
 - Fixes: the empty Antennas list offers Detect antennas and shows the tower prompt; messages show in the list; a delete has an Undo notice that brings back the unit, its crop, its sector place and RF settings; "the plan changed" comes from what is saved; a stuck Running state ends; a hand outline on a dense cloud is measured; detection reports progress inside its long steps; stage clicks go to the nearest claim, so an outline click no longer picks the box behind it.
 - Four items closed without a change, with evidence in the plan: 29 (the view draws a lined-up cloud with the shift only, so the turn was built, caught by the new spec and backed out), 38, 57 and part of 52.
 - New: a generated Demo tower among the demos (`pnpm demo:tower`), `e2e/telecom-finalize.spec.ts` (13 tests), guide chapters 45 (Antennas) and 47 (Coverage), a Telecom stage in `TESTING.md`.
-- Pipeline pack 0.36.0 (a provisional number, to be confirmed by the merge coordinator). No contract change.
+- Pipeline pack 0.36.0 (confirmed by the merge coordinator on 28 Nov 2026). No contract change.
 
 ## Why
 

@@ -250,7 +250,7 @@ Batch 3 (in order):   T10  ->  T11  ->  T12
 
 **Contract changes:** none were needed, so there is no row in `docs/architecture/contract-changes.md`. Item 45 compares the saved plan with the plan each run recorded (every run keeps a copy of the plan it used), so no field was added to the run. Item 48 (the survey date of a run) stays deferred and is a known limit.
 
-**Pipeline pack:** one bump (decided, section 6), carrying items 28 and 41. The build used 0.36.0 provisionally; no gate asks for it (neither item changes what an older pack reads or writes). The merge coordinator confirms the number at hand-over.
+**Pipeline pack:** one bump (decided, section 6), carrying items 28 and 41. The build used 0.36.0, which the merge coordinator confirmed on 28 Nov 2026; no gate asks for it (neither item changes what an older pack reads or writes).
 
 **Packages touched:** `@aio/ui` (text, icon, shortcuts), `@aio/survey` (tool names), the desktop renderer, main process and e2e, the Python pipeline, tools, docs. No `@aio/schema`, no `@aio/rf`.
 
